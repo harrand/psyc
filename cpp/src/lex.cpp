@@ -10,13 +10,98 @@ namespace lexer
 		{
 			return ret;
 		}
+		constexpr auto npos = std::numeric_limits<std::size_t>::max();
+		std::size_t current_word_begin = npos;
+
+		constexpr const char* keywords[] =
+		{
+			"return", // return from current function.
+			"i64", // 64 bit signed int type
+			"i32", // 32 bit signed int type
+			"u64", // 64 bit unsigned int type
+			"u32", // 32 but unsigned int type
+			"f64", // 64 bit ieee-754 (double)
+			"f32", // 32 bit ieee-754 (single aka. float)
+			"f16", // 16 bit ieee-754 (half aka. half float)
+		};
+
+		auto current_is_keyword = [](std::string_view str) constexpr -> bool
+		{
+			constexpr auto keyword_count = sizeof(keywords) / sizeof(const char*);
+			for(std::size_t i = 0; i < keyword_count; i++)
+			{
+				if(str == keywords[i])
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		auto emit_word = [&]()
+		{
+			if(current_word_begin != npos)
+			{
+				std::string value = std::string(psy.data() + current_word_begin, cursor - current_word_begin);
+				ret.push_back({.id = current_is_keyword(value) ? token::type::keyword : token::type::identifier, .value = value});
+				current_word_begin = npos;
+			}
+		};
 
 		while(cursor < psy.size())
 		{
 			std::string_view data = psy.substr(cursor);
 			if(data.starts_with("\n"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::newline});
+				// todo: assert not be in the middle of a word.
+			}
+			else if(data.starts_with("\t"))
+			{
+				// ignore the following tokens completely.
+			}
+			else if(data.starts_with(";"))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::semicolon});
+			}
+			else if(data.starts_with(" "))
+			{
+				emit_word();
+			}
+			else if(data.starts_with("("))
+			{
+				ret.push_back({.id = token::type::open_paren});
+			}
+			else if(data.starts_with(")"))
+			{
+				ret.push_back({.id = token::type::close_paren});
+			}
+			else if(data.starts_with("{"))
+			{
+				ret.push_back({.id = token::type::open_brace});
+			}
+			else if(data.starts_with("}"))
+			{
+				ret.push_back({.id = token::type::close_brace});
+			}
+			else if(data.starts_with(":"))
+			{
+				ret.push_back({.id = token::type::colon});
+			}
+			else if(data.starts_with("->"))
+			{
+				ret.push_back({.id = token::type::arrow});
+				// -> is 2 chars unlike the others. advance an additional time now.
+				cursor++;
+			}
+			else
+			{
+				if(current_word_begin == npos)
+				{
+					current_word_begin = cursor;
+				}
 			}
 			cursor++;
 		}

@@ -11,8 +11,20 @@ namespace lexer
 	{
 		enum class type
 		{
-			newline
+			newline,
+			keyword,
+			identifier,
+			open_paren,
+			close_paren,
+			open_brace,
+			close_brace,
+			numeric_literal,
+			string_literal,
+			colon,
+			arrow,
+			semicolon
 		} id;
+		std::string value = "";
 	};
 
 	using tokens = std::vector<token>;
