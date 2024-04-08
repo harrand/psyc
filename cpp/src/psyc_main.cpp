@@ -1,3 +1,4 @@
+#include "parse.hpp"
 #include "lex.hpp"
 
 #include <span>
@@ -21,6 +22,7 @@ struct session
 {
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
+	std::vector<parser::ast> parsed_files = {};
 	output type = output::unknown;
 };
 
@@ -106,11 +108,13 @@ int main(int argc, char** argv)
 	parse_args(args, ses);
 	assert_that(ses.type != output::unknown, "no output type specified (`-ot / --output_type`)");
 	ses.lexed_files.resize(ses.input_files.size());
+	ses.parsed_files.resize(ses.input_files.size());
 	assert_that(ses.input_files.size(), "no input files specified");
 	for(std::size_t i = 0; i < ses.input_files.size(); i++)
 	{
 		const auto& input_file = ses.input_files[i];
 		auto& tokens = ses.lexed_files[i];
+		auto& ast = ses.parsed_files[i];
 		assert_that(std::filesystem::exists(input_file), std::format("cannot find input file `{}`", input_file));
 		// tokens = lex(input_file)
 		std::ifstream fstr(input_file);
@@ -118,6 +122,7 @@ int main(int argc, char** argv)
 		buffer << fstr.rdbuf();
 		std::string str = buffer.str();
 		tokens = lexer::lex(str);
+		ast = parser::parse(tokens);
 		volatile int x = 5;
 	}
 }

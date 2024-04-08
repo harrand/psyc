@@ -8,4 +8,6 @@ add_executable(psyc
 	src/psyc_main.cpp
 	src/lex.cpp
 	src/lex.hpp
+	src/parse.cpp
+	src/parse.hpp
 )
