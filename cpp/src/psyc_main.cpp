@@ -1,3 +1,5 @@
+#include "lex.hpp"
+
 #include <span>
 #include <string_view>
 #include <vector>
@@ -5,6 +7,8 @@
 #include <utility>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 enum class output
 {
@@ -16,6 +20,7 @@ enum class output
 struct session
 {
 	std::vector<std::string> input_files = {};
+	std::vector<lexer::tokens> lexed_files = {};
 	output type = output::unknown;
 };
 
@@ -100,10 +105,19 @@ int main(int argc, char** argv)
 	session ses;
 	parse_args(args, ses);
 	assert_that(ses.type != output::unknown, "no output type specified (`-ot / --output_type`)");
+	ses.lexed_files.resize(ses.input_files.size());
 	assert_that(ses.input_files.size(), "no input files specified");
-	for(const auto& input_file : ses.input_files)
+	for(std::size_t i = 0; i < ses.input_files.size(); i++)
 	{
+		const auto& input_file = ses.input_files[i];
+		auto& tokens = ses.lexed_files[i];
 		assert_that(std::filesystem::exists(input_file), std::format("cannot find input file `{}`", input_file));
 		// tokens = lex(input_file)
+		std::ifstream fstr(input_file);
+		std::stringstream buffer;
+		buffer << fstr.rdbuf();
+		std::string str = buffer.str();
+		tokens = lexer::lex(str);
+		volatile int x = 5;
 	}
 }
