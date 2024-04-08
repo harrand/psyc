@@ -16,13 +16,6 @@ namespace lexer
 		constexpr const char* keywords[] =
 		{
 			"return", // return from current function.
-			"i64", // 64 bit signed int type
-			"i32", // 32 bit signed int type
-			"u64", // 64 bit unsigned int type
-			"u32", // 32 but unsigned int type
-			"f64", // 64 bit ieee-754 (double)
-			"f32", // 32 bit ieee-754 (single aka. float)
-			"f16", // 16 bit ieee-754 (half aka. half float)
 		};
 
 		auto current_is_keyword = [](std::string_view str) constexpr -> bool
