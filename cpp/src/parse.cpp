@@ -1,5 +1,6 @@
 #include "parse.hpp"
 #include "diag.hpp"
+#include <stack>
 
 namespace parser
 {
@@ -102,6 +103,31 @@ namespace parser
 		this->path.pop_back();
 	}
 
+	void ast::pretty_print()
+	{
+		std::stack<const ast::node*> node_list;
+		node_list.push(&this->program);
+		std::cout << "program:\n";
+		while(node_list.size())
+		{
+			const ast::node* cur = node_list.top();
+			node_list.pop();
+			std::visit([](auto&& arg)
+			{
+				using T = std::decay_t<decltype(arg)>;
+				if constexpr(!std::is_same_v<T, std::monostate>)
+				{
+					arg.pretty_print();
+					std::cout << "\n";
+				}
+			}, cur->payload);
+			for(const auto& child : cur->children)
+			{
+				node_list.push(&child);
+			}
+		}
+	}
+
 	// ast implementation end
 
 	class parser
@@ -190,23 +216,27 @@ namespace parser
 			}
 		}
 
-		void main_function()
+		void function_definition()
 		{
 			bool succ = true;
-			succ &= this->match(lexer::token::type::identifier);
-			succ &= this->last_value() == "main";
+			this->match(lexer::token::type::identifier);
+			std::string fname = this->last_value();
 			succ &= this->match(lexer::token::type::colon);
 			succ &= this->match(lexer::token::type::open_paren);
 			succ &= this->match(lexer::token::type::close_paren);
 			succ &= this->match(lexer::token::type::arrow);
 			succ &= this->match(lexer::token::type::identifier);
-			succ &= this->last_value() == "i64";
-			this->block();
+			std::string return_type = this->last_value();
+			if(succ)
+			{
+				this->tree.push(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
+				this->block();
+			}
 		}
 
 		void parse()
 		{
-			this->main_function();
+			this->function_definition();
 		}
 
 		ast get_ast() const

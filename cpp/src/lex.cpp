@@ -64,26 +64,32 @@ namespace lexer
 			}
 			else if(data.starts_with("("))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::open_paren});
 			}
 			else if(data.starts_with(")"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::close_paren});
 			}
 			else if(data.starts_with("{"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::open_brace});
 			}
 			else if(data.starts_with("}"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::close_brace});
 			}
 			else if(data.starts_with(":"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::colon});
 			}
 			else if(data.starts_with("->"))
 			{
+				emit_word();
 				ret.push_back({.id = token::type::arrow});
 				// -> is 2 chars unlike the others. advance an additional time now.
 				cursor++;

@@ -83,6 +83,7 @@ int main(int argc, char** argv)
 		std::string str = buffer.str();
 		tokens = lexer::lex(str);
 		ast = parser::parse(tokens);
+		ast.pretty_print();
 		volatile int x = 5;
 	}
 }
