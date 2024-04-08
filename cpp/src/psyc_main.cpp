@@ -1,3 +1,4 @@
+#include "diag.hpp"
 #include "parse.hpp"
 #include "lex.hpp"
 
@@ -5,8 +6,6 @@
 #include <string_view>
 #include <vector>
 #include <format>
-#include <utility>
-#include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -25,45 +24,6 @@ struct session
 	std::vector<parser::ast> parsed_files = {};
 	output type = output::unknown;
 };
-
-template<typename... Ts>
-void print(Ts&&... ts)
-{
-    ((std::cout<<std::forward<Ts>(ts)<<','),...);
-    std::cout<<'\n';
-}
-
-template<typename... Ts>
-void message(Ts&&... ts)
-{
-	std::cout << "message: ";
-	print(std::forward<Ts>(ts)...);
-}
-
-template<typename... Ts>
-void warning(Ts&&... ts)
-{
-	std::cout << "warning: ";
-	print(std::forward<Ts>(ts)...);
-}
-
-template<typename... Ts>
-void error(Ts&&... ts)
-{
-	std::cout << "error: ";
-	print(std::forward<Ts>(ts)...);
-	std::exit(-1);
-}
-
-
-template<typename... Ts>
-void assert_that(bool expr, std::string msg)
-{
-	if(!expr)
-	{
-		error(msg);
-	}
-}
 
 void parse_args(std::span<const std::string_view> args, session& ses)
 {
@@ -88,14 +48,14 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			}
 			else
 			{
-				error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
+				diag::error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
 			}
 			i++;
 			continue;
 		}
 		else
 		{
-			assert_that(arg.ends_with(".psy"), std::format("input file \"{}\" does not end with `.psy`", arg));
+			diag::assert_that(arg.ends_with(".psy"), std::format("input file \"{}\" does not end with `.psy`", arg));
 			ses.input_files.push_back(std::string{arg});
 		}
 	}
@@ -106,16 +66,16 @@ int main(int argc, char** argv)
 	const std::vector<std::string_view> args(argv + 1, argv + argc);
 	session ses;
 	parse_args(args, ses);
-	assert_that(ses.type != output::unknown, "no output type specified (`-ot / --output_type`)");
+	diag::assert_that(ses.type != output::unknown, "no output type specified (`-ot / --output_type`)");
 	ses.lexed_files.resize(ses.input_files.size());
 	ses.parsed_files.resize(ses.input_files.size());
-	assert_that(ses.input_files.size(), "no input files specified");
+	diag::assert_that(ses.input_files.size(), "no input files specified");
 	for(std::size_t i = 0; i < ses.input_files.size(); i++)
 	{
 		const auto& input_file = ses.input_files[i];
 		auto& tokens = ses.lexed_files[i];
 		auto& ast = ses.parsed_files[i];
-		assert_that(std::filesystem::exists(input_file), std::format("cannot find input file `{}`", input_file));
+		diag::assert_that(std::filesystem::exists(input_file), std::format("cannot find input file `{}`", input_file));
 		// tokens = lex(input_file)
 		std::ifstream fstr(input_file);
 		std::stringstream buffer;

@@ -55,7 +55,6 @@ namespace lexer
 			{
 				emit_word();
 				ret.push_back({.id = token::type::newline});
-				// todo: assert not be in the middle of a word.
 			}
 			else if(data.starts_with("\t"))
 			{
