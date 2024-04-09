@@ -43,15 +43,26 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 		{
 			argnext = &args[i + 1];
 		}
-		if(arg.starts_with("-ot") || arg.starts_with("--output_type"))
+		if(arg == "-v")
+		{
+			std::cout << "psy compiler\n\tinvocation: \"psyc";
+			for(const auto& tmparg : args)
+			{
+				std::cout << " " << tmparg;
+			}
+			std::cout << "\"\n";
+		}
+		else if(arg.starts_with("-ot") || arg.starts_with("--output_type"))
 		{
 			if(*argnext == "llvm")
 			{
 				ses.type = output::llvm_ir;
+				diag::warning("llvm IR code generation is not yet implemented. no binary will be generated.");
 			}
 			else if(*argnext == "x86_64_asm")
 			{
 				ses.type = output::x86_64_asm;
+				diag::warning("x86_64_asm code generation is not yet implemented. no binary will be generated.");
 			}
 			else
 			{
@@ -66,6 +77,10 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 		}
 		else
 		{
+			if(arg.starts_with("-"))
+			{
+				diag::error(std::format("unrecognised cli option \"{}\"", arg));
+			}
 			diag::assert_that(arg.ends_with(".psy"), std::format("input file \"{}\" does not end with `.psy`", arg));
 			ses.input_files.push_back(std::string{arg});
 		}

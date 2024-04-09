@@ -1,4 +1,6 @@
 #include "lex.hpp"
+#include "diag.hpp"
+#include <format>
 
 namespace lexer
 {
@@ -41,6 +43,8 @@ namespace lexer
 			}
 		};
 
+		std::size_t line_counter = 1;
+
 		while(cursor < psy.size())
 		{
 			std::string_view data = psy.substr(cursor);
@@ -48,6 +52,7 @@ namespace lexer
 			{
 				emit_word();
 				ret.push_back({.id = token::type::newline});
+				line_counter++;
 			}
 			else if(data.starts_with("\t"))
 			{
@@ -102,6 +107,11 @@ namespace lexer
 				}
 			}
 			cursor++;
+		}
+
+		if(current_word_begin != npos)
+		{
+			diag::error(std::format("lexer: unterminated word by eof. line {}. unrecognised token(s): \"{}\"", line_counter, psy.substr(current_word_begin, cursor - current_word_begin)));
 		}
 
 		return ret;

@@ -6,7 +6,7 @@ namespace diag
 	template<typename... Ts>
 	void print(Ts&&... ts)
 	{
-		((std::cout<<std::forward<Ts>(ts)<<','),...);
+		((std::cout<<std::forward<Ts>(ts)<<""),...);
 		std::cout<<'\n';
 	}
 
@@ -20,15 +20,17 @@ namespace diag
 	template<typename... Ts>
 	void warning(Ts&&... ts)
 	{
-		std::cout << "warning: ";
+		std::cout << "\033[1;33m" << "warning: ";
 		print(std::forward<Ts>(ts)...);
+		std::cout << "\033[0m";
 	}
 
 	template<typename... Ts>
 	void error(Ts&&... ts)
 	{
-		std::cout << "error: ";
+		std::cout << "\033[1;31m" << "error: ";
 		print(std::forward<Ts>(ts)...);
+		std::cout << "\033[0m";
 		std::exit(-1);
 	}
 
