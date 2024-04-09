@@ -1,6 +1,7 @@
 #include "parse.hpp"
 #include "diag.hpp"
 #include <stack>
+#include <string>
 #include <unordered_map>
 #include <format>
 #include <optional>
@@ -221,6 +222,19 @@ namespace parser
 			return iter->second;
 		}
 
+		void variable()
+		{
+			this->match(lexer::token::type::identifier);
+			std::string varname = this->last_value();
+			this->match(lexer::token::type::colon);
+			// keyword or identifier. because default types are keywords and user-defined types are identifiers.
+			if(!this->match(lexer::token::type::keyword))
+			{
+				this->match(lexer::token::type::identifier);
+			}
+			std::string type_name = this->last_value();
+		}
+
 		void expression()
 		{
 			// function call
@@ -229,13 +243,38 @@ namespace parser
 				std::string name = this->last_value();
 				if(this->match(lexer::token::type::open_paren))
 				{
+					std::vector<ast::expression> parameters = {};
+					bool more_params = true;
+					while(more_params)
+					{
+						bool matched = false;
+						matched = this->match(lexer::token::type::integer_literal);
+						if(matched)
+						{
+							parameters.push_back(ast::integer_literal{.value = std::stoi(this->last_value())});
+							continue;
+						}
+						matched = this->match(lexer::token::type::decimal_literal);
+						if(matched)
+						{
+							parameters.push_back(ast::decimal_literal{.value = std::stod(this->last_value())});
+							continue;
+						}
+						matched = this->match(lexer::token::type::identifier);
+						more_params = matched;
+						if(matched)
+						{
+							// assume at this point its not a nested function call and instead a variable name.
+							parameters.push_back(ast::identifier{.name = this->last_value()});
+						}
+					}
 					if(this->match(lexer::token::type::close_paren))
 					{
 						// this was a function call.
 						this->push_payload(ast::function_call
 						{
 							.function_name = {name},
-							.parameters = {}
+							.parameters = parameters
 						});
 						this->tree.pop();
 					}
@@ -254,8 +293,33 @@ namespace parser
 		{
 			if(this->match(lexer::token::type::keyword) && this->last_value() == "return")
 			{
-				this->match(lexer::token::type::identifier);
-				std::string return_value = this->last_value();
+				ast::expression return_value;
+				if(!this->match(lexer::token::type::identifier))
+				{
+					bool matched = false;
+					matched = this->match(lexer::token::type::integer_literal);
+					if(matched)
+					{
+						return_value = ast::integer_literal{.value = std::stoi(this->last_value())};
+					}
+					else
+					{
+						matched = this->match(lexer::token::type::decimal_literal);
+						if(matched)
+						{
+							return_value = ast::decimal_literal{.value = std::stod(this->last_value())};
+						}
+						else
+						{
+							matched = this->match(lexer::token::type::identifier);
+							return_value = ast::identifier{.name = this->last_value()};
+						}
+					}
+				}
+				else
+				{
+					return_value = ast::identifier{.name = this->last_value()};
+				}
 				this->match(lexer::token::type::semicolon);
 				this->push_payload(ast::return_statement{.value = return_value});
 				this->tree.pop();
@@ -283,13 +347,25 @@ namespace parser
 			std::string fname = this->last_value();
 			succ &= this->match(lexer::token::type::colon);
 			succ &= this->match(lexer::token::type::open_paren);
+			std::vector<ast::variable_declaration> parameters = {};
+			while(this->match(lexer::token::type::identifier))
+			{
+				std::string varname = this->last_value();
+				this->match(lexer::token::type::colon);
+				if(!this->match(lexer::token::type::keyword))
+				{
+					this->match(lexer::token::type::identifier);
+				}
+				std::string type_name = this->last_value();
+				parameters.push_back({.name = {varname}, .type = {type_name}});
+			}
 			succ &= this->match(lexer::token::type::close_paren);
 			succ &= this->match(lexer::token::type::arrow);
 			succ &= this->match(lexer::token::type::identifier);
 			std::string return_type = this->last_value();
 			if(succ)
 			{
-				this->push_payload(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
+				this->push_payload(ast::function_definition{.function_name = {fname}, .parameters = parameters, .return_type = {return_type}});
 				this->block();
 				this->tree.pop();
 			}

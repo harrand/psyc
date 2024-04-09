@@ -1,6 +1,7 @@
 #include "lex.hpp"
 #include "diag.hpp"
 #include <format>
+#include <string>
 
 namespace lexer
 {
@@ -38,7 +39,31 @@ namespace lexer
 			if(current_word_begin != npos)
 			{
 				std::string value = std::string(psy.data() + current_word_begin, cursor - current_word_begin);
-				ret.push_back({.id = current_is_keyword(value) ? token::type::keyword : token::type::identifier, .value = value});
+				token::type t = token::type::identifier;
+				// if its a keyword, then its a keyword
+				if(current_is_keyword(value))
+				{
+					t = token::type::keyword;
+				}
+				else
+				{
+					// otherwise check if its a decimal literal (swallow exception and move on if not)
+					try
+					{
+						double val = std::stod(value);
+						// `5` also converts well to a double, so check if the string contains a `.`
+						if(value.find('.') == std::string::npos)
+						{
+							t = token::type::integer_literal;
+						}
+						else
+						{
+							t = token::type::decimal_literal;
+						}
+					}catch(...){}
+				}
+				// if we failed all of that, it keeps its original value as an identifier.
+				ret.push_back({.id = t, .value = value});
 				current_word_begin = npos;
 			}
 		};
