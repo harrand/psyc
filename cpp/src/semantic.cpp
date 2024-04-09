@@ -15,8 +15,15 @@ namespace semantic
 		auto iter = global_state.defined_functions.find(payload.function_name.name);
 		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name.name, node.meta.line_number));
 
-		const parser::ast::function_definition& func = std::get<parser::ast::function_definition>(ast.get(iter->second).payload);
-		diag::assert_that(func.parameters.size() == payload.parameters.size(), std::format("invalid call to function {}. expects {} parameters, but you provided {}", func.function_name.name, func.parameters.size(), payload.parameters.size()));
+		const auto& func_node = ast.get(iter->second);
+		const parser::ast::function_definition& func = std::get<parser::ast::function_definition>(func_node.payload);
+		if(func.parameters.size() != payload.parameters.size())
+		{
+			diag::error(std::format("invalid call to function {} at line {}. expects {} parameters, but you provided {}", func.function_name.name, node.meta.line_number, func.parameters.size(), payload.parameters.size()));
+			std::cout << std::format("note: see below for signature of {} (line {}):\n", payload.function_name.name, func_node.meta.line_number);
+			func.pretty_print();
+			std::cout << "\n";
+		}
 		for(std::size_t i = 0; i < func.parameters.size(); i++)
 		{
 			// todo: do type-checking on the parameters.
@@ -38,7 +45,7 @@ namespace semantic
 		else
 		{
 			const auto& existing_node = ast.get(iter->second);
-			diag::error("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name.name, node.meta.line_number, existing_node.meta.line_number);
+			diag::error(std::format("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name.name, node.meta.line_number, existing_node.meta.line_number));
 		}
 	}
 
