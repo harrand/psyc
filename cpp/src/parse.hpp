@@ -1,6 +1,7 @@
 #include "lex.hpp"
 #include <variant>
 #include <iostream>
+#include <limits>
 
 namespace parser
 {
@@ -42,22 +43,31 @@ namespace parser
 			}
 		};
 
+		struct metadata
+		{
+			std::size_t line_number = std::numeric_limits<std::size_t>::max();
+		};
 		struct node
 		{
 			using payload_t = std::variant<std::monostate, function_call, return_statement, function_definition>;
 			payload_t payload;
+			metadata meta;
 			std::vector<node> children;
 		};
+		using path_t = std::vector<std::size_t>;
+		using path_view_t = std::span<const std::size_t>;
 
 		const node& current() const;
 		node& current();
+		path_t current_path() const;
 		void push(node n);
-		void push(node::payload_t payload);
+		const node& get(path_view_t path) const;
+		node& get(path_view_t path);
 		void pop();
 		void pretty_print();
 
 		node program;
-		std::vector<std::size_t> path = {};
+		path_t path = {};
 	};
 
 	ast parse(lexer::const_token_view tokens);

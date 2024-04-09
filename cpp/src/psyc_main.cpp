@@ -66,7 +66,7 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			}
 			else
 			{
-				diag::error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
+				diag::fatal_error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
 			}
 			i++;
 			continue;
@@ -79,7 +79,7 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 		{
 			if(arg.starts_with("-"))
 			{
-				diag::error(std::format("unrecognised cli option \"{}\"", arg));
+				diag::fatal_error(std::format("unrecognised cli option \"{}\"", arg));
 			}
 			diag::assert_that(arg.ends_with(".psy"), std::format("input file \"{}\" does not end with `.psy`", arg));
 			ses.input_files.push_back(std::string{arg});

@@ -1,6 +1,9 @@
 #include "parse.hpp"
 #include "diag.hpp"
 #include <stack>
+#include <unordered_map>
+#include <format>
+#include <optional>
 
 namespace parser
 {
@@ -76,12 +79,12 @@ namespace parser
 
 	ast::node& ast::current()
 	{
-		node* cur = &this->program;
-		for(std::size_t id : this->path)
-		{
-			cur = &cur->children[id];
-		}
-		return *cur;
+		return this->get(this->path);
+	}
+
+	ast::path_t ast::current_path() const
+	{
+		return this->path;
 	}
 
 	void ast::push(ast::node n)
@@ -92,9 +95,24 @@ namespace parser
 		this->path.push_back(id);
 	}
 
-	void ast::push(ast::node::payload_t payload)
+	const ast::node& ast::get(std::span<const std::size_t> path) const
 	{
-		this->push(node{.payload = payload, .children = {}});
+		const node* n = &this->program;
+		for(std::size_t i : path)
+		{
+			n = &n->children[i];
+		}
+		return *n;
+	}
+
+	ast::node& ast::get(std::span<const std::size_t> path)
+	{
+		node* n = &this->program;
+		for(std::size_t i : path)
+		{
+			n = &n->children[i];
+		}
+		return *n;
 	}
 
 	void ast::pop()
@@ -173,6 +191,36 @@ namespace parser
 			return this->tokens[this->index - 1].value;
 		}
 
+		// add a node payload to the current location in the AST.
+		void push_payload(ast::node::payload_t payload)
+		{
+			this->tree.push(ast::node
+			{
+				.payload = payload,
+				.meta =
+				{
+					.line_number = this->current_line
+				},
+				.children = {}
+			});
+		}
+		
+		// move to the parent of the current node within the AST.
+		void pop()
+		{
+			this->tree.pop();
+		}
+
+		std::optional<ast::path_t> try_get_function_definition(const std::string& fname)
+		{
+			auto iter = this->defined_functions.find(fname);
+			if(iter == this->defined_functions.end())
+			{
+				return std::nullopt;
+			}
+			return iter->second;
+		}
+
 		void expression()
 		{
 			// function call
@@ -184,7 +232,8 @@ namespace parser
 					if(this->match(lexer::token::type::close_paren))
 					{
 						// this was a function call.
-						this->tree.push(ast::function_call
+						diag::assert_that(this->try_get_function_definition(name).has_value(), std::format("call to undefined function \"{}\"", name));
+						this->push_payload(ast::function_call
 						{
 							.function_name = {name},
 							.parameters = {}
@@ -209,7 +258,7 @@ namespace parser
 				this->match(lexer::token::type::identifier);
 				std::string return_value = this->last_value();
 				this->match(lexer::token::type::semicolon);
-				this->tree.push(ast::return_statement{.value = return_value});
+				this->push_payload(ast::return_statement{.value = return_value});
 				this->tree.pop();
 			}
 			else
@@ -241,7 +290,17 @@ namespace parser
 			std::string return_type = this->last_value();
 			if(succ)
 			{
-				this->tree.push(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
+				this->push_payload(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
+				auto maybe_existing = this->try_get_function_definition(fname);
+				if(maybe_existing.has_value())
+				{
+					const auto& existing_node = this->tree.get(maybe_existing.value());
+					diag::error(std::format("redefinition of function \"{}\" on line {} (previously defined on line {})", fname, this->current_line, existing_node.meta.line_number));
+				}
+				else
+				{
+					this->defined_functions[fname] = this->tree.current_path();
+				}
 				this->block();
 				this->tree.pop();
 			}
@@ -264,7 +323,8 @@ namespace parser
 	private:
 		lexer::const_token_view tokens;
 		std::size_t index = 0;
-		std::size_t current_line = 0;
+		std::size_t current_line = 1;
+		std::unordered_map<std::string, ast::path_t> defined_functions = {};
 		ast tree = {};
 	};
 

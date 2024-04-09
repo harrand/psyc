@@ -28,7 +28,15 @@ namespace diag
 	template<typename... Ts>
 	void error(Ts&&... ts)
 	{
-		std::cout << "\033[1;31m" << "error: ";
+		std::cout << "\033[0;31m" << "error: ";
+		print(std::forward<Ts>(ts)...);
+		std::cout << "\033[0m";
+	}
+
+	template<typename... Ts>
+	void fatal_error(Ts&&... ts)
+	{
+		std::cout << "\033[1;31m" << "fatal error: ";
 		print(std::forward<Ts>(ts)...);
 		std::cout << "\033[0m";
 		std::exit(-1);
