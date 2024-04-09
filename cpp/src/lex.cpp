@@ -5,6 +5,16 @@
 
 namespace lexer
 {
+	std::string token::to_string() const
+	{
+		std::string type_name = {lexer::token_type_names[static_cast<std::size_t>(this->id)]};
+		if(type_name.size())
+		{
+			return type_name;	
+		}
+		return this->value;
+	}
+
 	tokens lex(std::string_view psy)
 	{
 		tokens ret = {};

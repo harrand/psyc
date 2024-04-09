@@ -1,5 +1,6 @@
 #include "parse.hpp"
 #include "diag.hpp"
+#include "lex.hpp"
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -340,7 +341,7 @@ namespace parser
 			}
 		}
 
-		void function_definition()
+		bool function_definition()
 		{
 			bool succ = true;
 			this->match(lexer::token::type::identifier);
@@ -369,13 +370,44 @@ namespace parser
 				this->block();
 				this->tree.pop();
 			}
+			return succ;
 		}
 
 		void parse()
 		{
 			while(this->index < tokens.size())
 			{
-				this->function_definition();
+				if(!this->function_definition())
+				{
+					std::size_t line_count = 1;
+					std::size_t index_begin = 0;
+					std::vector<lexer::token> tokens_on_this_line = {};
+					while(line_count < this->current_line)
+					{
+						if(this->tokens[index_begin].id == lexer::token::type::newline)
+						{
+							line_count++;
+						}
+						index_begin++;
+					}
+					std::size_t index_end = index_begin;
+					while(this->tokens[index_end].id != lexer::token::type::newline)
+					{
+						tokens_on_this_line.push_back(this->tokens[index_end]);
+						index_end++;
+					}
+					std::string line_data = "";
+					for(std::size_t i = index_begin; i < index_end; i++)
+					{
+						line_data += tokens_on_this_line[i - index_begin].to_string();
+						if(i < (index_end - 2))
+						{
+							line_data += " ";
+						}
+					}
+					diag::error(std::format("could not parse tokens on line {}: {}", this->current_line, line_data));
+					break;
+				}
 			}
 			diag::assert_that(this->tree.path.empty(), "internal compiler error: AST path was not empty by the end of parsing.");
 		}

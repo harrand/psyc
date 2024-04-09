@@ -3,7 +3,7 @@
 #include <vector>
 #include <span>
 #include <string_view>
-
+#include <array>
 namespace lexer
 {
 
@@ -23,9 +23,29 @@ namespace lexer
 			string_literal,
 			colon,
 			arrow,
-			semicolon
+			semicolon,
+			_count
 		} id;
 		std::string value = "";
+
+		std::string to_string() const;
+	};
+
+	constexpr std::array<const char*, static_cast<std::size_t>(token::type::_count)> token_type_names =
+	{
+		"\n",
+		"",
+		"",
+		"(",
+		")",
+		"{",
+		"}",
+		"",
+		"",
+		"",
+		":",
+		" -> ",
+		";"
 	};
 
 	using tokens = std::vector<token>;
