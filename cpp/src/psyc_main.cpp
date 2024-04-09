@@ -17,12 +17,19 @@ enum class output
 	x86_64_asm,
 };
 
+using flag_t = std::uint8_t;
+enum flag : flag_t
+{
+	verbose = 0b0000001,
+};
+
 struct session
 {
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
 	std::vector<parser::ast> parsed_files = {};
 	output type = output::unknown;
+	flag_t flags = {};
 };
 
 void parse_args(std::span<const std::string_view> args, session& ses)
@@ -52,6 +59,10 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			}
 			i++;
 			continue;
+		}
+		else if(arg.starts_with("--dump-ast"))
+		{
+			ses.flags |= flag::verbose;
 		}
 		else
 		{
@@ -83,7 +94,12 @@ int main(int argc, char** argv)
 		std::string str = buffer.str();
 		tokens = lexer::lex(str);
 		ast = parser::parse(tokens);
-		ast.pretty_print();
+		if(ses.flags & flag::verbose)
+		{
+			std::cout << "========== " << "input file \"" << input_file << "\" ==========\n";
+			std::cout << "=== ast ===\n";
+			ast.pretty_print();
+		}
 		volatile int x = 5;
 	}
 }

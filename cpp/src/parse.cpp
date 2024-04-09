@@ -106,12 +106,20 @@ namespace parser
 	void ast::pretty_print()
 	{
 		std::stack<const ast::node*> node_list;
+		std::stack<std::size_t> indents;
 		node_list.push(&this->program);
+		indents.push(0);
 		std::cout << "program:\n";
 		while(node_list.size())
 		{
 			const ast::node* cur = node_list.top();
 			node_list.pop();
+			std::size_t indent = indents.top();
+			indents.pop();
+			for(std::size_t i = 0; i < indent; i++)
+			{
+				std::cout << "  ";
+			}
 			std::visit([](auto&& arg)
 			{
 				using T = std::decay_t<decltype(arg)>;
@@ -121,9 +129,11 @@ namespace parser
 					std::cout << "\n";
 				}
 			}, cur->payload);
-			for(const auto& child : cur->children)
+			for(std::size_t i = 0; i < cur->children.size(); i++)
 			{
+				const auto& child = cur->children[cur->children.size() - 1 - i];
 				node_list.push(&child);
+				indents.push(indent + 1);
 			}
 		}
 	}
@@ -179,6 +189,7 @@ namespace parser
 							.function_name = {name},
 							.parameters = {}
 						});
+						this->tree.pop();
 					}
 					else
 					{
@@ -199,6 +210,7 @@ namespace parser
 				std::string return_value = this->last_value();
 				this->match(lexer::token::type::semicolon);
 				this->tree.push(ast::return_statement{.value = return_value});
+				this->tree.pop();
 			}
 			else
 			{
@@ -231,12 +243,17 @@ namespace parser
 			{
 				this->tree.push(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
 				this->block();
+				this->tree.pop();
 			}
 		}
 
 		void parse()
 		{
-			this->function_definition();
+			while(this->index < tokens.size())
+			{
+				this->function_definition();
+			}
+			diag::assert_that(this->tree.path.empty(), "internal compiler error: AST path was not empty by the end of parsing.");
 		}
 
 		ast get_ast() const
