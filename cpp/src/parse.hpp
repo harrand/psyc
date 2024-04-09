@@ -1,3 +1,5 @@
+#ifndef PSYC_PARSE_HPP
+#define PSYC_PARSE_HPP
 #include "lex.hpp"
 #include <variant>
 #include <iostream>
@@ -72,3 +74,4 @@ namespace parser
 
 	ast parse(lexer::const_token_view tokens);
 }
+#endif // PSYC_PARSE_HPP

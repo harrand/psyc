@@ -11,4 +11,6 @@ add_executable(psyc
 	src/lex.hpp
 	src/parse.cpp
 	src/parse.hpp
+	src/semantic.cpp
+	src/semantic.hpp
 )

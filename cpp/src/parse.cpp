@@ -232,7 +232,6 @@ namespace parser
 					if(this->match(lexer::token::type::close_paren))
 					{
 						// this was a function call.
-						diag::assert_that(this->try_get_function_definition(name).has_value(), std::format("call to undefined function \"{}\"", name));
 						this->push_payload(ast::function_call
 						{
 							.function_name = {name},
@@ -291,16 +290,6 @@ namespace parser
 			if(succ)
 			{
 				this->push_payload(ast::function_definition{.function_name = {fname}, .return_type = {return_type}});
-				auto maybe_existing = this->try_get_function_definition(fname);
-				if(maybe_existing.has_value())
-				{
-					const auto& existing_node = this->tree.get(maybe_existing.value());
-					diag::error(std::format("redefinition of function \"{}\" on line {} (previously defined on line {})", fname, this->current_line, existing_node.meta.line_number));
-				}
-				else
-				{
-					this->defined_functions[fname] = this->tree.current_path();
-				}
 				this->block();
 				this->tree.pop();
 			}

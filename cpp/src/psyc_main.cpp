@@ -1,6 +1,7 @@
 #include "diag.hpp"
 #include "parse.hpp"
 #include "lex.hpp"
+#include "semantic.hpp"
 
 #include <span>
 #include <string_view>
@@ -115,6 +116,7 @@ int main(int argc, char** argv)
 			std::cout << "=== ast ===\n";
 			ast.pretty_print();
 		}
+		semantic::analysis(ast);
 		volatile int x = 5;
 	}
 }
