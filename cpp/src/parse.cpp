@@ -223,17 +223,64 @@ namespace parser
 			return iter->second;
 		}
 
-		void variable()
+		bool variable()
 		{
+			bool succ = true;
 			this->match(lexer::token::type::identifier);
 			std::string varname = this->last_value();
-			this->match(lexer::token::type::colon);
+			succ &= this->match(lexer::token::type::colon);
 			// keyword or identifier. because default types are keywords and user-defined types are identifiers.
 			if(!this->match(lexer::token::type::keyword))
 			{
 				this->match(lexer::token::type::identifier);
 			}
 			std::string type_name = this->last_value();
+			std::optional<ast::expression> expr = std::nullopt;
+			if(this->match(lexer::token::type::equals))
+			{
+				if(!this->match(lexer::token::type::identifier))
+				{
+					bool matched = false;
+					matched = this->match(lexer::token::type::integer_literal);
+					if(matched)
+					{
+						expr = ast::integer_literal{.value = std::stoi(this->last_value())};
+					}
+					else
+					{
+						matched = this->match(lexer::token::type::decimal_literal);
+						if(matched)
+						{
+							expr = ast::decimal_literal{.value = std::stod(this->last_value())};
+						}
+						else
+						{
+							matched = this->match(lexer::token::type::string_literal);
+							if(matched)
+							{
+								expr = ast::string_literal{.value = this->last_value()};
+							}
+							else
+							{
+								matched = this->match(lexer::token::type::identifier);
+								expr = ast::identifier{.name = this->last_value()};
+							}
+						}
+					}
+				}
+				else
+				{
+					expr = ast::identifier{.name = this->last_value()};
+				}
+			}
+			succ &= this->match(lexer::token::type::semicolon);
+			if(!succ)
+			{
+				return false;
+			}
+			this->push_payload(ast::variable_declaration{.name = {varname}, .type = {type_name}, .initialiser = expr});
+			this->pop();
+			return true;
 		}
 
 		void expression()
@@ -295,39 +342,46 @@ namespace parser
 				}
 				else
 				{
-					// assume its just an identifier...
-					this->push_payload(ast::identifier
+					if(!this->variable())
 					{
-						.name = name	
-					});
-					this->pop();
+						// assume its just an identifier...
+						this->push_payload(ast::identifier
+						{
+							.name = name	
+						});
+						this->pop();
+					}
 				}
 			}
 			else
 			{
-				// could be a literal
-				if(this->match(lexer::token::type::decimal_literal))
+				// could be a variable.
+				if(!this->variable())
 				{
-					this->push_payload(ast::decimal_literal{.value = std::stod(this->last_value())});
-					this->pop();
-				}
-				else
-				{
-					if(this->match(lexer::token::type::integer_literal))
+					// could be a literal
+					if(this->match(lexer::token::type::decimal_literal))
 					{
-						this->push_payload(ast::integer_literal{.value = std::stoi(this->last_value())});
+						this->push_payload(ast::decimal_literal{.value = std::stod(this->last_value())});
 						this->pop();
 					}
 					else
 					{
-						if(this->match(lexer::token::type::string_literal))
+						if(this->match(lexer::token::type::integer_literal))
 						{
-							this->push_payload(ast::string_literal{.value = this->last_value()});
+							this->push_payload(ast::integer_literal{.value = std::stoi(this->last_value())});
 							this->pop();
 						}
 						else
 						{
-							diag::error("parse error.");
+							if(this->match(lexer::token::type::string_literal))
+							{
+								this->push_payload(ast::string_literal{.value = this->last_value()});
+								this->pop();
+							}
+							else
+							{
+								diag::error("parse error.");
+							}
 						}
 					}
 				}

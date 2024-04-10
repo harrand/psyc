@@ -95,7 +95,18 @@ namespace lexer
 		while(cursor < psy.size())
 		{
 			std::string_view data = psy.substr(cursor);
-			if(data.starts_with("\n"))
+			if(data.starts_with("//"))
+			{
+				emit_word();
+				if(current_string_literal_begin == npos)
+				{
+					std::size_t comment_begin = cursor;
+					while(psy[cursor++ + 1] != '\n'){}
+					std::size_t comment_end = cursor;
+					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end + 1}});
+				}
+			}
+			else if(data.starts_with("\n"))
 			{
 				emit_word();
 				ret.push_back({.id = token::type::newline});
@@ -125,17 +136,6 @@ namespace lexer
 			{
 				emit_word();
 			}
-			else if(data.starts_with("//"))
-			{
-				emit_word();
-				if(current_string_literal_begin == npos)
-				{
-					std::size_t comment_begin = cursor;
-					while(psy[cursor++ + 1] != '\n'){}
-					std::size_t comment_end = cursor;
-					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end + 1}});
-				}
-			}
 			else if(data.starts_with("("))
 			{
 				emit_word();
@@ -155,6 +155,11 @@ namespace lexer
 			{
 				emit_word();
 				ret.push_back({.id = token::type::close_brace});
+			}
+			else if(data.starts_with("="))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::equals});
 			}
 			else if(data.starts_with(":"))
 			{

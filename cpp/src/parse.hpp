@@ -5,6 +5,7 @@
 #include <iostream>
 #include <ios>
 #include <limits>
+#include <optional>
 
 namespace parser
 {
@@ -44,7 +45,7 @@ namespace parser
 			std::string value;
 			inline void pretty_print() const
 			{
-				std::cout << "string-literal: " << this->value;
+				std::cout << "string-literal: \"" << this->value << "\"";
 			}
 		};
 
@@ -52,15 +53,6 @@ namespace parser
 
 		using expression = std::variant<integer_literal, decimal_literal, string_literal, function_call, identifier>;
 
-		struct variable_declaration
-		{
-			identifier name;
-			identifier type;
-			inline void pretty_print() const
-			{
-				std::cout << this->name.name << " : " << this->type.name;
-			}
-		};
 		struct function_call
 		{
 			identifier function_name;
@@ -76,6 +68,25 @@ namespace parser
 					}, param);
 				}
 				std::cout << ")";
+			}
+		};
+
+		struct variable_declaration
+		{
+			identifier name;
+			identifier type;
+			std::optional<expression> initialiser = std::nullopt;
+			inline void pretty_print() const
+			{
+				std::cout << "variable-declaration: " << this->name.name << " : " << this->type.name;
+				if(this->initialiser.has_value())
+				{
+					std::cout << " = ";
+					std::visit([](auto&& arg)
+					{
+						arg.pretty_print();	
+					},this->initialiser.value());
+				}
 			}
 		};
 

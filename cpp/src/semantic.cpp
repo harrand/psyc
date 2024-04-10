@@ -54,6 +54,10 @@ namespace semantic
 		}
 	}
 
+	void analyse_variable_declaration(const parser::ast::node& node, const parser::ast::variable_declaration& payload, const parser::ast::path_t& path, const parser::ast& ast)
+	{
+
+	}
 
 	void analyse_single_node(parser::ast::path_t path, const parser::ast& ast)
 	{
@@ -81,6 +85,10 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, parser::ast::function_definition>)
 			{
 				analyse_function_definition(node, arg, path, ast);
+			}
+			else if constexpr(std::is_same_v<T, parser::ast::variable_declaration>)
+			{
+				analyse_variable_declaration(node, arg, path, ast);
 			}
 			else
 			{

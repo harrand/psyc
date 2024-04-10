@@ -22,6 +22,7 @@ namespace lexer
 			integer_literal,
 			decimal_literal,
 			string_literal,
+			equals,
 			colon,
 			arrow,
 			semicolon,
@@ -45,6 +46,7 @@ namespace lexer
 		"",
 		"",
 		"",
+		"=",
 		":",
 		" -> ",
 		";"
