@@ -21,7 +21,8 @@ enum class output
 using flag_t = std::uint8_t;
 enum flag : flag_t
 {
-	verbose = 0b0000001,
+	dump_ast = 0b0000001,
+	dump_tokens = 0b000010,
 };
 
 struct session
@@ -74,7 +75,11 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 		}
 		else if(arg.starts_with("--dump-ast"))
 		{
-			ses.flags |= flag::verbose;
+			ses.flags |= flag::dump_ast;
+		}
+		else if(arg.starts_with("--dump-tokens"))
+		{
+			ses.flags |= flag::dump_tokens;
 		}
 		else
 		{
@@ -109,12 +114,21 @@ int main(int argc, char** argv)
 		buffer << fstr.rdbuf();
 		std::string str = buffer.str();
 		tokens = lexer::lex(str);
-		ast = parser::parse(tokens);
-		if(ses.flags & flag::verbose)
+		if(ses.flags & flag::dump_tokens)
 		{
-			std::cout << "========== " << "input file \"" << input_file << "\" ==========\n";
-			std::cout << "=== ast ===\n";
+			std::cout << "========== " << "dump-tokens \"" << input_file << "\" ==========\n";
+			for(const auto& tok : tokens)
+			{
+				std::cout << tok.to_string();
+			}
+			std::cout << "\n==========\n";
+		}
+		ast = parser::parse(tokens);
+		if(ses.flags & flag::dump_ast)
+		{
+			std::cout << "========== " << "dump-ast \"" << input_file << "\" ==========\n";
 			ast.pretty_print();
+			std::cout << "==========\n";
 		}
 		semantic::analysis(ast);
 		volatile int x = 5;

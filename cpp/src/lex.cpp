@@ -8,11 +8,7 @@ namespace lexer
 	std::string token::to_string() const
 	{
 		std::string type_name = {lexer::token_type_names[static_cast<std::size_t>(this->id)]};
-		if(type_name.size())
-		{
-			return type_name;	
-		}
-		return this->value;
+		return type_name + this->value;
 	}
 
 	tokens lex(std::string_view psy)
@@ -137,7 +133,7 @@ namespace lexer
 					std::size_t comment_begin = cursor;
 					while(psy[cursor++ + 1] != '\n'){}
 					std::size_t comment_end = cursor;
-					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end}});
+					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end + 1}});
 				}
 			}
 			else if(data.starts_with("("))
