@@ -173,7 +173,7 @@ namespace parser
 		{
 			if(this->index < this->tokens.size())
 			{
-				while(this->tokens[this->index].id == lexer::token::type::newline)
+				while(this->tokens[this->index].id == lexer::token::type::newline || this->tokens[this->index].id == lexer::token::type::line_comment)
 				{
 					this->current_line++;
 					this->index++;

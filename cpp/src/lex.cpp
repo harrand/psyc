@@ -129,6 +129,17 @@ namespace lexer
 			{
 				emit_word();
 			}
+			else if(data.starts_with("//"))
+			{
+				emit_word();
+				if(current_string_literal_begin == npos)
+				{
+					std::size_t comment_begin = cursor;
+					while(psy[cursor++ + 1] != '\n'){}
+					std::size_t comment_end = cursor;
+					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end}});
+				}
+			}
 			else if(data.starts_with("("))
 			{
 				emit_word();

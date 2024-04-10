@@ -14,6 +14,7 @@ namespace lexer
 			newline,
 			keyword,
 			identifier,
+			line_comment,
 			open_paren,
 			close_paren,
 			open_brace,
