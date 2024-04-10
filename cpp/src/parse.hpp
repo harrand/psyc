@@ -39,6 +39,15 @@ namespace parser
 			}
 		};
 
+		struct string_literal
+		{
+			std::string value;
+			inline void pretty_print() const
+			{
+				std::cout << "string-literal: " << this->value;
+			}
+		};
+
 		struct function_call;
 
 		using expression = std::variant<integer_literal, decimal_literal, function_call, identifier>;
@@ -110,7 +119,7 @@ namespace parser
 		};
 		struct node
 		{
-			using payload_t = std::variant<std::monostate, variable_declaration, function_call, return_statement, function_definition>;
+			using payload_t = std::variant<std::monostate, variable_declaration, function_call, return_statement, integer_literal, decimal_literal, string_literal, function_definition>;
 			payload_t payload;
 			metadata meta;
 			std::vector<node> children;

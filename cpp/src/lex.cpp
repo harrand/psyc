@@ -25,6 +25,7 @@ namespace lexer
 		}
 		constexpr auto npos = std::numeric_limits<std::size_t>::max();
 		std::size_t current_word_begin = npos;
+		std::size_t current_string_literal_begin = npos;
 
 		constexpr const char* keywords[] =
 		{
@@ -46,6 +47,10 @@ namespace lexer
 
 		auto emit_word = [&]()
 		{
+			if(current_string_literal_begin != npos)
+			{
+				return;
+			}
 			if(current_word_begin != npos)
 			{
 				std::string value = std::string(psy.data() + current_word_begin, cursor - current_word_begin);
@@ -78,6 +83,17 @@ namespace lexer
 			}
 		};
 
+		auto emit_string_literal = [&]()
+		{
+			if(current_string_literal_begin != npos)
+			{
+				std::string value = std::string(psy.data() + current_string_literal_begin + 1, cursor - current_string_literal_begin - 1);
+				// if we failed all of that, it keeps its original value as an identifier.
+				ret.push_back({.id = token::type::string_literal, .value = value});
+				current_string_literal_begin = npos;
+			}
+		};
+
 		std::size_t line_counter = 1;
 
 		while(cursor < psy.size())
@@ -88,6 +104,17 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::newline});
 				line_counter++;
+			}
+			else if(data.starts_with("\""))
+			{
+				if(current_string_literal_begin == npos)
+				{
+					current_string_literal_begin = cursor;
+				}
+				else
+				{
+					emit_string_literal();
+				}
 			}
 			else if(data.starts_with("\t"))
 			{
@@ -136,7 +163,7 @@ namespace lexer
 			}
 			else
 			{
-				if(current_word_begin == npos)
+				if(current_word_begin == npos && current_string_literal_begin == npos)
 				{
 					current_word_begin = cursor;
 				}
@@ -147,6 +174,11 @@ namespace lexer
 		if(current_word_begin != npos)
 		{
 			diag::error(std::format("lexer: unterminated word by eof. line {}. unrecognised token(s): \"{}\"", line_counter, psy.substr(current_word_begin, cursor - current_word_begin)));
+		}
+
+		if(current_string_literal_begin != npos)
+		{
+			diag::error(std::format("lexer: unterminated string literal by eof. line {}. unrecognised token(s): \"{}\"", line_counter, psy.substr(current_word_begin, cursor - current_string_literal_begin)));
 		}
 
 		return ret;

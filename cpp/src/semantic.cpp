@@ -57,7 +57,7 @@ namespace semantic
 		{
 			using T = std::decay_t<decltype(arg)>;
 
-			if constexpr(std::is_same_v<T, std::monostate>){}
+			if constexpr(std::is_same_v<T, std::monostate> || std::is_same_v<T, parser::ast::decimal_literal> || std::is_same_v<T, parser::ast::integer_literal> || std::is_same_v<T, parser::ast::string_literal>){}
 			else if constexpr(std::is_same_v<T, parser::ast::function_call>)
 			{
 				analyse_function_call(node, arg, path, ast);

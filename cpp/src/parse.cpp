@@ -288,6 +288,36 @@ namespace parser
 					}
 				}
 			}
+			else
+			{
+				// could be a literal
+				if(this->match(lexer::token::type::decimal_literal))
+				{
+					this->push_payload(ast::decimal_literal{.value = std::stod(this->last_value())});
+					this->pop();
+				}
+				else
+				{
+					if(this->match(lexer::token::type::integer_literal))
+					{
+						this->push_payload(ast::integer_literal{.value = std::stoi(this->last_value())});
+						this->pop();
+					}
+					else
+					{
+						if(this->match(lexer::token::type::string_literal))
+						{
+							this->push_payload(ast::string_literal{.value = this->last_value()});
+							this->pop();
+						}
+						else
+						{
+							diag::error("parse error.");
+						}
+					}
+				}
+			}
+			diag::assert_that(this->match(lexer::token::type::semicolon), std::format("missing semi-colon to end an expression on line {}", this->current_line));
 		}
 
 		void statement()
