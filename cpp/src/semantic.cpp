@@ -32,6 +32,33 @@ namespace semantic
 		for(std::size_t i = 0; i < func.parameters.size(); i++)
 		{
 			// todo: do type-checking on the parameters.
+			const parser::ast::variable_declaration& defined_param = func.parameters[i];
+			const parser::ast::expression& actual_param = payload.parameters[i];
+			std::visit([&](auto&& arg)
+			{
+				using T = std::decay_t<decltype(arg)>;
+				if constexpr(std::is_same_v<T, parser::ast::integer_literal>)
+				{
+					diag::assert_that(defined_param.type.name == "i64", std::format("call of {} on line {}: attempt to pass integer literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
+				}
+				else if constexpr(std::is_same_v<T, parser::ast::decimal_literal>)
+				{
+					diag::assert_that(defined_param.type.name == "f64", std::format("call of {} on line {}: attempt to pass decimal literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
+				}
+				else if constexpr(std::is_same_v<T, parser::ast::string_literal>)
+				{
+					diag::assert_that(defined_param.type.name == "string", std::format("call of {} on line {}: attempt to pass string literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
+				}
+				else if constexpr(std::is_same_v<T, parser::ast::identifier>)
+				{
+					// should be a variable name.
+					// todo: track variables and do type checking here.
+				}
+				else
+				{
+					diag::error(std::format("internal compiler error - failed to semantically analyse parameter value {} ({}) in call to {} on line {}", defined_param.name.name, defined_param.type.name, func.function_name.name, node.meta.line_number));
+				}
+			}, actual_param);
 		}
 	}
 
