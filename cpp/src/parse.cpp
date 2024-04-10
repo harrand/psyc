@@ -261,6 +261,12 @@ namespace parser
 							parameters.push_back(ast::decimal_literal{.value = std::stod(this->last_value())});
 							continue;
 						}
+						matched = this->match(lexer::token::type::string_literal);
+						if(matched)
+						{
+							parameters.push_back(ast::string_literal{.value = this->last_value()});
+							continue;
+						}
 						matched = this->match(lexer::token::type::identifier);
 						more_params = matched;
 						if(matched)
@@ -284,8 +290,17 @@ namespace parser
 						// e.g: 
 						// something(
 						// and the next token is not a close. must be a function call with parameters.
-						diag::error("internal compiler error: function call with parameters is not yet implemented");
+						diag::error("internal compiler error: failed to parse function call parameters");
 					}
+				}
+				else
+				{
+					// assume its just an identifier...
+					this->push_payload(ast::identifier
+					{
+						.name = name	
+					});
+					this->pop();
 				}
 			}
 			else
@@ -317,7 +332,7 @@ namespace parser
 					}
 				}
 			}
-			diag::assert_that(this->match(lexer::token::type::semicolon), std::format("missing semi-colon to end an expression on line {}", this->current_line));
+			//diag::assert_that(this->match(lexer::token::type::semicolon), std::format("missing semi-colon to end an expression on line {}", this->current_line));
 		}
 
 		void statement()

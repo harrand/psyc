@@ -50,7 +50,7 @@ namespace parser
 
 		struct function_call;
 
-		using expression = std::variant<integer_literal, decimal_literal, function_call, identifier>;
+		using expression = std::variant<integer_literal, decimal_literal, string_literal, function_call, identifier>;
 
 		struct variable_declaration
 		{
@@ -119,7 +119,7 @@ namespace parser
 		};
 		struct node
 		{
-			using payload_t = std::variant<std::monostate, variable_declaration, function_call, return_statement, integer_literal, decimal_literal, string_literal, function_definition>;
+			using payload_t = std::variant<std::monostate, variable_declaration, function_call, return_statement, integer_literal, decimal_literal, string_literal, identifier, function_definition>;
 			payload_t payload;
 			metadata meta;
 			std::vector<node> children;
