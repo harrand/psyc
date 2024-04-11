@@ -26,6 +26,9 @@ namespace lexer
 			colon,
 			arrow,
 			semicolon,
+			numeric_negation,
+			bitwise_complement,
+			logical_negation,
 			_count
 		} id;
 		std::string value = "";
@@ -49,7 +52,10 @@ namespace lexer
 		"=",
 		":",
 		" -> ",
-		";"
+		";",
+		"-",
+		"~",
+		"!"
 	};
 
 	using tokens = std::vector<token>;

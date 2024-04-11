@@ -95,7 +95,23 @@ namespace lexer
 		while(cursor < psy.size())
 		{
 			std::string_view data = psy.substr(cursor);
-			if(data.starts_with("//"))
+			if(data.starts_with("\""))
+			{
+				if(current_string_literal_begin == npos)
+				{
+					current_string_literal_begin = cursor;
+				}
+				else
+				{
+					emit_string_literal();
+				}
+			}
+			else if(current_string_literal_begin != npos)
+			{
+				cursor++;
+				continue;
+			}
+			else if(data.starts_with("//"))
 			{
 				emit_word();
 				if(current_string_literal_begin == npos)
@@ -111,17 +127,6 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::newline});
 				line_counter++;
-			}
-			else if(data.starts_with("\""))
-			{
-				if(current_string_literal_begin == npos)
-				{
-					current_string_literal_begin = cursor;
-				}
-				else
-				{
-					emit_string_literal();
-				}
 			}
 			else if(data.starts_with("\t"))
 			{
@@ -172,6 +177,18 @@ namespace lexer
 				ret.push_back({.id = token::type::arrow});
 				// -> is 2 chars unlike the others. advance an additional time now.
 				cursor++;
+			}
+			else if(data.starts_with("-"))
+			{
+				ret.push_back({.id = token::type::numeric_negation});
+			}
+			else if(data.starts_with("~"))
+			{
+				ret.push_back({.id = token::type::bitwise_complement});
+			}
+			else if(data.starts_with("!"))
+			{
+				ret.push_back({.id = token::type::logical_negation});
 			}
 			else
 			{

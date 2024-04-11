@@ -241,17 +241,28 @@ namespace parser
 				if(!this->match(lexer::token::type::identifier))
 				{
 					bool matched = false;
+					bool negative = this->match(lexer::token::type::numeric_negation);
 					matched = this->match(lexer::token::type::integer_literal);
 					if(matched)
 					{
-						expr = ast::integer_literal{.value = std::stoi(this->last_value())};
+						int val = std::stoi(this->last_value());
+						if(negative)
+						{
+							val *= -1;
+						}
+						expr = ast::integer_literal{.value = val};
 					}
 					else
 					{
 						matched = this->match(lexer::token::type::decimal_literal);
 						if(matched)
 						{
-							expr = ast::decimal_literal{.value = std::stod(this->last_value())};
+							double val = std::stod(this->last_value());
+							if(negative)
+							{
+								val *= -1.0;
+							}
+							expr = ast::decimal_literal{.value = val};
 						}
 						else
 						{
@@ -296,22 +307,32 @@ namespace parser
 					while(more_params)
 					{
 						bool matched = false;
+						bool negative = this->match(lexer::token::type::numeric_negation);
+						bool complement = this->match(lexer::token::type::bitwise_complement);
 						matched = this->match(lexer::token::type::integer_literal);
 						if(matched)
 						{
-							parameters.push_back(ast::integer_literal{.value = std::stoi(this->last_value())});
+							int val = std::stoi(this->last_value()) * (negative ? -1 : 1);
+							if(complement)
+							{
+								val = ~val;
+							}
+							parameters.push_back(ast::integer_literal{.value = val});
 							continue;
 						}
 						matched = this->match(lexer::token::type::decimal_literal);
 						if(matched)
 						{
-							parameters.push_back(ast::decimal_literal{.value = std::stod(this->last_value())});
+							double val = std::stod(this->last_value()) * (negative ? -1 : 1);
+							diag::assert_that(!complement, "cannot perform bitwise-complement unary operator on a decimal literal.");
+							parameters.push_back(ast::decimal_literal{.value = val});
 							continue;
 						}
 						matched = this->match(lexer::token::type::string_literal);
 						if(matched)
 						{
 							parameters.push_back(ast::string_literal{.value = this->last_value()});
+							diag::assert_that(!negative, "matched a numeric negation token \"!\" directly before a string literal. parse error.");
 							continue;
 						}
 						matched = this->match(lexer::token::type::identifier);
