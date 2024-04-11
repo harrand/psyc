@@ -7,15 +7,23 @@ namespace semantic
 {
 	struct semantic_state
 	{
+		// keeps track of all defined functions (name mapped to the path from AST root to the function_definition node).
 		std::unordered_map<std::string, parser::ast::path_t> defined_functions = {};
 	} global_state;
 
+	std::size_t pass_number = 0;
+
 	void analyse_function_call(const parser::ast::node& node, const parser::ast::function_call& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
-		/*
-		auto iter = global_state.defined_functions.find(payload.function_name.name);
-		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name.name, node.meta.line_number));
+		// we only analyse function calls in the second pass.
+		if(pass_number == 0)
+		{
+			return;
+		}
+		auto iter = global_state.defined_functions.find(payload.function_name);
+		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name, node.meta.line_number));
 
+		/*
 		const auto& func_node = ast.get(iter->second);
 		const parser::ast::function_definition& func = std::get<parser::ast::function_definition>(func_node.payload);
 		if(func.parameters.size() != payload.parameters.size())
@@ -59,9 +67,12 @@ namespace semantic
 		*/
 	}
 
+	template<typename T>
+	void analyse_thing(const parser::ast::node& node, const T& payload_like, const parser::ast::path_t& path, const parser::ast& ast);
+
 	void analyse_expression(const parser::ast::node& node, const parser::ast::expression& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
-
+		analyse_thing(node, payload.expr, path, ast);
 	}
 
 	void analyse_return_statement(const parser::ast::node& node, const parser::ast::return_statement& payload, const parser::ast::path_t& path, const parser::ast& ast)
@@ -71,18 +82,21 @@ namespace semantic
 
 	void analyse_function_definition(const parser::ast::node& node, const parser::ast::function_definition& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
-		/*
-		auto iter = global_state.defined_functions.find(payload.function_name.name);
+		// only analyse definitions in first pass.
+		if(pass_number != 0)
+		{
+			return;
+		}
+		auto iter = global_state.defined_functions.find(payload.function_name);
 		if(iter == global_state.defined_functions.end())
 		{
-			global_state.defined_functions[payload.function_name.name] = path;
+			global_state.defined_functions[payload.function_name] = path;
 		}
 		else
 		{
 			const auto& existing_node = ast.get(iter->second);
-			diag::error(std::format("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name.name, node.meta.line_number, existing_node.meta.line_number));
+			diag::error(std::format("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name, node.meta.line_number, existing_node.meta.line_number));
 		}
-		*/
 	}
 
 	void analyse_variable_declaration(const parser::ast::node& node, const parser::ast::variable_declaration& payload, const parser::ast::path_t& path, const parser::ast& ast)
@@ -90,9 +104,9 @@ namespace semantic
 
 	}
 
-	void analyse_single_node(parser::ast::path_t path, const parser::ast& ast)
+	template<typename P>
+	void analyse_thing(const parser::ast::node& node, const P& payload_like, const parser::ast::path_t& path, const parser::ast& ast)
 	{
-		const parser::ast::node& node = ast.get(path);
 		std::visit([&node, &ast, &path](auto&& arg)
 		{
 			using T = std::decay_t<decltype(arg)>;
@@ -125,7 +139,14 @@ namespace semantic
 			{
 				diag::fatal_error(std::format("internal compiler error: unknown AST node type (variant id: {}) detecting during semantic analysis.", node.payload.index()));
 			}
-		}, node.payload);
+		}, payload_like);
+	}
+
+
+	void analyse_single_node(parser::ast::path_t path, const parser::ast& ast)
+	{
+		const parser::ast::node& node = ast.get(path);
+		analyse_thing(node, node.payload, path, ast);
 	}
 
 	void analyse_node(parser::ast::path_t path, const parser::ast& ast)
@@ -140,9 +161,28 @@ namespace semantic
 		}
 	}
 
+	void first_pass(const parser::ast& ast)
+	{
+		analyse_node({}, ast);
+	}
+
+	void second_pass(const parser::ast& ast)
+	{
+		analyse_node({}, ast);
+	}
+
 	void analysis(const parser::ast& ast)
 	{
 		global_state = {};
-		analyse_node({}, ast);
+		// we do semantic analysis in 2 passes.
+		// if we do it in one-pass, then things must be defined *before* being used.
+		// i want you to be able to call function foo() before you define it (so long as you do indeed define it at some point).
+		//	iirc java/c#/python etc does this, but C/C++ etc doesnt. semantic analysis is pretty cheap anyways in terms of time, so im happy to take the minor perf hit to not have to deal with forward declares.
+		// the first pass basically harvests semantic information (e.g function definitions, variables within each scope etc...)
+		// second pass uses that information to actually perform verification.
+		pass_number = 0;
+		first_pass(ast);
+		pass_number++;
+		second_pass(ast);
 	}
 }
