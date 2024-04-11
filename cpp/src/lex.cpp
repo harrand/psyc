@@ -28,7 +28,7 @@ namespace lexer
 			"return", // return from current function.
 		};
 
-		auto current_is_keyword = [](std::string_view str) constexpr -> bool
+		auto current_is_keyword = [&keywords](std::string_view str) constexpr -> bool
 		{
 			constexpr auto keyword_count = sizeof(keywords) / sizeof(const char*);
 			for(std::size_t i = 0; i < keyword_count; i++)
