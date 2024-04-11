@@ -9,6 +9,8 @@
 namespace parser
 {
 	// ast implementation begin
+
+	// which node are we on again?
 	const ast::node& ast::current() const
 	{
 		const node* cur = &this->program;
@@ -24,11 +26,13 @@ namespace parser
 		return this->get(this->path);
 	}
 
+	// how do i navigate from the root node to the current node im looking at in the tree?
 	ast::path_t ast::current_path() const
 	{
 		return this->path;
 	}
 
+	// add a new node as a child to whatever the current node is.
 	void ast::push(ast::node n)
 	{
 		auto& cur = this->current();
@@ -37,6 +41,7 @@ namespace parser
 		this->path.push_back(id);
 	}
 
+	// i have a path, if i follow it which node do i end up at?
 	const ast::node& ast::get(std::span<const std::size_t> path) const
 	{
 		const node* n = &this->program;
@@ -57,12 +62,14 @@ namespace parser
 		return *n;
 	}
 
+	// i promise im not at the root node. i want to navigate to the parent of my current node. (i.e jump up a level)
 	void ast::pop()
 	{
 		diag::assert_that(this->path.size(), "internal compiler error: popped too many times while parsing.");
 		this->path.pop_back();
 	}
 
+	// print out the entire program AST. i hope you're a compiler developer or you aint finna like reading this.
 	void ast::pretty_print()
 	{
 		std::stack<const ast::node*> node_list;
@@ -98,13 +105,16 @@ namespace parser
 	}
 
 	// ast implementation end
+	// this is where the meat of the parsing is. i've tried my best to let recursive/pattern matching logic flourish, but c++ doesnt make it easy.
 	struct parser_impl
 	{
+		// UNCONDITIONALLY error out and tell the user where shit got fucked.
 		void parser_error(std::string msg) const
 		{
 			diag::error(std::format("parser error on line {}: {}", this->current_line, msg));
 		}
 
+		// CONDITIONALLY error out and tell the user where shit got fucked.
 		void parser_assert(bool expr, std::string msg) const
 		{
 			if(!expr)
@@ -113,6 +123,10 @@ namespace parser
 			}
 		}
 
+		// i am currently at some position in the massive list of tokens.
+		// im calling this function coz i want to know if the next token is of a certain type.
+		// if it is, move to the next token and return true, otherwise dont move and return false.
+		// oh btw i will also skip over comments and newlines at this point.
 		bool match(lexer::token::type expected_type)
 		{
 			if(this->tokidx < this->tokens.size())
@@ -131,11 +145,14 @@ namespace parser
 			return false;
 		}
 
+		// like match, but now i am **CERTAIN** that i have guessed the next token correctly. im too clever to be wrong so if i guessed wrongly then the .psy code must be fucked so i return an error :)
 		void must_match(lexer::token::type expected_type)
 		{
 			this->parser_assert(this->match(expected_type), std::format("required a specific token {} but did not match.", lexer::token_type_names[static_cast<std::size_t>(expected_type)]));
 		}
 
+		// a bit like match. i KNOW its one of multiple types... but not sure quite which.
+		// return me the type that it is, or return null if i got it wrong and none of the types match.
 		std::optional<lexer::token::type> match_any(std::vector<lexer::token::type> expected_types)
 		{
 			for(const auto& type : expected_types)
@@ -148,6 +165,7 @@ namespace parser
 			return std::nullopt;
 		}
 
+		// match_any but if im wrong and its none of the types, then the code must be dodgy coz i know best.
 		lexer::token::type must_match_any(std::vector<lexer::token::type> expected_types)
 		{
 			auto maybe_type = this->match_any(expected_types);
@@ -163,6 +181,7 @@ namespace parser
 			return maybe_type.value();
 		}
 
+		// what was the last token again?
 		std::string last_value() const
 		{
 			this->parser_assert(this->tokidx > 0, "internal compiler error: last_value() called before any matches.");
@@ -195,13 +214,14 @@ namespace parser
 			this->index_stash.push_back(this->tokidx);
 		}
 
+		// ok i stashed earlier but i dont need it anymore - im happy the way things are.
 		void unstash_index()
 		{
 			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to unstash index when no index has been stashed.");
 			this->index_stash.pop_back();
 		}
 
-		// call this to undo parsing back to when you last called stash (and then unstash)
+		// ok i fugged up. restore the index i stashed earlier please and then unstash it. maybe i took a guess while parsing and got it wrong, so i want to undo the crap and try again.
 		void restore_index()
 		{
 			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to restore index when no index has been stashed.");
@@ -210,6 +230,9 @@ namespace parser
 		}
 
 		// PARSING BITS BEGIN
+
+		// note: these `try_parse_xyz()` functions will parse the current token(s) and construct the xyz corresponding to it, if it makes sense.
+		// if the token(s) clearly don't parse into `xyz`, we will return null and rewind any position in the token list we moved.
 
 		std::optional<ast::integer_literal> try_parse_integer_literal()
 		{
@@ -399,6 +422,9 @@ namespace parser
 			return ast::function_definition{.function_name = function_name, .params = params, .return_type = return_type};
 		}
 
+		// a block is not a formal parser construct.
+		// imagine i just defined a function, and now im looking at the code inside a pair of braces. that is a block.
+		// in other words, its a bunch of code within a function definition. could be anything... variables, expressions... perhaps a nested function definition, or simply nothing at all!
 		std::vector<ast::node::payload_t> parse_block()
 		{
 			std::vector<ast::node::payload_t> ret = {};
