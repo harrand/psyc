@@ -2,6 +2,7 @@
 #define PSYC_PARSE_HPP
 #include "lex.hpp"
 #include "util.hpp"
+#include "diag.hpp"
 #include <variant>
 #include <limits>
 #include <optional>
@@ -13,10 +14,26 @@ namespace parser
 	{
 		struct unary_operator
 		{
+			lexer::token::type type;
 			std::string to_string() const
 			{
-				return "";
+				diag::assert_that(
+					type == lexer::token::type::numeric_negation ||
+					type == lexer::token::type::bitwise_complement ||
+					type == lexer::token::type::logical_negation,
+					"internal compiler error: parsed a unary_operator via lexer token type that doesn't represent a unary operator."
+				);
+				return std::format("unary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);
 			};
+		};
+
+		struct identifier
+		{
+			std::string name;
+			std::string to_string() const
+			{
+				return std::format("identifier: {}", this->name);
+			}
 		};
 
 		struct integer_literal
@@ -72,7 +89,8 @@ namespace parser
 				integer_literal,
 				decimal_literal,
 				string_literal,
-				function_call
+				function_call,
+				identifier
 			> expr;
 			
 			std::string to_string() const
@@ -84,7 +102,7 @@ namespace parser
 					if constexpr(std::is_same_v<T, std::pair<unary_operator, util::box<expression>>>)
 					{
 						const auto&[op, boxed_expr] = arg;
-						ret += std::format("{}{}", op.to_string(), boxed_expr->to_string());
+						ret += std::format("{{{}, {}}}", op.to_string(), boxed_expr->to_string());
 					}
 					else
 					{
@@ -92,6 +110,15 @@ namespace parser
 					}
 				}, this->expr);
 				return ret;
+			}
+		};
+
+		struct return_statement
+		{
+			expression value;
+			std::string to_string() const
+			{
+				return std::format("return-statement: {}", this->value.to_string());
 			}
 		};
 		struct variable_declaration
@@ -134,7 +161,7 @@ namespace parser
 		};
 		struct node
 		{
-			using payload_t = std::variant<std::monostate, variable_declaration, expression, function_definition>;
+			using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, function_call, expression, return_statement, variable_declaration, function_definition>;
 			payload_t payload;
 			metadata meta;
 			std::vector<node> children;

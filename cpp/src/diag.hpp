@@ -1,3 +1,6 @@
+#ifndef PSYC_DIAG_HPP
+#define PSYC_DIAG_HPP
+
 #include <iostream>
 #include <utility>
 
@@ -52,3 +55,5 @@ namespace diag
 		}
 	}
 }
+
+#endif // PSYC_DIAG_HPP

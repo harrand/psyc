@@ -10,13 +10,9 @@ namespace semantic
 		std::unordered_map<std::string, parser::ast::path_t> defined_functions = {};
 	} global_state;
 
-	void analyse_identifier(const parser::ast::node& node, const parser::ast::identifier& payload, const parser::ast::path_t& path, const parser::ast& ast)
-	{
-
-	}
-
 	void analyse_function_call(const parser::ast::node& node, const parser::ast::function_call& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
+		/*
 		auto iter = global_state.defined_functions.find(payload.function_name.name);
 		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name.name, node.meta.line_number));
 
@@ -60,6 +56,7 @@ namespace semantic
 				}
 			}, actual_param);
 		}
+		*/
 	}
 
 	void analyse_return_statement(const parser::ast::node& node, const parser::ast::return_statement& payload, const parser::ast::path_t& path, const parser::ast& ast)
@@ -69,6 +66,7 @@ namespace semantic
 
 	void analyse_function_definition(const parser::ast::node& node, const parser::ast::function_definition& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
+		/*
 		auto iter = global_state.defined_functions.find(payload.function_name.name);
 		if(iter == global_state.defined_functions.end())
 		{
@@ -79,6 +77,7 @@ namespace semantic
 			const auto& existing_node = ast.get(iter->second);
 			diag::error(std::format("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name.name, node.meta.line_number, existing_node.meta.line_number));
 		}
+		*/
 	}
 
 	void analyse_variable_declaration(const parser::ast::node& node, const parser::ast::variable_declaration& payload, const parser::ast::path_t& path, const parser::ast& ast)
@@ -97,10 +96,6 @@ namespace semantic
 			|| std::is_same_v<T, parser::ast::decimal_literal>
 			|| std::is_same_v<T, parser::ast::integer_literal>
 			|| std::is_same_v<T, parser::ast::string_literal>){}
-			else if constexpr(std::is_same_v<T, parser::ast::identifier>)
-			{
-				analyse_identifier(node, arg, path, ast);
-			}
 			else if constexpr(std::is_same_v<T, parser::ast::function_call>)
 			{
 				analyse_function_call(node, arg, path, ast);

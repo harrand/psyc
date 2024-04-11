@@ -3,7 +3,6 @@
 #include "lex.hpp"
 #include <stack>
 #include <string>
-#include <unordered_map>
 #include <format>
 #include <optional>
 
@@ -101,6 +100,19 @@ namespace parser
 	// ast implementation end
 	struct parser_impl
 	{
+		void parser_error(std::string msg) const
+		{
+			diag::error(std::format("parser error on line {}: {}", this->current_line, msg));
+		}
+
+		void parser_assert(bool expr, std::string msg) const
+		{
+			if(!expr)
+			{
+				this->parser_error(msg);
+			}
+		}
+
 		bool match(lexer::token::type expected_type)
 		{
 			if(this->tokidx < this->tokens.size())
@@ -121,7 +133,7 @@ namespace parser
 
 		void must_match(lexer::token::type expected_type)
 		{
-			diag::assert_that(this->match(expected_type), std::format("line {}: required a specific token {} but did not match.", this->current_line, lexer::token_type_names[static_cast<std::size_t>(expected_type)]));
+			this->parser_assert(this->match(expected_type), std::format("required a specific token {} but did not match.", lexer::token_type_names[static_cast<std::size_t>(expected_type)]));
 		}
 
 		std::optional<lexer::token::type> match_any(std::vector<lexer::token::type> expected_types)
@@ -146,15 +158,298 @@ namespace parser
 				{
 					tokens_string += std::format("{} ", lexer::token_type_names[static_cast<int>(tok)]);
 				}
-				diag::error(std::format("line {}: required one of the following token(s) \"{}\" but did not match.", this->current_line, tokens_string));
+				this->parser_error(std::format("line {}: required one of the following token(s) \"{}\" but did not match.", this->current_line, tokens_string));
 			}
 			return maybe_type.value();
 		}
 
+		std::string last_value() const
+		{
+			this->parser_assert(this->tokidx > 0, "internal compiler error: last_value() called before any matches.");
+			return this->tokens[this->tokidx - 1].value;	
+		}
+
+		// add a node payload to the current location in the AST.
+		void push_payload(ast::node::payload_t payload)
+		{
+			this->tree.push(ast::node
+			{
+				.payload = payload,
+				.meta =
+				{
+					.line_number = this->current_line
+				},
+				.children = {}
+			});
+		}
+		
+		// move to the parent of the current node within the AST.
+		void pop()
+		{
+			this->tree.pop();
+		}
+
+		// call this before matching against stuff that you might want to undo.
+		void stash_index()
+		{
+			this->index_stash.push_back(this->tokidx);
+		}
+
+		void unstash_index()
+		{
+			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to unstash index when no index has been stashed.");
+			this->index_stash.pop_back();
+		}
+
+		// call this to undo parsing back to when you last called stash (and then unstash)
+		void restore_index()
+		{
+			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to restore index when no index has been stashed.");
+			this->tokidx = this->index_stash.back();
+			this->unstash_index();
+		}
+
+		// PARSING BITS BEGIN
+
+		std::optional<ast::integer_literal> try_parse_integer_literal()
+		{
+			this->stash_index();
+			if(!this->match(lexer::token::type::integer_literal))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			this->unstash_index();
+			return ast::integer_literal{.val = std::stoi(this->last_value())};
+		}
+
+		std::optional<ast::decimal_literal> try_parse_decimal_literal()
+		{
+			this->stash_index();
+			if(!this->match(lexer::token::type::decimal_literal))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			this->unstash_index();
+			return ast::decimal_literal{.val = std::stod(this->last_value())};
+		}
+
+		std::optional<ast::string_literal> try_parse_string_literal()
+		{
+			this->stash_index();
+			if(!this->match(lexer::token::type::string_literal))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			this->unstash_index();
+			return ast::string_literal{.val = this->last_value()};
+		}
+
+		std::optional<ast::function_call> try_parse_function_call()
+		{
+			this->stash_index();
+			// a function call must start with an identifier.
+			if(!this->match(lexer::token::type::identifier))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::string function_name = this->last_value();
+			if(!this->match(lexer::token::type::open_paren))
+			{
+				// its not a function call.
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::vector<ast::expression> params = {};
+			while(!this->match(lexer::token::type::close_paren))
+			{
+				auto maybe_expr = this->try_parse_expression();
+				this->parser_assert(maybe_expr.has_value(), std::format("failed to parse expression as parameter {} during call of function {}", params.size() + 1, function_name));
+				params.push_back(maybe_expr.value());
+			}
+			this->unstash_index();
+			return ast::function_call{.function_name = function_name, .params = params};
+		}
+
+		std::optional<ast::expression> try_parse_expression()
+		{
+			this->stash_index();
+			// to help understand whats going on here, see the variant types in ast::expression::expr.
+			// what we're doing here is going through each possible type and attempting to parse.
+			std::optional<lexer::token::type> maybe_unary_operator = this->match_any({lexer::token::type::numeric_negation, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation});	
+			if(maybe_unary_operator.has_value())
+			{
+				// MUST be unary-op + another nested expression.
+				std::optional<ast::expression> nested_expression = this->try_parse_expression();
+				this->parser_assert(nested_expression.has_value(), "while parsing expression, another nested expression *must* directly follow any unary operator.");
+				this->unstash_index();
+				return ast::expression{.expr = std::pair<ast::unary_operator, util::box<ast::expression>>{maybe_unary_operator.value(), nested_expression.value()}};
+			}
+
+			auto maybe_integer_literal = this->try_parse_integer_literal();
+			if(maybe_integer_literal.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_integer_literal.value()};
+			}
+
+			auto maybe_decimal_literal = this->try_parse_decimal_literal();
+			if(maybe_decimal_literal.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_decimal_literal.value()};
+			}
+
+			auto maybe_string_literal = this->try_parse_string_literal();
+			if(maybe_string_literal.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_string_literal.value()};
+			}
+
+			auto maybe_function_call = this->try_parse_function_call();
+			if(maybe_function_call.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_function_call.value()};
+			}
+
+			bool is_identifier = this->match(lexer::token::type::identifier);
+			if(is_identifier)
+			{
+				this->unstash_index();
+				return ast::expression{.expr = ast::identifier{.name = this->last_value()}};
+			}
+
+			// didn't match anything. we're done.
+			this->restore_index();
+			return std::nullopt;
+		}
+
+		std::optional<ast::return_statement> try_parse_return_statement()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::keyword) && this->last_value() == "return")
+			{
+				auto maybe_expression = this->try_parse_expression();
+				this->parser_assert(maybe_expression.has_value(), "could not parse return expression.");
+				this->unstash_index();
+				return ast::return_statement{.value = maybe_expression.value()};
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
+		std::optional<ast::variable_declaration> try_parse_variable_declaration()
+		{
+			this->stash_index();
+			// variable declaration *must* start with an identifier (varname).
+			if(!this->match(lexer::token::type::identifier))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::string var_name = this->last_value();
+			bool follows_variable_syntax = true;
+			follows_variable_syntax &= this->match(lexer::token::type::colon);
+			follows_variable_syntax &= this->match(lexer::token::type::identifier);
+			if(!follows_variable_syntax)
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::string type_name = this->last_value();
+			// it may or may not have an initialiser.
+			std::optional<ast::expression> initialiser = std::nullopt;
+			if(this->match(lexer::token::type::equals))
+			{
+				initialiser = this->try_parse_expression();
+				this->parser_assert(initialiser.has_value(), std::format("initialiser of new local variable {} could not be parsed properly.", var_name));
+			}
+			this->unstash_index();
+			return ast::variable_declaration{.var_name = var_name, .type_name = type_name, .initialiser = initialiser};
+		}
+
+		std::optional<ast::function_definition> try_parse_function_definition()
+		{
+			this->stash_index();
+			// function definition *must* start with an identifier (function name)
+			if(!this->match(lexer::token::type::identifier))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::string function_name = this->last_value();
+			this->must_match(lexer::token::type::colon);
+			this->must_match(lexer::token::type::open_paren);
+			std::vector<ast::variable_declaration> params = {};
+			while(!this->match(lexer::token::type::close_paren))
+			{
+				auto maybe_param = this->try_parse_variable_declaration();
+				this->parser_assert(maybe_param.has_value(), std::format("expression representing parameter {} of newly-defined function {} could not be parsed correctly", params.size() + 1, function_name));
+				params.push_back(maybe_param.value());
+			}
+			this->must_match(lexer::token::type::arrow);
+			this->must_match(lexer::token::type::identifier);
+			std::string return_type = this->last_value();
+			this->unstash_index();
+			return ast::function_definition{.function_name = function_name, .params = params, .return_type = return_type};
+		}
+
+		std::vector<ast::node::payload_t> parse_block()
+		{
+			std::vector<ast::node::payload_t> ret = {};
+			this->must_match(lexer::token::type::open_brace);
+			while(!this->match(lexer::token::type::close_brace))
+			{
+				auto maybe_return_statement = this->try_parse_return_statement();
+				if(maybe_return_statement.has_value())
+				{
+					ret.push_back(maybe_return_statement.value());
+					this->must_match(lexer::token::type::semicolon);
+					continue;
+				}
+
+				auto maybe_variable_declaration = this->try_parse_variable_declaration();
+				if(maybe_variable_declaration.has_value())
+				{
+					ret.push_back(maybe_variable_declaration.value());
+					this->must_match(lexer::token::type::semicolon);
+					continue;
+				}
+				auto maybe_expression = this->try_parse_expression();
+				this->parser_assert(maybe_expression.has_value(), "cannot parse expression within block");
+				ret.push_back(maybe_expression.value());
+				this->must_match(lexer::token::type::semicolon);
+			}
+			return ret;
+		}
+
 		void parse()
 		{
-
+			while(this->tokidx < this->tokens.size())
+			{
+				auto maybe_function_definition = this->try_parse_function_definition();
+				if(maybe_function_definition.has_value())
+				{
+					this->push_payload(maybe_function_definition.value());
+					for(const auto& contents : this->parse_block())
+					{
+						std::visit([this](auto&& arg)
+						{
+							this->push_payload(arg);
+						}, contents);
+						this->pop();
+					}
+					this->pop();
+				}
+			}
 		}
+
+		// PARSING BITS END
 
 		ast get_ast() const
 		{
@@ -164,6 +459,7 @@ namespace parser
 		lexer::const_token_view tokens;
 		std::size_t tokidx = 0;
 		std::size_t current_line = 1;
+		std::vector<std::size_t> index_stash = {};
 		ast tree = {};
 	};
 
