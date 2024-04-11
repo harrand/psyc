@@ -1,126 +1,130 @@
 #ifndef PSYC_PARSE_HPP
 #define PSYC_PARSE_HPP
 #include "lex.hpp"
+#include "util.hpp"
 #include <variant>
-#include <iostream>
-#include <ios>
 #include <limits>
 #include <optional>
+#include <format>
 
 namespace parser
 {
 	struct ast
 	{
-		struct identifier
+		struct unary_operator
 		{
-			std::string name;
-			inline void pretty_print() const
+			std::string to_string() const
 			{
-				std::cout << "identifier: " << this->name;
-			}
+				return "";
+			};
 		};
 
 		struct integer_literal
 		{
-			std::int64_t value;
-			inline void pretty_print() const
+			int val;
+			std::string to_string() const
 			{
-				std::cout << "integer-literal: " << this->value;
-			}
+				return std::format("integer-literal: {}", val);
+			};
 		};
 
 		struct decimal_literal
 		{
-			double value;
-			inline void pretty_print() const
+			double val;	
+			std::string to_string() const
 			{
-				// note: cout on double likes to round it if its got no fractional part.
-				// this is poopoo. use fixed as a workaround
-				std::cout << "decimal-literal: " << std::fixed << this->value;
-			}
+				return std::format("decimal-literal: {}", val);
+			};
 		};
 
 		struct string_literal
 		{
-			std::string value;
-			inline void pretty_print() const
+			std::string val;
+			std::string to_string() const
 			{
-				std::cout << "string-literal: \"" << this->value << "\"";
-			}
+				return std::format("string-literal: {}", val);
+			};
 		};
 
-		struct function_call;
-
-		using expression = std::variant<integer_literal, decimal_literal, string_literal, function_call, identifier>;
+		struct expression;
 
 		struct function_call
 		{
-			identifier function_name;
-			std::vector<expression> parameters;
-			inline void pretty_print() const
+			std::string function_name;
+			std::vector<expression> params = {};
+
+			std::string to_string() const
 			{
-				std::cout << "function-call: " << this->function_name.name << "(";
-				for(const auto& param : this->parameters)
+				std::string params_stringified = "";
+				for(const expression& expr : this->params)
 				{
-					std::visit([](auto&& arg)
-					{
-						arg.pretty_print();
-					}, param);
+					params_stringified += expr.to_string();
 				}
-				std::cout << ")";
+				return std::format("function-call: {}({})", this->function_name, params_stringified);
+			};
+		};
+		struct expression
+		{
+			std::variant
+			<
+				// boxed because expression at this point is an incomplete type. the heap alloc is entirely unavoidable im afraid.
+				std::pair<unary_operator, util::box<expression>>,
+				integer_literal,
+				decimal_literal,
+				string_literal,
+				function_call
+			> expr;
+			
+			std::string to_string() const
+			{
+				std::string ret = "expression: ";
+				std::visit([&ret](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+					if constexpr(std::is_same_v<T, std::pair<unary_operator, util::box<expression>>>)
+					{
+						const auto&[op, boxed_expr] = arg;
+						ret += std::format("{}{}", op.to_string(), boxed_expr->to_string());
+					}
+					else
+					{
+						ret += arg.to_string();
+					}
+				}, this->expr);
+				return ret;
 			}
 		};
-
 		struct variable_declaration
 		{
-			identifier name;
-			identifier type;
+			std::string var_name;
+			std::string type_name;
 			std::optional<expression> initialiser = std::nullopt;
-			inline void pretty_print() const
+
+			std::string to_string() const
 			{
-				std::cout << "variable-declaration: " << this->name.name << " : " << this->type.name;
+				std::string initialiser_string = "";
 				if(this->initialiser.has_value())
 				{
-					std::cout << " = ";
-					std::visit([](auto&& arg)
-					{
-						arg.pretty_print();	
-					},this->initialiser.value());
+					initialiser_string = " = " + this->initialiser->to_string();
 				}
-			}
-		};
-
-		struct return_statement
-		{
-			expression value;
-			inline void pretty_print() const
-			{
-				std::cout << "return-statement: ";
-				std::visit([](auto&& arg)
-				{
-					arg.pretty_print();
-				}, this->value);
+				return std::format("variable-declaration: {} : {}{}", this->var_name, this->type_name, initialiser_string);
 			}
 		};
 
 		struct function_definition
 		{
-			identifier function_name;
-			std::vector<variable_declaration> parameters = {};
-			identifier return_type;
-			inline void pretty_print() const
+			std::string function_name;
+			std::vector<variable_declaration> params = {};
+			std::string return_type;
+
+			std::string to_string() const
 			{
-				std::cout << "function-definition: " << this->function_name.name;
-				std::cout << "(";
-				for(std::size_t i = 0; i < this->parameters.size(); i++)
+				std::string params_string = "";
+				for(const auto& param : this->params)
 				{
-					this->parameters[i].pretty_print();
-					if(i < (this->parameters.size() - 1))
-					{
-						std::cout << ", ";
-					}
+					params_string += param.to_string();
 				}
-				std::cout << ") -> " << this->return_type.name;
+				return std::format("function-declaration: {} : ({}) -> {}", this->function_name, params_string, this->return_type);
 			}
 		};
 
@@ -130,7 +134,7 @@ namespace parser
 		};
 		struct node
 		{
-			using payload_t = std::variant<std::monostate, variable_declaration, function_call, return_statement, integer_literal, decimal_literal, string_literal, identifier, function_definition>;
+			using payload_t = std::variant<std::monostate, variable_declaration, expression, function_definition>;
 			payload_t payload;
 			metadata meta;
 			std::vector<node> children;
