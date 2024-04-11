@@ -163,11 +163,13 @@ namespace semantic
 
 	void first_pass(const parser::ast& ast)
 	{
+		pass_number = 0;
 		analyse_node({}, ast);
 	}
 
 	void second_pass(const parser::ast& ast)
 	{
+		pass_number = 1;
 		analyse_node({}, ast);
 	}
 
@@ -180,9 +182,7 @@ namespace semantic
 		//	iirc java/c#/python etc does this, but C/C++ etc doesnt. semantic analysis is pretty cheap anyways in terms of time, so im happy to take the minor perf hit to not have to deal with forward declares.
 		// the first pass basically harvests semantic information (e.g function definitions, variables within each scope etc...)
 		// second pass uses that information to actually perform verification.
-		pass_number = 0;
 		first_pass(ast);
-		pass_number++;
 		second_pass(ast);
 	}
 }
