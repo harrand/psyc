@@ -101,6 +101,56 @@ namespace parser
 	// ast implementation end
 	struct parser_impl
 	{
+		bool match(lexer::token::type expected_type)
+		{
+			if(this->tokidx < this->tokens.size())
+			{
+				while(this->tokens[this->tokidx].id == lexer::token::type::newline || this->tokens[this->tokidx].id == lexer::token::type::line_comment)
+				{
+					this->current_line++;
+					this->tokidx++;
+				}
+				if(this->tokens[this->tokidx].id == expected_type)
+				{
+					this->tokidx++;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		void must_match(lexer::token::type expected_type)
+		{
+			diag::assert_that(this->match(expected_type), std::format("line {}: required a specific token {} but did not match.", this->current_line, lexer::token_type_names[static_cast<std::size_t>(expected_type)]));
+		}
+
+		std::optional<lexer::token::type> match_any(std::vector<lexer::token::type> expected_types)
+		{
+			for(const auto& type : expected_types)
+			{
+				if(this->match(type))
+				{
+					return type;
+				}
+			}
+			return std::nullopt;
+		}
+
+		lexer::token::type must_match_any(std::vector<lexer::token::type> expected_types)
+		{
+			auto maybe_type = this->match_any(expected_types);
+			if(!maybe_type.has_value())
+			{
+				std::string tokens_string;
+				for(const auto& tok : expected_types)
+				{
+					tokens_string += std::format("{} ", lexer::token_type_names[static_cast<int>(tok)]);
+				}
+				diag::error(std::format("line {}: required one of the following token(s) \"{}\" but did not match.", this->current_line, tokens_string));
+			}
+			return maybe_type.value();
+		}
+
 		void parse()
 		{
 
@@ -112,6 +162,8 @@ namespace parser
 		}
 
 		lexer::const_token_view tokens;
+		std::size_t tokidx = 0;
+		std::size_t current_line = 1;
 		ast tree = {};
 	};
 
