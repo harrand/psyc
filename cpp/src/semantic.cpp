@@ -59,6 +59,11 @@ namespace semantic
 		*/
 	}
 
+	void analyse_expression(const parser::ast::node& node, const parser::ast::expression& payload, const parser::ast::path_t& path, const parser::ast& ast)
+	{
+
+	}
+
 	void analyse_return_statement(const parser::ast::node& node, const parser::ast::return_statement& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
 
@@ -99,6 +104,10 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, parser::ast::function_call>)
 			{
 				analyse_function_call(node, arg, path, ast);
+			}
+			else if constexpr(std::is_same_v<T, parser::ast::expression>)
+			{
+				analyse_expression(node, arg, path, ast);
 			}
 			else if constexpr(std::is_same_v<T, parser::ast::return_statement>)
 			{
