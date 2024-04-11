@@ -23,48 +23,20 @@ namespace semantic
 		auto iter = global_state.defined_functions.find(payload.function_name);
 		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name, node.meta.line_number));
 
-		/*
 		const auto& func_node = ast.get(iter->second);
 		const parser::ast::function_definition& func = std::get<parser::ast::function_definition>(func_node.payload);
-		if(func.parameters.size() != payload.parameters.size())
+		if(func.params.size() != payload.params.size())
 		{
-			diag::error(std::format("invalid call to function {} at line {}. expects {} parameters, but you provided {}", func.function_name.name, node.meta.line_number, func.parameters.size(), payload.parameters.size()));
-			std::cout << std::format("note: see below for signature of {} (line {}):\n", payload.function_name.name, func_node.meta.line_number);
-			func.pretty_print();
-			std::cout << "\n";
+			diag::error(std::format("invalid call to function {} at line {}. expects {} parameters, but you provided {}", func.function_name, node.meta.line_number, func.params.size(), payload.params.size()));
+			std::cout << std::format("note: see below for signature of {} (line {}):\n\t{}\n", payload.function_name, func_node.meta.line_number, func.to_string());
+			return;
 		}
-		for(std::size_t i = 0; i < func.parameters.size(); i++)
+		for(std::size_t i = 0; i < func.params.size(); i++)
 		{
+			const parser::ast::variable_declaration& defined_param = func.params[i];
+			const parser::ast::expression& actual_param = payload.params[i];
 			// todo: do type-checking on the parameters.
-			const parser::ast::variable_declaration& defined_param = func.parameters[i];
-			const parser::ast::expression& actual_param = payload.parameters[i];
-			std::visit([&](auto&& arg)
-			{
-				using T = std::decay_t<decltype(arg)>;
-				if constexpr(std::is_same_v<T, parser::ast::integer_literal>)
-				{
-					diag::assert_that(defined_param.type.name == "i64", std::format("call of {} on line {}: attempt to pass integer literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
-				}
-				else if constexpr(std::is_same_v<T, parser::ast::decimal_literal>)
-				{
-					diag::assert_that(defined_param.type.name == "f64", std::format("call of {} on line {}: attempt to pass decimal literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
-				}
-				else if constexpr(std::is_same_v<T, parser::ast::string_literal>)
-				{
-					diag::assert_that(defined_param.type.name == "string", std::format("call of {} on line {}: attempt to pass string literal to param {} of type {}, which cannot be converted.", func.function_name.name, node.meta.line_number, defined_param.name.name, defined_param.type.name));
-				}
-				else if constexpr(std::is_same_v<T, parser::ast::identifier>)
-				{
-					// should be a variable name.
-					// todo: track variables and do type checking here.
-				}
-				else
-				{
-					diag::error(std::format("internal compiler error - failed to semantically analyse parameter value {} ({}) in call to {} on line {}", defined_param.name.name, defined_param.type.name, func.function_name.name, node.meta.line_number));
-				}
-			}, actual_param);
 		}
-		*/
 	}
 
 	template<typename T>
@@ -77,7 +49,9 @@ namespace semantic
 
 	void analyse_return_statement(const parser::ast::node& node, const parser::ast::return_statement& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
-
+		// todo: ensure that this return statement is actually within a function definition block.
+		//		note: to do this - recursively iterate back up through the tree until you find the first function definition. if you never find one - then this return statement is invalid coz you can only return from within a function block.
+		// todo: type-check the return expression. if you did the above, you can look at the function definition and figure out what its return type is.
 	}
 
 	void analyse_function_definition(const parser::ast::node& node, const parser::ast::function_definition& payload, const parser::ast::path_t& path, const parser::ast& ast)
@@ -100,6 +74,11 @@ namespace semantic
 	}
 
 	void analyse_variable_declaration(const parser::ast::node& node, const parser::ast::variable_declaration& payload, const parser::ast::path_t& path, const parser::ast& ast)
+	{
+
+	}
+
+	void analyse_identifier(const parser::ast::node& node, const parser::ast::identifier& payload, const parser::ast::path_t& path, const parser::ast& ast)
 	{
 
 	}
@@ -134,6 +113,10 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, parser::ast::variable_declaration>)
 			{
 				analyse_variable_declaration(node, arg, path, ast);
+			}
+			else if constexpr(std::is_same_v<T, parser::ast::identifier>)
+			{
+				analyse_identifier(node, arg, path, ast);
 			}
 			else
 			{
