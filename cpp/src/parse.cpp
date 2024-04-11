@@ -352,6 +352,22 @@ namespace parser
 			return std::nullopt;
 		}
 
+		std::optional<ast::if_statement> try_parse_if_statement()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::keyword) && this->last_value() == "if")
+			{
+				this->must_match(lexer::token::type::open_paren);
+				auto maybe_condition_expr = this->try_parse_expression();
+				this->parser_assert(maybe_condition_expr.has_value(), "condition inside if-statement must be an expression. failed to parse expression.");
+				this->must_match(lexer::token::type::close_paren);
+				this->unstash_index();
+				return ast::if_statement{.condition = maybe_condition_expr.value()};
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
 		std::optional<ast::return_statement> try_parse_return_statement()
 		{
 			this->stash_index();
@@ -425,10 +441,13 @@ namespace parser
 		// a block is not a formal parser construct.
 		// imagine i just defined a function, and now im looking at the code inside a pair of braces. that is a block.
 		// in other words, its a bunch of code within a function definition. could be anything... variables, expressions... perhaps a nested function definition, or simply nothing at all!
-		std::vector<ast::node::payload_t> parse_block()
+		std::vector<ast::node::payload_t> parse_block(bool continued_block = false)
 		{
 			std::vector<ast::node::payload_t> ret = {};
-			this->must_match(lexer::token::type::open_brace);
+			if(!continued_block)
+			{
+				this->must_match(lexer::token::type::open_brace);
+			}
 			while(!this->match(lexer::token::type::close_brace))
 			{
 				auto maybe_return_statement = this->try_parse_return_statement();
@@ -437,6 +456,16 @@ namespace parser
 					ret.push_back(maybe_return_statement.value());
 					this->must_match(lexer::token::type::semicolon);
 					continue;
+				}
+
+				auto maybe_if_statement = this->try_parse_if_statement();
+				if(maybe_if_statement.has_value())
+				{
+					ret.push_back(maybe_if_statement.value());
+					// if statement detected. return immediately, as next statements are children.
+					return ret;
+					//std::vector<ast::node::payload_t> if_block = this->parse_block();
+					//ret.insert(ret.end(), if_block.begin(), if_block.end());
 				}
 
 				auto maybe_variable_declaration = this->try_parse_variable_declaration();
@@ -454,6 +483,31 @@ namespace parser
 			return ret;
 		}
 
+		void handle_payload(ast::node::payload_t payload)
+		{
+			this->push_payload(payload);
+			if(std::holds_alternative<ast::if_statement>(payload))
+			{
+				// if we're an if-statement, we need to parse another block and set all those as children, and THEN pop.
+				auto if_blk = this->parse_block();
+				for(const auto& if_contents : if_blk)
+				{
+					handle_payload(if_contents);
+				}
+				// remember - we early-outed coz of the if-statement. now that we're done, let's continue parsing this block.
+				this->pop();
+				for(const auto& more_contents : this->parse_block(true))
+				{
+					this->handle_payload(more_contents);
+				}
+			}
+			else
+			{
+				this->pop();
+			}
+		}
+
+
 		void parse()
 		{
 			while(this->tokidx < this->tokens.size())
@@ -462,13 +516,10 @@ namespace parser
 				if(maybe_function_definition.has_value())
 				{
 					this->push_payload(maybe_function_definition.value());
-					for(const auto& contents : this->parse_block())
+					auto blk = this->parse_block();
+					for(const auto& contents : blk)
 					{
-						std::visit([this](auto&& arg)
-						{
-							this->push_payload(arg);
-						}, contents);
-						this->pop();
+						this->handle_payload(contents);
 					}
 					this->pop();
 				}

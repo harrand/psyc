@@ -113,6 +113,15 @@ namespace parser
 			}
 		};
 
+		struct if_statement
+		{
+			expression condition;	
+			std::string to_string() const
+			{
+				return std::format("if-statement: {}", this->condition.to_string());
+			}
+		};
+
 		struct return_statement
 		{
 			expression value;
@@ -161,7 +170,7 @@ namespace parser
 		};
 		struct node
 		{
-			using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, function_call, expression, return_statement, variable_declaration, function_definition>;
+			using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, function_call, expression, if_statement, return_statement, variable_declaration, function_definition>;
 			payload_t payload;
 			metadata meta;
 			std::vector<node> children;

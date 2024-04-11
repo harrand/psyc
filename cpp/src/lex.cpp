@@ -26,6 +26,7 @@ namespace lexer
 		constexpr const char* keywords[] =
 		{
 			"return", // return from current function.
+			"if", // if-statement
 		};
 
 		auto current_is_keyword = [&keywords](std::string_view str) constexpr -> bool
