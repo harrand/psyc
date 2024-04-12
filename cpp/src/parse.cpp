@@ -337,6 +337,22 @@ namespace parser
 				return std::nullopt;
 			}
 			std::string type_name = this->last_value();
+			// remember: the identifier may not contain the full type (e.g if its an array type)
+			if(this->match(lexer::token::type::open_brack))
+			{
+				// it's an array type.
+				// for now, the bits inside the brackets can only be an integer literal , an identifier, or an ellipsis. not some nested expression.
+				std::optional<lexer::token::type> matched = this->match_any({lexer::token::type::identifier, lexer::token::type::integer_literal, lexer::token::type::ellipsis});
+				std::string subscript_contents = this->last_value();
+				parser_assert(matched.has_value(), std::format("cannot parse array-type variable declaration. between the brackets must lie either an integer-literal, identifier or alternatively an ellipsis (\"...\") to signify a dynamic array."));
+				if(subscript_contents.empty())
+				{
+					subscript_contents += lexer::token_type_names[static_cast<int>(matched.value())];
+				}
+				else if(matched)
+				type_name += std::format("[{}]", subscript_contents);
+				this->must_match(lexer::token::type::close_brack);
+			}
 			// it may or may not have an initialiser.
 			std::optional<ast::expression> initialiser = std::nullopt;
 			if(this->match(lexer::token::type::equals))
