@@ -42,7 +42,7 @@ struct session
 {
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
-	std::vector<parser::ast> parsed_files = {};
+	std::vector<ast> parsed_files = {};
 	output type = output::unknown;
 	flag_t flags = {};
 };

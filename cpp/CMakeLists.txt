@@ -6,6 +6,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(psyc
 	src/psyc_main.cpp
+	src/ast.cpp
+	src/ast.hpp
 	src/diag.hpp
 	src/lex.cpp
 	src/lex.hpp
