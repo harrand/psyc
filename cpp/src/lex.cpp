@@ -180,6 +180,11 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::close_brack});
 			}
+			else if(data.starts_with(","))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::commar});
+			}
 			else if(data.starts_with("="))
 			{
 				emit_word();

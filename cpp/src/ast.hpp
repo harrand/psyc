@@ -80,9 +80,14 @@ struct ast
 		std::string to_string() const
 		{
 			std::string params_stringified = "";
-			for(const expression& expr : this->params)
+			for(std::size_t i = 0; i < this->params.size(); i++)
 			{
+				const expression& expr = this->params[i];
 				params_stringified += expr.to_string();
+				if(i < (this->params.size() - 1))
+				{
+					params_stringified += ", ";
+				}
 			}
 			return std::format("function-call: {}({})", this->function_name, params_stringified);
 		};
@@ -164,9 +169,14 @@ struct ast
 		std::string to_string() const
 		{
 			std::string params_string = "";
-			for(const auto& param : this->params)
+			for(std::size_t i = 0; i < this->params.size(); i++)
 			{
+				const variable_declaration& param = this->params[i];
 				params_string += param.to_string();
+				if(i < (this->params.size() - 1))
+				{
+					params_string += ", ";
+				}
 			}
 			return std::format("function-declaration: {} : ({}) -> {}", this->function_name, params_string, this->return_type);
 		}

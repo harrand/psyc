@@ -221,6 +221,7 @@ namespace parser
 				auto maybe_expr = this->try_parse_expression();
 				this->parser_assert(maybe_expr.has_value(), std::format("failed to parse expression as parameter {} during call of function {}", params.size() + 1, function_name));
 				params.push_back(maybe_expr.value());
+				this->match(lexer::token::type::commar);
 			}
 			this->unstash_index();
 			return ast::function_call{.function_name = function_name, .params = params};
@@ -382,6 +383,7 @@ namespace parser
 				auto maybe_param = this->try_parse_variable_declaration();
 				this->parser_assert(maybe_param.has_value(), std::format("expression representing parameter {} of newly-defined function {} could not be parsed correctly", params.size() + 1, function_name));
 				params.push_back(maybe_param.value());
+				this->match(lexer::token::type::commar);
 			}
 			this->must_match(lexer::token::type::arrow);
 			this->must_match(lexer::token::type::identifier);
