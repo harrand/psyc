@@ -61,6 +61,15 @@ struct ast
 		};
 	};
 
+	struct bool_literal
+	{
+		bool val;
+		std::string to_string() const
+		{
+			return std::format("boolean-literal: {}", val ? "true" : "false");
+		}
+	};
+
 	struct expression;
 
 	struct function_call
@@ -87,6 +96,7 @@ struct ast
 			integer_literal,
 			decimal_literal,
 			string_literal,
+			bool_literal,
 			function_call,
 			identifier
 		> expr;
@@ -168,7 +178,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, function_call, expression, if_statement, return_statement, variable_declaration, function_definition>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, bool_literal, function_call, expression, if_statement, return_statement, variable_declaration, function_definition>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

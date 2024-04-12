@@ -7,6 +7,8 @@
 
 namespace parser
 {
+	// recursive descent parser.
+	// does not handle left recursion.
 	struct parser_impl
 	{
 		// UNCONDITIONALLY error out and tell the user where shit got fucked.
@@ -171,6 +173,32 @@ namespace parser
 			return ast::string_literal{.val = this->last_value()};
 		}
 
+		std::optional<ast::bool_literal> try_parse_bool_literal()
+		{
+			this->stash_index();
+			if(!this->match(lexer::token::type::bool_literal))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			this->unstash_index();
+			std::string boolstr = this->last_value();
+			bool val;
+			if(boolstr == "true")
+			{
+				val = true;
+			}
+			else if(boolstr == "false")
+			{
+				val = false;
+			}
+			else
+			{
+				parser_error(std::format("internal compiler error: i am convinced a bool literal lies here, but i was expecting `true` or `false`, not `{}`", boolstr));
+			}
+			return ast::bool_literal{.val = val};
+		}
+
 		std::optional<ast::function_call> try_parse_function_call()
 		{
 			this->stash_index();
@@ -232,6 +260,13 @@ namespace parser
 			{
 				this->unstash_index();
 				return ast::expression{.expr = maybe_string_literal.value()};
+			}
+
+			auto maybe_bool_literal = this->try_parse_bool_literal();
+			if(maybe_bool_literal.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_bool_literal.value()};
 			}
 
 			auto maybe_function_call = this->try_parse_function_call();

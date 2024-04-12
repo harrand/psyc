@@ -59,20 +59,28 @@ namespace lexer
 				}
 				else
 				{
-					// otherwise check if its a decimal literal (swallow exception and move on if not)
-					try
+					// check if its a bool literal (true/false)
+					if(value == "true" || value == "false")
 					{
-						double val = std::stod(value);
-						// `5` also converts well to a double, so check if the string contains a `.`
-						if(value.find('.') == std::string::npos)
+						t = token::type::bool_literal;
+					}
+					else
+					{
+						// otherwise check if its a decimal literal (swallow exception and move on if not)
+						try
 						{
-							t = token::type::integer_literal;
-						}
-						else
-						{
-							t = token::type::decimal_literal;
-						}
-					}catch(...){}
+							double val = std::stod(value);
+							// `5` also converts well to a double, so check if the string contains a `.`
+							if(value.find('.') == std::string::npos)
+							{
+								t = token::type::integer_literal;
+							}
+							else
+							{
+								t = token::type::decimal_literal;
+							}
+						}catch(...){}
+					}
 				}
 				// if we failed all of that, it keeps its original value as an identifier.
 				ret.push_back({.id = t, .value = value});

@@ -68,7 +68,14 @@ namespace semantic
 		}
 		else if(op.type == lexer::token::type::logical_negation)
 		{
-			semantic_warning(node, "logical negation unary operators are not yet implemented. (blocked by true/false keyword)");
+			semantic_assert
+			(
+				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<ast::bool_literal>(expr->expr) ||
+				std::holds_alternative<ast::identifier>(expr->expr),
+				node,
+				std::format("right-side of unary operator \"{}\" must either be a bool-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
+			);
 		}
 		else
 		{
@@ -144,7 +151,14 @@ namespace semantic
 
 	void analyse_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		if(pass_number != 0)
+		{
+			return;
+		}
+		if(payload.initialiser.has_value())
+		{
+			analyse_expression(node, payload.initialiser.value(), path, tree);
+		}
 	}
 
 	void analyse_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
@@ -184,7 +198,8 @@ namespace semantic
 			if constexpr(std::is_same_v<T, std::monostate>
 			|| std::is_same_v<T, ast::decimal_literal>
 			|| std::is_same_v<T, ast::integer_literal>
-			|| std::is_same_v<T, ast::string_literal>){}
+			|| std::is_same_v<T, ast::string_literal>
+			|| std::is_same_v<T, ast::bool_literal>){}
 			else if constexpr(std::is_same_v<T, ast::function_call>)
 			{
 				analyse_function_call(node, arg, path, tree);
