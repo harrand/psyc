@@ -1,6 +1,57 @@
 #include "ast.hpp"
 #include <stack>
 
+std::optional<ast::node> ast::try_find_variable_from(path_t p, std::string_view variable_name) const
+{
+	auto is_variable_decl = [](const ast::node& n, std::string_view variable_name) -> bool
+	{
+		// first obvious choice: the node is a variable declaration of the name matching
+		if(std::holds_alternative<ast::variable_declaration>(n.payload) && std::get<ast::variable_declaration>(n.payload).var_name == variable_name)
+		{
+			return true;
+		}
+		// second less-obvious choice: the node is a function-definition whose params have defined the function instead.
+		if(std::holds_alternative<ast::function_definition>(n.payload))
+		{
+			const auto& func = std::get<ast::function_definition>(n.payload);
+			for(const auto& param : func.params)
+			{
+				if(param.var_name == variable_name)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+
+	if(p.empty())
+	{
+		return std::nullopt;
+	}
+	std::size_t child_idx = p.back();
+	p.pop_back();
+	const auto& parent = this->get(p);
+	if(is_variable_decl(parent, variable_name))
+	{
+		return parent;
+	}
+	for(std::size_t i = 0; i < child_idx; i++)
+	{
+		auto child = parent.children[i];
+		if(is_variable_decl(child, variable_name))
+		{
+			return child;
+		}
+	}
+	return this->try_find_variable_from(p, variable_name);
+}
+
+std::optional<ast::node> ast::try_find_variable(std::string_view variable_name) const
+{
+	return this->try_find_variable_from(this->current_path(), variable_name);
+}
+
 // which node are we on again?
 const ast::node& ast::current() const
 {

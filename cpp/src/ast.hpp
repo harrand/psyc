@@ -173,8 +173,12 @@ struct ast
 		metadata meta;
 		std::vector<node> children;
 	};
+
 	using path_t = std::vector<std::size_t>;
 	using path_view_t = std::span<const std::size_t>;
+
+	std::optional<ast::node> try_find_variable_from(path_t path, std::string_view variable_name) const;
+	std::optional<ast::node> try_find_variable(std::string_view variable_name) const;
 
 	const node& current() const;
 	node& current();

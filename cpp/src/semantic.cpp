@@ -1,5 +1,6 @@
 #include "semantic.hpp"
 #include "diag.hpp"
+#include "lex.hpp"
 #include <format>
 #include <unordered_map>
 
@@ -12,6 +13,70 @@ namespace semantic
 	} global_state;
 
 	std::size_t pass_number = 0;
+	std::size_t error_count = 0;
+	std::size_t warning_count = 0;
+
+	void semantic_assert(bool expr, const ast::node& node, std::string msg)
+	{
+		diag::assert_that(expr, std::format("on line {}: {}", node.meta.line_number, msg));
+		if(!expr)
+		{
+			error_count++;
+		}
+	}
+
+	void semantic_warning(const ast::node& node, std::string msg)
+	{
+		diag::warning(std::format("on line {}: {}", node.meta.line_number, msg));
+		warning_count++;
+	}
+
+	template<typename T>
+	void analyse_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
+
+	void analyse_unary_operator(const ast::node& node, const std::pair<ast::unary_operator, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
+	{
+		// we have parsed an expression as: "<UnaryOp> <Expression>"
+		// some unary operators only support certain rhs values.
+		// e.g numeric_negation only works on rhs values that are integer/decimal literals (or variables/expressions that narrow down into the former 2). we can emit an error for example if rhs is a string literal e.g: -"hello"
+		// todo: semantic checks for the other unary operators (see ast.hpp for the unary operator types)
+		const auto& [op, expr] = payload;
+		if(op.type == lexer::token::type::numeric_negation)
+		{
+			// expr must be another expression/decimal/integer literal.
+			semantic_assert
+			(
+				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<ast::integer_literal>(expr->expr) ||
+				std::holds_alternative<ast::decimal_literal>(expr->expr) ||
+				std::holds_alternative<ast::identifier>(expr->expr),
+				node,
+				std::format("right-side of unary operator \"{}\" must either be an integer-literal, decimal-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
+			);
+		}
+		else if(op.type == lexer::token::type::bitwise_complement)
+		{
+			// expr must be another expression/integer literal.
+			semantic_assert
+			(
+				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<ast::integer_literal>(expr->expr) ||
+				std::holds_alternative<ast::identifier>(expr->expr),
+				node,
+				std::format("right-side of unary operator \"{}\" must either be an integer-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
+			);
+		}
+		else if(op.type == lexer::token::type::logical_negation)
+		{
+			semantic_warning(node, "logical negation unary operators are not yet implemented. (blocked by true/false keyword)");
+		}
+		else
+		{
+			semantic_warning(node, "semantic analysis for this particular unary operator is not yet implemented.");
+		}
+		
+		analyse_thing(node, expr->expr, path, tree);
+	}
 
 	void analyse_function_call(const ast::node& node, const ast::function_call& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -21,13 +86,13 @@ namespace semantic
 			return;
 		}
 		auto iter = global_state.defined_functions.find(payload.function_name);
-		diag::assert_that(iter != global_state.defined_functions.end(), std::format("call to undefined function \"{}\" at line {}", payload.function_name, node.meta.line_number));
+		semantic_assert(iter != global_state.defined_functions.end(), node, std::format("call to undefined function \"{}\" at line {}", payload.function_name, node.meta.line_number));
 
 		const auto& func_node = tree.get(iter->second);
 		const ast::function_definition& func = std::get<ast::function_definition>(func_node.payload);
 		if(func.params.size() != payload.params.size())
 		{
-			diag::error(std::format("invalid call to function {} at line {}. expects {} parameters, but you provided {}", func.function_name, node.meta.line_number, func.params.size(), payload.params.size()));
+			semantic_assert(false, node, std::format("invalid call to function {}. expects {} parameters, but you provided {}", func.function_name, func.params.size(), payload.params.size()));
 			std::cout << std::format("note: see below for signature of {} (line {}):\n\t{}\n", payload.function_name, func_node.meta.line_number, func.to_string());
 			return;
 		}
@@ -36,11 +101,10 @@ namespace semantic
 			const ast::variable_declaration& defined_param = func.params[i];
 			const ast::expression& actual_param = payload.params[i];
 			// todo: do type-checking on the parameters.
+			// note: function parameters cannot be semantically analysed as a normal expression, so we do something similar but bespoke here.
+			analyse_thing(node, actual_param.expr, path, tree);
 		}
 	}
-
-	template<typename T>
-	void analyse_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
 
 	void analyse_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -74,7 +138,7 @@ namespace semantic
 		else
 		{
 			const auto& existing_node = tree.get(iter->second);
-			diag::error(std::format("redefinition of function \"{}\" at line {} (previously defined on line {})", payload.function_name, node.meta.line_number, existing_node.meta.line_number));
+			semantic_assert(false, node, std::format("redefinition of function \"{}\" (previously defined on line {})", payload.function_name, existing_node.meta.line_number));
 		}
 	}
 
@@ -85,7 +149,29 @@ namespace semantic
 
 	void analyse_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		// we can do this on any pass. even both
+		// however, if we do it on both, then we potentially report the same error twice (and waste work).
+		// function calls however only are semantically analysed on the 2nd pass. during that, we might also want to semantically analyse its parameters which could be an identifier (which would skip if we only do this on first-pass)
+		// for that reason, we do it on second pass.
+		if(pass_number == 0)
+		{
+			return;
+		}
+		bool variable_exists = tree.try_find_variable_from(path, payload.name).has_value();
+		auto maybe_defined_function = global_state.defined_functions.find(payload.name);
+		if(maybe_defined_function != global_state.defined_functions.end())
+		{
+			if(variable_exists)
+			{
+				semantic_assert(false, node, std::format("ambiguous use of previously-defined variable \"{}\" because there is a function defined with the same name on line {}. recommendation: rename one of the two.", payload.name, tree.get(maybe_defined_function->second).meta.line_number));
+			}
+			else
+			{
+				semantic_assert(false, node, std::format("attempt to reference function \"{}\" as if it were a variable.", payload.name));
+			}
+			return;
+		}
+		semantic_assert(variable_exists, node, std::format("use of undefined variable {}. could not find definition beforehand.", payload.name));
 	}
 
 	template<typename P>
@@ -102,10 +188,6 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, ast::function_call>)
 			{
 				analyse_function_call(node, arg, path, tree);
-			}
-			else if constexpr(std::is_same_v<T, ast::expression>)
-			{
-				analyse_expression(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::if_statement>)
 			{
@@ -127,13 +209,24 @@ namespace semantic
 			{
 				analyse_identifier(node, arg, path, tree);
 			}
+			else if constexpr(std::is_same_v<T, ast::expression>)
+			{
+				analyse_expression(node, arg, path, tree);
+			}
 			else
 			{
-				diag::fatal_error(std::format("internal compiler error: unknown AST node type (variant id: {}) detecting during semantic analysis.", node.payload.index()));
+				// could be one of the unique expression variant types.
+				if constexpr(std::is_same_v<T, std::pair<ast::unary_operator, util::box<ast::expression>>>)
+				{
+					analyse_unary_operator(node, arg, path, tree);
+				}
+				else
+				{
+					semantic_assert(false, node, std::format("internal compiler error: unknown AST node type (variant id: {}) detecting during semantic analysis.", node.payload.index()));
+				}
 			}
 		}, payload_like);
 	}
-
 
 	void analyse_single_node(ast::path_t path, const ast& tree)
 	{
@@ -165,6 +258,24 @@ namespace semantic
 		analyse_node({}, tree);
 	}
 
+	void summary()
+	{
+		const char* col = "";
+		if(error_count > 0)
+		{
+			col = "\033[1;31m";
+		}
+		else if(warning_count > 0)
+		{
+			col = "\033[1;33m";
+		}
+		diag::print(std::format("{}{} errors, {} warnings detected.{}", col, error_count, warning_count, "\033[0m"));
+		if(error_count > 0)
+		{
+			diag::fatal_error("compilation terminating due to semantic analysis error(s).");
+		}
+	}
+
 	void analysis(const ast& tree)
 	{
 		global_state = {};
@@ -176,5 +287,6 @@ namespace semantic
 		// second pass uses that information to actually perform verification.
 		first_pass(tree);
 		second_pass(tree);
+		summary();
 	}
 }
