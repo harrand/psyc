@@ -232,14 +232,27 @@ namespace parser
 			this->stash_index();
 			// to help understand whats going on here, see the variant types in ast::expression::expr.
 			// what we're doing here is going through each possible type and attempting to parse.
-			std::optional<lexer::token::type> maybe_unary_operator = this->match_any({lexer::token::type::numeric_negation, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation});	
-			if(maybe_unary_operator.has_value())
+			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus});	
+			if(maybe_operator.has_value())
 			{
-				// MUST be unary-op + another nested expression.
-				std::optional<ast::expression> nested_expression = this->try_parse_expression();
-				this->parser_assert(nested_expression.has_value(), "while parsing expression, another nested expression *must* directly follow any unary operator.");
+				// could either be a unary or binary operator, depending on the token.
+				// next thing we want is definitely an expression, either way.
+				std::optional<ast::expression> expression_a = this->try_parse_expression();
+				this->parser_assert(expression_a.has_value(), "while parsing expression, another nested expression *must* directly follow any unary operator.");
+				// if we're a binary operator, we expect another expression.
+				// otherwise, we assume we're a unary operator.
+				std::optional<ast::expression> expression_b = this->try_parse_expression();
 				this->unstash_index();
-				return ast::expression{.expr = std::pair<ast::unary_operator, util::box<ast::expression>>{maybe_unary_operator.value(), nested_expression.value()}};
+				if(expression_b.has_value())
+				{
+					// definitely a binary expression.
+					return ast::expression{.expr = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>{maybe_operator.value(), expression_a.value(), expression_b.value()}};
+				}
+				else
+				{
+					// assume a unary expression.
+					return ast::expression{.expr = std::pair<ast::unary_operator, util::box<ast::expression>>{maybe_operator.value(), expression_a.value()}};
+				}
 			}
 
 			auto maybe_integer_literal = this->try_parse_integer_literal();

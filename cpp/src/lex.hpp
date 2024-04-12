@@ -32,7 +32,8 @@ namespace lexer
 			arrow,
 			semicolon,
 			ellipsis,
-			numeric_negation,
+			plus,
+			minus,
 			bitwise_complement,
 			logical_negation,
 			_count
@@ -64,6 +65,7 @@ namespace lexer
 		" -> ",
 		";",
 		"...",
+		"+",
 		"-",
 		"~",
 		"!"

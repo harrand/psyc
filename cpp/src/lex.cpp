@@ -208,9 +208,13 @@ namespace lexer
 				ret.push_back({.id = token::type::ellipsis});
 				cursor += 2;
 			}
+			else if(data.starts_with("+"))
+			{
+				ret.push_back({.id = token::type::plus});
+			}
 			else if(data.starts_with("-"))
 			{
-				ret.push_back({.id = token::type::numeric_negation});
+				ret.push_back({.id = token::type::minus});
 			}
 			else if(data.starts_with("~"))
 			{

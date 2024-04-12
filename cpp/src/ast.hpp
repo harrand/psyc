@@ -16,12 +16,26 @@ struct ast
 		std::string to_string() const
 		{
 			diag::assert_that(
-				type == lexer::token::type::numeric_negation ||
+				type == lexer::token::type::minus ||
 				type == lexer::token::type::bitwise_complement ||
 				type == lexer::token::type::logical_negation,
 				"internal compiler error: parsed a unary_operator via lexer token type that doesn't represent a unary operator."
 			);
 			return std::format("unary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);
+		};
+	};
+
+	struct binary_operator
+	{
+		lexer::token::type type;
+		std::string to_string() const
+		{
+			diag::assert_that(
+				type == lexer::token::type::minus ||
+				type == lexer::token::type::plus,
+				"internal compiler error: parsed a binary via lexer token type that doesn't represent a binary operator."
+			);
+			return std::format("binary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);
 		};
 	};
 
@@ -98,6 +112,7 @@ struct ast
 		<
 			// boxed because expression at this point is an incomplete type. the heap alloc is entirely unavoidable im afraid.
 			std::pair<unary_operator, util::box<expression>>,
+			std::tuple<binary_operator, util::box<expression>, util::box<expression>>,
 			integer_literal,
 			decimal_literal,
 			string_literal,
@@ -116,6 +131,11 @@ struct ast
 				{
 					const auto&[op, boxed_expr] = arg;
 					ret += std::format("{{{}, {}}}", op.to_string(), boxed_expr->to_string());
+				}
+				else if constexpr(std::is_same_v<T, std::tuple<binary_operator, util::box<expression>, util::box<expression>>>)
+				{
+					const auto&[op, lhs, rhs] = arg;
+					ret += std::format("{{{}, {}, {}}}", op.to_string(), lhs->to_string(), rhs->to_string());
 				}
 				else
 				{

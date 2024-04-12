@@ -38,15 +38,16 @@ namespace semantic
 	{
 		// we have parsed an expression as: "<UnaryOp> <Expression>"
 		// some unary operators only support certain rhs values.
-		// e.g numeric_negation only works on rhs values that are integer/decimal literals (or variables/expressions that narrow down into the former 2). we can emit an error for example if rhs is a string literal e.g: -"hello"
+		// e.g minus only works on rhs values that are integer/decimal literals (or variables/expressions that narrow down into the former 2). we can emit an error for example if rhs is a string literal e.g: -"hello"
 		// todo: semantic checks for the other unary operators (see ast.hpp for the unary operator types)
 		const auto& [op, expr] = payload;
-		if(op.type == lexer::token::type::numeric_negation)
+		if(op.type == lexer::token::type::minus)
 		{
 			// expr must be another expression/decimal/integer literal.
 			semantic_assert
 			(
 				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
@@ -60,6 +61,7 @@ namespace semantic
 			semantic_assert
 			(
 				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
 				node,
@@ -71,6 +73,7 @@ namespace semantic
 			semantic_assert
 			(
 				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
+				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::bool_literal>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
 				node,
@@ -83,6 +86,41 @@ namespace semantic
 		}
 		
 		analyse_thing(node, expr->expr, path, tree);
+	}
+
+	void analyse_binary_operator(const ast::node& node, const std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
+	{
+		const auto& [op, expr1, expr2] = payload;
+		if(op.type == lexer::token::type::plus || op.type == lexer::token::type::minus)
+		{
+			semantic_assert
+			(
+				(
+				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr1->expr) ||
+				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr1->expr) ||
+				std::holds_alternative<ast::decimal_literal>(expr1->expr) ||
+				std::holds_alternative<ast::integer_literal>(expr1->expr) ||
+				std::holds_alternative<ast::identifier>(expr1->expr))
+
+				&&
+
+				(
+				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr2->expr) ||
+				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr2->expr) ||
+				std::holds_alternative<ast::decimal_literal>(expr2->expr) ||
+				std::holds_alternative<ast::integer_literal>(expr2->expr) ||
+				std::holds_alternative<ast::identifier>(expr2->expr)),
+				node,
+				std::format("both sides of binary operator \"{}\" must either be an integer-literal, decimal-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
+
+			);
+		}
+		else
+		{
+			semantic_warning(node, "semantic analysis for this particular binary operator is not yet implemented.");
+		}
+		analyse_thing(node, expr1->expr, path, tree);
+		analyse_thing(node, expr2->expr, path, tree);
 	}
 
 	void analyse_function_call(const ast::node& node, const ast::function_call& payload, const ast::path_t& path, const ast& tree)
@@ -234,6 +272,10 @@ namespace semantic
 				if constexpr(std::is_same_v<T, std::pair<ast::unary_operator, util::box<ast::expression>>>)
 				{
 					analyse_unary_operator(node, arg, path, tree);
+				}
+				else if constexpr(std::is_same_v<T, std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>)
+				{
+					analyse_binary_operator(node, arg, path, tree);
 				}
 				else
 				{
