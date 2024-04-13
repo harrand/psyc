@@ -15,6 +15,7 @@ else()
 		set(LLVM_HOST_TRIPLE x86_64)
 	endif()
 	add_subdirectory(llvm/llvm)
+	set(LLVM_INCLUDE_DIRS "llvm/llvm/include" "${CMAKE_BINARY_DIR}/llvm/llvm/include/")
 endif()
 
 llvm_map_components_to_libnames(llvm_dependent_libs support core irreader)
