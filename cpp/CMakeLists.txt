@@ -17,6 +17,9 @@ else()
 	add_subdirectory(llvm/llvm)
 endif()
 
+llvm_map_components_to_libnames(llvm_dependent_libs support core irreader)
+separate_arguments(llvm_definitions_list NATIVE_COMMAND ${LLVM_DEFINITIONS})
+
 add_executable(psyc
 	src/psyc_main.cpp
 	src/ast.cpp
@@ -31,3 +34,7 @@ add_executable(psyc
 	src/semantic.cpp
 	src/semantic.hpp
 )
+
+target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
+target_compile_definitions(psyc PRIVATE ${llvm_definitions_list})
+target_link_libraries(psyc PRIVATE ${llvm_dependent_libs})
