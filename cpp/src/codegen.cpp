@@ -1,59 +1,87 @@
 #include "codegen.hpp"
+
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
+
 #include <format>
-#include "llvm/ADT/APFloat.h"
+#include <map>
+#include <memory>
 namespace codegen
 {
+	namespace context
+	{
+		static std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
+		static std::unique_ptr<llvm::IRBuilder<>> builder = nullptr;
+		static std::unique_ptr<llvm::Module> mod = nullptr;
+		static std::map<std::string, llvm::Value*> named_values = {};
+		static bool initialised = false;
+
+		void initialise()
+		{
+			if(initialised)
+			{
+				return;
+			}
+			ctx = std::make_unique<llvm::LLVMContext>();
+			mod = std::make_unique<llvm::Module>("apparantly a jit", *ctx);
+
+			builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
+			initialised = true;
+		}
+	}
 
 	template<typename T>
-	void codegen_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
+	llvm::Value* codegen_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
 
-	void codegen_unary_operator(const ast::node& node, const std::pair<ast::unary_operator, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_unary_operator(const ast::node& node, const std::pair<ast::unary_operator, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_binary_operator(const ast::node& node, const std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_binary_operator(const ast::node& node, const std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_function_call(const ast::node& node, const ast::function_call& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_function_call(const ast::node& node, const ast::function_call& payload, const ast::path_t& path, const ast& tree)
 	{
+		return nullptr;
 	}
 
-	void codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 	
-	void codegen_if_statement(const ast::node& node, const ast::if_statement& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_if_statement(const ast::node& node, const ast::if_statement& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_return_statement(const ast::node& node, const ast::return_statement& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_return_statement(const ast::node& node, const ast::return_statement& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_function_definition(const ast::node& node, const ast::function_definition& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_function_definition(const ast::node& node, const ast::function_definition& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
-	void codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
-
+		return nullptr;
 	}
 
 	template<typename P>
-	void codegen_thing(const ast::node& node, const P& payload_like, const ast::path_t& path, const ast& tree)
+	llvm::Value* codegen_thing(const ast::node& node, const P& payload_like, const ast::path_t& path, const ast& tree)
 	{
+		llvm::Value* ret = nullptr;
 		std::visit([&node, &tree, &path](auto&& arg)
 		{
 			using T = std::decay_t<decltype(arg)>;
@@ -108,12 +136,13 @@ namespace codegen
 				}
 			}
 		}, payload_like);
+		return ret;
 	}
 
 	void codegen_single_node(ast::path_t path, const ast& tree)
 	{
 		const ast::node& node = tree.get(path);
-		codegen_thing(node, node.payload, path, tree);
+		llvm::Value* val = codegen_thing(node, node.payload, path, tree);
 	}
 
 	void codegen_node(ast::path_t path, const ast& tree)
@@ -130,6 +159,7 @@ namespace codegen
 
 	void generate(const ast& tree)
 	{
+		context::initialise();
 		codegen_single_node({}, tree);
 	}
 }
