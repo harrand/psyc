@@ -2,6 +2,7 @@
 #include "parse.hpp"
 #include "lex.hpp"
 #include "semantic.hpp"
+#include "codegen.hpp"
 
 #include <span>
 #include <string_view>
@@ -158,5 +159,7 @@ int main(int argc, char** argv)
 		}
 		// perform semantic analysis.
 		semantic::analysis(ast);
+		// finally, generate code
+		codegen::generate(ast);
 	}
 }
