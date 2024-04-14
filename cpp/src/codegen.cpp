@@ -211,7 +211,16 @@ namespace codegen
 
 	llvm::Value* codegen_function_call(const ast::node& node, const ast::function_call& payload, const ast::path_t& path, const ast& tree)
 	{
-		return nullptr;
+		llvm::Function* func = context::mod->getFunction(payload.function_name);
+		diag::assert_that(func != nullptr, std::format("internal compiler error: could not locate function {} within LLVM module.", payload.function_name));
+		std::vector<llvm::Value*> param_values = {};
+		for(const ast::expression& param : payload.params)
+		{
+			llvm::Value* param_val = codegen_expression(node, param, path, tree);
+			diag::assert_that(param_val != nullptr, std::format("internal compiler error: retrieving LLVM value for parameter {} in function call {} yielded nullptr.", param_values.size(), payload.function_name));
+			param_values.push_back(param_val);
+		}
+		return context::current_builder().CreateCall(func, param_values, func->getReturnType() == llvm::Type::getVoidTy(*context::ctx) ? "" : "calltmp");
 	}
 
 	llvm::Value* codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree)
