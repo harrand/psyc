@@ -1,11 +1,11 @@
 #ifndef PSYC_CODEGEN_HPP
 #define PSYC_CODEGEN_HPP
 #include "ast.hpp"
-#include "settings.hpp"
+#include <filesystem>
 
 namespace codegen
 {
-	void generate(const ast& ast, std::string filename);
+	std::filesystem::path generate(const ast& ast, std::string filename);
 }
 
 #endif // PSYC_SEMANTIC_HPP

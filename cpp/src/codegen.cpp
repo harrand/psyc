@@ -437,7 +437,7 @@ namespace codegen
 		llvm::Value* val = codegen_thing(node, node.payload, path, tree);
 	}
 
-	void generate(const ast& tree, std::string filename)
+	std::filesystem::path generate(const ast& tree, std::string filename)
 	{
 		context::initialise(filename);
 		filename += ".o";
@@ -487,5 +487,6 @@ namespace codegen
 		dst.flush();
 
 		context::terminate();
+		return std::filesystem::path{filename};
 	}
 }

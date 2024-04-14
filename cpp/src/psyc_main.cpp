@@ -1,9 +1,10 @@
 #include "diag.hpp"
+#include "settings.hpp"
 #include "parse.hpp"
 #include "lex.hpp"
 #include "semantic.hpp"
 #include "codegen.hpp"
-#include "settings.hpp"
+#include "link.hpp"
 
 #include <span>
 #include <string_view>
@@ -30,8 +31,11 @@ struct session
 {
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
+	std::vector<std::filesystem::path> object_files = {};
 	std::vector<ast> parsed_files = {};
 	std::string output_dir = "";
+	link_output link = link_output::none;
+	std::string link_output_name = "";
 	flag_t flags = {};
 };
 
@@ -58,6 +62,22 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 		{
 			std::string_view output_dir = *argnext;
 			ses.output_dir = std::string{output_dir};
+			i++;
+			continue;
+		}
+		else if(arg.starts_with("-exe"))
+		{
+			diag::assert_that(ses.link == link_output::none, "specified linkage more than once.");
+			ses.link = link_output::executable;
+			ses.link_output_name = *argnext;
+			i++;
+			continue;
+		}
+		else if(arg.starts_with("-lib"))
+		{
+			diag::assert_that(ses.link == link_output::none, "specified linkage more than once.");
+			ses.link = link_output::library;
+			ses.link_output_name = *argnext;
 			i++;
 			continue;
 		}
@@ -132,6 +152,22 @@ int main(int argc, char** argv)
 		semantic::analysis(ast);
 		// finally, generate code
 		std::string just_filename = std::filesystem::path(input_file).stem().string();
-		codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string());
+		ses.object_files.push_back(codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string()));
 	}
+	if(ses.link == link_output::none)
+	{
+		return 0;
+	}
+	auto output_path = std::filesystem::path(ses.output_dir) / ses.link_output_name;
+	switch(ses.link)
+	{
+		case link_output::executable:
+			link::executable(ses.object_files, output_path);
+		break;
+		case link_output::library:
+			link::library(ses.object_files, output_path);
+		break;
+		default: break;
+	}
+	return 0;
 }

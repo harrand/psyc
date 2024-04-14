@@ -9,4 +9,11 @@ enum flag : flag_t
 	dump_tokens = 0b000010,
 };
 
+enum class link_output
+{
+	none,
+	library,
+	executable
+};
+
 #endif // PSYC_SETTINGS_HPP

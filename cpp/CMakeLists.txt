@@ -37,6 +37,8 @@ add_executable(psyc
 	src/diag.hpp
 	src/lex.cpp
 	src/lex.hpp
+	src/link.cpp
+	src/link.hpp
 	src/parse.cpp
 	src/parse.hpp
 	src/semantic.cpp
