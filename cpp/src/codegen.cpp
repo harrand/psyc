@@ -4,9 +4,6 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-// to print out module directly to string.
-#include "llvm/Support/raw_os_ostream.h"
-
 
 #include <format>
 #include <map>
@@ -23,6 +20,45 @@ namespace codegen
 		static std::map<std::string, llvm::Value*> named_values = {};
 		static llvm::BasicBlock* entry_point = nullptr;
 		static bool initialised = false;
+
+		struct scope_reference
+		{
+			std::unordered_map<std::string, llvm::AllocaInst*> variables = {};
+			std::unordered_map<std::size_t, scope_reference> children = {};
+		};
+		static scope_reference scope_manager;
+
+		void register_variable(ast::path_view_t path, std::string variable_name, llvm::AllocaInst* value)
+		{
+			diag::assert_that(value != nullptr, std::format("internal compiler error: nullptr llvm::Value* passed for variable name {}", variable_name));
+			scope_reference* current_scope = &scope_manager;
+			if(path.size())
+			{
+				for(std::size_t idx : path.subspan(0, path.size() - 1))
+				{
+					current_scope = &current_scope->children[idx];
+				}
+			}
+			current_scope->variables[variable_name] = value;
+		}
+
+		llvm::AllocaInst* try_find_variable(ast::path_view_t path, std::string variable_name)
+		{
+			scope_reference* current_scope = &scope_manager;
+			if(path.size())
+			{
+				for(std::size_t idx : path)
+				{
+					auto maybe_var_loc = current_scope->variables.find(variable_name);
+					if(maybe_var_loc != current_scope->variables.end())
+					{
+						return maybe_var_loc->second;
+					}
+					current_scope = &current_scope->children[idx];	
+				}
+			}
+			return nullptr;
+		}
 
 		llvm::IRBuilder<>& current_builder()
 		{
@@ -107,7 +143,7 @@ namespace codegen
 				return context::current_builder().CreateNeg(operand_value);
 			break;
 			default:
-				diag::error("internal compiler error: a particular unary operator (nearby to line {}) was not recognised in the context of its equivalent LLVM-IR.", node.meta.line_number);
+				diag::error(std::format("internal compiler error: a particular unary operator (nearby to line {}) was not recognised in the context of its equivalent LLVM-IR.", node.meta.line_number));
 				return nullptr;
 			break;
 		}
@@ -118,6 +154,8 @@ namespace codegen
 		const auto&[op, lhs, rhs] = payload;
 		llvm::Value* lhs_value = codegen_expression(node, *lhs, path, tree);
 		llvm::Value* rhs_value = codegen_expression(node, *rhs, path, tree);
+		volatile llvm::Type* lhs_t = lhs_value->getType();
+		volatile llvm::Type* rhs_t = rhs_value->getType();
 
 		switch(op.type)
 		{
@@ -192,22 +230,24 @@ namespace codegen
 		return nullptr;
 	}
 
-	llvm::Value* codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
+	llvm::AllocaInst* codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
 		llvm::Type* ty = get_llvm_type(payload.type_name);
-		llvm::Value* var = context::current_builder().CreateAlloca(ty, nullptr, payload.var_name);
+		llvm::AllocaInst* var = context::current_builder().CreateAlloca(ty, nullptr, payload.var_name);
 		if(payload.initialiser.has_value())
 		{
 			llvm::Value* init_value = codegen_expression(node, payload.initialiser.value(), path, tree);
 			diag::assert_that(init_value != nullptr, "internal compiler error: variable declaration initialiser expression did not codegen correctly - returned a null LLVM value.");
 			context::current_builder().CreateStore(init_value, var);
 		}
+		context::register_variable(path, payload.var_name, var);
 		return var;
 	}
 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
-		return nullptr;
+		llvm::AllocaInst* var = context::try_find_variable(path, payload.name);
+		return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
 	}
 
 	template<typename P>

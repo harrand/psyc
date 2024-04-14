@@ -235,6 +235,7 @@ namespace parser
 			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus});	
 			if(maybe_operator.has_value())
 			{
+				volatile lexer::token::type tttt = maybe_operator.value();
 				// could either be a unary or binary operator, depending on the token.
 				// next thing we want is definitely an expression, either way.
 				std::optional<ast::expression> expression_a = this->try_parse_expression();
