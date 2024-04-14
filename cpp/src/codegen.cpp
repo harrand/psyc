@@ -433,7 +433,7 @@ namespace codegen
 		llvm::Value* val = codegen_thing(node, node.payload, path, tree);
 	}
 
-	void generate(const ast& tree)
+	void generate(const ast& tree, std::string filename)
 	{
 		context::initialise();
 		const auto& root = tree.get({});
@@ -466,7 +466,7 @@ namespace codegen
 		// configure module (no i have no idea whats going on).
 		context::mod->setDataLayout(target_machine->createDataLayout());
 		context::mod->setTargetTriple(target_triple);
-		const char* filename = "output.o";
+		filename += ".o";
 		std::error_code ec;
 		llvm::raw_fd_ostream dst(filename, ec, llvm::sys::fs::OF_None);
 		if(ec)

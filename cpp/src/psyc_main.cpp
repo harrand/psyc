@@ -44,6 +44,7 @@ struct session
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
 	std::vector<ast> parsed_files = {};
+	std::string output_dir = "";
 	output type = output::unknown;
 	flag_t flags = {};
 };
@@ -86,6 +87,13 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			{
 				diag::fatal_error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
 			}
+			i++;
+			continue;
+		}
+		else if(arg.starts_with("-o"))
+		{
+			std::string_view output_dir = *argnext;
+			ses.output_dir = std::string{output_dir};
 			i++;
 			continue;
 		}
@@ -160,6 +168,7 @@ int main(int argc, char** argv)
 		// perform semantic analysis.
 		semantic::analysis(ast);
 		// finally, generate code
-		codegen::generate(ast);
+		std::string just_filename = std::filesystem::path(input_file).stem().string();
+		codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string());
 	}
 }

@@ -4,7 +4,7 @@
 
 namespace codegen
 {
-	void generate(const ast& ast);
+	void generate(const ast& ast, std::string filename);
 }
 
 #endif // PSYC_SEMANTIC_HPP
