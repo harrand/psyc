@@ -1,6 +1,7 @@
 #ifndef PSYC_CODEGEN_HPP
 #define PSYC_CODEGEN_HPP
 #include "ast.hpp"
+#include "settings.hpp"
 
 namespace codegen
 {

@@ -3,6 +3,7 @@
 #include "lex.hpp"
 #include "semantic.hpp"
 #include "codegen.hpp"
+#include "settings.hpp"
 
 #include <span>
 #include <string_view>
@@ -25,33 +26,17 @@
 	- code generation. if everything is verified then we go through the AST and generate output code (whether thats x86 assembly, or llvm ir depends on argparsing from earlier). you ultimately end up with something vaguely resembling an executable.
 */
 
-enum class output
-{
-	unknown,
-	llvm_ir,
-	x86_64_asm,
-};
-
-using flag_t = std::uint8_t;
-enum flag : flag_t
-{
-	dump_ast = 0b0000001,
-	dump_tokens = 0b000010,
-};
-
 struct session
 {
 	std::vector<std::string> input_files = {};
 	std::vector<lexer::tokens> lexed_files = {};
 	std::vector<ast> parsed_files = {};
 	std::string output_dir = "";
-	output type = output::unknown;
 	flag_t flags = {};
 };
 
 void parse_args(std::span<const std::string_view> args, session& ses)
 {
-	ses.type = output::unknown;
 	for(std::size_t i = 0; i < args.size(); i++)
 	{
 		const std::string_view& arg = args[i];
@@ -68,27 +53,6 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 				std::cout << " " << tmparg;
 			}
 			std::cout << "\"\n";
-		}
-		else if(arg.starts_with("-ot") || arg.starts_with("--output_type"))
-		{
-			// tell me what type of code you want code generation to emit.
-			// note: codegen is not yet implemented so this is a dud for now.
-			if(*argnext == "llvm")
-			{
-				ses.type = output::llvm_ir;
-				diag::warning("llvm IR code generation is not yet implemented. no binary will be generated.");
-			}
-			else if(*argnext == "x86_64_asm")
-			{
-				ses.type = output::x86_64_asm;
-				diag::warning("x86_64_asm code generation is not yet implemented. no binary will be generated.");
-			}
-			else
-			{
-				diag::fatal_error(std::format("unknown output type `{} (from \"{}\")", *argnext, std::string(arg) + " " + std::string(*argnext)));
-			}
-			i++;
-			continue;
 		}
 		else if(arg.starts_with("-o"))
 		{
@@ -127,7 +91,6 @@ int main(int argc, char** argv)
 	const std::vector<std::string_view> args(argv + 1, argv + argc);
 	session ses;
 	parse_args(args, ses);
-	diag::assert_that(ses.type != output::unknown, "no output type specified (`-ot / --output_type`)");
 	ses.lexed_files.resize(ses.input_files.size());
 	ses.parsed_files.resize(ses.input_files.size());
 	diag::assert_that(ses.input_files.size(), "no input files specified");
