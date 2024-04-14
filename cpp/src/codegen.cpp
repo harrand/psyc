@@ -3,7 +3,14 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/MC/TargetRegistry.h" 
 
 #include <format>
 #include <map>
@@ -284,7 +291,7 @@ namespace codegen
 		llvm::FunctionType* fty = llvm::FunctionType::get(return_type, param_types, false);
 		llvm::Function* function = llvm::Function::Create(fty, llvm::Function::ExternalLinkage, payload.function_name, *context::mod);
 		// function_name "main" is an entry point.
-		llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(*context::ctx, "function_entry_point", function);
+		llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(*context::ctx, "entry", function);
 		if(payload.function_name == "main")
 		{
 			context::entry_point = entry_block;
@@ -439,5 +446,40 @@ namespace codegen
 		llvm::raw_string_ostream os{ir_string};
 		context::mod->print(os, nullptr);
 		diag::message(std::format("llvm ir: \n{}", ir_string));
+
+		auto target_triple = llvm::sys::getDefaultTargetTriple();
+		llvm::InitializeAllTargetInfos();
+		llvm::InitializeAllTargets();
+		llvm::InitializeAllTargetMCs();
+		llvm::InitializeAllAsmParsers();
+		llvm::InitializeAllAsmPrinters();
+		std::string error;
+		auto target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+		if(target == nullptr)
+		{
+			diag::error(std::format("error while retrieving LLVM output target information(s): {}", error));
+		}
+		const char* cpu = "generic";
+		const char* features = "";
+		llvm::TargetOptions opt;
+		auto target_machine = target->createTargetMachine(target_triple, cpu, features, opt, llvm::Reloc::PIC_);
+		// configure module (no i have no idea whats going on).
+		context::mod->setDataLayout(target_machine->createDataLayout());
+		context::mod->setTargetTriple(target_triple);
+		const char* filename = "output.o";
+		std::error_code ec;
+		llvm::raw_fd_ostream dst(filename, ec, llvm::sys::fs::OF_None);
+		if(ec)
+		{
+			diag::error(std::format("error while generating object files: {}", ec.message()));
+		}
+		llvm::legacy::PassManager pass;
+		auto file_type = llvm::CodeGenFileType::ObjectFile;
+		if(target_machine->addPassesToEmitFile(pass, dst, nullptr, file_type))
+		{
+			diag::error(std::format("target machine cannot emit a file of this type."));
+		}
+		pass.run(*context::mod);
+		dst.flush();
 	}
 }
