@@ -157,10 +157,10 @@ struct ast
 
 	struct return_statement
 	{
-		expression value;
+		std::optional<expression> value;
 		std::string to_string() const
 		{
-			return std::format("return-statement: {}", this->value.to_string());
+			return std::format("return-statement: {}", this->value.has_value() ? this->value->to_string() : "");
 		}
 	};
 	struct variable_declaration

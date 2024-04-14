@@ -325,8 +325,12 @@ namespace parser
 			if(this->match(lexer::token::type::keyword) && this->last_value() == "return")
 			{
 				auto maybe_expression = this->try_parse_expression();
-				this->parser_assert(maybe_expression.has_value(), "could not parse return expression.");
 				this->unstash_index();
+				if(!maybe_expression.has_value())
+				{
+					return ast::return_statement{.value = std::nullopt};
+				}
+				this->parser_assert(maybe_expression.has_value(), "could not parse return expression.");
 				return ast::return_statement{.value = maybe_expression.value()};
 			}
 			this->restore_index();

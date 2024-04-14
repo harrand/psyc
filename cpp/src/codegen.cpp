@@ -259,7 +259,15 @@ namespace codegen
 
 	llvm::Value* codegen_return_statement(const ast::node& node, const ast::return_statement& payload, const ast::path_t& path, const ast& tree)
 	{
-		return nullptr;
+		if(!payload.value.has_value())
+		{
+			context::current_builder().CreateRetVoid();
+			return nullptr;
+		}
+		llvm::Value* retval = codegen_expression(node, payload.value.value(), path, tree);
+		diag::assert_that(retval != nullptr, "fooey");
+		context::current_builder().CreateRet(retval);
+		return retval;
 	}
 
 	llvm::Value* codegen_function_definition(const ast::node& node, const ast::function_definition& payload, const ast::path_t& path, const ast& tree)
