@@ -479,7 +479,7 @@ namespace codegen
 		}
 		llvm::legacy::PassManager pass;
 		auto file_type = llvm::CodeGenFileType::ObjectFile;
-		if(target_machine->addPassesToEmitFile(pass, dst, nullptr, file_type))
+		if(target_machine->addPassesToEmitFile(pass, dst, nullptr, file_type, false))
 		{
 			diag::error(std::format("target machine cannot emit a file of this type."));
 		}
