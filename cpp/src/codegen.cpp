@@ -130,6 +130,18 @@ namespace codegen
 		{
 			return llvm::Type::getInt16Ty(*context::ctx);
 		}
+		else if(type_name == "f64")
+		{
+			return llvm::Type::getDoubleTy(*context::ctx);
+		}
+		else if(type_name == "f32")
+		{
+			return llvm::Type::getFloatTy(*context::ctx);
+		}
+		else if(type_name == "f16")
+		{
+			return llvm::Type::getHalfTy(*context::ctx);
+		}
 		else if(type_name == "bool")
 		{
 			return llvm::Type::getInt1Ty(*context::ctx);
@@ -177,7 +189,19 @@ namespace codegen
 		switch(payload.first.type)
 		{
 			case lexer::token::type::minus:
-				return context::current_builder().CreateNeg(operand_value);
+				if(operand_value->getType()->isIntegerTy())
+				{
+					return context::current_builder().CreateNeg(operand_value);
+				}
+				else if(operand_value->getType()->isFloatingPointTy())
+				{
+					return context::current_builder().CreateFNeg(operand_value);
+				}
+				else
+				{
+					diag::error("internal compiler error: unary operator `-` used on expression that was neither an integral type nor a floating-point type. however, this ought to have been caught by semantic analysis. please submit a bug report.");
+					return nullptr;
+				}
 			break;
 			default:
 				diag::error(std::format("internal compiler error: a particular unary operator (nearby to line {}) was not recognised in the context of its equivalent LLVM-IR.", node.meta.line_number));
