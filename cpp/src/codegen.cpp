@@ -25,6 +25,7 @@ namespace codegen
 		{
 			std::unordered_map<std::string, llvm::AllocaInst*> variables = {};
 			std::unordered_map<std::size_t, scope_reference> children = {};
+			llvm::Function* current_function = nullptr;
 		};
 		static scope_reference scope_manager;
 
@@ -40,6 +41,42 @@ namespace codegen
 				}
 			}
 			current_scope->variables[variable_name] = value;
+		}
+
+		void register_function(ast::path_view_t path, llvm::Function* func)
+		{
+			diag::assert_that(func != nullptr, "internal compiler error: nullptr llvm::Function* passed");
+			scope_reference* current_scope = &scope_manager;
+			if(path.size())
+			{
+				for(std::size_t idx : path.subspan(0, path.size() - 1))
+				{
+					current_scope = &current_scope->children[idx];
+				}
+			}
+			current_scope->current_function = func;
+		}
+
+		llvm::Function* get_enclosing_function(ast::path_view_t path)
+		{
+			std::vector<llvm::Function*> func_stack = {};
+			scope_reference* current_scope = &scope_manager;
+			if(path.size())
+			{
+				for(std::size_t idx : path)
+				{
+					if(current_scope->current_function != nullptr)
+					{
+						func_stack.push_back(current_scope->current_function);
+					}
+					current_scope = &current_scope->children[idx];
+				}
+			}
+			if(func_stack.size())
+			{
+				return func_stack.back();
+			}
+			return nullptr;
 		}
 
 		llvm::AllocaInst* try_find_variable(ast::path_view_t path, std::string variable_name)
@@ -217,6 +254,7 @@ namespace codegen
 			arg.setName(payload.params[arg_counter].var_name);
 			arg_counter++;
 		}
+		context::register_function(path, function);
 		// new block. child nodes now get processed.
 		context::builders.emplace(entry_block);
 		for(std::size_t i = 0; i < node.children.size(); i++)
@@ -246,8 +284,26 @@ namespace codegen
 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
+		// is it a local variable?
 		llvm::AllocaInst* var = context::try_find_variable(path, payload.name);
-		return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+		if(var != nullptr)
+		{
+			return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+		}
+
+		// how about a function parameter?
+		llvm::Function* enclosing_function = context::get_enclosing_function(path);
+		if(enclosing_function != nullptr)
+		{
+			for(auto iter = enclosing_function->arg_begin(); iter != enclosing_function->arg_end(); iter++)
+			{
+				if(iter->getName() == payload.name)
+				{
+					return &*iter;
+				}
+			}
+		}
+		return nullptr;
 	}
 
 	template<typename P>
