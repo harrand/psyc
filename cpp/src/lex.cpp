@@ -126,7 +126,7 @@ namespace lexer
 				if(current_string_literal_begin == npos)
 				{
 					std::size_t comment_begin = cursor;
-					while(psy[cursor++ + 1] != '\n'){}
+					while(++cursor < (psy.size() - 1) && psy[cursor] != '\n'){}
 					std::size_t comment_end = cursor;
 					ret.push_back({.id = token::type::line_comment, .value = std::string{psy.data() + comment_begin, psy.data() + comment_end + 1}});
 				}

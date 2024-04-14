@@ -32,18 +32,15 @@ namespace parser
 		// oh btw i will also skip over comments and newlines at this point.
 		bool match(lexer::token::type expected_type)
 		{
-			if(this->tokidx < this->tokens.size())
+			while(this->tokidx < this->tokens.size() && (this->tokens[this->tokidx].id == lexer::token::type::newline || this->tokens[this->tokidx].id == lexer::token::type::line_comment))
 			{
-				while(this->tokens[this->tokidx].id == lexer::token::type::newline || this->tokens[this->tokidx].id == lexer::token::type::line_comment)
-				{
-					this->current_line++;
-					this->tokidx++;
-				}
-				if(this->tokens[this->tokidx].id == expected_type)
-				{
-					this->tokidx++;
-					return true;
-				}
+				this->current_line++;
+				this->tokidx++;
+			}
+			if(this->tokidx < this->tokens.size() && this->tokens[this->tokidx].id == expected_type)
+			{
+				this->tokidx++;
+				return true;
 			}
 			return false;
 		}
@@ -494,6 +491,13 @@ namespace parser
 						this->handle_payload(contents);
 					}
 					this->pop();
+				}
+				else
+				{
+					// nothing parses. remember, we skip over comments etc anyway.
+					// so if the last thing in the program is comments, then it will continually be skipped over but not parse anything, causing an infinite loop.
+					// for that reason we just stop here.
+					break;
 				}
 			}
 		}

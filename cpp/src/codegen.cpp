@@ -26,7 +26,6 @@ namespace codegen
 		static std::unique_ptr<llvm::Module> mod = nullptr;
 		static std::map<std::string, llvm::Value*> named_values = {};
 		static llvm::BasicBlock* entry_point = nullptr;
-		static bool initialised = false;
 
 		struct scope_reference
 		{
@@ -109,17 +108,22 @@ namespace codegen
 			return builders.top();
 		}
 
-		void initialise()
+		void initialise(std::string filename)
 		{
-			if(initialised)
-			{
-				return;
-			}
+			filename += ".psy";
 			ctx = std::make_unique<llvm::LLVMContext>();
-			mod = std::make_unique<llvm::Module>("apparantly a jit", *ctx);
+			mod = std::make_unique<llvm::Module>(filename, *ctx);
 
 			builders.emplace(*ctx);
-			initialised = true;
+		}
+
+		void terminate()
+		{
+			entry_point = nullptr;
+			named_values.clear();
+			builders = {};
+			mod = nullptr;
+			ctx = nullptr;
 		}
 	}
 
@@ -435,7 +439,8 @@ namespace codegen
 
 	void generate(const ast& tree, std::string filename)
 	{
-		context::initialise();
+		context::initialise(filename);
+		filename += ".o";
 		const auto& root = tree.get({});
 		for(std::size_t i = 0; i < root.children.size(); i++)
 		{
@@ -466,7 +471,6 @@ namespace codegen
 		// configure module (no i have no idea whats going on).
 		context::mod->setDataLayout(target_machine->createDataLayout());
 		context::mod->setTargetTriple(target_triple);
-		filename += ".o";
 		std::error_code ec;
 		llvm::raw_fd_ostream dst(filename, ec, llvm::sys::fs::OF_None);
 		if(ec)
@@ -481,5 +485,7 @@ namespace codegen
 		}
 		pass.run(*context::mod);
 		dst.flush();
+
+		context::terminate();
 	}
 }
