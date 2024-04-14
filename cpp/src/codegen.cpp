@@ -166,7 +166,7 @@ namespace codegen
 
 	llvm::Value* codegen_bool_literal(const ast::node& node, const ast::bool_literal& payload, const ast::path_t& path, const ast& tree)
 	{
-		return nullptr;
+		return llvm::ConstantInt::get(*context::ctx, llvm::APInt{1, payload.val ? 1u : 0u, true});
 	}
 
 	llvm::Value* codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree);
