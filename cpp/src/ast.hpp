@@ -32,7 +32,9 @@ struct ast
 		{
 			diag::assert_that(
 				type == lexer::token::type::minus ||
-				type == lexer::token::type::plus,
+				type == lexer::token::type::plus ||
+				type == lexer::token::type::double_equals ||
+				type == lexer::token::type::equals,
 				"internal compiler error: parsed a binary via lexer token type that doesn't represent a binary operator."
 			);
 			return std::format("binary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);

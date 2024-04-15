@@ -169,6 +169,17 @@ namespace codegen
 		return nullptr;
 	}
 
+	llvm::Value* dereference_ptr(llvm::Value* ptr)
+	{
+		if(ptr->getType()->isPointerTy())
+		{
+			llvm::Type* value_type = static_cast<llvm::AllocaInst*>(ptr)->getAllocatedType();
+			//return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+			ptr = context::current_builder().CreateLoad(value_type, ptr, ptr->getName());
+		}
+		return ptr;
+	}
+
 	template<typename T>
 	llvm::Value* codegen_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
 
@@ -229,6 +240,14 @@ namespace codegen
 		volatile llvm::Type* lhs_t = lhs_value->getType();
 		volatile llvm::Type* rhs_t = rhs_value->getType();
 
+		const bool want_lhs_ptr = op.type == lexer::token::type::equals;
+		if(!want_lhs_ptr && lhs_value->getType() != rhs_value->getType())
+		{
+			// if the types dont match...
+			// is lhs T* where rhs is T? then we dereference.
+			lhs_value = dereference_ptr(lhs_value);
+		}
+
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
@@ -236,6 +255,14 @@ namespace codegen
 			break;
 			case lexer::token::type::minus:
 				return context::current_builder().CreateSub(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::double_equals:
+				return context::current_builder().CreateICmpEQ(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::equals:
+			{
+				return context::current_builder().CreateStore(rhs_value, lhs_value);
+			}
 			break;
 			default:
 				diag::error("internal compiler error: a particular binary operator (nearby to line {}) was not recognised in the context of its equivalent LLVM-IR.", node.meta.line_number);
@@ -249,9 +276,17 @@ namespace codegen
 		llvm::Function* func = context::mod->getFunction(payload.function_name);
 		diag::assert_that(func != nullptr, std::format("internal compiler error: could not locate function {} within LLVM module.", payload.function_name));
 		std::vector<llvm::Value*> param_values = {};
-		for(const ast::expression& param : payload.params)
+		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
+			const ast::expression& param = payload.params[i];
 			llvm::Value* param_val = codegen_expression(node, param, path, tree);
+
+			llvm::Argument* arg = func->getArg(i);
+			// types dont match. probably a pointer we need to dereference.
+			if(param_val->getType() != arg->getType() && param_val->getType()->isPointerTy())
+			{
+				param_val = dereference_ptr(param_val);
+			}
 			diag::assert_that(param_val != nullptr, std::format("internal compiler error: retrieving LLVM value for parameter {} in function call {} yielded nullptr.", param_values.size(), payload.function_name));
 			param_values.push_back(param_val);
 		}
@@ -299,7 +334,7 @@ namespace codegen
 		}
 		llvm::Value* retval = codegen_expression(node, payload.value.value(), path, tree);
 		diag::assert_that(retval != nullptr, "fooey");
-		context::current_builder().CreateRet(retval);
+		context::current_builder().CreateRet(dereference_ptr(retval));
 		return retval;
 	}
 
@@ -362,19 +397,24 @@ namespace codegen
 		return var;
 	}
 
+	// note: 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
 		// is it a local variable?
+		// var is the real thing.
 		llvm::AllocaInst* var = context::try_find_variable(path, payload.name);
 		if(var != nullptr)
 		{
-			return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+			// this is a copy.
+			//return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+			return var;
 		}
 
 		// how about a function parameter?
 		llvm::Function* enclosing_function = context::get_enclosing_function(path);
 		if(enclosing_function != nullptr)
 		{
+			llvm::Argument* arg;
 			for(auto iter = enclosing_function->arg_begin(); iter != enclosing_function->arg_end(); iter++)
 			{
 				if(iter->getName() == payload.name)

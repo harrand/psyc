@@ -186,6 +186,13 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::commar});
 			}
+			else if(data.starts_with("=="))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::double_equals});
+				// == is 2 chars unlike the others. advance an additional time now.
+				cursor++;
+			}
 			else if(data.starts_with("="))
 			{
 				emit_word();

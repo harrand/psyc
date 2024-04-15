@@ -229,10 +229,9 @@ namespace parser
 			this->stash_index();
 			// to help understand whats going on here, see the variant types in ast::expression::expr.
 			// what we're doing here is going through each possible type and attempting to parse.
-			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus});	
+			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus, lexer::token::type::double_equals, lexer::token::type::equals});	
 			if(maybe_operator.has_value())
 			{
-				volatile lexer::token::type tttt = maybe_operator.value();
 				// could either be a unary or binary operator, depending on the token.
 				// next thing we want is definitely an expression, either way.
 				std::optional<ast::expression> expression_a = this->try_parse_expression();

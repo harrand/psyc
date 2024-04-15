@@ -91,7 +91,7 @@ namespace semantic
 	void analyse_binary_operator(const ast::node& node, const std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
 	{
 		const auto& [op, expr1, expr2] = payload;
-		if(op.type == lexer::token::type::plus || op.type == lexer::token::type::minus)
+		if(op.type == lexer::token::type::plus || op.type == lexer::token::type::minus || op.type == lexer::token::type::double_equals || op.type == lexer::token::type::equals)
 		{
 			semantic_assert
 			(
@@ -100,7 +100,8 @@ namespace semantic
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr1->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr1->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr1->expr) ||
-				std::holds_alternative<ast::identifier>(expr1->expr))
+				std::holds_alternative<ast::identifier>(expr1->expr)) ||
+				std::holds_alternative<ast::function_call>(expr1->expr)
 
 				&&
 
@@ -109,9 +110,10 @@ namespace semantic
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr2->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr2->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr2->expr) ||
-				std::holds_alternative<ast::identifier>(expr2->expr)),
+				std::holds_alternative<ast::identifier>(expr2->expr)) ||
+				std::holds_alternative<ast::function_call>(expr2->expr),
 				node,
-				std::format("both sides of binary operator \"{}\" must either be an integer-literal, decimal-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
+				std::format("both sides of binary operator \"{}\" must either be an integer-literal, decimal-literal, subexpression, funciton-call or identifier", lexer::token_type_names[static_cast<int>(op.type)])
 
 			);
 		}
