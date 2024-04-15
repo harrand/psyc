@@ -265,7 +265,29 @@ namespace codegen
 	
 	llvm::Value* codegen_if_statement(const ast::node& node, const ast::if_statement& payload, const ast::path_t& path, const ast& tree)
 	{
-		return nullptr;
+		llvm::Value* cond_value = codegen_expression(node, payload.condition, path, tree);
+		diag::assert_that(cond_value != nullptr, std::format("internal compiler error: if-condition expression codegen yielded nullptr."));
+		cond_value = context::current_builder().CreateICmpNE(cond_value, llvm::ConstantInt::get(cond_value->getType(), llvm::APInt{cond_value->getType()->getIntegerBitWidth(), 0u}), "ifcond");
+
+		llvm::Function* enclosing_function = context::get_enclosing_function(path);
+		llvm::BasicBlock* if_true = llvm::BasicBlock::Create(*context::ctx, "then", enclosing_function);
+		llvm::BasicBlock* after_if = llvm::BasicBlock::Create(*context::ctx, "after_if");
+		context::current_builder().CreateCondBr(cond_value, if_true, after_if);
+
+		enclosing_function->insert(enclosing_function->end(), after_if);
+
+		context::builders.emplace(if_true);
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			const auto& child = node.children[i];
+			ast::path_t child_path = path;
+			child_path.push_back(i);
+			codegen_thing(child, child.payload, child_path, tree);
+		}
+		context::current_builder().CreateBr(after_if);
+		context::builders.pop();
+		context::builders.pop(); context::builders.emplace(after_if);
+		return cond_value;
 	}
 
 	llvm::Value* codegen_return_statement(const ast::node& node, const ast::return_statement& payload, const ast::path_t& path, const ast& tree)
@@ -310,6 +332,7 @@ namespace codegen
 				context::entry_point = entry_block;
 			}
 			context::builders.emplace(entry_block);
+			std::size_t scope_level = context::builders.size();
 			for(std::size_t i = 0; i < node.children.size(); i++)
 			{
 				const auto& child = node.children[i];
@@ -317,7 +340,10 @@ namespace codegen
 				child_path.push_back(i);
 				codegen_thing(child, child.payload, child_path, tree);
 			}
-			context::builders.pop();
+			while(context::builders.size() > scope_level)
+			{
+				context::builders.pop();
+			}
 		}
 		return nullptr;
 	}
