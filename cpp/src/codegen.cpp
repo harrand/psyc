@@ -294,12 +294,6 @@ namespace codegen
 		}
 		llvm::FunctionType* fty = llvm::FunctionType::get(return_type, param_types, false);
 		llvm::Function* function = llvm::Function::Create(fty, llvm::Function::ExternalLinkage, payload.function_name, *context::mod);
-		// function_name "main" is an entry point.
-		llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(*context::ctx, "entry", function);
-		if(payload.function_name == "main")
-		{
-			context::entry_point = entry_block;
-		}
 		std::size_t arg_counter = 0;
 		for(llvm::Argument& arg : function->args())
 		{
@@ -307,16 +301,24 @@ namespace codegen
 			arg_counter++;
 		}
 		context::register_function(path, function);
-		// new block. child nodes now get processed.
-		context::builders.emplace(entry_block);
-		for(std::size_t i = 0; i < node.children.size(); i++)
+		if(!payload.is_extern)
 		{
-			const auto& child = node.children[i];
-			ast::path_t child_path = path;
-			child_path.push_back(i);
-			codegen_thing(child, child.payload, child_path, tree);
+			llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(*context::ctx, "entry", function);
+			// function_name "main" is an entry point.
+			if(payload.function_name == "main")
+			{
+				context::entry_point = entry_block;
+			}
+			context::builders.emplace(entry_block);
+			for(std::size_t i = 0; i < node.children.size(); i++)
+			{
+				const auto& child = node.children[i];
+				ast::path_t child_path = path;
+				child_path.push_back(i);
+				codegen_thing(child, child.payload, child_path, tree);
+			}
+			context::builders.pop();
 		}
-		context::builders.pop();
 		return nullptr;
 	}
 

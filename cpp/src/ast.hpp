@@ -185,6 +185,7 @@ struct ast
 		std::string function_name;
 		std::vector<variable_declaration> params = {};
 		std::string return_type;
+		bool is_extern = false;
 
 		std::string to_string() const
 		{

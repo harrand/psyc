@@ -403,8 +403,19 @@ namespace parser
 			this->must_match(lexer::token::type::arrow);
 			this->must_match(lexer::token::type::identifier);
 			std::string return_type = this->last_value();
+			bool is_extern = false;
+			if(this->match(lexer::token::type::equals))
+			{
+				// you're trying to assign something to a function.
+				// it must be `extern`
+				this->must_match(lexer::token::type::keyword);
+				std::string keyword = this->last_value();
+				parser_assert(keyword == "extern", std::format("attempt to assign an identifier \"{}\"to a function declaration. this is only valid for \"extern\"", keyword));
+				this->must_match(lexer::token::type::semicolon);
+				is_extern = true;
+			}
 			this->unstash_index();
-			return ast::function_definition{.function_name = function_name, .params = params, .return_type = return_type};
+			return ast::function_definition{.function_name = function_name, .params = params, .return_type = return_type, .is_extern = is_extern};
 		}
 
 		// a block is not a formal parser construct.
@@ -485,10 +496,14 @@ namespace parser
 				if(maybe_function_definition.has_value())
 				{
 					this->push_payload(maybe_function_definition.value());
-					auto blk = this->parse_block();
-					for(const auto& contents : blk)
+					// if not extern, then we have a function definition block next.
+					if(!maybe_function_definition.value().is_extern)
 					{
-						this->handle_payload(contents);
+						auto blk = this->parse_block();
+						for(const auto& contents : blk)
+						{
+							this->handle_payload(contents);
+						}
 					}
 					this->pop();
 				}

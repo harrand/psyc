@@ -26,6 +26,7 @@ namespace lexer
 		constexpr const char* keywords[] =
 		{
 			"return", // return from current function.
+			"extern",
 			"if", // if-statement
 		};
 
