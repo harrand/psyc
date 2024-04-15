@@ -409,12 +409,19 @@ namespace codegen
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			const auto& child = node.children[i];
-			if_block_contains_return |= std::holds_alternative<ast::return_statement>(child.payload);
 			ast::path_t child_path = path;
 			child_path.push_back(i);
+			if(std::holds_alternative<ast::return_statement>(child.payload))
+			{
+				if_block_contains_return = true;
+				codegen_expression(node, payload.loop, path, tree);
+			}
 			codegen_thing(child, child.payload, child_path, tree);
 		}
-		codegen_expression(node, payload.loop, path, tree);
+		if(!if_block_contains_return)
+		{
+			codegen_expression(node, payload.loop, path, tree);
+		}
 		if(!if_block_contains_return)
 		{
 			context::current_builder().CreateCondBr(codegen_expression(node, payload.end, path, tree), loop_block, after_for);
@@ -467,16 +474,28 @@ namespace codegen
 			}
 			context::builders.emplace(entry_block);
 			std::size_t scope_level = context::builders.size();
+			bool auto_return = return_type->isVoidTy();
 			for(std::size_t i = 0; i < node.children.size(); i++)
 			{
 				const auto& child = node.children[i];
 				ast::path_t child_path = path;
 				child_path.push_back(i);
 				codegen_thing(child, child.payload, child_path, tree);
+
+				if(i == (node.children.size() - 1))
+				{
+					// if we're the last thing in the block check if we need to implicltly return.
+					auto_return &= !std::holds_alternative<ast::return_statement>(child.payload);
+				}
 			}
 			while(context::builders.size() > scope_level)
 			{
 				context::builders.pop();
+			}
+			// if we're in a void function and the last instruction in the block isnt a return. let's add it for them.
+			if(auto_return)
+			{
+				codegen_return_statement(node, ast::return_statement{.value = std::nullopt}, path, tree);
 			}
 		}
 		return nullptr;
