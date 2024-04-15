@@ -26,6 +26,7 @@ namespace codegen
 		//static std::unique_ptr<llvm::IRBuilder<>> builder = nullptr;
 		static std::unique_ptr<llvm::Module> mod = nullptr;
 		static std::map<std::string, llvm::Value*> named_values = {};
+		static std::map<std::string, llvm::Function*> pre_declared_functions = {};
 		static llvm::BasicBlock* entry_point = nullptr;
 
 		struct scope_reference
@@ -444,24 +445,40 @@ namespace codegen
 		return retval;
 	}
 
-	llvm::Value* codegen_function_definition(const ast::node& node, const ast::function_definition& payload, const ast::path_t& path, const ast& tree)
+	llvm::Function* make_function(const ast::function_definition& def)
 	{
-		llvm::Type* return_type = get_llvm_type(payload.return_type);
+		// create our function now.
+		llvm::Type* return_type = get_llvm_type(def.return_type);
 		std::vector<llvm::Type*> param_types;
-		param_types.reserve(payload.params.size());
-		for(const auto& param : payload.params)
+		param_types.reserve(def.params.size());
+		for(const auto& param : def.params)
 		{
 			llvm::Type* param_type = get_llvm_type(param.type_name);
-			diag::assert_that(param_type != nullptr, std::format("internal compiler error: parameter \"{}\" of function \"{}\" failed to be resolved to a valid LLVM type.", param.var_name, payload.function_name));
+			diag::assert_that(param_type != nullptr, std::format("internal compiler error: parameter \"{}\" of function \"{}\" failed to be resolved to a valid LLVM type.", param.var_name, def.function_name));
 			param_types.push_back(param_type);
 		}
 		llvm::FunctionType* fty = llvm::FunctionType::get(return_type, param_types, false);
-		llvm::Function* function = llvm::Function::Create(fty, llvm::Function::ExternalLinkage, payload.function_name, *context::mod);
+		llvm::Function* function = llvm::Function::Create(fty, llvm::Function::ExternalLinkage, def.function_name, *context::mod);
 		std::size_t arg_counter = 0;
 		for(llvm::Argument& arg : function->args())
 		{
-			arg.setName(payload.params[arg_counter].var_name);
+			arg.setName(def.params[arg_counter].var_name);
 			arg_counter++;
+		}
+		return function;
+	}
+
+	llvm::Value* codegen_function_definition(const ast::node& node, const ast::function_definition& payload, const ast::path_t& path, const ast& tree)
+	{
+		llvm::Function* function = nullptr;
+		auto function_iter = context::pre_declared_functions.find(payload.function_name);
+		if(function_iter == context::pre_declared_functions.end())
+		{
+			function = make_function(payload);
+		}
+		else
+		{
+			function = function_iter->second;
 		}
 		context::register_function(path, function);
 		if(!payload.is_extern)
@@ -474,7 +491,7 @@ namespace codegen
 			}
 			context::builders.emplace(entry_block);
 			std::size_t scope_level = context::builders.size();
-			bool auto_return = return_type->isVoidTy();
+			bool auto_return = function->getReturnType()->isVoidTy();
 			for(std::size_t i = 0; i < node.children.size(); i++)
 			{
 				const auto& child = node.children[i];
@@ -631,9 +648,32 @@ namespace codegen
 		llvm::Value* val = codegen_thing(node, node.payload, path, tree);
 	}
 
+	void codegen_function_predefs(const ast& tree, ast::path_t path = {})
+	{
+		const ast::node& node = tree.get(path);
+		if(std::holds_alternative<ast::function_definition>(node.payload))
+		{
+			// foreach function with a definition.
+			// pretend its extern for now so its pre-defined at the top of the IR.
+			// this means it can be referenced before its defined.
+			auto def = std::get<ast::function_definition>(node.payload);
+			if(def.function_name != "main")
+			{
+				context::pre_declared_functions[def.function_name] = make_function(def);
+			}
+		}
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			auto child_path = path;
+			child_path.push_back(i);
+			codegen_function_predefs(tree, child_path);
+		}
+	}
+
 	std::filesystem::path generate(const ast& tree, std::string filename)
 	{
 		context::initialise(filename);
+		codegen_function_predefs(tree);
 		filename += ".o";
 		const auto& root = tree.get({});
 		for(std::size_t i = 0; i < root.children.size(); i++)
