@@ -312,14 +312,23 @@ namespace codegen
 		enclosing_function->insert(enclosing_function->end(), after_if);
 
 		context::builders.emplace(if_true);
+		// note: basicblocks cannot have terminators in the middle, only as the last instruction.
+		// remember a terminator is a branch/ret
+		// so if our if statement block contains a return, it already has a terminator. that means adding the branch to to after-if is erroneous.
+		// hence this if_block_contains_return check.
+		bool if_block_contains_return = false;
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			const auto& child = node.children[i];
+			if_block_contains_return |= std::holds_alternative<ast::return_statement>(child.payload);
 			ast::path_t child_path = path;
 			child_path.push_back(i);
 			codegen_thing(child, child.payload, child_path, tree);
 		}
-		context::current_builder().CreateBr(after_if);
+		if(!if_block_contains_return)
+		{
+			context::current_builder().CreateBr(after_if);
+		}
 		context::builders.pop();
 		context::builders.pop(); context::builders.emplace(after_if);
 		return cond_value;
