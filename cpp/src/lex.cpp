@@ -22,6 +22,7 @@ namespace lexer
 		constexpr auto npos = std::numeric_limits<std::size_t>::max();
 		std::size_t current_word_begin = npos;
 		std::size_t current_string_literal_begin = npos;
+		std::size_t current_char_literal_begin = npos;
 
 		constexpr const char* keywords[] =
 		{
@@ -46,7 +47,7 @@ namespace lexer
 
 		auto emit_word = [&]()
 		{
-			if(current_string_literal_begin != npos)
+			if(current_char_literal_begin != npos || current_string_literal_begin != npos)
 			{
 				return;
 			}
@@ -101,11 +102,39 @@ namespace lexer
 			}
 		};
 
+		auto emit_char_literal = [&]()
+		{
+			if(current_char_literal_begin != npos)
+			{
+				char value = psy.data()[current_char_literal_begin + 1];
+				ret.push_back({.id = token::type::char_literal, .value = std::string{value}});
+				current_char_literal_begin = npos;
+			}
+		};
+
 		std::size_t line_counter = 1;
 
 		while(cursor < psy.size())
 		{
 			std::string_view data = psy.substr(cursor);
+			if(data.starts_with("'"))
+			{
+				if(current_char_literal_begin == npos)
+				{
+					current_char_literal_begin = cursor;
+				}
+				else
+				{
+					emit_char_literal();
+					cursor++;
+					continue;
+				}
+			}
+			else if(current_char_literal_begin != npos)
+			{
+				cursor++;
+				continue;
+			}
 			if(data.starts_with("\""))
 			{
 				if(current_string_literal_begin == npos)
@@ -115,6 +144,8 @@ namespace lexer
 				else
 				{
 					emit_string_literal();
+					cursor++;
+					continue;
 				}
 			}
 			else if(current_string_literal_begin != npos)
@@ -242,7 +273,7 @@ namespace lexer
 			}
 			else
 			{
-				if(current_word_begin == npos && current_string_literal_begin == npos)
+				if(current_word_begin == npos && current_char_literal_begin == npos && current_string_literal_begin == npos)
 				{
 					current_word_begin = cursor;
 				}

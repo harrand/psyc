@@ -69,6 +69,15 @@ struct ast
 		};
 	};
 
+	struct char_literal
+	{
+		char val;
+		std::string to_string() const
+		{
+			return std::format("char-literal: {}", val);
+		}
+	};
+
 	struct string_literal
 	{
 		std::string val;
@@ -118,6 +127,7 @@ struct ast
 			std::tuple<binary_operator, util::box<expression>, util::box<expression>>,
 			integer_literal,
 			decimal_literal,
+			char_literal,
 			string_literal,
 			bool_literal,
 			function_call,
@@ -221,7 +231,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

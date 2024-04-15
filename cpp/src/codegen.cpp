@@ -142,6 +142,10 @@ namespace codegen
 		{
 			return llvm::Type::getInt16Ty(*context::ctx);
 		}
+		else if(type_name == "i8" || type_name == "u8")
+		{
+			return llvm::Type::getInt8Ty(*context::ctx);
+		}
 		else if(type_name == "f64")
 		{
 			return llvm::Type::getDoubleTy(*context::ctx);
@@ -181,8 +185,42 @@ namespace codegen
 		return ptr;
 	}
 
+	/*
+	// warning: this code is cursed. caused me infinite loops in generated code.
+	void try_narrow(llvm::Value*& lhs, llvm::Value*& rhs)
+	{
+		bool prefer_left = lhs->getType()->getIntegerBitWidth() > rhs->getType()->getIntegerBitWidth();
+		if(prefer_left)
+		{
+			rhs = context::current_builder().CreateSExt(rhs, lhs->getType());
+		}
+		else
+		{
+			lhs = context::current_builder().CreateSExt(lhs, rhs->getType());
+		}
+	}
+	*/
+
+	void try_narrow_rhs(llvm::Value* lhs, llvm::Value*& rhs)
+	{
+		bool rhs_must_shrink = lhs->getType()->getIntegerBitWidth() < rhs->getType()->getIntegerBitWidth();
+		if(rhs_must_shrink)
+		{
+			rhs = context::current_builder().CreateTrunc(rhs, lhs->getType());
+		}
+		else
+		{
+			rhs = context::current_builder().CreateSExt(rhs, lhs->getType());
+		}
+	}
+
 	template<typename T>
 	llvm::Value* codegen_thing(const ast::node& node, const T& payload_like, const ast::path_t& path, const ast& tree);
+
+	llvm::Value* codegen_char_literal(const ast::node& node, const ast::char_literal& payload, const ast::path_t& path, const ast& tree)
+	{
+		return llvm::ConstantInt::get(*context::ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)});
+	}
 
 	llvm::Value* codegen_decimal_literal(const ast::node& node, const ast::decimal_literal& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -238,15 +276,23 @@ namespace codegen
 		const auto&[op, lhs, rhs] = payload;
 		llvm::Value* lhs_value = codegen_expression(node, *lhs, path, tree);
 		llvm::Value* rhs_value = codegen_expression(node, *rhs, path, tree);
-		volatile llvm::Type* lhs_t = lhs_value->getType();
-		volatile llvm::Type* rhs_t = rhs_value->getType();
+		llvm::Type* lhs_t = lhs_value->getType();
+		llvm::Type* rhs_t = rhs_value->getType();
 
 		const bool want_lhs_ptr = op.type == lexer::token::type::equals;
-		if(!want_lhs_ptr && lhs_value->getType() != rhs_value->getType())
+		if(!want_lhs_ptr && lhs_t != rhs_t)
 		{
 			// if the types dont match...
 			// is lhs T* where rhs is T? then we dereference.
 			lhs_value = dereference_ptr(lhs_value);
+			lhs_t = lhs_value->getType();
+		}
+
+		// i.e they are both integers but of different size/signedness.
+		if(lhs_t != rhs_t && lhs_t->isIntegerTy() && rhs_t->isIntegerTy())
+		{
+			// warning: can have cursed results. disabled for now (meaning that assignments additions etc must have exact same integer types.)
+			//try_narrow(lhs_value, rhs_value);
 		}
 
 		switch(op.type)
@@ -290,6 +336,11 @@ namespace codegen
 			if(param_val->getType() != arg->getType() && param_val->getType()->isPointerTy())
 			{
 				param_val = dereference_ptr(param_val);
+			}
+			if(param_val->getType()->isIntegerTy() && arg->getType()->isIntegerTy() && (param_val->getType() != arg->getType()))
+			{
+				// integers of different bits/signedness. try narrowing.
+				try_narrow_rhs(arg, param_val);
 			}
 			diag::assert_that(param_val != nullptr, std::format("internal compiler error: retrieving LLVM value for parameter {} in function call {} yielded nullptr.", param_values.size(), payload.function_name));
 			param_values.push_back(param_val);
@@ -486,6 +537,10 @@ namespace codegen
 			else if constexpr(std::is_same_v<T, ast::decimal_literal>)
 			{
 				ret = codegen_decimal_literal(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::char_literal>)
+			{
+				ret = codegen_char_literal(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::integer_literal>)
 			{

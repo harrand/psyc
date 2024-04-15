@@ -158,6 +158,20 @@ namespace parser
 			return ast::decimal_literal{.val = std::stod(this->last_value())};
 		}
 
+		std::optional<ast::char_literal> try_parse_char_literal()
+		{
+			this->stash_index();
+			if(!this->match(lexer::token::type::char_literal))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			this->unstash_index();
+			std::string last = this->last_value();
+			parser_assert(last.size() == 1, std::format("char literal must contain exactly one character. yours is '{}'", last));
+			return ast::char_literal{.val = last.front()};
+		}
+
 		std::optional<ast::string_literal> try_parse_string_literal()
 		{
 			this->stash_index();
@@ -264,6 +278,13 @@ namespace parser
 			{
 				this->unstash_index();
 				return ast::expression{.expr = maybe_decimal_literal.value()};
+			}
+
+			auto maybe_char_literal = this->try_parse_char_literal();
+			if(maybe_char_literal.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_char_literal.value()};
 			}
 
 			auto maybe_string_literal = this->try_parse_string_literal();

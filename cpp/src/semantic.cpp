@@ -243,6 +243,7 @@ namespace semantic
 			if constexpr(std::is_same_v<T, std::monostate>
 			|| std::is_same_v<T, ast::decimal_literal>
 			|| std::is_same_v<T, ast::integer_literal>
+			|| std::is_same_v<T, ast::char_literal>
 			|| std::is_same_v<T, ast::string_literal>
 			|| std::is_same_v<T, ast::bool_literal>){}
 			else if constexpr(std::is_same_v<T, ast::function_call>)
