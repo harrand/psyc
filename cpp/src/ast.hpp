@@ -34,7 +34,8 @@ struct ast
 				type == lexer::token::type::minus ||
 				type == lexer::token::type::plus ||
 				type == lexer::token::type::double_equals ||
-				type == lexer::token::type::equals,
+				type == lexer::token::type::equals ||
+				type == lexer::token::type::not_equals,
 				"internal compiler error: parsed a binary via lexer token type that doesn't represent a binary operator."
 			);
 			return std::format("binary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);
@@ -157,6 +158,15 @@ struct ast
 		}
 	};
 
+	struct for_statement
+	{
+		ast::expression start, end, loop;
+		std::string to_string() const
+		{
+			return std::format("for-statement: for({}, {}, {})", start.to_string(), end.to_string(), loop.to_string());
+		}
+	};
+
 	struct return_statement
 	{
 		std::optional<expression> value;
@@ -211,7 +221,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, bool_literal, function_call, expression, if_statement, return_statement, variable_declaration, function_definition>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

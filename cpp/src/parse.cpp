@@ -229,7 +229,7 @@ namespace parser
 			this->stash_index();
 			// to help understand whats going on here, see the variant types in ast::expression::expr.
 			// what we're doing here is going through each possible type and attempting to parse.
-			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus, lexer::token::type::double_equals, lexer::token::type::equals});	
+			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus, lexer::token::type::double_equals, lexer::token::type::equals, lexer::token::type::not_equals});	
 			if(maybe_operator.has_value())
 			{
 				// could either be a unary or binary operator, depending on the token.
@@ -310,6 +310,33 @@ namespace parser
 				this->must_match(lexer::token::type::close_paren);
 				this->unstash_index();
 				return ast::if_statement{.condition = maybe_condition_expr.value()};
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
+		std::optional<ast::for_statement> try_parse_for_statement()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::keyword) && this->last_value() == "for")
+			{
+				this->must_match(lexer::token::type::open_paren);
+				auto maybe_start_expr = this->try_parse_expression();
+				this->parser_assert(maybe_start_expr.has_value(), "first (begin) portion of for-statement must be an expression. failed to parse expression.");
+
+				this->must_match(lexer::token::type::semicolon);
+
+				auto maybe_end_expr = this->try_parse_expression();
+				this->parser_assert(maybe_end_expr.has_value(), "second (end) portion of for-statement must be an expression. failed to parse expression.");
+
+				this->must_match(lexer::token::type::semicolon);
+
+				auto maybe_loop_expr = this->try_parse_expression();
+				this->parser_assert(maybe_loop_expr.has_value(), "third (loop) portion of for-statement must be an expression. failed to parse expression.");
+
+				this->must_match(lexer::token::type::close_paren);
+				this->unstash_index();
+				return ast::for_statement{.start = maybe_start_expr.value(), .end = maybe_end_expr.value(), .loop = maybe_loop_expr.value()};
 			}
 			this->restore_index();
 			return std::nullopt;
@@ -447,6 +474,14 @@ namespace parser
 					//ret.insert(ret.end(), if_block.begin(), if_block.end());
 				}
 
+				auto maybe_for_statement = this->try_parse_for_statement();
+				if(maybe_for_statement.has_value())
+				{
+					// see above for if-statement.
+					ret.push_back(maybe_for_statement.value());
+					return ret;
+				}
+
 				auto maybe_variable_declaration = this->try_parse_variable_declaration();
 				if(maybe_variable_declaration.has_value())
 				{
@@ -465,7 +500,7 @@ namespace parser
 		void handle_payload(ast::node::payload_t payload)
 		{
 			this->push_payload(payload);
-			if(std::holds_alternative<ast::if_statement>(payload))
+			if(std::holds_alternative<ast::if_statement>(payload) || std::holds_alternative<ast::for_statement>(payload))
 			{
 				// if we're an if-statement, we need to parse another block and set all those as children, and THEN pop.
 				auto if_blk = this->parse_block();

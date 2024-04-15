@@ -3,6 +3,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/FileSystem.h"
@@ -259,6 +260,9 @@ namespace codegen
 			case lexer::token::type::double_equals:
 				return context::current_builder().CreateICmpEQ(lhs_value, rhs_value);
 			break;
+			case lexer::token::type::not_equals:
+				return context::current_builder().CreateICmpNE(lhs_value, rhs_value);
+			break;
 			case lexer::token::type::equals:
 			{
 				return context::current_builder().CreateStore(rhs_value, lhs_value);
@@ -332,6 +336,41 @@ namespace codegen
 		context::builders.pop();
 		context::builders.pop(); context::builders.emplace(after_if);
 		return cond_value;
+	}
+
+	llvm::Value* codegen_for_statement(const ast::node& node, const ast::for_statement& payload, const ast::path_t& path, const ast& tree)
+	{
+		// first thing is easy - codegen the initial expression.
+		llvm::Value* start = codegen_expression(node, payload.start, path, tree);
+		diag::assert_that(start != nullptr, "fooey");
+
+		llvm::Function* enclosing_function = context::get_enclosing_function(path);
+		llvm::BasicBlock* loop_block = llvm::BasicBlock::Create(*context::ctx, "for_loop", enclosing_function);
+		llvm::BasicBlock* after_for = llvm::BasicBlock::Create(*context::ctx, "after_for");
+		context::current_builder().CreateCondBr(codegen_expression(node, payload.end, path, tree), loop_block, after_for);
+		enclosing_function->insert(enclosing_function->end(), after_for);
+		context::builders.emplace(loop_block);
+		// note: basicblocks cannot have terminators in the middle, only as the last instruction.
+		// remember a terminator is a branch/ret
+		// so if our if statement block contains a return, it already has a terminator. that means adding the branch to to after-if is erroneous.
+		// hence this if_block_contains_return check.
+		bool if_block_contains_return = false;
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			const auto& child = node.children[i];
+			if_block_contains_return |= std::holds_alternative<ast::return_statement>(child.payload);
+			ast::path_t child_path = path;
+			child_path.push_back(i);
+			codegen_thing(child, child.payload, child_path, tree);
+		}
+		codegen_expression(node, payload.loop, path, tree);
+		if(!if_block_contains_return)
+		{
+			context::current_builder().CreateCondBr(codegen_expression(node, payload.end, path, tree), loop_block, after_for);
+		}
+		context::builders.pop();
+		context::builders.pop(); context::builders.emplace(after_for);
+		return nullptr;
 	}
 
 	llvm::Value* codegen_return_statement(const ast::node& node, const ast::return_statement& payload, const ast::path_t& path, const ast& tree)
@@ -467,6 +506,10 @@ namespace codegen
 			else if constexpr(std::is_same_v<T, ast::if_statement>)
 			{
 				ret = codegen_if_statement(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::for_statement>)
+			{
+				ret = codegen_for_statement(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::return_statement>)
 			{

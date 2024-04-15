@@ -91,7 +91,7 @@ namespace semantic
 	void analyse_binary_operator(const ast::node& node, const std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
 	{
 		const auto& [op, expr1, expr2] = payload;
-		if(op.type == lexer::token::type::plus || op.type == lexer::token::type::minus || op.type == lexer::token::type::double_equals || op.type == lexer::token::type::equals)
+		if(op.type == lexer::token::type::plus || op.type == lexer::token::type::minus || op.type == lexer::token::type::double_equals || op.type == lexer::token::type::equals || op.type == lexer::token::type::not_equals)
 		{
 			semantic_assert
 			(
@@ -159,6 +159,11 @@ namespace semantic
 	}
 	
 	void analyse_if_statement(const ast::node& node, const ast::if_statement& payload, const ast::path_t& path, const ast& tree)
+	{
+
+	}
+
+	void analyse_for_statement(const ast::node& node, const ast::for_statement& payload, const ast::path_t& path, const ast& tree)
 	{
 
 	}
@@ -247,6 +252,10 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, ast::if_statement>)
 			{
 				analyse_if_statement(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::for_statement>)
+			{
+				analyse_for_statement(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::return_statement>)
 			{
