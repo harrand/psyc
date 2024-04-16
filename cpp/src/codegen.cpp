@@ -220,15 +220,23 @@ namespace codegen
 		return nullptr;
 	}
 
-	llvm::Value* dereference_ptr(llvm::Value* ptr)
+	// note: assume `type` is actually the underlying type. NOT a reinterpret_cast.
+	// use this to retrieve the real value from a GEP.
+	llvm::Value* load_as(llvm::Value* ptr, llvm::Type* hint = nullptr)
 	{
-		if(ptr->getType()->isPointerTy())
+		if(hint == nullptr)
 		{
-			llvm::Type* value_type = static_cast<llvm::AllocaInst*>(ptr)->getAllocatedType();
-			//return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
-			ptr = context::current_builder().CreateLoad(value_type, ptr, ptr->getName());
+			if(ptr->getType()->isPointerTy())
+			{
+				hint = static_cast<llvm::AllocaInst*>(ptr)->getAllocatedType();
+			}
+			else
+			{
+				// give up. just return itself.
+				return ptr;
+			}
 		}
-		return ptr;
+		return context::current_builder().CreateLoad(hint, ptr);
 	}
 
 	/*
@@ -328,7 +336,7 @@ namespace codegen
 		{
 			// if the types dont match...
 			// is lhs T* where rhs is T? then we dereference.
-			lhs_value = dereference_ptr(lhs_value);
+			lhs_value = load_as(lhs_value, rhs_t);
 			lhs_t = lhs_value->getType();
 		}
 
@@ -379,7 +387,7 @@ namespace codegen
 			// types dont match. probably a pointer we need to dereference.
 			if(param_val->getType() != arg->getType() && param_val->getType()->isPointerTy())
 			{
-				param_val = dereference_ptr(param_val);
+				param_val = load_as(param_val, arg->getType());
 			}
 			if(param_val->getType()->isIntegerTy() && arg->getType()->isIntegerTy() && (param_val->getType() != arg->getType()))
 			{
@@ -484,7 +492,7 @@ namespace codegen
 		}
 		llvm::Value* retval = codegen_expression(node, payload.value.value(), path, tree);
 		diag::assert_that(retval != nullptr, "fooey");
-		context::current_builder().CreateRet(dereference_ptr(retval));
+		context::current_builder().CreateRet(load_as(retval));
 		return retval;
 	}
 
@@ -628,11 +636,6 @@ namespace codegen
 		return nullptr;
 	}
 
-	llvm::Value* codegen_member_access(const ast::node& node, const ast::member_access& payload, const ast::path_t& path, const ast& tree)
-	{
-		return nullptr;
-	}
-
 	// note: 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -660,6 +663,38 @@ namespace codegen
 			}
 		}
 		return nullptr;
+	}
+
+	// note: this will return a pointer to the member. you want to load/store this depending on read/write.
+	llvm::Value* codegen_member_access(const ast::node& node, const ast::member_access& payload, const ast::path_t& path, const ast& tree)
+	{
+		llvm::Value* var = codegen_identifier(node, payload.lhs, path, tree);	
+		llvm::Type* struct_type = var->getType();
+		if(struct_type->isPointerTy())
+		{
+			struct_type = static_cast<llvm::AllocaInst*>(var)->getAllocatedType();
+		}
+		diag::assert_that(struct_type->isStructTy(), "member access on a non-struct is not allowed.");
+		// what struct are we trying to access
+		std::string struct_typename{struct_type->getStructName()};
+
+		auto iter = context::structs.find(struct_typename);
+		diag::assert_that(iter != context::structs.end(), "unknown struct name.");
+		const struct_meta& meta = iter->second;
+		// which data member are you after?
+		std::optional<std::size_t> desired_data_member_id = std::nullopt;
+		for(std::size_t i = 0; i < meta.data_members.size(); i++)
+		{
+			if(meta.data_members[i].var_name == payload.rhs.name)
+			{
+				// you want this data member.
+				desired_data_member_id = i;
+			}
+		}
+		diag::assert_that(desired_data_member_id.has_value(), "member access on a struct, but rhs of access was not a data member name.");
+		llvm::Value* ret = context::current_builder().CreateStructGEP(struct_type, var, desired_data_member_id.value());
+		//volatile llvm::Value* retcpy = context::current_builder().CreateLoad(get_llvm_type(meta.data_members[desired_data_member_id.value()].type_name), ret);
+		return ret;
 	}
 
 	template<typename P>

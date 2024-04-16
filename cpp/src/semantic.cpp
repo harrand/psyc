@@ -51,6 +51,7 @@ namespace semantic
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr->expr) ||
+				std::holds_alternative<ast::member_access>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
 				node,
 				std::format("right-side of unary operator \"{}\" must either be an integer-literal, decimal-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
@@ -64,6 +65,7 @@ namespace semantic
 				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr->expr) ||
+				std::holds_alternative<ast::member_access>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
 				node,
 				std::format("right-side of unary operator \"{}\" must either be an integer-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
@@ -76,6 +78,7 @@ namespace semantic
 				std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr->expr) ||
 				std::holds_alternative<ast::bool_literal>(expr->expr) ||
+				std::holds_alternative<ast::member_access>(expr->expr) ||
 				std::holds_alternative<ast::identifier>(expr->expr),
 				node,
 				std::format("right-side of unary operator \"{}\" must either be a bool-literal, subexpression or identifier", lexer::token_type_names[static_cast<int>(op.type)])
@@ -101,6 +104,7 @@ namespace semantic
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr1->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr1->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr1->expr) ||
+				std::holds_alternative<ast::member_access>(expr1->expr) ||
 				std::holds_alternative<ast::identifier>(expr1->expr)) ||
 				std::holds_alternative<ast::function_call>(expr1->expr)
 
@@ -111,6 +115,7 @@ namespace semantic
 				std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr2->expr) ||
 				std::holds_alternative<ast::decimal_literal>(expr2->expr) ||
 				std::holds_alternative<ast::integer_literal>(expr2->expr) ||
+				std::holds_alternative<ast::member_access>(expr2->expr) ||
 				std::holds_alternative<ast::identifier>(expr2->expr)) ||
 				std::holds_alternative<ast::function_call>(expr2->expr),
 				node,
