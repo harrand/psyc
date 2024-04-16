@@ -225,6 +225,16 @@ struct ast
 		}
 	};
 
+	struct struct_definition
+	{
+		std::string struct_name;
+
+		std::string to_string() const
+		{
+			return std::format("struct: {}", struct_name);
+		}
+	};
+
 	struct meta_region
 	{
 		std::string region_name;
@@ -240,7 +250,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, struct_definition, meta_region>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

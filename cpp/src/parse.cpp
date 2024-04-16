@@ -427,6 +427,27 @@ namespace parser
 			return ast::variable_declaration{.var_name = var_name, .type_name = type_name, .initialiser = initialiser};
 		}
 
+		std::optional<ast::struct_definition> try_parse_struct_definition()
+		{
+			this->stash_index();
+			// function definition *must* start with an identifier (function name)
+			if(!this->match(lexer::token::type::identifier))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+			std::string struct_name = this->last_value();
+			if(!(this->match(lexer::token::type::colon) && this->match(lexer::token::type::keyword)))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
+
+			parser_assert(this->last_value() == "struct", "why not is struct???");
+			this->unstash_index();
+			return ast::struct_definition{.struct_name = struct_name};
+		}
+
 		std::optional<ast::function_definition> try_parse_function_definition()
 		{
 			this->stash_index();
@@ -561,39 +582,53 @@ namespace parser
 		{
 			while(this->tokidx < this->tokens.size())
 			{
-				auto maybe_function_definition = this->try_parse_function_definition();
-				if(maybe_function_definition.has_value())
+				auto maybe_struct_definition = this->try_parse_struct_definition();
+				if(maybe_struct_definition.has_value())
 				{
-					this->push_payload(maybe_function_definition.value());
-					// if not extern, then we have a function definition block next.
-					if(!maybe_function_definition.value().is_extern)
+					this->push_payload(maybe_struct_definition.value());	
+					auto blk = this->parse_block();
+					for(const auto& contents : blk)
 					{
-						auto blk = this->parse_block();
-						for(const auto& contents : blk)
-						{
-							this->handle_payload(contents);
-						}
+						this->handle_payload(contents);
 					}
 					this->pop();
 				}
 				else
 				{
-					auto maybe_meta_region = this->try_parse_meta_region();
-					if(maybe_meta_region.has_value())
+					auto maybe_function_definition = this->try_parse_function_definition();
+					if(maybe_function_definition.has_value())
 					{
-						this->push_payload(maybe_meta_region.value());
-						auto blk = this->parse_block();
-						for(const auto& contents : blk)
+						this->push_payload(maybe_function_definition.value());
+						// if not extern, then we have a function definition block next.
+						if(!maybe_function_definition.value().is_extern)
 						{
-							this->handle_payload(contents);
+							auto blk = this->parse_block();
+							for(const auto& contents : blk)
+							{
+								this->handle_payload(contents);
+							}
 						}
+						this->pop();
 					}
 					else
 					{
-						// nothing parses. remember, we skip over comments etc anyway.
-						// so if the last thing in the program is comments, then it will continually be skipped over but not parse anything, causing an infinite loop.
-						// for that reason we just stop here.
-						break;
+						auto maybe_meta_region = this->try_parse_meta_region();
+						if(maybe_meta_region.has_value())
+						{
+							this->push_payload(maybe_meta_region.value());
+							auto blk = this->parse_block();
+							for(const auto& contents : blk)
+							{
+								this->handle_payload(contents);
+							}
+						}
+						else
+						{
+							// nothing parses. remember, we skip over comments etc anyway.
+							// so if the last thing in the program is comments, then it will continually be skipped over but not parse anything, causing an infinite loop.
+							// for that reason we just stop here.
+							break;
+						}
 					}
 				}
 			}

@@ -207,6 +207,11 @@ namespace semantic
 		}
 	}
 
+	void analyse_struct_definition(const ast::node& node, const ast::struct_definition& payload, const ast::path_t& path, const ast& tree)
+	{
+
+	}
+
 	void analyse_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
 		// we can do this on any pass. even both
@@ -275,6 +280,10 @@ namespace semantic
 			else if constexpr(std::is_same_v<T, ast::variable_declaration>)
 			{
 				analyse_variable_declaration(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::struct_definition>)
+			{
+				analyse_struct_definition(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::identifier>)
 			{

@@ -30,6 +30,7 @@ namespace lexer
 			"extern",
 			"if", // if-statement
 			"for", // for-statement
+			"struct" // struct specifier
 		};
 
 		auto current_is_keyword = [&keywords](std::string_view str) constexpr -> bool

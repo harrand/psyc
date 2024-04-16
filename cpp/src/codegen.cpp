@@ -27,6 +27,7 @@ namespace codegen
 		static std::unique_ptr<llvm::Module> mod = nullptr;
 		static std::map<std::string, llvm::Value*> named_values = {};
 		static std::map<std::string, llvm::Function*> pre_declared_functions = {};
+		static std::map<std::string, llvm::StructType*> structs = {};
 		static llvm::BasicBlock* entry_point = nullptr;
 
 		struct scope_reference
@@ -171,7 +172,15 @@ namespace codegen
 		{
 			return llvm::Type::getVoidTy(*context::ctx);
 		}
-		diag::error(std::format("internal compiler error: cannot recognise type {} in the context of LLVM-IR", type_name));
+		else
+		{
+			auto iter = context::structs.find(type_name);
+			if(iter != context::structs.end())
+			{
+				return iter->second;
+			}
+			diag::error(std::format("internal compiler error: cannot recognise type {} in the context of LLVM-IR", type_name));
+		}
 		return nullptr;
 	}
 
@@ -524,12 +533,51 @@ namespace codegen
 		llvm::AllocaInst* var = context::current_builder().CreateAlloca(ty, nullptr, payload.var_name);
 		if(payload.initialiser.has_value())
 		{
-			llvm::Value* init_value = codegen_expression(node, payload.initialiser.value(), path, tree);
-			diag::assert_that(init_value != nullptr, "internal compiler error: variable declaration initialiser expression did not codegen correctly - returned a null LLVM value.");
-			context::current_builder().CreateStore(init_value, var);
+			if(ty->isStructTy())
+			{
+				diag::fatal_error("declaring a variable of user-type (struct) with an initialiser is not yet implemented.");
+			}
+			else
+			{
+				llvm::Value* init_value = codegen_expression(node, payload.initialiser.value(), path, tree);
+				diag::assert_that(init_value != nullptr, "internal compiler error: variable declaration initialiser expression did not codegen correctly - returned a null LLVM value.");
+				context::current_builder().CreateStore(init_value, var);
+			}
 		}
 		context::register_variable(path, payload.var_name, var);
 		return var;
+	}
+
+	llvm::Value* codegen_struct_definition(const ast::node& node, const ast::struct_definition& payload, const ast::path_t& path, const ast& tree)
+	{
+		std::vector<llvm::Type*> data_members = {};
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			const ast::node& child = node.children[i];
+			std::visit([&](auto&& arg)
+			{
+				using T = std::decay_t<decltype(arg)>;
+				if constexpr(std::is_same_v<T, ast::variable_declaration>)
+				{
+					// data members
+					llvm::Type* ty = get_llvm_type(arg.type_name);
+					data_members.push_back(ty);
+				}
+				else if constexpr(std::is_same_v<T, ast::function_definition>)
+				{
+					// method.
+					// NYI
+				}
+				else
+				{
+					diag::error(std::format("detected a line within struct definition {} that wasn't a variable declaration (data member) nor a function definition (method)", payload.struct_name));
+				}
+			}, child.payload);
+		}
+
+		llvm::StructType* struct_type = llvm::StructType::create(data_members, payload.struct_name, false);
+		context::structs[payload.struct_name] = struct_type;
+		return nullptr;
 	}
 
 	// note: 
@@ -613,6 +661,10 @@ namespace codegen
 			else if constexpr(std::is_same_v<T, ast::variable_declaration>)
 			{
 				ret = codegen_variable_declaration(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::struct_definition>)
+			{
+				ret = codegen_struct_definition(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::identifier>)
 			{
