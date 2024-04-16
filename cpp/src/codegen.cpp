@@ -832,6 +832,21 @@ namespace codegen
 		llvm::Value* val = codegen_thing(node, node.payload, path, tree);
 	}
 
+	void codegen_struct_predefs(const ast& tree, ast::path_t path = {})
+	{
+		const ast::node& node = tree.get(path);
+		if(std::holds_alternative<ast::struct_definition>(node.payload))
+		{
+			codegen_struct_definition(node, std::get<ast::struct_definition>(node.payload), path, tree);
+		}
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			auto child_path = path;
+			child_path.push_back(i);
+			codegen_struct_predefs(tree, child_path);
+		}
+	}
+
 	void codegen_function_predefs(const ast& tree, ast::path_t path = {})
 	{
 		const ast::node& node = tree.get(path);
@@ -846,10 +861,6 @@ namespace codegen
 				context::pre_declared_functions[def.function_name] = make_function(def);
 			}
 		}
-		if(std::holds_alternative<ast::struct_definition>(node.payload))
-		{
-			codegen_struct_definition(node, std::get<ast::struct_definition>(node.payload), path, tree);
-		}
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			auto child_path = path;
@@ -861,6 +872,7 @@ namespace codegen
 	std::filesystem::path generate(const ast& tree, std::string filename)
 	{
 		context::initialise(filename);
+		codegen_struct_predefs(tree);
 		codegen_function_predefs(tree);
 		filename += ".o";
 		const auto& root = tree.get({});
