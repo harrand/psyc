@@ -628,6 +628,11 @@ namespace codegen
 		return nullptr;
 	}
 
+	llvm::Value* codegen_member_access(const ast::node& node, const ast::member_access& payload, const ast::path_t& path, const ast& tree)
+	{
+		return nullptr;
+	}
+
 	// note: 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -713,6 +718,10 @@ namespace codegen
 			else if constexpr(std::is_same_v<T, ast::struct_definition>)
 			{
 				ret = codegen_struct_definition(node, arg, path, tree);
+			}
+			else if constexpr(std::is_same_v<T, ast::member_access>)
+			{
+				ret = codegen_member_access(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::identifier>)
 			{

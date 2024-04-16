@@ -118,6 +118,18 @@ struct ast
 			return std::format("function-call: {}({})", this->function_name, params_stringified);
 		};
 	};
+
+	struct member_access
+	{
+		identifier lhs;
+		identifier rhs;
+
+		std::string to_string() const
+		{
+			return std::format("member-access: {} . {}", lhs.to_string(), rhs.to_string());
+		}
+	};
+
 	struct expression
 	{
 		std::variant
@@ -131,6 +143,7 @@ struct ast
 			string_literal,
 			bool_literal,
 			function_call,
+			member_access,
 			identifier
 		> expr;
 		
@@ -250,7 +263,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, struct_definition, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, member_access, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, struct_definition, meta_region>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

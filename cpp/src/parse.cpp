@@ -238,6 +238,23 @@ namespace parser
 			return ast::function_call{.function_name = function_name, .params = params};
 		}
 
+		std::optional<ast::member_access> try_parse_member_access()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::identifier))
+			{
+				ast::identifier lhs{.name = this->last_value()};	
+				if(this->match(lexer::token::type::dot) && this->match(lexer::token::type::identifier))
+				{
+					ast::identifier rhs{.name = this->last_value()};
+					this->unstash_index();
+					return ast::member_access{.lhs = lhs, .rhs = rhs};
+				}
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
 		std::optional<ast::expression> try_parse_expression()
 		{
 			this->stash_index();
@@ -306,6 +323,13 @@ namespace parser
 			{
 				this->unstash_index();
 				return ast::expression{.expr = maybe_function_call.value()};
+			}
+
+			auto maybe_member_access = this->try_parse_member_access();
+			if(maybe_member_access.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_member_access.value()};
 			}
 
 			bool is_identifier = this->match(lexer::token::type::identifier);

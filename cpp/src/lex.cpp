@@ -243,6 +243,11 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::colon});
 			}
+			else if(data.starts_with("."))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::dot});
+			}
 			else if(data.starts_with("->"))
 			{
 				emit_word();
