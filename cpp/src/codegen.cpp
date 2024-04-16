@@ -19,6 +19,13 @@
 #include <stack>
 namespace codegen
 {
+	struct struct_meta
+	{
+		using data_members_t = std::vector<ast::variable_declaration>;
+		llvm::StructType* type;
+		ast::struct_definition def;
+		data_members_t data_members = {};
+	};
 	namespace context
 	{
 		static std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
@@ -27,7 +34,7 @@ namespace codegen
 		static std::unique_ptr<llvm::Module> mod = nullptr;
 		static std::map<std::string, llvm::Value*> named_values = {};
 		static std::map<std::string, llvm::Function*> pre_declared_functions = {};
-		static std::map<std::string, llvm::StructType*> structs = {};
+		static std::map<std::string, struct_meta> structs = {};
 		static llvm::BasicBlock* entry_point = nullptr;
 
 		struct scope_reference
@@ -130,6 +137,35 @@ namespace codegen
 		}
 	}
 
+	std::optional<struct_meta> get_struct_decl(std::string struct_name)
+	{
+		auto iter = context::structs.find(struct_name);
+		if(iter != context::structs.end())
+		{
+			return iter->second;
+		}
+		return std::nullopt;
+	}
+
+	llvm::Value* codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree);
+
+	void struct_default_initialise(const ast::node& node, std::string struct_name, llvm::AllocaInst* var, const ast::path_t& path, const ast& tree)
+	{
+		auto maybe_struct_decl = get_struct_decl(struct_name);
+		diag::assert_that(maybe_struct_decl.has_value(), "asfhjdklsjhf");
+		const auto& decl = maybe_struct_decl.value();
+		for(std::size_t i = 0; i < decl.data_members.size(); i++)
+		{
+			const auto& maybe_initialiser = decl.data_members[i].initialiser;
+			if(!maybe_initialiser.has_value())
+			{
+				continue;
+			}
+			llvm::Value* initialiser_value = codegen_expression(node, maybe_initialiser.value(), path, tree);
+			context::current_builder().CreateStore(initialiser_value, context::current_builder().CreateStructGEP(decl.type, var, i));
+		}	
+	}
+
 	llvm::Type* get_llvm_type(std::string type_name)
 	{
 		if(type_name == "i64" || type_name == "u64")
@@ -177,7 +213,7 @@ namespace codegen
 			auto iter = context::structs.find(type_name);
 			if(iter != context::structs.end())
 			{
-				return iter->second;
+				return iter->second.type;
 			}
 			diag::error(std::format("internal compiler error: cannot recognise type {} in the context of LLVM-IR", type_name));
 		}
@@ -251,8 +287,6 @@ namespace codegen
 	{
 		return llvm::ConstantInt::get(*context::ctx, llvm::APInt{1, payload.val ? 1u : 0u, true});
 	}
-
-	llvm::Value* codegen_expression(const ast::node& node, const ast::expression& payload, const ast::path_t& path, const ast& tree);
 
 	llvm::Value* codegen_unary_operator(const ast::node& node, const std::pair<ast::unary_operator, util::box<ast::expression>>& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -544,6 +578,13 @@ namespace codegen
 				context::current_builder().CreateStore(init_value, var);
 			}
 		}
+		else
+		{
+			if(ty->isStructTy())
+			{
+				struct_default_initialise(node, payload.type_name, var, path, tree);
+			}
+		}
 		context::register_variable(path, payload.var_name, var);
 		return var;
 	}
@@ -551,6 +592,7 @@ namespace codegen
 	llvm::Value* codegen_struct_definition(const ast::node& node, const ast::struct_definition& payload, const ast::path_t& path, const ast& tree)
 	{
 		std::vector<llvm::Type*> data_members = {};
+		struct_meta::data_members_t meta_members = {};
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			const ast::node& child = node.children[i];
@@ -562,6 +604,7 @@ namespace codegen
 					// data members
 					llvm::Type* ty = get_llvm_type(arg.type_name);
 					data_members.push_back(ty);
+					meta_members.push_back(arg);
 				}
 				else if constexpr(std::is_same_v<T, ast::function_definition>)
 				{
@@ -576,7 +619,12 @@ namespace codegen
 		}
 
 		llvm::StructType* struct_type = llvm::StructType::create(data_members, payload.struct_name, false);
-		context::structs[payload.struct_name] = struct_type;
+		context::structs[payload.struct_name] =
+		{
+			.type = struct_type,
+			.def = payload,
+			.data_members = std::move(meta_members)
+		};
 		return nullptr;
 	}
 
