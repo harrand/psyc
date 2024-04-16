@@ -407,7 +407,7 @@ namespace codegen
 	
 	llvm::Value* codegen_if_statement(const ast::node& node, const ast::if_statement& payload, const ast::path_t& path, const ast& tree)
 	{
-		llvm::Value* cond_value = codegen_expression(node, payload.condition, path, tree);
+		llvm::Value* cond_value = load_as(codegen_expression(node, payload.condition, path, tree), get_llvm_type("bool"));
 		diag::assert_that(cond_value != nullptr, std::format("internal compiler error: if-condition expression codegen yielded nullptr."));
 		cond_value = context::current_builder().CreateICmpNE(cond_value, llvm::ConstantInt::get(cond_value->getType(), llvm::APInt{cond_value->getType()->getIntegerBitWidth(), 0u}), "ifcond");
 
@@ -636,6 +636,29 @@ namespace codegen
 		return nullptr;
 	}
 
+	llvm::Type* get_identifier_type(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
+	{
+		llvm::Function* enclosing_function = context::get_enclosing_function(path);	
+		if(enclosing_function != nullptr)
+		{
+			for(auto cur = enclosing_function->arg_begin(); cur != enclosing_function->arg_end(); cur++)
+			{
+				if(cur->getName() == payload.name)
+				{
+					return cur->getType();
+				}
+			}
+		}
+
+		// it must be a variable.
+		llvm::AllocaInst* var = context::try_find_variable(path, payload.name);
+		if(var != nullptr)
+		{
+			return var->getAllocatedType();
+		}
+		return nullptr;
+	}
+
 	// note: 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
@@ -646,6 +669,7 @@ namespace codegen
 		{
 			// this is a copy.
 			//return context::current_builder().CreateLoad(var->getAllocatedType(), var, payload.name);
+			// this is a pointer to the real thing.
 			return var;
 		}
 
@@ -658,9 +682,16 @@ namespace codegen
 			{
 				if(iter->getName() == payload.name)
 				{
-					return &*iter;
+					arg = iter;
+					break;
 				}
 			}
+			// we have an argument which is a value. we want a pointer to it to match the format as if it were a variable from above.
+			// to do that, create a bit-cast.
+			llvm::PointerType* ptr_t = llvm::PointerType::get(arg->getType(), 0);
+			llvm::AllocaInst* ptr = context::current_builder().CreateAlloca(ptr_t, nullptr, "parameter_ptr");
+			context::current_builder().CreateStore(arg, ptr);
+			return ptr;
 		}
 		return nullptr;
 	}
@@ -669,11 +700,16 @@ namespace codegen
 	llvm::Value* codegen_member_access(const ast::node& node, const ast::member_access& payload, const ast::path_t& path, const ast& tree)
 	{
 		llvm::Value* var = codegen_identifier(node, payload.lhs, path, tree);	
+		// figure out which struct we are based on lhs.
+		// we cant just use var->getType() for complicated reasons (blah blah if its a function parameter the underlying type and allocainst is a pointer to the parameter type. and coz llvm uses opaque pointers the underlying type is lost.)
+		llvm::Type* struct_type = get_identifier_type(node, payload.lhs, path, tree);
+		/*
 		llvm::Type* struct_type = var->getType();
 		if(struct_type->isPointerTy())
 		{
 			struct_type = static_cast<llvm::AllocaInst*>(var)->getAllocatedType();
 		}
+		*/
 		diag::assert_that(struct_type->isStructTy(), "member access on a non-struct is not allowed.");
 		// what struct are we trying to access
 		std::string struct_typename{struct_type->getStructName()};
@@ -752,7 +788,10 @@ namespace codegen
 			}
 			else if constexpr(std::is_same_v<T, ast::struct_definition>)
 			{
-				ret = codegen_struct_definition(node, arg, path, tree);
+				// note: don't do it during normal codegen.
+				// we already did a pre-pass to generate function declarations and full struct definitions already.
+				// if we do it again here (at the point in the .psy code where we actually defined it) we will define it a 2nd time and cause problems.
+				//ret = codegen_struct_definition(node, arg, path, tree);
 			}
 			else if constexpr(std::is_same_v<T, ast::member_access>)
 			{
@@ -806,6 +845,10 @@ namespace codegen
 			{
 				context::pre_declared_functions[def.function_name] = make_function(def);
 			}
+		}
+		if(std::holds_alternative<ast::struct_definition>(node.payload))
+		{
+			codegen_struct_definition(node, std::get<ast::struct_definition>(node.payload), path, tree);
 		}
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
