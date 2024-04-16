@@ -618,6 +618,7 @@ namespace codegen
 			{
 				ret = codegen_identifier(node, arg, path, tree);
 			}
+			else if constexpr(std::is_same_v<T, ast::meta_region>){}
 			else if constexpr(std::is_same_v<T, ast::expression>)
 			{
 				ret = codegen_expression(node, arg, path, tree);

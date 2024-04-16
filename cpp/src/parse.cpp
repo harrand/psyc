@@ -465,6 +465,20 @@ namespace parser
 			return ast::function_definition{.function_name = function_name, .params = params, .return_type = return_type, .is_extern = is_extern};
 		}
 
+		std::optional<ast::meta_region> try_parse_meta_region()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::double_equals))
+			{
+				this->must_match(lexer::token::type::identifier);
+				std::string region_name = this->last_value();
+				this->must_match(lexer::token::type::double_equals);
+				this->unstash_index();
+				return ast::meta_region{.region_name = region_name};
+			}
+			return std::nullopt;
+		}
+
 		// a block is not a formal parser construct.
 		// imagine i just defined a function, and now im looking at the code inside a pair of braces. that is a block.
 		// in other words, its a bunch of code within a function definition. could be anything... variables, expressions... perhaps a nested function definition, or simply nothing at all!
@@ -564,10 +578,23 @@ namespace parser
 				}
 				else
 				{
-					// nothing parses. remember, we skip over comments etc anyway.
-					// so if the last thing in the program is comments, then it will continually be skipped over but not parse anything, causing an infinite loop.
-					// for that reason we just stop here.
-					break;
+					auto maybe_meta_region = this->try_parse_meta_region();
+					if(maybe_meta_region.has_value())
+					{
+						this->push_payload(maybe_meta_region.value());
+						auto blk = this->parse_block();
+						for(const auto& contents : blk)
+						{
+							this->handle_payload(contents);
+						}
+					}
+					else
+					{
+						// nothing parses. remember, we skip over comments etc anyway.
+						// so if the last thing in the program is comments, then it will continually be skipped over but not parse anything, causing an infinite loop.
+						// for that reason we just stop here.
+						break;
+					}
 				}
 			}
 		}

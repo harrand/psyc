@@ -225,13 +225,22 @@ struct ast
 		}
 	};
 
+	struct meta_region
+	{
+		std::string region_name;
+		std::string to_string() const
+		{
+			return std::format("region: {}", region_name);
+		}
+	};
+
 	struct metadata
 	{
 		std::size_t line_number = std::numeric_limits<std::size_t>::max();
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, meta_region>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;

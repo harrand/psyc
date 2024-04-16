@@ -15,6 +15,7 @@ namespace semantic
 	std::size_t pass_number = 0;
 	std::size_t error_count = 0;
 	std::size_t warning_count = 0;
+	bool is_meta_region = false;
 
 	void semantic_assert(bool expr, const ast::node& node, std::string msg)
 	{
@@ -233,6 +234,11 @@ namespace semantic
 		semantic_assert(variable_exists, node, std::format("use of undefined variable {}. could not find definition beforehand.", payload.name));
 	}
 
+	void analyse_meta_region(const ast::node& node, const ast::meta_region& payload, const ast::path_t& path, const ast& tree)
+	{
+
+	}
+
 	template<typename P>
 	void analyse_thing(const ast::node& node, const P& payload_like, const ast::path_t& path, const ast& tree)
 	{
@@ -278,6 +284,10 @@ namespace semantic
 			{
 				analyse_expression(node, arg, path, tree);
 			}
+			else if constexpr(std::is_same_v<T, ast::meta_region>)
+			{
+				analyse_meta_region(node, arg, path, tree);
+			}
 			else
 			{
 				// could be one of the unique expression variant types.
@@ -307,6 +317,12 @@ namespace semantic
 	{
 		analyse_single_node(path, tree);
 		const ast::node& node = tree.get(path);
+		if(std::holds_alternative<ast::meta_region>(node.payload))
+		{
+			// analysed the meta region node already.
+			// its block does not make sense in the context of the program, so we do not semantically analyse it like it were a normal part of the AST.
+			return;
+		}
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			auto child_path = path;
