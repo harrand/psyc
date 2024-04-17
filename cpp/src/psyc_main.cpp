@@ -132,22 +132,5 @@ int main(int argc, char** argv)
 		ses.object_files.push_back(codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string()));
 	}
 	build::go(ses);
-	/*
-	if(ses.link == link_output::none)
-	{
-		return 0;
-	}
-	auto output_path = std::filesystem::path(ses.output_dir) / ses.link_output_name;
-	switch(ses.link)
-	{
-		case link_output::executable:
-			link::executable(ses.object_files, output_path);
-		break;
-		case link_output::library:
-			link::library(ses.object_files, output_path);
-		break;
-		default: break;
-	}
-	*/
 	return 0;
 }
