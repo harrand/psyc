@@ -243,6 +243,12 @@ namespace lexer
 				emit_word();
 				ret.push_back({.id = token::type::colon});
 			}
+			else if(data.starts_with("..."))
+			{
+				emit_word();
+				ret.push_back({.id = token::type::ellipsis});
+				cursor += 2;
+			}
 			else if(data.starts_with("."))
 			{
 				emit_word();
@@ -254,12 +260,6 @@ namespace lexer
 				ret.push_back({.id = token::type::arrow});
 				// -> is 2 chars unlike the others. advance an additional time now.
 				cursor++;
-			}
-			else if(data.starts_with("..."))
-			{
-				emit_word();
-				ret.push_back({.id = token::type::ellipsis});
-				cursor += 2;
 			}
 			else if(data.starts_with("+"))
 			{

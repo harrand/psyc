@@ -198,20 +198,33 @@ struct ast
 			return std::format("return-statement: {}", this->value.has_value() ? this->value->to_string() : "");
 		}
 	};
+
+	constexpr static std::size_t variadic_array = std::numeric_limits<std::size_t>::max();
+
 	struct variable_declaration
 	{
 		std::string var_name;
 		std::string type_name;
+		std::size_t array_size = 0;
 		std::optional<expression> initialiser = std::nullopt;
 
 		std::string to_string() const
 		{
+			std::string type = this->type_name;
+			if(this->array_size == variadic_array)
+			{
+				type += "[...]";
+			}
+			else if(this->array_size != 0)
+			{
+				type += std::format("[{}]", array_size);
+			}
 			std::string initialiser_string = "";
 			if(this->initialiser.has_value())
 			{
 				initialiser_string = " = " + this->initialiser->to_string();
 			}
-			return std::format("variable-declaration: {} : {}{}", this->var_name, this->type_name, initialiser_string);
+			return std::format("variable-declaration: {} : {}{}", this->var_name, type, initialiser_string);
 		}
 	};
 

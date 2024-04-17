@@ -424,6 +424,7 @@ namespace parser
 				return std::nullopt;
 			}
 			std::string type_name = this->last_value();
+			std::size_t array_size = 0;
 			// remember: the identifier may not contain the full type (e.g if its an array type)
 			if(this->match(lexer::token::type::open_brack))
 			{
@@ -432,12 +433,14 @@ namespace parser
 				std::optional<lexer::token::type> matched = this->match_any({lexer::token::type::identifier, lexer::token::type::integer_literal, lexer::token::type::ellipsis});
 				std::string subscript_contents = this->last_value();
 				parser_assert(matched.has_value(), std::format("cannot parse array-type variable declaration. between the brackets must lie either an integer-literal, identifier or alternatively an ellipsis (\"...\") to signify a dynamic array."));
-				if(subscript_contents.empty())
+				if(matched.value() == lexer::token::type::ellipsis)
 				{
-					subscript_contents += lexer::token_type_names[static_cast<int>(matched.value())];
+					array_size = ast::variadic_array;
 				}
-				else if(matched)
-				type_name += std::format("[{}]", subscript_contents);
+				else
+				{
+					array_size = std::stoi(subscript_contents);
+				}
 				this->must_match(lexer::token::type::close_brack);
 			}
 			// it may or may not have an initialiser.
@@ -448,7 +451,7 @@ namespace parser
 				this->parser_assert(initialiser.has_value(), std::format("initialiser of new local variable {} could not be parsed properly.", var_name));
 			}
 			this->unstash_index();
-			return ast::variable_declaration{.var_name = var_name, .type_name = type_name, .initialiser = initialiser};
+			return ast::variable_declaration{.var_name = var_name, .type_name = type_name, .array_size = array_size, .initialiser = initialiser};
 		}
 
 		std::optional<ast::struct_definition> try_parse_struct_definition()

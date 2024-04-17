@@ -572,7 +572,16 @@ namespace codegen
 	llvm::AllocaInst* codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
 		llvm::Type* ty = get_llvm_type(payload.type_name);
-		llvm::AllocaInst* var = context::current_builder().CreateAlloca(ty, nullptr, payload.var_name);
+		llvm::Value* array_size = nullptr;
+		if(payload.array_size == ast::variadic_array)
+		{
+			diag::fatal_error("variadic arrays are not yet implemented.");	
+		}
+		else if(payload.array_size != 0)
+		{
+			array_size = codegen_integer_literal(node, {.val = static_cast<int>(payload.array_size)}, path, tree);
+		}
+		llvm::AllocaInst* var = context::current_builder().CreateAlloca(ty, array_size, payload.var_name);
 		if(payload.initialiser.has_value())
 		{
 			if(ty->isStructTy())
