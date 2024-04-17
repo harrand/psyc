@@ -21,7 +21,9 @@ else()
 	set(LLVM_INCLUDE_DIRS "llvm/llvm/include" "${CMAKE_BINARY_DIR}/llvm/llvm/include/")
 endif()
 
-llvm_map_components_to_libnames(llvm_dependent_libs support core irreader
+llvm_map_components_to_libnames(llvm_dependent_libs support core irreader executionengine
+	# need this for jit compilation (which is used to parse & jit-compile build meta-regions)
+	interpreter jitlink mcjit
 	#codegen bits:
 	#AMDGPUCodeGen AArch64CodeGen ARMCodeGen AVRCodeGen BPFCodeGen HexagonCodeGen LanaiCodeGen LoongArchCodeGen MipsCodeGen MSP430CodeGen NVPTXCodeGen PowerPCCodeGen RISCVCodeGen SparcCodeGen SystemZCodeGen VECodeGen WebAssemblyCodeGen XCoreCodeGen
 	X86CodeGen X86AsmParser

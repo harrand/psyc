@@ -878,7 +878,7 @@ namespace codegen
 		}
 	}
 
-	std::filesystem::path generate(const ast& tree, std::string filename)
+	std::unique_ptr<llvm::Module> static_generate(const ast& tree, std::string filename)
 	{
 		context::initialise(filename);
 		codegen_struct_predefs(tree);
@@ -890,6 +890,17 @@ namespace codegen
 			codegen_single_node(ast::path_t{i}, tree);
 		}
 
+		return std::move(context::mod);
+	}
+
+	void static_terminate()
+	{
+		context::terminate();
+	}
+
+	std::filesystem::path generate(const ast& tree, std::string filename)
+	{
+		context::mod = static_generate(tree, filename);
 		std::string ir_string;
 		llvm::raw_string_ostream os{ir_string};
 		context::mod->print(os, nullptr);

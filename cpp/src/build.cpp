@@ -1,6 +1,11 @@
 #include "build.hpp"
 #include "diag.hpp"
-#include "link.hpp"
+#include "codegen.hpp"
+
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/MCJIT.h"
+
 
 namespace build
 {
@@ -52,6 +57,98 @@ namespace build
 
 	void do_build(const session& ses, const ast::node& node)
 	{
+		/*
+		llvm::InitializeAllTargetInfos();
+		llvm::InitializeAllTargets();
+		llvm::InitializeAllTargetMCs();
+		llvm::InitializeAllAsmParsers();
+		llvm::InitializeAllAsmPrinters();
+		*/
+
+		ast::node node_as_function;
+		node_as_function.payload = ast::function_definition{.function_name = "main", .params = {}, .return_type = "i64"};
+		node_as_function.children = node.children;
+		// create our build variables to read from later.
+		// firstly, optimisation level
+		std::vector<ast::node> pre_instructions;
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "optimisation",
+			.type_name = "i64",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::integer_literal{0}},
+		}});
+		// then link values (executable, library and none)
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "executable",
+			.type_name = "string",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::string_literal{.val = "executable"}},
+		}});
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "library",
+			.type_name = "string",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::string_literal{.val = "library"}},
+		}});
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "none",
+			.type_name = "string",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::string_literal{.val = "none"}},
+		}});
+		// then the link variable itself.
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "link",
+			.type_name = "string",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::identifier{.name = "none"}},
+		}});
+		// then the last variable - output name.
+		#ifdef _WIN32
+			constexpr const char* default_output_name = "a.exe";
+		#else
+			constexpr const char* default_output_name = "a.out";
+		#endif
+		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
+		{
+			.var_name = "output",
+			.type_name = "string",
+			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::string_literal{.val = default_output_name}},
+		}});
+		// finally, add a return to the end of the main function
+		node_as_function.children.push_back(ast::node{.payload = ast::return_statement
+		{
+			.value = ast::expression{.expr = ast::integer_literal{.val = 0}}
+		}});
+
+		// add the pre instructions.
+		node_as_function.children.insert(node_as_function.children.begin(), pre_instructions.begin(), pre_instructions.end());
+
+		// run the program and retrieve the results we need.
+		ast::node program_node;
+		program_node.children = {node_as_function};
+		ast node_as_program{.program = program_node};
+		std::string error;
+
+		llvm::ExecutionEngine* exe = llvm::EngineBuilder(codegen::static_generate(node_as_program, "build"))
+		.setErrorStr(&error)
+		.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
+		.create();
+		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
+		int (*func)() = (int (*)())exe->getFunctionAddress("main");
+		// run the program.
+		int ret = func();
+		diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
+
+		codegen::static_terminate();
+		build_info binfo;
+		/*
 		diag::assert_that(std::holds_alternative<ast::meta_region>(node.payload), "internal compiler error: node used as build target was not a meta region.");
 		build_info binfo;
 		auto build_target = std::get<ast::meta_region>(node.payload);
@@ -103,6 +200,7 @@ namespace build
 				return;
 			break;
 		}
+		*/
 	}
 
 	std::size_t parse_opt(const ast::expression& rhs)
