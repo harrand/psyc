@@ -51,6 +51,13 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			i++;
 			continue;
 		}
+		else if(arg.starts_with("-l") || arg.starts_with("--linker"))
+		{
+			std::string_view linker_name = *argnext;
+			ses.linker = std::string{linker_name};
+			i++;
+			continue;
+		}
 		else if(arg.starts_with("--dump-ast"))
 		{
 			// would you like me to write the AST into stdout?

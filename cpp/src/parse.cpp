@@ -645,6 +645,7 @@ namespace parser
 							{
 								this->handle_payload(contents);
 							}
+							this->pop();
 						}
 						else
 						{

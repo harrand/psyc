@@ -17,6 +17,7 @@ struct session
 	std::string output_dir = "";
 	std::string target = "build";
 	link_output link = link_output::none;
+	std::string linker = "";
 	flag_t flags = {};
 };
 

@@ -93,10 +93,10 @@ namespace build
 		switch(binfo.link.value())
 		{
 			case linkage_type::library:
-				link::library(ses.object_files, ses.output_dir, binfo.output_name.value());
+				link::library(ses.object_files, ses.output_dir, binfo.output_name.value(), ses.linker);
 			break;
 			case linkage_type::executable:
-				link::executable(ses.object_files, ses.output_dir, binfo.output_name.value());
+				link::executable(ses.object_files, ses.output_dir, binfo.output_name.value(), ses.linker);
 			break;
 			case linkage_type::none:
 				// no need to do anything. object files were already created.
