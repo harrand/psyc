@@ -32,6 +32,8 @@ add_executable(psyc
 	src/psyc_main.cpp
 	src/ast.cpp
 	src/ast.hpp
+	src/build.cpp
+	src/build.hpp
 	src/codegen.cpp
 	src/codegen.hpp
 	src/diag.hpp
@@ -43,6 +45,9 @@ add_executable(psyc
 	src/parse.hpp
 	src/semantic.cpp
 	src/semantic.hpp
+	src/session.hpp
+	src/settings.hpp
+	src/util.hpp
 )
 
 target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
