@@ -58,6 +58,12 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			i++;
 			continue;
 		}
+		else if(arg.starts_with("-t") || arg.starts_with("--target"))
+		{
+			ses.target = *argnext;
+			i++;
+			continue;
+		}
 		else if(arg.starts_with("--dump-ast"))
 		{
 			// would you like me to write the AST into stdout?

@@ -47,9 +47,23 @@ namespace build
 			}
 		}
 
+		ast::node default_empty_target
+		{
+			.payload = ast::meta_region{.region_name = default_target}
+		};
 		if(target == nullptr)
 		{
-			diag::fatal_error(std::format("could not find target \"{}\"", ses.target));
+			// couldnt find the target meta region
+			if(ses.target == default_target)
+			{
+				// default means user never specified one. they probably dont care. just use the default.
+				diag::message(std::format("default target \"{}\" was not found. defaulting to an empty target...", ses.target));
+				target = &default_empty_target;
+			}
+			else
+			{
+				diag::fatal_error(std::format("could not find target \"{}\"", ses.target));
+			}
 		}
 
 		// build the target.
