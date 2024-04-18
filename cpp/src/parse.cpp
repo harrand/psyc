@@ -88,20 +88,28 @@ namespace parser
 			return this->tokens[this->tokidx - 1].value;	
 		}
 
-		// add a node payload to the current location in the AST.
-		void push_payload(ast::node::payload_t payload)
+		struct meta_payload
+		{
+			ast::node::payload_t payload;
+			ast::metadata meta;
+		};
+
+		void push_payload(meta_payload payload)
 		{
 			this->tree.push(ast::node
 			{
-				.payload = payload,
-				.meta =
-				{
-					.line_number = this->current_line
-				},
+				.payload = payload.payload,
+				.meta = payload.meta,
 				.children = {}
 			});
 		}
-		
+
+		// add a node payload to the current location in the AST.
+		void push_payload(ast::node::payload_t payload)
+		{
+			push_payload(meta_payload{.payload = payload, .meta = {.line_number = this->current_line}});
+		}
+
 		// move to the parent of the current node within the AST.
 		void pop()
 		{
@@ -112,6 +120,7 @@ namespace parser
 		void stash_index()
 		{
 			this->index_stash.push_back(this->tokidx);
+			this->index_stash_line_counts.push_back(this->current_line);
 		}
 
 		// ok i stashed earlier but i dont need it anymore - im happy the way things are.
@@ -119,6 +128,7 @@ namespace parser
 		{
 			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to unstash index when no index has been stashed.");
 			this->index_stash.pop_back();
+			this->index_stash_line_counts.pop_back();
 		}
 
 		// ok i fugged up. restore the index i stashed earlier please and then unstash it. maybe i took a guess while parsing and got it wrong, so i want to undo the crap and try again.
@@ -126,6 +136,7 @@ namespace parser
 		{
 			this->parser_assert(this->index_stash.size(), "internal compiler error - attempt to restore index when no index has been stashed.");
 			this->tokidx = this->index_stash.back();
+			this->current_line = this->index_stash_line_counts.back();
 			this->unstash_index();
 		}
 
@@ -530,9 +541,9 @@ namespace parser
 		// a block is not a formal parser construct.
 		// imagine i just defined a function, and now im looking at the code inside a pair of braces. that is a block.
 		// in other words, its a bunch of code within a function definition. could be anything... variables, expressions... perhaps a nested function definition, or simply nothing at all!
-		std::vector<ast::node::payload_t> parse_block(bool continued_block = false)
+		std::vector<meta_payload> parse_block(bool continued_block = false)
 		{
-			std::vector<ast::node::payload_t> ret = {};
+			std::vector<meta_payload> ret = {};
 			if(!continued_block)
 			{
 				this->must_match(lexer::token::type::open_brace);
@@ -542,7 +553,7 @@ namespace parser
 				auto maybe_return_statement = this->try_parse_return_statement();
 				if(maybe_return_statement.has_value())
 				{
-					ret.push_back(maybe_return_statement.value());
+					ret.push_back({.payload = maybe_return_statement.value(), .meta = {.line_number = this->current_line}});
 					this->must_match(lexer::token::type::semicolon);
 					continue;
 				}
@@ -550,7 +561,7 @@ namespace parser
 				auto maybe_if_statement = this->try_parse_if_statement();
 				if(maybe_if_statement.has_value())
 				{
-					ret.push_back(maybe_if_statement.value());
+					ret.push_back({.payload = maybe_if_statement.value(), .meta = {.line_number = this->current_line}});
 					// if statement detected. return immediately, as next statements are children.
 					return ret;
 					//std::vector<ast::node::payload_t> if_block = this->parse_block();
@@ -561,29 +572,29 @@ namespace parser
 				if(maybe_for_statement.has_value())
 				{
 					// see above for if-statement.
-					ret.push_back(maybe_for_statement.value());
+					ret.push_back({.payload = maybe_for_statement.value(), .meta = {.line_number = this->current_line}});
 					return ret;
 				}
 
 				auto maybe_variable_declaration = this->try_parse_variable_declaration();
 				if(maybe_variable_declaration.has_value())
 				{
-					ret.push_back(maybe_variable_declaration.value());
+					ret.push_back({.payload = maybe_variable_declaration.value(), .meta = {.line_number = this->current_line}});
 					this->must_match(lexer::token::type::semicolon);
 					continue;
 				}
 				auto maybe_expression = this->try_parse_expression();
 				this->parser_assert(maybe_expression.has_value(), "cannot parse expression within block");
-				ret.push_back(maybe_expression.value());
+				ret.push_back({.payload = maybe_expression.value(), .meta = {.line_number = this->current_line}});
 				this->must_match(lexer::token::type::semicolon);
 			}
 			return ret;
 		}
 
-		void handle_payload(ast::node::payload_t payload)
+		void handle_payload(meta_payload payload)
 		{
 			this->push_payload(payload);
-			if(std::holds_alternative<ast::if_statement>(payload) || std::holds_alternative<ast::for_statement>(payload))
+			if(std::holds_alternative<ast::if_statement>(payload.payload) || std::holds_alternative<ast::for_statement>(payload.payload))
 			{
 				// if we're an if-statement, we need to parse another block and set all those as children, and THEN pop.
 				auto if_blk = this->parse_block();
@@ -683,6 +694,7 @@ namespace parser
 		std::size_t tokidx = 0;
 		std::size_t current_line = 1;
 		std::vector<std::size_t> index_stash = {};
+		std::vector<std::size_t> index_stash_line_counts = {};
 		ast tree = {};
 	};
 
