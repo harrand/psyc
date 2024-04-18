@@ -77,6 +77,14 @@ namespace link
 		#endif
 	}
 
+	void post_link(std::vector<std::filesystem::path> object_files)
+	{
+		for(auto file : object_files)
+		{
+			std::filesystem::remove(file);
+		}
+	}
+
 	void executable(std::vector<std::filesystem::path> object_files, std::filesystem::path output_path, std::string output_name, std::string linker)
 	{
 		if(linker.empty())
@@ -106,6 +114,7 @@ namespace link
 
 		int ret = std::system(cmd.c_str());
 		diag::assert_that(ret == 0, "detected that linker failed. unlucky, dickface!");
+		post_link(object_files);
 	}
 
 	void library(std::vector<std::filesystem::path> object_files, std::filesystem::path output_path, std::string output_name, std::string linker)
@@ -140,5 +149,6 @@ namespace link
 
 		int ret = std::system(cmd.c_str());
 		diag::assert_that(ret == 0, "detected that archiver failed. unlucky, dickface!");
+		post_link(object_files);
 	}
 }
