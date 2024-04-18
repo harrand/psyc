@@ -52,6 +52,12 @@ add_executable(psyc
 	src/util.hpp
 )
 
+add_custom_target(psyc_install
+	COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:psyc>" "${CMAKE_INSTALL_PREFIX}/bin/$<TARGET_FILE_NAME:psyc>"
+	DEPENDS psyc
+	COMMENT "Installing psyc to ${CMAKE_INSTALL_PREFIX}"
+	)
+
 target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(psyc PRIVATE ${llvm_definitions_list})
 target_link_libraries(psyc PRIVATE ${llvm_dependent_libs})
