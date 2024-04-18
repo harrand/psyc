@@ -131,6 +131,22 @@ namespace codegen
 
 		void terminate()
 		{
+			// note: tearing down all this state is actually ridiculously error prone.
+			// cant unlink globals until the program stops referencing them.
+			// globals must all be destroyed before program itself dies.
+			// so:
+			// 1.) program stops referencing everything
+			if(mod != nullptr)
+			{
+				mod->dropAllReferences();
+				// 2.) unlink globals from parent (but doesnt erase them)
+				for(const auto& [name, glob] : global_variables)
+				{
+					glob->removeFromParent();
+				}
+			}
+			// 3.) kill globals and then program etc...
+
 			entry_point = nullptr;
 			named_values.clear();
 			builders = {};
@@ -575,7 +591,12 @@ namespace codegen
 	llvm::Value* codegen_global_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
 		llvm::Type* ty = get_llvm_type(payload.type_name);
-		std::unique_ptr<llvm::GlobalVariable> var = std::make_unique<llvm::GlobalVariable>(*context::mod, ty, false, llvm::GlobalValue::ExternalLinkage, nullptr, payload.var_name);
+		llvm::Constant* initialiser = nullptr;
+		if(payload.initialiser.has_value())
+		{
+			initialiser = static_cast<llvm::Constant*>(codegen_expression(node, payload.initialiser.value(), path, tree));
+		}
+		std::unique_ptr<llvm::GlobalVariable> var = std::make_unique<llvm::GlobalVariable>(*context::mod, ty, false, llvm::GlobalValue::ExternalLinkage, initialiser, payload.var_name);
 		llvm::GlobalVariable* glob = var.get();
 		context::global_variables[payload.var_name] = std::move(var);
 //		context::mod->insertGlobalVariable(glob);

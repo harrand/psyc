@@ -612,6 +612,7 @@ namespace parser
 				auto maybe_variable_declaration = this->try_parse_variable_declaration();
 				if(maybe_variable_declaration.has_value())
 				{
+					this->must_match(lexer::token::type::semicolon);
 					this->push_payload(maybe_variable_declaration.value());
 					this->pop();
 				}
