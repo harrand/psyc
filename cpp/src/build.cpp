@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "diag.hpp"
 #include "codegen.hpp"
+#include "link.hpp"
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -21,9 +22,9 @@ namespace build
 
 	struct build_info
 	{
-		std::optional<std::size_t> optimisation_level = std::nullopt;
-		std::optional<linkage_type> link = std::nullopt;
-		std::optional<std::string> output_name = std::nullopt;
+		std::size_t optimisation_level = 0;
+		linkage_type link = linkage_type::executable;
+		std::string output_name = "a.exe";
 	};
 
 	void go(const session& ses)
@@ -70,35 +71,13 @@ namespace build
 		node_as_function.children = node.children;
 		// create our build variables to read from later.
 		// firstly, optimisation level
+
 		std::vector<ast::node> pre_instructions;
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
 		{
 			.var_name = "optimisation",
 			.type_name = "i64",
 			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::integer_literal{0}},
-		}});
-		// then link values (executable, library and none)
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "executable",
-			.type_name = "string",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::string_literal{.val = "executable"}},
-		}});
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "library",
-			.type_name = "string",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::string_literal{.val = "library"}},
-		}});
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "none",
-			.type_name = "string",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::string_literal{.val = "none"}},
 		}});
 		// then the link variable itself.
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
@@ -106,155 +85,101 @@ namespace build
 			.var_name = "link",
 			.type_name = "string",
 			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::identifier{.name = "none"}},
 		}});
-		// then the last variable - output name.
-		#ifdef _WIN32
-			constexpr const char* default_output_name = "a.exe";
-		#else
-			constexpr const char* default_output_name = "a.out";
-		#endif
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
 		{
 			.var_name = "output",
 			.type_name = "string",
 			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::string_literal{.val = default_output_name}},
 		}});
+
+		std::vector<ast::expression> default_assignments
+		{
+			ast::expression{.expr =
+				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
+				{
+					ast::binary_operator{.type = lexer::token::type::equals},
+					ast::expression{.expr = ast::identifier{.name = "optimisation"}},
+					ast::expression{.expr = ast::integer_literal{.val = 0}}
+				}
+			},
+
+			ast::expression{.expr =
+				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
+				{
+					ast::binary_operator{.type = lexer::token::type::equals},
+					ast::expression{.expr = ast::identifier{.name = "link"}},
+					ast::expression{.expr = ast::string_literal{.val = "executable"}}
+				}
+			},
+
+			ast::expression{.expr =
+				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
+				{
+					ast::binary_operator{.type = lexer::token::type::equals},
+					ast::expression{.expr = ast::identifier{.name = "output"}},
+					#ifdef _WIN32
+						ast::expression{.expr = ast::string_literal{.val = "a.exe"}}
+					#else
+						ast::expression{.expr = ast::string_literal{.val = "a.lib"}}
+					#endif
+				}
+			},
+		};
+
+		node_as_function.children.insert(node_as_function.children.begin(), default_assignments.begin(), default_assignments.end());
+
 		// finally, add a return to the end of the main function
 		node_as_function.children.push_back(ast::node{.payload = ast::return_statement
 		{
 			.value = ast::expression{.expr = ast::integer_literal{.val = 0}}
 		}});
 
-		// add the pre instructions.
-		node_as_function.children.insert(node_as_function.children.begin(), pre_instructions.begin(), pre_instructions.end());
-
 		// run the program and retrieve the results we need.
 		ast::node program_node;
-		program_node.children = {node_as_function};
+		program_node.children = pre_instructions;
+		program_node.children.push_back(node_as_function);
 		ast node_as_program{.program = program_node};
 		std::string error;
 
-		llvm::ExecutionEngine* exe = llvm::EngineBuilder(codegen::static_generate(node_as_program, "build"))
+		node_as_program.pretty_print();
+
+		std::unique_ptr<llvm::Module> program_to_move = codegen::static_generate(node_as_program, "build");
+		llvm::Module* program = program_to_move.get();
+		llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
 		.setErrorStr(&error)
 		.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
 		.create();
 		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
+
+		std::string ir_string;
+		llvm::raw_string_ostream os{ir_string};
+		program->print(os, nullptr);
+		diag::message(std::format("llvm ir: \n{}", ir_string));
+
+		exe->runStaticConstructorsDestructors(false);
+
 		int (*func)() = (int (*)())exe->getFunctionAddress("main");
 		// run the program.
 		int ret = func();
 		diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
 
+		llvm::GlobalVariable* optimisation = exe->FindGlobalVariableNamed("optimisation");
+
 		codegen::static_terminate();
 		build_info binfo;
-		/*
-		diag::assert_that(std::holds_alternative<ast::meta_region>(node.payload), "internal compiler error: node used as build target was not a meta region.");
-		build_info binfo;
-		auto build_target = std::get<ast::meta_region>(node.payload);
-		// the meta-region is expected to contain a series of variable assignments.
-		for(const ast::node& child : node.children)
-		{
-			diag::assert_that(std::holds_alternative<ast::expression>(child.payload), "meta-parse-error: meta-region must be filled with expressions.");
-			auto expr = std::get<ast::expression>(child.payload);
-			using assignment_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
-			diag::assert_that(std::holds_alternative<assignment_t>(expr.expr), "meta-parse-error: each expression must be a binary operator");
-			auto [op, lhs, rhs] = std::get<assignment_t>(expr.expr);
-			diag::assert_that(op.type == lexer::token::type::equals, "meta-parse-error: each binary operator *must* be an assignment");
-
-			diag::assert_that(std::holds_alternative<ast::identifier>(lhs->expr), "meta-parse-error: lhs of an assignment *must* parse as an identifier");
-			parse_assignment(binfo, std::get<ast::identifier>(lhs->expr).name, *rhs);
-		}
-
-		if(!binfo.link.has_value())
-		{
-			diag::warning(std::format("meta-region \"{}\" did not specify linkage. defaulting to `executable`.", build_target.region_name));
-			binfo.link = linkage_type::executable;
-		}
-		if(!binfo.optimisation_level.has_value())
-		{
-			diag::warning(std::format("meta-region \"{}\" did not specify optimisation level. defaulting to 0.", build_target.region_name));
-			binfo.optimisation_level = 0;
-		}
-		if(!binfo.output_name.has_value())
-		{
-			#ifdef _WIN32
-				constexpr const char* default_output_name = "a.exe";
-			#else
-				constexpr const char* default_output_name = "a.out";
-			#endif
-			diag::warning(std::format("meta-region \"{}\" did not specify output. defaulting to \"{}\"", build_target.region_name, default_output_name));
-			binfo.output_name = default_output_name;
-		}
-
-		switch(binfo.link.value())
+		switch(binfo.link)
 		{
 			case linkage_type::library:
-				link::library(ses.object_files, ses.output_dir, binfo.output_name.value(), ses.linker);
+				link::library(ses.object_files, ses.output_dir, binfo.output_name, ses.linker);
 			break;
 			case linkage_type::executable:
-				link::executable(ses.object_files, ses.output_dir, binfo.output_name.value(), ses.linker);
+				link::executable(ses.object_files, ses.output_dir, binfo.output_name, ses.linker);
 			break;
 			case linkage_type::none:
 				// no need to do anything. object files were already created.
 				return;
 			break;
-		}
-		*/
-	}
-
-	std::size_t parse_opt(const ast::expression& rhs)
-	{
-		diag::assert_that(std::holds_alternative<ast::integer_literal>(rhs.expr), "optimisation level assignment must be an integer literal.");
-		int val = std::get<ast::integer_literal>(rhs.expr).val;
-		diag::assert_that(val >= 0, std::format("optimisation level must not be negative. you specified {}", val));
-		diag::assert_that(val <= 2, std::format("optimisation level must not be greater than 2. you specified {}", val));
-		return val;
-	}
-
-	linkage_type parse_link(const ast::expression& rhs)
-	{
-		diag::assert_that(std::holds_alternative<ast::identifier>(rhs.expr), "link assignment rhs must be an identifier.");
-		std::string val = std::get<ast::identifier>(rhs.expr).name;
-		if(val == "executable")
-		{
-			return linkage_type::executable;
-		}
-		else if(val == "library")
-		{
-			return linkage_type::library;
-		}
-		else if(val == "none")
-		{
-			return linkage_type::none;
-		}
-		diag::fatal_error(std::format("unknown linkage \"{}\". should be either `executable`, `library` or `none`.", val));
-		return linkage_type::none;
-	}
-
-	std::string parse_output(const ast::expression& rhs)
-	{
-		diag::assert_that(std::holds_alternative<ast::string_literal>(rhs.expr), "output assignment rhs must be a string literal.");
-		return std::get<ast::string_literal>(rhs.expr).val;
-	}
-
-	void parse_assignment(build_info& binfo, std::string_view lhs, const ast::expression& rhs)
-	{
-		if(lhs == "optimisation")
-		{
-			binfo.optimisation_level = parse_opt(rhs);
-		}
-		else if(lhs == "link")
-		{
-			binfo.link = parse_link(rhs);
-		}
-		else if(lhs == "output")
-		{
-			binfo.output_name = parse_output(rhs);
-		}
-		else
-		{
-			diag::fatal_error(std::format("unknown build config variable \"{}\"", lhs));
 		}
 	}
 

@@ -35,6 +35,7 @@ namespace codegen
 		static std::map<std::string, llvm::Value*> named_values = {};
 		static std::map<std::string, llvm::Function*> pre_declared_functions = {};
 		static std::map<std::string, struct_meta> structs = {};
+		static std::map<std::string, std::unique_ptr<llvm::GlobalVariable>> global_variables = {};
 		static llvm::BasicBlock* entry_point = nullptr;
 
 		struct scope_reference
@@ -79,8 +80,9 @@ namespace codegen
 			scope_reference* current_scope = &scope_manager;
 			if(path.size())
 			{
-				for(std::size_t idx : path)
+				for(std::size_t i = 0; i < path.size() - 1; i++)
 				{
+					std::size_t idx = path[i];
 					if(current_scope->current_function != nullptr)
 					{
 						func_stack.push_back(current_scope->current_function);
@@ -569,8 +571,22 @@ namespace codegen
 		return nullptr;
 	}
 
+	llvm::Value* codegen_global_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
+	{
+		llvm::Type* ty = get_llvm_type(payload.type_name);
+		std::unique_ptr<llvm::GlobalVariable> var = std::make_unique<llvm::GlobalVariable>(*context::mod, ty, false, llvm::GlobalValue::ExternalLinkage, nullptr, payload.var_name);
+		context::global_variables[payload.var_name] = std::move(var);
+		return context::global_variables[payload.var_name].get();
+	}
+
 	llvm::AllocaInst* codegen_variable_declaration(const ast::node& node, const ast::variable_declaration& payload, const ast::path_t& path, const ast& tree)
 	{
+		llvm::Function* enclosing_function = context::get_enclosing_function(path);
+		if(enclosing_function == nullptr)
+		{
+			codegen_global_variable_declaration(node, payload, path, tree);
+			return nullptr;
+		}
 		llvm::Type* ty = get_llvm_type(payload.type_name);
 		llvm::Value* array_size = nullptr;
 		if(payload.array_size == ast::variadic_array)
@@ -671,6 +687,14 @@ namespace codegen
 	// note: 
 	llvm::Value* codegen_identifier(const ast::node& node, const ast::identifier& payload, const ast::path_t& path, const ast& tree)
 	{
+		// is it a global variable?
+		auto iter = context::global_variables.find(payload.name);
+		if(iter != context::global_variables.end())
+		{
+			llvm::GlobalVariable* var = iter->second.get();
+			diag::assert_that(var != nullptr, "FOOEY");
+			return var;
+		}
 		// is it a local variable?
 		// var is the real thing.
 		llvm::AllocaInst* var = context::try_find_variable(path, payload.name);
@@ -686,7 +710,7 @@ namespace codegen
 		llvm::Function* enclosing_function = context::get_enclosing_function(path);
 		if(enclosing_function != nullptr)
 		{
-			llvm::Argument* arg;
+			llvm::Argument* arg = nullptr;
 			for(auto iter = enclosing_function->arg_begin(); iter != enclosing_function->arg_end(); iter++)
 			{
 				if(iter->getName() == payload.name)
@@ -695,12 +719,15 @@ namespace codegen
 					break;
 				}
 			}
-			// we have an argument which is a value. we want a pointer to it to match the format as if it were a variable from above.
-			// to do that, create a bit-cast.
-			llvm::PointerType* ptr_t = llvm::PointerType::get(arg->getType(), 0);
-			llvm::AllocaInst* ptr = context::current_builder().CreateAlloca(ptr_t, nullptr, "parameter_ptr");
-			context::current_builder().CreateStore(arg, ptr);
-			return ptr;
+			if(arg != nullptr)
+			{
+				// we have an argument which is a value. we want a pointer to it to match the format as if it were a variable from above.
+				// to do that, create a bit-cast.
+				llvm::PointerType* ptr_t = llvm::PointerType::get(arg->getType(), 0);
+				llvm::AllocaInst* ptr = context::current_builder().CreateAlloca(ptr_t, nullptr, "parameter_ptr");
+				context::current_builder().CreateStore(arg, ptr);
+				return ptr;
+			}
 		}
 		return nullptr;
 	}
