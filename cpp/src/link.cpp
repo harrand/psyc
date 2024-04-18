@@ -1,5 +1,6 @@
 #include "link.hpp"
 #include "diag.hpp"
+#include <array>
 
 namespace link
 {
@@ -85,6 +86,56 @@ namespace link
 		}
 	}
 
+	std::string exec_windows(std::string_view cmd)
+	{
+		#ifdef _WIN32
+		std::array<char, 128> buffer;
+		std::string result;
+		std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd.data(), "r"), _pclose);
+		if (!pipe) {
+			return "";
+		}
+		while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
+			result += buffer.data();
+		}
+		return result;
+
+		#else
+
+		return "";
+		#endif
+	}
+
+	std::string replace_all(std::string str, const std::string& from, const std::string& to) {
+		size_t start_pos = 0;
+		while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+			str.replace(start_pos, from.length(), to);
+			start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+		}
+		return str;
+	}
+
+	std::string get_linker_prefix()
+	{
+		// if we're on win32, we will need to invoke vcvars64.bat first.
+		// let's get that.
+		#ifdef _WIN32
+
+		std::string root_path = exec_windows("\"\"C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 | findstr \"installationPath\"");
+		if(root_path.empty())
+		{
+			return "";
+		}
+
+		root_path.erase(0, sizeof("installationPath:"));
+		std::string vcvarsall_path = replace_all(root_path + "\\VC\\Auxiliary\\Build\\vcvars64.bat", "\n", "");
+		vcvarsall_path = "\"\"" + vcvarsall_path + "\" && ";
+		return vcvarsall_path;
+		#else
+		return "";
+		#endif
+	}
+
 	void executable(std::vector<std::filesystem::path> object_files, std::filesystem::path output_path, std::string output_name, std::string linker)
 	{
 		if(linker.empty())
@@ -109,6 +160,7 @@ namespace link
 			break;
 			case linker_type::msvc:
 				cmd += std::format( " /OUT:\"{}\"", full_output);
+				cmd = get_linker_prefix() + cmd;
 			break;
 		}
 
@@ -135,6 +187,7 @@ namespace link
 			break;
 			case linker_type::msvc:
 				cmd += std::format( " /OUT:\"{}\"", full_output);
+				cmd = get_linker_prefix() + cmd;
 			break;
 		}
 
