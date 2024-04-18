@@ -134,6 +134,7 @@ namespace codegen
 			entry_point = nullptr;
 			named_values.clear();
 			builders = {};
+			global_variables.clear();
 			mod = nullptr;
 			ctx = nullptr;
 		}
@@ -575,7 +576,9 @@ namespace codegen
 	{
 		llvm::Type* ty = get_llvm_type(payload.type_name);
 		std::unique_ptr<llvm::GlobalVariable> var = std::make_unique<llvm::GlobalVariable>(*context::mod, ty, false, llvm::GlobalValue::ExternalLinkage, nullptr, payload.var_name);
+		llvm::GlobalVariable* glob = var.get();
 		context::global_variables[payload.var_name] = std::move(var);
+//		context::mod->insertGlobalVariable(glob);
 		return context::global_variables[payload.var_name].get();
 	}
 
@@ -910,7 +913,6 @@ namespace codegen
 		context::initialise(filename);
 		codegen_struct_predefs(tree);
 		codegen_function_predefs(tree);
-		filename += ".o";
 		const auto& root = tree.get({});
 		for(std::size_t i = 0; i < root.children.size(); i++)
 		{
@@ -927,6 +929,7 @@ namespace codegen
 
 	std::filesystem::path generate(const ast& tree, std::string filename)
 	{
+		filename += ".o";
 		context::mod = static_generate(tree, filename);
 		std::string ir_string;
 		llvm::raw_string_ostream os{ir_string};

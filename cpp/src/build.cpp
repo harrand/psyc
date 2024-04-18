@@ -5,7 +5,9 @@
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+// note: do not remove this, even if your editor says its unused. it's used.
 #include "llvm/ExecutionEngine/MCJIT.h"
+#include "llvm/IR/Constants.h"
 
 
 namespace build
@@ -142,8 +144,6 @@ namespace build
 		ast node_as_program{.program = program_node};
 		std::string error;
 
-		node_as_program.pretty_print();
-
 		std::unique_ptr<llvm::Module> program_to_move = codegen::static_generate(node_as_program, "build");
 		llvm::Module* program = program_to_move.get();
 		llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
@@ -152,22 +152,65 @@ namespace build
 		.create();
 		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
 
+		/*
 		std::string ir_string;
 		llvm::raw_string_ostream os{ir_string};
 		program->print(os, nullptr);
 		diag::message(std::format("llvm ir: \n{}", ir_string));
+		*/
 
-		exe->runStaticConstructorsDestructors(false);
+		#ifdef _WIN32
+			constexpr const char* default_output_name = "a.exe";
+		#else
+			constexpr const char* default_output_name = "a.out";
+		#endif
+
+		llvm::Constant* null_ptr = llvm::Constant::getNullValue(llvm::PointerType::get(llvm::Type::getInt64Ty(program->getContext()), 0));
+
+		llvm::GlobalVariable* optimisation = program->getNamedGlobal("optimisation");
+		optimisation->setInitializer(llvm::ConstantInt::get(llvm::Type::getInt64Ty(program->getContext()), 0));
+		llvm::GlobalVariable* link = program->getNamedGlobal("link");
+		link->setInitializer(null_ptr);
+		llvm::GlobalVariable* output = program->getNamedGlobal("output");
+		output->setInitializer(null_ptr);
+
+		auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
+		auto* link_ptr = reinterpret_cast<char*>(exe->getGlobalValueAddress("link"));
+		auto* output_ptr = reinterpret_cast<char*>(exe->getGlobalValueAddress("output"));
 
 		int (*func)() = (int (*)())exe->getFunctionAddress("main");
+
 		// run the program.
 		int ret = func();
-		diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
-
-		llvm::GlobalVariable* optimisation = exe->FindGlobalVariableNamed("optimisation");
-
-		codegen::static_terminate();
 		build_info binfo;
+		if(std::string_view(link_ptr) == "exe")
+		{
+			binfo.link = linkage_type::executable;
+		}
+		else if(std::string_view(link_ptr) == "lib")
+		{
+			binfo.link = linkage_type::library;
+		}
+		else
+		{
+			binfo.link = linkage_type::none;
+		}
+		binfo.output_name = output_ptr;
+		binfo.optimisation_level = *optimisation_ptr;
+
+		diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
+		// note: tearing down all this state is actually ridiculously error prone.
+		// cant unlink globals until the program stops referencing them.
+		// globals must all be destroyed before program itself dies.
+		// so:
+		// 1.) program stops referencing everything
+		program->dropAllReferences();
+		// 2.) unlink globals from parent (but doesnt erase them)
+		optimisation->removeFromParent();
+		link->removeFromParent();
+		output->removeFromParent();
+		// 3.) kill globals and then program etc...
+		codegen::static_terminate();
 		switch(binfo.link)
 		{
 			case linkage_type::library:
