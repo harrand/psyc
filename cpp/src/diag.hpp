@@ -42,7 +42,7 @@ namespace diag
 		std::cout << "\033[1;31m" << "fatal error: ";
 		print(std::forward<Ts>(ts)...);
 		std::cout << "\033[0m";
-		std::exit(-1);
+		std::exit(0);
 	}
 
 
