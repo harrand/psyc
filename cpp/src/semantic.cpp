@@ -10,20 +10,20 @@ namespace semantic
 {
 
 	// semantic analysis is made up of 2 stages:
-	// 1.) gathering. gather all global variables, struct and function declarations as they are all top-level and global.
-	// 2.) validation. step through the AST properly and make sure everything makes sense
+	// 1.) pre-pass. gather all global variables, struct and function declarations as they are all top-level and global.
+	// 2.) process. step through the AST properly and make sure everything makes sense
 	state analysis(const ast& tree)
 	{
 		state s;
 		s.pre_pass(tree);
 		if(s.last_error.size())
 		{
-			diag::error(s.last_error);
+			diag::fatal_error(s.last_error);
 		}
 		s.process(tree);
 		if(s.last_error.size())
 		{
-			diag::error(s.last_error);
+			diag::fatal_error(s.last_error);
 		}
 		return s;
 	}
@@ -110,6 +110,12 @@ namespace semantic
 						.context = path,
 					});
 				}
+				if(this->functions.contains(fn.name))
+				{
+					std::size_t previously_defined_on_line = tree.get(this->functions.at(fn.name).context).meta.line_number;
+					this->last_error = std::format("semal error on line {} - double definition of function {} (previous definition on line {})", node.meta.line_number, fn.name, previously_defined_on_line);
+					return;
+				}
 				this->register_function(fn);
 			}
 
@@ -131,6 +137,13 @@ namespace semantic
 					this->last_error = std::format("semal error on line {} - could not decipher type of global variable {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, gvar.var_name, gvar.type_name);
 					return;
 				}
+				if(this->global_variables.contains(gv.name))
+				{
+					std::size_t previously_defined_on_line = tree.get(this->global_variables.at(gv.name).context).meta.line_number;
+					this->last_error = std::format("semal error on line {} - double definition of global variable {} (previous definition on line {})", node.meta.line_number, gv.name, previously_defined_on_line);
+					return;
+				}
+				this->register_global_variable(gv);
 			}
 		}
 	}
@@ -148,6 +161,21 @@ namespace semantic
 	{
 		const ast::node& node = tree.get(path);
 		// processing goes here.
+		if(path.size() > 1)
+		{
+			// no longer in the top-level scope.
+			// there better not be any struct/function declarations.
+			if(std::holds_alternative<ast::function_definition>(node.payload))
+			{
+				auto payload = std::get<ast::function_definition>(node.payload);
+				diag::fatal_error(std::format("line {} - detected a function definition \"{}\" within another block. functions can only be defined at the top-level scope.", node.meta.line_number, payload.function_name));
+			}
+			if(std::holds_alternative<ast::struct_definition>(node.payload))
+			{
+				auto payload = std::get<ast::struct_definition>(node.payload);
+				diag::fatal_error(std::format("line {} - detected a struct definition \"{}\" within another block. functions can only be defined at the top-level scope.", node.meta.line_number, payload.struct_name));
+			}
+		}
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			ast::path_t child_path = path;
