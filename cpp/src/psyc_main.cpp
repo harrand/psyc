@@ -4,7 +4,9 @@
 #include "parse.hpp"
 #include "semantic.hpp"
 #include "codegen.hpp"
+#include "util.hpp"
 
+#include <filesystem>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -74,6 +76,10 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			// would you like me to write out the entire list of tokens into stdout? it may or may not be completely unreadable, but is useful for compiler debugging.
 			ses.flags |= flag::dump_tokens;
 		}
+		else if(arg.starts_with("--no-stdlib"))
+		{
+			ses.flags |= flag::no_stdlib;
+		}
 		else
 		{
 			if(arg.starts_with("-"))
@@ -89,14 +95,31 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 	}
 }
 
+void add_stdlib(session& ses)
+{
+	std::filesystem::path psyc_parent_dir = util::get_this_executable_path().parent_path();	
+	for(std::filesystem::path file : std::filesystem::directory_iterator(psyc_parent_dir))	
+	{
+		if(file.extension() == ".psy")
+		{
+			ses.input_files.push_back(file.string());
+		}
+	}
+}
+
 int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> args(argv + 1, argv + argc);
 	session ses;
 	parse_args(args, ses);
+	if(ses.flags | flag::no_stdlib)
+	{
+		add_stdlib(ses);
+	}
 	ses.lexed_files.resize(ses.input_files.size());
 	ses.parsed_files.resize(ses.input_files.size());
 	diag::assert_that(ses.input_files.size(), "no input files specified");
+	volatile std::filesystem::path my_path = util::get_this_executable_path();
 	// for every .psy file you gave me, i go through **the process**.
 	for(std::size_t i = 0; i < ses.input_files.size(); i++)
 	{

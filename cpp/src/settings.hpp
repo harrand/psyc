@@ -7,6 +7,7 @@ enum flag : flag_t
 {
 	dump_ast = 0b0000001,
 	dump_tokens = 0b000010,
+	no_stdlib = 0b000100,
 };
 
 enum class link_output

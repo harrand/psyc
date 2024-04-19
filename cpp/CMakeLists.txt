@@ -49,7 +49,20 @@ add_executable(psyc
 	src/semantic.hpp
 	src/session.hpp
 	src/settings.hpp
+	src/util.cpp
 	src/util.hpp
+)
+
+cmake_path(GET PROJECT_SOURCE_DIR PARENT_PATH psyc_root_dir)
+
+file(GLOB stdlib_psy_sources
+	CONFIGURE_DEPENDS
+	"${psyc_root_dir}/stdlib/*.psy"
+)
+
+add_custom_command(TARGET psyc POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} $<TARGET_FILE_DIR:psyc>
+	COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
 )
 
 add_custom_target(psyc_install
@@ -57,6 +70,10 @@ add_custom_target(psyc_install
 	DEPENDS psyc
 	COMMENT "Installing psyc to ${CMAKE_INSTALL_PREFIX}"
 	)
+add_custom_command(TARGET psyc_install POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} "${CMAKE_INSTALL_PREFIX}/bin/"
+	COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
+)
 
 target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(psyc PRIVATE ${llvm_definitions_list})

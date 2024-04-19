@@ -1,6 +1,7 @@
 #ifndef PSYC_UTIL_HPP
 #define PSYC_UTIL_HPP
 #include <memory>
+#include <filesystem>
 
 namespace util
 {
@@ -33,6 +34,8 @@ namespace util
 		T *operator->() { return _impl.get(); }
 		const T *operator->() const { return _impl.get(); }
 	};
+
+	std::filesystem::path get_this_executable_path();
 }
 
 #endif // PSYC_UTIL_HPP
