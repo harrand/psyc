@@ -155,7 +155,7 @@ int main(int argc, char** argv)
 			std::cout << "==========\n";
 		}
 		// perform semantic analysis.
-		semantic::analysis(ast);
+		semantic::state s = semantic::analysis(ast);
 		// finally, generate code
 		std::string just_filename = std::filesystem::path(input_file).stem().string();
 		ses.object_files.push_back(codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string()));

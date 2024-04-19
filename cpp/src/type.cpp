@@ -2,7 +2,7 @@
 
 bool type::is_undefined() const
 {
-	return !std::holds_alternative<std::monostate>(this->ty);
+	return std::holds_alternative<std::monostate>(this->ty);
 }
 
 bool type::is_primitive() const
@@ -72,4 +72,31 @@ type type::reference() const
 	type ret = *this;
 	ret.pointer_level++;
 	return ret;
+}
+
+type type::undefined()
+{
+	return type
+	{
+		.ty = std::monostate{},
+		.pointer_level = 0
+	};
+}
+
+type type::from_primitive(primitive_type t)
+{
+	return type
+	{
+		.ty = t,
+		.pointer_level = 0
+	};
+}
+
+type type::from_struct(struct_type t)
+{
+	return type
+	{
+		.ty = t,
+		.pointer_level = 0
+	};
 }

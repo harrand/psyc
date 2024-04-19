@@ -51,7 +51,7 @@ struct type;
 struct struct_type
 {
 	std::string name;
-	std::vector<util::box<type>> params = {};
+	std::vector<util::box<type>> data_members = {};
 };
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();
@@ -81,6 +81,8 @@ struct type
 	type reference() const;
 
 	static type undefined();
+	static type from_primitive(primitive_type t);
+	static type from_struct(struct_type t);
 };
 
 #endif // PSYC_TYPE_HPP
