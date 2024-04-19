@@ -302,14 +302,18 @@ namespace semantic
 		}
 	};
 
-	void unary_operator(const data& d, ast::unary_operator payload)
-	{
+	using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
 
+	void unary_expression(const data& d, unary_expression_t payload)
+	{
+		const auto& [op, expr] = payload;
 	}
 
-	void binary_operator(const data& d, ast::binary_operator payload)
-	{
+	using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
 
+	void binary_expression(const data& d, binary_expression_t payload)
+	{
+		const auto& [op, expr1, expr2] = payload;
 	}
 
 	void identifier(const data& d, ast::identifier payload)
@@ -323,11 +327,6 @@ namespace semantic
 	}
 
 	void member_access(const data& d, ast::member_access payload)
-	{
-
-	}
-
-	void expression(const data& d, ast::expression payload)
 	{
 
 	}
@@ -346,6 +345,7 @@ namespace semantic
 	{
 
 	}
+
 
 	void variable_declaration(const data& d, ast::variable_declaration payload)
 	{
@@ -390,19 +390,26 @@ namespace semantic
 	};
 	template<class... Ts> overload(Ts...) -> overload<Ts...>;
 
-	void process_node_impl(state& s, ast::path_t path, const ast& tree)
+	template<typename T>
+	void generic(const data& d, T payload)
 	{
-		const ast::node& node = tree.get(path);
-		data d{.state = s, .path = path, .tree = tree};
 		auto dispatch = overload
 		{
 			[&](ast::binary_operator op)
 			{
-				binary_operator(d, op);
+				d.fatal_error("dispatch error");
 			},
 			[&](ast::unary_operator op)
 			{
-				unary_operator(d, op);
+				d.fatal_error("dispatch error");
+			},
+			[&](unary_expression_t uexpr)
+			{
+				unary_expression(d, uexpr);
+			},
+			[&](binary_expression_t bexpr)
+			{
+				binary_expression(d, bexpr);
 			},
 			[&](ast::identifier id)
 			{
@@ -418,7 +425,8 @@ namespace semantic
 			},
 			[&](ast::expression expr)
 			{
-				expression(d, expr);
+				// recurse on underlying expr.
+				generic(d, expr.expr);
 			},
 			[&](ast::if_statement ifst)
 			{
@@ -454,6 +462,13 @@ namespace semantic
 			}
 		};
 
-		std::visit(dispatch, node.payload);
+		std::visit(dispatch, payload);
+	}
+
+	void process_node_impl(state& s, ast::path_t path, const ast& tree)
+	{
+		const ast::node& node = tree.get(path);
+		data d{.state = s, .path = path, .tree = tree};
+		generic(d, node.payload);
 	}
 }
