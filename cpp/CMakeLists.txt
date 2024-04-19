@@ -49,6 +49,8 @@ add_executable(psyc
 	src/semantic.hpp
 	src/session.hpp
 	src/settings.hpp
+	src/type.cpp
+	src/type.hpp
 	src/util.cpp
 	src/util.hpp
 )
