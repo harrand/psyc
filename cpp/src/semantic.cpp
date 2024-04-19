@@ -82,7 +82,56 @@ namespace semantic
 		// then, functions and globals can be done at the same time.
 		for(std::size_t i = 0; i < tree.program.children.size(); i++)
 		{
+			const ast::node& node = tree.program.children[i];
+			const ast::path_t path{i};
+			if(std::holds_alternative<ast::function_definition>(node.payload))
+			{
+				function_t fn;
+				auto func = std::get<ast::function_definition>(node.payload);	
+				if(func.is_extern && node.children.size())
+				{
+					this->last_error = std::format("semal error on line {} - detected extern function {} but with child AST nodes, implying it has a body. extern functions cannot have implementations.", node.meta.line_number, func.function_name);
+					return;
+				}
+				fn.name = func.function_name;
+				fn.context = path;
+				for(const auto& param : func.params)
+				{
+					type param_type = this->get_type_from_name(param.type_name).first;
+					if(param_type.is_undefined())
+					{
+						this->last_error = std::format("semal error on line {} - could not decipher type of function parameter {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, param.var_name, param.type_name);
+						return;
+					}
+					fn.params.push_back
+					(local_variable_t{
+						.ty = param_type,
+						.name = param.var_name,
+						.context = path,
+					});
+				}
+				this->register_function(fn);
+			}
 
+			if(std::holds_alternative<ast::variable_declaration>(node.payload))
+			{
+				// global
+				auto gvar = std::get<ast::variable_declaration>(node.payload);
+				if(gvar.array_size != 0)
+				{
+					this->last_error = std::format("semal error on line {} - detected global variable of array type. this is not yet implemented.", node.meta.line_number);
+					return;
+				}
+				local_variable_t gv;
+				gv.context = path;
+				gv.name = gvar.var_name;
+				type var_type = this->get_type_from_name(gvar.type_name).first;
+				if(var_type.is_undefined())
+				{
+					this->last_error = std::format("semal error on line {} - could not decipher type of global variable {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, gvar.var_name, gvar.type_name);
+					return;
+				}
+			}
 		}
 	}
 
@@ -98,6 +147,13 @@ namespace semantic
 	void state::process_node(ast::path_t path, const ast& tree)
 	{
 		const ast::node& node = tree.get(path);
+		// processing goes here.
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			ast::path_t child_path = path;
+			child_path.push_back(i);
+			this->process_node(child_path, tree);
+		}
 	}
 
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
