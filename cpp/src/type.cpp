@@ -32,7 +32,7 @@ std::string type::name() const
 {
 	if(this->is_undefined())
 	{
-		return "undefined";
+		return "<undefined type>";
 	}
 	std::string ret;
 
@@ -60,14 +60,14 @@ type type::dereference() const
 		ret.pointer_level--;
 		return ret;
 	}
-	return {};
+	return type::undefined();
 }
 
 type type::reference() const
 {
 	if(this->is_undefined())
 	{
-		return {};
+		return type::undefined();
 	}
 	type ret = *this;
 	ret.pointer_level++;

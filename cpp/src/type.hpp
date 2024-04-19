@@ -1,5 +1,7 @@
 #ifndef PSYC_TYPE_HPP
 #define PSYC_TYPE_HPP
+#include "util.hpp"
+#include <vector>
 #include <array>
 #include <variant>
 #include <string>
@@ -45,9 +47,11 @@ constexpr std::array<const char*, static_cast<int>(primitive_type::_count)> prim
 	"f16"
 };
 
+struct type;
 struct struct_type
 {
 	std::string name;
+	std::vector<util::box<type>> params = {};
 };
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();
