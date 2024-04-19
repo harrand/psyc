@@ -197,6 +197,55 @@ namespace semantic
 		return {type::undefined(), ast::path_t{}};
 	}
 
+	const function_t* state::try_find_function(const std::string& function_name) const
+	{
+		auto iter = this->functions.find(function_name);
+		if(iter == this->functions.end())
+		{
+			return nullptr;
+		}
+		return &iter->second;
+	}
+
+	const struct_t* state::try_find_struct(const std::string& struct_name) const
+	{
+		auto iter = this->struct_decls.find(struct_name);
+		if(iter == this->struct_decls.end())
+		{
+			return nullptr;
+		}
+		return &iter->second;
+	}
+
+	const local_variable_t* state::try_find_global_variable(const std::string& variable_name) const
+	{
+		auto iter = this->global_variables.find(variable_name);
+		if(iter == this->global_variables.end())
+		{
+			return nullptr;
+		}
+		return &iter->second;
+	}
+
+	const local_variable_t* state::try_find_local_variable(const ast::path_t& context, const std::string& variable_name) const
+	{
+		ast::path_view_t cv = context;
+		const scope_reference* current_scope = &this->variables;
+		if(context.size())
+		{
+			for(std::size_t idx : context)
+			{
+				auto iter = current_scope->variables.find(variable_name);
+				if(iter != current_scope->variables.end())
+				{
+					return &iter->second;
+				}
+				current_scope = &const_cast<std::unordered_map<std::size_t, scope_reference>&>(current_scope->children)[idx];
+			}
+		}
+		return nullptr;
+	}
+
 	void state::register_struct(struct_t str)
 	{
 		this->struct_decls[str.ty.name] = str;
@@ -214,7 +263,16 @@ namespace semantic
 
 	void state::register_local_variable(local_variable_t var)
 	{
-		this->variables[var.context][var.name] = var;
+		ast::path_view_t ctx = var.context;
+		scope_reference* current_scope = &this->variables;
+		if(ctx.size())
+		{
+			for(std::size_t i : ctx.subspan(0, ctx.size() - 1))
+			{
+				current_scope = &current_scope->children[i];
+			}
+		}
+		current_scope->variables[var.name] = var;
 	}
 
 	/////////////////////////////////////// NODE PROCESSING ///////////////////////////////////////
@@ -237,7 +295,10 @@ namespace semantic
 
 		void assert_that(bool expr, std::string msg) const
 		{
-			diag::assert_that(expr, std::format("line {} - {}", this->line(), msg));
+			if(!expr)
+			{
+				this->fatal_error(msg);	
+			}
 		}
 	};
 
@@ -288,7 +349,24 @@ namespace semantic
 
 	void variable_declaration(const data& d, ast::variable_declaration payload)
 	{
+		if(d.path.size() <= 1)
+		{
+			// we already sorted out global variables.
+			return;
+		}
+		auto global_already = d.state.try_find_global_variable(payload.var_name);
+		d.assert_that(global_already == nullptr, std::format("variable named \"{}\" would shadow a global variable (defined on line {})", payload.var_name, global_already != nullptr ? d.tree.get(global_already->context).meta.line_number : 0));
+		auto local_already = d.state.try_find_local_variable(d.path, payload.var_name);
+		d.assert_that(local_already == nullptr, std::format("variable named \"{}\" would shadow a previously-defined local variable (defined on line {})", payload.var_name, local_already != nullptr ? d.tree.get(local_already->context).meta.line_number : 0));
 
+		const auto& [ty, defnode] = d.state.get_type_from_name(payload.type_name);
+		d.assert_that(!ty.is_undefined(), std::format("undefined type \"{}\"", payload.type_name));
+		d.state.register_local_variable
+		({
+			.ty = ty,
+			.name = payload.var_name,
+			.context = d.path
+		});
 	}
 
 	void function_definition(const data& d, ast::function_definition payload)

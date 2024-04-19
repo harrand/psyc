@@ -48,21 +48,34 @@ namespace semantic
 		struct_type ty;
 		ast::path_t context;
 	};
+
+	struct scope_reference
+	{
+		std::unordered_map<std::string, local_variable_t> variables = {};
+		std::unordered_map<std::size_t, scope_reference> children = {};
+	};
 	struct state
 	{
-		std::unordered_map<ast::path_t, std::map<std::string, local_variable_t>> variables = {};	
+		//std::unordered_map<ast::path_t, std::map<std::string, local_variable_t>> variables = {};	
+		scope_reference variables = {};
 		std::map<std::string, function_t> functions = {};
 		std::map<std::string, local_variable_t> global_variables = {};
 		std::map<std::string, struct_t> struct_decls = {};
 		std::string last_error = "";
 		std::string last_warning = "";
 
-		std::pair<type, ast::path_t> get_type_from_name(std::string_view type_name) const;
-
 		void pre_pass(const ast& tree);
 		void process(const ast& tree);
 		void process_node(ast::path_t path, const ast& tree);
 		void process_single_node(ast::path_t path, const ast& tree);
+
+		std::pair<type, ast::path_t> get_type_from_name(std::string_view type_name) const;
+
+		const function_t* try_find_function(const std::string& function_name) const;
+		const struct_t* try_find_struct(const std::string& struct_name) const;
+		const local_variable_t* try_find_global_variable(const std::string& var_name) const;
+		const local_variable_t* try_find_local_variable(const ast::path_t& context, const std::string& var_name) const;
+
 		void register_struct(struct_t str);
 		void register_function(function_t func);
 		void register_global_variable(local_variable_t var);
