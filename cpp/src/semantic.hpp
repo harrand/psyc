@@ -62,6 +62,7 @@ namespace semantic
 		void pre_pass(const ast& tree);
 		void process(const ast& tree);
 		void process_node(ast::path_t path, const ast& tree);
+		void process_single_node(ast::path_t path, const ast& tree);
 		void register_struct(struct_t str);
 		void register_function(function_t func);
 		void register_global_variable(local_variable_t var);

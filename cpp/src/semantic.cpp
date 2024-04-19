@@ -160,28 +160,20 @@ namespace semantic
 	void state::process_node(ast::path_t path, const ast& tree)
 	{
 		const ast::node& node = tree.get(path);
-		// processing goes here.
-		if(path.size() > 1)
-		{
-			// no longer in the top-level scope.
-			// there better not be any struct/function declarations.
-			if(std::holds_alternative<ast::function_definition>(node.payload))
-			{
-				auto payload = std::get<ast::function_definition>(node.payload);
-				diag::fatal_error(std::format("line {} - detected a function definition \"{}\" within another block. functions can only be defined at the top-level scope.", node.meta.line_number, payload.function_name));
-			}
-			if(std::holds_alternative<ast::struct_definition>(node.payload))
-			{
-				auto payload = std::get<ast::struct_definition>(node.payload);
-				diag::fatal_error(std::format("line {} - detected a struct definition \"{}\" within another block. functions can only be defined at the top-level scope.", node.meta.line_number, payload.struct_name));
-			}
-		}
+		this->process_single_node(path, tree);
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			ast::path_t child_path = path;
 			child_path.push_back(i);
 			this->process_node(child_path, tree);
 		}
+	}
+
+	void process_node_impl(state& s, ast::path_t path, const ast& tree);
+
+	void state::process_single_node(ast::path_t path, const ast& tree)
+	{
+		process_node_impl(*this, path, tree);
 	}
 
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
@@ -223,5 +215,167 @@ namespace semantic
 	void state::register_local_variable(local_variable_t var)
 	{
 		this->variables[var.context][var.name] = var;
+	}
+
+	/////////////////////////////////////// NODE PROCESSING ///////////////////////////////////////
+
+	struct data
+	{
+		state& state;
+		ast::path_t path;
+		const ast& tree;
+
+		std::size_t line() const
+		{
+			return this->tree.get(path).meta.line_number;
+		}
+
+		void fatal_error(std::string msg) const
+		{
+			diag::fatal_error(std::format("line {} - {}", this->line(), msg));
+		}
+
+		void assert_that(bool expr, std::string msg) const
+		{
+			diag::assert_that(expr, std::format("line {} - {}", this->line(), msg));
+		}
+	};
+
+	void unary_operator(const data& d, ast::unary_operator payload)
+	{
+
+	}
+
+	void binary_operator(const data& d, ast::binary_operator payload)
+	{
+
+	}
+
+	void identifier(const data& d, ast::identifier payload)
+	{
+
+	}
+
+	void function_call(const data& d, ast::function_call payload)
+	{
+
+	}
+
+	void member_access(const data& d, ast::member_access payload)
+	{
+
+	}
+
+	void expression(const data& d, ast::expression payload)
+	{
+
+	}
+
+	void if_statement(const data& d, ast::if_statement payload)
+	{
+
+	}
+
+	void for_statement(const data& d, ast::for_statement payload)
+	{
+
+	}
+
+	void return_statement(const data& d, ast::return_statement payload)
+	{
+
+	}
+
+	void variable_declaration(const data& d, ast::variable_declaration payload)
+	{
+
+	}
+
+	void function_definition(const data& d, ast::function_definition payload)
+	{
+		d.assert_that(d.path.size() <= 1, std::format("detected a function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+	}
+
+	void struct_definition(const data& d, ast::struct_definition payload)
+	{
+		d.assert_that(d.path.size() <= 1, std::format("detected a struct definition \"{}\" within another block. structs can only be defined at the top-level scope.", payload.struct_name));
+	}
+
+	void meta_region(const data& d, ast::meta_region payload)
+	{
+
+	}
+
+	template<typename ... Ts> 
+	struct overload : Ts ... { 
+		using Ts::operator() ...;
+	};
+	template<class... Ts> overload(Ts...) -> overload<Ts...>;
+
+	void process_node_impl(state& s, ast::path_t path, const ast& tree)
+	{
+		const ast::node& node = tree.get(path);
+		data d{.state = s, .path = path, .tree = tree};
+		auto dispatch = overload
+		{
+			[&](ast::binary_operator op)
+			{
+				binary_operator(d, op);
+			},
+			[&](ast::unary_operator op)
+			{
+				unary_operator(d, op);
+			},
+			[&](ast::identifier id)
+			{
+				identifier(d, id);
+			},
+			[&](ast::function_call call)
+			{
+				function_call(d, call);
+			},
+			[&](ast::member_access mem)
+			{
+				member_access(d, mem);
+			},
+			[&](ast::expression expr)
+			{
+				expression(d, expr);
+			},
+			[&](ast::if_statement ifst)
+			{
+				if_statement(d, ifst);
+			},
+			[&](ast::for_statement forst)
+			{
+				for_statement(d, forst);
+			},
+			[&](ast::return_statement returnst)
+			{
+				return_statement(d, returnst);
+			},
+			[&](ast::variable_declaration decl)
+			{
+				variable_declaration(d, decl);
+			},
+			[&](ast::function_definition fdef)
+			{
+				function_definition(d, fdef);
+			},
+			[&](ast::struct_definition sdef)
+			{
+				struct_definition(d, sdef);
+			},
+			[&](ast::meta_region meta)
+			{
+				meta_region(d, meta);
+			},
+			[&](auto)
+			{
+
+			}
+		};
+
+		std::visit(dispatch, node.payload);
 	}
 }
