@@ -478,6 +478,22 @@ namespace semantic
 
 		auto dispatch = overload
 		{
+			[&](ast::integer_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i64);
+			},
+			[&](ast::decimal_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::f64);
+			},
+			[&](ast::char_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i8);
+			},
+			[&](ast::string_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i8).reference();
+			},
 			[&](ast::binary_operator op)
 			{
 				d.fatal_error("dispatch error");
