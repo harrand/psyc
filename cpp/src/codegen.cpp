@@ -116,20 +116,29 @@ namespace codegen
 	// llvm's is much more complicated. thanks to opaque pointers, it's not that simple. for that reason, we deal with our own types as much as possible, and just convert it to its equivalent llvm type at the last possible second (thats what this function does).
 	// returns nullptr in the case of an undefined type.
 	// will ICE if you provided a really dodgy type.
-	llvm::Type* as_llvm_type(const type& ty)
+	llvm::Type* as_llvm_type(const type& ty, const semantic::state& state)
 	{
 		if(ty.is_undefined())
 		{
+			// todo: potentially emit a compiler error? is it ever valid to pass in an undefined type?
 			return nullptr;
+		}
+		if(ty.is_struct())
+		{
+			const semantic::struct_t* structdata = state.try_find_struct(ty.name());
+			diag::assert_that(structdata != nullptr, std::format("internal compiler error: could not find struct named \"{}\" within the semantic analysis state.", ty.name()));
+			diag::assert_that(structdata->userdata != nullptr, std::format("internal compiler error: found struct named \"{}\" but its userdata ptr is null, meaning it has not been codegen'd and i currently need it while evaluating something else.", ty.name()));
+			// see codegen_structs to confirm that indeed it is a llvm::StructType*
+			return static_cast<llvm::StructType*>(structdata->userdata);
 		}
 		// todo: implement
 		diag::fatal_error(std::format("internal compiler error: could not convert type \"{}\" to its corresponding llvm::Type*", ty.name()));
 		return nullptr;
 	}
 
-	llvm::Type* as_llvm_type(const util::box<type>& ty)
+	llvm::Type* as_llvm_type(const util::box<type>& ty, const semantic::state& state)
 	{
-		return as_llvm_type(*ty);
+		return as_llvm_type(*ty, state);
 	}
 
 	/////////////////////////////////////// TOP-LEVEL CODEGEN ///////////////////////////////////////
@@ -142,7 +151,7 @@ namespace codegen
 			std::vector<llvm::Type*> llvm_data_members;
 			for(const struct_type::data_member& member : structdata.ty.data_members)
 			{
-				llvm_data_members.push_back(as_llvm_type(member.type));
+				llvm_data_members.push_back(as_llvm_type(member.type, state));
 			}
 
 			llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, name, false);
@@ -156,11 +165,11 @@ namespace codegen
 		for(const auto& [name, funcdata] : state.functions)
 		{
 			diag::assert_that(funcdata.userdata == nullptr, std::format("internal compiler error: while running codegen for function \"{}\", userdata ptr was not-null, implying it has already been codegen'd", name));
-			llvm::Type* llvm_return = as_llvm_type(funcdata.return_ty);
+			llvm::Type* llvm_return = as_llvm_type(funcdata.return_ty, state);
 			std::vector<llvm::Type*> llvm_params;
 			for(const semantic::local_variable_t& param : funcdata.params)
 			{
-				llvm_params.push_back(as_llvm_type(param.ty));
+				llvm_params.push_back(as_llvm_type(param.ty, state));
 			}
 
 			llvm::FunctionType* llvm_fty = llvm::FunctionType::get(llvm_return, llvm_params, false);
@@ -179,7 +188,7 @@ namespace codegen
 	{
 		for(const auto& [name, gvardata] : state.global_variables)
 		{
-			llvm::Type* llvm_ty = as_llvm_type(gvardata.ty);
+			llvm::Type* llvm_ty = as_llvm_type(gvardata.ty, state);
 			// note: globals may have an initialiser, which means we will need to codegen that even though we're so early on.
 			const ast::node& node = tree.get(gvardata.context);
 			diag::assert_that(std::holds_alternative<ast::variable_declaration>(node.payload), std::format("internal compiler error: AST node corresponding to global variable \"{}\" (line {}) was not infact a variable declaration (variant id {}). something has gone horrendously wrong.", gvardata.name, node.meta.line_number, node.payload.index()));
