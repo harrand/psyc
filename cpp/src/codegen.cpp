@@ -233,20 +233,41 @@ namespace codegen
 
 	/////////////////////////////////////// TOP-LEVEL CODEGEN ///////////////////////////////////////
 
+	void codegen_a_struct(const semantic::struct_t& structdata, const semantic::state& state)
+	{
+		if(structdata.userdata != nullptr)
+		{
+			// already done this one. stop.
+			return;
+		}
+		std::vector<llvm::Type*> llvm_data_members;
+		for(const struct_type::data_member& member : structdata.ty.data_members)
+		{
+			if(member.type->is_struct())
+			{
+				struct_type member_struct_ty = member.type->as_struct();	
+				if(member_struct_ty.name == structdata.ty.name)
+				{
+					// the struct is a data member of itself.
+					diag::fatal_error(std::format("struct \"{}\"'s data member called \"{}\" with the exact same struct type. recursive structs are not supported.", structdata.ty.name, member.member_name));
+				}
+				// ok, a data member is another struct, which we may not have codegen'd yet (thus as_llvm_type will fail).
+				// lets just codegen it now.
+				codegen_a_struct(*state.try_find_struct(member.type->as_struct().name), state);
+			}
+			llvm_data_members.push_back(as_llvm_type(member.type, state));
+		}
+
+		llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, structdata.ty.name, false);
+		// write the struct type ptr into the struct data so it can easily be retrieved later.
+		structdata.userdata = llvm_ty;
+	}
+
 	void codegen_structs(const ast& tree, const semantic::state& state)
 	{
 		for(const auto& [name, structdata] : state.struct_decls)
 		{
-			diag::assert_that(structdata.userdata == nullptr, std::format("internal compiler error: while running codegen for struct \"{}\", userdata ptr was not-null, implying it has already been codegen'd", name));
-			std::vector<llvm::Type*> llvm_data_members;
-			for(const struct_type::data_member& member : structdata.ty.data_members)
-			{
-				llvm_data_members.push_back(as_llvm_type(member.type, state));
-			}
-
-			llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, name, false);
-			// write the struct type ptr into the struct data so it can easily be retrieved later.
-			structdata.userdata = llvm_ty;
+			codegen_a_struct(structdata, state);
 		}
 	}
 
