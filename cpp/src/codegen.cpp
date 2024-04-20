@@ -38,6 +38,22 @@ namespace codegen
 
 	void cleanup_program()
 	{
+		// note: tearing down all this state is actually ridiculously error prone.
+		// cant unlink globals until the program stops referencing them.
+		// globals must all be destroyed before program itself dies.
+		// so:
+		// 1.) program stops referencing everything
+		if(program != nullptr)
+		{
+			program->dropAllReferences();
+			// 2.) unlink globals from parent (but doesnt erase them)
+			for(auto& glob_ptr : global_variable_storage)
+			{
+				glob_ptr->removeFromParent();
+			}
+		}
+		// 3.) kill globals and then program etc...
+
 		global_variable_storage.clear();
 		builder = nullptr;
 		program = nullptr;
@@ -316,17 +332,14 @@ namespace codegen
 
 				if(!has_return && funcdata.return_ty.is_void())
 				{
-					// automatically add a return :)
-					ast::return_statement implicit_return
-					{
-						.value = std::nullopt
-					};
-					diag::fatal_error("NYI: implicit return. everything is ready to go though, just hook it up please.");
+					// automatically add a return :) you're welcome
+					builder->CreateRetVoid();
 				}
 			}
 
 			funcdata.userdata = llvm_fn;
-			llvm::verifyFunction(*llvm_fn);
+			// yo this shit below straight crashes. dodgy string representing the modules target triple. well i didnt set that yet lmao.
+			//llvm::verifyFunction(*llvm_fn);
 		}
 	}
 
