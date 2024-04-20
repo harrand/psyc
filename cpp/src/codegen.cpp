@@ -78,7 +78,7 @@ namespace codegen
 	}
 
 	// given a previous `generate`, write the resultant program to an object filename.
-	std::filesystem::path write_to_object_file(std::string object_filename)
+	void write_to_object_file(std::filesystem::path object_filename)
 	{
 		auto target_triple = llvm::sys::getDefaultTargetTriple();
 		llvm::InitializeAllTargetInfos();
@@ -100,7 +100,7 @@ namespace codegen
 		program->setDataLayout(target_machine->createDataLayout());
 		program->setTargetTriple(target_triple);
 		std::error_code ec;
-		llvm::raw_fd_ostream dst(object_filename, ec, llvm::sys::fs::OF_None);
+		llvm::raw_fd_ostream dst(object_filename.string(), ec, llvm::sys::fs::OF_None);
 		if(ec)
 		{
 			diag::error(std::format("error while generating object files: {}", ec.message()));
@@ -115,7 +115,6 @@ namespace codegen
 		dst.flush();
 		// clear out the module afterwards.
 		cleanup_program();
-		return std::filesystem::path{object_filename};
 	}
 
 	/////////////////////////////////////// TYPE SYSTEM ///////////////////////////////////////
@@ -372,6 +371,7 @@ namespace codegen
 				else
 				{
 					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", ty->name()));
+					return nullptr;
 				}
 			break;
 			default:

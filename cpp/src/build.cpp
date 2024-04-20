@@ -158,6 +158,7 @@ namespace build
 		ast node_as_program{.program = program_node};
 		std::string error;
 
+		/*
 		std::unique_ptr<llvm::Module> program_to_move = codegen::static_generate(node_as_program, "build");
 		llvm::Module* program = program_to_move.get();
 		llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
@@ -165,13 +166,6 @@ namespace build
 		.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
 		.create();
 		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
-
-		/*
-		std::string ir_string;
-		llvm::raw_string_ostream os{ir_string};
-		program->print(os, nullptr);
-		diag::message(std::format("llvm ir: \n{}", ir_string));
-		*/
 
 		#ifdef _WIN32
 			constexpr const char* default_output_name = "a.exe";
@@ -238,6 +232,7 @@ namespace build
 				return;
 			break;
 		}
+		*/
 	}
 
 	// find the meta region corresponding to the target name within an AST (i.e one of the source files).

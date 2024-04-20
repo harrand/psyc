@@ -12,6 +12,58 @@ bool type::is_primitive() const
 		&& !this->is_pointer();
 }
 
+bool type::is_integer_type() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(std::get<primitive_type>(this->ty))
+	{
+		case primitive_type::i64:
+			[[fallthrough]];
+		case primitive_type::i32:
+			[[fallthrough]];
+		case primitive_type::i16:
+			[[fallthrough]];
+		case primitive_type::i8:
+			[[fallthrough]];
+		case primitive_type::u64:
+			[[fallthrough]];
+		case primitive_type::u32:
+			[[fallthrough]];
+		case primitive_type::u16:
+			[[fallthrough]];
+		case primitive_type::u8:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
+bool type::is_floating_point_type() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(std::get<primitive_type>(this->ty))
+	{
+		case primitive_type::f64:
+			[[fallthrough]];
+		case primitive_type::f32:
+			[[fallthrough]];
+		case primitive_type::f16:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
 bool type::is_void() const
 {
 	return this->is_primitive()

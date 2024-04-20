@@ -15,7 +15,7 @@ namespace codegen
 
 	void generate(const ast& tree, const semantic::state& state, std::string llvm_module_name);
 	std::unique_ptr<llvm::Module> pop();
-	std::filesystem::path write_to_object_file(std::string object_filename);
+	void write_to_object_file(std::filesystem::path object_filename);
 }
 
 #endif // PSYC_SEMANTIC_HPP
