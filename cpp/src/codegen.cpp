@@ -394,7 +394,7 @@ namespace codegen
 		return ret;
 	}
 
-	llvm::Value* identifier(const data& d, ast::identifier payload)
+	llvm::Value* identifier(const data& d, ast::identifier payload, type* output_identifier_type = nullptr)
 	{
 		// could be:
 		// a global variable
@@ -402,6 +402,10 @@ namespace codegen
 		if(gvar != nullptr)
 		{
 			d.assert_that(gvar->userdata != nullptr, std::format("internal compiler error: userdata for global variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", gvar->name));
+			if(output_identifier_type != nullptr)
+			{
+				*output_identifier_type = gvar->ty;
+			}
 			return static_cast<llvm::GlobalVariable*>(gvar->userdata);
 		}
 		// a local variable
@@ -409,6 +413,10 @@ namespace codegen
 		if(var != nullptr)
 		{
 			d.assert_that(var->userdata != nullptr, std::format("internal compiler error: userdata for local variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", var->name));
+			if(output_identifier_type != nullptr)
+			{
+				*output_identifier_type = var->ty;
+			}
 			return static_cast<llvm::AllocaInst*>(var->userdata);
 		}
 		// a function parameter
@@ -425,6 +433,10 @@ namespace codegen
 					d.assert_that(arg != nullptr, std::format("internal compiler error: argument \"{}\" to defined function \"{}\" was not codegen'd properly, as its userdata is null. this should've been written to during the pre-pass over functions.", payload.name, parent_function->name));
 					// its easy. the llvm::Argument* is the actual argument value itself. we just return it as if it were a value!
 					// you can just CreateStore with it as a target. exactly the same as a local variable... i think...
+					if(output_identifier_type != nullptr)
+					{
+						*output_identifier_type = param.ty;
+					}
 					return arg;
 				}
 			}
@@ -453,7 +465,28 @@ namespace codegen
 
 	llvm::Value* member_access(const data& d, ast::member_access payload)
 	{
-		return nullptr;
+		// it must be a global/local variable or function parameter.
+		type ty = type::undefined();
+		// unleash our cheeky hack - when we codegen the identifier, let us know which type it came up with.
+		llvm::Value* lhs_var = identifier(d, payload.lhs, &lhs_type);
+
+		d.assert_that(ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, ty.name()));
+		struct_type struct_ty = ty.as_struct();
+		// which data member are we?
+		// note: if we dont match to a data member here, then the code must be ill-formed.
+		std::optional<std::size_t> data_member_idx = std::nullopt;
+		for(std::size_t i = 0; i < struct_ty.data_members.size(); i++)
+		{
+			const struct_type::data_member& member = struct_ty.data_members[i];
+			if(member.member_name == payload.rhs.name)
+			{
+				// its this one!
+				data_member_idx = i;
+			}
+		}
+		d.assert_that(data_member_idx.has_value(), std::format("access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs.name, struct_ty.name));
+		// get the data member via GEP
+		return builder->CreateStructGEP(as_llvm_type(ty, d.state), lhs_var, data_member_idx.value());
 	}
 
 	llvm::Value* if_statement(const data& d, ast::if_statement payload)
