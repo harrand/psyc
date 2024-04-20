@@ -1,6 +1,7 @@
 #ifndef PSYC_CODEGEN_HPP
 #define PSYC_CODEGEN_HPP
 #include "ast.hpp"
+#include "semantic.hpp"
 #include <filesystem>
 
 namespace llvm
@@ -9,9 +10,12 @@ namespace llvm
 }
 namespace codegen
 {
-	std::unique_ptr<llvm::Module> static_generate(const ast& ast, std::string filename);
+	void static_initialise();
 	void static_terminate();
-	std::filesystem::path generate(const ast& ast, std::string filename);
+
+	void generate(const ast& tree, const semantic::state& state);
+	std::unique_ptr<llvm::Module> pop();
+	std::filesystem::path write_to_object_file(std::string object_filename);
 }
 
 #endif // PSYC_SEMANTIC_HPP

@@ -157,8 +157,9 @@ int main(int argc, char** argv)
 		// perform semantic analysis.
 		semantic::state s = semantic::analysis(ast);
 		// finally, generate code
-		std::string just_filename = std::filesystem::path(input_file).stem().string();
-		ses.object_files.push_back(codegen::generate(ast, (std::filesystem::path(ses.output_dir) / just_filename).string()));
+		std::string just_filename = std::filesystem::path(input_file).stem().string() + ".o";
+		ses.object_files.push_back(codegen::);
+		ses.object_files.push_back(codegen::generate(ast, s, (std::filesystem::path(ses.output_dir) / just_filename).string()));
 	}
 	build::go(ses);
 	return 0;
