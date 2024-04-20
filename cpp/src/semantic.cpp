@@ -1,6 +1,5 @@
 #include "semantic.hpp"
 #include "diag.hpp"
-#include "lex.hpp"
 #include "type.hpp"
 #include <format>
 #include <unordered_map>
@@ -209,6 +208,16 @@ namespace semantic
 		}
 
 		return {type::undefined(), ast::path_t{}};
+	}
+
+	const type* state::try_get_type_from_node(const ast::path_t& path) const
+	{
+		auto iter = this->type_breadcrumbs.find(path);
+		if(iter == this->type_breadcrumbs.end())
+		{
+			return nullptr;
+		}
+		return &iter->second;
 	}
 
 	const function_t* state::try_find_function(const std::string& function_name) const

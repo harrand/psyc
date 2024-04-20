@@ -71,6 +71,9 @@ namespace semantic
 		void process_single_node(ast::path_t path, const ast& tree);
 
 		std::pair<type, ast::path_t> get_type_from_name(std::string_view type_name) const;
+		// returns nullptr if we didnt gather any type information
+		// if not nullptr, type could still be an undefined type (e.g if the node is an if-statement, coz an if statement doesnt really evaluate to a type)
+		const type* try_get_type_from_node(const ast::path_t& path) const;
 
 		const function_t* try_find_function(const std::string& function_name) const;
 		const struct_t* try_find_struct(const std::string& struct_name) const;
