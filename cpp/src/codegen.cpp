@@ -284,6 +284,31 @@ namespace codegen
 	template<typename P>
 	llvm::Value* codegen_thing(const data& d, const P& payload);
 
+	llvm::Value* integer_literal(const data& d, ast::integer_literal payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* decimal_literal(const data& d, ast::decimal_literal payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* char_literal(const data& d, ast::char_literal payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* string_literal(const data& d, ast::string_literal payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* bool_literal(const data& d, ast::bool_literal payload)
+	{
+		return nullptr;
+	}
+
 	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
 	{
 		return nullptr;
@@ -370,6 +395,26 @@ namespace codegen
 		llvm::Value* ret = nullptr;
 		auto dispatch = overload
 		{
+			[&](ast::integer_literal lit)
+			{
+				ret = integer_literal(d, lit);
+			},
+			[&](ast::decimal_literal lit)
+			{
+				ret = decimal_literal(d, lit);
+			},
+			[&](ast::char_literal lit)
+			{
+				ret = char_literal(d, lit);
+			},
+			[&](ast::string_literal lit)
+			{
+				ret = string_literal(d, lit);
+			},
+			[&](ast::bool_literal lit)
+			{
+				ret = bool_literal(d, lit);
+			},
 			[&](ast::binary_operator op)
 			{
 				d.fatal_error("dispatch error");
