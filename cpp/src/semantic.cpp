@@ -220,6 +220,33 @@ namespace semantic
 		return &iter->second;
 	}
 
+	const function_t* state::try_find_parent_function(const ast& tree, ast::path_t path) const
+	{
+		// slowly check parent node of the path until we hit a function declaration.	
+		if(path.size() <= 1)
+		{
+			// we're in the top scope, so cant possibly be in a function.
+			return nullptr;
+		}
+		// get initial parent by popping the path first (no need to check the node provided, just its ancestors).
+		path.pop_back();
+		while(path.size())
+		{
+			const ast::node& ancestor = tree.get(path);
+			if(std::holds_alternative<ast::function_definition>(ancestor.payload))
+			{
+				const std::string& function_name = std::get<ast::function_definition>(ancestor.payload).function_name;
+				const function_t* found_func = this->try_find_function(function_name);
+				if(found_func == nullptr)
+				{
+					diag::fatal_error(std::format("internal compiler error: found a parent function of an AST node (named \"{}\") on line {}, but could not then retrieve the function data from semantic analysis state.", function_name, ancestor.meta.line_number));
+				}
+			}
+			path.pop_back();
+		}
+		return nullptr;
+	}
+
 	const function_t* state::try_find_function(const std::string& function_name) const
 	{
 		auto iter = this->functions.find(function_name);

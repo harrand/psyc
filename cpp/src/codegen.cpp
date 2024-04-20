@@ -185,6 +185,9 @@ namespace codegen
 			std::size_t arg_counter = 0;
 			for(llvm::Argument& arg : llvm_fn->args())
 			{
+				// note: userdata for a variable declaration (that is a parameter) is an llvm::Argument* underlying.
+				// unlike a global variable that is llvm::GlobalVariable* and a local variable that is llvm::AllocaInst*.
+				funcdata.params[arg_counter].userdata = &arg;
 				arg.setName(funcdata.params[arg_counter++].name);
 			}
 
@@ -409,10 +412,26 @@ namespace codegen
 			return static_cast<llvm::AllocaInst*>(var->userdata);
 		}
 		// a function parameter
-		// todo: check a function parameter.
-		d.fatal_error(std::format("current logic says that identifier \"{}\" is a function parameter. unfortunately for you, function parameter deduction is not yet implemented.", payload.name));
+		const semantic::function_t* parent_function = d.state.try_find_parent_function(d.tree, d.path);
+		if(parent_function != nullptr)
+		{
+			// go through its parameters and see if we're one.
+			for(const semantic::local_variable_t& param : parent_function->params)
+			{
+				if(param.name == payload.name)
+				{
+					// this is us!
+					auto* arg = static_cast<llvm::Argument*>(param.userdata);
+					d.assert_that(arg != nullptr, std::format("internal compiler error: argument \"{}\" to defined function \"{}\" was not codegen'd properly, as its userdata is null. this should've been written to during the pre-pass over functions.", payload.name, parent_function->name));
+					// its easy. the llvm::Argument* is the actual argument value itself. we just return it as if it were a value!
+					// you can just CreateStore with it as a target. exactly the same as a local variable... i think...
+					return arg;
+				}
+			}
+		}
 
 		// todo: another error message for none-of-the-above.
+		d.fatal_error(std::format("could not evaluate identifier \"{}\". tried global variable, local variable and function parameter :(", payload.name));
 		return nullptr;
 	}
 
