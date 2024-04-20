@@ -45,6 +45,7 @@ namespace codegen
 	void codegen_structs(const ast& tree, const semantic::state& state);
 	void codegen_functions(const ast& tree, const semantic::state& state);
 	void codegen_global_variables(const ast& tree, const semantic::state& state);
+	void codegen_single_node(const ast& tree, const semantic::state& state, ast::path_t path);
 
 	// generate the program according to the ast and state.
 	// resultant module will be left in `program`.
@@ -60,6 +61,11 @@ namespace codegen
 		codegen_structs(tree, state);
 		codegen_functions(tree, state);
 		codegen_global_variables(tree, state);
+
+		for(std::size_t i = 0; i < tree.program.children.size(); i++)
+		{
+			codegen_single_node(tree, state, ast::path_t{i});
+		}
 	}
 
 	// given a previous `generate`, retrieve an owning pointer to the result.
@@ -243,4 +249,200 @@ namespace codegen
 	}
 
 	/////////////////////////////////////// NODE CODEGEN ///////////////////////////////////////
+
+	struct data
+	{
+		const ast& tree;
+		const ast::node& node;
+		const ast::path_t& path;
+		const semantic::state& state;
+
+		std::size_t line() const
+		{
+			return this->tree.get(path).meta.line_number;
+		}
+
+		void fatal_error(std::string msg) const
+		{
+			diag::fatal_error(std::format("(codegen) line {} - {}", this->line(), msg));
+		}
+
+		void warning(std::string msg) const
+		{
+			diag::warning(std::format("(codegen) line {} - {}", this->line(), msg));
+		}
+
+		void assert_that(bool expr, std::string msg) const
+		{
+			if(!expr)
+			{
+				this->fatal_error(msg);	
+			}
+		}
+	};
+
+	template<typename P>
+	llvm::Value* codegen_thing(const data& d, const P& payload);
+
+	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* binary_expression(const data& d, binary_expression_t payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* identifier(const data& d, ast::identifier payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* function_call(const data& d, ast::function_call payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* member_access(const data& d, ast::member_access payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* expression(const data& d, ast::expression payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* if_statement(const data& d, ast::if_statement payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* for_statement(const data& d, ast::for_statement payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* return_statement(const data& d, ast::return_statement payload)
+	{
+		return nullptr;
+	}
+
+	llvm::Value* variable_declaration(const data& d, ast::variable_declaration payload)
+	{
+		if(d.path.size() <= 1)
+		{
+			// its a global variable.
+			// globals are already done in the pre-pass.
+			return static_cast<llvm::GlobalVariable*>(d.state.try_find_global_variable(payload.var_name)->userdata);
+		}
+		return nullptr;
+	}
+
+	llvm::Value* function_definition(const data& d, ast::function_definition payload)
+	{
+		// functions are already done in the pre-pass.
+		return nullptr;
+	}
+
+	llvm::Value* struct_definition(const data& d, ast::struct_definition payload)
+	{
+		// functions are already done in the pre-pass.
+		return nullptr;
+	}
+
+	llvm::Value* meta_region(const data& d, ast::meta_region payload)
+	{
+		// functions are already done in the pre-pass.
+		return nullptr;
+	}
+
+	template<typename ... Ts> 
+	struct overload : Ts ... { 
+		using Ts::operator() ...;
+	};
+	template<class... Ts> overload(Ts...) -> overload<Ts...>;
+
+	template<typename P>
+	llvm::Value* codegen_thing(const data& d, const P& payload)
+	{
+		llvm::Value* ret = nullptr;
+		auto dispatch = overload
+		{
+			[&](ast::binary_operator op)
+			{
+				d.fatal_error("dispatch error");
+			},
+			[&](ast::unary_operator op)
+			{
+				d.fatal_error("dispatch error");
+			},
+			[&](unary_expression_t uexpr)
+			{
+				ret = unary_expression(d, uexpr);
+			},
+			[&](binary_expression_t bexpr)
+			{
+				ret = binary_expression(d, bexpr);
+			},
+			[&](ast::identifier id)
+			{
+				ret = identifier(d, id);
+			},
+			[&](ast::function_call call)
+			{
+				ret = function_call(d, call);
+			},
+			[&](ast::member_access mem)
+			{
+				ret = member_access(d, mem);
+			},
+			[&](ast::expression expr)
+			{
+				ret = expression(d, expr);
+			},
+			[&](ast::if_statement ifst)
+			{
+				ret = if_statement(d, ifst);
+			},
+			[&](ast::for_statement forst)
+			{
+				ret = for_statement(d, forst);
+			},
+			[&](ast::return_statement returnst)
+			{
+				ret = return_statement(d, returnst);
+			},
+			[&](ast::variable_declaration decl)
+			{
+				ret = variable_declaration(d, decl);
+			},
+			[&](ast::function_definition fdef)
+			{
+				ret = function_definition(d, fdef);
+			},
+			[&](ast::struct_definition sdef)
+			{
+				ret = struct_definition(d, sdef);
+			},
+			[&](ast::meta_region meta)
+			{
+				ret = meta_region(d, meta);
+			},
+			[&](auto)
+			{
+				d.fatal_error("dispatch error (no codegen support for this node payload)");
+			}
+
+		};
+		std::visit(dispatch, payload);
+		return ret;
+	}
+
+	void codegen_single_node(const ast& tree, const semantic::state& state, ast::path_t path)
+	{
+		const ast::node& node = tree.get(path);
+		codegen_thing({.tree = tree, .node = node, .path = path, .state = state}, node.payload);
+	}
 }

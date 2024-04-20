@@ -95,4 +95,8 @@ namespace semantic
 	state analysis(const ast& ast);
 }
 
+
+using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
+using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
+
 #endif // PSYC_SEMANTIC_HPP

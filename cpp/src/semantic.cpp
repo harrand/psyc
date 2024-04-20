@@ -333,8 +333,6 @@ namespace semantic
 	template<typename T>
 	type generic(const data& d, T payload);
 
-	using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
-
 	type unary_expression(const data& d, unary_expression_t payload)
 	{
 		const auto& [op, expr] = payload;
@@ -343,8 +341,6 @@ namespace semantic
 		d.warning("unary expression type handling is NYI. possible compiler UB to follow.");
 		return generic(d, expr->expr);
 	}
-
-	using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
 
 	type binary_expression(const data& d, binary_expression_t payload)
 	{
