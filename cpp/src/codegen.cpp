@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "diag.hpp"
+#include "semantic.hpp"
 #include "llvm/IR/LLVMContext.h"
 
 #include "llvm/ADT/APInt.h"
@@ -392,6 +393,26 @@ namespace codegen
 
 	llvm::Value* identifier(const data& d, ast::identifier payload)
 	{
+		// could be:
+		// a global variable
+		const semantic::local_variable_t* gvar = d.state.try_find_global_variable(payload.name);
+		if(gvar != nullptr)
+		{
+			d.assert_that(gvar->userdata != nullptr, std::format("internal compiler error: userdata for global variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", gvar->name));
+			return static_cast<llvm::GlobalVariable*>(gvar->userdata);
+		}
+		// a local variable
+		const semantic::local_variable_t* var = d.state.try_find_local_variable(d.path, payload.name);
+		if(var != nullptr)
+		{
+			d.assert_that(var->userdata != nullptr, std::format("internal compiler error: userdata for local variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", var->name));
+			return static_cast<llvm::AllocaInst*>(var->userdata);
+		}
+		// a function parameter
+		// todo: check a function parameter.
+		d.fatal_error(std::format("current logic says that identifier \"{}\" is a function parameter. unfortunately for you, function parameter deduction is not yet implemented.", payload.name));
+
+		// todo: another error message for none-of-the-above.
 		return nullptr;
 	}
 
