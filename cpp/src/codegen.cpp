@@ -286,27 +286,29 @@ namespace codegen
 
 	llvm::Value* integer_literal(const data& d, ast::integer_literal payload)
 	{
-		return nullptr;
+		// decimal literals are always i64
+		return llvm::ConstantInt::get(*ctx, llvm::APInt{64, static_cast<std::uint64_t>(payload.val), true});
 	}
 
 	llvm::Value* decimal_literal(const data& d, ast::decimal_literal payload)
 	{
-		return nullptr;
+		// decimal literals are always f64 (double)
+		return llvm::ConstantFP::get(builder->getDoubleTy(), llvm::APFloat{payload.val});
 	}
 
 	llvm::Value* char_literal(const data& d, ast::char_literal payload)
 	{
-		return nullptr;
+		return llvm::ConstantInt::get(*ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)});
 	}
 
 	llvm::Value* string_literal(const data& d, ast::string_literal payload)
 	{
-		return nullptr;
+		return llvm::ConstantDataArray::getString(*ctx, payload.val, true);
 	}
 
 	llvm::Value* bool_literal(const data& d, ast::bool_literal payload)
 	{
-		return nullptr;
+		return llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true});
 	}
 
 	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
