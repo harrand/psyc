@@ -19,6 +19,9 @@ namespace codegen
 {
 	static std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
 	static std::unique_ptr<llvm::Module> program = nullptr;
+	static std::unique_ptr<llvm::IRBuilder<>> builder = nullptr;
+	// global variables are RAII objects meaning we will have to deal with their lifetimes. to do that, we're just chucking them in there, and spreading the underlying ptr all around the place (as we're allocing we have pointer stability so its safe).
+	static std::vector<std::unique_ptr<llvm::GlobalVariable>> global_variable_storage = {};
 
 	void static_initialise()
 	{
@@ -31,17 +34,39 @@ namespace codegen
 		ctx = nullptr;
 	}
 
+	void cleanup_program()
+	{
+		global_variable_storage.clear();
+		builder = nullptr;
+		program = nullptr;
+	}
+
+	void codegen_structs(const ast& tree, const semantic::state& state);
+	void codegen_functions(const ast& tree, const semantic::state& state);
+	void codegen_global_variables(const ast& tree, const semantic::state& state);
+
 	// generate the program according to the ast and state.
 	// resultant module will be left in `program`.
-	void generate(const ast& tree, const semantic::state& state)
+	void generate(const ast& tree, const semantic::state& state, std::string llvm_module_name)
 	{
+		diag::assert_that(ctx != nullptr, "internal compiler error: forgot to codegen::static_initialise");
+		diag::assert_that(program == nullptr, "internal compiler error: call to codegen::generate when a previous program was not popped/written.");
+		diag::assert_that(builder == nullptr, "internal compiler error: call to codegen::generate when a previous program's llvm-ir-builder was not popped/written.");
+		program = std::make_unique<llvm::Module>(llvm_module_name, *ctx);
+		builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 
+		// codegen the structs and functions first, as other code might use them before they're defined (which we allow).
+		codegen_structs(tree, state);
+		codegen_functions(tree, state);
+		codegen_global_variables(tree, state);
 	}
 
 	// given a previous `generate`, retrieve an owning pointer to the result.
 	std::unique_ptr<llvm::Module> pop()
 	{
-		return std::move(program);
+		std::unique_ptr<llvm::Module> ret = std::move(program);
+		cleanup_program();
+		return ret;
 	}
 
 	// given a previous `generate`, write the resultant program to an object filename.
@@ -81,6 +106,99 @@ namespace codegen
 		pass.run(*program);
 		dst.flush();
 		// clear out the module afterwards.
-		program = nullptr;
+		cleanup_program();
+		return std::filesystem::path{object_filename};
 	}
+
+	/////////////////////////////////////// TYPE SYSTEM ///////////////////////////////////////
+
+	// we have a nice organised type system.
+	// llvm's is much more complicated. thanks to opaque pointers, it's not that simple. for that reason, we deal with our own types as much as possible, and just convert it to its equivalent llvm type at the last possible second (thats what this function does).
+	// returns nullptr in the case of an undefined type.
+	// will ICE if you provided a really dodgy type.
+	llvm::Type* as_llvm_type(const type& ty)
+	{
+		if(ty.is_undefined())
+		{
+			return nullptr;
+		}
+		// todo: implement
+		diag::fatal_error(std::format("internal compiler error: could not convert type \"{}\" to its corresponding llvm::Type*", ty.name()));
+		return nullptr;
+	}
+
+	llvm::Type* as_llvm_type(const util::box<type>& ty)
+	{
+		return as_llvm_type(*ty);
+	}
+
+	/////////////////////////////////////// TOP-LEVEL CODEGEN ///////////////////////////////////////
+
+	void codegen_structs(const ast& tree, const semantic::state& state)
+	{
+		for(const auto& [name, structdata] : state.struct_decls)
+		{
+			diag::assert_that(structdata.userdata == nullptr, std::format("internal compiler error: while running codegen for struct \"{}\", userdata ptr was not-null, implying it has already been codegen'd", name));
+			std::vector<llvm::Type*> llvm_data_members;
+			for(const struct_type::data_member& member : structdata.ty.data_members)
+			{
+				llvm_data_members.push_back(as_llvm_type(member.type));
+			}
+
+			llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, name, false);
+			// write the struct type ptr into the struct data so it can easily be retrieved later.
+			structdata.userdata = llvm_ty;
+		}
+	}
+
+	void codegen_functions(const ast& tree, const semantic::state& state)
+	{
+		for(const auto& [name, funcdata] : state.functions)
+		{
+			diag::assert_that(funcdata.userdata == nullptr, std::format("internal compiler error: while running codegen for function \"{}\", userdata ptr was not-null, implying it has already been codegen'd", name));
+			llvm::Type* llvm_return = as_llvm_type(funcdata.return_ty);
+			std::vector<llvm::Type*> llvm_params;
+			for(const semantic::local_variable_t& param : funcdata.params)
+			{
+				llvm_params.push_back(as_llvm_type(param.ty));
+			}
+
+			llvm::FunctionType* llvm_fty = llvm::FunctionType::get(llvm_return, llvm_params, false);
+			llvm::Function* llvm_fn = llvm::Function::Create(llvm_fty, llvm::Function::ExternalLinkage, name);
+			std::size_t arg_counter = 0;
+			for(llvm::Argument& arg : llvm_fn->args())
+			{
+				arg.setName(funcdata.params[arg_counter++].name);
+			}
+
+			funcdata.userdata = llvm_fn;
+		}
+	}
+
+	void codegen_global_variables(const ast& tree, const semantic::state& state)
+	{
+		for(const auto& [name, gvardata] : state.global_variables)
+		{
+			llvm::Type* llvm_ty = as_llvm_type(gvardata.ty);
+			// note: globals may have an initialiser, which means we will need to codegen that even though we're so early on.
+			const ast::node& node = tree.get(gvardata.context);
+			diag::assert_that(std::holds_alternative<ast::variable_declaration>(node.payload), std::format("internal compiler error: AST node corresponding to global variable \"{}\" (line {}) was not infact a variable declaration (variant id {}). something has gone horrendously wrong.", gvardata.name, node.meta.line_number, node.payload.index()));
+			const auto& decl = std::get<ast::variable_declaration>(node.payload);
+
+			llvm::Constant* llvm_initialiser = nullptr;
+			if(decl.initialiser.has_value())
+			{
+				// todo: assign llvm_initialiser to the codegen'd expression.
+			}
+
+			// create our owning global variable.
+			std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, llvm_initialiser);
+			// keep ahold of the underlying ptr.
+			gvardata.userdata = llvm_gvar.get();
+			// move the owning ptr into our global storage.
+			global_variable_storage.push_back(std::move(llvm_gvar));
+		}
+	}
+
+	/////////////////////////////////////// NODE CODEGEN ///////////////////////////////////////
 }

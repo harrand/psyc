@@ -13,7 +13,7 @@ namespace codegen
 	void static_initialise();
 	void static_terminate();
 
-	void generate(const ast& tree, const semantic::state& state);
+	void generate(const ast& tree, const semantic::state& state, std::string llvm_module_name);
 	std::unique_ptr<llvm::Module> pop();
 	std::filesystem::path write_to_object_file(std::string object_filename);
 }

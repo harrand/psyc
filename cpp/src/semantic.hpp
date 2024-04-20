@@ -33,6 +33,8 @@ namespace semantic
 		type ty;
 		std::string name;
 		ast::path_t context;
+		// codegen may want to track extra data. however, semal doesnt care about any of this.
+		mutable void* userdata = nullptr;
 	};
 
 	struct function_t
@@ -41,12 +43,16 @@ namespace semantic
 		std::string name;
 		std::vector<local_variable_t> params = {};
 		ast::path_t context;
+		// codegen may want to track extra data. however, semal doesnt care about any of this.
+		mutable void* userdata = nullptr;
 	};
 
 	struct struct_t
 	{
 		struct_type ty;
 		ast::path_t context;
+		// codegen may want to track extra data. however, semal doesnt care about any of this.
+		mutable void* userdata = nullptr;
 	};
 
 	struct scope_reference
