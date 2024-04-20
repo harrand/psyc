@@ -149,6 +149,37 @@ namespace codegen
 		return as_llvm_type(*ty, state);
 	}
 
+	llvm::Value* load_as(llvm::Value* ptr, const semantic::state& state, type hint = type::undefined())
+	{
+		llvm::Type* llvm_ty = ptr->getType();
+		llvm::Type* llvm_hint = as_llvm_type(hint, state);
+		if(llvm_ty == llvm_hint)
+		{
+			// you're fine as you are.
+			return ptr;
+		}
+		// ok types arent the same.
+		if(llvm_ty->isPointerTy() && !hint.is_pointer())
+		{
+			// so you gave me a pointer but what you expected is not a pointer.
+			// perhaps you want to do a load?
+			return builder->CreateLoad(llvm_hint, ptr);
+		}
+		if(!llvm_ty->isPointerTy() && hint.is_pointer())
+		{
+			// you gave me a value but you want a pointer...
+			diag::fatal_error("type system panic! dont know what to do here");
+		}
+		if(llvm_ty->isPointerTy() && hint.is_pointer())
+		{
+			// they're both pointers, but also different types...
+			// dont opaque pointers make this impossible?
+			diag::fatal_error("type system panic! whats an opaque pointer lmao");
+		}
+		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
+		return nullptr;
+	}
+
 	/////////////////////////////////////// TOP-LEVEL CODEGEN ///////////////////////////////////////
 
 	void codegen_structs(const ast& tree, const semantic::state& state)
@@ -353,11 +384,20 @@ namespace codegen
 	llvm::Value* binary_expression(const data& d, binary_expression_t payload)
 	{
 		const auto&[op, lhs, rhs] = payload;
+
+		const type* ty = d.state.try_get_type_from_node(d.path);
+		d.assert_that(ty != nullptr, "internal compiler error: type of binary expression could not be deduced.");
 		llvm::Value* lhs_value = expression(d, *lhs);
 		llvm::Value* rhs_value = expression(d, *rhs);
 		d.assert_that(lhs_value != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
 		d.assert_that(rhs_value != nullptr, "rhs operand to binary operator could not be properly deduced. syntax error?");
 		llvm::Value* ret = nullptr;
+
+		bool want_lhs_ptr = op.type == lexer::token::type::equals;
+		if(!want_lhs_ptr)
+		{
+			lhs_value = load_as(lhs_value, d.state, *ty);
+		}
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
@@ -455,10 +495,11 @@ namespace codegen
 		std::vector<llvm::Value*> llvm_params = {};
 		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
+			type param_ty = func->params[i].ty;
 			llvm::Value* param_val = expression(d, payload.params[i]);
 			// note: no narrowing as of yet.
 			d.assert_that(param_val != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
-			llvm_params.push_back(param_val);
+			llvm_params.push_back(load_as(param_val, d.state, param_ty));
 		}	
 		return builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp");
 	}
@@ -468,7 +509,7 @@ namespace codegen
 		// it must be a global/local variable or function parameter.
 		type ty = type::undefined();
 		// unleash our cheeky hack - when we codegen the identifier, let us know which type it came up with.
-		llvm::Value* lhs_var = identifier(d, payload.lhs, &lhs_type);
+		llvm::Value* lhs_var = identifier(d, payload.lhs, &ty);
 
 		d.assert_that(ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, ty.name()));
 		struct_type struct_ty = ty.as_struct();
@@ -501,7 +542,15 @@ namespace codegen
 
 	llvm::Value* return_statement(const data& d, ast::return_statement payload)
 	{
-		return nullptr;
+		if(!payload.value.has_value())
+		{
+			return builder->CreateRetVoid();
+		}
+		const type* ret_ty = d.state.try_get_type_from_node(d.path);
+		d.assert_that(ret_ty != nullptr, std::format("internal compiler error: type of non-void return expression could not be properly deduced. semantic analysis fucked up."));
+		llvm::Value* retval = expression(d, payload.value.value());
+		d.assert_that(retval != nullptr, std::format("internal compiler error: value of non-void return expression could not be properly deduced."));
+		return builder->CreateRet(load_as(retval, d.state, *ret_ty));
 	}
 
 	llvm::Value* variable_declaration(const data& d, ast::variable_declaration payload)
