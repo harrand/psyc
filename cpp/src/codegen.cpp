@@ -138,6 +138,58 @@ namespace codegen
 			// see codegen_structs to confirm that indeed it is a llvm::StructType*
 			return static_cast<llvm::StructType*>(structdata->userdata);
 		}
+		if(ty.is_primitive())
+		{
+			switch(ty.as_primitive())
+			{
+				case primitive_type::i64:
+					[[fallthrough]];
+				case primitive_type::u64:
+					return llvm::Type::getInt64Ty(*ctx);
+				break;
+
+				case primitive_type::i32:
+					[[fallthrough]];
+				case primitive_type::u32:
+					return llvm::Type::getInt32Ty(*ctx);
+				break;
+
+				case primitive_type::i16:
+					[[fallthrough]];
+				case primitive_type::u16:
+					return llvm::Type::getInt16Ty(*ctx);
+				break;
+
+				case primitive_type::i8:
+					[[fallthrough]];
+				case primitive_type::u8:
+					return llvm::Type::getInt8Ty(*ctx);
+				break;
+
+				case primitive_type::u0:
+					return llvm::Type::getVoidTy(*ctx);
+				break;
+
+				case primitive_type::boolean:
+					return llvm::Type::getInt1Ty(*ctx);
+				break;
+
+				case primitive_type::f64:
+					return llvm::Type::getDoubleTy(*ctx);
+				break;
+				case primitive_type::f32:
+					return llvm::Type::getFloatTy(*ctx);
+				break;
+				case primitive_type::f16:
+					return llvm::Type::getHalfTy(*ctx);
+				break;
+
+				default:
+					diag::fatal_error(std::format("internal compiler error: unrecognised primitive type \"{}\" used in source", ty.name()));
+					return nullptr;
+				break;
+			}
+		}
 		// todo: implement
 		diag::fatal_error(std::format("internal compiler error: could not convert type \"{}\" to its corresponding llvm::Type*", ty.name()));
 		return nullptr;
