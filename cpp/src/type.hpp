@@ -50,8 +50,14 @@ constexpr std::array<const char*, static_cast<int>(primitive_type::_count)> prim
 struct type;
 struct struct_type
 {
+	struct data_member
+	{
+		std::string member_name;
+		util::box<type> type;
+	};
+
 	std::string name;
-	std::vector<util::box<type>> data_members = {};
+	std::vector<data_member> data_members = {};
 };
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();
@@ -74,6 +80,7 @@ struct type
 	bool is_void() const;
 	bool is_pointer() const;
 	bool is_struct() const;
+	const struct_type& as_struct() const;
 
 	std::string name() const;
 

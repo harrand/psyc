@@ -1,4 +1,5 @@
 #include "type.hpp"
+#include "diag.hpp"
 
 bool type::is_undefined() const
 {
@@ -26,6 +27,12 @@ bool type::is_pointer() const
 bool type::is_struct() const
 {
 	return std::holds_alternative<struct_type>(this->ty) && !this->is_pointer();
+}
+
+const struct_type& type::as_struct() const
+{
+	diag::assert_that(this->is_struct(), std::format("internal compiler error: attempt to re-interpret non-struct type \"{}\" as struct", this->name()));
+	return std::get<struct_type>(this->ty);
 }
 
 std::string type::name() const

@@ -61,7 +61,11 @@ namespace semantic
 							this->last_error = std::format("semal error on line {} - could not decipher type of data member {} (typename: {}). if its a struct, it must be defined before this struct.", child.meta.line_number, decl.var_name, decl.type_name);
 							return;
 						}
-						ty.ty.data_members.push_back(param_type);
+						ty.ty.data_members.push_back
+						({
+							.member_name = decl.var_name,
+							.type = param_type
+						});
 					}
 					else
 					{
@@ -161,6 +165,14 @@ namespace semantic
 	{
 		const ast::node& node = tree.get(path);
 		this->process_single_node(path, tree);
+
+		if(std::holds_alternative<ast::meta_region>(node.payload))
+		{
+			// meta region contents don't follow the rules (i.e assigning to `optimisation` will complain coz thats not a defined variable)
+			// so we processed the meta region but now need to skip over all of its contents.
+			// we do this by earlying-out here before we iterate over children.
+			return;
+		}
 		for(std::size_t i = 0; i < node.children.size(); i++)
 		{
 			ast::path_t child_path = path;
@@ -293,6 +305,11 @@ namespace semantic
 			diag::fatal_error(std::format("line {} - {}", this->line(), msg));
 		}
 
+		void warning(std::string msg) const
+		{
+			diag::warning(std::format("line {} - {}", this->line(), msg));
+		}
+
 		void assert_that(bool expr, std::string msg) const
 		{
 			if(!expr)
@@ -302,57 +319,111 @@ namespace semantic
 		}
 	};
 
+	template<typename T>
+	type generic(const data& d, T payload);
+
 	using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
 
-	void unary_expression(const data& d, unary_expression_t payload)
+	type unary_expression(const data& d, unary_expression_t payload)
 	{
 		const auto& [op, expr] = payload;
+		// im just returning the type of the expression as if it didnt have an operator applied.
+		// im not sure under which unary operator this could be wrong though. triage?
+		d.warning("unary expression type handling is NYI. possible compiler UB to follow.");
+		return generic(d, expr->expr);
 	}
 
 	using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
 
-	void binary_expression(const data& d, binary_expression_t payload)
+	type binary_expression(const data& d, binary_expression_t payload)
 	{
 		const auto& [op, expr1, expr2] = payload;
+		// pretty sure the operator might indeed transform the type (especially with integer promotion).
+		d.warning("binary expression type handling is NYI. possible compiler UB to follow.");
+		return generic(d, expr1->expr);
 	}
 
-	void identifier(const data& d, ast::identifier payload)
+	type expression(const data& d, ast::expression payload)
 	{
-
+		// recurse on underlying expr.
+		return generic(d, payload.expr);
 	}
 
-	void function_call(const data& d, ast::function_call payload)
+	type identifier(const data& d, ast::identifier payload)
 	{
+		const local_variable_t* maybe_global_variable = d.state.try_find_global_variable(payload.name);
+		if(maybe_global_variable != nullptr)
+		{
+			return maybe_global_variable->ty;
+		}
+		
+		const local_variable_t* maybe_local_variable = d.state.try_find_local_variable(d.path, payload.name);
+		if(maybe_local_variable != nullptr)
+		{
+			return maybe_local_variable->ty;
+		}
 
+		diag::fatal_error(std::format("cannot figure out the type of identifier \"{}\". tried a local and global variable name. possible ICE.", payload.name));
+		return type::undefined();
 	}
 
-	void member_access(const data& d, ast::member_access payload)
+	type function_call(const data& d, ast::function_call payload)
 	{
-
+		const function_t* maybe_function = d.state.try_find_function(payload.function_name);
+		diag::assert_that(maybe_function != nullptr, std::format("call to undeclared function \"{}\"", payload.function_name));
+		return maybe_function->return_ty;
 	}
 
-	void if_statement(const data& d, ast::if_statement payload)
+	type member_access(const data& d, ast::member_access payload)
 	{
-
+		type lhs_t = identifier(d, payload.lhs);
+		// if lhs is a struct type, then we need the data member.
+		if(lhs_t.is_struct())
+		{
+			// find out the type of the data member.
+			const struct_type& lhs_struct = lhs_t.as_struct();
+			for(const struct_type::data_member& member : lhs_struct.data_members)
+			{
+				if(payload.rhs.name == member.member_name)
+				{
+					return *member.type;
+				}
+			}
+			// if we couldnt identify it as a data member, that's a compiler error.
+			d.fatal_error(std::format("struct \"{}\" has no data member named \"{}\"", lhs_struct.name, payload.rhs.name));
+		}
+		else
+		{
+			d.fatal_error(std::format("member access node detected, but lhs ({}) is not a struct type.", lhs_t.name()));
+		}
+		return type::undefined();
 	}
 
-	void for_statement(const data& d, ast::for_statement payload)
+	type if_statement(const data& d, ast::if_statement payload)
 	{
-
+		return type::undefined();
 	}
 
-	void return_statement(const data& d, ast::return_statement payload)
+	type for_statement(const data& d, ast::for_statement payload)
 	{
-
+		return type::undefined();
 	}
 
+	type return_statement(const data& d, ast::return_statement payload)
+	{
+		if(payload.value.has_value())
+		{
+			return expression(d, payload.value.value());
+		}
+		return type::from_primitive(primitive_type::u0);
+	}
 
-	void variable_declaration(const data& d, ast::variable_declaration payload)
+	type variable_declaration(const data& d, ast::variable_declaration payload)
 	{
 		if(d.path.size() <= 1)
 		{
 			// we already sorted out global variables.
-			return;
+			return d.state.get_type_from_name(payload.type_name).first;
 		}
 		auto global_already = d.state.try_find_global_variable(payload.var_name);
 		d.assert_that(global_already == nullptr, std::format("variable named \"{}\" would shadow a global variable (defined on line {})", payload.var_name, global_already != nullptr ? d.tree.get(global_already->context).meta.line_number : 0));
@@ -367,21 +438,24 @@ namespace semantic
 			.name = payload.var_name,
 			.context = d.path
 		});
+		return ty;
 	}
 
-	void function_definition(const data& d, ast::function_definition payload)
+	type function_definition(const data& d, ast::function_definition payload)
 	{
 		d.assert_that(d.path.size() <= 1, std::format("detected a function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+		return d.state.get_type_from_name(payload.return_type).first;
 	}
 
-	void struct_definition(const data& d, ast::struct_definition payload)
+	type struct_definition(const data& d, ast::struct_definition payload)
 	{
 		d.assert_that(d.path.size() <= 1, std::format("detected a struct definition \"{}\" within another block. structs can only be defined at the top-level scope.", payload.struct_name));
+		return d.state.get_type_from_name(payload.struct_name).first;
 	}
 
-	void meta_region(const data& d, ast::meta_region payload)
+	type meta_region(const data& d, ast::meta_region payload)
 	{
-
+		return type::undefined();
 	}
 
 	template<typename ... Ts> 
@@ -391,8 +465,10 @@ namespace semantic
 	template<class... Ts> overload(Ts...) -> overload<Ts...>;
 
 	template<typename T>
-	void generic(const data& d, T payload)
+	type generic(const data& d, T payload)
 	{
+		type ret = type::undefined();
+
 		auto dispatch = overload
 		{
 			[&](ast::binary_operator op)
@@ -405,56 +481,55 @@ namespace semantic
 			},
 			[&](unary_expression_t uexpr)
 			{
-				unary_expression(d, uexpr);
+				ret = unary_expression(d, uexpr);
 			},
 			[&](binary_expression_t bexpr)
 			{
-				binary_expression(d, bexpr);
+				ret = binary_expression(d, bexpr);
 			},
 			[&](ast::identifier id)
 			{
-				identifier(d, id);
+				ret = identifier(d, id);
 			},
 			[&](ast::function_call call)
 			{
-				function_call(d, call);
+				ret = function_call(d, call);
 			},
 			[&](ast::member_access mem)
 			{
-				member_access(d, mem);
+				ret = member_access(d, mem);
 			},
 			[&](ast::expression expr)
 			{
-				// recurse on underlying expr.
-				generic(d, expr.expr);
+				ret = expression(d, expr);
 			},
 			[&](ast::if_statement ifst)
 			{
-				if_statement(d, ifst);
+				ret = if_statement(d, ifst);
 			},
 			[&](ast::for_statement forst)
 			{
-				for_statement(d, forst);
+				ret = for_statement(d, forst);
 			},
 			[&](ast::return_statement returnst)
 			{
-				return_statement(d, returnst);
+				ret = return_statement(d, returnst);
 			},
 			[&](ast::variable_declaration decl)
 			{
-				variable_declaration(d, decl);
+				ret = variable_declaration(d, decl);
 			},
 			[&](ast::function_definition fdef)
 			{
-				function_definition(d, fdef);
+				ret = function_definition(d, fdef);
 			},
 			[&](ast::struct_definition sdef)
 			{
-				struct_definition(d, sdef);
+				ret = struct_definition(d, sdef);
 			},
 			[&](ast::meta_region meta)
 			{
-				meta_region(d, meta);
+				ret = meta_region(d, meta);
 			},
 			[&](auto)
 			{
@@ -463,12 +538,14 @@ namespace semantic
 		};
 
 		std::visit(dispatch, payload);
+		return ret;
 	}
 
 	void process_node_impl(state& s, ast::path_t path, const ast& tree)
 	{
 		const ast::node& node = tree.get(path);
 		data d{.state = s, .path = path, .tree = tree};
-		generic(d, node.payload);
+		type ty = generic(d, node.payload);
+		s.type_breadcrumbs[path] = ty;
 	}
 }

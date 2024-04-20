@@ -61,6 +61,7 @@ namespace semantic
 		std::map<std::string, function_t> functions = {};
 		std::map<std::string, local_variable_t> global_variables = {};
 		std::map<std::string, struct_t> struct_decls = {};
+		std::unordered_map<ast::path_t, type> type_breadcrumbs = {};
 		std::string last_error = "";
 		std::string last_warning = "";
 
