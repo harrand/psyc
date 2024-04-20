@@ -311,14 +311,83 @@ namespace codegen
 		return llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true});
 	}
 
-	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
+	llvm::Value* expression(const data& d, ast::expression payload)
 	{
 		return nullptr;
 	}
 
+	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
+	{
+		llvm::Value* operand = expression(d, *payload.second);
+		d.assert_that(operand != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
+		const type* ty = d.state.try_get_type_from_node(d.path);
+		d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
+		d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
+		switch(payload.first.type)
+		{
+			case lexer::token::type::minus:
+				if(ty->is_integer_type())
+				{
+					return builder->CreateNeg(operand);
+				}
+				else if(ty->is_floating_point_type())
+				{
+					return builder->CreateFNeg(operand);
+				}
+				else
+				{
+					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", ty->name()));
+				}
+			break;
+			default:
+				d.fatal_error("internal compiler error: codegen for this unary operator is not yet implemented.");
+				return nullptr;
+			break;
+		}
+	}
+
 	llvm::Value* binary_expression(const data& d, binary_expression_t payload)
 	{
-		return nullptr;
+		const auto&[op, lhs, rhs] = payload;
+		llvm::Value* lhs_value = expression(d, *lhs);
+		llvm::Value* rhs_value = expression(d, *rhs);
+		d.assert_that(lhs_value != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
+		d.assert_that(rhs_value != nullptr, "rhs operand to binary operator could not be properly deduced. syntax error?");
+		llvm::Value* ret = nullptr;
+		switch(op.type)
+		{
+			case lexer::token::type::plus:
+				ret = builder->CreateAdd(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::minus:
+				ret = builder->CreateSub(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::double_equals:
+				ret = builder->CreateICmpEQ(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::not_equals:
+				ret = builder->CreateICmpNE(lhs_value, rhs_value);
+			break;
+			case lexer::token::type::equals:
+			{
+				ret = builder->CreateStore(rhs_value, lhs_value);
+			}
+			break;
+			default:
+				d.fatal_error("internal compiler error: binary operator is not yet implemented.");
+			break;
+		}
+		if(ret == nullptr)
+		{
+			d.fatal_error("internal compiler error: a particular binary operator was not recognised in the context of its equivalent LLVM-IR.");
+		}
+		else
+		{
+			const type* ty = d.state.try_get_type_from_node(d.path);
+			d.assert_that(ty != nullptr, "internal compiler error: type system failed to deduce type of binary operator expression");
+			d.assert_that(as_llvm_type(*ty, d.state) == ret->getType(), std::format("internal compiler error: binary operator expression's deduced type \"{}\" does not match the real underlying LLVM value type. i.e type system has failed.", ty->name()));
+		}
+		return ret;
 	}
 
 	llvm::Value* identifier(const data& d, ast::identifier payload)
@@ -332,11 +401,6 @@ namespace codegen
 	}
 
 	llvm::Value* member_access(const data& d, ast::member_access payload)
-	{
-		return nullptr;
-	}
-
-	llvm::Value* expression(const data& d, ast::expression payload)
 	{
 		return nullptr;
 	}

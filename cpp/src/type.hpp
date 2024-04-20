@@ -77,9 +77,13 @@ struct type
 	bool is_undefined() const; // an ill-defined type.
 
 	bool is_primitive() const;
+	bool is_integer_type() const;
+	bool is_floating_point_type() const;
 	bool is_void() const;
 	bool is_pointer() const;
 	bool is_struct() const;
+
+	primitive_type as_primitive() const;
 	const struct_type& as_struct() const;
 
 	std::string name() const;

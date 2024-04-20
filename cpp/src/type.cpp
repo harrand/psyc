@@ -29,6 +29,12 @@ bool type::is_struct() const
 	return std::holds_alternative<struct_type>(this->ty) && !this->is_pointer();
 }
 
+primitive_type type::as_primitive() const
+{
+	diag::assert_that(this->is_primitive(), std::format("internal compiler error: attempt to re-interpret non-primitive type \"{}\" as a primitive", this->name()));
+	return std::get<primitive_type>(this->ty);
+}
+
 const struct_type& type::as_struct() const
 {
 	diag::assert_that(this->is_struct(), std::format("internal compiler error: attempt to re-interpret non-struct type \"{}\" as struct", this->name()));
