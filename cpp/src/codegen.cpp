@@ -8,6 +8,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -180,7 +181,39 @@ namespace codegen
 				arg.setName(funcdata.params[arg_counter++].name);
 			}
 
+			// add the body if it exists.
+			const ast::node& node = tree.get(funcdata.context);
+			diag::assert_that(std::holds_alternative<ast::function_definition>(node.payload), std::format("internal compiler error: AST node corresponding to function definition \"{}\" (line {}) was not infact a function definition (variant id {}). something has gone horrendously wrong.", funcdata.name, node.meta.line_number, node.payload.index()));
+			const auto& decl = std::get<ast::function_definition>(node.payload);
+			if(!decl.is_extern)
+			{
+				// create a new basic block.	
+				llvm::BasicBlock* blk = llvm::BasicBlock::Create(*ctx, "entry", llvm_fn);
+				builder->SetInsertPoint(blk);
+
+				bool has_return = false;
+				for(const ast::node& child : node.children)
+				{
+					if(std::holds_alternative<ast::return_statement>(child.payload))
+					{
+						has_return = true;
+					}
+					// todo: codegen these nodes.
+				}
+
+				if(!has_return && funcdata.return_ty.is_void())
+				{
+					// automatically add a return :)
+					ast::return_statement implicit_return
+					{
+						.value = std::nullopt
+					};
+					diag::fatal_error("NYI: implicit return. everything is ready to go though, just hook it up please.");
+				}
+			}
+
 			funcdata.userdata = llvm_fn;
+			llvm::verifyFunction(*llvm_fn);
 		}
 	}
 
