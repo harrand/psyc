@@ -99,6 +99,7 @@ namespace semantic
 				}
 				fn.name = func.function_name;
 				fn.context = path;
+				fn.return_ty = this->get_type_from_name(func.return_type).first;
 				for(const auto& param : func.params)
 				{
 					type param_type = this->get_type_from_name(param.type_name).first;
@@ -141,6 +142,7 @@ namespace semantic
 					this->last_error = std::format("semal error on line {} - could not decipher type of global variable {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, gvar.var_name, gvar.type_name);
 					return;
 				}
+				gv.ty = var_type;
 				if(this->global_variables.contains(gv.name))
 				{
 					std::size_t previously_defined_on_line = tree.get(this->global_variables.at(gv.name).context).meta.line_number;
