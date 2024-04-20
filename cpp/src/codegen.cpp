@@ -430,14 +430,25 @@ namespace codegen
 			}
 		}
 
-		// todo: another error message for none-of-the-above.
 		d.fatal_error(std::format("could not evaluate identifier \"{}\". tried global variable, local variable and function parameter :(", payload.name));
 		return nullptr;
 	}
 
 	llvm::Value* function_call(const data& d, ast::function_call payload)
 	{
-		return nullptr;
+		const semantic::function_t* func = d.state.try_find_function(payload.function_name);
+		d.assert_that(func != nullptr, std::format("call to undefined function \"{}\"", payload.function_name));
+		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
+		d.assert_that(llvm_func != nullptr, std::format("internal compiler error: function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name));
+		std::vector<llvm::Value*> llvm_params = {};
+		for(std::size_t i = 0; i < payload.params.size(); i++)
+		{
+			llvm::Value* param_val = expression(d, payload.params[i]);
+			// note: no narrowing as of yet.
+			d.assert_that(param_val != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
+			llvm_params.push_back(param_val);
+		}	
+		return builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp");
 	}
 
 	llvm::Value* member_access(const data& d, ast::member_access payload)
