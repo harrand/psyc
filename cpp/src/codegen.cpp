@@ -300,7 +300,7 @@ namespace codegen
 			}
 
 			llvm::FunctionType* llvm_fty = llvm::FunctionType::get(llvm_return, llvm_params, false);
-			llvm::Function* llvm_fn = llvm::Function::Create(llvm_fty, llvm::Function::ExternalLinkage, name);
+			llvm::Function* llvm_fn = llvm::Function::Create(llvm_fty, llvm::Function::ExternalLinkage, name, program.get());
 			std::size_t arg_counter = 0;
 			for(llvm::Argument& arg : llvm_fn->args())
 			{
@@ -310,36 +310,7 @@ namespace codegen
 				arg.setName(funcdata.params[arg_counter++].name);
 			}
 
-			// add the body if it exists.
-			const ast::node& node = tree.get(funcdata.context);
-			diag::assert_that(std::holds_alternative<ast::function_definition>(node.payload), std::format("internal compiler error: AST node corresponding to function definition \"{}\" (line {}) was not infact a function definition (variant id {}). something has gone horrendously wrong.", funcdata.name, node.meta.line_number, node.payload.index()));
-			const auto& decl = std::get<ast::function_definition>(node.payload);
-			if(!decl.is_extern)
-			{
-				// create a new basic block.	
-				llvm::BasicBlock* blk = llvm::BasicBlock::Create(*ctx, "entry", llvm_fn);
-				builder->SetInsertPoint(blk);
-
-				bool has_return = false;
-				for(const ast::node& child : node.children)
-				{
-					if(std::holds_alternative<ast::return_statement>(child.payload))
-					{
-						has_return = true;
-					}
-					// todo: codegen these nodes.
-				}
-
-				if(!has_return && funcdata.return_ty.is_void())
-				{
-					// automatically add a return :) you're welcome
-					builder->CreateRetVoid();
-				}
-			}
-
 			funcdata.userdata = llvm_fn;
-			// yo this shit below straight crashes. dodgy string representing the modules target triple. well i didnt set that yet lmao.
-			//llvm::verifyFunction(*llvm_fn);
 		}
 	}
 
@@ -433,7 +404,7 @@ namespace codegen
 
 	llvm::Value* expression(const data& d, ast::expression payload)
 	{
-		return nullptr;
+		return codegen_thing(d, payload.expr);
 	}
 
 	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
@@ -484,6 +455,7 @@ namespace codegen
 		{
 			lhs_value = load_as(lhs_value, d.state, *ty);
 		}
+		rhs_value = load_as(rhs_value, d.state, *ty);
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
@@ -500,7 +472,10 @@ namespace codegen
 			break;
 			case lexer::token::type::equals:
 			{
-				ret = builder->CreateStore(rhs_value, lhs_value);
+				builder->CreateStore(rhs_value, lhs_value);
+				// createstore returns a void type'd value, so we dont care about that for ret.
+				// just use the type semantic analysis gave us.
+				ret = rhs_value;
 			}
 			break;
 			default:
@@ -585,7 +560,9 @@ namespace codegen
 			llvm::Value* param_val = expression(d, payload.params[i]);
 			// note: no narrowing as of yet.
 			d.assert_that(param_val != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
-			llvm_params.push_back(load_as(param_val, d.state, param_ty));
+			llvm::Value* loaded_val = load_as(param_val, d.state, param_ty);
+			d.assert_that(loaded_val != nullptr, std::format("type mismatch! expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", param_ty.name()));
+			llvm_params.push_back(loaded_val);
 		}	
 		return builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp");
 	}
@@ -647,12 +624,58 @@ namespace codegen
 			// globals are already done in the pre-pass.
 			return static_cast<llvm::GlobalVariable*>(d.state.try_find_global_variable(payload.var_name)->userdata);
 		}
-		return nullptr;
+		const semantic::local_variable_t* var = d.state.try_find_local_variable(d.path, payload.var_name);
+		d.assert_that(var != nullptr, std::format("could not find local variable \"{}\"", payload.var_name));
+		llvm::Type* llvm_ty = as_llvm_type(var->ty, d.state);
+		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
+
+		var->userdata = llvm_var;
+		return llvm_var;
 	}
 
 	llvm::Value* function_definition(const data& d, ast::function_definition payload)
 	{
 		// functions are already done in the pre-pass.
+		// however, none of their bodies are.
+		// add the body if it exists.
+		const semantic::function_t* func_ptr = d.state.try_find_function(payload.function_name);
+		d.assert_that(func_ptr != nullptr, std::format("internal compiler error: semantic information for function \"{}\" did not exist.", payload.function_name));
+		const semantic::function_t& funcdata = *func_ptr;
+
+		auto* llvm_fn = static_cast<llvm::Function*>(funcdata.userdata);
+		d.assert_that(llvm_fn != nullptr, std::format("internal compiler error: llvm::Function* mapping for pre-def'd function \"{}\" did not exist.", payload.function_name));
+
+		const ast::node& node = d.tree.get(funcdata.context);
+		diag::assert_that(std::holds_alternative<ast::function_definition>(node.payload), std::format("internal compiler error: AST node corresponding to function definition \"{}\" (line {}) was not infact a function definition (variant id {}). something has gone horrendously wrong.", funcdata.name, node.meta.line_number, node.payload.index()));
+		const auto& decl = std::get<ast::function_definition>(node.payload);
+		if(!decl.is_extern)
+		{
+			// create a new basic block.	
+			llvm::BasicBlock* blk = llvm::BasicBlock::Create(*ctx, "entry", llvm_fn);
+			builder->SetInsertPoint(blk);
+
+			bool has_return = false;
+			for(std::size_t i = 0; i < node.children.size(); i++)
+			{
+				const ast::node& child = node.children[i];
+				ast::path_t child_path = funcdata.context;
+				child_path.push_back(i);
+				if(std::holds_alternative<ast::return_statement>(child.payload))
+				{
+					has_return = true;
+				}
+				// todo: codegen these nodes.
+				codegen_single_node(d.tree, d.state, child_path);
+			}
+
+			if(!has_return && funcdata.return_ty.is_void())
+			{
+				// automatically add a return :) you're welcome
+				builder->CreateRetVoid();
+			}
+		}
+		// yo this shit below straight crashes. dodgy string representing the modules target triple. well i didnt set that yet lmao.
+		//llvm::verifyFunction(*llvm_fn);
 		return nullptr;
 	}
 

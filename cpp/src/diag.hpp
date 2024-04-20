@@ -42,6 +42,9 @@ namespace diag
 		std::cout << "\033[1;31m" << "fatal error: ";
 		print(std::forward<Ts>(ts)...);
 		std::cout << "\033[0m";
+		#ifndef NDEBUG
+		asm("int3");
+		#endif
 		std::exit(0);
 	}
 
