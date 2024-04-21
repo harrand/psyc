@@ -638,6 +638,84 @@ namespace codegen
 
 	llvm::Value* if_statement(const data& d, ast::if_statement payload)
 	{
+		std::optional<ast::else_statement> maybe_else = std::nullopt;
+		auto next_path = d.path;
+		next_path.back()++;
+		const ast::node& next = d.tree.get(next_path);
+		if(std::holds_alternative<ast::else_statement>(next.payload))
+		{
+			maybe_else = std::get<ast::else_statement>(next.payload);
+		}
+
+		llvm::Value* llvm_cond = expression(d, payload.condition);
+		d.assert_that(llvm_cond != nullptr, "internal compiler error: could not codegen condition inside if-statement");
+		type bool_t = type::from_primitive(primitive_type::boolean);
+		llvm_cond = load_as(llvm_cond, d.state, bool_t);
+		llvm_cond = builder->CreateICmpNE(llvm_cond, llvm::ConstantInt::get(as_llvm_type(bool_t, d.state), llvm::APInt{1, 0u}));
+
+		const semantic::function_t* parent_function = d.state.try_find_parent_function(d.tree, d.path);
+		d.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, "internal compiler error: could not deduct parent enclosing function within if-statement");
+		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
+
+		llvm::BasicBlock* then_blk = llvm::BasicBlock::Create(*ctx, "then", llvm_parent_fn);
+		llvm::BasicBlock* else_blk = llvm::BasicBlock::Create(*ctx, "else");
+		llvm::BasicBlock* merge_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
+
+		builder->CreateCondBr(llvm_cond, then_blk, else_blk);
+		builder->SetInsertPoint(then_blk);
+		llvm::Value* if_val = nullptr;
+		for(std::size_t i = 0; i < d.node.children.size(); i++)
+		{
+			// if true then do this shit.
+			const ast::node& child = d.node.children[i];
+			auto child_path = d.path;
+			child_path.push_back(i);
+			data d2 =
+			{
+				.tree = d.tree,
+				.node = next,
+				.path = child_path,
+				.state = d.state
+			};
+			if_val = codegen_thing(d2, child.payload);
+		}
+
+		builder->CreateBr(merge_blk);
+		then_blk = builder->GetInsertBlock();
+
+		llvm_parent_fn->insert(llvm_parent_fn->end(), else_blk);
+		builder->SetInsertPoint(else_blk);
+
+		// else stuff goes here?
+		llvm::Value* else_val = nullptr;
+		for(std::size_t i = 0; i < next.children.size(); i++)
+		{
+			const ast::node& child = next.children[i];
+			auto child_path = next_path;
+			child_path.push_back(i);
+			data d2 =
+			{
+				.tree = d.tree,
+				.node = next,
+				.path = child_path,
+				.state = d.state
+			};
+			else_val = codegen_thing(d2, child.payload);
+		}
+
+		builder->CreateBr(merge_blk);
+		else_blk = builder->GetInsertBlock();
+		llvm_parent_fn->insert(llvm_parent_fn->end(), merge_blk);
+		builder->SetInsertPoint(merge_blk);
+
+		llvm::PHINode* phi = builder->CreatePHI(if_val->getType(), 2, "iftmp");
+		phi->addIncoming(if_val, then_blk);
+		phi->addIncoming(else_val, else_blk);
+		return phi;
+	}
+
+	llvm::Value* else_statement(const data& d, ast::else_statement payload)
+	{
 		return nullptr;
 	}
 
@@ -827,6 +905,10 @@ namespace codegen
 			[&](ast::if_statement ifst)
 			{
 				ret = if_statement(d, ifst);
+			},
+			[&](ast::else_statement elst)
+			{
+				ret = else_statement(d, elst);
 			},
 			[&](ast::for_statement forst)
 			{
