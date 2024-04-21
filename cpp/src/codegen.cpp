@@ -188,6 +188,10 @@ namespace codegen
 			// todo: potentially emit a compiler error? is it ever valid to pass in an undefined type?
 			return nullptr;
 		}
+		if(ty.is_pointer())
+		{
+			return llvm::PointerType::get(as_llvm_type(ty.dereference(), state), 0);
+		}
 		if(ty.is_struct())
 		{
 			const semantic::struct_t* structdata = state.try_find_struct(ty.name());

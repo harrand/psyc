@@ -99,15 +99,21 @@ std::string type::name() const
 	{
 		return "<undefined type>";
 	}
+	type thiscpy = *this;
+	for(std::size_t i = 0; i < this->pointer_level; i++)
+	{
+		thiscpy = thiscpy.dereference();
+	}
+
 	std::string ret;
 
-	if(this->is_primitive())
+	if(thiscpy.is_primitive())
 	{
 		ret = primitive_type_names[static_cast<int>(std::get<primitive_type>(this->ty))];
 	}
 	else
 	{
-		ret = std::get<struct_type>(this->ty).name;
+		ret = std::get<struct_type>(thiscpy.ty).name;
 	}
 
 	for(std::size_t i = 0; i < this->pointer_level; i++)
@@ -128,7 +134,7 @@ type type::dereference() const
 	return type::undefined();
 }
 
-type type::reference() const
+type type::pointer_to() const
 {
 	if(this->is_undefined())
 	{

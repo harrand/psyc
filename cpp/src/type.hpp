@@ -89,7 +89,7 @@ struct type
 	std::string name() const;
 
 	type dereference() const;
-	type reference() const;
+	type pointer_to() const;
 
 	static type undefined();
 	static type from_primitive(primitive_type t);

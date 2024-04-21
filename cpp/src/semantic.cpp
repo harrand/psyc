@@ -191,23 +191,30 @@ namespace semantic
 
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
 	{
+		std::pair<type, ast::path_t> ret{type::undefined(), ast::path_t{}};
+		std::size_t ptr_level = 0;
+		while(type_name.ends_with("*"))
+		{
+			ptr_level++;
+			type_name.remove_suffix(1);
+		}
 		// is it a struct type?
 		for(const auto& [struct_name, struct_data] : this->struct_decls)
 		{
 			if(struct_name == type_name)
 			{
-				return {type::from_struct(struct_data.ty), struct_data.context};
+				ret = {type::from_struct(struct_data.ty), struct_data.context};
 			}
 		}
 		for(int i = 0; i < static_cast<int>(primitive_type::_count); i++)
 		{
 			if(type_name == primitive_type_names[i])
 			{
-				return {type::from_primitive(static_cast<primitive_type>(i)), ast::path_t{}};
+				ret = {type::from_primitive(static_cast<primitive_type>(i)), ast::path_t{}};
 			}
 		}
-
-		return {type::undefined(), ast::path_t{}};
+		ret.first.pointer_level = ptr_level;
+		return ret;
 	}
 
 	const type* state::try_get_type_from_node(const ast::path_t& path) const
@@ -534,7 +541,7 @@ namespace semantic
 			},
 			[&](ast::string_literal lit)
 			{
-				ret = type::from_primitive(primitive_type::i8).reference();
+				ret = type::from_primitive(primitive_type::i8).pointer_to();
 			},
 			[&](ast::binary_operator op)
 			{
