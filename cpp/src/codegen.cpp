@@ -639,12 +639,15 @@ namespace codegen
 	llvm::Value* if_statement(const data& d, ast::if_statement payload)
 	{
 		std::optional<ast::else_statement> maybe_else = std::nullopt;
-		auto next_path = d.path;
-		next_path.back()++;
-		const ast::node& next = d.tree.get(next_path);
-		if(std::holds_alternative<ast::else_statement>(next.payload))
+		std::optional<ast::path_t> next_path = d.tree.try_get_next(d.path);
+		const ast::node* maybe_next = nullptr;
+		if(next_path.has_value())
 		{
-			maybe_else = std::get<ast::else_statement>(next.payload);
+			maybe_next = &d.tree.get(next_path.value());
+			if(std::holds_alternative<ast::else_statement>(maybe_next->payload))
+			{
+				maybe_else = std::get<ast::else_statement>(maybe_next->payload);
+			}
 		}
 
 		llvm::Value* llvm_cond = expression(d, payload.condition);
@@ -657,61 +660,103 @@ namespace codegen
 		d.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, "internal compiler error: could not deduct parent enclosing function within if-statement");
 		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
 
-		llvm::BasicBlock* then_blk = llvm::BasicBlock::Create(*ctx, "then", llvm_parent_fn);
-		llvm::BasicBlock* else_blk = llvm::BasicBlock::Create(*ctx, "else");
-		llvm::BasicBlock* merge_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
-
-		builder->CreateCondBr(llvm_cond, then_blk, else_blk);
-		builder->SetInsertPoint(then_blk);
-		llvm::Value* if_val = nullptr;
-		for(std::size_t i = 0; i < d.node.children.size(); i++)
+		if(maybe_else.has_value())
 		{
-			// if true then do this shit.
-			const ast::node& child = d.node.children[i];
-			auto child_path = d.path;
-			child_path.push_back(i);
-			data d2 =
+			// if->else
+			// complicated stuff.
+			llvm::BasicBlock* then_blk = llvm::BasicBlock::Create(*ctx, "then", llvm_parent_fn);
+			llvm::BasicBlock* else_blk = llvm::BasicBlock::Create(*ctx, "else");
+			llvm::BasicBlock* merge_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
+
+			builder->CreateCondBr(llvm_cond, then_blk, else_blk);
+			builder->SetInsertPoint(then_blk);
+			llvm::Value* if_val = nullptr;
+			for(std::size_t i = 0; i < d.node.children.size(); i++)
 			{
-				.tree = d.tree,
-				.node = next,
-				.path = child_path,
-				.state = d.state
-			};
-			if_val = codegen_thing(d2, child.payload);
+				// if true then do this shit.
+				const ast::node& child = d.node.children[i];
+				auto child_path = d.path;
+				child_path.push_back(i);
+				data d2 =
+				{
+					.tree = d.tree,
+					.node = d.tree.get(child_path),
+					.path = child_path,
+					.state = d.state
+				};
+				if_val = codegen_thing(d2, child.payload);
+			}
+
+			builder->CreateBr(merge_blk);
+			then_blk = builder->GetInsertBlock();
+
+			llvm_parent_fn->insert(llvm_parent_fn->end(), else_blk);
+			builder->SetInsertPoint(else_blk);
+
+			// else stuff goes here?
+			llvm::Value* else_val = nullptr;
+			for(std::size_t i = 0; i < maybe_next->children.size(); i++)
+			{
+				const ast::node& child = maybe_next->children[i];
+				auto child_path = next_path.value();
+				child_path.push_back(i);
+				data d2 =
+				{
+					.tree = d.tree,
+					.node = child,
+					.path = child_path,
+					.state = d.state
+				};
+				else_val = codegen_thing(d2, child.payload);
+			}
+
+			builder->CreateBr(merge_blk);
+			else_blk = builder->GetInsertBlock();
+			llvm_parent_fn->insert(llvm_parent_fn->end(), merge_blk);
+			builder->SetInsertPoint(merge_blk);
+
+			llvm::PHINode* phi = builder->CreatePHI(if_val->getType(), 2, "iftmp");
+			phi->addIncoming(if_val, then_blk);
+			phi->addIncoming(else_val, else_blk);
+			return phi;
 		}
-
-		builder->CreateBr(merge_blk);
-		then_blk = builder->GetInsertBlock();
-
-		llvm_parent_fn->insert(llvm_parent_fn->end(), else_blk);
-		builder->SetInsertPoint(else_blk);
-
-		// else stuff goes here?
-		llvm::Value* else_val = nullptr;
-		for(std::size_t i = 0; i < next.children.size(); i++)
+		else
 		{
-			const ast::node& child = next.children[i];
-			auto child_path = next_path;
-			child_path.push_back(i);
-			data d2 =
+			// just an if-statement.
+			llvm::BasicBlock* then_blk = llvm::BasicBlock::Create(*ctx, "then", llvm_parent_fn);
+			llvm::BasicBlock* next_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
+
+			llvm_parent_fn->insert(llvm_parent_fn->end(), next_blk);
+			builder->CreateCondBr(llvm_cond, then_blk, next_blk);
+			builder->SetInsertPoint(then_blk);
+
+			bool contains_ret = false;
+			for(std::size_t i = 0; i < d.node.children.size(); i++)
 			{
-				.tree = d.tree,
-				.node = next,
-				.path = child_path,
-				.state = d.state
-			};
-			else_val = codegen_thing(d2, child.payload);
+				// if true then do this shit.
+				const ast::node& child = d.node.children[i];
+				if(std::holds_alternative<ast::return_statement>(child.payload))
+				{
+					contains_ret = true;
+				}
+				auto child_path = d.path;
+				child_path.push_back(i);
+				data d2 =
+				{
+					.tree = d.tree,
+					.node = d.tree.get(child_path),
+					.path = child_path,
+					.state = d.state
+				};
+				codegen_thing(d2, child.payload);
+			}
+			if(!contains_ret)
+			{
+				builder->CreateBr(next_blk);
+			}
+			builder->SetInsertPoint(next_blk);
+			return nullptr;
 		}
-
-		builder->CreateBr(merge_blk);
-		else_blk = builder->GetInsertBlock();
-		llvm_parent_fn->insert(llvm_parent_fn->end(), merge_blk);
-		builder->SetInsertPoint(merge_blk);
-
-		llvm::PHINode* phi = builder->CreatePHI(if_val->getType(), 2, "iftmp");
-		phi->addIncoming(if_val, then_blk);
-		phi->addIncoming(else_val, else_blk);
-		return phi;
 	}
 
 	llvm::Value* else_statement(const data& d, ast::else_statement payload)

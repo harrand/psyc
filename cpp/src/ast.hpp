@@ -303,6 +303,7 @@ struct ast
 	void push(node n);
 	const node& get(path_view_t path) const;
 	node& get(path_view_t path);
+	std::optional<path_t> try_get_next(path_view_t path) const;
 	void pop();
 	void pretty_print();
 

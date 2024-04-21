@@ -104,6 +104,25 @@ ast::node& ast::get(std::span<const std::size_t> path)
 	return *n;
 }
 
+std::optional<ast::path_t> ast::try_get_next(path_view_t path) const
+{
+	if(path.empty())
+	{
+		return std::nullopt;
+	}
+	path_t parent_path{path.begin(), path.end() - 1};
+	std::size_t our_id = path.back();
+	const node& parent = this->get(parent_path);
+	std::size_t next_id = our_id + 1;
+	if(parent.children.size() <= next_id)
+	{
+		// no
+		return std::nullopt;
+	}
+	parent_path.push_back(next_id);
+	return parent_path;
+}
+
 // i promise im not at the root node. i want to navigate to the parent of my current node. (i.e jump up a level)
 void ast::pop()
 {
