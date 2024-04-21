@@ -19,6 +19,39 @@
 
 namespace codegen
 {
+	// pre definitions needed.
+	struct data
+	{
+		const ast& tree;
+		const ast::node& node;
+		const ast::path_t& path;
+		const semantic::state& state;
+
+		std::size_t line() const
+		{
+			return this->tree.get(path).meta.line_number;
+		}
+
+		void fatal_error(std::string msg) const
+		{
+			diag::fatal_error(std::format("(codegen) line {} - {}", this->line(), msg));
+		}
+
+		void warning(std::string msg) const
+		{
+			diag::warning(std::format("(codegen) line {} - {}", this->line(), msg));
+		}
+
+		void assert_that(bool expr, std::string msg) const
+		{
+			if(!expr)
+			{
+				this->fatal_error(msg);	
+			}
+		}
+	};
+
+	// global state:
 	static std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
 	static std::unique_ptr<llvm::Module> program = nullptr;
 	static std::unique_ptr<llvm::IRBuilder<>> builder = nullptr;
@@ -343,6 +376,9 @@ namespace codegen
 		}
 	}
 
+	template<typename P>
+	llvm::Value* codegen_thing(const data& d, const P& payload);
+
 	void codegen_global_variables(const ast& tree, const semantic::state& state)
 	{
 		for(const auto& [name, gvardata] : state.global_variables)
@@ -353,14 +389,24 @@ namespace codegen
 			diag::assert_that(std::holds_alternative<ast::variable_declaration>(node.payload), std::format("internal compiler error: AST node corresponding to global variable \"{}\" (line {}) was not infact a variable declaration (variant id {}). something has gone horrendously wrong.", gvardata.name, node.meta.line_number, node.payload.index()));
 			const auto& decl = std::get<ast::variable_declaration>(node.payload);
 
-			llvm::Constant* llvm_initialiser = nullptr;
+			// create our owning global variable.
+			std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, nullptr);
+
 			if(decl.initialiser.has_value())
 			{
 				// todo: assign llvm_initialiser to the codegen'd expression.
+				llvm::Value* init_value = codegen_thing({.tree = tree, .node = node, .path = gvardata.context, .state = state}, decl.initialiser.value().expr);
+				if(init_value == nullptr)
+				{
+					diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", gvardata.name));
+				}
+				llvm_gvar->setInitializer(static_cast<llvm::Constant*>(init_value));
+			}
+			else
+			{
+				diag::fatal_error(std::format("global variables *must* have an initialiser, OR be assigned to extern (which is NYI)"));
 			}
 
-			// create our owning global variable.
-			std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, llvm_initialiser);
 			// keep ahold of the underlying ptr.
 			gvardata.userdata = llvm_gvar.get();
 			// move the owning ptr into our global storage.
@@ -369,40 +415,6 @@ namespace codegen
 	}
 
 	/////////////////////////////////////// NODE CODEGEN ///////////////////////////////////////
-
-	struct data
-	{
-		const ast& tree;
-		const ast::node& node;
-		const ast::path_t& path;
-		const semantic::state& state;
-
-		std::size_t line() const
-		{
-			return this->tree.get(path).meta.line_number;
-		}
-
-		void fatal_error(std::string msg) const
-		{
-			diag::fatal_error(std::format("(codegen) line {} - {}", this->line(), msg));
-		}
-
-		void warning(std::string msg) const
-		{
-			diag::warning(std::format("(codegen) line {} - {}", this->line(), msg));
-		}
-
-		void assert_that(bool expr, std::string msg) const
-		{
-			if(!expr)
-			{
-				this->fatal_error(msg);	
-			}
-		}
-	};
-
-	template<typename P>
-	llvm::Value* codegen_thing(const data& d, const P& payload);
 
 	llvm::Value* integer_literal(const data& d, ast::integer_literal payload)
 	{
