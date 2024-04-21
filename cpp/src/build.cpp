@@ -2,6 +2,7 @@
 #include "diag.hpp"
 #include "codegen.hpp"
 #include "link.hpp"
+#include "semantic.hpp"
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -94,19 +95,22 @@ namespace build
 			.var_name = "optimisation",
 			.type_name = "i64",
 			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
 		}});
 		// then the link variable itself.
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
 		{
 			.var_name = "link",
-			.type_name = "string",
+			.type_name = "i8*",
 			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
 		}});
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
 		{
 			.var_name = "output",
-			.type_name = "string",
+			.type_name = "i8*",
 			.array_size = 0,
+			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
 		}});
 
 		std::vector<ast::expression> default_assignments
@@ -158,8 +162,10 @@ namespace build
 		ast node_as_program{.program = program_node};
 		std::string error;
 
-		/*
-		std::unique_ptr<llvm::Module> program_to_move = codegen::static_generate(node_as_program, "build");
+		semantic::state state = semantic::analysis(node_as_program);
+		codegen::static_initialise();
+		codegen::generate(node_as_program, state, "build");
+		std::unique_ptr<llvm::Module> program_to_move = codegen::pop();
 		llvm::Module* program = program_to_move.get();
 		llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
 		.setErrorStr(&error)
@@ -232,7 +238,6 @@ namespace build
 				return;
 			break;
 		}
-		*/
 	}
 
 	// find the meta region corresponding to the target name within an AST (i.e one of the source files).
