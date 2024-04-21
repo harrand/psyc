@@ -371,6 +371,19 @@ namespace parser
 			return std::nullopt;
 		}
 
+		std::optional<ast::else_statement> try_parse_else_statement()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::keyword) && this->last_value() == "else")
+			{
+				std::optional<ast::if_statement> nested_if = try_parse_if_statement();
+				this->unstash_index();
+				return ast::else_statement{.else_if = nested_if};
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
 		std::optional<ast::for_statement> try_parse_for_statement()
 		{
 			this->stash_index();
@@ -568,6 +581,14 @@ namespace parser
 					//ret.insert(ret.end(), if_block.begin(), if_block.end());
 				}
 
+				auto maybe_else_statement = this->try_parse_else_statement();
+				if(maybe_else_statement.has_value())
+				{
+					ret.push_back({.payload = maybe_else_statement.value(), .meta = {.line_number = this->current_line}});
+					// if statement detected. return immediately, as next statements are children.
+					return ret;
+				}
+
 				auto maybe_for_statement = this->try_parse_for_statement();
 				if(maybe_for_statement.has_value())
 				{
@@ -594,7 +615,7 @@ namespace parser
 		void handle_payload(meta_payload payload)
 		{
 			this->push_payload(payload);
-			if(std::holds_alternative<ast::if_statement>(payload.payload) || std::holds_alternative<ast::for_statement>(payload.payload))
+			if(std::holds_alternative<ast::if_statement>(payload.payload) || std::holds_alternative<ast::else_statement>(payload.payload) || std::holds_alternative<ast::for_statement>(payload.payload))
 			{
 				// if we're an if-statement, we need to parse another block and set all those as children, and THEN pop.
 				auto if_blk = this->parse_block();

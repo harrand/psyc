@@ -439,6 +439,20 @@ namespace semantic
 		return type::undefined();
 	}
 
+	type else_statement(const data& d, ast::else_statement payload)
+	{
+		// else statement *must* directly proceed a previous if-statement
+		d.assert_that(d.path.back() > 0, "block started with an else statement. an else statement *must* directly proceed a previous if-statement");
+		auto prev_path = d.path;
+		prev_path.back()--;
+		d.assert_that(std::holds_alternative<ast::if_statement>(d.tree.get(prev_path).payload), "an else statement *must* directly proceed a previous if-statement.");
+		if(payload.else_if.has_value())
+		{
+			return if_statement(d, payload.else_if.value());
+		}
+		return type::undefined();
+	}
+
 	type for_statement(const data& d, ast::for_statement payload)
 	{
 		return type::undefined();
@@ -557,6 +571,10 @@ namespace semantic
 			[&](ast::if_statement ifst)
 			{
 				ret = if_statement(d, ifst);
+			},
+			[&](ast::else_statement elst)
+			{
+				ret = else_statement(d, elst);
 			},
 			[&](ast::for_statement forst)
 			{

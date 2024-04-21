@@ -29,6 +29,7 @@ namespace lexer
 			"return", // return from current function.
 			"extern",
 			"if", // if-statement
+			"else",
 			"for", // for-statement
 			"struct" // struct specifier
 		};

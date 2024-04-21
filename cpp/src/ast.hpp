@@ -181,6 +181,15 @@ struct ast
 		}
 	};
 
+	struct else_statement
+	{
+		std::optional<if_statement> else_if = std::nullopt;
+		std::string to_string() const
+		{
+			return std::format("else{}", this->else_if.has_value() ? this->else_if.value().to_string() : "");
+		}
+	};
+
 	struct for_statement
 	{
 		ast::expression start, end, loop;
@@ -276,7 +285,7 @@ struct ast
 	};
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, member_access, expression, if_statement, for_statement, return_statement, variable_declaration, function_definition, struct_definition, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, function_call, member_access, expression, if_statement, else_statement, for_statement, return_statement, variable_declaration, function_definition, struct_definition, meta_region>;
 		payload_t payload;
 		metadata meta;
 		std::vector<node> children;
