@@ -761,11 +761,14 @@ namespace codegen
 
 	llvm::Value* else_statement(const data& d, ast::else_statement payload)
 	{
+		// else statements are already sorted by the if-statement stuff above.
+		// so we never have to do anything.
 		return nullptr;
 	}
 
 	llvm::Value* for_statement(const data& d, ast::for_statement payload)
 	{
+		d.warning("for-statements are not yet implemented. no corresponding code will be generated.");
 		return nullptr;
 	}
 
