@@ -14,6 +14,7 @@ namespace codegen
 	void static_terminate();
 
 	void generate(const ast& tree, const semantic::state& state, std::string llvm_module_name);
+	std::string get_ir();
 	std::unique_ptr<llvm::Module> pop();
 	void write_to_object_file(std::filesystem::path object_filename);
 }

@@ -83,6 +83,15 @@ namespace codegen
 		{
 			codegen_single_node(tree, state, ast::path_t{i});
 		}
+		llvm::verifyModule(*program);
+	}
+
+	std::string get_ir()
+	{
+		std::string ir_string;
+		llvm::raw_string_ostream os{ir_string};
+		program->print(os, nullptr);
+		return ir_string;
 	}
 
 	// given a previous `generate`, retrieve an owning pointer to the result.
@@ -242,6 +251,26 @@ namespace codegen
 			// they're both pointers, but also different types...
 			// dont opaque pointers make this impossible?
 			diag::fatal_error("type system panic! whats an opaque pointer lmao");
+		}
+		// ok they are both non-pointers of different types.
+		// are they both ints?
+		if(llvm_ty->isIntegerTy() && llvm_hint->isIntegerTy())
+		{
+			// need to do integer promotion.
+			std::size_t incorrect_bits = llvm_ty->getIntegerBitWidth();
+			std::size_t correct_bits = llvm_hint->getIntegerBitWidth();
+			if(incorrect_bits < correct_bits)
+			{
+				return builder->CreateZExtOrBitCast(ptr, llvm_hint);
+			}
+			else if(incorrect_bits > correct_bits)
+			{
+				return builder->CreateTruncOrBitCast(ptr, llvm_hint);
+			}
+			else
+			{
+				diag::fatal_error(std::format("load_as received two different types but they are both {}-bit integers. perhaps signedness issue? not sure how to fix that yet im afraid.", correct_bits));
+			}
 		}
 		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
 		return nullptr;
@@ -530,7 +559,7 @@ namespace codegen
 				if(param.name == payload.name)
 				{
 					// this is us!
-					auto* arg = static_cast<llvm::Argument*>(param.userdata);
+					auto* arg = static_cast<llvm::AllocaInst*>(param.userdata);
 					d.assert_that(arg != nullptr, std::format("internal compiler error: argument \"{}\" to defined function \"{}\" was not codegen'd properly, as its userdata is null. this should've been written to during the pre-pass over functions.", payload.name, parent_function->name));
 					// its easy. the llvm::Argument* is the actual argument value itself. we just return it as if it were a value!
 					// you can just CreateStore with it as a target. exactly the same as a local variable... i think...
@@ -590,7 +619,9 @@ namespace codegen
 		}
 		d.assert_that(data_member_idx.has_value(), std::format("access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs.name, struct_ty.name));
 		// get the data member via GEP
-		return builder->CreateStructGEP(as_llvm_type(ty, d.state), lhs_var, data_member_idx.value());
+		llvm::Type* llvm_struct_ty = as_llvm_type(ty, d.state);
+		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var, data_member_idx.value());
+		return ret;
 	}
 
 	llvm::Value* if_statement(const data& d, ast::if_statement payload)
@@ -628,6 +659,19 @@ namespace codegen
 		d.assert_that(var != nullptr, std::format("could not find local variable \"{}\"", payload.var_name));
 		llvm::Type* llvm_ty = as_llvm_type(var->ty, d.state);
 		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
+		if(payload.initialiser.has_value())
+		{
+			if(var->ty.is_struct())
+			{
+				d.fatal_error("inline initialiser of a struct-typed variable is not yet implemented.");
+			}	
+			else
+			{
+				llvm::Value* init_value = expression(d, payload.initialiser.value());
+				d.assert_that(init_value != nullptr, std::format("internal compiler error: variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name));
+				builder->CreateStore(init_value, llvm_var);
+			}
+		}
 
 		var->userdata = llvm_var;
 		return llvm_var;
@@ -653,6 +697,20 @@ namespace codegen
 			// create a new basic block.	
 			llvm::BasicBlock* blk = llvm::BasicBlock::Create(*ctx, "entry", llvm_fn);
 			builder->SetInsertPoint(blk);
+			// before we go onto child nodes...
+			// the parameters themselves are values. to write to them is not really a thing coz they aren't pointers.
+			// so what we do here is create pointers to each parameter on the stack.
+			for(const semantic::local_variable_t& param : funcdata.params)
+			{
+				// get the initial argument
+				auto* arg = static_cast<llvm::Argument*>(param.userdata);
+				// problem is, if this argument is a struct type, CreateStructGEP doesn't like it coz i have no way of getting a pointer to it.
+				// i dont really know why. i guess function parameters in LLVM arent really considered normal local variables on the stack
+				// well im gonna do that now and hope that the optimiser saves me (feel free to remove this crap and just pass the arg directly if you've figured this out since).
+				llvm::AllocaInst* ptr = builder->CreateAlloca(arg->getType(), nullptr, std::format("paramcpy_{}", std::string{arg->getName()}));
+				builder->CreateStore(arg, ptr);
+				param.userdata = ptr;
+			}
 
 			bool has_return = false;
 			for(std::size_t i = 0; i < node.children.size(); i++)
@@ -674,8 +732,7 @@ namespace codegen
 				builder->CreateRetVoid();
 			}
 		}
-		// yo this shit below straight crashes. dodgy string representing the modules target triple. well i didnt set that yet lmao.
-		//llvm::verifyFunction(*llvm_fn);
+		llvm::verifyFunction(*llvm_fn);
 		return nullptr;
 	}
 

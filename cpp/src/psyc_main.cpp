@@ -76,6 +76,10 @@ void parse_args(std::span<const std::string_view> args, session& ses)
 			// would you like me to write out the entire list of tokens into stdout? it may or may not be completely unreadable, but is useful for compiler debugging.
 			ses.flags |= flag::dump_tokens;
 		}
+		else if(arg.starts_with("--dump-ir"))
+		{
+			ses.flags |= flag::dump_ir;
+		}
 		else if(arg.starts_with("--no-stdlib"))
 		{
 			ses.flags |= flag::no_stdlib;
@@ -160,6 +164,11 @@ int main(int argc, char** argv)
 		std::string just_filename = std::filesystem::path(input_file).stem().string();
 		codegen::static_initialise();
 		codegen::generate(ast, s, just_filename + ".psy");
+		if(ses.flags & flag::dump_ir)
+		{
+			std::string ir = codegen::get_ir();
+			diag::message(std::format("ir for {}:\n{}", just_filename, ir));
+		}
 		std::filesystem::path output_filename = (std::filesystem::path(ses.output_dir) / (just_filename + ".o")).string();
 		codegen::write_to_object_file(output_filename);
 		ses.object_files.push_back(output_filename);

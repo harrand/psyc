@@ -241,6 +241,7 @@ namespace semantic
 				{
 					diag::fatal_error(std::format("internal compiler error: found a parent function of an AST node (named \"{}\") on line {}, but could not then retrieve the function data from semantic analysis state.", function_name, ancestor.meta.line_number));
 				}
+				return found_func;
 			}
 			path.pop_back();
 		}
