@@ -137,21 +137,6 @@ namespace build
 		.create();
 		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
 
-		#ifdef _WIN32
-			constexpr const char* default_output_name = "a.exe";
-		#else
-			constexpr const char* default_output_name = "a.out";
-		#endif
-
-		llvm::Constant* null_ptr = llvm::Constant::getNullValue(llvm::PointerType::get(llvm::Type::getInt64Ty(program->getContext()), 0));
-
-		auto* optimisation = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("optimisation")->userdata);
-		//optimisation->setInitializer(llvm::ConstantInt::get(llvm::Type::getInt64Ty(program->getContext()), 0));
-		auto* link = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("link")->userdata);
-		//link->setInitializer(null_ptr);
-		auto* output = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("output")->userdata);
-		//output->setInitializer(null_ptr);
-
 		auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
 
 		int (*func)() = (int (*)())exe->getFunctionAddress("main");
@@ -160,8 +145,8 @@ namespace build
 		int ret = func();
 
 		// note: as link and output are pointers, we must retrieve their address *after* program runs, because assignments will re-seat the pointer.
-		auto* link_ptr = *reinterpret_cast<char**>(exe->getGlobalValueAddress("link"));
-		auto* output_ptr = *reinterpret_cast<char**>(exe->getGlobalValueAddress("output"));
+		auto* link_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("link"));
+		auto* output_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("output"));
 
 		build_info binfo;
 		if(std::string_view(link_ptr) == "executable")
@@ -174,7 +159,17 @@ namespace build
 		}
 		else
 		{
+			diag::warning(std::format("could not recognise linkage type \"{}\". it should either be `executable` or `library`. defaulting to no linkage (just generate object files)", link_ptr));
 			binfo.link = linkage_type::none;
+		}
+		if(binfo.link != linkage_type::none && std::string_view(output_ptr).empty())
+		{
+			#ifdef _WIN32
+				output_ptr = "a.exe";
+			#else
+				output_ptr = "a.out";
+			#endif
+			diag::warning(std::format("you've opted into linking but not provided a output name. defaulting to \"{}\"", output_ptr));
 		}
 		binfo.output_name = output_ptr;
 		binfo.optimisation_level = *optimisation_ptr;
@@ -187,9 +182,6 @@ namespace build
 		// 1.) program stops referencing everything
 		program->dropAllReferences();
 		// 2.) unlink globals from parent (but doesnt erase them)
-		optimisation->removeFromParent();
-		link->removeFromParent();
-		output->removeFromParent();
 		// 3.) kill globals and then program etc...
 		codegen::static_terminate();
 		switch(binfo.link)
