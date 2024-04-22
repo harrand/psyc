@@ -185,12 +185,12 @@ namespace codegen
 	{
 		if(ty.is_undefined())
 		{
-			// todo: potentially emit a compiler error? is it ever valid to pass in an undefined type?
+			diag::fatal_error("internal compiler error: found undefined type. type system go boom.");
 			return nullptr;
 		}
 		if(ty.is_pointer())
 		{
-			return llvm::PointerType::get(as_llvm_type(ty.dereference(), state), 0);
+			return llvm::PointerType::get(*ctx, 0);
 		}
 		if(ty.is_struct())
 		{

@@ -99,6 +99,14 @@ namespace semantic
 				fn.name = func.function_name;
 				fn.context = path;
 				fn.return_ty = this->get_type_from_name(func.return_type).first;
+				if(fn.return_ty.is_undefined())
+				{
+					if(func.return_type.empty())
+					{
+						diag::fatal_error(std::format("semal error on line {} - missing return-type.", node.meta.line_number));
+					}
+					diag::fatal_error(std::format("semal error on line {} - unrecognised type name \"{}\"", node.meta.line_number, func.return_type));
+				}
 				for(const auto& param : func.params)
 				{
 					type param_type = this->get_type_from_name(param.type_name).first;
@@ -192,6 +200,7 @@ namespace semantic
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
 	{
 		std::pair<type, ast::path_t> ret{type::undefined(), ast::path_t{}};
+		volatile bool checker = type_name == "u0*";
 		std::size_t ptr_level = 0;
 		while(type_name.ends_with("*"))
 		{
