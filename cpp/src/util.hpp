@@ -33,6 +33,15 @@ namespace util
 
 		T *operator->() { return _impl.get(); }
 		const T *operator->() const { return _impl.get(); }
+
+		bool operator==(const box<T>& rhs) const
+		{
+			if(this->_impl != nullptr && rhs._impl != nullptr)
+			{
+				return *this->_impl == *rhs._impl;
+			}
+			return this->_impl.get() == rhs._impl.get();
+		}
 	};
 
 	std::filesystem::path get_this_executable_path();

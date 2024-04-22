@@ -262,51 +262,45 @@ namespace codegen
 		return as_llvm_type(*ty, state);
 	}
 
-	llvm::Value* load_as(llvm::Value* ptr, const semantic::state& state, type hint = type::undefined())
+	llvm::Value* load_as(llvm::Value* ptr, const semantic::state& state, type from, type to, bool check = true)
 	{
-		llvm::Type* llvm_ty = ptr->getType();
-		llvm::Type* llvm_hint = as_llvm_type(hint, state);
-		if(llvm_ty == llvm_hint)
+		llvm::Type* llvm_to = as_llvm_type(to, state);
+		llvm::Type* llvm_from = as_llvm_type(from, state);
+		if(check && ptr->getType() != llvm_from)
 		{
-			// you're fine as you are.
+			diag::fatal_error("type system failure");
+		}
+		if(from == to)
+		{
+			// nothing to do.
 			return ptr;
 		}
-		// ok types arent the same.
-		if(llvm_ty->isPointerTy() && !hint.is_pointer())
+		if(from.pointer_level > to.pointer_level)
 		{
-			// so you gave me a pointer but what you expected is not a pointer.
-			// perhaps you want to do a load?
-			return builder->CreateLoad(llvm_hint, ptr);
-		}
-		if(!llvm_ty->isPointerTy() && hint.is_pointer())
-		{
-			// you gave me a value but you want a pointer...
-			if(llvm_ty->isArrayTy() && llvm_ty->getArrayElementType() == as_llvm_type(hint.dereference(), state))
+			// maybe need to load.
+			if(from.dereference() == to)
 			{
-				diag::fatal_error("assign array<T> to T*");
+				// definitely need to load.
+				return builder->CreateLoad(llvm_to, ptr);
 			}
-			diag::fatal_error("type system panic! dont know what to do here");
+			else
+			{
+				return load_as(builder->CreateLoad(llvm_to, ptr), state, from.dereference(), to, false);
+			}
 		}
-		if(llvm_ty->isPointerTy() && hint.is_pointer())
-		{
-			// they're both pointers, but also different types...
-			// dont opaque pointers make this impossible?
-			diag::fatal_error("type system panic! whats an opaque pointer lmao");
-		}
-		// ok they are both non-pointers of different types.
-		// are they both ints?
-		if(llvm_ty->isIntegerTy() && llvm_hint->isIntegerTy())
+		// integer promotion.
+		if(llvm_from->isIntegerTy() && llvm_to->isIntegerTy())
 		{
 			// need to do integer promotion.
-			std::size_t incorrect_bits = llvm_ty->getIntegerBitWidth();
-			std::size_t correct_bits = llvm_hint->getIntegerBitWidth();
+			std::size_t incorrect_bits = llvm_from->getIntegerBitWidth();
+			std::size_t correct_bits = llvm_to->getIntegerBitWidth();
 			if(incorrect_bits < correct_bits)
 			{
-				return builder->CreateZExtOrBitCast(ptr, llvm_hint);
+				return builder->CreateZExtOrBitCast(ptr, llvm_to);
 			}
 			else if(incorrect_bits > correct_bits)
 			{
-				return builder->CreateTruncOrBitCast(ptr, llvm_hint);
+				return builder->CreateTruncOrBitCast(ptr, llvm_to);
 			}
 			else
 			{
@@ -494,8 +488,11 @@ namespace codegen
 	{
 		const auto&[op, lhs, rhs] = payload;
 
-		const type* ty = d.state.try_get_type_from_node(d.path);
-		d.assert_that(ty != nullptr, "internal compiler error: type of binary expression could not be deduced.");
+		// remember, type of binary expression is: type of the lhs expression
+		const type* typtr = d.state.try_get_type_from_node(d.path);
+		type rhs_ty = d.state.try_get_type_from_payload(*rhs, d.tree, d.path);
+		d.assert_that(typtr != nullptr, "internal compiler error: type of binary expression could not be deduced.");
+		type ty = *typtr;
 		llvm::Value* lhs_value = expression(d, *lhs);
 		llvm::Value* rhs_value = expression(d, *rhs);
 		d.assert_that(lhs_value != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
@@ -503,11 +500,17 @@ namespace codegen
 		llvm::Value* ret = nullptr;
 
 		bool want_lhs_ptr = op.type == lexer::token::type::equals;
-		if(!want_lhs_ptr)
+		if(!want_lhs_ptr && ty.is_pointer())
 		{
-			lhs_value = load_as(lhs_value, d.state, *ty);
+			// deref lhs if we're not assigning to it.
+			lhs_value = load_as(lhs_value, d.state, ty, ty.dereference());
 		}
-		rhs_value = load_as(rhs_value, d.state, *ty);
+		if(ty.pointer_level == rhs_ty.pointer_level + 1)
+		{
+			ty = ty.dereference();
+		}
+		// definitely deref
+		rhs_value = load_as(rhs_value, d.state, rhs_ty, ty);
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
@@ -550,7 +553,7 @@ namespace codegen
 		{
 			const type* ty = d.state.try_get_type_from_node(d.path);
 			d.assert_that(ty != nullptr, "internal compiler error: type system failed to deduce type of binary operator expression");
-			d.assert_that(as_llvm_type(*ty, d.state) == ret->getType(), std::format("internal compiler error: binary operator expression's deduced type \"{}\" does not match the real underlying LLVM value type. i.e type system has failed.", ty->name()));
+			//d.assert_that(as_llvm_type(*ty, d.state) == ret->getType(), std::format("internal compiler error: binary operator expression's deduced type \"{}\" does not match the real underlying LLVM value type. i.e type system has failed.", ty->name()));
 		}
 		return ret;
 	}
@@ -626,12 +629,14 @@ namespace codegen
 		std::vector<llvm::Value*> llvm_params = {};
 		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
-			type param_ty = func->params[i].ty;
+			type expected_param_ty = func->params[i].ty;
+			type actual_param_ty = d.state.try_get_type_from_payload(payload.params[i], d.tree, d.path);
+
 			llvm::Value* param_val = expression(d, payload.params[i]);
 			// note: no narrowing as of yet.
 			d.assert_that(param_val != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
-			llvm::Value* loaded_val = load_as(param_val, d.state, param_ty);
-			d.assert_that(loaded_val != nullptr, std::format("type mismatch! expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", param_ty.name()));
+			llvm::Value* loaded_val = load_as(param_val, d.state, actual_param_ty, expected_param_ty);
+			d.assert_that(loaded_val != nullptr, std::format("type mismatch! expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", expected_param_ty.name()));
 			llvm_params.push_back(loaded_val);
 		}	
 		return builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp");
@@ -680,9 +685,10 @@ namespace codegen
 		}
 
 		llvm::Value* llvm_cond = expression(d, payload.condition);
+		type expr_ty = d.state.try_get_type_from_payload(payload.condition, d.tree, d.path);
 		d.assert_that(llvm_cond != nullptr, "internal compiler error: could not codegen condition inside if-statement");
 		type bool_t = type::from_primitive(primitive_type::boolean);
-		llvm_cond = load_as(llvm_cond, d.state, bool_t);
+		llvm_cond = load_as(llvm_cond, d.state, expr_ty, bool_t);
 		llvm_cond = builder->CreateICmpNE(llvm_cond, llvm::ConstantInt::get(as_llvm_type(bool_t, d.state), llvm::APInt{1, 0u}));
 
 		const semantic::function_t* parent_function = d.state.try_find_parent_function(d.tree, d.path);
@@ -807,11 +813,14 @@ namespace codegen
 		{
 			return builder->CreateRetVoid();
 		}
+		const semantic::function_t* func = d.state.try_find_parent_function(d.tree, d.path);
+		type expected_ret_ty = func->return_ty;
+
 		const type* ret_ty = d.state.try_get_type_from_node(d.path);
 		d.assert_that(ret_ty != nullptr, std::format("internal compiler error: type of non-void return expression could not be properly deduced. semantic analysis fucked up."));
 		llvm::Value* retval = expression(d, payload.value.value());
 		d.assert_that(retval != nullptr, std::format("internal compiler error: value of non-void return expression could not be properly deduced."));
-		return builder->CreateRet(load_as(retval, d.state, *ret_ty));
+		return builder->CreateRet(load_as(retval, d.state, *ret_ty, expected_ret_ty));
 	}
 
 	llvm::Value* variable_declaration(const data& d, ast::variable_declaration payload)

@@ -54,10 +54,13 @@ struct struct_type
 	{
 		std::string member_name;
 		util::box<type> type;
+
+		bool operator==(const data_member& rhs) const = default;
 	};
 
 	std::string name;
 	std::vector<data_member> data_members = {};
+	bool operator==(const struct_type& rhs) const = default;
 };
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();

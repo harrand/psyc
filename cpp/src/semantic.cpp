@@ -396,13 +396,25 @@ namespace semantic
 		const local_variable_t* maybe_global_variable = d.state.try_find_global_variable(payload.name);
 		if(maybe_global_variable != nullptr)
 		{
-			return maybe_global_variable->ty;
+			return maybe_global_variable->ty.pointer_to();
 		}
 		
 		const local_variable_t* maybe_local_variable = d.state.try_find_local_variable(d.path, payload.name);
 		if(maybe_local_variable != nullptr)
 		{
-			return maybe_local_variable->ty;
+			return maybe_local_variable->ty.pointer_to();
+		}
+
+		const function_t* func = d.state.try_find_parent_function(d.tree, d.path);
+		if(func != nullptr)
+		{
+			for(const auto& param : func->params)
+			{
+				if(param.name == payload.name)
+				{
+					return param.ty.pointer_to();
+				}
+			}
 		}
 
 		diag::fatal_error(std::format("cannot figure out the type of identifier \"{}\". tried a local and global variable name. possible ICE.", payload.name));
@@ -419,6 +431,8 @@ namespace semantic
 	type member_access(const data& d, ast::member_access payload)
 	{
 		type lhs_t = identifier(d, payload.lhs);
+		d.assert_that(lhs_t.is_pointer(), "internal compiler error: identifier should always return a pointer.");
+		lhs_t = lhs_t.dereference();
 		// if lhs is a struct type, then we need the data member.
 		if(lhs_t.is_struct())
 		{
@@ -428,7 +442,7 @@ namespace semantic
 			{
 				if(payload.rhs.name == member.member_name)
 				{
-					return *member.type;
+					return member.type->pointer_to();
 				}
 			}
 			// if we couldnt identify it as a data member, that's a compiler error.
@@ -539,6 +553,10 @@ namespace semantic
 			{
 				ret = type::from_primitive(primitive_type::i8);
 			},
+			[&](ast::bool_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::boolean);
+			},
 			[&](ast::string_literal lit)
 			{
 				ret = type::from_primitive(primitive_type::i8).pointer_to();
@@ -623,5 +641,11 @@ namespace semantic
 		data d{.state = s, .path = path, .tree = tree};
 		type ty = generic(d, node.payload);
 		s.type_breadcrumbs[path] = ty;
+	}
+
+
+	type state::try_get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const
+	{
+		return generic({.state = const_cast<state&>(*this), .path = path, .tree = tree}, payload);
 	}
 }

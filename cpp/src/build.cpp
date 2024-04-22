@@ -153,19 +153,22 @@ namespace build
 		//output->setInitializer(null_ptr);
 
 		auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
-		auto* link_ptr = reinterpret_cast<char*>(exe->getGlobalValueAddress("link"));
-		auto* output_ptr = reinterpret_cast<char*>(exe->getGlobalValueAddress("output"));
 
 		int (*func)() = (int (*)())exe->getFunctionAddress("main");
 
 		// run the program.
 		int ret = func();
+
+		// note: as link and output are pointers, we must retrieve their address *after* program runs, because assignments will re-seat the pointer.
+		auto* link_ptr = *reinterpret_cast<char**>(exe->getGlobalValueAddress("link"));
+		auto* output_ptr = *reinterpret_cast<char**>(exe->getGlobalValueAddress("output"));
+
 		build_info binfo;
-		if(std::string_view(link_ptr) == "exe")
+		if(std::string_view(link_ptr) == "executable")
 		{
 			binfo.link = linkage_type::executable;
 		}
-		else if(std::string_view(link_ptr) == "lib")
+		else if(std::string_view(link_ptr) == "library")
 		{
 			binfo.link = linkage_type::library;
 		}
