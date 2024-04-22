@@ -79,11 +79,11 @@ namespace codegen
 		if(program != nullptr)
 		{
 			program->dropAllReferences();
-			// 2.) unlink globals from parent (but doesnt erase them)
-			for(auto& glob_ptr : global_variable_storage)
-			{
-				glob_ptr->removeFromParent();
-			}
+		}
+		// 2.) unlink globals from parent (but doesnt erase them)
+		for(auto& glob_ptr : global_variable_storage)
+		{
+			glob_ptr->removeFromParent();
 		}
 		// 3.) kill globals and then program etc...
 

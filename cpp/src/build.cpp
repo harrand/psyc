@@ -126,63 +126,66 @@ namespace build
 		ast node_as_program{.program = program_node};
 		std::string error;
 
-		semantic::state state = semantic::analysis(node_as_program);
-		codegen::static_initialise();
-		codegen::generate(node_as_program, state, "build");
-		std::unique_ptr<llvm::Module> program_to_move = codegen::pop();
-		llvm::Module* program = program_to_move.get();
-		llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
-		.setErrorStr(&error)
-		.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
-		.create();
-		diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
-
-		auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
-
-		int (*func)() = (int (*)())exe->getFunctionAddress("main");
-
-		// run the program.
-		int ret = func();
-
-		// note: as link and output are pointers, we must retrieve their address *after* program runs, because assignments will re-seat the pointer.
-		auto* link_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("link"));
-		auto* output_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("output"));
-
 		build_info binfo;
-		if(std::string_view(link_ptr) == "executable")
 		{
-			binfo.link = linkage_type::executable;
-		}
-		else if(std::string_view(link_ptr) == "library")
-		{
-			binfo.link = linkage_type::library;
-		}
-		else
-		{
-			diag::warning(std::format("could not recognise linkage type \"{}\". it should either be `executable` or `library`. defaulting to no linkage (just generate object files)", link_ptr));
-			binfo.link = linkage_type::none;
-		}
-		if(binfo.link != linkage_type::none && std::string_view(output_ptr).empty())
-		{
-			#ifdef _WIN32
-				output_ptr = "a.exe";
-			#else
-				output_ptr = "a.out";
-			#endif
-			diag::warning(std::format("you've opted into linking but not provided a output name. defaulting to \"{}\"", output_ptr));
-		}
-		binfo.output_name = output_ptr;
-		binfo.optimisation_level = *optimisation_ptr;
+			semantic::state state = semantic::analysis(node_as_program);
+			codegen::static_initialise();
+			codegen::generate(node_as_program, state, "build");
+			std::unique_ptr<llvm::Module> program_to_move = codegen::pop();
+			llvm::Module* program = program_to_move.get();
+			llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::move(program_to_move))
+			.setErrorStr(&error)
+			.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
+			.create();
+			diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
 
-		diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
-		// note: tearing down all this state is actually ridiculously error prone.
-		// cant unlink globals until the program stops referencing them.
-		// globals must all be destroyed before program itself dies.
-		// so:
-		// 1.) program stops referencing everything
-		program->dropAllReferences();
-		// 2.) unlink globals from parent (but doesnt erase them)
-		// 3.) kill globals and then program etc...
+			auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
+
+			int (*func)() = (int (*)())exe->getFunctionAddress("main");
+
+			// run the program.
+			int ret = func();
+
+			// note: as link and output are pointers, we must retrieve their address *after* program runs, because assignments will re-seat the pointer.
+			auto* link_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("link"));
+			auto* output_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("output"));
+
+			if(std::string_view(link_ptr) == "executable")
+			{
+				binfo.link = linkage_type::executable;
+			}
+			else if(std::string_view(link_ptr) == "library")
+			{
+				binfo.link = linkage_type::library;
+			}
+			else
+			{
+				diag::warning(std::format("could not recognise linkage type \"{}\". it should either be `executable` or `library`. defaulting to no linkage (just generate object files)", link_ptr));
+				binfo.link = linkage_type::none;
+			}
+			if(binfo.link != linkage_type::none && std::string_view(output_ptr).empty())
+			{
+				#ifdef _WIN32
+					output_ptr = "a.exe";
+				#else
+					output_ptr = "a.out";
+				#endif
+				diag::warning(std::format("you've opted into linking but not provided a output name. defaulting to \"{}\"", output_ptr));
+			}
+			binfo.output_name = output_ptr;
+			binfo.optimisation_level = *optimisation_ptr;
+
+			diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
+			// note: tearing down all this state is actually ridiculously error prone.
+			// cant unlink globals until the program stops referencing them.
+			// globals must all be destroyed before program itself dies.
+			// so:
+			// 1.) program stops referencing everything
+			program->dropAllReferences();
+			// 2.) unlink globals from parent (but doesnt erase them)
+			// 3.) kill globals and then program etc...
+			codegen::cleanup_program();
+		}
 		codegen::static_terminate();
 		switch(binfo.link)
 		{
