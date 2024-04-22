@@ -131,7 +131,7 @@ namespace codegen
 	std::unique_ptr<llvm::Module> pop()
 	{
 		std::unique_ptr<llvm::Module> ret = std::move(program);
-		cleanup_program();
+		//cleanup_program();
 		return ret;
 	}
 
@@ -281,6 +281,10 @@ namespace codegen
 		if(!llvm_ty->isPointerTy() && hint.is_pointer())
 		{
 			// you gave me a value but you want a pointer...
+			if(llvm_ty->isArrayTy() && llvm_ty->getArrayElementType() == as_llvm_type(hint.dereference(), state))
+			{
+				diag::fatal_error("assign array<T> to T*");
+			}
 			diag::fatal_error("type system panic! dont know what to do here");
 		}
 		if(llvm_ty->isPointerTy() && hint.is_pointer())
@@ -395,6 +399,7 @@ namespace codegen
 
 			// create our owning global variable.
 			std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, nullptr);
+			llvm_gvar->setName(name);
 
 			if(decl.initialiser.has_value())
 			{
@@ -439,7 +444,9 @@ namespace codegen
 
 	llvm::Value* string_literal(const data& d, ast::string_literal payload)
 	{
-		return llvm::ConstantDataArray::getString(*ctx, payload.val, true);
+		// OH GOD HELP ME I DONT FUCKING KNOW AAAA
+		return builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get());
+		//return builder->CreateLoad(llvm::PointerType::get(*ctx, 0), builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get()));
 	}
 
 	llvm::Value* bool_literal(const data& d, ast::bool_literal payload)
@@ -517,6 +524,14 @@ namespace codegen
 			break;
 			case lexer::token::type::equals:
 			{
+				std::string value_string;
+				llvm::raw_string_ostream os{value_string};
+				rhs_value->print(os);
+				volatile std::string rhs_string = value_string;
+				value_string = "";
+				lhs_value->print(os);
+				volatile std::string lhs_string = value_string;
+				
 				builder->CreateStore(rhs_value, lhs_value);
 				// createstore returns a void type'd value, so we dont care about that for ret.
 				// just use the type semantic analysis gave us.
@@ -543,6 +558,16 @@ namespace codegen
 	llvm::Value* identifier(const data& d, ast::identifier payload, type* output_identifier_type = nullptr)
 	{
 		// could be:
+		// null
+		if(payload.name == "null")
+		{
+			type null_t = type::from_primitive(primitive_type::u0).pointer_to();
+			if(output_identifier_type != nullptr)
+			{
+				*output_identifier_type = null_t;
+			}
+			return llvm::ConstantPointerNull::get(llvm::PointerType::get(*ctx, 0));
+		}
 		// a global variable
 		const semantic::local_variable_t* gvar = d.state.try_find_global_variable(payload.name);
 		if(gvar != nullptr)

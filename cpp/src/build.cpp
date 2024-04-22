@@ -103,51 +103,15 @@ namespace build
 			.var_name = "link",
 			.type_name = "i8*",
 			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
+			.initialiser = ast::expression{.expr = ast::identifier{.name = "null"}}
 		}});
 		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
 		{
 			.var_name = "output",
 			.type_name = "i8*",
 			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
+			.initialiser = ast::expression{.expr = ast::identifier{.name = "null"}}
 		}});
-
-		std::vector<ast::expression> default_assignments
-		{
-			ast::expression{.expr =
-				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
-				{
-					ast::binary_operator{.type = lexer::token::type::equals},
-					ast::expression{.expr = ast::identifier{.name = "optimisation"}},
-					ast::expression{.expr = ast::integer_literal{.val = 0}}
-				}
-			},
-
-			ast::expression{.expr =
-				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
-				{
-					ast::binary_operator{.type = lexer::token::type::equals},
-					ast::expression{.expr = ast::identifier{.name = "link"}},
-					ast::expression{.expr = ast::string_literal{.val = "executable"}}
-				}
-			},
-
-			ast::expression{.expr =
-				std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>
-				{
-					ast::binary_operator{.type = lexer::token::type::equals},
-					ast::expression{.expr = ast::identifier{.name = "output"}},
-					#ifdef _WIN32
-						ast::expression{.expr = ast::string_literal{.val = "a.exe"}}
-					#else
-						ast::expression{.expr = ast::string_literal{.val = "a.lib"}}
-					#endif
-				}
-			},
-		};
-
-		node_as_function.children.insert(node_as_function.children.begin(), default_assignments.begin(), default_assignments.end());
 
 		// finally, add a return to the end of the main function
 		node_as_function.children.push_back(ast::node{.payload = ast::return_statement
@@ -181,12 +145,12 @@ namespace build
 
 		llvm::Constant* null_ptr = llvm::Constant::getNullValue(llvm::PointerType::get(llvm::Type::getInt64Ty(program->getContext()), 0));
 
-		llvm::GlobalVariable* optimisation = program->getNamedGlobal("optimisation");
-		optimisation->setInitializer(llvm::ConstantInt::get(llvm::Type::getInt64Ty(program->getContext()), 0));
-		llvm::GlobalVariable* link = program->getNamedGlobal("link");
-		link->setInitializer(null_ptr);
-		llvm::GlobalVariable* output = program->getNamedGlobal("output");
-		output->setInitializer(null_ptr);
+		auto* optimisation = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("optimisation")->userdata);
+		//optimisation->setInitializer(llvm::ConstantInt::get(llvm::Type::getInt64Ty(program->getContext()), 0));
+		auto* link = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("link")->userdata);
+		//link->setInitializer(null_ptr);
+		auto* output = static_cast<llvm::GlobalVariable*>(state.try_find_global_variable("output")->userdata);
+		//output->setInitializer(null_ptr);
 
 		auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
 		auto* link_ptr = reinterpret_cast<char*>(exe->getGlobalValueAddress("link"));
