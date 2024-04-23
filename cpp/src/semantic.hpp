@@ -25,6 +25,9 @@ namespace std
 	};
 }
 
+
+using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
+using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
 namespace semantic
 {
 	// semantic analysis. get type information and do checks etc...
@@ -60,6 +63,9 @@ namespace semantic
 		std::unordered_map<std::string, local_variable_t> variables = {};
 		std::unordered_map<std::size_t, scope_reference> children = {};
 	};
+
+
+
 	struct state
 	{
 		//std::unordered_map<ast::path_t, std::map<std::string, local_variable_t>> variables = {};	
@@ -97,8 +103,5 @@ namespace semantic
 	state analysis(const ast& ast);
 }
 
-
-using unary_expression_t = std::pair<ast::unary_operator, util::box<ast::expression>>;
-using binary_expression_t = std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>;
 
 #endif // PSYC_SEMANTIC_HPP

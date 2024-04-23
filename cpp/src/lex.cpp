@@ -58,7 +58,15 @@ namespace lexer
 				std::string value = std::string(psy.data() + current_word_begin, cursor - current_word_begin);
 				token::type t = token::type::identifier;
 				// if its a keyword, then its a keyword
-				if(current_is_keyword(value))
+				if(value == "ref")
+				{
+					t = token::type::ref;
+				}
+				else if(value == "deref")
+				{
+					t = token::type::deref;
+				}
+				else if(current_is_keyword(value))
 				{
 					t = token::type::keyword;
 				}

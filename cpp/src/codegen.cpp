@@ -457,23 +457,31 @@ namespace codegen
 	{
 		llvm::Value* operand = expression(d, *payload.second);
 		d.assert_that(operand != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
-		const type* ty = d.state.try_get_type_from_node(d.path);
-		d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
-		d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
+		type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload}, d.tree, d.path);
+		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
+		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
 		switch(payload.first.type)
 		{
+			case lexer::token::type::ref:
+				d.assert_that(ty.is_pointer(), "`ref xyz`, xyz must be a pointer (as it must be a local, global or function param.)");
+				return operand;
+			break;
+			case lexer::token::type::deref:
+				d.assert_that(ty.is_pointer(), "`deref xyz`, xyz must be a pointer (coz its a deref...)");
+				return builder->CreateLoad(as_llvm_type(ty.dereference(), d.state), operand);
+			break;
 			case lexer::token::type::minus:
-				if(ty->is_integer_type())
+				if(ty.is_integer_type())
 				{
 					return builder->CreateNeg(operand);
 				}
-				else if(ty->is_floating_point_type())
+				else if(ty.is_floating_point_type())
 				{
 					return builder->CreateFNeg(operand);
 				}
 				else
 				{
-					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", ty->name()));
+					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", ty.name()));
 					return nullptr;
 				}
 			break;

@@ -18,7 +18,9 @@ struct ast
 			diag::assert_that(
 				type == lexer::token::type::minus ||
 				type == lexer::token::type::bitwise_complement ||
-				type == lexer::token::type::logical_negation,
+				type == lexer::token::type::logical_negation ||
+				type == lexer::token::type::ref ||
+				type == lexer::token::type::deref,
 				"internal compiler error: parsed a unary_operator via lexer token type that doesn't represent a unary operator."
 			);
 			return std::format("unary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);

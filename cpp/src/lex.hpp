@@ -40,6 +40,8 @@ namespace lexer
 			minus,
 			bitwise_complement,
 			logical_negation,
+			ref,
+			deref,
 			_count
 		} id;
 		std::string value = "";
@@ -76,7 +78,9 @@ namespace lexer
 		"+",
 		"-",
 		"~",
-		"!"
+		"!",
+		"ref",
+		"deref"
 	};
 
 	using tokens = std::vector<token>;

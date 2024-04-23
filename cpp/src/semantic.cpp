@@ -382,8 +382,23 @@ namespace semantic
 		const auto& [op, expr] = payload;
 		// im just returning the type of the expression as if it didnt have an operator applied.
 		// im not sure under which unary operator this could be wrong though. triage?
+		type t = generic(d, expr->expr);
+		switch(op.type)
+		{
+			case lexer::token::type::ref:
+				t = t.pointer_to();
+			break;
+			case lexer::token::type::deref:
+			{
+				t = t.dereference();
+			}
+			break;
+			default:
+
+			break;
+		}
 		d.warning("unary expression type handling is NYI. possible compiler UB to follow.");
-		return generic(d, expr->expr);
+		return t;
 	}
 
 	type binary_expression(const data& d, binary_expression_t payload)
