@@ -492,6 +492,13 @@ namespace codegen
 		}
 	}
 
+	bool is_ultimately_identifier(const ast::expression& expr)
+	{
+		return std::holds_alternative<ast::identifier>(expr.expr) ||
+		(std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr.expr) && is_ultimately_identifier(*std::get<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr.expr).second)) ||
+		(std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr) && (is_ultimately_identifier(*std::get<1>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr))) || is_ultimately_identifier(*std::get<2>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr)))));
+	}
+
 	llvm::Value* binary_expression(const data& d, binary_expression_t payload)
 	{
 		const auto&[op, lhs, rhs] = payload;
@@ -508,17 +515,20 @@ namespace codegen
 		llvm::Value* ret = nullptr;
 
 		bool want_lhs_ptr = op.type == lexer::token::type::equals;
-		if(!want_lhs_ptr && ty.is_pointer())
+
+		if(!want_lhs_ptr && is_ultimately_identifier(*lhs))
 		{
 			// deref lhs if we're not assigning to it.
 			lhs_value = load_as(lhs_value, d.state, ty, ty.dereference());
-		}
-		if(ty.pointer_level == rhs_ty.pointer_level + 1)
-		{
 			ty = ty.dereference();
 		}
+		if(is_ultimately_identifier(*rhs))
+		{
+			rhs_value = load_as(rhs_value, d.state, rhs_ty, rhs_ty.dereference());
+			rhs_ty = rhs_ty.dereference();
+		}
 		// definitely deref
-		rhs_value = load_as(rhs_value, d.state, rhs_ty, ty);
+		//rhs_value = load_as(rhs_value, d.state, rhs_ty, ty);
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
