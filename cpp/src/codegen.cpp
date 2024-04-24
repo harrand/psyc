@@ -457,7 +457,7 @@ namespace codegen
 	{
 		llvm::Value* operand = expression(d, *payload.second);
 		d.assert_that(operand != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
-		type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload}, d.tree, d.path);
+		type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload.second->expr}, d.tree, d.path);
 		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
 		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
 		switch(payload.first.type)
@@ -504,10 +504,8 @@ namespace codegen
 		const auto&[op, lhs, rhs] = payload;
 
 		// remember, type of binary expression is: type of the lhs expression
-		const type* typtr = d.state.try_get_type_from_node(d.path);
 		type rhs_ty = d.state.try_get_type_from_payload(*rhs, d.tree, d.path);
-		d.assert_that(typtr != nullptr, "internal compiler error: type of binary expression could not be deduced.");
-		type ty = *typtr;
+		type ty = d.state.try_get_type_from_payload(*lhs, d.tree, d.path);
 		llvm::Value* lhs_value = expression(d, *lhs);
 		llvm::Value* rhs_value = expression(d, *rhs);
 		d.assert_that(lhs_value != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
