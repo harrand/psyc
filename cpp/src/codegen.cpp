@@ -11,7 +11,6 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
@@ -136,16 +135,10 @@ namespace codegen
 	}
 
 	// given a previous `generate`, write the resultant program to an object filename.
-	void write_to_object_file(std::filesystem::path object_filename)
+	void write_to_object_file(const session& ses, std::filesystem::path object_filename)
 	{
-		auto target_triple = llvm::sys::getDefaultTargetTriple();
-		llvm::InitializeAllTargetInfos();
-		llvm::InitializeAllTargets();
-		llvm::InitializeAllTargetMCs();
-		llvm::InitializeAllAsmParsers();
-		llvm::InitializeAllAsmPrinters();
 		std::string error;
-		auto target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+		const llvm::Target* target = llvm::TargetRegistry::lookupTarget(ses.target_triple, error);
 		if(target == nullptr)
 		{
 			diag::error(std::format("error while retrieving LLVM output target information(s): {}", error));
@@ -153,10 +146,10 @@ namespace codegen
 		const char* cpu = "generic";
 		const char* features = "";
 		llvm::TargetOptions opt;
-		auto target_machine = target->createTargetMachine(target_triple, cpu, features, opt, llvm::Reloc::PIC_);
+		auto target_machine = target->createTargetMachine(ses.target_triple, cpu, features, opt, llvm::Reloc::PIC_);
 		// configure module (no i have no idea whats going on).
 		program->setDataLayout(target_machine->createDataLayout());
-		program->setTargetTriple(target_triple);
+		program->setTargetTriple(ses.target_triple);
 		std::error_code ec;
 		llvm::raw_fd_ostream dst(object_filename.string(), ec, llvm::sys::fs::OF_None);
 		if(ec)

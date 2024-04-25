@@ -122,6 +122,8 @@ int main(int argc, char** argv)
 	}
 	ses.lexed_files.resize(ses.input_files.size());
 	ses.parsed_files.resize(ses.input_files.size());
+	ses.analysed_files.resize(ses.input_files.size());
+	ses.object_files.resize(ses.input_files.size());
 	diag::assert_that(ses.input_files.size(), "no input files specified");
 	volatile std::filesystem::path my_path = util::get_this_executable_path();
 	// for every .psy file you gave me, i go through **the process**.
@@ -159,21 +161,27 @@ int main(int argc, char** argv)
 			std::cout << "==========\n";
 		}
 		// perform semantic analysis.
-		semantic::state s = semantic::analysis(ast);
+		ses.analysed_files[i] = semantic::analysis(ast);
+	}
+	build::info binfo = build::gather(ses);
+	for(std::size_t i = 0; i < ses.analysed_files.size(); i++)
+	{
 		// finally, generate code
+		const auto& input_file = ses.input_files[i];
+		auto& ast = ses.parsed_files[i];
 		std::string just_filename = std::filesystem::path(input_file).stem().string();
 		codegen::static_initialise();
-		codegen::generate(ast, s, just_filename + ".psy");
+		codegen::generate(ast, ses.analysed_files[i], just_filename + ".psy");
 		if(ses.flags & flag::dump_ir)
 		{
 			std::string ir = codegen::get_ir();
 			diag::message(std::format("ir for {}:\n{}", just_filename, ir));
 		}
 		std::filesystem::path output_filename = (std::filesystem::path(ses.output_dir) / (just_filename + ".o")).string();
-		codegen::write_to_object_file(output_filename);
-		ses.object_files.push_back(output_filename);
+		codegen::write_to_object_file(ses, output_filename);
+		ses.object_files[i] = output_filename;
 		codegen::static_terminate();
 	}
-	build::go(ses);
+	build::go(ses, binfo);
 	return 0;
 }

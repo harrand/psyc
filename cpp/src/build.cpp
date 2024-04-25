@@ -8,30 +8,23 @@
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 // note: do not remove this, even if your editor says its unused. it's used.
 #include "llvm/ExecutionEngine/MCJIT.h"
-#include "llvm/IR/Constants.h"
 
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Host.h"
 
 namespace build
 {
 	const ast::node* find_target(std::string_view target_name, const ast& tree);
 	void do_build(const session& ses, const ast::node& node);
 
-	enum class linkage_type
+	info gather(session& ses)
 	{
-		none,
-		executable,
-		library
-	};
-
-	struct build_info
-	{
-		std::size_t optimisation_level = 0;
-		linkage_type link = linkage_type::executable;
-		std::string output_name = "a.exe";
-	};
-
-	void go(const session& ses)
-	{
+		ses.target_triple = llvm::sys::getDefaultTargetTriple();
+		llvm::InitializeAllTargetInfos();
+		llvm::InitializeAllTargets();
+		llvm::InitializeAllTargetMCs();
+		llvm::InitializeAllAsmParsers();
+		llvm::InitializeAllAsmPrinters();
 		// first get the target
 		// go through all parsed source files and find the meta-region corresponding to the target.
 		const ast::node* target = nullptr;
@@ -67,22 +60,9 @@ namespace build
 			}
 		}
 
-		// build the target.
-		do_build(ses, *target);
-	}
+		const ast::node& node = *target;
 
-	void parse_assignment(build_info& binfo, std::string_view lhs, const ast::expression& rhs);
-
-	void do_build(const session& ses, const ast::node& node)
-	{
-		/*
-		llvm::InitializeAllTargetInfos();
-		llvm::InitializeAllTargets();
-		llvm::InitializeAllTargetMCs();
-		llvm::InitializeAllAsmParsers();
-		llvm::InitializeAllAsmPrinters();
-		*/
-
+		// run the build-meta-region
 		ast::node node_as_function;
 		node_as_function.payload = ast::function_definition{.function_name = "main", .params = {}, .return_type = "i64"};
 		node_as_function.children = node.children;
@@ -126,7 +106,7 @@ namespace build
 		ast node_as_program{.program = program_node};
 		std::string error;
 
-		build_info binfo;
+		info binfo;
 		{
 			semantic::state state = semantic::analysis(node_as_program);
 			codegen::static_initialise();
@@ -187,6 +167,12 @@ namespace build
 			codegen::cleanup_program();
 		}
 		codegen::static_terminate();
+		return binfo;
+	}
+
+	void go(const session& ses, const info& binfo)
+	{
+		// build the target.
 		switch(binfo.link)
 		{
 			case linkage_type::library:
@@ -201,6 +187,8 @@ namespace build
 			break;
 		}
 	}
+
+	void parse_assignment(info& binfo, std::string_view lhs, const ast::expression& rhs);
 
 	// find the meta region corresponding to the target name within an AST (i.e one of the source files).
 
