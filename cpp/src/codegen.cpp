@@ -850,7 +850,13 @@ namespace codegen
 		const semantic::local_variable_t* var = d.state.try_find_local_variable(d.path, payload.var_name);
 		d.assert_that(var != nullptr, std::format("could not find local variable \"{}\"", payload.var_name));
 		llvm::Type* llvm_ty = as_llvm_type(var->ty, d.state);
-		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
+		llvm::Constant* array_size = nullptr;
+		if(payload.array_size > 0)
+		{
+			d.assert_that(payload.array_size != ast::variadic_array, "variadic arrays are not yet implemented.");
+			array_size = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*ctx), payload.array_size);
+		}
+		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, array_size, payload.var_name);
 		if(payload.initialiser.has_value())
 		{
 			if(var->ty.is_struct())
