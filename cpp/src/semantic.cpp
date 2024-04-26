@@ -448,7 +448,12 @@ namespace semantic
 	type function_call(const data& d, ast::function_call payload)
 	{
 		const function_t* maybe_function = d.state.try_find_function(payload.function_name);
-		diag::assert_that(maybe_function != nullptr, std::format("call to undeclared function \"{}\"", payload.function_name));
+		if(maybe_function == nullptr)
+		{
+			diag::assert_that(payload.function_name.starts_with("__builtin_"), std::format("line {}: call to undeclared function \"{}\"", d.tree.get(d.path).meta.line_number, payload.function_name));
+			diag::message(std::format("detected call to builtin function \"{}\"", payload.function_name));
+			return type::undefined();
+		}
 		return maybe_function->return_ty;
 	}
 

@@ -48,6 +48,8 @@ namespace codegen
 				this->fatal_error(msg);	
 			}
 		}
+
+		llvm::Value* try_call_builtin(const ast::function_call& call) const;
 	};
 
 	// global state:
@@ -632,6 +634,12 @@ namespace codegen
 	llvm::Value* function_call(const data& d, ast::function_call payload)
 	{
 		const semantic::function_t* func = d.state.try_find_function(payload.function_name);
+		if(func == nullptr)
+		{
+			llvm::Value* ret = d.try_call_builtin(payload);
+			d.assert_that(ret != nullptr, std::format("unknown function \"{}\"", payload.function_name));
+			return ret;
+		}
 		d.assert_that(func != nullptr, std::format("call to undefined function \"{}\"", payload.function_name));
 		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
 		d.assert_that(llvm_func != nullptr, std::format("internal compiler error: function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name));
@@ -1049,5 +1057,28 @@ namespace codegen
 	{
 		const ast::node& node = tree.get(path);
 		codegen_thing({.tree = tree, .node = node, .path = path, .state = state}, node.payload);
+	}
+
+	llvm::Value* data::try_call_builtin(const ast::function_call& call) const
+	{
+		if(call.function_name == "__builtin_malloc")
+		{
+			llvm::Value* size = codegen_thing(*this, call.params.front().expr);
+			llvm::Type* intptr_t = llvm::Type::getInt64Ty(*ctx);
+			return builder->CreateMalloc(intptr_t, as_llvm_type(type::from_primitive(primitive_type::u8).pointer_to(), this->state), size, llvm::ConstantInt::get(intptr_t, 1), nullptr);	
+		}
+		if(call.function_name == "__builtin_free")
+		{
+			this->assert_that(call.params.size() == 1, "__builtin_free requires one argument.");
+			const ast::expression& ptr_expr = call.params.front();
+			type param_ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
+			llvm::Value* ptr = expression(*this, ptr_expr);
+			if(is_ultimately_identifier(ptr_expr))
+			{
+				ptr = load_as(ptr, this->state, param_ty, param_ty.dereference());
+			}
+			return builder->CreateFree(ptr);
+		}
+		return nullptr;	
 	}
 }
