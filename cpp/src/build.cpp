@@ -12,6 +12,101 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
 
+build::info* cur_build_info = nullptr;
+
+void set_optimisation(std::uint64_t optval)
+{
+	diag::assert_that(optval >= 0 && optval <= 3, std::format("unknown optimisation level \"{}\". expected a number between 0-3.", optval));
+	cur_build_info->optimisation_level = optval;
+}
+
+void set_output(const char* name)
+{
+	cur_build_info->output_name = name;
+}
+
+void set_linkage(const char* linkage_cstr)
+{
+	std::string linkage = linkage_cstr;
+	if(linkage == "executable")
+	{
+		cur_build_info->link = build::linkage_type::executable;
+	}
+	else if(linkage == "library")
+	{
+		cur_build_info->link = build::linkage_type::library;
+	}
+	else if(linkage == "none")
+	{
+		cur_build_info->link = build::linkage_type::none;
+	}
+	else
+	{
+		diag::fatal_error(std::format("unknown linkage \"{}\". must be either \"executable\", \"library\", or \"none\"", linkage));
+	}
+}
+
+void install_functions(llvm::ExecutionEngine& exe)
+{
+	exe.addGlobalMapping("set_optimisation", reinterpret_cast<std::uintptr_t>(&set_optimisation));
+	exe.addGlobalMapping("set_output", reinterpret_cast<std::uintptr_t>(&set_output));
+	exe.addGlobalMapping("set_linkage", reinterpret_cast<std::uintptr_t>(&set_linkage));
+}
+
+std::vector<ast::node> get_build_prefix()
+{
+	return
+	{
+		ast::node{.payload = ast::function_definition
+		{
+			.function_name = "set_optimisation",
+			.params = 
+			{
+				ast::variable_declaration
+				{
+					.var_name = "optval",
+					.type_name = "i64",
+					.array_size = 0,
+				}	
+			},
+			.return_type = "u0",
+			.is_extern = true,
+		}},
+		ast::node{.payload = ast::function_definition
+		{
+			.function_name = "set_output",
+			.params = 
+			{
+				ast::variable_declaration
+				{
+					.var_name = "output_name",
+					.type_name = "i8*",
+					.array_size = 0,
+				}	
+			},
+			.return_type = "u0",
+			.is_extern = true,
+		}},
+		ast::node{.payload = ast::function_definition
+		{
+			.function_name = "set_linkage",
+			.params = 
+			{
+				ast::variable_declaration
+				{
+					.var_name = "output_name",
+					.type_name = "i8*",
+					.array_size = 0,
+				}	
+			},
+			.return_type = "u0",
+			.is_extern = true,
+		}}
+	};
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 namespace build
 {
 	const ast::node* find_target(std::string_view target_name, const ast& tree);
@@ -66,32 +161,6 @@ namespace build
 		ast::node node_as_function;
 		node_as_function.payload = ast::function_definition{.function_name = "main", .params = {}, .return_type = "i64"};
 		node_as_function.children = node.children;
-		// create our build variables to read from later.
-		// firstly, optimisation level
-
-		std::vector<ast::node> pre_instructions;
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "optimisation",
-			.type_name = "i64",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
-		}});
-		// then the link variable itself.
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "link",
-			.type_name = "i8*",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::identifier{.name = "null"}}
-		}});
-		pre_instructions.push_back(ast::node{.payload = ast::variable_declaration
-		{
-			.var_name = "output",
-			.type_name = "i8*",
-			.array_size = 0,
-			.initialiser = ast::expression{.expr = ast::identifier{.name = "null"}}
-		}});
 
 		// finally, add a return to the end of the main function
 		node_as_function.children.push_back(ast::node{.payload = ast::return_statement
@@ -101,7 +170,7 @@ namespace build
 
 		// run the program and retrieve the results we need.
 		ast::node program_node;
-		program_node.children = pre_instructions;
+		program_node.children = get_build_prefix();
 		program_node.children.push_back(node_as_function);
 		ast node_as_program{.program = program_node};
 		std::string error;
@@ -119,41 +188,13 @@ namespace build
 			.create();
 			diag::assert_that(exe != nullptr, std::format("internal compiler error: failed to create LLVM execution engine while trying to execute build meta-region: {}", error));
 
-			auto* optimisation_ptr = reinterpret_cast<std::int64_t*>(exe->getGlobalValueAddress("optimisation"));
+			cur_build_info = &binfo;
+			install_functions(*exe);
 
 			int (*func)() = (int (*)())exe->getFunctionAddress("main");
 
 			// run the program.
 			int ret = func();
-
-			// note: as link and output are pointers, we must retrieve their address *after* program runs, because assignments will re-seat the pointer.
-			auto* link_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("link"));
-			auto* output_ptr = *reinterpret_cast<const char**>(exe->getGlobalValueAddress("output"));
-
-			if(std::string_view(link_ptr) == "executable")
-			{
-				binfo.link = linkage_type::executable;
-			}
-			else if(std::string_view(link_ptr) == "library")
-			{
-				binfo.link = linkage_type::library;
-			}
-			else
-			{
-				diag::warning(std::format("could not recognise linkage type \"{}\". it should either be `executable` or `library`. defaulting to no linkage (just generate object files)", link_ptr));
-				binfo.link = linkage_type::none;
-			}
-			if(binfo.link != linkage_type::none && std::string_view(output_ptr).empty())
-			{
-				#ifdef _WIN32
-					output_ptr = "a.exe";
-				#else
-					output_ptr = "a.out";
-				#endif
-				diag::warning(std::format("you've opted into linking but not provided a output name. defaulting to \"{}\"", output_ptr));
-			}
-			binfo.output_name = output_ptr;
-			binfo.optimisation_level = *optimisation_ptr;
 
 			diag::assert_that(ret == 0, std::format("build meta-region execution returned non-zero exit code: {}", ret));
 			// note: tearing down all this state is actually ridiculously error prone.
