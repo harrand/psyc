@@ -43,6 +43,72 @@ bool type::is_integer_type() const
 	}
 }
 
+bool type::is_signed_integer_type() const
+{
+	if(!this->is_integer_type())
+	{
+		return false;
+	}
+	switch(std::get<primitive_type>(this->ty))
+	{
+		case primitive_type::u64:
+			[[fallthrough]];
+		case primitive_type::u32:
+			[[fallthrough]];
+		case primitive_type::u16:
+			[[fallthrough]];
+		case primitive_type::u8:
+			return false;
+		break;
+		case primitive_type::i64:
+			[[fallthrough]];
+		case primitive_type::i32:
+			[[fallthrough]];
+		case primitive_type::i16:
+			[[fallthrough]];
+		case primitive_type::i8:
+			return true;
+		break;
+		default:
+			diag::fatal_error("type system error. no support for checking signedness of the provided integer type.");
+			return false;
+		break;
+	}
+}
+
+bool type::is_unsigned_integer_type() const
+{
+	if(!this->is_integer_type())
+	{
+		return false;
+	}
+	switch(std::get<primitive_type>(this->ty))
+	{
+		case primitive_type::u64:
+			[[fallthrough]];
+		case primitive_type::u32:
+			[[fallthrough]];
+		case primitive_type::u16:
+			[[fallthrough]];
+		case primitive_type::u8:
+			return true;
+		break;
+		case primitive_type::i64:
+			[[fallthrough]];
+		case primitive_type::i32:
+			[[fallthrough]];
+		case primitive_type::i16:
+			[[fallthrough]];
+		case primitive_type::i8:
+			return false;
+		break;
+		default:
+			diag::fatal_error("type system error. no support for checking signedness of the provided integer type.");
+			return false;
+		break;
+	}
+}
+
 bool type::is_floating_point_type() const
 {
 	if(!this->is_primitive())

@@ -291,16 +291,23 @@ namespace codegen
 			std::size_t correct_bits = llvm_to->getIntegerBitWidth();
 			if(incorrect_bits < correct_bits)
 			{
-				return builder->CreateZExtOrBitCast(ptr, llvm_to);
+				ptr = builder->CreateZExtOrBitCast(ptr, llvm_to);
 			}
 			else if(incorrect_bits > correct_bits)
 			{
-				return builder->CreateTruncOrBitCast(ptr, llvm_to);
+				ptr = builder->CreateTruncOrBitCast(ptr, llvm_to);
 			}
-			else
+			if(from.is_signed_integer_type() && to.is_unsigned_integer_type())
 			{
-				diag::fatal_error(std::format("load_as received two different types but they are both {}-bit integers. perhaps signedness issue? not sure how to fix that yet im afraid.", correct_bits));
+				// signed -> unsigned
+				ptr = builder->CreateTrunc(ptr, llvm_to);	
 			}
+			else if(from.is_unsigned_integer_type() && to.is_signed_integer_type())
+			{
+				// unsigned -> signed
+				ptr = builder->CreateSExt(ptr, llvm_to);
+			}
+			return ptr;
 		}
 		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
 		return nullptr;

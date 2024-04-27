@@ -81,6 +81,8 @@ struct type
 
 	bool is_primitive() const;
 	bool is_integer_type() const;
+	bool is_signed_integer_type() const;
+	bool is_unsigned_integer_type() const;
 	bool is_floating_point_type() const;
 	bool is_void() const;
 	bool is_pointer() const;
