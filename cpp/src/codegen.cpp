@@ -19,6 +19,13 @@
 namespace codegen
 {
 	// pre definitions needed.
+	struct value
+	{
+		llvm::Value* llv = nullptr;
+		type ty = type::undefined();
+		bool is_variable = false;
+		std::string variable_name = "";
+	};
 	struct data
 	{
 		const ast& tree;
@@ -49,7 +56,7 @@ namespace codegen
 			}
 		}
 
-		llvm::Value* try_call_builtin(const ast::function_call& call) const;
+		value try_call_builtin(const ast::function_call& call) const;
 	};
 
 	// global state:
@@ -256,6 +263,17 @@ namespace codegen
 	{
 		return as_llvm_type(*ty, state);
 	}
+	
+	value get_variable_val(const value& val, const semantic::state& state)
+	{
+		return
+		{
+			.llv = builder->CreateLoad(as_llvm_type(val.ty, state), val.llv),
+			.ty = val.ty,
+			.is_variable = false,
+			.variable_name = val.variable_name
+		};
+	}
 
 	llvm::Value* load_as(llvm::Value* ptr, const semantic::state& state, type from, type to, bool check = true)
 	{
@@ -381,7 +399,7 @@ namespace codegen
 	}
 
 	template<typename P>
-	llvm::Value* codegen_thing(const data& d, const P& payload);
+	value codegen_thing(const data& d, const P& payload);
 
 	void codegen_global_variables(const ast& tree, const semantic::state& state)
 	{
@@ -400,12 +418,12 @@ namespace codegen
 			if(decl.initialiser.has_value())
 			{
 				// todo: assign llvm_initialiser to the codegen'd expression.
-				llvm::Value* init_value = codegen_thing({.tree = tree, .node = node, .path = gvardata.context, .state = state}, decl.initialiser.value().expr);
-				if(init_value == nullptr)
+				value init_value = codegen_thing({.tree = tree, .node = node, .path = gvardata.context, .state = state}, decl.initialiser.value().expr);
+				if(init_value.llv == nullptr)
 				{
 					diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", gvardata.name));
 				}
-				llvm_gvar->setInitializer(static_cast<llvm::Constant*>(init_value));
+				llvm_gvar->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
 			}
 			else
 			{
@@ -421,75 +439,111 @@ namespace codegen
 
 	/////////////////////////////////////// NODE CODEGEN ///////////////////////////////////////
 
-	llvm::Value* integer_literal(const data& d, ast::integer_literal payload)
+	value integer_literal(const data& d, ast::integer_literal payload)
 	{
 		// decimal literals are always i64
-		return llvm::ConstantInt::get(*ctx, llvm::APInt{64, static_cast<std::uint64_t>(payload.val), true});
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{64, static_cast<std::uint64_t>(payload.val), true}),
+			.ty = type::from_primitive(primitive_type::i64),
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* decimal_literal(const data& d, ast::decimal_literal payload)
+	value decimal_literal(const data& d, ast::decimal_literal payload)
 	{
-		// decimal literals are always f64 (double)
-		return llvm::ConstantFP::get(builder->getDoubleTy(), llvm::APFloat{payload.val});
+		return
+		{
+			.llv = llvm::ConstantFP::get(builder->getDoubleTy(), llvm::APFloat{payload.val}),
+			.ty = type::from_primitive(primitive_type::f64),
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* char_literal(const data& d, ast::char_literal payload)
+	value char_literal(const data& d, ast::char_literal payload)
 	{
-		return llvm::ConstantInt::get(*ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)});
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)}),
+			.ty = type::from_primitive(primitive_type::i8),
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* string_literal(const data& d, ast::string_literal payload)
+	value string_literal(const data& d, ast::string_literal payload)
 	{
-		// OH GOD HELP ME I DONT FUCKING KNOW AAAA
-		return builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get());
-		//return builder->CreateLoad(llvm::PointerType::get(*ctx, 0), builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get()));
+		return
+		{
+			.llv = builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get()),
+			.ty = type::from_primitive(primitive_type::i8).pointer_to(),
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* bool_literal(const data& d, ast::bool_literal payload)
+	value bool_literal(const data& d, ast::bool_literal payload)
 	{
-		return llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true});
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true}),
+			.ty = type::from_primitive(primitive_type::boolean),
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* expression(const data& d, ast::expression payload)
+	value expression(const data& d, ast::expression payload)
 	{
 		return codegen_thing(d, payload.expr);
 	}
 
-	llvm::Value* unary_expression(const data& d, unary_expression_t payload)
+	value unary_expression(const data& d, unary_expression_t payload)
 	{
-		llvm::Value* operand = expression(d, *payload.second);
-		d.assert_that(operand != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
-		type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload.second->expr}, d.tree, d.path);
+		value operandv = expression(d, *payload.second);
+		d.assert_that(operandv.llv != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
+		//type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload.second->expr}, d.tree, d.path);
 		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
 		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
 		switch(payload.first.type)
 		{
 			case lexer::token::type::ref:
-				d.assert_that(ty.is_pointer(), "`ref xyz`, xyz must be a pointer (as it must be a local, global or function param.)");
-				return operand;
+				d.assert_that(operandv.ty.is_pointer(), "`ref xyz`, xyz must be a pointer (as it must be a local, global or function param.)");
+				return operandv;
 			break;
 			case lexer::token::type::deref:
-				d.assert_that(ty.is_pointer(), "`deref xyz`, xyz must be a pointer (coz its a deref...)");
-				return builder->CreateLoad(as_llvm_type(ty.dereference(), d.state), operand);
+				d.assert_that(operandv.ty.is_pointer(), "`deref xyz`, xyz must be a pointer (coz its a deref...)");
+				return
+				{
+					.llv = builder->CreateLoad(as_llvm_type(operandv.ty.dereference(), d.state), operandv.llv),
+					.ty = operandv.ty.dereference(),
+					.is_variable = false
+				};
 			break;
 			case lexer::token::type::minus:
-				if(ty.is_integer_type())
+			{
+				llvm::Value* llv = nullptr;
+				if(operandv.ty.is_integer_type())
 				{
-					return builder->CreateNeg(operand);
+					llv = builder->CreateNeg(operandv.llv);
 				}
-				else if(ty.is_floating_point_type())
+				else if(operandv.ty.is_floating_point_type())
 				{
-					return builder->CreateFNeg(operand);
+					llv = builder->CreateFNeg(operandv.llv);
 				}
 				else
 				{
-					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", ty.name()));
-					return nullptr;
+					d.fatal_error(std::format("operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", operandv.ty.name()));
+					return {};
 				}
+				return
+				{
+					.llv = llv,
+					.ty = operandv.ty,
+					.is_variable = false
+				};
+			}
 			break;
 			default:
 				d.fatal_error("internal compiler error: codegen for this unary operator is not yet implemented.");
-				return nullptr;
+				return {};
 			break;
 		}
 	}
@@ -501,30 +555,32 @@ namespace codegen
 		(std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr) && (is_ultimately_identifier(*std::get<1>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr))) || is_ultimately_identifier(*std::get<2>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr)))));
 	}
 
-	llvm::Value* binary_expression(const data& d, binary_expression_t payload)
+	value binary_expression(const data& d, binary_expression_t payload)
 	{
 		const auto&[op, lhs, rhs] = payload;
 
 		// remember, type of binary expression is: type of the lhs expression
-		type rhs_ty = d.state.try_get_type_from_payload(*rhs, d.tree, d.path);
-		type ty = d.state.try_get_type_from_payload(*lhs, d.tree, d.path);
-		llvm::Value* lhs_value = expression(d, *lhs);
-		llvm::Value* rhs_value = expression(d, *rhs);
-		d.assert_that(lhs_value != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
-		d.assert_that(rhs_value != nullptr, "rhs operand to binary operator could not be properly deduced. syntax error?");
-		llvm::Value* ret = nullptr;
+		//type rhs_ty = d.state.try_get_type_from_payload(*rhs, d.tree, d.path);
+		//type ty = d.state.try_get_type_from_payload(*lhs, d.tree, d.path);
+		value lhs_value = expression(d, *lhs);
+		type ty = lhs_value.ty;
+		value rhs_value = expression(d, *rhs);
+		type rhs_ty = rhs_value.ty;
+		d.assert_that(lhs_value.llv != nullptr, "lhs operand to binary operator could not be properly deduced. syntax error?");
+		d.assert_that(rhs_value.llv != nullptr, "rhs operand to binary operator could not be properly deduced. syntax error?");
+		value ret = {};
 
 		bool want_lhs_ptr = op.type == lexer::token::type::equals;
 
 		if(!want_lhs_ptr && is_ultimately_identifier(*lhs))
 		{
 			// deref lhs if we're not assigning to it.
-			lhs_value = load_as(lhs_value, d.state, ty, ty.dereference());
+			lhs_value.llv = load_as(lhs_value.llv, d.state, ty, ty.dereference());
 			ty = ty.dereference();
 		}
 		if(is_ultimately_identifier(*rhs))
 		{
-			rhs_value = load_as(rhs_value, d.state, rhs_ty, rhs_ty.dereference());
+			rhs_value.llv = load_as(rhs_value.llv, d.state, rhs_ty, rhs_ty.dereference());
 			rhs_ty = rhs_ty.dereference();
 		}
 		// definitely deref
@@ -532,51 +588,55 @@ namespace codegen
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
-				ret = builder->CreateAdd(lhs_value, rhs_value);
+				ret.llv = builder->CreateAdd(lhs_value.llv, rhs_value.llv);
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
 			break;
 			case lexer::token::type::minus:
-				ret = builder->CreateSub(lhs_value, rhs_value);
+				ret.llv = builder->CreateSub(lhs_value.llv, rhs_value.llv);
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
 			break;
 			case lexer::token::type::double_equals:
-				ret = builder->CreateICmpEQ(lhs_value, rhs_value);
+				ret.llv = builder->CreateICmpEQ(lhs_value.llv, rhs_value.llv);
+				ret.ty = type::from_primitive(primitive_type::boolean);
+				ret.is_variable = false;
 			break;
 			case lexer::token::type::not_equals:
-				ret = builder->CreateICmpNE(lhs_value, rhs_value);
+				ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
+				ret.ty = type::from_primitive(primitive_type::boolean);
+				ret.is_variable = false;
 			break;
 			case lexer::token::type::equals:
 			{
+				/*
 				std::string value_string;
 				llvm::raw_string_ostream os{value_string};
-				rhs_value->print(os);
+				rhs_value.llv->print(os);
 				volatile std::string rhs_string = value_string;
 				value_string = "";
-				lhs_value->print(os);
+				lhs_value.llv->print(os);
 				volatile std::string lhs_string = value_string;
+				*/
 				
-				builder->CreateStore(rhs_value, lhs_value);
+				builder->CreateStore(rhs_value.llv, lhs_value.llv);
 				// createstore returns a void type'd value, so we dont care about that for ret.
 				// just use the type semantic analysis gave us.
-				ret = rhs_value;
+				ret = lhs_value;
 			}
 			break;
 			default:
 				d.fatal_error("internal compiler error: binary operator is not yet implemented.");
 			break;
 		}
-		if(ret == nullptr)
+		if(ret.llv == nullptr)
 		{
 			d.fatal_error("internal compiler error: a particular binary operator was not recognised in the context of its equivalent LLVM-IR.");
-		}
-		else
-		{
-			const type* ty = d.state.try_get_type_from_node(d.path);
-			d.assert_that(ty != nullptr, "internal compiler error: type system failed to deduce type of binary operator expression");
-			//d.assert_that(as_llvm_type(*ty, d.state) == ret->getType(), std::format("internal compiler error: binary operator expression's deduced type \"{}\" does not match the real underlying LLVM value type. i.e type system has failed.", ty->name()));
 		}
 		return ret;
 	}
 
-	llvm::Value* identifier(const data& d, ast::identifier payload, type* output_identifier_type = nullptr)
+	value identifier(const data& d, ast::identifier payload, type* output_identifier_type = nullptr)
 	{
 		// could be:
 		// null
@@ -587,7 +647,12 @@ namespace codegen
 			{
 				*output_identifier_type = null_t;
 			}
-			return llvm::ConstantPointerNull::get(llvm::PointerType::get(*ctx, 0));
+			return
+			{
+				.llv = llvm::ConstantPointerNull::get(llvm::PointerType::get(*ctx, 0)),
+				.ty = type::from_primitive(primitive_type::u0).pointer_to(),
+				.is_variable = false
+			};
 		}
 		// a global variable
 		const semantic::local_variable_t* gvar = d.state.try_find_global_variable(payload.name);
@@ -598,7 +663,13 @@ namespace codegen
 			{
 				*output_identifier_type = gvar->ty;
 			}
-			return static_cast<llvm::GlobalVariable*>(gvar->userdata);
+			return
+			{
+				.llv = static_cast<llvm::GlobalVariable*>(gvar->userdata),
+				.ty = gvar->ty.pointer_to(),
+				.is_variable = true,
+				.variable_name = gvar->name
+			};
 		}
 		// a local variable
 		const semantic::local_variable_t* var = d.state.try_find_local_variable(d.path, payload.name);
@@ -609,7 +680,13 @@ namespace codegen
 			{
 				*output_identifier_type = var->ty;
 			}
-			return static_cast<llvm::AllocaInst*>(var->userdata);
+			return
+			{
+				.llv = static_cast<llvm::AllocaInst*>(var->userdata),
+				.ty = var->ty.pointer_to(),
+				.is_variable = true,
+				.variable_name = var->name
+			};
 		}
 		// a function parameter
 		const semantic::function_t* parent_function = d.state.try_find_parent_function(d.tree, d.path);
@@ -629,22 +706,28 @@ namespace codegen
 					{
 						*output_identifier_type = param.ty;
 					}
-					return arg;
+					return
+					{
+						.llv = arg,
+						.ty = param.ty.pointer_to(),
+						.is_variable = true,
+						.variable_name = param.name
+					};
 				}
 			}
 		}
 
 		d.fatal_error(std::format("could not evaluate identifier \"{}\". tried global variable, local variable and function parameter :(", payload.name));
-		return nullptr;
+		return {};
 	}
 
-	llvm::Value* function_call(const data& d, ast::function_call payload)
+	value function_call(const data& d, ast::function_call payload)
 	{
 		const semantic::function_t* func = d.state.try_find_function(payload.function_name);
 		if(func == nullptr)
 		{
-			llvm::Value* ret = d.try_call_builtin(payload);
-			d.assert_that(ret != nullptr, std::format("unknown function \"{}\"", payload.function_name));
+			value ret = d.try_call_builtin(payload);
+			d.assert_that(ret.llv != nullptr, std::format("unknown function \"{}\"", payload.function_name));
 			return ret;
 		}
 		d.assert_that(func != nullptr, std::format("call to undefined function \"{}\"", payload.function_name));
@@ -656,22 +739,27 @@ namespace codegen
 			type expected_param_ty = func->params[i].ty;
 			type actual_param_ty = d.state.try_get_type_from_payload(payload.params[i], d.tree, d.path);
 
-			llvm::Value* param_val = expression(d, payload.params[i]);
+			value param_val = expression(d, payload.params[i]);
 			// note: no narrowing as of yet.
-			d.assert_that(param_val != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
-			llvm::Value* loaded_val = load_as(param_val, d.state, actual_param_ty, expected_param_ty);
+			d.assert_that(param_val.llv != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
+			llvm::Value* loaded_val = load_as(param_val.llv, d.state, actual_param_ty, expected_param_ty);
 			d.assert_that(loaded_val != nullptr, std::format("type mismatch! expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", expected_param_ty.name()));
 			llvm_params.push_back(loaded_val);
 		}	
-		return builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp");
+		return 
+		{
+			.llv = builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp"),
+			.ty = func->return_ty,
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* member_access(const data& d, ast::member_access payload)
+	value member_access(const data& d, ast::member_access payload)
 	{
 		// it must be a global/local variable or function parameter.
 		type ty = type::undefined();
 		// unleash our cheeky hack - when we codegen the identifier, let us know which type it came up with.
-		llvm::Value* lhs_var = identifier(d, payload.lhs, &ty);
+		value lhs_var = identifier(d, payload.lhs, &ty);
 
 		d.assert_that(ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, ty.name()));
 		struct_type struct_ty = ty.as_struct();
@@ -690,11 +778,17 @@ namespace codegen
 		d.assert_that(data_member_idx.has_value(), std::format("access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs.name, struct_ty.name));
 		// get the data member via GEP
 		llvm::Type* llvm_struct_ty = as_llvm_type(ty, d.state);
-		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var, data_member_idx.value());
-		return ret;
+		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var.llv, data_member_idx.value());
+		return
+		{
+			.llv = ret,
+			.ty = *struct_ty.data_members[data_member_idx.value()].type,
+			.is_variable = true,
+			.variable_name = struct_ty.data_members[data_member_idx.value()].member_name
+		};
 	}
 
-	llvm::Value* if_statement(const data& d, ast::if_statement payload)
+	value if_statement(const data& d, ast::if_statement payload)
 	{
 		std::optional<ast::else_statement> maybe_else = std::nullopt;
 		std::optional<ast::path_t> next_path = d.tree.try_get_next(d.path);
@@ -708,12 +802,15 @@ namespace codegen
 			}
 		}
 
-		llvm::Value* llvm_cond = expression(d, payload.condition);
-		type expr_ty = d.state.try_get_type_from_payload(payload.condition, d.tree, d.path);
-		d.assert_that(llvm_cond != nullptr, "internal compiler error: could not codegen condition inside if-statement");
+		value llvm_cond = expression(d, payload.condition);
+		d.assert_that(llvm_cond.llv != nullptr, "internal compiler error: could not codegen condition inside if-statement");
+		if(llvm_cond.is_variable)
+		{
+			llvm_cond = get_variable_val(llvm_cond, d.state);
+		}
 		type bool_t = type::from_primitive(primitive_type::boolean);
-		llvm_cond = load_as(llvm_cond, d.state, expr_ty, bool_t);
-		llvm_cond = builder->CreateICmpNE(llvm_cond, llvm::ConstantInt::get(as_llvm_type(bool_t, d.state), llvm::APInt{1, 0u}));
+		llvm_cond.llv = load_as(llvm_cond.llv, d.state, llvm_cond.ty, bool_t);
+		llvm_cond.llv = builder->CreateICmpNE(llvm_cond.llv, llvm::ConstantInt::get(as_llvm_type(bool_t, d.state), llvm::APInt{1, 0u}));
 
 		const semantic::function_t* parent_function = d.state.try_find_parent_function(d.tree, d.path);
 		d.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, "internal compiler error: could not deduct parent enclosing function within if-statement");
@@ -727,9 +824,9 @@ namespace codegen
 			llvm::BasicBlock* else_blk = llvm::BasicBlock::Create(*ctx, "else");
 			llvm::BasicBlock* merge_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
 
-			builder->CreateCondBr(llvm_cond, then_blk, else_blk);
+			builder->CreateCondBr(llvm_cond.llv, then_blk, else_blk);
 			builder->SetInsertPoint(then_blk);
-			llvm::Value* if_val = nullptr;
+			value if_val = {};
 			for(std::size_t i = 0; i < d.node.children.size(); i++)
 			{
 				// if true then do this shit.
@@ -753,7 +850,7 @@ namespace codegen
 			builder->SetInsertPoint(else_blk);
 
 			// else stuff goes here?
-			llvm::Value* else_val = nullptr;
+			value else_val = {};
 			for(std::size_t i = 0; i < maybe_next->children.size(); i++)
 			{
 				const ast::node& child = maybe_next->children[i];
@@ -774,10 +871,15 @@ namespace codegen
 			llvm_parent_fn->insert(llvm_parent_fn->end(), merge_blk);
 			builder->SetInsertPoint(merge_blk);
 
-			llvm::PHINode* phi = builder->CreatePHI(if_val->getType(), 2, "iftmp");
-			phi->addIncoming(if_val, then_blk);
-			phi->addIncoming(else_val, else_blk);
-			return phi;
+			llvm::PHINode* phi = builder->CreatePHI(if_val.llv->getType(), 2, "iftmp");
+			phi->addIncoming(if_val.llv, then_blk);
+			phi->addIncoming(else_val.llv, else_blk);
+			return 
+			{
+				.llv = phi,
+				.ty = type::undefined(),
+				.is_variable = false
+			};
 		}
 		else
 		{
@@ -786,7 +888,7 @@ namespace codegen
 			llvm::BasicBlock* next_blk = llvm::BasicBlock::Create(*ctx, "ifcont");
 
 			llvm_parent_fn->insert(llvm_parent_fn->end(), next_blk);
-			builder->CreateCondBr(llvm_cond, then_blk, next_blk);
+			builder->CreateCondBr(llvm_cond.llv, then_blk, next_blk);
 			builder->SetInsertPoint(then_blk);
 
 			bool contains_ret = false;
@@ -814,46 +916,61 @@ namespace codegen
 				builder->CreateBr(next_blk);
 			}
 			builder->SetInsertPoint(next_blk);
-			return nullptr;
+			return {};
 		}
 	}
 
-	llvm::Value* else_statement(const data& d, ast::else_statement payload)
+	value else_statement(const data& d, ast::else_statement payload)
 	{
 		// else statements are already sorted by the if-statement stuff above.
 		// so we never have to do anything.
-		return nullptr;
+		return {};
 	}
 
-	llvm::Value* for_statement(const data& d, ast::for_statement payload)
+	value for_statement(const data& d, ast::for_statement payload)
 	{
 		d.warning("for-statements are not yet implemented. no corresponding code will be generated.");
-		return nullptr;
+		return {};
 	}
 
-	llvm::Value* return_statement(const data& d, ast::return_statement payload)
+	value return_statement(const data& d, ast::return_statement payload)
 	{
 		if(!payload.value.has_value())
 		{
-			return builder->CreateRetVoid();
+			return
+			{
+				.llv = builder->CreateRetVoid(),
+				.ty = type::from_primitive(primitive_type::u0),
+				.is_variable = false
+			};
 		}
 		const semantic::function_t* func = d.state.try_find_parent_function(d.tree, d.path);
 		type expected_ret_ty = func->return_ty;
 
-		const type* ret_ty = d.state.try_get_type_from_node(d.path);
-		d.assert_that(ret_ty != nullptr, std::format("internal compiler error: type of non-void return expression could not be properly deduced. semantic analysis fucked up."));
-		llvm::Value* retval = expression(d, payload.value.value());
-		d.assert_that(retval != nullptr, std::format("internal compiler error: value of non-void return expression could not be properly deduced."));
-		return builder->CreateRet(load_as(retval, d.state, *ret_ty, expected_ret_ty));
+		value retval = expression(d, payload.value.value());
+		d.assert_that(retval.llv != nullptr, std::format("internal compiler error: value of non-void return expression could not be properly deduced."));
+		return
+		{
+			.llv = builder->CreateRet(load_as(retval.llv, d.state, retval.ty, expected_ret_ty)),
+			.ty = expected_ret_ty,
+			.is_variable = false
+		};
 	}
 
-	llvm::Value* variable_declaration(const data& d, ast::variable_declaration payload)
+	value variable_declaration(const data& d, ast::variable_declaration payload)
 	{
 		if(d.path.size() <= 1)
 		{
 			// its a global variable.
 			// globals are already done in the pre-pass.
-			return static_cast<llvm::GlobalVariable*>(d.state.try_find_global_variable(payload.var_name)->userdata);
+			const semantic::local_variable_t* glob = d.state.try_find_global_variable(payload.var_name);
+			return
+			{
+				.llv = static_cast<llvm::GlobalVariable*>(glob->userdata),
+				.ty = glob->ty,
+				.is_variable = true,
+				.variable_name = glob->name
+			};
 		}
 		const semantic::local_variable_t* var = d.state.try_find_local_variable(d.path, payload.var_name);
 		d.assert_that(var != nullptr, std::format("could not find local variable \"{}\"", payload.var_name));
@@ -873,17 +990,23 @@ namespace codegen
 			}	
 			else
 			{
-				llvm::Value* init_value = expression(d, payload.initialiser.value());
-				d.assert_that(init_value != nullptr, std::format("internal compiler error: variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name));
-				builder->CreateStore(init_value, llvm_var);
+				value init_value = expression(d, payload.initialiser.value());
+				d.assert_that(init_value.llv != nullptr, std::format("internal compiler error: variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name));
+				builder->CreateStore(init_value.llv, llvm_var);
 			}
 		}
 
 		var->userdata = llvm_var;
-		return llvm_var;
+		return
+		{
+			.llv = llvm_var,
+			.ty = var->ty,
+			.is_variable = true,
+			.variable_name = var->name
+		};
 	}
 
-	llvm::Value* function_definition(const data& d, ast::function_definition payload)
+	value function_definition(const data& d, ast::function_definition payload)
 	{
 		// functions are already done in the pre-pass.
 		// however, none of their bodies are.
@@ -939,19 +1062,19 @@ namespace codegen
 			}
 		}
 		llvm::verifyFunction(*llvm_fn);
-		return nullptr;
+		return {};
 	}
 
-	llvm::Value* struct_definition(const data& d, ast::struct_definition payload)
+	value struct_definition(const data& d, ast::struct_definition payload)
 	{
 		// functions are already done in the pre-pass.
-		return nullptr;
+		return {};
 	}
 
-	llvm::Value* meta_region(const data& d, ast::meta_region payload)
+	value meta_region(const data& d, ast::meta_region payload)
 	{
 		// functions are already done in the pre-pass.
-		return nullptr;
+		return {};
 	}
 
 	template<typename ... Ts> 
@@ -961,9 +1084,9 @@ namespace codegen
 	template<class... Ts> overload(Ts...) -> overload<Ts...>;
 
 	template<typename P>
-	llvm::Value* codegen_thing(const data& d, const P& payload)
+	value codegen_thing(const data& d, const P& payload)
 	{
-		llvm::Value* ret = nullptr;
+		value ret = {};
 		auto dispatch = overload
 		{
 			[&](ast::integer_literal lit)
@@ -1066,26 +1189,34 @@ namespace codegen
 		codegen_thing({.tree = tree, .node = node, .path = path, .state = state}, node.payload);
 	}
 
-	llvm::Value* data::try_call_builtin(const ast::function_call& call) const
+	value data::try_call_builtin(const ast::function_call& call) const
 	{
+		value ret
+		{
+			.llv = nullptr,
+			.ty = type::undefined(),
+			.is_variable = false
+		};
 		if(call.function_name == "__builtin_malloc")
 		{
-			llvm::Value* size = codegen_thing(*this, call.params.front().expr);
+			value size = codegen_thing(*this, call.params.front().expr);
 			llvm::Type* intptr_t = llvm::Type::getInt64Ty(*ctx);
-			return builder->CreateMalloc(intptr_t, as_llvm_type(type::from_primitive(primitive_type::u8).pointer_to(), this->state), size, llvm::ConstantInt::get(intptr_t, 1), nullptr);	
+			ret.llv = builder->CreateMalloc(intptr_t, as_llvm_type(type::from_primitive(primitive_type::u8).pointer_to(), this->state), size.llv, llvm::ConstantInt::get(intptr_t, 1), nullptr);	
+			ret.ty = type::from_primitive(primitive_type::u0).pointer_to();
 		}
 		if(call.function_name == "__builtin_free")
 		{
 			this->assert_that(call.params.size() == 1, "__builtin_free requires one argument.");
 			const ast::expression& ptr_expr = call.params.front();
 			type param_ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
-			llvm::Value* ptr = expression(*this, ptr_expr);
+			value ptr = expression(*this, ptr_expr);
 			if(is_ultimately_identifier(ptr_expr))
 			{
-				ptr = load_as(ptr, this->state, param_ty, param_ty.dereference());
+				ptr.llv = load_as(ptr.llv, this->state, param_ty, param_ty.dereference());
 			}
-			return builder->CreateFree(ptr);
+			ret.llv = builder->CreateFree(ptr.llv);
+			ret.ty = type::from_primitive(primitive_type::u0);
 		}
-		return nullptr;	
+		return ret;
 	}
 }
