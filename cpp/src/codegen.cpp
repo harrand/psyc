@@ -332,6 +332,7 @@ namespace codegen
 			return ptr;
 		}
 		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
+		diag::fatal_error("internal compiler error: codegen load_as returned nullptr");
 		return nullptr;
 	}
 
