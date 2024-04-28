@@ -146,7 +146,7 @@ namespace build
 			if(ses.target == default_target)
 			{
 				// default means user never specified one. they probably dont care. just use the default.
-				diag::message(std::format("default target \"{}\" was not found. defaulting to an empty target...", ses.target));
+				diag::message(std::format("default build meta-region \"{}\" was not found. defaulting to an empty target...", ses.target));
 				target = &default_empty_target;
 			}
 			else
@@ -159,7 +159,7 @@ namespace build
 
 		// run the build-meta-region
 		ast::node node_as_function;
-		node_as_function.payload = ast::function_definition{.function_name = "main", .params = {}, .return_type = "i64"};
+		node_as_function.payload = ast::function_definition{.function_name = ses.target, .params = {}, .return_type = "i64"};
 		node_as_function.children = node.children;
 
 		// finally, add a return to the end of the main function
@@ -191,7 +191,7 @@ namespace build
 			cur_build_info = &binfo;
 			install_functions(*exe);
 
-			int (*func)() = (int (*)())exe->getFunctionAddress("main");
+			int (*func)() = (int (*)())exe->getFunctionAddress(ses.target);
 
 			// run the program.
 			int ret = func();
@@ -238,7 +238,7 @@ namespace build
 		if(std::holds_alternative<ast::meta_region>(node.payload))
 		{
 			const auto& region = std::get<ast::meta_region>(node.payload);
-			if(region.region_name == target_name)
+			if(region.region_name == target_name && region.type == ast::meta_region_type::build)
 			{
 				return &node;
 			}
