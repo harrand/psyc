@@ -138,7 +138,7 @@ namespace build
 
 		ast::node default_empty_target
 		{
-			.payload = ast::meta_region{.region_name = default_target}
+			.payload = ast::meta_region{.region_name = default_target, .type = ast::meta_region_type::build}
 		};
 		if(target == nullptr)
 		{

@@ -553,9 +553,19 @@ namespace parser
 			{
 				this->must_match(lexer::token::type::identifier);
 				std::string region_name = this->last_value();
+				this->must_match(lexer::token::type::colon);
+				this->must_match(lexer::token::type::keyword);
+				std::string region_type_name = this->last_value();
 				this->must_match(lexer::token::type::double_equals);
 				this->unstash_index();
-				return ast::meta_region{.region_name = region_name, .type = ast::meta_region_type::build};
+
+				auto region_type_id = std::find_if(ast::meta_region_names.begin(), ast::meta_region_names.end(),
+				[&region_type_name](const char* name)->bool
+				{
+					return region_type_name == name;
+				});
+				this->parser_assert(region_type_id != ast::meta_region_names.end(), std::format("unknown meta-region type \"{}\"", region_type_name));
+				return ast::meta_region{.region_name = region_name, .type = static_cast<ast::meta_region_type>(std::distance(ast::meta_region_names.begin(), region_type_id))};
 			}
 			return std::nullopt;
 		}

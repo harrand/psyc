@@ -31,7 +31,9 @@ namespace lexer
 			"if", // if-statement
 			"else",
 			"for", // for-statement
-			"struct" // struct specifier
+			"struct", // struct specifier
+			"build", // build meta-region
+			"namespace", // namespace meta-region
 		};
 
 		auto current_is_keyword = [&keywords](std::string_view str) constexpr -> bool

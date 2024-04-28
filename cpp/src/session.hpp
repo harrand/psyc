@@ -9,7 +9,7 @@
 #include <vector>
 #include <filesystem>
 
-constexpr const char* default_target = "build";
+constexpr const char* default_target = "default";
 
 struct session
 {
