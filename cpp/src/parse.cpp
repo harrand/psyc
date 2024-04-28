@@ -555,7 +555,7 @@ namespace parser
 				std::string region_name = this->last_value();
 				this->must_match(lexer::token::type::double_equals);
 				this->unstash_index();
-				return ast::meta_region{.region_name = region_name};
+				return ast::meta_region{.region_name = region_name, .type = ast::meta_region_type::build};
 			}
 			return std::nullopt;
 		}

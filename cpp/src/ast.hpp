@@ -272,12 +272,26 @@ struct ast
 		}
 	};
 
+	enum class meta_region_type
+	{
+		build,
+		name_space,
+		_count
+	};
+
+	static constexpr std::array<const char*, static_cast<int>(meta_region_type::_count)> meta_region_names
+	{
+		"build",
+		"namespace"
+	};
+
 	struct meta_region
 	{
 		std::string region_name;
+		meta_region_type type;
 		std::string to_string() const
 		{
-			return std::format("region: {}", region_name);
+			return std::format("{} meta-region: {}", meta_region_names[static_cast<int>(type)], region_name);
 		}
 	};
 
