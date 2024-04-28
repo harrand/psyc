@@ -56,7 +56,7 @@ namespace codegen
 			}
 		}
 
-		value try_call_builtin(const ast::function_call& call) const;
+		value try_call_builtin(const ast::function_call& call, const semantic::state& state) const;
 	};
 
 	// global state:
@@ -266,10 +266,14 @@ namespace codegen
 	
 	value get_variable_val(const value& val, const semantic::state& state)
 	{
+		if(!val.ty.is_pointer())
+		{
+			diag::fatal_error(std::format("internal compiler error: variable \"{}\" was not a pointer (although the variable might not be a pointer, as far as the codegen implementation is concerned, it should be a pointer to whatever type you set it to)", val.variable_name));
+		}
 		return
 		{
-			.llv = builder->CreateLoad(as_llvm_type(val.ty, state), val.llv),
-			.ty = val.ty,
+			.llv = builder->CreateLoad(as_llvm_type(val.ty.dereference(), state), val.llv),
+			.ty = val.ty.dereference(),
 			.is_variable = false,
 			.variable_name = val.variable_name
 		};
@@ -502,10 +506,15 @@ namespace codegen
 		//type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload.second->expr}, d.tree, d.path);
 		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
 		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
+		if(operandv.is_variable && payload.first.type != lexer::token::type::ref && payload.first.type != lexer::token::type::deref)
+		{
+			operandv = get_variable_val(operandv, d.state);
+		}
 		switch(payload.first.type)
 		{
 			case lexer::token::type::ref:
 				d.assert_that(operandv.ty.is_pointer(), "`ref xyz`, xyz must be a pointer (as it must be a local, global or function param.)");
+				operandv.is_variable = false;
 				return operandv;
 			break;
 			case lexer::token::type::deref:
@@ -514,7 +523,8 @@ namespace codegen
 				{
 					.llv = builder->CreateLoad(as_llvm_type(operandv.ty.dereference(), d.state), operandv.llv),
 					.ty = operandv.ty.dereference(),
-					.is_variable = false
+					.is_variable = operandv.is_variable,
+					.variable_name = operandv.variable_name
 				};
 			break;
 			case lexer::token::type::minus:
@@ -548,13 +558,6 @@ namespace codegen
 		}
 	}
 
-	bool is_ultimately_identifier(const ast::expression& expr)
-	{
-		return std::holds_alternative<ast::identifier>(expr.expr) ||
-		(std::holds_alternative<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr.expr) && is_ultimately_identifier(*std::get<std::pair<ast::unary_operator, util::box<ast::expression>>>(expr.expr).second)) ||
-		(std::holds_alternative<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr) && (is_ultimately_identifier(*std::get<1>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr))) || is_ultimately_identifier(*std::get<2>(std::get<std::tuple<ast::binary_operator, util::box<ast::expression>, util::box<ast::expression>>>(expr.expr)))));
-	}
-
 	value binary_expression(const data& d, binary_expression_t payload)
 	{
 		const auto&[op, lhs, rhs] = payload;
@@ -572,19 +575,16 @@ namespace codegen
 
 		bool want_lhs_ptr = op.type == lexer::token::type::equals;
 
-		if(!want_lhs_ptr && is_ultimately_identifier(*lhs))
+		if(!want_lhs_ptr && lhs_value.is_variable)
 		{
-			// deref lhs if we're not assigning to it.
-			lhs_value.llv = load_as(lhs_value.llv, d.state, ty, ty.dereference());
-			ty = ty.dereference();
+			lhs_value = get_variable_val(lhs_value, d.state);
+			ty = lhs_value.ty;
 		}
-		if(is_ultimately_identifier(*rhs))
+		if(rhs_value.is_variable)
 		{
-			rhs_value.llv = load_as(rhs_value.llv, d.state, rhs_ty, rhs_ty.dereference());
-			rhs_ty = rhs_ty.dereference();
+			rhs_value = get_variable_val(rhs_value, d.state);
+			rhs_ty = rhs_value.ty;
 		}
-		// definitely deref
-		//rhs_value = load_as(rhs_value, d.state, rhs_ty, ty);
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
@@ -609,7 +609,6 @@ namespace codegen
 			break;
 			case lexer::token::type::equals:
 			{
-				/*
 				std::string value_string;
 				llvm::raw_string_ostream os{value_string};
 				rhs_value.llv->print(os);
@@ -617,7 +616,6 @@ namespace codegen
 				value_string = "";
 				lhs_value.llv->print(os);
 				volatile std::string lhs_string = value_string;
-				*/
 				
 				builder->CreateStore(rhs_value.llv, lhs_value.llv);
 				// createstore returns a void type'd value, so we dont care about that for ret.
@@ -726,7 +724,7 @@ namespace codegen
 		const semantic::function_t* func = d.state.try_find_function(payload.function_name);
 		if(func == nullptr)
 		{
-			value ret = d.try_call_builtin(payload);
+			value ret = d.try_call_builtin(payload, d.state);
 			d.assert_that(ret.llv != nullptr, std::format("unknown function \"{}\"", payload.function_name));
 			return ret;
 		}
@@ -782,7 +780,7 @@ namespace codegen
 		return
 		{
 			.llv = ret,
-			.ty = *struct_ty.data_members[data_member_idx.value()].type,
+			.ty = struct_ty.data_members[data_member_idx.value()].type->pointer_to(),
 			.is_variable = true,
 			.variable_name = struct_ty.data_members[data_member_idx.value()].member_name
 		};
@@ -1189,7 +1187,7 @@ namespace codegen
 		codegen_thing({.tree = tree, .node = node, .path = path, .state = state}, node.payload);
 	}
 
-	value data::try_call_builtin(const ast::function_call& call) const
+	value data::try_call_builtin(const ast::function_call& call, const semantic::state& state) const
 	{
 		value ret
 		{
@@ -1210,9 +1208,9 @@ namespace codegen
 			const ast::expression& ptr_expr = call.params.front();
 			type param_ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
 			value ptr = expression(*this, ptr_expr);
-			if(is_ultimately_identifier(ptr_expr))
+			if(ptr.is_variable)
 			{
-				ptr.llv = load_as(ptr.llv, this->state, param_ty, param_ty.dereference());
+				ptr = get_variable_val(ptr, state);
 			}
 			ret.llv = builder->CreateFree(ptr.llv);
 			ret.ty = type::from_primitive(primitive_type::u0);
