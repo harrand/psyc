@@ -503,7 +503,6 @@ namespace codegen
 	{
 		value operandv = expression(d, *payload.second);
 		d.assert_that(operandv.llv != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
-		//type ty = d.state.try_get_type_from_payload(ast::expression{.expr = payload.second->expr}, d.tree, d.path);
 		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
 		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
 		if(operandv.is_variable && payload.first.type != lexer::token::type::ref && payload.first.type != lexer::token::type::deref)
@@ -563,8 +562,6 @@ namespace codegen
 		const auto&[op, lhs, rhs] = payload;
 
 		// remember, type of binary expression is: type of the lhs expression
-		//type rhs_ty = d.state.try_get_type_from_payload(*rhs, d.tree, d.path);
-		//type ty = d.state.try_get_type_from_payload(*lhs, d.tree, d.path);
 		value lhs_value = expression(d, *lhs);
 		type ty = lhs_value.ty;
 		value rhs_value = expression(d, *rhs);
@@ -735,12 +732,11 @@ namespace codegen
 		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
 			type expected_param_ty = func->params[i].ty;
-			type actual_param_ty = d.state.try_get_type_from_payload(payload.params[i], d.tree, d.path);
 
 			value param_val = expression(d, payload.params[i]);
 			// note: no narrowing as of yet.
 			d.assert_that(param_val.llv != nullptr, std::format("internal compiler error: in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name));
-			llvm::Value* loaded_val = load_as(param_val.llv, d.state, actual_param_ty, expected_param_ty);
+			llvm::Value* loaded_val = load_as(param_val.llv, d.state, param_val.ty, expected_param_ty);
 			d.assert_that(loaded_val != nullptr, std::format("type mismatch! expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", expected_param_ty.name()));
 			llvm_params.push_back(loaded_val);
 		}	
@@ -1206,7 +1202,6 @@ namespace codegen
 		{
 			this->assert_that(call.params.size() == 1, "__builtin_free requires one argument.");
 			const ast::expression& ptr_expr = call.params.front();
-			type param_ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
 			value ptr = expression(*this, ptr_expr);
 			if(ptr.is_variable)
 			{
