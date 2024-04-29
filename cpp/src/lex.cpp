@@ -1,5 +1,6 @@
 #include "lex.hpp"
 #include "diag.hpp"
+#include <algorithm>
 #include <format>
 #include <string>
 
@@ -122,6 +123,16 @@ namespace lexer
 				ret.push_back({.id = token::type::char_literal, .value = std::string{value}});
 				current_char_literal_begin = npos;
 			}
+		};
+		
+		auto cur_literal_is_number = [&]()
+		{
+			if(current_word_begin == npos)
+			{
+				return false;
+			}
+			std::string value = std::string(psy.data() + current_word_begin, cursor - current_word_begin);
+			return !std::any_of(value.begin(), value.end(), [](char c)->bool{return !std::isdigit(c);});
 		};
 
 		std::size_t line_counter = 1;
@@ -262,8 +273,11 @@ namespace lexer
 			}
 			else if(data.starts_with("."))
 			{
-				emit_word();
-				ret.push_back({.id = token::type::dot});
+				if(!cur_literal_is_number())
+				{
+					emit_word();
+					ret.push_back({.id = token::type::dot});
+				}
 			}
 			else if(data.starts_with("->"))
 			{
