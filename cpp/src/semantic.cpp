@@ -420,13 +420,13 @@ namespace semantic
 		const local_variable_t* maybe_global_variable = d.state.try_find_global_variable(payload.name);
 		if(maybe_global_variable != nullptr)
 		{
-			return maybe_global_variable->ty.pointer_to();
+			return maybe_global_variable->ty;
 		}
 		
 		const local_variable_t* maybe_local_variable = d.state.try_find_local_variable(d.path, payload.name);
 		if(maybe_local_variable != nullptr)
 		{
-			return maybe_local_variable->ty.pointer_to();
+			return maybe_local_variable->ty;
 		}
 
 		const function_t* func = d.state.try_find_parent_function(d.tree, d.path);
@@ -436,7 +436,7 @@ namespace semantic
 			{
 				if(param.name == payload.name)
 				{
-					return param.ty.pointer_to();
+					return param.ty;
 				}
 			}
 		}
@@ -460,8 +460,6 @@ namespace semantic
 	type member_access(const data& d, ast::member_access payload)
 	{
 		type lhs_t = identifier(d, payload.lhs);
-		d.assert_that(lhs_t.is_pointer(), "internal compiler error: identifier should always return a pointer.");
-		lhs_t = lhs_t.dereference();
 		// if lhs is a struct type, then we need the data member.
 		if(lhs_t.is_struct())
 		{

@@ -406,39 +406,50 @@ namespace codegen
 	template<typename P>
 	value codegen_thing(const data& d, const P& payload);
 
+	void codegen_a_global(std::string name, const ast& tree, const semantic::state& state)
+	{
+		const auto& gvardata = state.global_variables.at(name);
+		if(gvardata.userdata != nullptr)
+		{
+			return;
+		}
+		llvm::Type* llvm_ty = as_llvm_type(gvardata.ty, state);
+		// note: globals may have an initialiser, which means we will need to codegen that even though we're so early on.
+		const ast::node& node = tree.get(gvardata.context);
+		diag::assert_that(std::holds_alternative<ast::variable_declaration>(node.payload), std::format("internal compiler error: AST node corresponding to global variable \"{}\" (line {}) was not infact a variable declaration (variant id {}). something has gone horrendously wrong.", gvardata.name, node.meta.line_number, node.payload.index()));
+		const auto& decl = std::get<ast::variable_declaration>(node.payload);
+
+		// create our owning global variable.
+		std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, nullptr);
+		llvm_gvar->setName(name);
+
+		if(decl.initialiser.has_value())
+		{
+			// todo: assign llvm_initialiser to the codegen'd expression.
+			value init_value = codegen_thing({.tree = tree, .node = node, .path = gvardata.context, .state = state}, decl.initialiser.value().expr);
+			if(init_value.llv == nullptr)
+			{
+				diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", gvardata.name));
+			}
+			llvm_gvar->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
+		}
+		else
+		{
+			diag::fatal_error(std::format("global variables *must* have an initialiser, OR be assigned to extern (which is NYI)"));
+		}
+
+		// keep ahold of the underlying ptr.
+		gvardata.userdata = llvm_gvar.get();
+		// move the owning ptr into our global storage.
+		global_variable_storage.push_back(std::move(llvm_gvar));
+	}
+
 	void codegen_global_variables(const ast& tree, const semantic::state& state)
 	{
 		for(const auto& [name, gvardata] : state.global_variables)
 		{
-			llvm::Type* llvm_ty = as_llvm_type(gvardata.ty, state);
-			// note: globals may have an initialiser, which means we will need to codegen that even though we're so early on.
-			const ast::node& node = tree.get(gvardata.context);
-			diag::assert_that(std::holds_alternative<ast::variable_declaration>(node.payload), std::format("internal compiler error: AST node corresponding to global variable \"{}\" (line {}) was not infact a variable declaration (variant id {}). something has gone horrendously wrong.", gvardata.name, node.meta.line_number, node.payload.index()));
-			const auto& decl = std::get<ast::variable_declaration>(node.payload);
-
-			// create our owning global variable.
-			std::unique_ptr<llvm::GlobalVariable> llvm_gvar = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, nullptr);
-			llvm_gvar->setName(name);
-
-			if(decl.initialiser.has_value())
-			{
-				// todo: assign llvm_initialiser to the codegen'd expression.
-				value init_value = codegen_thing({.tree = tree, .node = node, .path = gvardata.context, .state = state}, decl.initialiser.value().expr);
-				if(init_value.llv == nullptr)
-				{
-					diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", gvardata.name));
-				}
-				llvm_gvar->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
-			}
-			else
-			{
-				diag::fatal_error(std::format("global variables *must* have an initialiser, OR be assigned to extern (which is NYI)"));
-			}
-
-			// keep ahold of the underlying ptr.
-			gvardata.userdata = llvm_gvar.get();
-			// move the owning ptr into our global storage.
-			global_variable_storage.push_back(std::move(llvm_gvar));
+			(void)gvardata;
+			codegen_a_global(name, tree, state);
 		}
 	}
 
@@ -654,6 +665,12 @@ namespace codegen
 		const semantic::local_variable_t* gvar = d.state.try_find_global_variable(payload.name);
 		if(gvar != nullptr)
 		{
+			if(gvar->userdata == nullptr)
+			{
+				// hasn't been codegen'd yet. this means we're probably in the middle of another global variable's initialiser.
+				// we have to do it now.
+				codegen_a_global(gvar->name, d.tree, d.state);
+			}
 			d.assert_that(gvar->userdata != nullptr, std::format("internal compiler error: userdata for global variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", gvar->name));
 			if(output_identifier_type != nullptr)
 			{
@@ -1214,6 +1231,15 @@ namespace codegen
 			}
 			ret.llv = builder->CreateFree(ptr.llv);
 			ret.ty = type::from_primitive(primitive_type::u0);
+		}
+		if(call.function_name == "__builtin_typename")
+		{
+			this->assert_that(call.params.size() == 1, "__builtin_typename requires one argument.");
+			const ast::expression& ptr_expr = call.params.front();
+			// if you call any codegen functions, you will uh... generate code.
+			// we *must* only rely on semantic analysis here.
+			type ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
+			ret = string_literal(*this, {.val = ty.name()});
 		}
 		return ret;
 	}
