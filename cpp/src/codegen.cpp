@@ -790,13 +790,12 @@ namespace codegen
 
 	value member_access(const data& d, ast::member_access payload)
 	{
-		// it must be a global/local variable or function parameter.
-		type ty = type::undefined();
 		// unleash our cheeky hack - when we codegen the identifier, let us know which type it came up with.
-		value lhs_var = identifier(d, payload.lhs, &ty);
+		value lhs_var = identifier(d, payload.lhs);
+		lhs_var.ty = lhs_var.ty.dereference();
 
-		d.assert_that(ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, ty.name()));
-		struct_type struct_ty = ty.as_struct();
+		d.assert_that(lhs_var.ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, lhs_var.ty.name()));
+		struct_type struct_ty = lhs_var.ty.as_struct();
 		// which data member are we?
 		// note: if we dont match to a data member here, then the code must be ill-formed.
 		std::optional<std::size_t> data_member_idx = std::nullopt;
@@ -811,7 +810,41 @@ namespace codegen
 		}
 		d.assert_that(data_member_idx.has_value(), std::format("access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs.name, struct_ty.name));
 		// get the data member via GEP
-		llvm::Type* llvm_struct_ty = as_llvm_type(ty, d.state);
+		llvm::Type* llvm_struct_ty = as_llvm_type(lhs_var.ty, d.state);
+		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var.llv, data_member_idx.value());
+		return
+		{
+			.llv = ret,
+			.ty = struct_ty.data_members[data_member_idx.value()].type->pointer_to(),
+			.is_variable = true,
+			.variable_name = struct_ty.data_members[data_member_idx.value()].member_name
+		};
+	}
+
+	value pointer_access(const data& d, ast::pointer_access payload)
+	{
+		// unleash our cheeky hack - when we codegen the identifier, let us know which type it came up with.
+		value lhs_var = identifier(d, payload.lhs);
+		lhs_var.llv = load_as(lhs_var.llv, d.state, lhs_var.ty, lhs_var.ty.dereference());
+		lhs_var.ty = lhs_var.ty.dereference().dereference();
+
+		d.assert_that(lhs_var.ty.is_struct(), std::format("lhs identifier of member access \"{}\" is not a struct type, but instead a \"{}\"", payload.lhs.name, lhs_var.ty.name()));
+		struct_type struct_ty = lhs_var.ty.as_struct();
+		// which data member are we?
+		// note: if we dont match to a data member here, then the code must be ill-formed.
+		std::optional<std::size_t> data_member_idx = std::nullopt;
+		for(std::size_t i = 0; i < struct_ty.data_members.size(); i++)
+		{
+			const struct_type::data_member& member = struct_ty.data_members[i];
+			if(member.member_name == payload.rhs.name)
+			{
+				// its this one!
+				data_member_idx = i;
+			}
+		}
+		d.assert_that(data_member_idx.has_value(), std::format("access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs.name, struct_ty.name));
+		// get the data member via GEP
+		llvm::Type* llvm_struct_ty = as_llvm_type(lhs_var.ty, d.state);
 		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var.llv, data_member_idx.value());
 		return
 		{
@@ -1184,6 +1217,10 @@ namespace codegen
 			[&](ast::member_access mem)
 			{
 				ret = member_access(d, mem);
+			},
+			[&](ast::pointer_access ptr)
+			{
+				ret = pointer_access(d, ptr);
 			},
 			[&](ast::expression expr)
 			{

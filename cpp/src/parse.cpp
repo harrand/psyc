@@ -224,9 +224,10 @@ namespace parser
 		std::optional<ast::function_call> try_parse_function_call()
 		{
 			this->stash_index();
-			// a function call must start with an identifier.
+			// a function call must start with an identifier (or access).
 			auto maybe_member_access = this->try_parse_member_access();
-			if(!maybe_member_access.has_value() && !this->match(lexer::token::type::identifier))
+			auto maybe_pointer_access = this->try_parse_pointer_access();
+			if(!(maybe_member_access.has_value() || maybe_pointer_access.has_value()) && !this->match(lexer::token::type::identifier))
 			{
 				this->restore_index();
 				return std::nullopt;
@@ -245,6 +246,13 @@ namespace parser
 				function_name = maybe_member_access.value().rhs.name;
 				// pass lhs as first param.
 				params.push_back(ast::expression{.expr = maybe_member_access.value().lhs});
+			}
+			else if(maybe_pointer_access.has_value())
+			{
+				// this is a method.
+				function_name = maybe_pointer_access.value().rhs.name;
+				// pass lhs as first param.
+				params.push_back(ast::expression{.expr = maybe_pointer_access.value().lhs});
 			}
 			while(!this->match(lexer::token::type::close_paren))
 			{
@@ -268,6 +276,23 @@ namespace parser
 					ast::identifier rhs{.name = this->last_value()};
 					this->unstash_index();
 					return ast::member_access{.lhs = lhs, .rhs = rhs};
+				}
+			}
+			this->restore_index();
+			return std::nullopt;
+		}
+
+		std::optional<ast::pointer_access> try_parse_pointer_access()
+		{
+			this->stash_index();
+			if(this->match(lexer::token::type::identifier))
+			{
+				ast::identifier lhs{.name = this->last_value()};	
+				if(this->match(lexer::token::type::arrow) && this->match(lexer::token::type::identifier))
+				{
+					ast::identifier rhs{.name = this->last_value()};
+					this->unstash_index();
+					return ast::pointer_access{.lhs = lhs, .rhs = rhs};
 				}
 			}
 			this->restore_index();
@@ -358,6 +383,13 @@ namespace parser
 			{
 				this->unstash_index();
 				return ast::expression{.expr = maybe_member_access.value()};
+			}
+
+			auto maybe_pointer_access = this->try_parse_pointer_access();
+			if(maybe_pointer_access.has_value())
+			{
+				this->unstash_index();
+				return ast::expression{.expr = maybe_pointer_access.value()};
 			}
 
 			bool is_identifier = this->match(lexer::token::type::identifier);
