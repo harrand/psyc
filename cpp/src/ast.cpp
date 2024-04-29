@@ -52,6 +52,12 @@ std::optional<ast::node> ast::try_find_variable(std::string_view variable_name) 
 	return this->try_find_variable_from(this->current_path(), variable_name);
 }
 
+/*static*/ std::string ast::mangle_method_name(std::string_view struct_name, std::string_view method_name)
+{
+	return std::format("_method_{}_{}", struct_name, method_name);
+}
+
+
 // which node are we on again?
 const ast::node& ast::current() const
 {

@@ -747,6 +747,11 @@ namespace codegen
 		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
 		d.assert_that(llvm_func != nullptr, std::format("internal compiler error: function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name));
 		std::vector<llvm::Value*> llvm_params = {};
+		if(func->is_method)
+		{
+			// add pointer to instance as first param.
+			volatile int x = 5;
+		}
 		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
 			type expected_param_ty = func->params[i].ty;

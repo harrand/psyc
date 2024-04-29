@@ -71,7 +71,8 @@ namespace semantic
 						// this is a method.
 						auto decl = std::get<ast::function_definition>(child.payload);
 						function_t fn;
-						fn.name = this->mangle_method_name(data.struct_name, decl.function_name);
+						fn.is_method = true;
+						fn.name = ast::mangle_method_name(data.struct_name, decl.function_name);
 						auto child_path = path;
 						child_path.push_back(i);
 						fn.context = child_path;
@@ -236,11 +237,6 @@ namespace semantic
 		process_node_impl(*this, path, tree);
 	}
 
-	std::string state::mangle_method_name(std::string_view struct_name, std::string_view method_name) const
-	{
-		return std::format("_method_{}_{}", struct_name, method_name);
-	}
-
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
 	{
 		std::pair<type, ast::path_t> ret{type::undefined(), ast::path_t{}};
@@ -316,7 +312,7 @@ namespace semantic
 			// check through all structs to see if its a method.
 			for(const auto& [name, structdata] : this->struct_decls)
 			{
-				std::string mangled_name = this->mangle_method_name(name, function_name);
+				std::string mangled_name = ast::mangle_method_name(name, function_name);
 				iter = this->functions.find(mangled_name);
 				if(iter != this->functions.end())
 				{

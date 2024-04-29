@@ -312,6 +312,7 @@ struct ast
 
 	std::optional<ast::node> try_find_variable_from(path_t path, std::string_view variable_name) const;
 	std::optional<ast::node> try_find_variable(std::string_view variable_name) const;
+	static std::string mangle_method_name(std::string_view struct_name, std::string_view method_name);
 
 	const node& current() const;
 	node& current();

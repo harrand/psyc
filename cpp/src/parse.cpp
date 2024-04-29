@@ -225,7 +225,8 @@ namespace parser
 		{
 			this->stash_index();
 			// a function call must start with an identifier.
-			if(!this->match(lexer::token::type::identifier))
+			auto maybe_member_access = this->try_parse_member_access();
+			if(!maybe_member_access.has_value() && !this->match(lexer::token::type::identifier))
 			{
 				this->restore_index();
 				return std::nullopt;
@@ -238,6 +239,13 @@ namespace parser
 				return std::nullopt;
 			}
 			std::vector<ast::expression> params = {};
+			if(maybe_member_access.has_value())
+			{
+				// this is a method.
+				function_name = maybe_member_access.value().rhs.name;
+				// pass lhs as first param.
+				params.push_back(ast::expression{.expr = maybe_member_access.value().lhs});
+			}
 			while(!this->match(lexer::token::type::close_paren))
 			{
 				auto maybe_expr = this->try_parse_expression();
