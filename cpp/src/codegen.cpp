@@ -597,12 +597,34 @@ namespace codegen
 		switch(op.type)
 		{
 			case lexer::token::type::plus:
-				ret.llv = builder->CreateAdd(lhs_value.llv, rhs_value.llv);
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFAdd(lhs_value.llv, rhs_value.llv);
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateAdd(lhs_value.llv, rhs_value.llv);
+				}
+				else
+				{
+					d.fatal_error(std::format("Addition can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name()));
+				}
 				ret.ty = lhs_value.ty;
 				ret.is_variable = false;
 			break;
 			case lexer::token::type::minus:
-				ret.llv = builder->CreateSub(lhs_value.llv, rhs_value.llv);
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFSub(lhs_value.llv, rhs_value.llv);
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateSub(lhs_value.llv, rhs_value.llv);
+				}
+				else
+				{
+					d.fatal_error(std::format("Addition can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name()));
+				}
 				ret.ty = lhs_value.ty;
 				ret.is_variable = false;
 			break;
@@ -747,11 +769,6 @@ namespace codegen
 		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
 		d.assert_that(llvm_func != nullptr, std::format("internal compiler error: function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name));
 		std::vector<llvm::Value*> llvm_params = {};
-		if(func->is_method)
-		{
-			// add pointer to instance as first param.
-			volatile int x = 5;
-		}
 		for(std::size_t i = 0; i < payload.params.size(); i++)
 		{
 			type expected_param_ty = func->params[i].ty;
