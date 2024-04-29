@@ -1195,9 +1195,13 @@ namespace codegen
 		if(call.function_name == "__builtin_malloc")
 		{
 			value size = codegen_thing(*this, call.params.front().expr);
+			if(size.is_variable)
+			{
+				size = get_variable_val(size, state);
+			}
 			llvm::Type* intptr_t = llvm::Type::getInt64Ty(*ctx);
 			ret.llv = builder->CreateMalloc(intptr_t, as_llvm_type(type::from_primitive(primitive_type::u8).pointer_to(), this->state), size.llv, llvm::ConstantInt::get(intptr_t, 1), nullptr);	
-			ret.ty = type::from_primitive(primitive_type::u0).pointer_to();
+			ret.ty = type::from_primitive(primitive_type::i8).pointer_to();
 		}
 		if(call.function_name == "__builtin_free")
 		{
