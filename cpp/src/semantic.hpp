@@ -54,6 +54,7 @@ namespace semantic
 	{
 		struct_type ty;
 		ast::path_t context;
+		std::unordered_map<std::string, function_t> methods = {};
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
 	};
@@ -82,6 +83,7 @@ namespace semantic
 		void process_node(ast::path_t path, const ast& tree);
 		void process_single_node(ast::path_t path, const ast& tree);
 
+		std::string mangle_method_name(std::string_view struct_name, std::string_view method_name) const;
 		std::pair<type, ast::path_t> get_type_from_name(std::string_view type_name) const;
 		// returns nullptr if we didnt gather any type information
 		// if not nullptr, type could still be an undefined type (e.g if the node is an if-statement, coz an if statement doesnt really evaluate to a type)

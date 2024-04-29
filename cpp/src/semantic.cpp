@@ -66,6 +66,45 @@ namespace semantic
 							.type = param_type
 						});
 					}
+					else if(std::holds_alternative<ast::function_definition>(child.payload))
+					{
+						// this is a method.
+						auto decl = std::get<ast::function_definition>(child.payload);
+						function_t fn;
+						fn.name = this->mangle_method_name(data.struct_name, decl.function_name);
+						auto child_path = path;
+						child_path.push_back(i);
+						fn.context = child_path;
+						fn.params.push_back({
+							.ty = type::from_struct(ty.ty).pointer_to(),
+							.name = "this",
+							.context = path
+						});
+						fn.return_ty = this->get_type_from_name(decl.return_type).first;
+						for(const auto& param : decl.params)
+						{
+							type param_type = this->get_type_from_name(param.type_name).first;
+							if(param_type.is_undefined())
+							{
+								this->last_error = std::format("semal error on line {} - could not decipher type of method parameter {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, param.var_name, param.type_name);
+								return;
+							}
+							fn.params.push_back
+							(local_variable_t{
+								.ty = param_type,
+								.name = param.var_name,
+								.context = path,
+							});
+						}
+						if(this->functions.contains(fn.name))
+						{
+							std::size_t previously_defined_on_line = tree.get(this->functions.at(fn.name).context).meta.line_number;
+							this->last_error = std::format("semal error on line {} - double definition of function {} (previous definition on line {})", node.meta.line_number, fn.name, previously_defined_on_line);
+							return;
+						}
+						this->register_function(fn);
+						ty.methods[decl.function_name] = fn;
+					}
 					else
 					{
 						this->last_error = std::format("semal error on line {} - every expression within a struct definition should be a variable declaration.", child.meta.line_number);
@@ -197,6 +236,11 @@ namespace semantic
 		process_node_impl(*this, path, tree);
 	}
 
+	std::string state::mangle_method_name(std::string_view struct_name, std::string_view method_name) const
+	{
+		return std::format("_method_{}_{}", struct_name, method_name);
+	}
+
 	std::pair<type, ast::path_t> state::get_type_from_name(std::string_view type_name) const
 	{
 		std::pair<type, ast::path_t> ret{type::undefined(), ast::path_t{}};
@@ -269,6 +313,16 @@ namespace semantic
 		auto iter = this->functions.find(function_name);
 		if(iter == this->functions.end())
 		{
+			// check through all structs to see if its a method.
+			for(const auto& [name, structdata] : this->struct_decls)
+			{
+				std::string mangled_name = this->mangle_method_name(name, function_name);
+				iter = this->functions.find(mangled_name);
+				if(iter != this->functions.end())
+				{
+					return &iter->second;
+				}
+			}
 			return nullptr;
 		}
 		return &iter->second;
@@ -540,7 +594,16 @@ namespace semantic
 
 	type function_definition(const data& d, ast::function_definition payload)
 	{
-		d.assert_that(d.path.size() <= 1, std::format("detected a function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+		if(d.path.size() > 1)
+		{
+			// not at the top-level scope.
+			// its parent better be a struct (making this a method).
+			// if its not, then the code is ill-formed.
+			auto parent_path = d.path;
+			parent_path.pop_back();
+			const ast::node& parent = d.tree.get(parent_path);
+			d.assert_that(std::holds_alternative<ast::struct_definition>(parent.payload), std::format("detected a non-method function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+		}
 		return d.state.get_type_from_name(payload.return_type).first;
 	}
 
@@ -669,7 +732,6 @@ namespace semantic
 		type ty = generic(d, node.payload);
 		s.type_breadcrumbs[path] = ty;
 	}
-
 
 	type state::try_get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const
 	{

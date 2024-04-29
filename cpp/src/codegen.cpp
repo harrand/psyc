@@ -1080,6 +1080,20 @@ namespace codegen
 	value struct_definition(const data& d, ast::struct_definition payload)
 	{
 		// functions are already done in the pre-pass.
+		const semantic::struct_t* structdef = d.state.try_find_struct(payload.struct_name);
+		for(const auto&[name, method] : structdef->methods)
+		{
+			const auto& node = d.tree.get(method.context);
+			d.assert_that(std::holds_alternative<ast::function_definition>(node.payload), "pooey");
+			data newd =
+			{
+				.tree = d.tree,
+				.node = node,
+				.path = method.context,
+				.state = d.state,
+			};
+			function_definition(newd, std::get<ast::function_definition>(node.payload));
+		}
 		return {};
 	}
 

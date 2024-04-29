@@ -524,7 +524,11 @@ namespace parser
 			while(!this->match(lexer::token::type::close_paren))
 			{
 				auto maybe_param = this->try_parse_variable_declaration();
-				this->parser_assert(maybe_param.has_value(), std::format("expression representing parameter {} of newly-defined function {} could not be parsed correctly", params.size() + 1, function_name));
+				if(!maybe_param.has_value())
+				{
+					this->restore_index();
+					return std::nullopt;
+				}
 				params.push_back(maybe_param.value());
 				this->match(lexer::token::type::commar);
 			}
@@ -623,6 +627,14 @@ namespace parser
 					this->must_match(lexer::token::type::semicolon);
 					continue;
 				}
+
+				auto maybe_function_definition = this->try_parse_function_definition();
+				if(maybe_function_definition.has_value())
+				{
+					ret.push_back({.payload = maybe_function_definition.value(), .meta = {.line_number = this->current_line}});
+					return ret;
+				}
+
 				auto maybe_expression = this->try_parse_expression();
 				this->parser_assert(maybe_expression.has_value(), "cannot parse expression within block");
 				ret.push_back({.payload = maybe_expression.value(), .meta = {.line_number = this->current_line}});
@@ -634,7 +646,7 @@ namespace parser
 		void handle_payload(meta_payload payload)
 		{
 			this->push_payload(payload);
-			if(std::holds_alternative<ast::if_statement>(payload.payload) || std::holds_alternative<ast::else_statement>(payload.payload) || std::holds_alternative<ast::for_statement>(payload.payload))
+			if(std::holds_alternative<ast::if_statement>(payload.payload) || std::holds_alternative<ast::else_statement>(payload.payload) || std::holds_alternative<ast::for_statement>(payload.payload) || std::holds_alternative<ast::function_definition>(payload.payload))
 			{
 				// if we're an if-statement, we need to parse another block and set all those as children, and THEN pop.
 				auto if_blk = this->parse_block();
