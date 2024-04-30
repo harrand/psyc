@@ -637,11 +637,11 @@ namespace codegen
 			case lexer::token::type::plus:
 				if(lhs_value.ty.is_floating_point_type())
 				{
-					ret.llv = builder->CreateFAdd(lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateFAdd(lhs_value.llv, load_as(rhs_value.llv, d.state, rhs_value.ty, lhs_value.ty));
 				}
 				else if(lhs_value.ty.is_integer_type())
 				{
-					ret.llv = builder->CreateAdd(lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateAdd(lhs_value.llv, load_as(rhs_value.llv, d.state, rhs_value.ty, lhs_value.ty));
 				}
 				else
 				{
@@ -653,11 +653,11 @@ namespace codegen
 			case lexer::token::type::minus:
 				if(lhs_value.ty.is_floating_point_type())
 				{
-					ret.llv = builder->CreateFSub(lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateFSub(lhs_value.llv, load_as(rhs_value.llv, d.state, rhs_value.ty, lhs_value.ty));
 				}
 				else if(lhs_value.ty.is_integer_type())
 				{
-					ret.llv = builder->CreateSub(lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateSub(lhs_value.llv, load_as(rhs_value.llv, d.state, rhs_value.ty, lhs_value.ty));
 				}
 				else
 				{
@@ -1363,6 +1363,24 @@ namespace codegen
 			// we *must* only rely on semantic analysis here.
 			type ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
 			ret = string_literal(*this, {.val = ty.name()});
+		}
+		if(call.function_name == "__builtin_sizeof")
+		{
+			this->assert_that(call.params.size() == 1, "__builtin_typename requires one argument.");
+			const ast::expression& ptr_expr = call.params.front();
+			// if you call any codegen functions, you will uh... generate code.
+			// we *must* only rely on semantic analysis here.
+			type ty = type::undefined();
+			if(std::holds_alternative<ast::identifier>(ptr_expr.expr))
+			{
+				ty = this->state.get_type_from_name(std::get<ast::identifier>(ptr_expr.expr).name).first;
+			}
+			if(ty.is_undefined())
+			{
+				ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
+			}
+			int size = program->getDataLayout().getTypeAllocSize(as_llvm_type(ty, state));
+			ret = integer_literal(*this, {.val = size});
 		}
 		return ret;
 	}
