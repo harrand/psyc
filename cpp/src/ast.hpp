@@ -20,7 +20,8 @@ struct ast
 				type == lexer::token::type::bitwise_complement ||
 				type == lexer::token::type::logical_negation ||
 				type == lexer::token::type::ref ||
-				type == lexer::token::type::deref,
+				type == lexer::token::type::deref ||
+				type == lexer::token::type::defer,
 				"internal compiler error: parsed a unary_operator via lexer token type that doesn't represent a unary operator."
 			);
 			return std::format("unary-operator \"{}\"", lexer::token_type_names[static_cast<int>(this->type)]);

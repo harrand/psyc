@@ -1,6 +1,7 @@
 #include "codegen.hpp"
 #include "diag.hpp"
 #include "semantic.hpp"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 
 #include "llvm/ADT/APInt.h"
@@ -1363,6 +1364,12 @@ namespace codegen
 			// we *must* only rely on semantic analysis here.
 			type ty = this->state.try_get_type_from_payload(ptr_expr, this->tree, this->path);
 			ret = string_literal(*this, {.val = ty.name()});
+		}
+		if(call.function_name == "__builtin_debugbreak")
+		{
+			this->assert_that(call.params.empty(), "debugbreak takes no arguments.");
+			ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::trap));
+			ret.ty = type::from_primitive(primitive_type::u0);
 		}
 		if(call.function_name == "__builtin_sizeof")
 		{

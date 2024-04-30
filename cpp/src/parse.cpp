@@ -559,8 +559,11 @@ namespace parser
 				return std::nullopt;
 			}
 			std::string function_name = this->last_value();
-			this->must_match(lexer::token::type::colon);
-			this->must_match(lexer::token::type::open_paren);
+			if(!(this->match(lexer::token::type::colon) && this->match(lexer::token::type::open_paren)))
+			{
+				this->restore_index();
+				return std::nullopt;
+			}
 			std::vector<ast::variable_declaration> params = {};
 			while(!this->match(lexer::token::type::close_paren))
 			{
