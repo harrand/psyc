@@ -309,7 +309,8 @@ namespace codegen
 		{
 			diag::fatal_error("type system failure");
 		}
-		if(from == to)
+		// i8* and T* are implicitly convertible to-and-from.
+		if(from == to || (from.is_pointer() && to.is_pointer() && from.pointer_level == to.pointer_level && (from.dereference() == type::from_primitive(primitive_type::i8) || to.dereference() == type::from_primitive(primitive_type::i8))))
 		{
 			// nothing to do.
 			return ptr;
