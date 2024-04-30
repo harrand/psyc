@@ -69,6 +69,10 @@ namespace lexer
 				{
 					t = token::type::deref;
 				}
+				else if(value == "defer")
+				{
+					t = token::type::defer;
+				}
 				else if(current_is_keyword(value))
 				{
 					t = token::type::keyword;

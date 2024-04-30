@@ -42,6 +42,7 @@ namespace lexer
 			logical_negation,
 			ref,
 			deref,
+			defer,
 			_count
 		} id;
 		std::string value = "";
@@ -80,7 +81,8 @@ namespace lexer
 		"~",
 		"!",
 		"ref",
-		"deref"
+		"deref",
+		"defer"
 	};
 
 	using tokens = std::vector<token>;

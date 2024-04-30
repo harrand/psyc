@@ -304,14 +304,15 @@ namespace parser
 			this->stash_index();
 			// to help understand whats going on here, see the variant types in ast::expression::expr.
 			// what we're doing here is going through each possible type and attempting to parse.
-			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus, lexer::token::type::double_equals, lexer::token::type::equals, lexer::token::type::not_equals, lexer::token::type::ref, lexer::token::type::deref});	
+			std::optional<lexer::token::type> maybe_operator = this->match_any({lexer::token::type::minus, lexer::token::type::bitwise_complement, lexer::token::type::logical_negation, lexer::token::type::plus, lexer::token::type::double_equals, lexer::token::type::equals, lexer::token::type::not_equals, lexer::token::type::ref, lexer::token::type::deref, lexer::token::type::defer});	
 			if(maybe_operator.has_value())
 			{
 				const bool must_be_unary =
 					maybe_operator.value() == lexer::token::type::bitwise_complement ||
 					maybe_operator.value() == lexer::token::type::logical_negation ||
 					maybe_operator.value() == lexer::token::type::ref ||
-					maybe_operator.value() == lexer::token::type::deref;
+					maybe_operator.value() == lexer::token::type::deref||
+					maybe_operator.value() == lexer::token::type::defer;
 				// could either be a unary or binary operator, depending on the token.
 				// next thing we want is definitely an expression, either way.
 				std::optional<ast::expression> expression_a = this->try_parse_expression();

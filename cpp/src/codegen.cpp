@@ -177,6 +177,28 @@ namespace codegen
 		cleanup_program();
 	}
 
+	llvm::BasicBlock* get_defer_block_if_exists(llvm::Function* fn)
+	{
+		llvm::BasicBlock* back = &fn->back();
+		if(back->getName() == "defer")
+		{
+			return back;
+		}
+		return nullptr;
+	}
+
+	llvm::BasicBlock* safe_get_defer_block(llvm::Function* fn)
+	{
+		// get the defer block if there is one.
+		// if not, make one.
+		llvm::BasicBlock* already = get_defer_block_if_exists(fn);
+		if(already != nullptr)
+		{
+			return already;
+		}
+		return llvm::BasicBlock::Create(*ctx, "defer", fn);
+	}
+
 	/////////////////////////////////////// TYPE SYSTEM ///////////////////////////////////////
 
 	// we have a nice organised type system.
@@ -513,7 +535,21 @@ namespace codegen
 
 	value unary_expression(const data& d, unary_expression_t payload)
 	{
+		const semantic::function_t* enclosing_fn = d.state.try_find_parent_function(d.tree, d.path);
+		auto* llvm_enclosing_fn = static_cast<llvm::Function*>(enclosing_fn->userdata);
+		llvm::BasicBlock* cur_block = builder->GetInsertBlock();
+		bool defer = payload.first.type == lexer::token::type::defer;
+
+		if(defer)
+		{
+			llvm::BasicBlock* defer_blk = safe_get_defer_block(llvm_enclosing_fn);
+			builder->SetInsertPoint(defer_blk);	
+		}
 		value operandv = expression(d, *payload.second);
+		if(defer)
+		{
+			builder->SetInsertPoint(cur_block);
+		}
 		d.assert_that(operandv.llv != nullptr, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
 		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
 		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
@@ -562,6 +598,7 @@ namespace codegen
 				};
 			}
 			break;
+			case lexer::token::type::defer: return operandv; break;
 			default:
 				d.fatal_error("internal compiler error: codegen for this unary operator is not yet implemented.");
 				return {};
@@ -1002,6 +1039,19 @@ namespace codegen
 
 	value return_statement(const data& d, ast::return_statement payload)
 	{
+		const semantic::function_t* func = d.state.try_find_parent_function(d.tree, d.path);
+		if(!d.tree.try_get_next(d.path).has_value())
+		{
+			auto* llvm_func = static_cast<llvm::Function*>(func->userdata);	
+			llvm::BasicBlock* blk = get_defer_block_if_exists(llvm_func);
+			if(blk != nullptr)
+			{
+				// this function has a defer.
+				// what we need to do is put a branch from here to there, and put our return at the end of the defer block instead.
+				builder->CreateBr(blk);
+				builder->SetInsertPoint(blk);
+			}
+		}
 		if(!payload.value.has_value())
 		{
 			return
@@ -1011,7 +1061,6 @@ namespace codegen
 				.is_variable = false
 			};
 		}
-		const semantic::function_t* func = d.state.try_find_parent_function(d.tree, d.path);
 		type expected_ret_ty = func->return_ty;
 
 		value retval = expression(d, payload.value.value());
