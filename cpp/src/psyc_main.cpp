@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "lex.hpp"
 #include "diag.hpp"
 #include <filesystem>
 #include <span>
@@ -11,6 +12,12 @@ int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	config::compiler_args args = parse_args(cli_args);
+
+	lex::state lex;
+	for(const std::filesystem::path input_file : args.input_files)
+	{
+		lex.tokenised_input_files[input_file] = lex::tokenise(input_file);
+	}
 
 	return 0;
 }
