@@ -1,61 +1,39 @@
 #ifndef PSYC_DIAG_HPP
 #define PSYC_DIAG_HPP
-
-#include <iostream>
-#include <utility>
+#include "error.hpp"
+#include <format>
 
 namespace diag
 {
 	template<typename... Ts>
-	void print(Ts&&... ts)
+	void generic_msg(std::string_view preamble, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		((std::cout<<std::forward<Ts>(ts)<<""),...);
-		std::cout<<'\n';
+		std::format("{}: {}\033[0m", preamble, std::format(fmt, std::forward<Ts>(ts)...));
 	}
 
 	template<typename... Ts>
-	void message(Ts&&... ts)
+	void note(std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::cout << "message: ";
-		print(std::forward<Ts>(ts)...);
+		generic_msg("note", fmt, std::forward<Ts>(ts)...);
 	}
 
 	template<typename... Ts>
-	void warning(Ts&&... ts)
+	void warning(std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::cout << "\033[1;33m" << "warning: ";
-		print(std::forward<Ts>(ts)...);
-		std::cout << "\033[0m";
+		generic_msg("\033[1;33mwarning", fmt, std::forward<Ts>(ts)...);
 	}
 
 	template<typename... Ts>
-	void error(Ts&&... ts)
+	void error(error_code err, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::cout << "\033[0;31m" << "error: ";
-		print(std::forward<Ts>(ts)...);
-		std::cout << "\033[0m";
+		std::string error_preamble = std::format("{} error", error_names[static_cast<int>(err)]);
+		generic_msg(error_preamble, fmt, std::forward<Ts>(ts)...);
 	}
 
 	template<typename... Ts>
-	void fatal_error(Ts&&... ts)
+	void ice(std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::cout << "\033[1;31m" << "fatal error: ";
-		print(std::forward<Ts>(ts)...);
-		std::cout << "\033[0m";
-		#ifndef NDEBUG
-		asm("int3");
-		#endif
-		std::exit(0);
-	}
-
-
-	template<typename... Ts>
-	void assert_that(bool expr, std::string msg)
-	{
-		if(!expr)
-		{
-			error(msg);
-		}
+		error(error_code::internal_compiler_error, fmt, std::forward<Ts>(ts)...);
 	}
 }
 

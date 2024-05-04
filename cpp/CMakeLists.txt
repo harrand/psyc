@@ -32,25 +32,6 @@ separate_arguments(llvm_definitions_list NATIVE_COMMAND ${LLVM_DEFINITIONS})
 
 add_executable(psyc
 	src/psyc_main.cpp
-	src/ast.cpp
-	src/ast.hpp
-	src/build.cpp
-	src/build.hpp
-	src/codegen.cpp
-	src/codegen.hpp
-	src/diag.hpp
-	src/lex.cpp
-	src/lex.hpp
-	src/link.cpp
-	src/link.hpp
-	src/parse.cpp
-	src/parse.hpp
-	src/semantic.cpp
-	src/semantic.hpp
-	src/session.hpp
-	src/settings.hpp
-	src/type.cpp
-	src/type.hpp
 	src/util.cpp
 	src/util.hpp
 )

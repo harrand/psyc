@@ -14,7 +14,7 @@ namespace util
 			std::string path;
 			path.resize(1024);
 			DWORD path_len = GetModuleFileNameA(nullptr, path.data(), path.size());
-			diag::assert_that(path_len != 0, "fooey");
+			//diag::assert_that(path_len != 0, "fooey");
 			path.resize(path_len);
 			return path;
 		#else
