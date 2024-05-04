@@ -1,0 +1,24 @@
+name: "msvc"
+on:
+  workflow_call:
+    inputs:
+      build_config:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md says LLVM is installed by default. We rely on that simply being available.
+
+      - name: 'Configure psyc msvc_${{inputs.build_config}}'
+        run: cmake --preset ci_${{inputs.build_config}} -G "Visual Studio 17 2022"
+        working-directory: cpp
+
+      - name: 'Build psyc msvc_${{inputs.build_config}}'
+        run: cmake --build ./build/ci_${{inputs.build_config}} --target psyc
+        working-directory: cpp
+
