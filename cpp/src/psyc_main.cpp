@@ -23,9 +23,10 @@ config::compiler_args parse_args(std::span<const std::string_view> args)
 		const std::string_view& arg = args[i];
 		const std::string_view* argnext = nullptr;
 
-		auto getargnext = [&arg, &argnext]()
+		auto getargnext = [&i, &arg, &argnext]()
 		{
 			diag::assert_that(argnext != nullptr, error_code::badargs, "argument \"{}\" requires a proceeding argument value, but you didn't provide one.", arg);
+			i++;
 			return *argnext;
 		};
 		if(i < (args.size() - 1))
@@ -64,6 +65,7 @@ config::compiler_args parse_args(std::span<const std::string_view> args)
 		{
 			std::filesystem::path input_file = arg;
 			diag::assert_that(std::filesystem::exists(input_file), error_code::badargs, "input file \"{}\" could not be located", input_file.string());
+			ret.input_files.push_back(input_file);
 		}
 	}	
 	return ret;
