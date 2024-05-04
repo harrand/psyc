@@ -11,12 +11,12 @@ struct srcloc
 	unsigned int line;
 	unsigned int column;
 
-	constexpr std::string to_string() const
+	inline std::string to_string() const
 	{
 		return std::format("{}({}:{})", this->file.filename().string(), this->line, this->column);
 	}
 
-	constexpr static srcloc undefined()
+	static srcloc undefined()
 	{
 		return
 		{
