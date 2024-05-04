@@ -33,7 +33,7 @@ namespace lex
 			return ret;
 		}
 
-		void unrecognised_tokens(std::string_view dodgy_part)
+		void error_generic(std::string_view dodgy_part, std::string msg)
 		{
 			const srcloc curloc
 			{
@@ -45,7 +45,12 @@ namespace lex
 			std::size_t snippet_begin = this->cursor > snippet_width ? (this->cursor - snippet_width) : 0;
 			std::size_t snippet_end = (this->cursor + snippet_width) >= this->source.size() ? this->source.size() : (this->cursor + snippet_width);
 			std::string_view snippet = this->source.substr(snippet_begin, snippet_end - snippet_begin);
-			diag::error(error_code::syntax, "at: {}, unrecognised token(s) \"{}\" within: \"...{}...\"", curloc.to_string(), dodgy_part.substr(0u, std::min(static_cast<unsigned int>(dodgy_part.size()), 2u)), snippet);
+			diag::error(error_code::syntax, "at {}, {}", curloc.to_string(), std::vformat(msg, std::make_format_args(dodgy_part.substr(0, std::min(dodgy_part.size(), static_cast<std::size_t>(2u))), snippet)));
+		}
+
+		void unrecognised_tokens(std::string_view dodgy_part)
+		{
+			this->error_generic(dodgy_part, "unrecognised token(s) \"{}\" within: \"...{}...\"");
 		}
 	};
 
