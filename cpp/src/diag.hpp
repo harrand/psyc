@@ -2,13 +2,15 @@
 #define PSYC_DIAG_HPP
 #include "error.hpp"
 #include <format>
+#include <iostream>
+#include <source_location>
 
 namespace diag
 {
 	template<typename... Ts>
 	void generic_msg(std::string_view preamble, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::format("{}: {}\033[0m", preamble, std::format(fmt, std::forward<Ts>(ts)...));
+		std::cout << std::format("psyc: {}: \033[0m{}", preamble, std::format(fmt, std::forward<Ts>(ts)...)) << std::endl;
 	}
 
 	template<typename... Ts>
@@ -26,14 +28,24 @@ namespace diag
 	template<typename... Ts>
 	void error(error_code err, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::string error_preamble = std::format("{} error", error_names[static_cast<int>(err)]);
+		std::string error_preamble = std::format("\033[1;31m{} error", error_names[static_cast<int>(err)]);
 		generic_msg(error_preamble, fmt, std::forward<Ts>(ts)...);
+		#ifndef NDEBUG
+			asm volatile("int3");
+		#endif
+		std::exit(-1);
 	}
 
 	template<typename... Ts>
 	void ice(std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		error(error_code::internal_compiler_error, fmt, std::forward<Ts>(ts)...);
+		error(error_code::ice, fmt, std::forward<Ts>(ts)...);
+	}
+
+	template<typename... Ts>
+	void nyi(std::format_string<Ts...> fmt, Ts&&... ts)
+	{
+		error(error_code::nyi, fmt, std::forward<Ts>(ts)...);
 	}
 }
 

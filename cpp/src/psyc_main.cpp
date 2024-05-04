@@ -1,8 +1,10 @@
 #include "config.hpp"
+#include "diag.hpp"
 #include <span>
 #include <string_view>
 
 config::compiler_args parse_args(std::span<const std::string_view> cli_args);
+void print_version_info();
 
 int main(int argc, char** argv)
 {
@@ -26,8 +28,13 @@ config::compiler_args parse_args(std::span<const std::string_view> args)
 		// parse args.
 		if(arg == "-v")
 		{
-
+			print_version_info();
 		}
 	}	
 	return ret;
+}
+
+void print_version_info()
+{
+	diag::nyi("-v");
 }

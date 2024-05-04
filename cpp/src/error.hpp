@@ -4,7 +4,8 @@
 
 enum class error_code
 {
-	internal_compiler_error,
+	ice,
+	nyi,
 	badargs,
 	syntax,
 	type,
@@ -13,7 +14,8 @@ enum class error_code
 
 constexpr std::array<const char*, (int)error_code::_count> error_names
 {
-	"internal",
+	"internal compiler",
+	"not-yet-implemented",
 	"badargs",
 	"syntax",
 	"type"
