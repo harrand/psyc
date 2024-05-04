@@ -12,6 +12,8 @@ namespace lex
 		std::size_t current_word_begin = npos;
 	};
 
+	std::optional<token> tokenise_once(tokenise_state& state, std::string_view data);
+
 	output tokenise(std::filesystem::path psy_file)
 	{
 		tokens_list tokens = {};
@@ -23,7 +25,7 @@ namespace lex
 		buffer << fstr.rdbuf();
 		std::string str = buffer.str();
 
-		while(state.cursor++ < str.size())
+		while(state.cursor < str.size())
 		{
 			std::string_view data = str.data() + state.cursor;
 			const srcloc curloc
@@ -36,16 +38,30 @@ namespace lex
 			// try to match the current token(s)
 			if(data.starts_with("\n"))
 			{
-				state.col = 1;	
+				state.col = 0;	
 				state.line++;
-				continue;
+			}
+			else
+			{
+				auto maybe_token = tokenise_once(state, data);
+				if(maybe_token.has_value())
+				{
+					maybe_token->meta_srcloc = curloc;
+					tokens.push_back(maybe_token.value());
+				}
 			}
 			state.col++;
+			state.cursor++;
 		}
 		return
 		{
 			.tokens = tokens,
 			.psy_source = str
 		};
+	}
+
+	std::optional<token> tokenise_once(tokenise_state& state, std::string_view data)
+	{
+		return std::nullopt;
 	}
 }
