@@ -13,6 +13,8 @@ namespace lex
 		unsigned int col = 1;
 		std::size_t cursor = 0;
 		std::size_t current_word_begin = npos;
+		std::size_t current_integer_literal_begin = npos;
+		std::size_t current_decimal_literal_begin = npos;
 
 		void advance(std::size_t amt = 1)
 		{
@@ -25,15 +27,50 @@ namespace lex
 			return this->current_word_begin != npos;
 		}
 
-		std::string pop_word()
+		bool in_integer_literal() const
 		{
-			diag::assert_that(this->in_word(), error_code::ice, "lexer has performed a bad call to pop_word");
-			std::string ret{source.substr(this->current_word_begin, cursor - this->current_word_begin)};
-			this->current_word_begin = npos;
+			return this->current_integer_literal_begin != npos;
+		}
+
+		bool in_decimal_literal() const
+		{
+			return this->current_decimal_literal_begin != npos;
+		}
+
+		bool in_anything() const
+		{
+			return this->in_word() || this->in_integer_literal() || this->in_decimal_literal();
+		}
+
+		std::string pop_word(type& t)
+		{
+			std::string ret;
+			if(this->in_integer_literal())
+			{
+				ret = std::string{source.substr(this->current_integer_literal_begin, cursor - this->current_integer_literal_begin)};
+				this->current_integer_literal_begin = npos;
+				t = type::integer_literal;
+			}
+			else if(this->in_decimal_literal())
+			{
+				ret = std::string{source.substr(this->current_decimal_literal_begin, cursor - this->current_decimal_literal_begin)};
+				this->current_decimal_literal_begin = npos;
+				t = type::decimal_literal;
+			}
+			else if(this->in_word())
+			{
+				ret = std::string{source.substr(this->current_word_begin, cursor - this->current_word_begin)};
+				this->current_word_begin = npos;
+				t = type::identifier;
+			}
+			else
+			{
+				error_generic(this->source.data() + this->cursor, "call to `pop_word`");
+			}
 			return ret;
 		}
 
-		void error_generic(std::string_view dodgy_part, std::string msg)
+		void error_generic(std::string_view dodgy_part, std::string msg, error_code errcode = error_code::syntax)
 		{
 			const srcloc curloc
 			{
@@ -45,12 +82,17 @@ namespace lex
 			std::size_t snippet_begin = this->cursor > snippet_width ? (this->cursor - snippet_width) : 0;
 			std::size_t snippet_end = (this->cursor + snippet_width) >= this->source.size() ? this->source.size() : (this->cursor + snippet_width);
 			std::string_view snippet = this->source.substr(snippet_begin, snippet_end - snippet_begin);
-			diag::error(error_code::syntax, "at {}, {}", curloc.to_string(), std::vformat(msg, std::make_format_args(dodgy_part.substr(0, std::min(dodgy_part.size(), static_cast<std::size_t>(2u))), snippet)));
+			diag::error(errcode, "at {}, {}", curloc.to_string(), std::vformat(msg, std::make_format_args(dodgy_part.substr(0, std::min(dodgy_part.size(), static_cast<std::size_t>(2u))), snippet)));
 		}
 
 		void unrecognised_tokens(std::string_view dodgy_part)
 		{
 			this->error_generic(dodgy_part, "unrecognised token(s) \"{}\" within: \"...{}...\"");
+		}
+
+		void invalid_numeric_literal(std::string_view dodgy_part)
+		{
+			this->error_generic(dodgy_part, "unexpected non-digit character(s) within numeric literal: \"{}\" within: \"...{}...\"");
 		}
 	};
 
@@ -83,12 +125,13 @@ namespace lex
 				.line = state.line,
 				.column = state.col
 			};
-			if(state.in_word() && breaks_word(data))
+			if(state.in_anything() && breaks_word(data))
 			{
-				std::string word = state.pop_word();
+				type t;
+				std::string word = state.pop_word(t);
 				tokens.push_back
 				({
-					.t = type::identifier,
+					.t = t,
 					.lexeme = word,
 					.meta_srcloc = srcloc
 					{
@@ -122,17 +165,19 @@ namespace lex
 		}
 		if(data.starts_with(";"))
 		{
-			return token
-			{
-				.t = type::semicolon
-			};
+			return token{.t = type::semicolon};
 		}
 		else if(data.starts_with(":"))
 		{
-			return token
-			{
-				.t = type::colon
-			};
+			return token{.t = type::colon};
+		}
+		else if(data.starts_with("..."))
+		{
+			return token{.t = type::ellipsis};
+		}
+		else if(data.starts_with("."))
+		{
+			return token{.t = type::dot};
 		}
 		else if(data.starts_with("->"))
 		{
@@ -213,6 +258,14 @@ namespace lex
 		{
 			return token{.t = type::operator_asterisk};
 		}
+		else if(data.starts_with("?"))
+		{
+			return token{.t = type::question_mark};
+		}
+		else if(data.starts_with("$"))
+		{
+			return token{.t = type::dollar_sign};
+		}
 		else if(
 				// substrings that aren't syntax errors but don't form any tokens.
 				data.starts_with(" ") ||
@@ -222,9 +275,26 @@ namespace lex
 		{}
 		else if(!breaks_word(data))
 		{
-			if(!state.in_word())
+			if(!state.in_anything())
 			{
-				state.current_word_begin = state.cursor;
+				// we're typing something new.
+				// if the new char is a number, its a numeric literal of some kind.
+				if(std::isdigit(data.front()))
+				{
+					state.current_integer_literal_begin = state.cursor;
+				}
+				else // probably the start of a word (identifier/keyword)
+				{
+					state.current_word_begin = state.cursor;
+				}
+			}
+			else
+			{
+				if((state.in_integer_literal() || state.in_decimal_literal()) && !std::isdigit(data.front()))
+				{
+					// you typed something thats not a digit
+					state.invalid_numeric_literal(data);
+				}
 			}
 		}
 		else
