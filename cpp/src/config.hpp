@@ -8,8 +8,9 @@ namespace config
 	struct compiler_args
 	{
 		std::filesystem::path output_dir = {};
-		std::vector<std::filesystem::path> input_files = {};	
-		bool should_dump_ast;
+		std::string target_name = "";
+		bool should_dump_ast = false;
+		bool should_dump_ir = false;
 	};
 }
 

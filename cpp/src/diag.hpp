@@ -37,6 +37,15 @@ namespace diag
 	}
 
 	template<typename... Ts>
+	void assert_that(bool expr, error_code err, std::format_string<Ts...> fmt, Ts&&... ts)
+	{
+		if(!expr)
+		{
+			error(err, fmt, std::forward<Ts>(ts)...);
+		}
+	}
+
+	template<typename... Ts>
 	void ice(std::format_string<Ts...> fmt, Ts&&... ts)
 	{
 		error(error_code::ice, fmt, std::forward<Ts>(ts)...);
