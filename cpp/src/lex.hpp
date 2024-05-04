@@ -11,6 +11,8 @@ namespace lex
 	enum class type
 	{
 		keyword,
+		identifier,
+		semicolon,
 		line_comment,
 		_count,
 		_undefined,
