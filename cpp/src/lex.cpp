@@ -14,6 +14,12 @@ namespace lex
 		std::size_t cursor = 0;
 		std::size_t current_word_begin = npos;
 
+		void advance(std::size_t amt = 1)
+		{
+			this->col += amt;
+			this->cursor += amt;
+		}
+
 		bool in_word() const
 		{
 			return this->current_word_begin != npos;
@@ -93,8 +99,7 @@ namespace lex
 				maybe_token->meta_srcloc = curloc;
 				tokens.push_back(maybe_token.value());
 			}
-			state.col++;
-			state.cursor++;
+			state.advance();
 		}
 		return
 		{
@@ -117,7 +122,87 @@ namespace lex
 				.t = type::semicolon
 			};
 		}
+		else if(data.starts_with(":"))
+		{
+			return token
+			{
+				.t = type::colon
+			};
+		}
+		else if(data.starts_with("->"))
+		{
+			state.advance();
+			return token
+			{
+				.t = type::arrow_forward
+			};
+		}
+		else if(data.starts_with("<-"))
+		{
+			state.advance();
+			return token
+			{
+				.t = type::arrow_backward
+			};
+		}
+		else if(data.starts_with("//"))
+		{
+			std::size_t comment_begin = state.cursor;
+			while(++state.cursor < (state.source.size() - 1) && state.source[state.cursor] != '\n')
+			{}
+			std::size_t comment_end = state.cursor;
+			state.col = 0;	
+			state.line++;
+			return token
+			{
+				.t = type::line_comment,
+				.lexeme = std::string(state.source.data() + comment_begin, comment_end - comment_begin)
+			};
+		}
+		else if(data.starts_with("("))
+		{
+			return token
+			{
+				.t = type::open_paren
+			};
+		}
+		else if(data.starts_with(")"))
+		{
+			return token
+			{
+				.t = type::close_paren
+			};
+		}
+		else if(data.starts_with("{"))
+		{
+			return token
+			{
+				.t = type::open_brace
+			};
+		}
+		else if(data.starts_with("}"))
+		{
+			return token
+			{
+				.t = type::close_brace
+			};
+		}
+		else if(data.starts_with("["))
+		{
+			return token
+			{
+				.t = type::open_brack
+			};
+		}
+		else if(data.starts_with("]"))
+		{
+			return token
+			{
+				.t = type::close_brack
+			};
+		}
 		else if(
+				// substrings that aren't syntax errors but don't form any tokens.
 				data.starts_with(" ") ||
 				data.starts_with("\n")
 			)
