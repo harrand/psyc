@@ -166,45 +166,52 @@ namespace lex
 		}
 		else if(data.starts_with("("))
 		{
-			return token
-			{
-				.t = type::open_paren
-			};
+			return token{.t = type::open_paren};
 		}
 		else if(data.starts_with(")"))
 		{
-			return token
-			{
-				.t = type::close_paren
-			};
+			return token{.t = type::close_paren};
 		}
 		else if(data.starts_with("{"))
 		{
-			return token
-			{
-				.t = type::open_brace
-			};
+			return token{.t = type::open_brace};
 		}
 		else if(data.starts_with("}"))
 		{
-			return token
-			{
-				.t = type::close_brace
-			};
+			return token{.t = type::close_brace};
 		}
 		else if(data.starts_with("["))
 		{
-			return token
-			{
-				.t = type::open_brack
-			};
+			return token{.t = type::open_brack};
 		}
 		else if(data.starts_with("]"))
 		{
-			return token
-			{
-				.t = type::close_brack
-			};
+			return token{.t = type::close_brack};
+		}
+		else if(data.starts_with("=="))
+		{
+			state.advance();
+			return token{.t = type::operator_double_equals};
+		}
+		else if(data.starts_with("="))
+		{
+			return token{.t = type::operator_equals};
+		}
+		else if(data.starts_with("+"))
+		{
+			return token{.t = type::operator_plus};
+		}
+		else if(data.starts_with("-"))
+		{
+			return token{.t = type::operator_minus};
+		}
+		else if(data.starts_with("/"))
+		{
+			return token{.t = type::operator_slash};
+		}
+		else if(data.starts_with("*"))
+		{
+			return token{.t = type::operator_asterisk};
 		}
 		else if(
 				// substrings that aren't syntax errors but don't form any tokens.

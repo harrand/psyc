@@ -23,6 +23,12 @@ namespace lex
 		close_brace,
 		open_brack,
 		close_brack,
+		operator_double_equals,
+		operator_equals,
+		operator_plus,
+		operator_minus,
+		operator_slash,
+		operator_asterisk,
 		_count,
 		_undefined,
 	};
