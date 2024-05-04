@@ -45,7 +45,7 @@ namespace lex
 			std::size_t snippet_begin = this->cursor > snippet_width ? (this->cursor - snippet_width) : 0;
 			std::size_t snippet_end = (this->cursor + snippet_width) >= this->source.size() ? this->source.size() : (this->cursor + snippet_width);
 			std::string_view snippet = this->source.substr(snippet_begin, snippet_end - snippet_begin);
-			diag::error(error_code::syntax, "at: {}, unrecognised token(s) \"{}\" within: \"{}\"", curloc.to_string(), dodgy_part, snippet);
+			diag::error(error_code::syntax, "at: {}, unrecognised token(s) \"{}\" within: \"...{}...\"", curloc.to_string(), dodgy_part.substr(0u, std::min(static_cast<unsigned int>(dodgy_part.size()), 2u)), snippet);
 		}
 	};
 
@@ -204,7 +204,8 @@ namespace lex
 		else if(
 				// substrings that aren't syntax errors but don't form any tokens.
 				data.starts_with(" ") ||
-				data.starts_with("\n")
+				data.starts_with("\n") ||
+				data.starts_with("\t")
 			)
 		{}
 		else if(!breaks_word(data))
