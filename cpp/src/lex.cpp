@@ -1,4 +1,5 @@
 #include "lex.hpp"
+#include "diag.hpp"
 #include <fstream>
 
 namespace lex
@@ -24,6 +25,10 @@ namespace lex
 		std::stringstream buffer;
 		buffer << fstr.rdbuf();
 		std::string str = buffer.str();
+		if(str.empty())
+		{
+			diag::warning("empty file: {}", psy_file.filename().string());
+		}
 
 		while(state.cursor < str.size())
 		{

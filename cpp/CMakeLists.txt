@@ -48,20 +48,24 @@ file(GLOB stdlib_psy_sources
 	"${psyc_root_dir}/stdlib/*.psy"
 )
 
-add_custom_command(TARGET psyc POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} $<TARGET_FILE_DIR:psyc>
-	COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
-)
+if(${stdlib_psy_sources})
+	add_custom_command(TARGET psyc POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} $<TARGET_FILE_DIR:psyc>
+		COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
+	)
+endif()
 
 add_custom_target(psyc_install
 	COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:psyc>" "${CMAKE_INSTALL_PREFIX}/bin/$<TARGET_FILE_NAME:psyc>"
 	DEPENDS psyc
 	COMMENT "Installing psyc to ${CMAKE_INSTALL_PREFIX}"
 	)
-add_custom_command(TARGET psyc_install POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} "${CMAKE_INSTALL_PREFIX}/bin/"
-	COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
-)
+if(${stdlib_psy_sources})
+	add_custom_command(TARGET psyc_install POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy ${stdlib_psy_sources} "${CMAKE_INSTALL_PREFIX}/bin/"
+		COMMENT "Copying psyc stdlib sources: ${stdlib_psy_sources}"
+	)
+endif()
 
 target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(psyc PRIVATE ${llvm_definitions_list})
