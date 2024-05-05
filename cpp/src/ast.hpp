@@ -1,5 +1,7 @@
 #ifndef PSYC_AST_HPP
 #define PSYC_AST_HPP
+#include "util.hpp"
+#include "lex.hpp"
 #include "srcloc.hpp"
 #include <string>
 #include <format>
@@ -10,6 +12,8 @@
 
 struct ast
 {
+	struct expression;
+	using boxed_expression = util::box<expression>;
 	struct integer_literal
 	{
 		std::int64_t val;
@@ -38,6 +42,51 @@ struct ast
 		bool operator==(const identifier& rhs) const = default;
 	};
 
+	struct unary_operator
+	{
+		lex::token op;
+		boxed_expression expr;
+		constexpr std::string to_string() const
+		{
+			return std::format("unop{}({})", op.lexeme, expr->to_string());
+		}
+		bool operator==(const unary_operator& rhs) const = default;
+	};
+
+	struct binary_operator
+	{
+		boxed_expression lhs_expr;
+		lex::token op;
+		boxed_expression rhs_expr;
+		constexpr std::string to_string() const
+		{
+			return std::format("biop({} {} {})", lhs_expr->to_string(), op.lexeme, rhs_expr->to_string());
+		}
+		bool operator==(const binary_operator& rhs) const = default;
+	};
+
+	struct expression
+	{
+		std::variant
+		<
+			unary_operator,
+			binary_operator,
+			ast::integer_literal,
+			ast::decimal_literal,
+			ast::identifier
+		> expr;
+		constexpr std::string to_string() const
+		{
+			std::string ret;
+			std::visit([&ret](auto&& arg)
+			{
+				ret = arg.to_string();
+			}, expr);
+			return std::format("expression({})", ret);
+		}
+		bool operator==(const expression& rhs) const = default;
+	};
+
 	struct variable_declaration
 	{
 		std::string var_name;	
@@ -51,7 +100,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, variable_declaration>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

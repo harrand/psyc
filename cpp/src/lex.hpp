@@ -46,6 +46,10 @@ namespace lex
 		type t = type::_undefined;
 		std::string lexeme = "";
 		srcloc meta_srcloc = srcloc::undefined();
+		bool operator==(const token& rhs) const
+		{
+			return this->t == rhs.t && this->lexeme == rhs.lexeme;
+		}
 	};
 
 	using tokens_list = std::vector<token>;

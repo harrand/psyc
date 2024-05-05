@@ -26,6 +26,13 @@ namespace diag
 	}
 
 	template<typename... Ts>
+	void error_nonblocking(error_code err, std::format_string<Ts...> fmt, Ts&&... ts)
+	{
+		std::string error_preamble = std::format("\033[1;31m{} error", error_names[static_cast<int>(err)]);
+		generic_msg(error_preamble, fmt, std::forward<Ts>(ts)...);
+	}
+
+	template<typename... Ts>
 	void error(error_code err, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
 		std::string error_preamble = std::format("\033[1;31m{} error", error_names[static_cast<int>(err)]);

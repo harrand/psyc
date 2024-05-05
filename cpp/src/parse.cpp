@@ -22,6 +22,7 @@ namespace parse
 
 		bool try_reduce_variable_declaration();
 		bool try_reduce_function_definition();
+		bool try_reduce_expression();
 
 		ast parse();
 
@@ -154,6 +155,29 @@ namespace parse
 		return false;
 	}
 
+	bool parser_state::try_reduce_expression()
+	{
+		if(this->subtrees.size() < 2)
+		{
+			return false;
+		}
+		subtree p0 = this->subtrees[0];
+		if(std::holds_alternative<ast::integer_literal>(p0.tree.root.payload))
+		{
+			ast::node node = p0.tree.root;
+			node.payload = ast::expression{.expr = std::get<ast::integer_literal>(node.payload)};
+			// if it ends with a semicolon, we're done.
+			if(this->subtrees[1].tok.t == lex::type::semicolon)
+			{
+				this->subtrees.erase(this->subtrees.begin(), this->subtrees.begin() + 2);
+				this->subtrees.push_front(subtree{.tree = ast{.root = node}});
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	// advance the tokidx and create a new subtree from the token if you can.
 	void parser_state::shift()
 	{
@@ -178,7 +202,8 @@ namespace parse
 	{
 		// try to combine any subtrees if it makes sense to do so.
 		return this->try_reduce_variable_declaration()
-			|| this->try_reduce_function_definition();
+			|| this->try_reduce_function_definition()
+			|| this->try_reduce_expression();
 	}
 
 	ast parser_state::parse()
@@ -192,17 +217,23 @@ namespace parse
 			while(this->reduce()){}
 			shift();
 		}
+		std::size_t error_count = 0;
 
 		for(const auto& subtree : this->subtrees)
 		{
 			if(subtree.tree == ast{})
 			{
-				diag::error(error_code::syntax, "unparsed token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
+				error_count++;
+				diag::error_nonblocking(error_code::syntax, "unparsed token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
 			}
-			ast::path_t path = {ret.root.children.size()};
-			ret.root.children.push_back({});
-			subtree.tree.attach_to(ret, path);
+			else
+			{
+				ast::path_t path = {ret.root.children.size()};
+				ret.root.children.push_back({});
+				subtree.tree.attach_to(ret, path);
+			}
 		}
+		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
 
 		/*
 		for(this->tokidx = 0; this->tokidx < this->tokens.size(); this->tokidx++)
