@@ -22,6 +22,7 @@ struct timers
 	void print()
 	{
 		constexpr int width = 12;
+		std::cout << std::right;
 		std::cout << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << (this->lexing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) <<  (this->parsing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) <<  (this->buildmeta / 1000.0f) << " seconds" << std::endl;
@@ -138,5 +139,18 @@ config::compiler_args parse_args(std::span<const std::string_view> args)
 
 void print_version_info()
 {
-	diag::nyi("-v");
+	std::cout << "OVERVIEW: Psy Compiler\n\n";
+	std::cout << "USAGE: psyc [options] files...\n\n";
+	std::cout << "OPTIONS:\n";
+	constexpr int width = 22;
+	constexpr int width2 = 42;
+	std::cout << std::setw(width) << std::left << "-v" << std::setw(width2) << "display version info and help." << std::endl;
+	std::cout << std::setw(width) << std::left << "-o [dir]" << std::setw(width2) << "designates an output directory." << std::endl;
+	std::cout << std::setw(width) << std::left << "-t [target-name]" << std::setw(width2) << "tell the compiler to find a build meta-region of the given name to treat as build instructions." << std::endl;
+	std::cout << std::setw(width) << std::left << "-l [linker-name]" << std::setw(width2) << "specifies which linker to use." << std::endl;
+
+	std::cout << "\nFILES:\n";
+	std::cout << "- Must be absolute or relative paths (with respect to current working directory).\n";
+	std::cout << "- Contain valid psy source code.\n";
+	std::cout << "\n";
 }
