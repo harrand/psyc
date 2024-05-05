@@ -103,6 +103,7 @@ struct ast
 		std::string func_name;
 		std::vector<variable_declaration> params = {};
 		std::string ret_type;
+		bool is_extern = false;
 		constexpr std::string to_string() const
 		{
 			std::string params_str = "(";
@@ -111,7 +112,7 @@ struct ast
 				params_str += param.to_string();
 			}
 			params_str += ")";
-			return std::format("function_definition({} :: ({}) -> {})", func_name, params_str, ret_type);
+			return std::format("function_definition({} :: ({}) -> {}{})", func_name, params_str, ret_type, is_extern ? " = extern" : "");
 		}
 		bool operator==(const function_definition& rhs) const = default;
 	};
@@ -158,6 +159,7 @@ struct ast
 	node& current();
 
 	void attach_to(ast& parent, const path_t& path) const;
+	void pretty_print() const;
 
 	bool operator==(const ast& rhs) const
 	{

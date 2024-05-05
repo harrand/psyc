@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "diag.hpp"
+#include <stack>
 
 const ast::node& ast::get(ast::path_const_view_t path) const
 {
@@ -70,4 +71,38 @@ void ast::attach_to(ast& parent, const path_t& path) const
 	diag::assert_that(parent_node.children[back] == ast::node{}, error_code::ice, "while attaching an AST subtree to a parent tree, noticed that the node at the provided path was not empty - meaning you're going to overwrite something. when calling attach_to, the child at the path should exist already as an empty node");
 
 	parent_node.children[back] = this->root;
+}
+
+void ast::pretty_print() const
+{
+	std::stack<const ast::node*> node_list;
+	std::stack<std::size_t> indents;
+	node_list.push(&this->root);
+	indents.push(0);
+	std::cout << "program:\n";
+	while(node_list.size())
+	{
+		const ast::node* cur = node_list.top();
+		node_list.pop();
+		std::size_t indent = indents.top();
+		indents.pop();
+		for(std::size_t i = 0; i < indent; i++)
+		{
+			std::cout << "  ";
+		}
+		std::visit([](auto&& arg)
+		{
+			using T = std::decay_t<decltype(arg)>;
+			if constexpr(!std::is_same_v<T, std::monostate>)
+			{
+				std::cout << arg.to_string() << "\n";
+			}
+		}, cur->payload);
+		for(std::size_t i = 0; i < cur->children.size(); i++)
+		{
+			const auto& child = cur->children[cur->children.size() - 1 - i];
+			node_list.push(&child);
+			indents.push(indent + 1);
+		}
+	}
 }

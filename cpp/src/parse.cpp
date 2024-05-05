@@ -143,7 +143,7 @@ namespace parse
 	bool parser_state::try_reduce_function_definition(std::size_t offset)
 	{
 		// funcname :: (par1 : par1ty, par2 : par2ty) -> retty
-		if(this->subtrees.size() < 8 + offset)
+		if(this->subtrees.size() < 11 + offset)
 		{
 			return false;
 		}
@@ -170,9 +170,9 @@ namespace parse
 			return false;
 		}
 		std::vector<ast::variable_declaration> params = {};
-		std::size_t id = offset + 3;
+		std::size_t id = offset + 4;
 		bool terminated = false;
-		while(++id < this->subtrees.size())
+		while(id < this->subtrees.size())
 		{
 			subtree val = this->subtrees[id];
 			if(val.tok.t == lex::type::close_paren)
@@ -189,6 +189,7 @@ namespace parse
 				}
 				params.push_back(std::get<ast::variable_declaration>(val.tree.root.payload));
 			}
+			id++;
 		}
 		if(!terminated) // never found the close_paren
 		{
@@ -206,7 +207,30 @@ namespace parse
 			return false;
 		}
 		def.ret_type = std::get<ast::identifier>(retty.tree.root.payload).iden;
-		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + id + 3);
+		// either we now have a block, or an extern
+		// for now we just assume extern.
+		subtree equals = this->subtrees[id + 3];
+		if(equals.tok.t != lex::type::operator_equals)
+		{
+			return false;
+		}
+		subtree extern_specifier = this->subtrees[id + 4];
+		if(extern_specifier.tree == ast{} || !std::holds_alternative<ast::identifier>(extern_specifier.tree.root.payload))
+		{
+			return false;
+		}
+		if(std::get<ast::identifier>(extern_specifier.tree.root.payload).iden != "extern")
+		{
+			return false;
+		}
+		def.is_extern = true;
+		subtree semicolon = this->subtrees[id + 5];
+		if(semicolon.tok.t != lex::type::semicolon)
+		{
+			return false;
+		}
+		// todo: block
+		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + id + 6);
 		this->subtrees.insert(this->subtrees.begin() + offset, {.tree = ast
 		{
 			.root =
@@ -287,8 +311,8 @@ namespace parse
 
 		while(this->tokidx < this->tokens.size())
 		{
-			while(this->reduce()){}
 			shift();
+			while(this->reduce()){}
 		}
 		std::size_t error_count = 0;
 
@@ -305,6 +329,11 @@ namespace parse
 				ret.root.children.push_back({});
 				subtree.tree.attach_to(ret, path);
 			}
+		}
+		if(error_count > 0)
+		{
+			diag::note("ast so far:\n");
+			ret.pretty_print();
 		}
 		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
 
