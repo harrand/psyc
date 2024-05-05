@@ -22,13 +22,12 @@ struct timers
 	void print()
 	{
 		constexpr int width = 12;
-		std::cout << std::right;
-		std::cout << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << (this->lexing / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) <<  (this->parsing / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) <<  (this->buildmeta / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) <<  (this->semal / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) <<  (this->codegen / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::setw(width) << "link:" << std::setw(6) << std::setprecision(3) <<  (this->link / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << std::right << (this->lexing / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) << std::right << (this->parsing / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) << std::right << (this->buildmeta / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) << std::right << (this->semal / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) << std::right << (this->codegen / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::left << std::setw(width) << "link:" << std::setw(6) << std::setprecision(3) << std::right << (this->link / 1000.0f) << " seconds" << std::endl;
 		std::uint64_t total =
 			this->lexing +
 			this->parsing +
@@ -36,8 +35,8 @@ struct timers
 			this->semal +
 			this->codegen +
 			this->link;
-		std::cout << std::setw(width + 6 + 9) << std::setfill('=') << "\n" << std::setfill(' ');
-		std::cout << std::setw(width) << "total:" << std::setw(6) << std::setprecision(3) <<  (total / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::right << std::setw(width + 6 + 9) << std::setfill('=') << "\n" << std::setfill(' ');
+		std::cout << std::left <<  std::setw(width) << "total:" << std::setw(6) << std::setprecision(3) << std::right << (total / 1000.0f) << " seconds" << std::endl;
 	}
 };
 
