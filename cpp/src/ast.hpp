@@ -17,6 +17,7 @@ struct ast
 		{
 			return std::format("integer-literal({})", val);
 		}
+		bool operator==(const integer_literal& rhs) const = default;
 	};
 	struct decimal_literal
 	{
@@ -25,6 +26,7 @@ struct ast
 		{
 			return std::format("decimal-literal({})", val);
 		}
+		bool operator==(const decimal_literal& rhs) const = default;
 	};
 	struct identifier
 	{
@@ -33,13 +35,25 @@ struct ast
 		{
 			return std::format("identifier({})", iden);
 		}
+		bool operator==(const identifier& rhs) const = default;
+	};
+
+	struct variable_declaration
+	{
+		std::string var_name;	
+		std::string type_name;
+		constexpr std::string to_string() const
+		{
+			return std::format("variable_declaration({} : {})", var_name, type_name);
+		}
+		bool operator==(const variable_declaration& rhs) const = default;
 	};
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier>;
-		payload_t payload;
-		srcloc meta;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, variable_declaration>;
+		payload_t payload = std::monostate{};
+		srcloc meta = {};
 		std::vector<node> children = {};
 
 		constexpr std::string to_string() const
@@ -58,6 +72,7 @@ struct ast
 			}, this->payload);
 			return ret;
 		}
+		bool operator==(const node& rhs) const = default;
 	};
 
 	using path_t = std::vector<std::size_t>;
@@ -74,6 +89,13 @@ struct ast
 
 	const node& current() const;
 	node& current();
+
+	void attach_to(ast& parent, const path_t& path) const;
+
+	bool operator==(const ast& rhs) const
+	{
+		return this->root == rhs.root;
+	}
 
 	node root;
 	path_t current_path = {};

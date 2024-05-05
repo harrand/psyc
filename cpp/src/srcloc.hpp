@@ -25,6 +25,7 @@ struct srcloc
 			.column = std::numeric_limits<decltype(column)>::max()	
 		};
 	}
+	bool operator==(const srcloc& rhs) const = default;
 };
 
 #endif // PSYC_SRCLOC_HPP
