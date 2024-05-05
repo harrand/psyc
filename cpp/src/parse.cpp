@@ -193,7 +193,16 @@ namespace parse
 			shift();
 		}
 
-		diag::assert_that(this->subtrees.empty(), error_code::syntax, "fugg");
+		for(const auto& subtree : this->subtrees)
+		{
+			if(subtree.tree == ast{})
+			{
+				diag::error(error_code::syntax, "unparsed token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
+			}
+			ast::path_t path = {ret.root.children.size()};
+			ret.root.children.push_back({});
+			subtree.tree.attach_to(ret, path);
+		}
 
 		/*
 		for(this->tokidx = 0; this->tokidx < this->tokens.size(); this->tokidx++)

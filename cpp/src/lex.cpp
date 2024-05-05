@@ -149,6 +149,10 @@ namespace lex
 			if(maybe_token.has_value())
 			{
 				maybe_token->meta_srcloc = curloc;
+				if(maybe_token->lexeme.empty())
+				{
+					maybe_token->lexeme = data.front();
+				}
 				tokens.push_back(maybe_token.value());
 			}
 			state.advance();
