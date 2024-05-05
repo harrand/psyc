@@ -54,6 +54,10 @@ namespace lex
 			else if(this->in_decimal_literal())
 			{
 				ret = std::string{source.substr(this->current_decimal_literal_begin, cursor - this->current_decimal_literal_begin)};
+				if(ret.back() == '.')
+				{
+					this->error_generic(ret, "malformed decimal literal \"{}{}\" - no fractional part detected.");
+				}
 				this->current_decimal_literal_begin = npos;
 				t = type::decimal_literal;
 			}
@@ -97,7 +101,7 @@ namespace lex
 	};
 
 	std::optional<token> tokenise_once(tokenise_state& state, std::string_view data);
-	bool breaks_word(std::string_view str);
+	bool breaks_word(const tokenise_state& state, std::string_view str);
 
 	output tokenise(std::filesystem::path psy_file)
 	{
@@ -125,7 +129,7 @@ namespace lex
 				.line = state.line,
 				.column = state.col
 			};
-			if(state.in_anything() && breaks_word(data))
+			if(state.in_anything() && breaks_word(state, data))
 			{
 				type t;
 				std::string word = state.pop_word(t);
@@ -177,7 +181,16 @@ namespace lex
 		}
 		else if(data.starts_with("."))
 		{
-			return token{.t = type::dot};
+			if(state.in_integer_literal())
+			{
+				// if we're in an integer literal, we transform it into a decimal literal.
+				state.current_decimal_literal_begin = state.current_integer_literal_begin;
+				state.current_integer_literal_begin = npos;
+			}
+			else
+			{
+				return token{.t = type::dot};
+			}
 		}
 		else if(data.starts_with("->"))
 		{
@@ -273,7 +286,7 @@ namespace lex
 				data.starts_with("\t")
 			)
 		{}
-		else if(!breaks_word(data))
+		else if(!breaks_word(state, data))
 		{
 			if(!state.in_anything())
 			{
@@ -304,8 +317,13 @@ namespace lex
 		return std::nullopt;
 	}
 
-	bool breaks_word(std::string_view str)
+	bool breaks_word(const tokenise_state& state, std::string_view str)
 	{
+		if(state.in_integer_literal() && str.starts_with("."))
+		{
+			return false;
+			// a dot doesn't break an integer literal.
+		}
 		return !std::isalnum(str.front())
 			|| std::isspace(str.front())
 		;
