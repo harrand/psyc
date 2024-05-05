@@ -15,17 +15,28 @@ struct timers
 {
 	std::uint64_t lexing = 0u;
 	std::uint64_t parsing = 0u;
+	std::uint64_t buildmeta = 0u;
 	std::uint64_t semal = 0u;
 	std::uint64_t codegen = 0u;
 	std::uint64_t link = 0u;
 	void print()
 	{
-		constexpr int width = 16;
+		constexpr int width = 12;
 		std::cout << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << (this->lexing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) <<  (this->parsing / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) <<  (this->buildmeta / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) <<  (this->semal / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) <<  (this->codegen / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "link:" << std::setw(6) << std::setprecision(3) <<  (this->link / 1000.0f) << " seconds" << std::endl;
+		std::uint64_t total =
+			this->lexing +
+			this->parsing +
+			this->buildmeta +
+			this->semal +
+			this->codegen +
+			this->link;
+		std::cout << std::setw(width + 6 + 9) << std::setfill('=') << "\n" << std::setfill(' ');
+		std::cout << std::setw(width) << "total:" << std::setw(6) << std::setprecision(3) <<  (total / 1000.0f) << " seconds" << std::endl;
 	}
 };
 
@@ -52,6 +63,8 @@ int main(int argc, char** argv)
 		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file].tokens);
 	}
 	t.parsing = timer::elapsed_millis();
+
+	// buildmeta
 
 	// semal
 	
