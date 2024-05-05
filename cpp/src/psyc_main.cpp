@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include "lex.hpp"
+#include "parse.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
 #include <filesystem>
@@ -16,6 +17,7 @@ struct timers
 	std::uint64_t parsing = 0u;
 	std::uint64_t semal = 0u;
 	std::uint64_t codegen = 0u;
+	std::uint64_t link = 0u;
 	void print()
 	{
 		constexpr int width = 16;
@@ -23,6 +25,7 @@ struct timers
 		std::cout << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) <<  (this->parsing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) <<  (this->semal / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) <<  (this->codegen / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::setw(width) << "link:" << std::setw(6) << std::setprecision(3) <<  (this->link / 1000.0f) << " seconds" << std::endl;
 	}
 };
 
@@ -32,6 +35,7 @@ int main(int argc, char** argv)
 	config::compiler_args args = parse_args(cli_args);
 	timers t;
 
+	// lex
 	timer::start();
 	lex::state lex;
 	for(const std::filesystem::path input_file : args.input_files)
@@ -39,6 +43,21 @@ int main(int argc, char** argv)
 		lex.tokenised_input_files[input_file] = lex::tokenise(input_file);
 	}
 	t.lexing = timer::elapsed_millis();
+
+	// parse
+	timer::start();
+	parse::state parse;
+	for(const std::filesystem::path input_file : args.input_files)
+	{
+		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file].tokens);
+	}
+	t.parsing = timer::elapsed_millis();
+
+	// semal
+	
+	// codegen
+
+	// link
 
 	t.print();
 	return 0;
