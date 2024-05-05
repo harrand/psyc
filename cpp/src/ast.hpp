@@ -98,9 +98,27 @@ struct ast
 		bool operator==(const variable_declaration& rhs) const = default;
 	};
 
+	struct function_definition
+	{
+		std::string func_name;
+		std::vector<variable_declaration> params = {};
+		std::string ret_type;
+		constexpr std::string to_string() const
+		{
+			std::string params_str = "(";
+			for(const auto& param : this->params)
+			{
+				params_str += param.to_string();
+			}
+			params_str += ")";
+			return std::format("function_definition({} :: ({}) -> {})", func_name, params_str, ret_type);
+		}
+		bool operator==(const function_definition& rhs) const = default;
+	};
+
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration, function_definition>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

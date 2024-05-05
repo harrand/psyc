@@ -20,9 +20,9 @@ namespace parse
 		ast try_parse_decimal_literal();
 		ast try_parse_identifier();
 
-		bool try_reduce_variable_declaration();
-		bool try_reduce_function_definition();
-		bool try_reduce_expression();
+		bool try_reduce_variable_declaration(std::size_t offset);
+		bool try_reduce_function_definition(std::size_t offset);
+		bool try_reduce_expression(std::size_t offset);
 
 		ast parse();
 
@@ -92,18 +92,18 @@ namespace parse
 		return {};
 	}
 
-	bool parser_state::try_reduce_variable_declaration()
+	bool parser_state::try_reduce_variable_declaration(std::size_t offset)
 	{
 		// varname : ty = initialiser;
 		// `= initialiser` is optional.
 		ast::variable_declaration decl;
 
 		// varname
-		if(this->subtrees.size() < 3)
+		if(this->subtrees.size() < 3 + offset)
 		{
 			return false;
 		}
-		subtree var_name = this->subtrees[0];
+		subtree var_name = this->subtrees[offset + 0];
 		if(var_name.tree == ast{} || !std::holds_alternative<ast::identifier>(var_name.tree.root.payload))
 		{
 			return false;
@@ -111,21 +111,21 @@ namespace parse
 		decl.var_name = std::get<ast::identifier>(var_name.tree.root.payload).iden;
 
 		// :
-		subtree colon = this->subtrees[1];
+		subtree colon = this->subtrees[offset + 1];
 		if(colon.tree != ast{} || colon.tok.t != lex::type::colon)
 		{
 			return false;
 		}
 
 		// typename
-		subtree type_name = this->subtrees[2];
+		subtree type_name = this->subtrees[offset + 2];
 		if(type_name.tree == ast{} || !std::holds_alternative<ast::identifier>(type_name.tree.root.payload))
 		{
 			return false;
 		}
 		decl.type_name = std::get<ast::identifier>(type_name.tree.root.payload).iden;
-		this->subtrees.erase(this->subtrees.begin(), this->subtrees.begin() + 3);
-		this->subtrees.push_front({.tree = ast
+		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 3);
+		this->subtrees.insert(this->subtrees.begin() + offset,{.tree = ast
 		{
 			.root =
 			{
@@ -140,37 +140,103 @@ namespace parse
 		return true;
 	}
 
-	bool parser_state::try_reduce_function_definition()
+	bool parser_state::try_reduce_function_definition(std::size_t offset)
 	{
-		/*
 		// funcname :: (par1 : par1ty, par2 : par2ty) -> retty
-		auto stack = this->subtrees;
-		subtree funcname = stack.top(); stack.pop();
-		// funcname should be a tree containing an identifier only.
-		if(funcname.tree == ast{} || funcname.tree.root.children.size() || !std::holds_alternative<ast::identifier>(funcname.tree.root.payload))
+		if(this->subtrees.size() < 8 + offset)
 		{
 			return false;
 		}
-		*/
-		return false;
+		ast::function_definition def;
+		subtree funcname = this->subtrees[offset + 0];
+		if(funcname.tree == ast{} || !std::holds_alternative<ast::identifier>(funcname.tree.root.payload))
+		{
+			return false;
+		}
+		def.func_name = std::get<ast::identifier>(funcname.tree.root.payload).iden;
+		subtree colon1 = this->subtrees[offset + 1];
+		if(colon1.tok.t != lex::type::colon)
+		{
+			return false;
+		}
+		subtree colon2 = this->subtrees[offset + 2];
+		if(colon2.tok.t != lex::type::colon)
+		{
+			return false;
+		}
+		subtree open_par = this->subtrees[offset + 3];
+		if(open_par.tok.t != lex::type::open_paren)
+		{
+			return false;
+		}
+		std::vector<ast::variable_declaration> params = {};
+		std::size_t id = offset + 3;
+		bool terminated = false;
+		while(++id < this->subtrees.size())
+		{
+			subtree val = this->subtrees[id];
+			if(val.tok.t == lex::type::close_paren)
+			{
+				terminated = true;
+				break;
+			}
+			else
+			{
+				// must be a variable declaration
+				if(val.tree == ast{} || !std::holds_alternative<ast::variable_declaration>(val.tree.root.payload))	
+				{
+					return false;
+				}
+				params.push_back(std::get<ast::variable_declaration>(val.tree.root.payload));
+			}
+		}
+		if(!terminated) // never found the close_paren
+		{
+			return false;
+		}
+		def.params = params;
+		subtree retty_arrow = this->subtrees[id + 1];
+		if(retty_arrow.tok.t != lex::type::arrow_forward)
+		{
+			return false;
+		}
+		subtree retty = this->subtrees[id + 2];
+		if(retty.tree == ast{} || !std::holds_alternative<ast::identifier>(retty.tree.root.payload))
+		{
+			return false;
+		}
+		def.ret_type = std::get<ast::identifier>(retty.tree.root.payload).iden;
+		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + id + 3);
+		this->subtrees.insert(this->subtrees.begin() + offset, {.tree = ast
+		{
+			.root =
+			{
+				ast::node
+				{
+					.payload = def,
+					.meta = funcname.tree.root.meta
+				}
+			}
+		}});
+		return true;
 	}
 
-	bool parser_state::try_reduce_expression()
+	bool parser_state::try_reduce_expression(std::size_t offset)
 	{
-		if(this->subtrees.size() < 2)
+		if(this->subtrees.size() < 2 + offset)
 		{
 			return false;
 		}
-		subtree p0 = this->subtrees[0];
+		subtree p0 = this->subtrees[offset + 0];
 		if(std::holds_alternative<ast::integer_literal>(p0.tree.root.payload))
 		{
 			ast::node node = p0.tree.root;
 			node.payload = ast::expression{.expr = std::get<ast::integer_literal>(node.payload)};
 			// if it ends with a semicolon, we're done.
-			if(this->subtrees[1].tok.t == lex::type::semicolon)
+			if(this->subtrees[offset + 1].tok.t == lex::type::semicolon)
 			{
-				this->subtrees.erase(this->subtrees.begin(), this->subtrees.begin() + 2);
-				this->subtrees.push_front(subtree{.tree = ast{.root = node}});
+				this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 2);
+				this->subtrees.insert(this->subtrees.begin() + offset, subtree{.tree = ast{.root = node}});
 				return true;
 			}
 		}
@@ -201,9 +267,16 @@ namespace parse
 	bool parser_state::reduce()
 	{
 		// try to combine any subtrees if it makes sense to do so.
-		return this->try_reduce_variable_declaration()
-			|| this->try_reduce_function_definition()
-			|| this->try_reduce_expression();
+		for(std::size_t i = 0; i < this->subtrees.size(); i++)
+		{
+			if(this->try_reduce_function_definition(i)
+				|| this->try_reduce_variable_declaration(i)
+				|| this->try_reduce_expression(i))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	ast parser_state::parse()
