@@ -110,6 +110,10 @@ config::compiler_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.target_name = getargnext();
 		}
+		else if(arg == "-l")
+		{
+			ret.linker_name = getargnext();
+		}
 		else if(arg == "--dump-ast")
 		{
 			ret.should_dump_ast = true;
