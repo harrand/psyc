@@ -1,8 +1,12 @@
 #ifndef PSYC_AST_HPP
 #define PSYC_AST_HPP
 #include "srcloc.hpp"
+#include <string>
+#include <format>
 #include <variant>
+#include <vector>
 #include <span>
+#include <optional>
 
 struct ast
 {
