@@ -1,24 +1,46 @@
 #include "config.hpp"
 #include "lex.hpp"
+#include "timer.hpp"
 #include "diag.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
+#include <iomanip>
 
 config::compiler_args parse_args(std::span<const std::string_view> cli_args);
 void print_version_info();
+
+struct timers
+{
+	std::uint64_t lexing = 0u;
+	std::uint64_t parsing = 0u;
+	std::uint64_t semal = 0u;
+	std::uint64_t codegen = 0u;
+	void print()
+	{
+		constexpr int width = 16;
+		std::cout << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << (this->lexing / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) <<  (this->parsing / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) <<  (this->semal / 1000.0f) << " seconds" << std::endl;
+		std::cout << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) <<  (this->codegen / 1000.0f) << " seconds" << std::endl;
+	}
+};
 
 int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	config::compiler_args args = parse_args(cli_args);
+	timers t;
 
+	timer::start();
 	lex::state lex;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
 		lex.tokenised_input_files[input_file] = lex::tokenise(input_file);
 	}
+	t.lexing = timer::elapsed_millis();
 
+	t.print();
 	return 0;
 }
 
