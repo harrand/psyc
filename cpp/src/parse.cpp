@@ -20,9 +20,9 @@ namespace parse
 		ast try_parse_decimal_literal();
 		ast try_parse_identifier();
 
-		bool try_reduce_variable_declaration(std::size_t offset);
-		bool try_reduce_function_definition(std::size_t offset);
-		bool try_reduce_expression(std::size_t offset);
+		bool try_reduce_variable_declaration(std::size_t offset, int* subtree_size_change = nullptr);
+		bool try_reduce_function_definition(std::size_t offset, int* subtree_size_change = nullptr);
+		bool try_reduce_expression(std::size_t offset, int* subtree_size_change = nullptr);
 
 		ast parse();
 
@@ -38,7 +38,22 @@ namespace parse
 		void shift();
 		bool reduce();
 
+		void shift_front()
+		{
+			diag::assert_that(this->subtrees.size(), error_code::ice, "try to shift a subtree from the front when the list of subtrees was empty");
+			this->subtrees_next_level.push_back(this->subtrees.front());
+			this->subtrees.pop_front();
+		}
+
+		void next_level()
+		{
+			diag::assert_that(this->subtrees.empty(), error_code::ice, "try to go to next level when there are still {} unresolved subtrees", this->subtrees.size());
+			this->subtrees = this->subtrees_next_level;
+			this->subtrees_next_level.clear();
+		}
+
 		std::deque<subtree> subtrees = {};
+		std::deque<subtree> subtrees_next_level = {};
 	};
 
 	ast parser_state::try_parse_integer_literal()
@@ -92,7 +107,7 @@ namespace parse
 		return {};
 	}
 
-	bool parser_state::try_reduce_variable_declaration(std::size_t offset)
+	bool parser_state::try_reduce_variable_declaration(std::size_t offset, int* subtree_size_change)
 	{
 		// varname : ty = initialiser;
 		// `= initialiser` is optional.
@@ -124,6 +139,7 @@ namespace parse
 			return false;
 		}
 		decl.type_name = std::get<ast::identifier>(type_name.tree.root.payload).iden;
+		int sz = this->subtrees.size();
 		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 3);
 		this->subtrees.insert(this->subtrees.begin() + offset,{.tree = ast
 		{
@@ -137,13 +153,17 @@ namespace parse
 				}
 			}	
 		}});
+		if(subtree_size_change != nullptr)
+		{
+			*subtree_size_change = sz - this->subtrees.size();
+		}
 		return true;
 	}
 
-	bool parser_state::try_reduce_function_definition(std::size_t offset)
+	bool parser_state::try_reduce_function_definition(std::size_t offset, int* subtree_size_change)
 	{
 		// funcname :: (par1 : par1ty, par2 : par2ty) -> retty
-		if(this->subtrees.size() < 11 + offset)
+		if(this->subtrees.size() <= 10 + offset)
 		{
 			return false;
 		}
@@ -174,6 +194,7 @@ namespace parse
 		bool terminated = false;
 		while(id < this->subtrees.size())
 		{
+			// we're either looking for a variable declaration or a close paren.
 			subtree val = this->subtrees[id];
 			if(val.tok.t == lex::type::close_paren)
 			{
@@ -182,12 +203,21 @@ namespace parse
 			}
 			else
 			{
-				// must be a variable declaration
-				if(val.tree == ast{} || !std::holds_alternative<ast::variable_declaration>(val.tree.root.payload))	
+				// it should be a variable declaration.
+				// if it isn't, try to reduce it to one.
+				if(val.tree == ast{} || !std::holds_alternative<ast::variable_declaration>(val.tree.root.payload))
 				{
-					return false;
+					int sz_change = 0;
+					if(!this->try_reduce_variable_declaration(id, &sz_change) || sz_change > 0)
+					{
+						return false;
+					}
+					// retrieve val as the subtree at this id should've changed.
+					val = this->subtrees[id];
 				}
+				diag::assert_that(val.tree != ast{} && std::holds_alternative<ast::variable_declaration>(val.tree.root.payload), error_code::ice, "parser said it reduced a variable declaration, but token(s) {} (at {}) do not comprise a variable declaration", val.tree.root.meta.to_string(), val.tree.root.to_string());
 				params.push_back(std::get<ast::variable_declaration>(val.tree.root.payload));
+				//id -= sz_change;
 			}
 			id++;
 		}
@@ -230,6 +260,7 @@ namespace parse
 			return false;
 		}
 		// todo: block
+		int sz = this->subtrees.size();
 		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + id + 6);
 		this->subtrees.insert(this->subtrees.begin() + offset, {.tree = ast
 		{
@@ -242,10 +273,14 @@ namespace parse
 				}
 			}
 		}});
+		if(subtree_size_change != nullptr)
+		{
+			*subtree_size_change = sz - this->subtrees.size();
+		}
 		return true;
 	}
 
-	bool parser_state::try_reduce_expression(std::size_t offset)
+	bool parser_state::try_reduce_expression(std::size_t offset, int* subtree_size_change)
 	{
 		if(this->subtrees.size() < 2 + offset)
 		{
@@ -259,8 +294,13 @@ namespace parse
 			// if it ends with a semicolon, we're done.
 			if(this->subtrees[offset + 1].tok.t == lex::type::semicolon)
 			{
+				int sz = this->subtrees.size();
 				this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 2);
 				this->subtrees.insert(this->subtrees.begin() + offset, subtree{.tree = ast{.root = node}});
+				if(subtree_size_change != nullptr)
+				{
+					*subtree_size_change = sz - this->subtrees.size();
+				}
 				return true;
 			}
 		}
@@ -291,14 +331,12 @@ namespace parse
 	bool parser_state::reduce()
 	{
 		// try to combine any subtrees if it makes sense to do so.
-		for(std::size_t i = 0; i < this->subtrees.size(); i++)
+		if(this->try_reduce_function_definition(0)
+			|| this->try_reduce_variable_declaration(0)
+			|| this->try_reduce_expression(0))
 		{
-			if(this->try_reduce_function_definition(i)
-				|| this->try_reduce_variable_declaration(i)
-				|| this->try_reduce_expression(i))
-			{
-				return true;
-			}
+			this->shift_front();
+			return true;
 		}
 		return false;
 	}
@@ -314,6 +352,7 @@ namespace parse
 			shift();
 			while(this->reduce()){}
 		}
+		// next level and go again (until when???)
 		std::size_t error_count = 0;
 
 		for(const auto& subtree : this->subtrees)
