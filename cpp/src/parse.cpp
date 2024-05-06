@@ -26,7 +26,9 @@ namespace parse
 		bool reduce_from_integer_literal(std::size_t offset);
 		bool reduce_from_decimal_literal(std::size_t offset);
 		bool reduce_from_identifier(std::size_t offset);
+		bool reduce_from_variable_declaration(std::size_t offset);
 		bool reduce_from_expression(std::size_t offset);
+		bool reduce_from_function_definition(std::size_t offset);
 		bool reduce_from_token(std::size_t offset);
 
 		ast parse();
@@ -93,6 +95,12 @@ namespace parse
 					}
 					return std::get<T>(node.payload);
 				}
+			}
+
+			void undo()
+			{
+				diag::assert_that(this->cursor > 0, error_code::ice, "fooey");
+				this->cursor--;
 			}
 
 			bool avail() const
@@ -184,6 +192,128 @@ namespace parse
 			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
+		// not a semicolon.
+		retr.undo();
+
+		if(!retr.avail()){return false;}
+		auto colon1 = retr.retrieve<lex::token>();
+		if(colon1.has_value() && colon1->t == lex::type::colon)
+		{
+			if(!retr.avail()){return false;}
+			// could be a:
+			// - variable declaration (identifier)
+			auto type_name = retr.retrieve<ast::identifier>();
+			if(type_name.has_value())
+			{
+				// definitely a variable declaration.
+				// todo: reduce.
+				retr.reduce_to(ast::variable_declaration{.var_name = value.iden, .type_name = type_name.value().iden}, meta);
+				return true;
+			}
+			// - function definition (2nd colon)
+			retr.undo();
+			if(!retr.avail()){return false;}
+			auto colon2 = retr.retrieve<lex::token>();
+			if(colon2.has_value() && colon2->t == lex::type::colon)
+			{
+				// probably. keep going to check function definition
+				// fnname :: (par1 : ty1, par2 : ty2) -> retty
+				//           ^ we are on this bit.
+				if(!retr.avail()){return false;}
+				auto open_paren = retr.retrieve<lex::token>();
+				if(!open_paren.has_value() || open_paren->t != lex::type::open_paren)
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				std::vector<ast::variable_declaration> params = {};
+				std::optional<lex::token> close_paren = std::nullopt;
+				// keep trying to parse the close paren.
+				while((close_paren = retr.retrieve<lex::token>(), !close_paren.has_value() || close_paren->t != lex::type::close_paren))
+				{
+					// everytime we fail, try to parse a variable declaration instead.
+					retr.undo();
+					auto cur_param = retr.retrieve<ast::variable_declaration>();
+					// neither a close paren or a variable decl. cant parse this.
+					if(!cur_param.has_value())
+					{
+						return false;
+					}
+					params.push_back(cur_param.value());
+					// make sure there's room for the next subtree.
+					if(!retr.avail()){return false;}
+				}
+				// we finally parsed the close paren. now we continue parsing the function def.
+				// fnname :: (par1 : ty1, par2 : ty2) -> retty
+				//                                    ^ we are on this bit.
+				if(!retr.avail()){return false;}
+				auto ret_arrow = retr.retrieve<lex::token>();
+				if(!ret_arrow.has_value() || ret_arrow->t != lex::type::arrow_forward)
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				auto return_ty = retr.retrieve<ast::identifier>();
+				if(!return_ty.has_value())
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				// ok we have another branch here. either:
+				// fnname :: (par1 : ty1, par2 : ty2) -> retty = extern;
+				// or
+				// fnname :: (par1 : ty1, par2 : ty2) -> retty {...}
+				// the former is real easy. lets do that now.
+				auto equals = retr.retrieve<lex::token>();
+				if(equals.has_value() && equals->t == lex::type::operator_equals)
+				{
+					// better see extern and semicolon.
+					if(!retr.avail()){return false;}
+					auto extern_specifier = retr.retrieve<ast::identifier>();
+					if(!extern_specifier.has_value() || extern_specifier->iden != "extern")
+					{
+						return false;
+					}
+					if(!retr.avail()){return false;}
+					auto semicolon = retr.retrieve<lex::token>();
+					if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+					{
+						return false;
+					}
+					// definitely an extern function definition.
+					retr.reduce_to(ast::function_definition{.func_name = value.iden, .params = params, .ret_type = return_ty->iden, .is_extern = true}, meta);
+					return true;
+				}
+				retr.undo();
+				// should be a block.
+				diag::error(error_code::nyi, "functions with implementation blocks are not yet implemented.");
+				return true;	
+			}
+			// can't parse any further.
+			return false;
+		}
+		retr.undo();
+		//if(!retr.avail()){return false;}
+		// todo: more shit if the next token isn't a colon.
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_variable_declaration(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::variable_declaration>(&meta);
+
+		if(!retr.avail()){return false;}
+		// easy option: it's directly followed by a semicolon. thats an expression.
+		auto semicolon = retr.retrieve<lex::token>();
+		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
+		{
+			// this *is* an expression. happy days.
+			retr.reduce_to(ast::expression{.expr = value}, meta);
+			return true;
+		}
 
 		return false;
 	}
@@ -193,6 +323,15 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::expression>(&meta);
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_function_definition(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::function_definition>(&meta);
 
 		return false;
 	}
@@ -208,22 +347,25 @@ namespace parse
 			{
 				std::int64_t val = std::stoull(value.lexeme);
 				retr.reduce_to(ast::integer_literal{.val = val}, meta);
+				return true;
 			}
 			break;
 			case lex::type::decimal_literal:
 			{
 				double val = std::stod(value.lexeme);
 				retr.reduce_to(ast::decimal_literal{.val = val}, meta);
+				return true;
 			}
 			break;
 			case lex::type::identifier:
 			{
 				std::string val = value.lexeme;
 				retr.reduce_to(ast::identifier{.iden = val}, meta);
+				return true;
 			}
 			break;
 			default:
-				diag::error(error_code::syntax, "at {}, invalid token \"{}\"", meta.to_string(), value.lexeme);
+				return false;
 			break;
 		}
 		return false;
@@ -265,9 +407,17 @@ namespace parse
 					{
 						ret = this->reduce_from_identifier(i);
 					},
+					[&](ast::variable_declaration arg)
+					{
+						ret = this->reduce_from_variable_declaration(i);
+					},
 					[&](ast::expression arg)
 					{
 						ret = this->reduce_from_expression(i);
+					},
+					[&](ast::function_definition arg)
+					{
+						ret = this->reduce_from_function_definition(i);
 					},
 					[this, node = this->subtrees[i].tree.root](auto arg)
 					{

@@ -65,6 +65,17 @@ struct ast
 		bool operator==(const binary_operator& rhs) const = default;
 	};
 
+	struct variable_declaration
+	{
+		std::string var_name;	
+		std::string type_name;
+		constexpr std::string to_string() const
+		{
+			return std::format("variable_declaration({} : {})", var_name, type_name);
+		}
+		bool operator==(const variable_declaration& rhs) const = default;
+	};
+
 	struct expression
 	{
 		std::variant
@@ -73,7 +84,8 @@ struct ast
 			binary_operator,
 			ast::integer_literal,
 			ast::decimal_literal,
-			ast::identifier
+			ast::identifier,
+			ast::variable_declaration
 		> expr;
 		constexpr std::string to_string() const
 		{
@@ -85,17 +97,6 @@ struct ast
 			return std::format("expression({})", ret);
 		}
 		bool operator==(const expression& rhs) const = default;
-	};
-
-	struct variable_declaration
-	{
-		std::string var_name;	
-		std::string type_name;
-		constexpr std::string to_string() const
-		{
-			return std::format("variable_declaration({} : {})", var_name, type_name);
-		}
-		bool operator==(const variable_declaration& rhs) const = default;
 	};
 
 	struct function_definition
