@@ -40,32 +40,84 @@ namespace parse
 			diag::assert_that(expr, error_code::ice, "at {}: {}", node.meta.to_string(), msg);
 		}
 
-		template<typename T>
-		T retrieve(std::size_t offset, srcloc* loc = nullptr)
+		struct retriever
 		{
-			subtree atom = this->subtrees[offset];
-			if constexpr(std::is_same_v<std::decay_t<T>, lex::token>)
+			retriever(parser_state& state, std::size_t initial_offset):
+			state(state), initial_offset(initial_offset), cursor(0)
+			{}
+
+			std::size_t get_offset() const
 			{
-				subtree atom = this->subtrees[offset];
-				diag::assert_that(atom.tree == ast{}, error_code::ice, "{} called but atom appears to be an ast payload instead of a token. payload variant id: {}", __FUNCTION__, atom.tree.root.payload.index());
-				if(loc != nullptr)
-				{
-					*loc = atom.tok.meta_srcloc;
-				}
-				return atom.tok;
+				return this->initial_offset + cursor;
 			}
-			else
+
+			template<typename T>
+			T must_retrieve(srcloc* loc = nullptr)
 			{
-				diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
-				const ast::node& node = atom.tree.root;
-				diag::assert_that(std::holds_alternative<T>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
-				if(loc != nullptr)
-				{
-					*loc = node.meta;
-				}
-				return std::get<T>(node.payload);
+				std::optional<T> maybe_value = this->retrieve<T>(loc);
+				diag::assert_that(maybe_value.has_value(), error_code::ice, "ruh roh");
+				return maybe_value.value();
 			}
-		}
+
+			template<typename T>
+			std::optional<T> retrieve(srcloc* loc = nullptr)
+			{
+				subtree atom = state.subtrees[get_offset()];
+				this->cursor++;
+				if constexpr(std::is_same_v<std::decay_t<T>, lex::token>)
+				{
+					if(atom.tree != ast{})
+					{
+						return std::nullopt;
+					}
+					if(loc != nullptr)
+					{
+						*loc = atom.tok.meta_srcloc;
+					}
+					return atom.tok;
+				}
+				else
+				{
+					if(atom.tree == ast{})
+					{
+						return std::nullopt;
+					}
+					const ast::node& node = atom.tree.root;
+					if(!std::holds_alternative<T>(node.payload))
+					{
+						return std::nullopt;
+					}
+					if(loc != nullptr)
+					{
+						*loc = node.meta;
+					}
+					return std::get<T>(node.payload);
+				}
+			}
+
+			bool avail() const
+			{
+				return this->state.subtrees.size() > this->get_offset();
+			}
+
+			template<typename T>
+			void reduce_to(T t, srcloc meta)
+			{
+				diag::assert_that(this->cursor > 0, error_code::ice, "cannot reduce_to because you never retrieved anything previously using this object.");
+				state.do_reduce(this->initial_offset, this->cursor, subtree
+				{
+					.tree = {.root = ast::node
+					{
+						.payload = t,
+						.meta = meta
+					}}
+				});
+			}
+
+			parser_state& state;
+			std::size_t initial_offset;
+			std::size_t cursor;
+		};
 
 		void shift();
 		bool reduce();
@@ -81,18 +133,17 @@ namespace parse
 
 	bool parser_state::reduce_from_integer_literal(std::size_t offset)
 	{
+		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = this->retrieve<ast::integer_literal>(offset, &meta);
+		auto value = retr.must_retrieve<ast::integer_literal>(&meta);
 
+		if(!retr.avail()){return false;}
 		// easy option: it's directly followed by a semicolon. thats an expression.
-		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		auto semicolon = retr.retrieve<lex::token>();
+		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(offset, 2, subtree
-			{.tree ={.root = ast::node{
-				.payload = ast::expression{.expr = value},
-				.meta = meta
-			}}});
+			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
 
@@ -101,17 +152,17 @@ namespace parse
 
 	bool parser_state::reduce_from_decimal_literal(std::size_t offset)
 	{
+		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = this->retrieve<ast::decimal_literal>(offset, &meta);
+		auto value = retr.must_retrieve<ast::decimal_literal>(&meta);
 
-		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		if(!retr.avail()){return false;}
+		// easy option: it's directly followed by a semicolon. thats an expression.
+		auto semicolon = retr.retrieve<lex::token>();
+		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(offset, 2, subtree
-			{.tree ={.root = ast::node{
-				.payload = ast::expression{.expr = value},
-				.meta = meta
-			}}});
+			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
 
@@ -120,74 +171,55 @@ namespace parse
 
 	bool parser_state::reduce_from_identifier(std::size_t offset)
 	{
+		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = this->retrieve<ast::identifier>(offset, &meta);
+		auto value = retr.must_retrieve<ast::identifier>(&meta);
 
-		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		if(!retr.avail()){return false;}
+		// easy option: it's directly followed by a semicolon. thats an expression.
+		auto semicolon = retr.retrieve<lex::token>();
+		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(offset, 2, subtree
-			{.tree ={.root = ast::node{
-				.payload = ast::expression{.expr = value},
-				.meta = meta
-			}}});
+			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
-		
+
 		return false;
 	}
 
 	bool parser_state::reduce_from_expression(std::size_t offset)
 	{
+		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = this->retrieve<ast::expression>(offset, &meta);
+		auto value = retr.must_retrieve<ast::expression>(&meta);
 
 		return false;
 	}
 
 	bool parser_state::reduce_from_token(std::size_t offset)
 	{
+		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = this->retrieve<lex::token>(offset, &meta);
+		auto value = retr.must_retrieve<lex::token>(&meta);
 		switch(value.t)
 		{
 			case lex::type::integer_literal:
 			{
 				std::int64_t val = std::stoull(value.lexeme);
-				this->do_reduce(offset, 1, subtree
-				{
-					.tree = ast{.root = ast::node
-					{
-						.payload = ast::integer_literal{.val = val},
-						.meta = meta
-					}}
-				});
+				retr.reduce_to(ast::integer_literal{.val = val}, meta);
 			}
 			break;
 			case lex::type::decimal_literal:
 			{
 				double val = std::stod(value.lexeme);
-				this->do_reduce(offset, 1, subtree
-				{
-					.tree = ast{.root = ast::node
-					{
-						.payload = ast::decimal_literal{.val = val},
-						.meta = meta
-					}}
-				});
+				retr.reduce_to(ast::decimal_literal{.val = val}, meta);
 			}
 			break;
 			case lex::type::identifier:
 			{
 				std::string val = value.lexeme;
-				this->do_reduce(offset, 1, subtree
-				{
-					.tree = ast{.root = ast::node
-					{
-						.payload = ast::identifier{.iden = val},
-						.meta = meta
-					}}
-				});
+				retr.reduce_to(ast::identifier{.iden = val}, meta);
 			}
 			break;
 			default:
@@ -214,9 +246,8 @@ namespace parse
 		}
 
 		bool ret = true;
-		for(std::size_t i = 0; i < this->subtrees.size() && ret == true; i++)
+		for(std::size_t i = 0; i < this->subtrees.size(); i++)
 		{
-			ret = false;
 			if(this->subtrees[i].tree != ast{})
 			{
 				// its something.
@@ -233,6 +264,10 @@ namespace parse
 					[&](ast::identifier arg)
 					{
 						ret = this->reduce_from_identifier(i);
+					},
+					[&](ast::expression arg)
+					{
+						ret = this->reduce_from_expression(i);
 					},
 					[this, node = this->subtrees[i].tree.root](auto arg)
 					{
