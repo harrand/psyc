@@ -46,6 +46,12 @@ namespace parse
 		void shift();
 		bool reduce();
 
+		void do_reduce(std::size_t subtrees_offset, std::size_t count_to_remove, subtree replacement)
+		{
+			this->subtrees.erase(this->subtrees.begin() + subtrees_offset, this->subtrees.begin() + subtrees_offset + count_to_remove);
+			this->subtrees.insert(this->subtrees.begin() + subtrees_offset, replacement);
+		}
+
 		std::deque<subtree> subtrees = {};
 	};
 
@@ -108,6 +114,18 @@ namespace parse
 		diag::assert_that(std::holds_alternative<ast::integer_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
 		auto value = std::get<ast::integer_literal>(node.payload);
 
+		// easy option: it's directly followed by a semicolon. thats an expression.
+		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		{
+			// this *is* an expression. happy days.
+			this->do_reduce(0, 2, subtree
+			{.tree ={.root = ast::node{
+				.payload = ast::expression{.expr = value},
+				.meta = atom.tree.root.meta
+			}}});
+			return true;
+		}
+
 		return false;
 	}
 
@@ -119,6 +137,17 @@ namespace parse
 		diag::assert_that(std::holds_alternative<ast::decimal_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
 		auto value = std::get<ast::decimal_literal>(node.payload);
 
+		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		{
+			// this *is* an expression. happy days.
+			this->do_reduce(0, 2, subtree
+			{.tree ={.root = ast::node{
+				.payload = ast::expression{.expr = value},
+				.meta = atom.tree.root.meta
+			}}});
+			return true;
+		}
+
 		return false;
 	}
 
@@ -129,6 +158,17 @@ namespace parse
 		const ast::node& node = atom.tree.root;
 		diag::assert_that(std::holds_alternative<ast::identifier>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
 		auto value = std::get<ast::identifier>(node.payload);
+
+		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
+		{
+			// this *is* an expression. happy days.
+			this->do_reduce(0, 2, subtree
+			{.tree ={.root = ast::node{
+				.payload = ast::expression{.expr = value},
+				.meta = atom.tree.root.meta
+			}}});
+			return true;
+		}
 		
 		return false;
 	}
