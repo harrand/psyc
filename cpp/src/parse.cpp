@@ -26,6 +26,7 @@ namespace parse
 		bool reduce_from_integer_literal(std::size_t offset);
 		bool reduce_from_decimal_literal(std::size_t offset);
 		bool reduce_from_identifier(std::size_t offset);
+		bool reduce_from_expression(std::size_t offset);
 		bool reduce_from_token(std::size_t offset);
 
 		ast parse();
@@ -37,6 +38,33 @@ namespace parse
 		void node_internal_assert(const ast::node& node, bool expr, std::string msg)
 		{
 			diag::assert_that(expr, error_code::ice, "at {}: {}", node.meta.to_string(), msg);
+		}
+
+		template<typename T>
+		T retrieve(std::size_t offset, srcloc* loc = nullptr)
+		{
+			subtree atom = this->subtrees[offset];
+			if constexpr(std::is_same_v<std::decay_t<T>, lex::token>)
+			{
+				subtree atom = this->subtrees[offset];
+				diag::assert_that(atom.tree == ast{}, error_code::ice, "{} called but atom appears to be an ast payload instead of a token. payload variant id: {}", __FUNCTION__, atom.tree.root.payload.index());
+				if(loc != nullptr)
+				{
+					*loc = atom.tok.meta_srcloc;
+				}
+				return atom.tok;
+			}
+			else
+			{
+				diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
+				const ast::node& node = atom.tree.root;
+				diag::assert_that(std::holds_alternative<T>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
+				if(loc != nullptr)
+				{
+					*loc = node.meta;
+				}
+				return std::get<T>(node.payload);
+			}
 		}
 
 		void shift();
@@ -53,11 +81,8 @@ namespace parse
 
 	bool parser_state::reduce_from_integer_literal(std::size_t offset)
 	{
-		subtree atom = this->subtrees[offset];
-		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
-		const ast::node& node = atom.tree.root;
-		diag::assert_that(std::holds_alternative<ast::integer_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
-		auto value = std::get<ast::integer_literal>(node.payload);
+		srcloc meta;
+		auto value = this->retrieve<ast::integer_literal>(offset, &meta);
 
 		// easy option: it's directly followed by a semicolon. thats an expression.
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
@@ -66,7 +91,7 @@ namespace parse
 			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
-				.meta = atom.tree.root.meta
+				.meta = meta
 			}}});
 			return true;
 		}
@@ -76,11 +101,8 @@ namespace parse
 
 	bool parser_state::reduce_from_decimal_literal(std::size_t offset)
 	{
-		subtree atom = this->subtrees[offset];
-		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
-		const ast::node& node = atom.tree.root;
-		diag::assert_that(std::holds_alternative<ast::decimal_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
-		auto value = std::get<ast::decimal_literal>(node.payload);
+		srcloc meta;
+		auto value = this->retrieve<ast::decimal_literal>(offset, &meta);
 
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
 		{
@@ -88,7 +110,7 @@ namespace parse
 			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
-				.meta = atom.tree.root.meta
+				.meta = meta
 			}}});
 			return true;
 		}
@@ -98,11 +120,8 @@ namespace parse
 
 	bool parser_state::reduce_from_identifier(std::size_t offset)
 	{
-		subtree atom = this->subtrees[offset];
-		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
-		const ast::node& node = atom.tree.root;
-		diag::assert_that(std::holds_alternative<ast::identifier>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
-		auto value = std::get<ast::identifier>(node.payload);
+		srcloc meta;
+		auto value = this->retrieve<ast::identifier>(offset, &meta);
 
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
 		{
@@ -110,7 +129,7 @@ namespace parse
 			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
-				.meta = atom.tree.root.meta
+				.meta = meta
 			}}});
 			return true;
 		}
@@ -118,53 +137,61 @@ namespace parse
 		return false;
 	}
 
+	bool parser_state::reduce_from_expression(std::size_t offset)
+	{
+		srcloc meta;
+		auto value = this->retrieve<ast::expression>(offset, &meta);
+
+		return false;
+	}
+
 	bool parser_state::reduce_from_token(std::size_t offset)
 	{
-		subtree atom = this->subtrees[offset];
-		diag::assert_that(atom.tree == ast{}, error_code::ice, "{} called but atom appears to be an ast payload instead of a token. payload variant id: {}", __FUNCTION__, atom.tree.root.payload.index());
-		switch(atom.tok.t)
+		srcloc meta;
+		auto value = this->retrieve<lex::token>(offset, &meta);
+		switch(value.t)
 		{
 			case lex::type::integer_literal:
 			{
-				std::int64_t val = std::stoull(atom.tok.lexeme);
+				std::int64_t val = std::stoull(value.lexeme);
 				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
 						.payload = ast::integer_literal{.val = val},
-						.meta = atom.tok.meta_srcloc
+						.meta = meta
 					}}
 				});
 			}
 			break;
 			case lex::type::decimal_literal:
 			{
-				double val = std::stod(atom.tok.lexeme);
+				double val = std::stod(value.lexeme);
 				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
 						.payload = ast::decimal_literal{.val = val},
-						.meta = atom.tok.meta_srcloc
+						.meta = meta
 					}}
 				});
 			}
 			break;
 			case lex::type::identifier:
 			{
-				std::string val = atom.tok.lexeme;
+				std::string val = value.lexeme;
 				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
 						.payload = ast::identifier{.iden = val},
-						.meta = atom.tok.meta_srcloc
+						.meta = meta
 					}}
 				});
 			}
 			break;
 			default:
-				diag::error(error_code::syntax, "at {}, invalid token \"{}\"", atom.tok.meta_srcloc.to_string(), atom.tok.lexeme);
+				diag::error(error_code::syntax, "at {}, invalid token \"{}\"", meta.to_string(), value.lexeme);
 			break;
 		}
 		return false;
