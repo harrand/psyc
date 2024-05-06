@@ -27,9 +27,10 @@ namespace parse
 		ast try_parse_decimal_literal();
 		ast try_parse_identifier();
 
-		bool try_reduce_variable_declaration(std::size_t offset, int* subtree_size_change = nullptr);
-		bool try_reduce_function_definition(std::size_t offset, int* subtree_size_change = nullptr);
-		bool try_reduce_expression(std::size_t offset, int* subtree_size_change = nullptr);
+		bool reduce_from_integer_literal();
+		bool reduce_from_decimal_literal();
+		bool reduce_from_identifier();
+		bool reduce_from_token();
 
 		ast parse();
 
@@ -45,22 +46,7 @@ namespace parse
 		void shift();
 		bool reduce();
 
-		void shift_front()
-		{
-			diag::assert_that(this->subtrees.size(), error_code::ice, "try to shift a subtree from the front when the list of subtrees was empty");
-			this->subtrees_next_level.push_back(this->subtrees.front());
-			this->subtrees.pop_front();
-		}
-
-		void next_level()
-		{
-			diag::assert_that(this->subtrees.empty(), error_code::ice, "try to go to next level when there are still {} unresolved subtrees", this->subtrees.size());
-			this->subtrees = this->subtrees_next_level;
-			this->subtrees_next_level.clear();
-		}
-
 		std::deque<subtree> subtrees = {};
-		std::deque<subtree> subtrees_next_level = {};
 	};
 
 	ast parser_state::try_parse_integer_literal()
@@ -114,204 +100,41 @@ namespace parse
 		return {};
 	}
 
-	bool parser_state::try_reduce_variable_declaration(std::size_t offset, int* subtree_size_change)
+	bool parser_state::reduce_from_integer_literal()
 	{
-		// varname : ty = initialiser;
-		// `= initialiser` is optional.
-		ast::variable_declaration decl;
+		subtree atom = this->subtrees.front();
+		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
+		const ast::node& node = atom.tree.root;
+		diag::assert_that(std::holds_alternative<ast::integer_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
+		auto value = std::get<ast::integer_literal>(node.payload);
 
-		// varname
-		if(this->subtrees.size() < 3 + offset)
-		{
-			return false;
-		}
-		subtree var_name = this->subtrees[offset + 0];
-		if(var_name.tree == ast{} || !std::holds_alternative<ast::identifier>(var_name.tree.root.payload))
-		{
-			return false;
-		}
-		decl.var_name = std::get<ast::identifier>(var_name.tree.root.payload).iden;
-
-		// :
-		subtree colon = this->subtrees[offset + 1];
-		if(colon.tree != ast{} || colon.tok.t != lex::type::colon)
-		{
-			return false;
-		}
-
-		// typename
-		subtree type_name = this->subtrees[offset + 2];
-		if(type_name.tree == ast{} || !std::holds_alternative<ast::identifier>(type_name.tree.root.payload))
-		{
-			return false;
-		}
-		decl.type_name = std::get<ast::identifier>(type_name.tree.root.payload).iden;
-		int sz = this->subtrees.size();
-		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 3);
-		this->subtrees.insert(this->subtrees.begin() + offset,{.tree = ast
-		{
-			.root =
-			{
-				ast::node
-				{
-					.payload = decl,
-					.meta = var_name.tree.root.meta,
-					.children = {}
-				}
-			}	
-		}});
-		if(subtree_size_change != nullptr)
-		{
-			*subtree_size_change = sz - this->subtrees.size();
-		}
-		return true;
+		return false;
 	}
 
-	bool parser_state::try_reduce_function_definition(std::size_t offset, int* subtree_size_change)
+	bool parser_state::reduce_from_decimal_literal()
 	{
-		// funcname :: (par1 : par1ty, par2 : par2ty) -> retty
-		if(this->subtrees.size() <= 10 + offset)
-		{
-			return false;
-		}
-		ast::function_definition def;
-		subtree funcname = this->subtrees[offset + 0];
-		if(funcname.tree == ast{} || !std::holds_alternative<ast::identifier>(funcname.tree.root.payload))
-		{
-			return false;
-		}
-		def.func_name = std::get<ast::identifier>(funcname.tree.root.payload).iden;
-		subtree colon1 = this->subtrees[offset + 1];
-		if(colon1.tok.t != lex::type::colon)
-		{
-			return false;
-		}
-		subtree colon2 = this->subtrees[offset + 2];
-		if(colon2.tok.t != lex::type::colon)
-		{
-			return false;
-		}
-		subtree open_par = this->subtrees[offset + 3];
-		if(open_par.tok.t != lex::type::open_paren)
-		{
-			return false;
-		}
-		std::vector<ast::variable_declaration> params = {};
-		std::size_t id = offset + 4;
-		bool terminated = false;
-		while(id < this->subtrees.size())
-		{
-			// we're either looking for a variable declaration or a close paren.
-			subtree val = this->subtrees[id];
-			if(val.tok.t == lex::type::close_paren)
-			{
-				terminated = true;
-				break;
-			}
-			else
-			{
-				// it should be a variable declaration.
-				// if it isn't, try to reduce it to one.
-				if(val.tree == ast{} || !std::holds_alternative<ast::variable_declaration>(val.tree.root.payload))
-				{
-					int sz_change = 0;
-					if(!this->try_reduce_variable_declaration(id, &sz_change) || sz_change > 0)
-					{
-						return false;
-					}
-					// retrieve val as the subtree at this id should've changed.
-					val = this->subtrees[id];
-				}
-				diag::assert_that(val.tree != ast{} && std::holds_alternative<ast::variable_declaration>(val.tree.root.payload), error_code::ice, "parser said it reduced a variable declaration, but token(s) {} (at {}) do not comprise a variable declaration", val.tree.root.meta.to_string(), val.tree.root.to_string());
-				params.push_back(std::get<ast::variable_declaration>(val.tree.root.payload));
-				//id -= sz_change;
-			}
-			id++;
-		}
-		if(!terminated) // never found the close_paren
-		{
-			return false;
-		}
-		def.params = params;
-		subtree retty_arrow = this->subtrees[id + 1];
-		if(retty_arrow.tok.t != lex::type::arrow_forward)
-		{
-			return false;
-		}
-		subtree retty = this->subtrees[id + 2];
-		if(retty.tree == ast{} || !std::holds_alternative<ast::identifier>(retty.tree.root.payload))
-		{
-			return false;
-		}
-		def.ret_type = std::get<ast::identifier>(retty.tree.root.payload).iden;
-		// either we now have a block, or an extern
-		// for now we just assume extern.
-		subtree equals = this->subtrees[id + 3];
-		if(equals.tok.t != lex::type::operator_equals)
-		{
-			return false;
-		}
-		subtree extern_specifier = this->subtrees[id + 4];
-		if(extern_specifier.tree == ast{} || !std::holds_alternative<ast::identifier>(extern_specifier.tree.root.payload))
-		{
-			return false;
-		}
-		if(std::get<ast::identifier>(extern_specifier.tree.root.payload).iden != "extern")
-		{
-			return false;
-		}
-		def.is_extern = true;
-		subtree semicolon = this->subtrees[id + 5];
-		if(semicolon.tok.t != lex::type::semicolon)
-		{
-			return false;
-		}
-		// todo: block
-		int sz = this->subtrees.size();
-		this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + id + 6);
-		this->subtrees.insert(this->subtrees.begin() + offset, {.tree = ast
-		{
-			.root =
-			{
-				ast::node
-				{
-					.payload = def,
-					.meta = funcname.tree.root.meta
-				}
-			}
-		}});
-		if(subtree_size_change != nullptr)
-		{
-			*subtree_size_change = sz - this->subtrees.size();
-		}
-		return true;
+		subtree atom = this->subtrees.front();
+		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
+		const ast::node& node = atom.tree.root;
+		diag::assert_that(std::holds_alternative<ast::decimal_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
+		auto value = std::get<ast::decimal_literal>(node.payload);
+
+		return false;
 	}
 
-	bool parser_state::try_reduce_expression(std::size_t offset, int* subtree_size_change)
+	bool parser_state::reduce_from_identifier()
 	{
-		if(this->subtrees.size() < 2 + offset)
-		{
-			return false;
-		}
-		subtree p0 = this->subtrees[offset + 0];
-		if(std::holds_alternative<ast::integer_literal>(p0.tree.root.payload))
-		{
-			ast::node node = p0.tree.root;
-			node.payload = ast::expression{.expr = std::get<ast::integer_literal>(node.payload)};
-			// if it ends with a semicolon, we're done.
-			if(this->subtrees[offset + 1].tok.t == lex::type::semicolon)
-			{
-				int sz = this->subtrees.size();
-				this->subtrees.erase(this->subtrees.begin() + offset, this->subtrees.begin() + offset + 2);
-				this->subtrees.insert(this->subtrees.begin() + offset, subtree{.tree = ast{.root = node}});
-				if(subtree_size_change != nullptr)
-				{
-					*subtree_size_change = sz - this->subtrees.size();
-				}
-				return true;
-			}
-		}
+		subtree atom = this->subtrees.front();
+		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
+		const ast::node& node = atom.tree.root;
+		diag::assert_that(std::holds_alternative<ast::identifier>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
+		auto value = std::get<ast::identifier>(node.payload);
+		
+		return false;
+	}
 
+	bool parser_state::reduce_from_token()
+	{
 		return false;
 	}
 
@@ -338,14 +161,41 @@ namespace parse
 	bool parser_state::reduce()
 	{
 		// try to combine any subtrees if it makes sense to do so.
-		if(this->try_reduce_function_definition(0)
-			|| this->try_reduce_variable_declaration(0)
-			|| this->try_reduce_expression(0))
+		if(this->subtrees.empty())
 		{
-			this->shift_front();
-			return true;
+			return false;
 		}
-		return false;
+
+		subtree cur = this->subtrees.front();
+		bool ret = false;
+		if(cur.tree != ast{})
+		{
+			// its something.
+			std::visit(util::overload
+			{
+				[&](ast::integer_literal arg)
+				{
+					ret = this->reduce_from_integer_literal();
+				},
+				[&](ast::decimal_literal arg)
+				{
+					ret = this->reduce_from_decimal_literal();
+				},
+				[&](ast::identifier arg)
+				{
+					ret = this->reduce_from_identifier();
+				},
+				[this, node = cur.tree.root](auto arg)
+				{
+					this->node_internal_assert(node, false, std::format("don't know how to reduce from the provided non-token atom. variant id: {}", node.payload.index()));
+				}
+			}, cur.tree.root.payload);
+		}
+		else
+		{
+			ret = this->reduce_from_token();
+		}
+		return ret;
 	}
 
 	ast parser_state::parse()
@@ -359,12 +209,6 @@ namespace parse
 			shift();
 			while(this->reduce()){}
 		}
-		bool reduced_more = false;
-		do
-		{
-			this->next_level();
-			reduced_more = this->reduce();
-		}while(reduced_more);
 		// next level and go again (until when???)
 		std::size_t error_count = 0;
 
