@@ -23,10 +23,10 @@ namespace parse
 		std::size_t tokidx = 0;
 		lex::const_token_view tokens;
 
-		bool reduce_from_integer_literal();
-		bool reduce_from_decimal_literal();
-		bool reduce_from_identifier();
-		bool reduce_from_token();
+		bool reduce_from_integer_literal(std::size_t offset);
+		bool reduce_from_decimal_literal(std::size_t offset);
+		bool reduce_from_identifier(std::size_t offset);
+		bool reduce_from_token(std::size_t offset);
 
 		ast parse();
 
@@ -51,9 +51,9 @@ namespace parse
 		std::deque<subtree> subtrees = {};
 	};
 
-	bool parser_state::reduce_from_integer_literal()
+	bool parser_state::reduce_from_integer_literal(std::size_t offset)
 	{
-		subtree atom = this->subtrees.front();
+		subtree atom = this->subtrees[offset];
 		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
 		const ast::node& node = atom.tree.root;
 		diag::assert_that(std::holds_alternative<ast::integer_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
@@ -63,7 +63,7 @@ namespace parse
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(0, 2, subtree
+			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
 				.meta = atom.tree.root.meta
@@ -74,9 +74,9 @@ namespace parse
 		return false;
 	}
 
-	bool parser_state::reduce_from_decimal_literal()
+	bool parser_state::reduce_from_decimal_literal(std::size_t offset)
 	{
-		subtree atom = this->subtrees.front();
+		subtree atom = this->subtrees[offset];
 		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
 		const ast::node& node = atom.tree.root;
 		diag::assert_that(std::holds_alternative<ast::decimal_literal>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
@@ -85,7 +85,7 @@ namespace parse
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(0, 2, subtree
+			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
 				.meta = atom.tree.root.meta
@@ -96,9 +96,9 @@ namespace parse
 		return false;
 	}
 
-	bool parser_state::reduce_from_identifier()
+	bool parser_state::reduce_from_identifier(std::size_t offset)
 	{
-		subtree atom = this->subtrees.front();
+		subtree atom = this->subtrees[offset];
 		diag::assert_that(atom.tree != ast{}, error_code::ice, "{} called but atom is not even an ast payload; its a token: \"{}\"", __FUNCTION__, atom.tok.lexeme);
 		const ast::node& node = atom.tree.root;
 		diag::assert_that(std::holds_alternative<ast::identifier>(node.payload), error_code::ice, "{} called but atom node payload is not correct. variant id: {}", __FUNCTION__, node.payload.index());
@@ -107,7 +107,7 @@ namespace parse
 		if(this->subtrees.size() > 2 && this->subtrees[1].tok.t == lex::type::semicolon)
 		{
 			// this *is* an expression. happy days.
-			this->do_reduce(0, 2, subtree
+			this->do_reduce(offset, 2, subtree
 			{.tree ={.root = ast::node{
 				.payload = ast::expression{.expr = value},
 				.meta = atom.tree.root.meta
@@ -118,16 +118,16 @@ namespace parse
 		return false;
 	}
 
-	bool parser_state::reduce_from_token()
+	bool parser_state::reduce_from_token(std::size_t offset)
 	{
-		subtree atom = this->subtrees.front();
+		subtree atom = this->subtrees[offset];
 		diag::assert_that(atom.tree == ast{}, error_code::ice, "{} called but atom appears to be an ast payload instead of a token. payload variant id: {}", __FUNCTION__, atom.tree.root.payload.index());
 		switch(atom.tok.t)
 		{
 			case lex::type::integer_literal:
 			{
 				std::int64_t val = std::stoull(atom.tok.lexeme);
-				this->do_reduce(0, 1, subtree
+				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
@@ -140,7 +140,7 @@ namespace parse
 			case lex::type::decimal_literal:
 			{
 				double val = std::stod(atom.tok.lexeme);
-				this->do_reduce(0, 1, subtree
+				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
@@ -153,7 +153,7 @@ namespace parse
 			case lex::type::identifier:
 			{
 				std::string val = atom.tok.lexeme;
-				this->do_reduce(0, 1, subtree
+				this->do_reduce(offset, 1, subtree
 				{
 					.tree = ast{.root = ast::node
 					{
@@ -186,34 +186,37 @@ namespace parse
 			return false;
 		}
 
-		subtree cur = this->subtrees.front();
-		bool ret = false;
-		if(cur.tree != ast{})
+		bool ret = true;
+		for(std::size_t i = 0; i < this->subtrees.size() && ret == true; i++)
 		{
-			// its something.
-			std::visit(util::overload
+			ret = false;
+			if(this->subtrees[i].tree != ast{})
 			{
-				[&](ast::integer_literal arg)
+				// its something.
+				std::visit(util::overload
 				{
-					ret = this->reduce_from_integer_literal();
-				},
-				[&](ast::decimal_literal arg)
-				{
-					ret = this->reduce_from_decimal_literal();
-				},
-				[&](ast::identifier arg)
-				{
-					ret = this->reduce_from_identifier();
-				},
-				[this, node = cur.tree.root](auto arg)
-				{
-					this->node_internal_assert(node, false, std::format("don't know how to reduce from the provided non-token atom. variant id: {}", node.payload.index()));
-				}
-			}, cur.tree.root.payload);
-		}
-		else
-		{
-			ret = this->reduce_from_token();
+					[&](ast::integer_literal arg)
+					{
+						ret = this->reduce_from_integer_literal(i);
+					},
+					[&](ast::decimal_literal arg)
+					{
+						ret = this->reduce_from_decimal_literal(i);
+					},
+					[&](ast::identifier arg)
+					{
+						ret = this->reduce_from_identifier(i);
+					},
+					[this, node = this->subtrees[i].tree.root](auto arg)
+					{
+						this->node_internal_assert(node, false, std::format("don't know how to reduce from the provided non-token atom. variant id: {}", node.payload.index()));
+					}
+				}, this->subtrees[i].tree.root.payload);
+			}
+			else
+			{
+				ret = this->reduce_from_token(i);
+			}
 		}
 		return ret;
 	}
