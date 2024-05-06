@@ -23,10 +23,6 @@ namespace parse
 		std::size_t tokidx = 0;
 		lex::const_token_view tokens;
 
-		ast try_parse_integer_literal();
-		ast try_parse_decimal_literal();
-		ast try_parse_identifier();
-
 		bool reduce_from_integer_literal();
 		bool reduce_from_decimal_literal();
 		bool reduce_from_identifier();
@@ -54,57 +50,6 @@ namespace parse
 
 		std::deque<subtree> subtrees = {};
 	};
-
-	ast parser_state::try_parse_integer_literal()
-	{
-		const auto& tok = this->tokens[this->tokidx];
-		if(tok.t == lex::type::integer_literal)
-		{
-			return ast
-			{
-				.root =
-				{
-					.payload = ast::integer_literal{.val = std::stoi(tok.lexeme)},
-					.meta = tok.meta_srcloc
-				}
-			};
-		}
-		return {};
-	}
-
-	ast parser_state::try_parse_decimal_literal()
-	{
-		const auto& tok = this->tokens[this->tokidx];
-		if(tok.t == lex::type::decimal_literal)
-		{
-			return ast
-			{
-				.root =
-				{
-					.payload = ast::decimal_literal{.val = std::stod(tok.lexeme)},
-					.meta = tok.meta_srcloc
-				}
-			};
-		}
-		return {};
-	}
-
-	ast parser_state::try_parse_identifier()
-	{
-		const auto& tok = this->tokens[this->tokidx];
-		if(tok.t == lex::type::identifier)
-		{
-			return ast
-			{
-				.root =
-				{
-					.payload = ast::identifier{.iden = tok.lexeme},
-					.meta = tok.meta_srcloc,
-				}
-			};
-		}
-		return {};
-	}
 
 	bool parser_state::reduce_from_integer_literal()
 	{
@@ -175,26 +120,61 @@ namespace parse
 
 	bool parser_state::reduce_from_token()
 	{
+		subtree atom = this->subtrees.front();
+		diag::assert_that(atom.tree == ast{}, error_code::ice, "{} called but atom appears to be an ast payload instead of a token. payload variant id: {}", __FUNCTION__, atom.tree.root.payload.index());
+		switch(atom.tok.t)
+		{
+			case lex::type::integer_literal:
+			{
+				std::int64_t val = std::stoull(atom.tok.lexeme);
+				this->do_reduce(0, 1, subtree
+				{
+					.tree = ast{.root = ast::node
+					{
+						.payload = ast::integer_literal{.val = val},
+						.meta = atom.tok.meta_srcloc
+					}}
+				});
+			}
+			break;
+			case lex::type::decimal_literal:
+			{
+				double val = std::stod(atom.tok.lexeme);
+				this->do_reduce(0, 1, subtree
+				{
+					.tree = ast{.root = ast::node
+					{
+						.payload = ast::decimal_literal{.val = val},
+						.meta = atom.tok.meta_srcloc
+					}}
+				});
+			}
+			break;
+			case lex::type::identifier:
+			{
+				std::string val = atom.tok.lexeme;
+				this->do_reduce(0, 1, subtree
+				{
+					.tree = ast{.root = ast::node
+					{
+						.payload = ast::identifier{.iden = val},
+						.meta = atom.tok.meta_srcloc
+					}}
+				});
+			}
+			break;
+			default:
+				diag::error(error_code::syntax, "at {}, invalid token \"{}\"", atom.tok.meta_srcloc.to_string(), atom.tok.lexeme);
+			break;
+		}
 		return false;
 	}
 
-	// advance the tokidx and create a new subtree from the token if you can.
+	// advance the tokidx and create a new subtree from the token.
 	void parser_state::shift()
 	{
 		const lex::token& tok = this->tokens[this->tokidx];
-		// make new subtree from the bottom-most types.
-		subtree sub;
-		ast subtree_tree{};
-		if(subtree_tree = this->try_parse_integer_literal(), subtree_tree != ast{}
-		||(subtree_tree = this->try_parse_decimal_literal(), subtree_tree != ast{})
-		||(subtree_tree = this->try_parse_identifier(), subtree_tree != ast{}))
-		{
-			this->subtrees.push_back({.tree = subtree_tree});
-		}
-		else
-		{
-			this->subtrees.push_back({.tok = tok});
-		}
+		this->subtrees.push_back({.tok = tok});
 		this->tokidx++;
 	}
 
@@ -272,25 +252,6 @@ namespace parse
 			ret.pretty_print();
 		}
 		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
-
-		/*
-		for(this->tokidx = 0; this->tokidx < this->tokens.size(); this->tokidx++)
-		{
-			ast subtree = {};
-			if(subtree = this->try_parse_integer_literal(), subtree != ast{})
-			{
-				subtree = this->bottom_up_integer_literal(subtree);
-			}
-			else if(subtree = this->try_parse_decimal_literal(), subtree != ast{})
-			{
-				subtree = this->bottom_up_decimal_literal(subtree);
-			}
-			else if(subtree = this->try_parse_identifier(), subtree != ast{})
-			{
-				subtree = this->bottom_up_identifier(subtree);
-			}
-		}
-		*/
 
 		return ret;
 	}
