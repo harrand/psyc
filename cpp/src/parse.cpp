@@ -4,6 +4,13 @@
 #include <deque>
 #include <vector>
 
+/*
+	what i've tried to build here is a bottom-up parser.
+	it's not currently clear whether:
+	- this really is a bottom-up parser (i think so) or an obfuscated recursive-descent parser.
+	- whether this is a weird shift-reduce parser or more specific (LR(k))
+*/
+
 namespace parse
 {
 	struct subtree
@@ -352,6 +359,12 @@ namespace parse
 			shift();
 			while(this->reduce()){}
 		}
+		bool reduced_more = false;
+		do
+		{
+			this->next_level();
+			reduced_more = this->reduce();
+		}while(reduced_more);
 		// next level and go again (until when???)
 		std::size_t error_count = 0;
 
@@ -397,7 +410,7 @@ namespace parse
 
 		return ret;
 	}
-	// LR(0) - a bottom-up parser.
+
 	ast tokens(lex::const_token_view toks)
 	{
 		parser_state state;
