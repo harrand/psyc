@@ -16,6 +16,7 @@ namespace lex
 		colon,
 		ellipsis,
 		dot,
+		comma,
 		arrow_forward,
 		arrow_backward,
 		line_comment,

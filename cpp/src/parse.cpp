@@ -24,15 +24,26 @@ namespace parse
 		lex::const_token_view tokens;
 		ast final_tree;
 
+		// given an ast::integer_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_integer_literal(std::size_t offset);
+		// given an ast::decimal_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_decimal_literal(std::size_t offset);
+		// given an ast::identifier subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_identifier(std::size_t offset);
+		// given an ast::variable_declaration subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_variable_declaration(std::size_t offset);
+		// given an ast::function_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_function_call(std::size_t offset);
+		// given an ast::expression subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_expression(std::size_t offset);
+		// given an ast::function_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_function_definition(std::size_t offset);
+		// given an ast::block subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_block(std::size_t offset);
+		// given a non-ast token at the offset, try to reduce it and its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_token(std::size_t offset);
 
+		// given an atom at the given offset. add it as a new child of the final tree. you should only do this if you're certain the atom will undergo no more reductions.
 		void move_to_final_tree(std::size_t offset)
 		{
 			ast::path_t path = {this->final_tree.root.children.size()};
@@ -111,6 +122,41 @@ namespace parse
 				}
 			}
 
+			std::optional<ast::expression> retrieve_as_expression(srcloc* loc = nullptr, ast::node* output_node = nullptr)
+			{
+				auto maybe_expr = this->retrieve<ast::expression>(loc, output_node);
+				if(!maybe_expr.has_value())
+				{
+					this->undo();
+					// not an expression.
+					// try:
+					// - identifier
+					auto maybe_iden = this->retrieve<ast::identifier>();
+					if(maybe_iden.has_value())
+					{
+						maybe_expr = ast::expression{.expr = maybe_iden.value()};
+						return maybe_expr;
+					}
+					this->undo();
+					// - integer literal
+					auto maybe_integer_literal = this->retrieve<ast::integer_literal>();
+					if(maybe_integer_literal.has_value())
+					{
+						maybe_expr = ast::expression{.expr = maybe_integer_literal.value()};
+						return maybe_expr;
+					}
+					this->undo();
+					// - decimal literal
+					auto maybe_decimal_literal = this->retrieve<ast::decimal_literal>();
+					if(maybe_decimal_literal.has_value())
+					{
+						maybe_expr = ast::expression{.expr = maybe_decimal_literal.value()};
+						return maybe_expr;
+					}
+				}
+				return maybe_expr;
+			}
+
 			void undo()
 			{
 				diag::assert_that(this->cursor > 0, error_code::ice, "fooey");
@@ -159,16 +205,19 @@ namespace parse
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::integer_literal>(&meta);
 
-		if(!retr.avail()){return false;}
-		// easy option: it's directly followed by a semicolon. thats an expression.
-		auto semicolon = retr.retrieve<lex::token>();
-		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
+		// integer literals get reduced to expressions.
+		// if there is a leading semicolon - we eat it.
+		if(retr.avail())
 		{
-			// this *is* an expression. happy days.
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
 			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
-
 		return false;
 	}
 
@@ -178,16 +227,19 @@ namespace parse
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::decimal_literal>(&meta);
 
-		if(!retr.avail()){return false;}
-		// easy option: it's directly followed by a semicolon. thats an expression.
-		auto semicolon = retr.retrieve<lex::token>();
-		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
+		// integer literals get reduced to expressions.
+		// if there is a leading semicolon - we eat it.
+		if(retr.avail())
 		{
-			// this *is* an expression. happy days.
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
 			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
-
 		return false;
 	}
 
@@ -196,18 +248,6 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::identifier>(&meta);
-
-		if(!retr.avail()){return false;}
-		// easy option: it's directly followed by a semicolon. thats an expression.
-		auto semicolon = retr.retrieve<lex::token>();
-		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
-		{
-			// this *is* an expression. happy days.
-			retr.reduce_to(ast::expression{.expr = value}, meta);
-			return true;
-		}
-		// not a semicolon.
-		retr.undo();
 
 		if(!retr.avail()){return false;}
 		auto colon1 = retr.retrieve<lex::token>();
@@ -247,6 +287,16 @@ namespace parse
 				{
 					// everytime we fail, try to parse a variable declaration instead.
 					retr.undo();
+					if(!params.empty())
+					{
+						// need a comma.
+						auto comma = retr.retrieve<lex::token>();
+						if(!comma.has_value() || comma->t != lex::type::comma)
+						{
+							return false;
+						}
+						if(!retr.avail()){return false;}
+					}
 					auto cur_param = retr.retrieve<ast::variable_declaration>();
 					// neither a close paren or a variable decl. cant parse this.
 					if(!cur_param.has_value())
@@ -316,9 +366,57 @@ namespace parse
 			return false;
 		}
 		retr.undo();
-		//if(!retr.avail()){return false;}
-		// todo: more shit if the next token isn't a colon.
+		// not a colon either. how about a function call?
+		auto open_paren = retr.retrieve<lex::token>();
+		volatile bool check = value.iden == "putchar" && retr.get_offset() + 4 < this->subtrees.size();
+		if(open_paren.has_value() && open_paren->t == lex::type::open_paren)
+		{
+			if(!retr.avail()){return false;}
+			std::vector<ast::boxed_expression> params = {};
+			std::optional<lex::token> close_paren = std::nullopt;
+			// keep trying to parse the close paren.
+			while((close_paren = retr.retrieve<lex::token>(), !close_paren.has_value() || close_paren->t != lex::type::close_paren))
+			{
+				// everytime we fail, try to parse a variable declaration instead.
+				retr.undo();
+				if(!params.empty())
+				{
+					// need a comma.
+					auto comma = retr.retrieve<lex::token>();
+					if(!comma.has_value() || comma->t != lex::type::comma)
+					{
+						return false;
+					}
+					if(!retr.avail()){return false;}
+				}
+				// function call parameters can either be:
+				auto cur_param = retr.retrieve_as_expression();
+				// an expression
+				if(!cur_param.has_value())
+				{
+					return false;
+				}
+				params.push_back(cur_param.value());
+				// make sure there's room for the next subtree.
+				if(!retr.avail()){return false;}
+			}
+			retr.reduce_to(ast::function_call{.function_name = value.iden, .params = params}, meta);
+			return true;
+		}
+		retr.undo();
 
+		// screw you then, assume its an expression.
+		auto semicolon = retr.retrieve<lex::token>();
+		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
+		{
+			// this *is* an expression. happy days.
+			retr.reduce_to(ast::expression{.expr = value}, meta);
+			return true;
+		}
+		// not a semicolon.
+		retr.undo();
+
+		// todo: keep going.
 		return false;
 	}
 
@@ -351,6 +449,27 @@ namespace parse
 		if(offset == 0)
 		{
 			this->move_to_final_tree(offset);
+		}
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_function_call(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::function_call>(&meta);
+
+		if(retr.avail())
+		{
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+			retr.reduce_to(ast::expression{.expr = value}, meta);
+			return true;
 		}
 
 		return false;
@@ -510,6 +629,10 @@ namespace parse
 					[&](ast::variable_declaration arg)
 					{
 						ret = this->reduce_from_variable_declaration(i);
+					},
+					[&](ast::function_call arg)
+					{
+						ret = this->reduce_from_function_call(i);
 					},
 					[&](ast::expression arg)
 					{

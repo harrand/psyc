@@ -75,6 +75,23 @@ struct ast
 		}
 		bool operator==(const variable_declaration& rhs) const = default;
 	};
+	struct function_call
+	{
+		std::string function_name;
+		std::vector<boxed_expression> params;
+
+		constexpr std::string to_string() const
+		{
+			std::string params_str = "(";
+			for(const auto& param : this->params)
+			{
+				params_str += param->to_string();
+			}
+			params_str += ")";
+			return std::format("function_call({}({}))", function_name, params_str);
+		}
+		bool operator==(const function_call& rhs) const = default;
+	};
 
 	struct expression
 	{
@@ -85,7 +102,8 @@ struct ast
 			ast::integer_literal,
 			ast::decimal_literal,
 			ast::identifier,
-			ast::variable_declaration
+			ast::variable_declaration,
+			ast::function_call
 		> expr;
 		constexpr std::string to_string() const
 		{
@@ -129,7 +147,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration, function_definition, block>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, variable_declaration, function_definition, block>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

@@ -196,6 +196,10 @@ namespace lex
 				return token{.t = type::dot};
 			}
 		}
+		else if(data.starts_with(","))
+		{
+			return token{.t = type::comma};
+		}
 		else if(data.starts_with("->"))
 		{
 			state.advance();
