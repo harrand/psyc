@@ -99,6 +99,15 @@ struct ast
 		bool operator==(const expression& rhs) const = default;
 	};
 
+	struct block
+	{
+		constexpr std::string to_string() const
+		{
+			return "block()";
+		}
+		bool operator==(const block& rhs) const = default;
+	};
+
 	struct function_definition
 	{
 		std::string func_name;
@@ -120,7 +129,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration, function_definition>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, expression, variable_declaration, function_definition, block>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

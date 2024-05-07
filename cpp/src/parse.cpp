@@ -30,6 +30,7 @@ namespace parse
 		bool reduce_from_variable_declaration(std::size_t offset);
 		bool reduce_from_expression(std::size_t offset);
 		bool reduce_from_function_definition(std::size_t offset);
+		bool reduce_from_block(std::size_t offset);
 		bool reduce_from_token(std::size_t offset);
 
 		void move_to_final_tree(std::size_t offset)
@@ -63,15 +64,15 @@ namespace parse
 			}
 
 			template<typename T>
-			T must_retrieve(srcloc* loc = nullptr)
+			T must_retrieve(srcloc* loc = nullptr, ast::node* output_node = nullptr)
 			{
-				std::optional<T> maybe_value = this->retrieve<T>(loc);
+				std::optional<T> maybe_value = this->retrieve<T>(loc, output_node);
 				diag::assert_that(maybe_value.has_value(), error_code::ice, "ruh roh");
 				return maybe_value.value();
 			}
 
 			template<typename T>
-			std::optional<T> retrieve(srcloc* loc = nullptr)
+			std::optional<T> retrieve(srcloc* loc = nullptr, ast::node* output_node = nullptr)
 			{
 				subtree atom = state.subtrees[get_offset()];
 				this->cursor++;
@@ -101,6 +102,10 @@ namespace parse
 					if(loc != nullptr)
 					{
 						*loc = node.meta;
+					}
+					if(output_node != nullptr)
+					{
+						*output_node = node;
 					}
 					return std::get<T>(node.payload);
 				}
@@ -295,7 +300,16 @@ namespace parse
 				}
 				retr.undo();
 				// should be a block.
-				diag::error(error_code::nyi, "functions with implementation blocks are not yet implemented.");
+				ast::node blk_node;
+				auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
+				if(!blk.has_value())
+				{
+					return false;
+				}
+				retr.reduce_to(ast::function_definition{.func_name = value.iden, .params = params, .ret_type = return_ty->iden, .is_extern = false}, meta);
+				ast::node& node = this->subtrees[offset].tree.root;
+				node.children = {blk_node};
+				// made our function definition with the block as its only child. that block should have its contents as child nodes.
 				return true;	
 			}
 			// can't parse any further.
@@ -333,8 +347,11 @@ namespace parse
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::expression>(&meta);
 
-		// this is the highest-level it gets. push to final tree.
-		this->move_to_final_tree(offset);
+		// as expressions can either be within a block or standalone, the only way we know for sure its standalone is if its the very first subtree.
+		if(offset == 0)
+		{
+			this->move_to_final_tree(offset);
+		}
 
 		return false;
 	}
@@ -343,10 +360,34 @@ namespace parse
 	{
 		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = retr.must_retrieve<ast::function_definition>(&meta);
+		ast::node func_node;
+		auto value = retr.must_retrieve<ast::function_definition>(&meta, &func_node);
 
 		// this is the highest-level it gets. push to final tree.
+		// however, function definitions *must* only be standalone and not a part of a block for example.
+		// for that reason, if its not the very first subtree, we can't move it.
+
+		// note for future: you're probably tearing your hair out implementing methods which means functions *can* be defined beyond top-level scope.
+		// in which case, you'll have to `if(offset == 0) move_to_final_tree` and then struct reduction should check for a function definition.
+		// however, in the case of a genuinely poorly-placed function definition, you've now fucked up the error messages, coz a bunch of shit won't ever parse coz this stays in the subtree list forever.
+		// im afraid thats going to be a bit of a PITA. good luck!
+		this->node_assert(func_node, offset == 0, std::format("function \"{}\" is not defined at the top-level scope. all functions must be defined there.", value.func_name));
 		this->move_to_final_tree(offset);
+		/*
+		if(offset == 0)
+		{
+			this->move_to_final_tree(offset);
+		}
+		*/
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_block(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::block>(&meta);
 
 		return false;
 	}
@@ -379,6 +420,40 @@ namespace parse
 				return true;
 			}
 			break;
+			case lex::type::open_brace:
+			{
+				// this could be a block.	
+				if(!retr.avail()){return false;}
+				std::optional<lex::token> close_brace = std::nullopt;
+				std::vector<ast::node> expression_nodes = {};
+				// keep trying to parse the close brace.
+				while((close_brace = retr.retrieve<lex::token>(), !close_brace.has_value() || close_brace->t != lex::type::close_brace))
+				{
+					retr.undo();
+					srcloc expr_loc;
+					auto an_expr = retr.retrieve<ast::expression>(&expr_loc);
+					if(!an_expr.has_value())
+					{
+						return false;
+					}
+					expression_nodes.push_back(ast::node
+					{
+						.payload = an_expr.value(),
+						.meta = expr_loc,
+						.children = {},
+					});
+					if(!retr.avail()){return false;}
+				}
+				// we got our block.
+				retr.reduce_to(ast::block{}, meta);
+				auto& result = this->subtrees[offset];
+				diag::assert_that(std::holds_alternative<ast::block>(result.tree.root.payload), error_code::ice, "failed to retrieve block spawned at {} even though i literally just created it.", meta.to_string());
+				for(const auto& node : expression_nodes)
+				{
+					result.tree.root.children.push_back(node);
+				}
+				return true;
+			}
 			default:
 				return false;
 			break;
@@ -389,7 +464,17 @@ namespace parse
 	// advance the tokidx and create a new subtree from the token.
 	void parser_state::shift()
 	{
+		// skip over all comments.
+		while(this->tokens[this->tokidx].t == lex::type::line_comment)
+		{
+			if(++this->tokidx >= this->tokens.size())
+			{
+				// we ran out of shiftin'
+				return;
+			}
+		}
 		const lex::token& tok = this->tokens[this->tokidx];
+		// note: don't put line comments in the subtree list. as far as the AST exists comments are completely invisible.
 		this->subtrees.push_back({.tok = tok});
 		this->tokidx++;
 	}
@@ -434,6 +519,10 @@ namespace parse
 					{
 						ret = this->reduce_from_function_definition(i);
 					},
+					[&](ast::block arg)
+					{
+						ret = this->reduce_from_block(i);
+					},
 					[this, node = this->subtrees[i].tree.root](auto arg)
 					{
 						this->node_internal_assert(node, false, std::format("don't know how to reduce from the provided non-token atom. variant id: {}", node.payload.index()));
@@ -463,24 +552,23 @@ namespace parse
 
 		for(const auto& subtree : this->subtrees)
 		{
+			// subtrees remaining means parse error.
+			if(error_count == 0)
+			{
+				// if this is the first error, print the ast out now.
+				diag::note("ast so far:\n");
+				this->final_tree.pretty_print();
+			}
+			// tell them how shit they are.
+			error_count++;
 			if(subtree.tree == ast{})
 			{
-				error_count++;
-				diag::error_nonblocking(error_code::syntax, "unparsed token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
+				diag::error_nonblocking(error_code::syntax, "unexpected token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
 			}
 			else
 			{
-				/*
-				ast::path_t path = {ret.root.children.size()};
-				ret.root.children.push_back({});
-				subtree.tree.attach_to(ret, path);
-				*/
+				diag::error_nonblocking(error_code::syntax, "unexpected atom(s) at {}: \"{}\"", subtree.tree.root.meta.to_string(), subtree.tree.root.to_string());
 			}
-		}
-		if(error_count > 0)
-		{
-			diag::note("ast so far:\n");
-			this->final_tree.pretty_print();
 		}
 		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
 
