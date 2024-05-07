@@ -22,6 +22,7 @@ namespace parse
 	{
 		std::size_t tokidx = 0;
 		lex::const_token_view tokens;
+		ast final_tree;
 
 		bool reduce_from_integer_literal(std::size_t offset);
 		bool reduce_from_decimal_literal(std::size_t offset);
@@ -30,6 +31,14 @@ namespace parse
 		bool reduce_from_expression(std::size_t offset);
 		bool reduce_from_function_definition(std::size_t offset);
 		bool reduce_from_token(std::size_t offset);
+
+		void move_to_final_tree(std::size_t offset)
+		{
+			ast::path_t path = {this->final_tree.root.children.size()};
+			this->final_tree.root.children.push_back({});
+			this->subtrees[offset].tree.attach_to(this->final_tree, path);
+			this->subtrees.erase(this->subtrees.begin() + offset);
+		}
 
 		ast parse();
 
@@ -324,6 +333,9 @@ namespace parse
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::expression>(&meta);
 
+		// this is the highest-level it gets. push to final tree.
+		this->move_to_final_tree(offset);
+
 		return false;
 	}
 
@@ -332,6 +344,9 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::function_definition>(&meta);
+
+		// this is the highest-level it gets. push to final tree.
+		this->move_to_final_tree(offset);
 
 		return false;
 	}
@@ -435,9 +450,8 @@ namespace parse
 
 	ast parser_state::parse()
 	{
+		this->final_tree = {.root = {}};
 		this->tokidx = 0;
-		ast ret;
-		ret.root = {};
 
 		while(this->tokidx < this->tokens.size())
 		{
@@ -456,19 +470,21 @@ namespace parse
 			}
 			else
 			{
+				/*
 				ast::path_t path = {ret.root.children.size()};
 				ret.root.children.push_back({});
 				subtree.tree.attach_to(ret, path);
+				*/
 			}
 		}
 		if(error_count > 0)
 		{
 			diag::note("ast so far:\n");
-			ret.pretty_print();
+			this->final_tree.pretty_print();
 		}
 		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
 
-		return ret;
+		return this->final_tree;
 	}
 
 	ast tokens(lex::const_token_view toks)
