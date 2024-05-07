@@ -7,7 +7,8 @@ enum class error_code
 	ice,
 	nyi,
 	badargs,
-	syntax,
+	lex,
+	parse,
 	type,
 	_count
 };
@@ -17,7 +18,8 @@ constexpr std::array<const char*, (int)error_code::_count> error_names
 	"internal compiler",
 	"not-yet-implemented",
 	"badargs",
-	"syntax",
+	"lex",
+	"parse",
 	"type"
 };
 

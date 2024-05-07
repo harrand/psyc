@@ -45,7 +45,7 @@ namespace parse
 
 		void node_assert(const ast::node& node, bool expr, std::string msg)
 		{
-			diag::assert_that(expr, error_code::syntax, "at {}: {}", node.meta.to_string(), msg);
+			diag::assert_that(expr, error_code::parse, "at {}: {}", node.meta.to_string(), msg);
 		}
 		void node_internal_assert(const ast::node& node, bool expr, std::string msg)
 		{
@@ -563,14 +563,14 @@ namespace parse
 			error_count++;
 			if(subtree.tree == ast{})
 			{
-				diag::error_nonblocking(error_code::syntax, "unexpected token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
+				diag::error_nonblocking(error_code::parse, "unexpected token(s) at {}: \"{}\"", subtree.tok.meta_srcloc.to_string(), subtree.tok.lexeme);
 			}
 			else
 			{
-				diag::error_nonblocking(error_code::syntax, "unexpected atom(s) at {}: \"{}\"", subtree.tree.root.meta.to_string(), subtree.tree.root.to_string());
+				diag::error_nonblocking(error_code::parse, "unexpected atom(s) at {}: \"{}\"", subtree.tree.root.meta.to_string(), subtree.tree.root.to_string());
 			}
 		}
-		diag::assert_that(error_count == 0, error_code::syntax, "{} unparsed token errors - see above", error_count);
+		diag::assert_that(error_count == 0, error_code::parse, "{} unparsed token/atom errors - see above", error_count);
 
 		return this->final_tree;
 	}

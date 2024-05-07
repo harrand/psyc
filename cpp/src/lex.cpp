@@ -74,7 +74,7 @@ namespace lex
 			return ret;
 		}
 
-		void error_generic(std::string_view dodgy_part, std::string msg, error_code errcode = error_code::syntax)
+		void error_generic(std::string_view dodgy_part, std::string msg, error_code errcode = error_code::lex)
 		{
 			const srcloc curloc
 			{
