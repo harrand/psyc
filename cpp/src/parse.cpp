@@ -405,16 +405,41 @@ namespace parse
 		}
 		retr.undo();
 
-		// screw you then, assume its an expression.
+		// getting difficult here...
+		// at some point we need to know whether an identifier should remain an identifier or become an expression
+		// e.g given the following scenarios, `foo` should be identifier -> expression:
+		//
+		// foo;
+		// -foo;
+		// print(foo)
+		
+		// however, under the following scenarios we do *not* want that reduction to happen:
+		// func :: () -> foo {...}
+		// foo()
+		// in this case, `foo` must remain an identifier, otherwise the reductions of the actual constructs won't happen.
+
+		// my hacky rule to get around this:
+		// identifiers default to expressions iff they are directly proceeded by either a ) or a ;
+		// in the former case - the ) is not consumed but assumed to be a greater reduction.
+		// in the latter case, the semicolon *is* consumed.
 		auto semicolon = retr.retrieve<lex::token>();
 		if(semicolon.has_value() && semicolon->t == lex::type::semicolon)
 		{
-			// this *is* an expression. happy days.
+			// iden; -> expr
 			retr.reduce_to(ast::expression{.expr = value}, meta);
 			return true;
 		}
 		// not a semicolon.
 		retr.undo();
+		// how about a close paren
+		auto close_paren = retr.retrieve<lex::token>();
+		if(close_paren.has_value() && close_paren->t == lex::type::close_paren)
+		{
+			// iden) -> expr (but do not consume the parenthesis)
+			retr.undo();
+			retr.reduce_to(ast::expression{.expr = value}, meta);
+			return true;
+		}
 
 		// todo: keep going.
 		return false;
@@ -573,6 +598,23 @@ namespace parse
 				}
 				return true;
 			}
+			case lex::type::operator_minus:
+			{
+				if(!retr.avail()){return false;}
+				// unary -
+				auto operand = retr.retrieve<ast::expression>();
+				if(operand.has_value())
+				{
+					retr.reduce_to(ast::expression{.expr =
+						ast::unary_operator
+						{
+							.op = value,
+							.expr = operand.value(),
+						}}, meta);
+					return true;
+				}
+			}
+			break;
 			default:
 				return false;
 			break;
