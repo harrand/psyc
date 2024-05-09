@@ -105,6 +105,7 @@ struct ast
 			ast::variable_declaration,
 			ast::function_call
 		> expr;
+		bool capped = false;
 		constexpr std::string to_string() const
 		{
 			std::string ret;
