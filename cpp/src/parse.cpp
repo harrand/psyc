@@ -1,7 +1,9 @@
 #include "parse.hpp"
 #include "lex.hpp"
 #include "diag.hpp"
+#include <climits>
 #include <deque>
+#include <functional>
 #include <vector>
 
 /*
@@ -13,6 +15,21 @@
 
 namespace parse
 {
+	bool token_is_unary_operator(const lex::token& t)
+	{
+		return t.t == lex::type::operator_minus
+			|| t.t == lex::type::operator_plus;
+	}
+
+	bool token_is_binary_operator(const lex::token& t)
+	{
+		return t.t == lex::type::operator_minus
+			|| t.t == lex::type::operator_plus
+			|| t.t == lex::type::operator_asterisk
+			|| t.t == lex::type::operator_slash
+			|| t.t == lex::type::operator_equals
+			|| t.t == lex::type::operator_double_equals;
+	}
 	struct subtree
 	{
 		ast tree = {};
@@ -50,6 +67,20 @@ namespace parse
 			this->final_tree.root.children.push_back({});
 			this->subtrees[offset].tree.attach_to(this->final_tree, path);
 			this->subtrees.erase(this->subtrees.begin() + offset);
+		}
+
+		std::optional<ast::node> pop_from_final_tree_if(std::function<bool(const ast::node&)> predicate)
+		{
+			for(std::size_t i = 0; i < this->final_tree.root.children.size(); i++)
+			{
+				if(predicate(this->final_tree.root.children[i]))
+				{
+					ast::node cpy = this->final_tree.root.children[i];
+					this->final_tree.root.children.erase(this->final_tree.root.children.begin() + i);
+					return cpy;
+				}
+			}
+			return std::nullopt;
 		}
 
 		ast parse();
@@ -252,6 +283,7 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::identifier>(&meta);
+		bool check = value.iden == "putchar" && (offset + 4 < this->subtrees.size());
 
 		if(!retr.avail()){return false;}
 		auto colon1 = retr.retrieve<lex::token>();
@@ -328,20 +360,14 @@ namespace parse
 				}
 				if(!retr.avail()){return false;}
 				// ok we have another branch here. either:
-				// fnname :: (par1 : ty1, par2 : ty2) -> retty = extern;
+				// fnname :: (par1 : ty1, par2 : ty2) -> retty extern;
 				// or
 				// fnname :: (par1 : ty1, par2 : ty2) -> retty {...}
 				// the former is real easy. lets do that now.
-				auto equals = retr.retrieve<lex::token>();
-				if(equals.has_value() && equals->t == lex::type::operator_equals)
+				auto extern_specifier = retr.retrieve<ast::identifier>();
+				if(extern_specifier.has_value() && extern_specifier->iden == "extern")
 				{
 					// better see extern and semicolon.
-					if(!retr.avail()){return false;}
-					auto extern_specifier = retr.retrieve<ast::identifier>();
-					if(!extern_specifier.has_value() || extern_specifier->iden != "extern")
-					{
-						return false;
-					}
 					if(!retr.avail()){return false;}
 					auto semicolon = retr.retrieve<lex::token>();
 					if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
@@ -445,15 +471,16 @@ namespace parse
 			return true;
 		}
 		retr.undo();
-		// how about a operator -
-		auto operator_minus = retr.retrieve<lex::token>();
-		if(operator_minus.has_value() && operator_minus->t == lex::type::operator_minus)
+		// how about an operator.
+		auto potential_operator = retr.retrieve<lex::token>();
+		if(potential_operator.has_value() && token_is_binary_operator(potential_operator.value()))
 		{
 			// iden) -> expr (but do not consume the token)
 			retr.undo();
 			retr.reduce_to(ast::expression{.expr = value, .capped = false}, meta);
 			return true;
 		}
+		// todo: other operators.
 
 		// todo: keep going.
 		return false;
@@ -489,28 +516,22 @@ namespace parse
 			auto tok = retr.retrieve<lex::token>();
 			if(tok.has_value())
 			{
-				switch(tok->t)
+				if(token_is_binary_operator(tok.value()))
 				{
-					case lex::type::operator_minus:
+					if(!retr.avail()){return false;}
+					// unary -
+					auto operand = retr.retrieve<ast::expression>();
+					if(operand.has_value())
 					{
-						if(!retr.avail()){return false;}
-						// unary -
-						auto operand = retr.retrieve<ast::expression>();
-						if(operand.has_value())
-						{
-							retr.reduce_to(ast::expression{.expr =
-								ast::binary_operator
-								{
-									.lhs_expr = value,
-									.op = tok.value(),
-									.rhs_expr = operand.value(),
-								}, .capped = operand.value().capped}, meta);
-							return true;
-						}
+						retr.reduce_to(ast::expression{.expr =
+							ast::binary_operator
+							{
+								.lhs_expr = value,
+								.op = tok.value(),
+								.rhs_expr = operand.value(),
+							}, .capped = operand.value().capped}, meta);
+						return true;
 					}
-					break;
-						return false;
-					default: break;
 				}
 			}
 		}
@@ -642,6 +663,23 @@ namespace parse
 				}
 				// we got our block.
 				retr.reduce_to(ast::block{}, meta);
+				// note: its possible some contents of the block have been already sent to the final tree.
+				// bring them back and make them children of this.
+				std::optional<ast::node> maybe_node = std::nullopt;
+				do
+				{
+					maybe_node = pop_from_final_tree_if([open = meta, close = close_brace->meta_srcloc](const ast::node& n)->bool
+					{
+						return (open < n.meta) && (n.meta < close);
+					});
+					if(maybe_node.has_value())
+					{
+						expression_nodes.push_back(maybe_node.value());
+					}
+				}while(maybe_node.has_value());
+				// expression_nodes may no longer be sorted.
+				// sort them in order of srcloc.
+				std::sort(expression_nodes.begin(), expression_nodes.end());
 				auto& result = this->subtrees[offset];
 				diag::assert_that(std::holds_alternative<ast::block>(result.tree.root.payload), error_code::ice, "failed to retrieve block spawned at {} even though i literally just created it.", meta.to_string());
 				for(const auto& node : expression_nodes)

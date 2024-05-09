@@ -16,6 +16,19 @@ struct srcloc
 		return std::format("{}({}:{})", this->file.filename().string(), this->line, this->column);
 	}
 
+	inline bool operator<(const srcloc& rhs) const
+	{
+		if(this->line < rhs.line)
+		{
+			return true;
+		}
+		if(this->line == rhs.line && this->column < rhs.column)
+		{
+			return true;
+		}
+		return false;
+	}
+
 	static srcloc undefined()
 	{
 		return

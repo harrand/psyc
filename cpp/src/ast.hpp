@@ -169,6 +169,10 @@ struct ast
 			}, this->payload);
 			return ret;
 		}
+		bool operator<(const node& rhs) const
+		{
+			return this->meta < rhs.meta;
+		}
 		bool operator==(const node& rhs) const = default;
 	};
 
