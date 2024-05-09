@@ -368,7 +368,6 @@ namespace parse
 		retr.undo();
 		// not a colon either. how about a function call?
 		auto open_paren = retr.retrieve<lex::token>();
-		volatile bool check = value.iden == "putchar" && retr.get_offset() + 4 < this->subtrees.size();
 		if(open_paren.has_value() && open_paren->t == lex::type::open_paren)
 		{
 			if(!retr.avail()){return false;}
