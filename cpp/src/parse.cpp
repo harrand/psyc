@@ -704,6 +704,37 @@ namespace parse
 				}
 				return true;
 			}
+			case lex::type::open_paren:
+			{
+				if(!retr.avail()){return false;}
+				auto maybe_expr = retr.retrieve<ast::expression>();
+				if(!maybe_expr.has_value())
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				auto close_paren = retr.retrieve<lex::token>();
+				if(!close_paren.has_value() || close_paren->t != lex::type::close_paren)
+				{
+					return false;
+				}
+				// if there is a leading semicolon - we eat it.
+				if(retr.avail())
+				{
+					bool capped = true;
+					auto semicolon = retr.retrieve<lex::token>();
+					if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+					{
+						capped = false;
+						retr.undo();
+					}
+					// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+					maybe_expr->capped |= capped;
+					retr.reduce_to(maybe_expr.value(), meta);
+					return true;
+				}
+			}
+			break;
 			case lex::type::operator_double_equals:
 			{
 				if(!retr.avail()){return false;}
