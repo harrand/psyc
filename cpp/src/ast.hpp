@@ -146,9 +146,20 @@ struct ast
 		bool operator==(const function_definition& rhs) const = default;
 	};
 
+	struct meta_region
+	{
+		std::string name;
+		std::string type;
+		constexpr std::string to_string() const
+		{
+			return std::format("meta_region({} : {})", name, type);
+		}
+		bool operator==(const meta_region& rhs) const = default;
+	};
+
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, variable_declaration, function_definition, block>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, variable_declaration, function_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

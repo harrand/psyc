@@ -181,7 +181,8 @@ namespace lex
 		}
 		else if(data.starts_with("..."))
 		{
-			return token{.t = type::ellipsis};
+			state.advance(2);
+			return token{.t = type::ellipsis, .lexeme = "..."};
 		}
 		else if(data.starts_with("."))
 		{
@@ -205,7 +206,8 @@ namespace lex
 			state.advance();
 			return token
 			{
-				.t = type::arrow_forward
+				.t = type::arrow_forward,
+				.lexeme = "->"
 			};
 		}
 		else if(data.starts_with("<-"))
@@ -213,7 +215,8 @@ namespace lex
 			state.advance();
 			return token
 			{
-				.t = type::arrow_backward
+				.t = type::arrow_backward,
+				.lexeme = "<-"
 			};
 		}
 		else if(data.starts_with("//"))
@@ -257,7 +260,7 @@ namespace lex
 		else if(data.starts_with("=="))
 		{
 			state.advance();
-			return token{.t = type::operator_double_equals};
+			return token{.t = type::operator_double_equals, .lexeme = "=="};
 		}
 		else if(data.starts_with("="))
 		{
@@ -332,7 +335,8 @@ namespace lex
 			return false;
 			// a dot doesn't break an integer literal.
 		}
-		return !std::isalnum(str.front())
+		return (!std::isalnum(str.front())
+				&& str.front() != '_')
 			|| std::isspace(str.front())
 		;
 	}

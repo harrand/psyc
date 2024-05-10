@@ -57,6 +57,8 @@ namespace parse
 		bool reduce_from_function_definition(std::size_t offset);
 		// given an ast::block subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_block(std::size_t offset);
+		// given an ast::meta_region subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_meta_region(std::size_t offset);
 		// given a non-ast token at the offset, try to reduce it and its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_token(std::size_t offset);
 
@@ -606,6 +608,20 @@ namespace parse
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::block>(&meta);
 
+		// block never reduces to anything.
+		// it also returns false here, coz it stays put until something else uses it in a separate reduction.
+		return false;
+	}
+
+	bool parser_state::reduce_from_meta_region(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::meta_region>(&meta);
+		// meta regions never reduce to anything.
+		// however, they do go straight into the final tree.
+		this->move_to_final_tree(offset);
+
 		return false;
 	}
 
@@ -688,6 +704,33 @@ namespace parse
 				}
 				return true;
 			}
+			case lex::type::operator_double_equals:
+			{
+				if(!retr.avail()){return false;}
+				auto region = retr.retrieve<ast::variable_declaration>();
+				if(!region.has_value())
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				auto double_equals = retr.retrieve<lex::token>();
+				if(!double_equals.has_value() || double_equals->t != lex::type::operator_double_equals)
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				ast::node blk_node;
+				auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
+				if(!blk.has_value())
+				{
+					return false;
+				}
+				retr.reduce_to(ast::meta_region{.name = region->var_name, .type = region->type_name}, meta);
+				ast::node& node = this->subtrees[offset].tree.root;
+				node.children = {blk_node};
+				return true;
+			}
+			break;
 			case lex::type::operator_minus:
 			{
 				if(!retr.avail()){return false;}
@@ -705,6 +748,7 @@ namespace parse
 				}
 			}
 			break;
+			default: break;
 		}
 		return false;
 	}
@@ -774,6 +818,10 @@ namespace parse
 					[&](ast::block arg)
 					{
 						ret = this->reduce_from_block(i);
+					},
+					[&](ast::meta_region arg)
+					{
+						ret = this->reduce_from_meta_region(i);
 					},
 					[this, node = this->subtrees[i].tree.root](auto arg)
 					{
