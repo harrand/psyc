@@ -336,7 +336,8 @@ namespace lex
 			// a dot doesn't break an integer literal.
 		}
 		return (!std::isalnum(str.front())
-				&& str.front() != '_')
+				&& str.front() != '_'
+				&& str.front() != '&')
 			|| std::isspace(str.front())
 		;
 	}
