@@ -282,6 +282,16 @@ namespace lex
 		{
 			return token{.t = type::operator_asterisk};
 		}
+		else if(data.starts_with("deref"))
+		{
+			state.advance(4);
+			return token{.t = type::operator_deref, .lexeme = "deref"};
+		}
+		else if(data.starts_with("ref"))
+		{
+			state.advance(2);
+			return token{.t = type::operator_ref, .lexeme = "ref"};
+		}
 		else if(data.starts_with("?"))
 		{
 			return token{.t = type::question_mark};

@@ -36,6 +36,8 @@ namespace lex
 		operator_minus,
 		operator_slash,
 		operator_asterisk,
+		operator_ref,
+		operator_deref,
 		question_mark,
 		dollar_sign,
 		_count,

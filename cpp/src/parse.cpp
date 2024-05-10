@@ -18,7 +18,9 @@ namespace parse
 	bool token_is_unary_operator(const lex::token& t)
 	{
 		return t.t == lex::type::operator_minus
-			|| t.t == lex::type::operator_plus;
+			|| t.t == lex::type::operator_plus
+			|| t.t == lex::type::operator_ref
+			|| t.t == lex::type::operator_deref;
 	}
 
 	bool token_is_binary_operator(const lex::token& t)
@@ -762,24 +764,23 @@ namespace parse
 				return true;
 			}
 			break;
-			case lex::type::operator_minus:
-			{
-				if(!retr.avail()){return false;}
-				// unary -
-				auto operand = retr.retrieve<ast::expression>();
-				if(operand.has_value())
-				{
-					retr.reduce_to(ast::expression{.expr =
-						ast::unary_operator
-						{
-							.op = value,
-							.expr = operand.value(),
-						}, .capped = operand.value().capped}, meta);
-					return true;
-				}
-			}
-			break;
 			default: break;
+		}
+		if(token_is_unary_operator(value))
+		{
+			if(!retr.avail()){return false;}
+			// unary -
+			auto operand = retr.retrieve<ast::expression>();
+			if(operand.has_value())
+			{
+				retr.reduce_to(ast::expression{.expr =
+					ast::unary_operator
+					{
+						.op = value,
+						.expr = operand.value(),
+					}, .capped = operand.value().capped}, meta);
+				return true;
+			}
 		}
 		return false;
 	}

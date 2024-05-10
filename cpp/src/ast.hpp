@@ -48,7 +48,7 @@ struct ast
 		boxed_expression expr;
 		constexpr std::string to_string() const
 		{
-			return std::format("unop{}({})", op.lexeme, expr->to_string());
+			return std::format("unop({} {})", op.lexeme, expr->to_string());
 		}
 		bool operator==(const unary_operator& rhs) const = default;
 	};
@@ -113,7 +113,7 @@ struct ast
 			{
 				ret = arg.to_string();
 			}, expr);
-			return std::format("expression({})", ret);
+			return std::format("expr({})", ret);
 		}
 		bool operator==(const expression& rhs) const = default;
 	};
