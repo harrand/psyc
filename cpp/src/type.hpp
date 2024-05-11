@@ -3,6 +3,7 @@
 #include "util.hpp"
 #include <array>
 #include <variant>
+#include <vector>
 
 enum class primitive_type
 {
