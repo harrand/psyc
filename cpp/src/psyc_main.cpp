@@ -1,6 +1,7 @@
 #include "config.hpp"
 #include "lex.hpp"
 #include "parse.hpp"
+#include "semal.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
@@ -75,6 +76,17 @@ int main(int argc, char** argv)
 	// buildmeta
 
 	// semal
+	timer::start();
+	semal::state semal;
+	for(const std::filesystem::path input_file : args.input_files)
+	{
+		semal.program_decls.combine(semal::analyse_predecl(parse.parsed_input_files[input_file]));
+	}
+	for(const std::filesystem::path input_file : args.input_files)
+	{
+		semal.analysed_input_files[input_file] = semal::analyse_full(parse.parsed_input_files[input_file], semal.program_decls);
+	}
+	t.semal = timer::elapsed_millis();
 	
 	// codegen
 

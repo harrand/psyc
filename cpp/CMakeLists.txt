@@ -41,6 +41,8 @@ add_executable(psyc
 	src/lex.hpp
 	src/parse.cpp
 	src/parse.hpp
+	src/semal.cpp
+	src/semal.hpp
 	src/srcloc.hpp
 	src/timer.cpp
 	src/timer.hpp
