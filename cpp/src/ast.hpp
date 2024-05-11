@@ -142,7 +142,7 @@ struct ast
 				params_str += param.to_string();
 			}
 			params_str += ")";
-			return std::format("function_definition({} :: ({}) -> {}{})", func_name, params_str, ret_type, is_extern ? " = extern" : "");
+			return std::format("function_definition({} :: ({}) -> {}{})", func_name, params_str, ret_type, is_extern ? " := extern" : "");
 		}
 		bool operator==(const function_definition& rhs) const = default;
 	};

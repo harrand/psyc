@@ -175,6 +175,11 @@ namespace lex
 		{
 			return token{.t = type::semicolon};
 		}
+		else if(data.starts_with(":="))
+		{
+			state.advance();
+			return token{.t = type::initialiser, .lexeme = ":="};
+		}
 		else if(data.starts_with(":"))
 		{
 			return token{.t = type::colon};

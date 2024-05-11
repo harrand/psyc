@@ -303,32 +303,22 @@ namespace parse
 				// if it has an equals then its going to have an initialiser.
 				std::optional<util::box<ast::expression>> initialiser = std::nullopt;
 				if(!retr.avail()){return false;}
-				auto maybe_colon = retr.retrieve<lex::token>();
-				if(maybe_colon.has_value() && maybe_colon->t == lex::type::colon)
+				auto maybe_initialiser_token = retr.retrieve<lex::token>();
+				if(maybe_initialiser_token.has_value() && maybe_initialiser_token->t == lex::type::initialiser)
 				{
+					// it has an initialiser.
 					if(!retr.avail()){return false;}
-					auto maybe_equals = retr.retrieve<lex::token>();
-					if(maybe_equals.has_value() && maybe_equals->t == lex::type::operator_equals)
+					auto maybe_initialiser_expr = retr.retrieve<ast::expression>();
+					if(!maybe_initialiser_expr.has_value())
 					{
-						// it has an initialiser.
-						if(!retr.avail()){return false;}
-						auto maybe_initialiser_expr = retr.retrieve<ast::expression>();
-						if(!maybe_initialiser_expr.has_value())
-						{
-							return false;
-						}
-						initialiser = maybe_initialiser_expr.value();
+						return false;
 					}
-					else
-					{
-						retr.undo();
-					}
+					initialiser = maybe_initialiser_expr.value();
 				}
 				else
 				{
 					retr.undo();
 				}
-				// todo: reduce.
 				retr.reduce_to(ast::variable_declaration{.var_name = value.iden, .type_name = type_name.value().iden, .initialiser = initialiser}, meta);
 				return true;
 			}
@@ -396,21 +386,33 @@ namespace parse
 				// or
 				// fnname :: (par1 : ty1, par2 : ty2) -> retty {...}
 				// the former is real easy. lets do that now.
-				auto extern_specifier = retr.retrieve<ast::identifier>();
-				if(extern_specifier.has_value() && extern_specifier->iden == "extern")
+				auto initialiser_token = retr.retrieve<lex::token>();
+				if(initialiser_token.has_value() && initialiser_token->t == lex::type::initialiser)
 				{
-					// better see extern and semicolon.
 					if(!retr.avail()){return false;}
-					auto semicolon = retr.retrieve<lex::token>();
-					if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+					auto extern_specifier = retr.retrieve<ast::identifier>();
+					if(extern_specifier.has_value() && extern_specifier->iden == "extern")
 					{
-						return false;
+						// better see extern and semicolon.
+						if(!retr.avail()){return false;}
+						auto semicolon = retr.retrieve<lex::token>();
+						if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+						{
+							return false;
+						}
+						// definitely an extern function definition.
+						retr.reduce_to(ast::function_definition{.func_name = value.iden, .params = params, .ret_type = return_ty->iden, .is_extern = true}, meta);
+						return true;
 					}
-					// definitely an extern function definition.
-					retr.reduce_to(ast::function_definition{.func_name = value.iden, .params = params, .ret_type = return_ty->iden, .is_extern = true}, meta);
-					return true;
+					else
+					{
+						retr.undo();
+					}
 				}
-				retr.undo();
+				else
+				{
+					retr.undo();
+				}
 				// should be a block.
 				ast::node blk_node;
 				auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
