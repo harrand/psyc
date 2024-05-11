@@ -69,9 +69,10 @@ struct ast
 	{
 		std::string var_name;	
 		std::string type_name;
+		std::optional<util::box<expression>> initialiser = std::nullopt;
 		constexpr std::string to_string() const
 		{
-			return std::format("variable_declaration({} : {})", var_name, type_name);
+			return std::format("variable_declaration({} : {}{})", var_name, type_name, initialiser.has_value() ? std::format(" = {}", initialiser.value()->to_string()) : "");
 		}
 		bool operator==(const variable_declaration& rhs) const = default;
 	};

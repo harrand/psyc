@@ -300,8 +300,36 @@ namespace parse
 			if(type_name.has_value())
 			{
 				// definitely a variable declaration.
+				// if it has an equals then its going to have an initialiser.
+				std::optional<util::box<ast::expression>> initialiser = std::nullopt;
+				if(!retr.avail()){return false;}
+				auto maybe_colon = retr.retrieve<lex::token>();
+				if(maybe_colon.has_value() && maybe_colon->t == lex::type::colon)
+				{
+					if(!retr.avail()){return false;}
+					auto maybe_equals = retr.retrieve<lex::token>();
+					if(maybe_equals.has_value() && maybe_equals->t == lex::type::operator_equals)
+					{
+						// it has an initialiser.
+						if(!retr.avail()){return false;}
+						auto maybe_initialiser_expr = retr.retrieve<ast::expression>();
+						if(!maybe_initialiser_expr.has_value())
+						{
+							return false;
+						}
+						initialiser = maybe_initialiser_expr.value();
+					}
+					else
+					{
+						retr.undo();
+					}
+				}
+				else
+				{
+					retr.undo();
+				}
 				// todo: reduce.
-				retr.reduce_to(ast::variable_declaration{.var_name = value.iden, .type_name = type_name.value().iden}, meta);
+				retr.reduce_to(ast::variable_declaration{.var_name = value.iden, .type_name = type_name.value().iden, .initialiser = initialiser}, meta);
 				return true;
 			}
 			// - function definition (2nd colon)
@@ -495,6 +523,13 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::variable_declaration>(&meta);
+
+		// if the variable has a capped initialiser expression, it can go straight away.
+		if(value.initialiser.has_value() && value.initialiser.value()->capped)
+		{
+			retr.reduce_to(ast::expression{.expr = value, .capped = true}, meta);
+			return true;
+		}
 
 		if(!retr.avail()){return false;}
 		// easy option: it's directly followed by a semicolon. thats an expression.
