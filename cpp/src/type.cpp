@@ -165,18 +165,70 @@ std::string type::name() const
 		return "<undefined type>";
 	}
 	std::string ret;
+	std::string qualstr;
+	if(this->qualifiers & qualifier_const)
+	{
+		qualstr = " const";
+	}
 
 	if(this->is_primitive())
 	{
-		ret = primitive_type_names[static_cast<int>(std::get<primitive_type>(this->ty))];
+		ret = std::format("{}{}", primitive_type_names[static_cast<int>(std::get<primitive_type>(this->ty))], qualstr);
 	}
 	else if(this->is_struct())
 	{
-		ret = std::get<struct_type>(this->ty).name;
+		ret = std::format("{}{}", std::get<struct_type>(this->ty).name, qualstr);
 	}
 	else
 	{
-		ret = std::get<util::box<type>>(this->ty)->name() + "*";
+		if(qualstr.size() && qualstr.front() == ' ')
+		{
+			qualstr.erase(qualstr.begin());
+		}
+		ret = std::format("{}*{}", std::get<util::box<type>>(this->ty)->name(), qualstr);
 	}
+
 	return ret;
+}
+
+type type::dereference() const
+{
+	diag::assert_that(this->is_pointer(), error_code::ice, "attempt to dereference type \"{}\" when it is not a pointer type.", this->name());
+	return *std::get<util::box<type>>(this->ty);
+}
+
+type type::pointer_to(type_qualifier quals) const
+{
+	return
+	{
+		.ty = util::box<type>{*this},
+		.qualifiers = quals,
+	};
+}
+
+/*static*/type type::undefined()
+{
+	return
+	{
+		.ty = std::monostate{}
+	};
+}
+
+
+/*static*/type type::from_primitive(primitive_type t, type_qualifier quals)
+{
+	return
+	{
+		.ty = t,
+		.qualifiers = quals
+	};
+}
+
+/*static*/type type::from_struct(struct_type t, type_qualifier quals)
+{
+	return
+	{
+		.ty = t,
+		.qualifiers = quals
+	};
 }

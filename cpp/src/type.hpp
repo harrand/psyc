@@ -99,10 +99,10 @@ struct type
 	std::string name() const;
 
 	type dereference() const;
-	type pointer_to() const;
+	type pointer_to(type_qualifier quals = qualifier_none) const;
 
 	static type undefined();
-	static type from_primitive(primitive_type t);
-	static type from_struct(struct_type t);
+	static type from_primitive(primitive_type t, type_qualifier quals = qualifier_none);
+	static type from_struct(struct_type t, type_qualifier quals = qualifier_none);
 };
 #endif // PSYC_TYPE_HPP

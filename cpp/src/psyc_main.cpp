@@ -3,6 +3,7 @@
 #include "parse.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
+#include "type.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -80,6 +81,11 @@ int main(int argc, char** argv)
 	// link
 
 	t.print();
+
+
+	type ty = type::from_primitive(primitive_type::u8);
+	ty = ty.pointer_to().pointer_to(qualifier_const);
+	std::cout << "type: \n" << ty.name();
 	return 0;
 }
 
