@@ -52,7 +52,7 @@ struct struct_type
 	struct data_member
 	{
 		std::string member_name;
-		util::box<type> type;
+		util::box<type> ty;
 
 		bool operator==(const data_member& rhs) const = default;
 	};
