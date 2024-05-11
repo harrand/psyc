@@ -44,6 +44,8 @@ add_executable(psyc
 	src/srcloc.hpp
 	src/timer.cpp
 	src/timer.hpp
+	src/type.cpp
+	src/type.hpp
 	src/util.cpp
 	src/util.hpp
 )
