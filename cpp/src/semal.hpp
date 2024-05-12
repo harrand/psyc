@@ -7,11 +7,17 @@
 
 namespace semal
 {
+	struct context
+	{
+		const ast* tree;
+		ast::path_t path;
+		const srcloc& location() const;
+	};
 	struct local_variable_t
 	{
 		type ty;
 		std::string name;
-		ast::path_t context;
+		context ctx;
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
 	};
@@ -21,7 +27,7 @@ namespace semal
 		type return_ty;
 		std::string name;
 		std::vector<local_variable_t> params = {};
-		ast::path_t context;
+		context ctx;
 		bool is_method = false;
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
@@ -30,7 +36,7 @@ namespace semal
 	struct struct_t
 	{
 		struct_type ty;
-		ast::path_t context;
+		context ctx;
 		std::unordered_map<std::string, function_t> methods = {};
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;

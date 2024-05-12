@@ -10,6 +10,7 @@ enum class error_code
 	lex,
 	parse,
 	type,
+	semal,
 	_count
 };
 
@@ -20,7 +21,8 @@ constexpr std::array<const char*, (int)error_code::_count> error_names
 	"badargs",
 	"lex",
 	"parse",
-	"type"
+	"type",
+	"semantic analysis"
 };
 
 #endif // PSYC_ERROR_HPP
