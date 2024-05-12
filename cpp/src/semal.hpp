@@ -2,6 +2,7 @@
 #define PSYC_SEMAL_HPP
 #include "type.hpp"
 #include "ast.hpp"
+#include "diag.hpp"
 #include <map>
 #include <unordered_map>
 
@@ -12,6 +13,19 @@ namespace semal
 		const ast* tree;
 		ast::path_t path;
 		const srcloc& location() const;
+		template<typename... Ts>
+		void semal_error(std::string fmt, Ts&&... ts)
+		{
+			diag::error(error_code::semal, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
+		}
+		template<typename... Ts>
+		void semal_assert(bool expr, std::string fmt, Ts&&... ts)
+		{
+			if(!expr)
+			{
+				diag::assert_that(expr, error_code::semal, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
+			}
+		}
 	};
 	struct local_variable_t
 	{
@@ -56,6 +70,10 @@ namespace semal
 		std::map<std::string, struct_t> struct_decls = {};	
 
 		void combine(const output& rhs);
+		type get_type_from_name(std::string type_name);
+		void register_function(function_t fn);
+		void register_global_variable(local_variable_t gvar);
+		void register_struct(struct_t structdata);
 	};
 
 	output analyse_predecl(const ast& tree);
