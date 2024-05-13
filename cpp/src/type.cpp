@@ -185,7 +185,7 @@ std::string type::name() const
 		{
 			qualstr.erase(qualstr.begin());
 		}
-		ret = std::format("{}*{}", std::get<util::box<type>>(this->ty)->name(), qualstr);
+		ret = std::format("{}&{}", std::get<util::box<type>>(this->ty)->name(), qualstr);
 	}
 
 	return ret;

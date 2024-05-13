@@ -48,7 +48,7 @@ namespace semal
 		for(std::size_t i = 0; i < type_name.size(); i++)
 		{
 			char c = type_name[i];
-			if(c == '*')
+			if(c == '&')
 			{
 				check_const();
 				ret = get_type_from_name(cur_type).pointer_to();
@@ -483,6 +483,21 @@ namespace semal
 		type rhs = expression(d, *payload.rhs_expr);
 		switch(payload.op.t)
 		{
+			case lex::type::operator_equals:
+			[[fallthrough]];
+			case lex::type::operator_asterisk:
+			[[fallthrough]];
+			case lex::type::operator_slash:
+			[[fallthrough]];
+			case lex::type::operator_plus:
+			[[fallthrough]];
+			case lex::type::operator_minus:
+				d.assert_that(lhs == rhs, std::format("cannot assign from type \"{}\" to a type \"{}\"", lhs.name(), rhs.name()));
+				return rhs;
+			break;
+			case lex::type::operator_double_equals:
+				return type::from_primitive(primitive_type::i8);
+			break;
 			default:
 				d.internal_error(std::format("unknown binary operator token \"{}\"", payload.op.lexeme));
 			break;
@@ -495,6 +510,18 @@ namespace semal
 		type expr = expression(d, *payload.expr);
 		switch(payload.op.t)
 		{
+			case lex::type::operator_ref:
+				return expr.pointer_to();
+			break;
+			case lex::type::operator_deref:
+				d.assert_that(expr.is_pointer(), std::format("cannot deref non-pointer type \"{}\"", expr.name()));
+				return expr.dereference();
+			break;
+			case lex::type::operator_minus:
+				d.assert_that(expr.is_integer_type() || expr.is_floating_point_type(), std::format("unary operator \"{}\" can only be used on either a floating-point or integral-type. you provided a \"{}\"", payload.op.lexeme, expr.name()));
+				d.assert_that(!expr.is_unsigned_integer_type(), std::format("unary operator\"{}\" cannot be used on the unsigned integer type \"{}\"", payload.op.lexeme, expr.name()));
+				return expr;
+			break;
 			default:
 				d.internal_error(std::format("unknown unary operator token \"{}\"", payload.op.lexeme));
 			break;
@@ -552,9 +579,15 @@ namespace semal
 			return d.state.get_type_from_name(payload.type_name);
 		}
 		auto global_already = d.state.try_find_global_variable(payload.var_name.c_str());
-		d.assert_that(global_already == nullptr, std::format("variable named \"{}\" would shadow a global variable (defined at: {})", payload.var_name, global_already != nullptr ? global_already->ctx.location().to_string() : 0));
+		if(global_already != nullptr)
+		{
+			d.assert_that(false, std::format("variable named \"{}\" would shadow a global variable (defined at: {})", payload.var_name, global_already->ctx.location().to_string()));
+		}
 		auto local_already = d.state.try_find_local_variable(d.path, payload.var_name.c_str());
-		d.assert_that(local_already == nullptr, std::format("variable named \"{}\" would shadow a previously-defined local variable (defined at: {})", payload.var_name, local_already != nullptr ? local_already->ctx.location().to_string() : 0));
+		if(local_already != nullptr)
+		{
+			d.assert_that(false, std::format("variable named \"{}\" would shadow a previously-defined local variable (defined at: {})", payload.var_name, local_already->ctx.location().to_string()));
+		}
 
 		const auto& ty = d.state.get_type_from_name(payload.type_name);
 		d.assert_that(!ty.is_undefined(), std::format("undefined type \"{}\"", payload.type_name));
