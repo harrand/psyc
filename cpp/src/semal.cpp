@@ -1,5 +1,6 @@
 #include "semal.hpp"
 #include "type.hpp"
+#include "util.hpp"
 
 namespace semal
 {
@@ -123,6 +124,20 @@ namespace semal
 		this->global_variables[gvar.name] = gvar;
 	}
 
+	void output::register_local_variable(local_variable_t var)
+	{
+		ast::path_view_t ctx = var.ctx.path;
+		scope_reference* current_scope = &this->variables;
+		if(ctx.size())
+		{
+			for(std::size_t i : ctx.subspan(0, ctx.size() - 1))
+			{
+				current_scope = &current_scope->children[i];
+			}
+		}
+		current_scope->variables[var.name] = var;
+	}
+
 	void output::register_struct(struct_t structdata)
 	{
 		if(this->struct_decls.contains(structdata.ty.name))
@@ -130,6 +145,90 @@ namespace semal
 			structdata.ctx.semal_error("redeclaration of struct \"{}\". previously defined in same file at: {}", structdata.ty.name, this->struct_decls.at(structdata.ty.name).ctx.location().to_string());
 		}
 		this->struct_decls[structdata.ty.name] = structdata;
+	}
+
+	const function_t* output::try_find_function(const char* name) const
+	{
+		for(const auto& [fnname, funcdata] : this->functions)
+		{
+			if(fnname == name)
+			{
+				return &funcdata;
+			}
+		}
+		return nullptr;
+	}
+
+	const function_t* output::try_find_parent_function(const ast& tree, ast::path_t path) const
+	{
+		// slowly check parent node of the path until we hit a function declaration.	
+		if(path.size() <= 1)
+		{
+			// we're in the top scope, so cant possibly be in a function.
+			return nullptr;
+		}
+		// get initial parent by popping the path first (no need to check the node provided, just its ancestors).
+		path.pop_back();
+		while(path.size())
+		{
+			const ast::node& ancestor = tree.get(path);
+			if(std::holds_alternative<ast::function_definition>(ancestor.payload))
+			{
+				const std::string& function_name = std::get<ast::function_definition>(ancestor.payload).func_name;
+				const function_t* found_func = this->try_find_function(function_name.c_str());
+				if(found_func == nullptr)
+				{
+					diag::ice("at: {}: internal compiler error: found a parent function of an AST node (named \"{}\"), but could not then retrieve the function data from semantic analysis state.", ancestor.meta.to_string(), function_name);
+				}
+				return found_func;
+			}
+			path.pop_back();
+		}
+		return nullptr;	
+	}
+
+	const local_variable_t* output::try_find_global_variable(const char* name) const
+	{
+		for(const auto& [varname, gvar] : this->global_variables)
+		{
+			if(varname == name)
+			{
+				return &gvar;
+			}
+		}
+		return nullptr;
+	}
+
+	const local_variable_t* output::try_find_local_variable(const ast::path_t& context, const char* name) const
+	{
+		ast::path_const_view_t cv = context;
+		const scope_reference* current_scope = &this->variables;
+		if(context.size())
+		{
+			for(std::size_t idx : context)
+			{
+				auto iter = current_scope->variables.find(name);
+				if(iter != current_scope->variables.end())
+				{
+					return &iter->second;
+				}
+				current_scope = &const_cast<std::unordered_map<std::size_t, scope_reference>&>(current_scope->children)[idx];
+			}
+		}
+		return nullptr;
+
+	}
+
+	const struct_t* output::try_find_struct(const char* name) const
+	{
+		for(const auto& [structname, structdata] : this->struct_decls)
+		{
+			if(structname == name)
+			{
+				return &structdata;
+			}
+		}
+		return nullptr;
 	}
 
 	output analyse_predecl(const ast& tree)
@@ -293,6 +392,44 @@ namespace semal
 		return ret;
 	}
 
+	struct data
+	{
+		output& state;
+		ast::path_t path;
+		const ast& tree;
+
+		const srcloc& meta() const
+		{
+			return this->tree.get(path).meta;
+		}
+
+		void fatal_error(std::string msg) const
+		{
+			diag::error(error_code::semal, "at: {}: {}", this->meta().to_string(), msg);
+		}
+
+		void internal_error(std::string msg) const
+		{
+			diag::error(error_code::ice, "at: {}: {}", this->meta().to_string(), msg);
+		}
+
+		void warning(std::string msg) const
+		{
+			diag::warning("at: {}: {}", this->meta().to_string(), msg);
+		}
+
+		void assert_that(bool expr, std::string msg) const
+		{
+			if(!expr)
+			{
+				this->fatal_error(msg);	
+			}
+		}
+	};
+
+	template<typename T>
+	type generic(const data& d, T payload);
+
 	output analyse_full(const ast& tree, output predecl)
 	{
 		output ret = predecl;
@@ -312,10 +449,250 @@ namespace semal
 					fn.ctx.semal_assert(node.children.size() == 1, "non-extern functions must have an implementation.");
 					fn.ctx.semal_assert(std::holds_alternative<ast::block>(node.children.front().payload), "function implementation should consist of a block of code surrounded by braces");
 
+					auto block_path = path;
+					block_path.push_back(0);
+					const auto& block_node = node.children.front();
+
 					// todo:semantically analyse the block...
+					for(std::size_t c = 0; c < block_node.children.size(); c++)
+					{
+						auto child_path = block_path;
+						child_path.push_back(c);
+						generic({.state = ret, .path = child_path, .tree = tree}, tree.get(child_path).payload);
+					}
 				}
 			}
 		}
+		return ret;
+	}
+
+	type output::get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const
+	{
+		return generic({.state = const_cast<output&>(*this), .path = path, .tree = tree}, payload);
+	}
+
+	type expression(const data& d, const ast::expression& payload)
+	{
+		return generic(d, payload.expr);
+	}
+
+	// node types.
+	type binary_operator(const data& d, const ast::binary_operator& payload)
+	{
+		type lhs = expression(d, *payload.lhs_expr);
+		type rhs = expression(d, *payload.rhs_expr);
+		switch(payload.op.t)
+		{
+			default:
+				d.internal_error(std::format("unknown binary operator token \"{}\"", payload.op.lexeme));
+			break;
+		}
+		return type::undefined();
+	}
+
+	type unary_operator(const data& d, const ast::unary_operator& payload)
+	{
+		type expr = expression(d, *payload.expr);
+		switch(payload.op.t)
+		{
+			default:
+				d.internal_error(std::format("unknown unary operator token \"{}\"", payload.op.lexeme));
+			break;
+		}
+		return type::undefined();
+	}
+
+	type identifier(const data& d, const ast::identifier& payload)
+	{
+		const local_variable_t* maybe_global_variable = d.state.try_find_global_variable(payload.iden.c_str());
+		if(maybe_global_variable != nullptr)
+		{
+			return maybe_global_variable->ty;
+		}
+		
+		const local_variable_t* maybe_local_variable = d.state.try_find_local_variable(d.path, payload.iden.c_str());
+		if(maybe_local_variable != nullptr)
+		{
+			return maybe_local_variable->ty;
+		}
+
+		const function_t* func = d.state.try_find_parent_function(d.tree, d.path);
+		if(func != nullptr)
+		{
+			for(const auto& param : func->params)
+			{
+				if(param.name == payload.iden)
+				{
+					return param.ty;
+				}
+			}
+		}
+
+		d.internal_error(std::format("cannot figure out the type of identifier \"{}\". tried a local and global variable name. possible ICE.", payload.iden));
+		return type::undefined();
+	}
+
+	type function_call(const data& d, const ast::function_call& payload)
+	{
+		const function_t* maybe_function = d.state.try_find_function(payload.function_name.c_str());
+		if(maybe_function == nullptr)
+		{
+			d.assert_that(payload.function_name.starts_with("__builtin_"), std::format("call to undeclared function \"{}\"", payload.function_name));
+			diag::note("detected call to builtin function \"{}\"", payload.function_name);
+			return type::undefined();
+		}
+		return maybe_function->return_ty;
+	}
+
+	type variable_declaration(const data& d, const ast::variable_declaration& payload)
+	{
+		if(d.path.size() <= 1)
+		{
+			// we already sorted out global variables.
+			return d.state.get_type_from_name(payload.type_name);
+		}
+		auto global_already = d.state.try_find_global_variable(payload.var_name.c_str());
+		d.assert_that(global_already == nullptr, std::format("variable named \"{}\" would shadow a global variable (defined at: {})", payload.var_name, global_already != nullptr ? global_already->ctx.location().to_string() : 0));
+		auto local_already = d.state.try_find_local_variable(d.path, payload.var_name.c_str());
+		d.assert_that(local_already == nullptr, std::format("variable named \"{}\" would shadow a previously-defined local variable (defined at: {})", payload.var_name, local_already != nullptr ? local_already->ctx.location().to_string() : 0));
+
+		const auto& ty = d.state.get_type_from_name(payload.type_name);
+		d.assert_that(!ty.is_undefined(), std::format("undefined type \"{}\"", payload.type_name));
+		d.state.register_local_variable
+		({
+			.ty = ty,
+			.name = payload.var_name,
+			.ctx = {.tree = &d.tree, .path = d.path}
+		});
+		return ty;
+	}
+
+	type function_definition(const data& d, const ast::function_definition& payload)
+	{
+		if(d.path.size() > 1)
+		{
+			// not at the top-level scope.
+			// its parent better be a struct (making this a method).
+			// if its not, then the code is ill-formed.
+			auto parent_path = d.path;
+			parent_path.pop_back();
+			const ast::node& parent = d.tree.get(parent_path);
+			/*
+			d.assert_that(std::holds_alternative<ast::struct_definition>(parent.payload), std::format("detected a non-method function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+			*/
+			d.fatal_error("methods are not yet implemented, or this function is not defined at top-level scope.");
+		}
+		return d.state.get_type_from_name(payload.ret_type);
+	}
+
+	type meta_region(const data& d, const ast::meta_region& payload)
+	{
+		return type::undefined();
+	}
+
+	template<typename T>
+	type generic(const data& d, T payload)
+	{
+		type ret = type::undefined();
+
+		auto dispatch = util::overload
+		{
+			[&](ast::integer_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i64);
+			},
+			[&](ast::decimal_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::f64);
+			},
+			/*
+			[&](ast::char_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i8);
+			},
+			[&](ast::bool_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::boolean);
+			},
+			[&](ast::string_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i8).pointer_to();
+			},
+			*/
+			[&](ast::binary_operator op)
+			{
+				ret = binary_operator(d, op);
+				//d.fatal_error("dispatch error");
+			},
+			[&](ast::unary_operator op)
+			{
+				ret = unary_operator(d, op);
+				//d.fatal_error("dispatch error");
+			},
+			[&](ast::block blk)
+			{
+			},
+			[&](ast::identifier id)
+			{
+				ret = identifier(d, id);
+			},
+			[&](ast::function_call call)
+			{
+				ret = function_call(d, call);
+			},
+			/*
+			[&](ast::member_access mem)
+			{
+				ret = member_access(d, mem);
+			},
+			*/
+			[&](ast::expression expr)
+			{
+				ret = expression(d, expr);
+			},
+			/*
+			[&](ast::if_statement ifst)
+			{
+				ret = if_statement(d, ifst);
+			},
+			[&](ast::else_statement elst)
+			{
+				ret = else_statement(d, elst);
+			},
+			[&](ast::for_statement forst)
+			{
+				ret = for_statement(d, forst);
+			},
+			[&](ast::return_statement returnst)
+			{
+				ret = return_statement(d, returnst);
+			},
+			*/
+			[&](ast::variable_declaration decl)
+			{
+				ret = variable_declaration(d, decl);
+			},
+			[&](ast::function_definition fdef)
+			{
+				ret = function_definition(d, fdef);
+			},
+			/*
+			[&](ast::struct_definition sdef)
+			{
+				ret = struct_definition(d, sdef);
+			},
+			*/
+			[&](ast::meta_region meta)
+			{
+				ret = meta_region(d, meta);
+			},
+			[&](auto)
+			{
+				d.fatal_error("unknown node payload.");
+			}
+		};
+
+		std::visit(dispatch, payload);
 		return ret;
 	}
 }

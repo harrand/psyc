@@ -98,8 +98,8 @@ struct ast
 	{
 		std::variant
 		<
-			unary_operator,
-			binary_operator,
+			ast::unary_operator,
+			ast::binary_operator,
 			ast::integer_literal,
 			ast::decimal_literal,
 			ast::identifier,
