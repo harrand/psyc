@@ -129,6 +129,7 @@ namespace semal
 		{
 			structdata.ctx.semal_error("redeclaration of struct \"{}\". previously defined in same file at: {}", structdata.ty.name, this->struct_decls.at(structdata.ty.name).ctx.location().to_string());
 		}
+		this->struct_decls[structdata.ty.name] = structdata;
 	}
 
 	output analyse_predecl(const ast& tree)
@@ -296,7 +297,25 @@ namespace semal
 	{
 		output ret = predecl;
 		// todo: analyse all code (mainly implementations).
-		
+		for(std::size_t i = 0; i < tree.root.children.size(); i++)
+		{
+			const ast::node& node = tree.root.children[i];
+			const ast::path_t path{i};
+			if(std::holds_alternative<ast::function_definition>(node.payload))
+			{
+				auto func = std::get<ast::function_definition>(node.payload);	
+				diag::assert_that(predecl.functions.contains(func.func_name), error_code::ice, "function \"{}\" was not found in the predecl semal output, when this should always be the case.", func.func_name);
+
+				function_t fn = predecl.functions[func.func_name];
+				if(!func.is_extern)
+				{
+					fn.ctx.semal_assert(node.children.size() == 1, "non-extern functions must have an implementation.");
+					fn.ctx.semal_assert(std::holds_alternative<ast::block>(node.children.front().payload), "function implementation should consist of a block of code surrounded by braces");
+
+					// todo:semantically analyse the block...
+				}
+			}
+		}
 		return ret;
 	}
 }
