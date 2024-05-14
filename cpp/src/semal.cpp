@@ -555,7 +555,7 @@ namespace semal
 			}
 		}
 
-		d.internal_error(std::format("cannot figure out the type of identifier \"{}\". tried a local and global variable name. possible ICE.", payload.iden));
+		d.fatal_error(std::format("undeclared variable \"{}\".", payload.iden));
 		return type::undefined();
 	}
 
