@@ -61,6 +61,8 @@ namespace parse
 		bool reduce_from_block(std::size_t offset);
 		// given an ast::meta_region subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_meta_region(std::size_t offset);
+		// given an ast::return_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_return_statement(std::size_t offset);
 		// given a non-ast token at the offset, try to reduce it and its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_token(std::size_t offset);
 
@@ -287,7 +289,6 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::identifier>(&meta);
-		bool check = value.iden == "putchar" && (offset + 4 < this->subtrees.size());
 
 		if(!retr.avail()){return false;}
 		auto colon1 = retr.retrieve<lex::token>();
@@ -664,6 +665,15 @@ namespace parse
 		return false;
 	}
 
+	bool parser_state::reduce_from_return_statement(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::return_statement>(&meta);
+		retr.reduce_to(ast::expression{.expr = value, .capped = true}, meta);
+		return true;
+	}
+
 	bool parser_state::reduce_from_token(std::size_t offset)
 	{
 		retriever retr{*this, offset};
@@ -801,6 +811,29 @@ namespace parse
 				return true;
 			}
 			break;
+			case lex::type::return_statement:
+			{
+				if(!retr.avail()){return false;}
+				auto expr = retr.retrieve<ast::expression>();
+				if(!expr.has_value())
+				{
+					retr.undo();
+				}
+				// if we dont have an expression, we must have a semicolon.
+				// if we do have an expression, we need a semicolon if its not already capped.
+				if(!expr.has_value() || (expr.has_value() && !expr->capped))
+				{
+					if(!retr.avail()){return false;}
+					auto semicolon = retr.retrieve<lex::token>();
+					if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+					{
+						return false;
+					}
+				}
+				retr.reduce_to(ast::return_statement{.expr = expr}, meta);
+				return true;
+			}
+			break;
 			default: break;
 		}
 		if(token_is_unary_operator(value))
@@ -875,6 +908,10 @@ namespace parse
 					[&](ast::function_call arg)
 					{
 						ret = this->reduce_from_function_call(i);
+					},
+					[&](ast::return_statement arg)
+					{
+						ret = this->reduce_from_return_statement(i);
 					},
 					[&](ast::expression arg)
 					{

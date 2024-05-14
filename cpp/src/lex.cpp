@@ -301,6 +301,11 @@ namespace lex
 		{
 			return token{.t = type::question_mark};
 		}
+		else if(data.starts_with("return"))
+		{
+			state.advance(5);
+			return token{.t = type::return_statement, .lexeme = "return"};
+		}
 		else if(data.starts_with("$"))
 		{
 			return token{.t = type::dollar_sign};

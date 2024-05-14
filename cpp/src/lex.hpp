@@ -39,6 +39,7 @@ namespace lex
 		operator_ref,
 		operator_deref,
 		question_mark,
+		return_statement,
 		initialiser,
 		dollar_sign,
 		_count,

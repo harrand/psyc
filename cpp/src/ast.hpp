@@ -94,6 +94,17 @@ struct ast
 		bool operator==(const function_call& rhs) const = default;
 	};
 
+	struct return_statement
+	{
+		std::optional<boxed_expression> expr;
+		constexpr std::string to_string() const
+		{
+			return std::format("return({})", expr.has_value() ? expr.value()->to_string() : "");
+		}
+		bool operator==(const return_statement& rhs) const = default;
+	};
+
+
 	struct expression
 	{
 		std::variant
@@ -104,7 +115,8 @@ struct ast
 			ast::decimal_literal,
 			ast::identifier,
 			ast::variable_declaration,
-			ast::function_call
+			ast::function_call,
+			ast::return_statement
 		> expr;
 		bool capped = false;
 		constexpr std::string to_string() const
@@ -160,7 +172,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, variable_declaration, function_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

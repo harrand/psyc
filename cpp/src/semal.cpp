@@ -571,6 +571,21 @@ namespace semal
 		return maybe_function->return_ty;
 	}
 
+	type return_statement(const data& d, const ast::return_statement& payload)
+	{
+		const function_t* maybe_parent = d.state.try_find_parent_function(d.tree, d.path);
+		d.assert_that(maybe_parent != nullptr, "detected return statement outside of a function. return statements are only valid within function implementation blocks.");
+		if(payload.expr.has_value())
+		{
+			type ret = expression(d, *payload.expr.value());
+			d.assert_that(!maybe_parent->return_ty.is_void(), std::format("return statement was an expression of type \"{}\", but the enclosing function \"{}\" returns {}. do not return an expression.", ret.name(), maybe_parent->name, maybe_parent->return_ty.name()));
+			d.assert_that(ret == maybe_parent->return_ty, std::format("type of `return` statement \"{}\" does not match the return-type of the enclosing function \"{}\", which is a \"{}\"", ret.name(), maybe_parent->name, maybe_parent->return_ty.name()));
+			return ret;
+		}
+		d.assert_that(maybe_parent->return_ty.is_void(), std::format("detected empty `return` statement within function \"{}\" which doesn't return u0. `return;` is only valid in functions that return `u0`.", maybe_parent->name));
+		return type::from_primitive(primitive_type::u0);
+	}
+
 	type variable_declaration(const data& d, const ast::variable_declaration& payload)
 	{
 		if(d.path.size() <= 1)
@@ -696,11 +711,11 @@ namespace semal
 			{
 				ret = for_statement(d, forst);
 			},
+			*/
 			[&](ast::return_statement returnst)
 			{
 				ret = return_statement(d, returnst);
 			},
-			*/
 			[&](ast::variable_declaration decl)
 			{
 				ret = variable_declaration(d, decl);
