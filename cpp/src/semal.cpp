@@ -490,7 +490,14 @@ namespace semal
 	type if_statement(const data& d, const ast::if_statement& payload)
 	{
 		type if_expr_ty = expression(d, *payload.if_expr);
-		d.assert_that(if_expr_ty.is_primitive() && if_expr_ty.as_primitive() == primitive_type::boolean, std::format("expression of if-statement operand must be a boolean, you passed a {} you stupid cunt", if_expr_ty.name()));
+		d.assert_that(if_expr_ty.is_primitive() && if_expr_ty.as_primitive() == primitive_type::boolean, std::format("expression of if-statement operand must be a boolean, you passed a {}", if_expr_ty.name()));
+		return type::undefined();
+	}
+
+	type for_statement(const data& d, const ast::for_statement& payload)
+	{
+		type cond_expr_ty = expression(d, *payload.cond_expr);
+		d.assert_that(cond_expr_ty.is_primitive() && cond_expr_ty.as_primitive() == primitive_type::boolean, std::format("condition-expression (2nd part) of for-statement operand must be a boolean, you passed a {}", cond_expr_ty.name()));
 		return type::undefined();
 	}
 
@@ -744,12 +751,10 @@ namespace semal
 			{
 				ret = if_statement(d, ifst);
 			},
-			/*
 			[&](ast::for_statement forst)
 			{
 				ret = for_statement(d, forst);
 			},
-			*/
 			[&](ast::return_statement returnst)
 			{
 				ret = return_statement(d, returnst);

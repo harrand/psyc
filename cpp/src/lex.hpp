@@ -13,6 +13,7 @@ namespace lex
 		keyword_struct,
 		keyword_if,
 		keyword_else,
+		keyword_for,
 		identifier,
 		semicolon,
 		colon,

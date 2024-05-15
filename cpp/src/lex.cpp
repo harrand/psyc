@@ -254,6 +254,11 @@ namespace lex
 			state.advance(3);
 			return token{.t = type::keyword_else, .lexeme = "else"};
 		}
+		else if(data.starts_with("for"))
+		{
+			state.advance(2);
+			return token{.t = type::keyword_for, .lexeme = "for"};
+		}
 		else if(data.starts_with("true"))
 		{
 			state.advance(3);

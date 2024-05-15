@@ -57,6 +57,8 @@ namespace parse
 		bool reduce_from_function_call(std::size_t offset);
 		// given an ast::if_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_if_statement(std::size_t offset);
+		// given an ast::for_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_for_statement(std::size_t offset);
 		// given an ast::expression subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_expression(std::size_t offset);
 		// given an ast::function_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -604,6 +606,16 @@ namespace parse
 		return false;
 	}
 
+	bool parser_state::reduce_from_for_statement(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::for_statement>(&meta);
+
+		this->move_to_final_tree(offset);
+		return false;
+	}
+
 	bool parser_state::reduce_from_expression(std::size_t offset)
 	{
 		retriever retr{*this, offset};
@@ -860,6 +872,56 @@ namespace parse
 				return true;
 			}
 			break;
+			case lex::type::keyword_for:
+			{
+				if(!retr.avail()){return false;}
+				auto init_expr = retr.retrieve<ast::expression>();
+				if(!init_expr.has_value())
+				{
+					return false;
+				}
+
+				if(!retr.avail()){return false;}
+				auto comma1 = retr.retrieve<lex::token>();
+				if(!comma1.has_value() || comma1->t != lex::type::comma)
+				{
+					return false;
+				}
+
+				auto cond_expr = retr.retrieve<ast::expression>();
+				if(!cond_expr.has_value())
+				{
+					return false;
+				}
+
+				if(!retr.avail()){return false;}
+				auto comma2 = retr.retrieve<lex::token>();
+				if(!comma2.has_value() || comma2->t != lex::type::comma)
+				{
+					return false;
+				}
+
+				if(!retr.avail()){return false;}
+				auto iter_expr = retr.retrieve<ast::expression>();
+				if(!iter_expr.has_value())
+				{
+					return false;
+				}
+
+				if(!retr.avail()){return false;}
+				ast::node blk_node;
+				auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
+				if(!blk.has_value())
+				{
+					return false;
+				}
+
+				retr.reduce_to(ast::for_statement{.init_expr = init_expr.value(), .cond_expr = cond_expr.value(), .iter_expr = iter_expr.value()}, meta);
+				ast::node& node = this->subtrees[offset].tree.root;
+				node.children = {blk_node};
+				return true;
+			}
+			break;
 			case lex::type::open_brace:
 			{
 				// this could be a block.	
@@ -1078,6 +1140,10 @@ namespace parse
 					[&](ast::if_statement arg)
 					{
 						ret = this->reduce_from_if_statement(i);
+					},
+					[&](ast::for_statement arg)
+					{
+						ret = this->reduce_from_for_statement(i);
 					},
 					[&](ast::expression arg)
 					{
