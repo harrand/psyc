@@ -714,12 +714,10 @@ namespace semal
 			[&](ast::binary_operator op)
 			{
 				ret = binary_operator(d, op);
-				//d.fatal_error("dispatch error");
 			},
 			[&](ast::unary_operator op)
 			{
 				ret = unary_operator(d, op);
-				//d.fatal_error("dispatch error");
 			},
 			[&](ast::block blk)
 			{
@@ -747,10 +745,6 @@ namespace semal
 				ret = if_statement(d, ifst);
 			},
 			/*
-			[&](ast::else_statement elst)
-			{
-				ret = else_statement(d, elst);
-			},
 			[&](ast::for_statement forst)
 			{
 				ret = for_statement(d, forst);
