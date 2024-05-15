@@ -827,11 +827,22 @@ namespace parse
 				if(maybe_else.has_value() && maybe_else->t == lex::type::keyword_else)
 				{
 					if(!retr.avail()){return false;}
+					// block OR another if statement (else-if)
 					ast::node blk2_node;
 					auto blk2 = retr.retrieve<ast::block>(nullptr, &blk2_node);
 					if(!blk2.has_value())
 					{
-						return false;
+						retr.undo();
+						ast::node nested_if_node;
+						auto nested_if = retr.retrieve<ast::if_statement>(nullptr, &nested_if_node);
+						if(!nested_if.has_value())
+						{
+							return false;
+						}
+						nested_if_node.payload = ast::expression{.expr = nested_if.value()};
+						blk2_node.payload = ast::block{};
+						blk2_node.meta = nested_if_node.meta;
+						blk2_node.children = {nested_if_node};
 					}
 					else_node = blk2_node;
 				}
