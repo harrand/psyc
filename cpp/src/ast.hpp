@@ -17,7 +17,7 @@ struct ast
 	struct integer_literal
 	{
 		std::int64_t val;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("integer-literal({})", val);
 		}
@@ -26,7 +26,7 @@ struct ast
 	struct decimal_literal
 	{
 		double val;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("decimal-literal({})", val);
 		}
@@ -35,7 +35,7 @@ struct ast
 	struct bool_literal
 	{
 		bool val;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("bool-literal({})", val);
 		}
@@ -44,7 +44,7 @@ struct ast
 	struct identifier
 	{
 		std::string iden;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("identifier({})", iden);
 		}
@@ -55,7 +55,7 @@ struct ast
 	{
 		lex::token op;
 		boxed_expression expr;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("unop({} {})", op.lexeme, expr->to_string());
 		}
@@ -67,7 +67,7 @@ struct ast
 		boxed_expression lhs_expr;
 		lex::token op;
 		boxed_expression rhs_expr;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("biop({} {} {})", lhs_expr->to_string(), op.lexeme, rhs_expr->to_string());
 		}
@@ -79,7 +79,7 @@ struct ast
 		std::string var_name;	
 		std::string type_name;
 		std::optional<util::box<expression>> initialiser = std::nullopt;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("variable_declaration({} : {}{})", var_name, type_name, initialiser.has_value() ? std::format(" = {}", initialiser.value()->to_string()) : "");
 		}
@@ -90,7 +90,7 @@ struct ast
 		std::string function_name;
 		std::vector<boxed_expression> params;
 
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			std::string params_str = "(";
 			for(const auto& param : this->params)
@@ -106,7 +106,7 @@ struct ast
 	struct return_statement
 	{
 		std::optional<boxed_expression> expr;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("return({})", expr.has_value() ? expr.value()->to_string() : "");
 		}
@@ -116,7 +116,7 @@ struct ast
 	struct if_statement
 	{
 		boxed_expression if_expr;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("if({})", if_expr->to_string());
 		}
@@ -139,7 +139,7 @@ struct ast
 			ast::if_statement
 		> expr;
 		bool capped = false;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			std::string ret;
 			std::visit([&ret](auto&& arg)
@@ -153,7 +153,7 @@ struct ast
 
 	struct block
 	{
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return "block()";
 		}
@@ -167,7 +167,7 @@ struct ast
 		std::string ret_type;
 		bool is_extern = false;
 		bool is_builtin = false;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			std::string params_str = "(";
 			for(const auto& param : this->params)
@@ -183,7 +183,7 @@ struct ast
 	struct struct_definition
 	{
 		std::string name;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("struct({})", name);
 		}
@@ -194,7 +194,7 @@ struct ast
 	{
 		std::string name;
 		std::string type;
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			return std::format("meta_region({} : {})", name, type);
 		}
@@ -208,7 +208,7 @@ struct ast
 		srcloc meta = {};
 		std::vector<node> children = {};
 
-		constexpr std::string to_string() const
+		std::string to_string() const
 		{
 			std::string ret;
 			std::visit([&ret](auto&& arg)
