@@ -1,5 +1,6 @@
 #include "semal.hpp"
 #include "type.hpp"
+#include "builtin.hpp"
 #include "util.hpp"
 
 namespace semal
@@ -156,6 +157,11 @@ namespace semal
 				return &funcdata;
 			}
 		}
+		builtin maybe_builtin = try_find_builtin(name);
+		if(maybe_builtin != builtin::_undefined)
+		{
+			return &get_builtin_function(maybe_builtin);
+		}
 		return nullptr;
 	}
 
@@ -231,13 +237,14 @@ namespace semal
 		return nullptr;
 	}
 
-	output analyse_predecl(const ast& tree)
+	output analyse_predecl(ast tree)
 	{
 		output ret;
 		auto semal_assert = [&tree](ast::path_t path, bool expr, const char* fmt, auto... ts)
 		{
 			context{&tree, path}.semal_assert(expr, fmt, ts...);
 		};
+
 		for(std::size_t i = 0; i < tree.root.children.size(); i++)
 		{
 			const ast::node& node = tree.root.children[i];
@@ -569,12 +576,7 @@ namespace semal
 	type function_call(const data& d, const ast::function_call& payload)
 	{
 		const function_t* maybe_function = d.state.try_find_function(payload.function_name.c_str());
-		if(maybe_function == nullptr)
-		{
-			d.assert_that(payload.function_name.starts_with("__builtin_"), std::format("call to undeclared function \"{}\"", payload.function_name));
-			diag::note("detected call to builtin function \"{}\"", payload.function_name);
-			return type::undefined();
-		}
+		d.assert_that(maybe_function != nullptr, std::format("call to undeclared function \"{}\"", payload.function_name));
 		return maybe_function->return_ty;
 	}
 

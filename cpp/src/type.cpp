@@ -199,6 +199,7 @@ type type::dereference() const
 
 type type::pointer_to(type_qualifier quals) const
 {
+	diag::assert_that(!this->is_undefined(), error_code::type, "attempt to get pointer to <undefined> type.");
 	return
 	{
 		.ty = util::box<type>{*this},

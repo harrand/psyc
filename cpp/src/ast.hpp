@@ -155,6 +155,7 @@ struct ast
 		std::vector<variable_declaration> params = {};
 		std::string ret_type;
 		bool is_extern = false;
+		bool is_builtin = false;
 		constexpr std::string to_string() const
 		{
 			std::string params_str = "(";
