@@ -86,7 +86,8 @@ namespace lex
 			std::size_t snippet_begin = this->cursor > snippet_width ? (this->cursor - snippet_width) : 0;
 			std::size_t snippet_end = (this->cursor + snippet_width) >= this->source.size() ? this->source.size() : (this->cursor + snippet_width);
 			std::string_view snippet = this->source.substr(snippet_begin, snippet_end - snippet_begin);
-			diag::error(errcode, "at {}, {}", curloc.to_string(), std::vformat(msg, std::make_format_args(dodgy_part.substr(0, std::min(dodgy_part.size(), static_cast<std::size_t>(2u))), snippet)));
+			std::string_view dodgy_snippet = dodgy_part.substr(0, std::min(dodgy_part.size(), static_cast<std::size_t>(2u)));
+			diag::error(errcode, "at {}, {}", curloc.to_string(), std::vformat(msg, std::make_format_args(dodgy_snippet, snippet)));
 		}
 
 		void unrecognised_tokens(std::string_view dodgy_part)
