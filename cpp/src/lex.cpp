@@ -238,6 +238,16 @@ namespace lex
 				.lexeme = std::string(state.source.data() + comment_begin, comment_end - comment_begin)
 			};
 		}
+		else if(data.starts_with("true"))
+		{
+			state.advance(3);
+			return token{.t = type::bool_literal, .lexeme = "true"};
+		}
+		else if(data.starts_with("false"))
+		{
+			state.advance(4);
+			return token{.t = type::bool_literal, .lexeme = "false"};
+		}
 		else if(data.starts_with("("))
 		{
 			return token{.t = type::open_paren};

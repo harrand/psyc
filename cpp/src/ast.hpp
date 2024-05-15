@@ -32,6 +32,15 @@ struct ast
 		}
 		bool operator==(const decimal_literal& rhs) const = default;
 	};
+	struct bool_literal
+	{
+		bool val;
+		constexpr std::string to_string() const
+		{
+			return std::format("bool-literal({})", val);
+		}
+		bool operator==(const bool_literal& rhs) const = default;
+	};
 	struct identifier
 	{
 		std::string iden;
@@ -113,6 +122,7 @@ struct ast
 			ast::binary_operator,
 			ast::integer_literal,
 			ast::decimal_literal,
+			ast::bool_literal,
 			ast::identifier,
 			ast::variable_declaration,
 			ast::function_call,
@@ -172,7 +182,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

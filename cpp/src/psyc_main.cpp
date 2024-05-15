@@ -94,7 +94,6 @@ int main(int argc, char** argv)
 
 	t.print();
 
-
 	type ty = type::from_primitive(primitive_type::u8);
 	ty = ty.pointer_to().pointer_to(qualifier_const);
 	std::cout << "type: \n" << ty.name();

@@ -47,6 +47,8 @@ namespace parse
 		bool reduce_from_integer_literal(std::size_t offset);
 		// given an ast::decimal_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_decimal_literal(std::size_t offset);
+		// given an ast::bool_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_bool_literal(std::size_t offset);
 		// given an ast::identifier subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_identifier(std::size_t offset);
 		// given an ast::variable_declaration subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -265,6 +267,30 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::decimal_literal>(&meta);
+
+		// integer literals get reduced to expressions.
+		// if there is a leading semicolon - we eat it.
+		if(retr.avail())
+		{
+			bool capped = true;
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				capped = false;
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+			retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+			return true;
+		}
+		return false;
+	}
+
+	bool parser_state::reduce_from_bool_literal(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::bool_literal>(&meta);
 
 		// integer literals get reduced to expressions.
 		// if there is a leading semicolon - we eat it.
@@ -695,6 +721,25 @@ namespace parse
 				return true;
 			}
 			break;
+			case lex::type::bool_literal:
+			{
+				bool val;
+				if(value.lexeme == "true")
+				{
+					val = true;
+				}
+				else if(value.lexeme == "false")
+				{
+					val = false;	
+				}
+				else
+				{
+					diag::assert_that(false, error_code::ice, "unknown bool-literal \"{}\"", value.lexeme);
+				}
+				retr.reduce_to(ast::bool_literal{.val = val}, meta);
+				return true;
+			}
+			break;
 			case lex::type::identifier:
 			{
 				std::string val = value.lexeme;
@@ -896,6 +941,10 @@ namespace parse
 					[&](ast::decimal_literal arg)
 					{
 						ret = this->reduce_from_decimal_literal(i);
+					},
+					[&](ast::bool_literal arg)
+					{
+						ret = this->reduce_from_bool_literal(i);
 					},
 					[&](ast::identifier arg)
 					{

@@ -433,11 +433,12 @@ namespace semal
 	output analyse_full(const ast& tree, output predecl)
 	{
 		output ret = predecl;
-		// todo: analyse all code (mainly implementations).
 		for(std::size_t i = 0; i < tree.root.children.size(); i++)
 		{
 			const ast::node& node = tree.root.children[i];
 			const ast::path_t path{i};
+			generic({.state = ret, .path = path, .tree = tree}, tree.get(path).payload);
+			// analyse all function implementation blocks.
 			if(std::holds_alternative<ast::function_definition>(node.payload))
 			{
 				auto func = std::get<ast::function_definition>(node.payload);	
@@ -453,7 +454,6 @@ namespace semal
 					block_path.push_back(0);
 					const auto& block_node = node.children.front();
 
-					// todo:semantically analyse the block...
 					for(std::size_t c = 0; c < block_node.children.size(); c++)
 					{
 						auto child_path = block_path;
@@ -484,7 +484,9 @@ namespace semal
 		switch(payload.op.t)
 		{
 			case lex::type::operator_equals:
-			[[fallthrough]];
+				d.assert_that(lhs == rhs, std::format("cannot assign from type \"{}\" to a type \"{}\"", lhs.name(), rhs.name()));
+				return rhs;
+			break;
 			case lex::type::operator_asterisk:
 			[[fallthrough]];
 			case lex::type::operator_slash:
@@ -492,11 +494,12 @@ namespace semal
 			case lex::type::operator_plus:
 			[[fallthrough]];
 			case lex::type::operator_minus:
-				d.assert_that(lhs == rhs, std::format("cannot assign from type \"{}\" to a type \"{}\"", lhs.name(), rhs.name()));
+				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
+				d.assert_that(lhs.is_integer_type() || lhs.is_floating_point_type(), std::format("both sides of a \"{}\" binary operator must both be numeric types (e.g any integer or floating point type). you passed \"{}\" ({} numeric) and \"{}\" ({} numeric)", payload.op.lexeme, lhs.name(), lhs.is_integer_type() || lhs.is_floating_point_type() ? "is" : "isn't", rhs.name(), rhs.is_integer_type() || rhs.is_floating_point_type() ? "is" : "isn't"));
 				return rhs;
 			break;
 			case lex::type::operator_double_equals:
-				return type::from_primitive(primitive_type::i8);
+				return type::from_primitive(primitive_type::boolean);
 			break;
 			default:
 				d.internal_error(std::format("unknown binary operator token \"{}\"", payload.op.lexeme));
@@ -612,6 +615,12 @@ namespace semal
 			.name = payload.var_name,
 			.ctx = {.tree = &d.tree, .path = d.path}
 		});
+
+		if(payload.initialiser.has_value())
+		{
+			type expr_ty = expression(d, *payload.initialiser.value());
+			d.assert_that(expr_ty == ty, std::format("initialiser of variable \"{}\" is of type \"{}\", which does not match the variable's type of \"{}\". perhaps you forgot to insert a cast?", payload.var_name, expr_ty.name(), ty.name()));
+		}
 		return ty;
 	}
 
@@ -653,14 +662,14 @@ namespace semal
 			{
 				ret = type::from_primitive(primitive_type::f64);
 			},
+			[&](ast::bool_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::boolean);
+			},
 			/*
 			[&](ast::char_literal lit)
 			{
 				ret = type::from_primitive(primitive_type::i8);
-			},
-			[&](ast::bool_literal lit)
-			{
-				ret = type::from_primitive(primitive_type::boolean);
 			},
 			[&](ast::string_literal lit)
 			{
