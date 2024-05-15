@@ -1,7 +1,6 @@
 #include "parse.hpp"
 #include "lex.hpp"
 #include "diag.hpp"
-#include <climits>
 #include <deque>
 #include <functional>
 #include <vector>
@@ -20,7 +19,8 @@ namespace parse
 		return t.t == lex::type::operator_minus
 			|| t.t == lex::type::operator_plus
 			|| t.t == lex::type::operator_ref
-			|| t.t == lex::type::operator_deref;
+			|| t.t == lex::type::operator_deref
+			|| t.t == lex::type::operator_defer;
 	}
 
 	bool token_is_binary_operator(const lex::token& t)

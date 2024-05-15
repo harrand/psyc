@@ -544,6 +544,9 @@ namespace semal
 				d.assert_that(!expr.is_unsigned_integer_type(), std::format("unary operator\"{}\" cannot be used on the unsigned integer type \"{}\"", payload.op.lexeme, expr.name()));
 				return expr;
 			break;
+			case lex::type::operator_defer:
+				return expr;
+			break;
 			default:
 				d.internal_error(std::format("unknown unary operator token \"{}\"", payload.op.lexeme));
 			break;

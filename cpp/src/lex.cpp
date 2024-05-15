@@ -323,6 +323,11 @@ namespace lex
 			state.advance(2);
 			return token{.t = type::operator_ref, .lexeme = "ref"};
 		}
+		else if(data.starts_with("defer"))
+		{
+			state.advance(4);
+			return token{.t = type::operator_defer, .lexeme = "defer"};
+		}
 		else if(data.starts_with("?"))
 		{
 			return token{.t = type::question_mark};
