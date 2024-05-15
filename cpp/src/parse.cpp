@@ -55,6 +55,8 @@ namespace parse
 		bool reduce_from_variable_declaration(std::size_t offset);
 		// given an ast::function_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_function_call(std::size_t offset);
+		// given an ast::if_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_if_statement(std::size_t offset);
 		// given an ast::expression subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_expression(std::size_t offset);
 		// given an ast::function_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -592,6 +594,16 @@ namespace parse
 		return false;
 	}
 
+	bool parser_state::reduce_from_if_statement(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::if_statement>(&meta);
+
+		this->move_to_final_tree(offset);
+		return false;
+	}
+
 	bool parser_state::reduce_from_expression(std::size_t offset)
 	{
 		retriever retr{*this, offset};
@@ -790,6 +802,50 @@ namespace parse
 			{
 				std::string val = value.lexeme;
 				retr.reduce_to(ast::identifier{.iden = val}, meta);
+				return true;
+			}
+			break;
+			case lex::type::keyword_if:
+			{
+				if(!retr.avail()){return false;}
+				auto expr = retr.retrieve<ast::expression>();
+				if(!expr.has_value())
+				{
+					return false;
+				}
+				if(!retr.avail()){return false;}
+				ast::node blk_node;
+				auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
+				if(!blk.has_value())
+				{
+					return false;
+				}
+				std::optional<ast::node> else_node = std::nullopt;
+				// check for else.
+				if(!retr.avail()){return false;}
+				auto maybe_else = retr.retrieve<lex::token>();
+				if(maybe_else.has_value() && maybe_else->t == lex::type::keyword_else)
+				{
+					if(!retr.avail()){return false;}
+					ast::node blk2_node;
+					auto blk2 = retr.retrieve<ast::block>(nullptr, &blk2_node);
+					if(!blk2.has_value())
+					{
+						return false;
+					}
+					else_node = blk2_node;
+				}
+				else
+				{
+					retr.undo();
+				}
+				retr.reduce_to(ast::if_statement{.if_expr = expr.value()}, meta);
+				ast::node& node = this->subtrees[offset].tree.root;
+				node.children = {blk_node};
+				if(else_node.has_value())
+				{
+					node.children.push_back(else_node.value());
+				}
 				return true;
 			}
 			break;
@@ -1007,6 +1063,10 @@ namespace parse
 					[&](ast::return_statement arg)
 					{
 						ret = this->reduce_from_return_statement(i);
+					},
+					[&](ast::if_statement arg)
+					{
+						ret = this->reduce_from_if_statement(i);
 					},
 					[&](ast::expression arg)
 					{

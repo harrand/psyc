@@ -11,6 +11,8 @@ namespace lex
 	enum class type
 	{
 		keyword_struct,
+		keyword_if,
+		keyword_else,
 		identifier,
 		semicolon,
 		colon,

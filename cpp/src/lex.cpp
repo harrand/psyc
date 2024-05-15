@@ -243,6 +243,16 @@ namespace lex
 			state.advance(5);
 			return token{.t = type::keyword_struct, .lexeme = "struct"};
 		}
+		else if(data.starts_with("if"))
+		{
+			state.advance();
+			return token{.t = type::keyword_if, .lexeme = "if"};
+		}
+		else if(data.starts_with("else"))
+		{
+			state.advance(3);
+			return token{.t = type::keyword_else, .lexeme = "else"};
+		}
 		else if(data.starts_with("true"))
 		{
 			state.advance(3);

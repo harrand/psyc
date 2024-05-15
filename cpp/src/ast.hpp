@@ -113,6 +113,16 @@ struct ast
 		bool operator==(const return_statement& rhs) const = default;
 	};
 
+	struct if_statement
+	{
+		boxed_expression if_expr;
+		constexpr std::string to_string() const
+		{
+			return std::format("if({})", if_expr->to_string());
+		}
+		bool operator==(const if_statement& rhs) const = default;
+	};
+
 	struct expression
 	{
 		std::variant
@@ -125,7 +135,8 @@ struct ast
 			ast::identifier,
 			ast::variable_declaration,
 			ast::function_call,
-			ast::return_statement
+			ast::return_statement,
+			ast::if_statement
 		> expr;
 		bool capped = false;
 		constexpr std::string to_string() const
@@ -192,7 +203,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, function_call, if_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

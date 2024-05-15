@@ -487,6 +487,13 @@ namespace semal
 		return generic(d, payload.expr);
 	}
 
+	type if_statement(const data& d, const ast::if_statement& payload)
+	{
+		type if_expr_ty = expression(d, *payload.if_expr);
+		d.assert_that(if_expr_ty.is_primitive() && if_expr_ty.as_primitive() == primitive_type::boolean, std::format("expression of if-statement operand must be a boolean, you passed a {} you stupid cunt", if_expr_ty.name()));
+		return type::undefined();
+	}
+
 	// node types.
 	type binary_operator(const data& d, const ast::binary_operator& payload)
 	{
@@ -510,6 +517,7 @@ namespace semal
 				return rhs;
 			break;
 			case lex::type::operator_double_equals:
+				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
 				return type::from_primitive(primitive_type::boolean);
 			break;
 			default:
@@ -731,11 +739,11 @@ namespace semal
 			{
 				ret = expression(d, expr);
 			},
-			/*
 			[&](ast::if_statement ifst)
 			{
 				ret = if_statement(d, ifst);
 			},
+			/*
 			[&](ast::else_statement elst)
 			{
 				ret = else_statement(d, elst);
