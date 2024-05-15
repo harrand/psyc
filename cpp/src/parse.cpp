@@ -59,6 +59,8 @@ namespace parse
 		bool reduce_from_expression(std::size_t offset);
 		// given an ast::function_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_function_definition(std::size_t offset);
+		// given an ast::struct_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_struct_definition(std::size_t offset);
 		// given an ast::block subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_block(std::size_t offset);
 		// given an ast::meta_region subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -349,19 +351,36 @@ namespace parse
 				retr.reduce_to(ast::variable_declaration{.var_name = value.iden, .type_name = type_name.value().iden, .initialiser = initialiser}, meta);
 				return true;
 			}
-			// - function definition (2nd colon)
+			// - function or struct definition (2nd colon)
 			retr.undo();
 			if(!retr.avail()){return false;}
 			auto colon2 = retr.retrieve<lex::token>();
 			if(colon2.has_value() && colon2->t == lex::type::colon)
 			{
-				// probably. keep going to check function definition
+				// probably. keep going to check struct/function definition
 				// fnname :: (par1 : ty1, par2 : ty2) -> retty
 				//           ^ we are on this bit.
 				if(!retr.avail()){return false;}
 				auto open_paren = retr.retrieve<lex::token>();
 				if(!open_paren.has_value() || open_paren->t != lex::type::open_paren)
 				{
+					if(open_paren.has_value() && open_paren->t == lex::type::keyword_struct)
+					{
+						// ah, so we're a struct.
+						if(!retr.avail()){return false;}
+						ast::node blk_node;
+						auto blk = retr.retrieve<ast::block>(nullptr, &blk_node);
+						if(!blk.has_value())
+						{
+							return false;
+						}
+						retr.reduce_to(ast::struct_definition{.name = value.iden}, meta);
+						ast::node& node = this->subtrees[offset].tree.root;
+						node.children = {blk_node};
+						// made our struct definition with the block as its only child. that block should have its contents as child nodes.
+						return true;	
+					}
+					// ok, not a function either.
 					return false;
 				}
 				if(!retr.avail()){return false;}
@@ -657,6 +676,33 @@ namespace parse
 		// however, in the case of a genuinely poorly-placed function definition, you've now fucked up the error messages, coz a bunch of shit won't ever parse coz this stays in the subtree list forever.
 		// im afraid thats going to be a bit of a PITA. good luck!
 		this->node_assert(func_node, offset == 0, std::format("function \"{}\" is not defined at the top-level scope. all functions must be defined there.", value.func_name));
+		this->move_to_final_tree(offset);
+		/*
+		if(offset == 0)
+		{
+			this->move_to_final_tree(offset);
+		}
+		*/
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_struct_definition(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		ast::node func_node;
+		auto value = retr.must_retrieve<ast::struct_definition>(&meta, &func_node);
+
+		// this is the highest-level it gets. push to final tree.
+		// however, function definitions *must* only be standalone and not a part of a block for example.
+		// for that reason, if its not the very first subtree, we can't move it.
+
+		// note for future: you're probably tearing your hair out implementing methods which means functions *can* be defined beyond top-level scope.
+		// in which case, you'll have to `if(offset == 0) move_to_final_tree` and then struct reduction should check for a function definition.
+		// however, in the case of a genuinely poorly-placed function definition, you've now fucked up the error messages, coz a bunch of shit won't ever parse coz this stays in the subtree list forever.
+		// im afraid thats going to be a bit of a PITA. good luck!
+		this->node_assert(func_node, offset == 0, std::format("struct \"{}\" is not defined at the top-level scope. all structs must be defined there.", value.name));
 		this->move_to_final_tree(offset);
 		/*
 		if(offset == 0)
@@ -969,6 +1015,10 @@ namespace parse
 					[&](ast::function_definition arg)
 					{
 						ret = this->reduce_from_function_definition(i);
+					},
+					[&](ast::struct_definition arg)
+					{
+						ret = this->reduce_from_struct_definition(i);
 					},
 					[&](ast::block arg)
 					{

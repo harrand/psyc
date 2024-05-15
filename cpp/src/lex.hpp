@@ -10,7 +10,7 @@ namespace lex
 {
 	enum class type
 	{
-		keyword,
+		keyword_struct,
 		identifier,
 		semicolon,
 		colon,

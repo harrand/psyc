@@ -242,43 +242,50 @@ namespace semal
 		{
 			const ast::node& node = tree.root.children[i];
 			const ast::path_t path{i};
-			// does it define a struct?
-			/*
 			if(std::holds_alternative<ast::struct_definition>(node.payload))
 			{
 				// cool, go through node children to get the data members.
 				const auto& data = std::get<ast::struct_definition>(node.payload);
 				struct_t ty;
-				ty.ty.name = data.struct_name;
-				ty.context = path;
+				ty.ty.name = data.name;
+				ty.ctx = {.tree = &tree, .path = path};
 				// go through its children.
-				for(std::size_t i = 0; i < node.children.size(); i++)
+				auto block_node = node.children.front();
+				semal_assert(path, std::holds_alternative<ast::block>(block_node.payload), "struct definition should *always* be followed by an implementation block!");
+				const auto& blk = std::get<ast::block>(block_node.payload);
+				auto block_path = path;
+				block_path.push_back(0);
+				for(std::size_t i = 0; i < block_node.children.size(); i++)
 				{
-					const ast::node& child = node.children[i];
-					if(std::holds_alternative<ast::variable_declaration>(child.payload))
+					const ast::node& child = block_node.children[i];
+					auto child_path = block_path;
+					child_path.push_back(i);
+					if(std::holds_alternative<ast::expression>(child.payload))
 					{
-						const auto& decl = std::get<ast::variable_declaration>(child.payload);	
-						if(decl.array_size != 0)
+						const auto& expr = std::get<ast::expression>(child.payload);	
+						if(std::holds_alternative<ast::variable_declaration>(expr.expr))
 						{
-							this->last_error = std::format("semal error on line {} - detected data member of array type. this is not yet implemented.", child.meta.line_number);
-							return;
+							const auto& decl = std::get<ast::variable_declaration>(expr.expr);	
+							type param_type = ret.get_type_from_name(decl.type_name);
+							semal_assert(child_path, !param_type.is_undefined(), "could not decipher type of {}::{} (type: \"{}\"). if \"{}\" is meant to be a struct, it should be defined before this struct.", data.name, decl.var_name, decl.type_name, decl.type_name);
+							ty.ty.data_members.push_back
+							({
+								.member_name = decl.var_name,
+								.ty = param_type
+							});
 						}
-						type param_type = this->get_type_from_name(decl.type_name).first;
-						if(param_type.is_undefined())
+						else
 						{
-							this->last_error = std::format("semal error on line {} - could not decipher type of data member {} (typename: {}). if its a struct, it must be defined before this struct.", child.meta.line_number, decl.var_name, decl.type_name);
-							return;
+							semal_assert(child_path, false, "every expression within a struct definition block should be a variable declaration. these token(s) represent neither.");
 						}
-						ty.ty.data_members.push_back
-						({
-							.member_name = decl.var_name,
-							.type = param_type
-						});
 					}
 					else if(std::holds_alternative<ast::function_definition>(child.payload))
 					{
-						// this is a method.
 						auto decl = std::get<ast::function_definition>(child.payload);
+
+						diag::error(error_code::nyi, "at: {}: attempt to define a method {}::{}", child.meta.to_string(), data.name, decl.func_name);
+						// this is a method.
+						/*
 						function_t fn;
 						fn.is_method = true;
 						fn.name = ast::mangle_method_name(data.struct_name, decl.function_name);
@@ -314,22 +321,19 @@ namespace semal
 						}
 						this->register_function(fn);
 						ty.methods[decl.function_name] = fn;
+						*/
 					}
 					else
 					{
-						this->last_error = std::format("semal error on line {} - every expression within a struct definition should be a variable declaration.", child.meta.line_number);
-						return;
+						semal_assert(child_path, false, "everything within a struct definition block should be either a variable declaration (via expression) or a function definition representing a method. these token(s) represent neither.");
 					}
 				}
-				if(this->struct_decls.contains(ty.ty.name))
+				if(ret.struct_decls.contains(ty.ty.name))
 				{
-					std::size_t previously_defined_on_line = tree.get(this->struct_decls.at(ty.ty.name).context).meta.line_number;
-					this->last_error = std::format("semal error on line {} - double definition of struct {} (previous definition on line {})", node.meta.line_number, ty.ty.name, previously_defined_on_line);
-					return;
+					semal_assert(path, false, "double definition of struct \"{}\" (previously defined at: {})", ty.ty.name, ret.struct_decls.at(ty.ty.name).ctx.location().to_string());
 				}
-				this->register_struct(ty);
+				ret.register_struct(ty);
 			}
-			*/
 		}
 
 		// then, functions and globals can be done at the same time.
@@ -642,6 +646,24 @@ namespace semal
 		return d.state.get_type_from_name(payload.ret_type);
 	}
 
+	type struct_definition(const data& d, const ast::struct_definition& payload)
+	{
+		if(d.path.size() > 1)
+		{
+			// not at the top-level scope.
+			// its parent better be a struct (making this a method).
+			// if its not, then the code is ill-formed.
+			auto parent_path = d.path;
+			parent_path.pop_back();
+			const ast::node& parent = d.tree.get(parent_path);
+			/*
+			d.assert_that(std::holds_alternative<ast::struct_definition>(parent.payload), std::format("detected a non-method function definition \"{}\" within another block. functions can only be defined at the top-level scope.", payload.function_name));
+			*/
+			d.fatal_error("structs must be defined at the top-level scope.");
+		}
+		return d.state.get_type_from_name(payload.name);
+	}
+
 	type meta_region(const data& d, const ast::meta_region& payload)
 	{
 		return type::undefined();
@@ -733,12 +755,10 @@ namespace semal
 			{
 				ret = function_definition(d, fdef);
 			},
-			/*
 			[&](ast::struct_definition sdef)
 			{
 				ret = struct_definition(d, sdef);
 			},
-			*/
 			[&](ast::meta_region meta)
 			{
 				ret = meta_region(d, meta);

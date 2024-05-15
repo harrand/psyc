@@ -113,7 +113,6 @@ struct ast
 		bool operator==(const return_statement& rhs) const = default;
 	};
 
-
 	struct expression
 	{
 		std::variant
@@ -169,6 +168,16 @@ struct ast
 		bool operator==(const function_definition& rhs) const = default;
 	};
 
+	struct struct_definition
+	{
+		std::string name;
+		constexpr std::string to_string() const
+		{
+			return std::format("struct({})", name);
+		}
+		bool operator==(const struct_definition& rhs) const = default;
+	};
+
 	struct meta_region
 	{
 		std::string name;
@@ -182,7 +191,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, function_call, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

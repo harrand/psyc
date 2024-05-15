@@ -238,6 +238,11 @@ namespace lex
 				.lexeme = std::string(state.source.data() + comment_begin, comment_end - comment_begin)
 			};
 		}
+		else if(data.starts_with("struct"))
+		{
+			state.advance(5);
+			return token{.t = type::keyword_struct, .lexeme = "struct"};
+		}
 		else if(data.starts_with("true"))
 		{
 			state.advance(3);
