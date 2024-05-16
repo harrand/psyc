@@ -505,7 +505,19 @@ namespace semal
 	type binary_operator(const data& d, const ast::binary_operator& payload)
 	{
 		type lhs = expression(d, *payload.lhs_expr);
-		type rhs = expression(d, *payload.rhs_expr);
+		type rhs = type::undefined();
+		if(payload.op.t == lex::type::operator_cast)
+		{
+			d.assert_that(std::holds_alternative<ast::identifier>(payload.rhs_expr->expr), std::format("in a cast, rhs of the cast token \"{}\" must be an identifier, not an expression or anything else.", payload.op.lexeme));
+			std::string type_name = std::get<ast::identifier>(payload.rhs_expr->expr).iden;
+			rhs = d.state.get_type_from_name(type_name);
+			d.assert_that(!rhs.is_undefined(), std::format("unknown cast destination type \"{}\"", type_name));
+			// todo: confirm that lhs can actually be casted to rhs.
+		}
+		else
+		{
+			rhs = expression(d, *payload.rhs_expr);
+		}
 		switch(payload.op.t)
 		{
 			case lex::type::operator_equals:
@@ -526,6 +538,9 @@ namespace semal
 			case lex::type::operator_double_equals:
 				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
 				return type::from_primitive(primitive_type::boolean);
+			break;
+			case lex::type::operator_cast:
+				return rhs;
 			break;
 			default:
 				d.internal_error(std::format("unknown binary operator token \"{}\"", payload.op.lexeme));

@@ -333,6 +333,10 @@ namespace lex
 			state.advance(4);
 			return token{.t = type::operator_defer, .lexeme = "defer"};
 		}
+		else if(data.starts_with("@"))
+		{
+			return token{.t = type::operator_cast};
+		}
 		else if(data.starts_with("?"))
 		{
 			return token{.t = type::question_mark};
