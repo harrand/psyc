@@ -491,6 +491,22 @@ namespace semal
 	{
 		type if_expr_ty = expression(d, *payload.if_expr);
 		d.assert_that(if_expr_ty.is_primitive() && if_expr_ty.as_primitive() == primitive_type::boolean, std::format("expression of if-statement operand must be a boolean, you passed a {}", if_expr_ty.name()));
+
+		const auto& node = d.tree.get(d.path);
+		d.assert_that(node.children.size() == 1 || node.children.size() == 2, std::format("if-statement AST node is expected to have *1* child representing its if-true-clause (or *2* children if it's an if-then-else), but the node actually has \"{}\"", node.children.size()));
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			const ast::node& child = node.children[i];
+			d.assert_that(std::holds_alternative<ast::block>(child.payload), std::format("child nodes of an if-statement node must only ever be blocks. detected a non-block AST child node."));
+			for(std::size_t j = 0; j < child.children.size(); j++)
+			{
+				const ast::node& grandchild = child.children[j];
+				data d2 = d;
+				d2.path.push_back(i);
+				d2.path.push_back(j);
+				generic(d2, grandchild.payload);
+			}
+		}
 		return type::undefined();
 	}
 
@@ -498,6 +514,19 @@ namespace semal
 	{
 		type cond_expr_ty = expression(d, *payload.cond_expr);
 		d.assert_that(cond_expr_ty.is_primitive() && cond_expr_ty.as_primitive() == primitive_type::boolean, std::format("condition-expression (2nd part) of for-statement operand must be a boolean, you passed a {}", cond_expr_ty.name()));
+		const auto& node = d.tree.get(d.path);
+
+		d.assert_that(node.children.size() == 1, std::format("for-statement AST node is expected to have *1* child representing its loop block, but the node actually has \"{}\"", node.children.size()));
+		const ast::node& child = node.children.front();
+		d.assert_that(std::holds_alternative<ast::block>(child.payload), std::format("child nodes of an for-statement node must only ever be blocks. detected a non-block AST child node."));
+		for(std::size_t j = 0; j < child.children.size(); j++)
+		{
+			const ast::node& grandchild = child.children[j];
+			data d2 = d;
+			d2.path.push_back(0);
+			d2.path.push_back(j);
+			generic(d2, grandchild.payload);
+		}
 		return type::undefined();
 	}
 
