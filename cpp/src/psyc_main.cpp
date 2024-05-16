@@ -2,9 +2,9 @@
 #include "lex.hpp"
 #include "parse.hpp"
 #include "semal.hpp"
+#include "codegen.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
-#include "type.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -89,14 +89,24 @@ int main(int argc, char** argv)
 	t.semal = timer::elapsed_millis();
 	
 	// codegen
+	timer::start();
+	code::state codegen;
+	for(const auto& [input_file, semantic_output] : semal.analysed_input_files)
+	{
+		codegen.codegend_input_files[input_file] = code::generate(semantic_output, input_file.stem().string());
+		if(args.should_dump_ir)
+		{
+			std::cout << "==========================\n";
+			std::cout << "ir for " << input_file << ":\n";
+			std::cout << codegen.codegend_input_files[input_file].dump_ir();
+			std::cout << "\n==========================\n\n";
+		}
+	}
 
+	t.codegen = timer::elapsed_millis();
 	// link
 
 	t.print();
-
-	type ty = type::from_primitive(primitive_type::u8);
-	ty = ty.pointer_to().pointer_to(qualifier_const);
-	std::cout << "type: \n" << ty.name();
 	return 0;
 }
 

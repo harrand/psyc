@@ -36,6 +36,8 @@ add_executable(psyc
 	src/ast.hpp
 	src/builtin.cpp
 	src/builtin.hpp
+	src/codegen.cpp
+	src/codegen.hpp
 	src/config.hpp
 	src/diag.hpp
 	src/error.hpp
