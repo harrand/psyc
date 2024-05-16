@@ -595,6 +595,13 @@ namespace semal
 	{
 		const function_t* maybe_function = d.state.try_find_function(payload.function_name.c_str());
 		d.assert_that(maybe_function != nullptr, std::format("call to undeclared function \"{}\"", payload.function_name));
+		std::size_t argc = payload.params.size();
+		d.assert_that(argc == maybe_function->params.size(), std::format("wrong number of arguments passed to call to \"{}\". expected {} arguments, but you provided {}", maybe_function->name, maybe_function->params.size(), argc));
+		for(std::size_t i = 0; i < argc; i++)
+		{
+			type passed_ty = expression(d, *payload.params[i]);
+			d.assert_that(maybe_function->params[i].ty == passed_ty, std::format("type mismatch to argument {} (\"{}\") - expected \"{}\", but you provided \"{}\"", i, maybe_function->params[i].name, maybe_function->params[i].ty.name(), passed_ty.name()));
+		}
 		return maybe_function->return_ty;
 	}
 
