@@ -605,6 +605,23 @@ namespace semal
 		return maybe_function->return_ty;
 	}
 
+	type member_access(const data& d, const ast::member_access& payload)
+	{
+		type lhs_ty = expression(d, *payload.lhs);
+		d.assert_that(lhs_ty.is_struct(), std::format("detected use of member-access token `.`. the left-hand-side of the token must be a struct type, which \"{}\" is not.", lhs_ty.name()));
+		struct_type struct_ty = lhs_ty.as_struct();
+		for(std::size_t i = 0; i < struct_ty.data_members.size(); i++)
+		{
+			const auto& member = struct_ty.data_members[i];
+			if(member.member_name == payload.rhs)
+			{
+				return *member.ty;
+			}
+		}
+		d.fatal_error(std::format("struct \"{}\" has no data member named \"{}\"", struct_ty.name, payload.rhs));
+		return type::undefined();
+	}
+
 	type return_statement(const data& d, const ast::return_statement& payload)
 	{
 		const function_t* maybe_parent = d.state.try_find_parent_function(d.tree, d.path);
@@ -744,12 +761,10 @@ namespace semal
 			{
 				ret = function_call(d, call);
 			},
-			/*
 			[&](ast::member_access mem)
 			{
 				ret = member_access(d, mem);
 			},
-			*/
 			[&](ast::expression expr)
 			{
 				ret = expression(d, expr);

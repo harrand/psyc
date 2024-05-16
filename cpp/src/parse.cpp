@@ -51,6 +51,8 @@ namespace parse
 		bool reduce_from_bool_literal(std::size_t offset);
 		// given an ast::identifier subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_identifier(std::size_t offset);
+		// given an ast::member_access subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_member_access(std::size_t offset);
 		// given an ast::variable_declaration subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_variable_declaration(std::size_t offset);
 		// given an ast::function_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -517,6 +519,19 @@ namespace parse
 			return true;
 		}
 		retr.undo();
+		auto dot = retr.retrieve<lex::token>();
+		if(dot.has_value() && dot->t == lex::type::dot)
+		{
+			if(!retr.avail()){return false;}
+			auto rhs_iden = retr.retrieve<ast::identifier>();
+			if(!rhs_iden.has_value())
+			{
+				return false;
+			}
+			retr.reduce_to(ast::member_access{.lhs = ast::expression{.expr =value, .capped = false}, .rhs = rhs_iden->iden}, meta);
+			return true;
+		}
+		retr.undo();
 
 		// getting difficult here...
 		// at some point we need to know whether an identifier should remain an identifier or become an expression
@@ -568,6 +583,26 @@ namespace parse
 
 		// todo: keep going.
 		return false;
+	}
+
+	bool parser_state::reduce_from_member_access(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::member_access>(&meta);
+
+		if(!retr.avail()){return false;}
+		bool capped = false;
+
+		auto semicolon = retr.retrieve<lex::token>();
+		capped = (semicolon.has_value() && semicolon->t == lex::type::semicolon);
+		if(!capped)
+		{
+			retr.undo();
+		}
+
+		retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+		return true;
 	}
 
 	bool parser_state::reduce_from_variable_declaration(std::size_t offset)
@@ -643,6 +678,18 @@ namespace parse
 							}, .capped = operand.value().capped}, meta);
 						return true;
 					}
+				}
+				else if(tok->t == lex::type::dot)
+				{
+					// could be a member access.
+					if(!retr.avail()){return false;}
+					auto iden = retr.retrieve<ast::identifier>();
+					if(!iden.has_value())
+					{
+						return false;
+					}
+					retr.reduce_to(ast::member_access{.lhs = value, .rhs = iden->iden}, meta);
+					return true;
 				}
 			}
 		}
@@ -1124,6 +1171,10 @@ namespace parse
 					[&](ast::identifier arg)
 					{
 						ret = this->reduce_from_identifier(i);
+					},
+					[&](ast::member_access arg)
+					{
+						ret = this->reduce_from_member_access(i);
 					},
 					[&](ast::variable_declaration arg)
 					{
