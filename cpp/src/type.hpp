@@ -93,6 +93,8 @@ struct type
 	bool is_floating_point_type() const;
 	bool is_void() const;
 
+	bool is_const() const;
+
 	primitive_type as_primitive() const;
 	struct_type as_struct() const;
 
@@ -100,6 +102,7 @@ struct type
 
 	type dereference() const;
 	type pointer_to(type_qualifier quals = qualifier_none) const;
+	type without_qualifiers() const;
 
 	static type undefined();
 	static type from_primitive(primitive_type t, type_qualifier quals = qualifier_none);

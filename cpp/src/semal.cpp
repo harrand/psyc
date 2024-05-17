@@ -45,20 +45,29 @@ namespace semal
 	{
 		type ret = type::undefined();
 		std::string cur_type = "";
-		auto check_const = [&cur_type, &ret, &type_name](){if(type_name == "const"){ret.qualifiers = static_cast<type_qualifier>(static_cast<int>(ret.qualifiers) | qualifier_const);}};
 		for(std::size_t i = 0; i < type_name.size(); i++)
 		{
+			if(std::string_view(type_name.data() + i).starts_with(" const"))
+			{
+				if(ret.is_undefined())
+				{
+					ret = get_type_from_name(cur_type);
+				}
+				ret.qualifiers = (type_qualifier)((int)ret.qualifiers | qualifier_const);
+				i += sizeof(" const") - 2;
+				continue;
+			}
 			char c = type_name[i];
 			if(c == '&')
 			{
-				check_const();
-				ret = get_type_from_name(cur_type).pointer_to();
-				cur_type = "";
-			}
-			else if(c == ' ')
-			{
-				check_const();
-				ret = get_type_from_name(cur_type);
+				if(ret.is_undefined())
+				{
+					ret = get_type_from_name(cur_type).pointer_to();
+				}
+				else
+				{
+					ret = ret.pointer_to();
+				}
 				cur_type = "";
 			}
 			else
@@ -68,17 +77,6 @@ namespace semal
 		}
 		if(cur_type.size())
 		{
-			std::string without_qualifiers = cur_type;
-			auto iter = without_qualifiers.find("const");
-			if(iter != std::string::npos)
-			{
-				without_qualifiers.erase(iter, sizeof("const") - 1); // -1 as sizeof includes null terminator
-			}
-			type_qualifier quals = iter != std::string::npos ? qualifier_const : qualifier_none;
-			if(!ret.is_undefined())
-			{
-				ret.qualifiers = quals;
-			}
 			if(ret.is_undefined())
 			{
 				// try a struct.
@@ -86,7 +84,7 @@ namespace semal
 				{
 					if(cur_type == struct_name)
 					{
-						ret = type::from_struct(structdata.ty, quals);
+						ret = type::from_struct(structdata.ty);
 						break;
 					}
 				}
@@ -98,7 +96,7 @@ namespace semal
 				{
 					if(cur_type == primitive_type_names[i])
 					{
-						ret = type::from_primitive(static_cast<primitive_type>(i), quals);
+						ret = type::from_primitive(static_cast<primitive_type>(i));
 						break;
 					}
 				}
@@ -550,6 +548,7 @@ namespace semal
 		switch(payload.op.t)
 		{
 			case lex::type::operator_equals:
+				d.assert_that(!lhs.is_const(), std::format("lhs of assignment is const: \"{}\"", lhs.name()));
 				d.assert_that(lhs == rhs, std::format("cannot assign from type \"{}\" to a type \"{}\"", lhs.name(), rhs.name()));
 				return rhs;
 			break;
@@ -701,6 +700,7 @@ namespace semal
 
 		const auto& ty = d.state.get_type_from_name(payload.type_name);
 		d.assert_that(!ty.is_undefined(), std::format("undefined type \"{}\"", payload.type_name));
+		d.assert_that(payload.type_name == ty.name(), std::format("parse-type-from-string error. input string: \"{}\". output type.name(): \"{}\"", payload.type_name, ty.name()));
 		d.state.register_local_variable
 		({
 			.ty = ty,
@@ -711,7 +711,7 @@ namespace semal
 		if(payload.initialiser.has_value())
 		{
 			type expr_ty = expression(d, *payload.initialiser.value());
-			d.assert_that(expr_ty == ty, std::format("initialiser of variable \"{}\" is of type \"{}\", which does not match the variable's type of \"{}\". perhaps you forgot to insert a cast?", payload.var_name, expr_ty.name(), ty.name()));
+			d.assert_that(expr_ty.without_qualifiers() == ty.without_qualifiers(), std::format("initialiser of variable \"{}\" is of type \"{}\", which does not match the variable's type of \"{}\". perhaps you forgot to insert a cast?", payload.var_name, expr_ty.name(), ty.name()));
 		}
 		return ty;
 	}

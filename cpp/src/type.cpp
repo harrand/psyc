@@ -146,6 +146,11 @@ bool type::is_void() const
 		&& !this->is_pointer();
 }
 
+bool type::is_const() const
+{
+	return this->qualifiers & qualifier_const;
+}
+
 primitive_type type::as_primitive() const
 {
 	diag::assert_that(this->is_primitive(), error_code::ice, "attempt to resolve non-primitive type \"{}\" as a primitive", this->name());
@@ -181,10 +186,6 @@ std::string type::name() const
 	}
 	else
 	{
-		if(qualstr.size() && qualstr.front() == ' ')
-		{
-			qualstr.erase(qualstr.begin());
-		}
 		ret = std::format("{}&{}", std::get<util::box<type>>(this->ty)->name(), qualstr);
 	}
 
@@ -205,6 +206,13 @@ type type::pointer_to(type_qualifier quals) const
 		.ty = util::box<type>{*this},
 		.qualifiers = quals,
 	};
+}
+
+type type::without_qualifiers() const
+{
+	type ret = *this;
+	ret.qualifiers = qualifier_none;
+	return ret;
 }
 
 /*static*/type type::undefined()
