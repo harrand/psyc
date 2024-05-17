@@ -48,6 +48,8 @@ int main(int argc, char** argv)
 	config::compiler_args args = parse_args(cli_args);
 	timers t;
 
+	code::static_initialise();
+
 	// lex
 	timer::start();
 	lex::state lex;
@@ -93,12 +95,14 @@ int main(int argc, char** argv)
 	code::state codegen;
 	for(const auto& [input_file, semantic_output] : semal.analysed_input_files)
 	{
-		codegen.codegend_input_files[input_file] = code::generate(semantic_output, input_file.stem().string());
+		codegen.codegend_input_files[input_file] = code::generate(parse.parsed_input_files[input_file], semantic_output, input_file.stem().string());
 		if(args.should_dump_ir)
 		{
 			std::cout << "==========================\n";
 			std::cout << "ir for " << input_file << ":\n";
 			std::cout << codegen.codegend_input_files[input_file].dump_ir();
+			code::cleanup();
+			codegen.codegend_input_files[input_file].codegen_handle = nullptr;
 			std::cout << "\n==========================\n\n";
 		}
 	}
@@ -107,6 +111,8 @@ int main(int argc, char** argv)
 	// link
 
 	t.print();
+
+	code::static_terminate();
 	return 0;
 }
 

@@ -13,7 +13,13 @@ namespace code
 		void write_to_object_file(std::filesystem::path output_dir);
 	};
 
-	output generate(const semal::output& input, std::string module_name = "<unnamed_module>");
+	// initialise and terminate *once*, at the beginning and end of the compiler program respectively.
+	void static_initialise();
+	void static_terminate();
+
+	void cleanup();
+	// perform code generation. `codegen_handle` member of the returned output remains valid until you invoke `code::cleanup()`. ideally, you generate, then dump-ir/write-object, cleanup and then codegen another file.
+	output generate(const ast& tree, const semal::output& input, std::string module_name = "<unnamed_module>");
 
 	struct state
 	{
