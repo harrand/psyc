@@ -76,11 +76,11 @@ namespace semal
 		void register_local_variable(local_variable_t gvar);
 		void register_struct(struct_t structdata);
 
-		const function_t* try_find_function(const char* name) const;
+		const function_t* try_find_function(std::string_view name) const;
 		const function_t* try_find_parent_function(const ast& tree, ast::path_t path) const;
-		const local_variable_t* try_find_global_variable(const char* name) const;
-		const local_variable_t* try_find_local_variable(const ast::path_t& context, const char* name) const;
-		const struct_t* try_find_struct(const char* name) const;
+		const local_variable_t* try_find_global_variable(std::string_view) const;
+		const local_variable_t* try_find_local_variable(const ast::path_t& context, std::string_view name) const;
+		const struct_t* try_find_struct(std::string_view name) const;
 
 		type get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const;
 	};

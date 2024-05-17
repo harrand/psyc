@@ -114,6 +114,79 @@ namespace code
 		}
 	};
 
+	llvm::Type* as_llvm_type(const type& ty, const semal::output& semal_input)
+	{
+		diag::assert_that(!ty.is_undefined(), error_code::ice, "undefined type made it to codegen!");
+		if(ty.is_pointer())
+		{
+			return llvm::PointerType::get(*ctx, 0);
+		}
+		if(ty.is_struct())
+		{
+			const semal::struct_t* structdata = semal_input.try_find_struct(ty.name());
+			diag::assert_that(structdata != nullptr, error_code::type, "struct type \"{}\" was not found within semantic analysis state, which is weird as it was recognised as a struct type. perhaps semantic analysis bug?", ty.name());
+			diag::assert_that(structdata->userdata != nullptr, error_code::ice, "found struct named \"{}\" but its userdata ptr is null, meaning it has not been codegen'd and i currently need it while evaluating something else.", ty.name());
+			return static_cast<llvm::StructType*>(structdata->userdata);
+		}
+		if(ty.is_primitive())
+		{
+			switch(ty.as_primitive())
+			{
+				case primitive_type::i64:
+					[[fallthrough]];
+				case primitive_type::u64:
+					return llvm::Type::getInt64Ty(*ctx);
+				break;
+
+				case primitive_type::i32:
+					[[fallthrough]];
+				case primitive_type::u32:
+					return llvm::Type::getInt32Ty(*ctx);
+				break;
+
+				case primitive_type::i16:
+					[[fallthrough]];
+				case primitive_type::u16:
+					return llvm::Type::getInt16Ty(*ctx);
+				break;
+
+				case primitive_type::i8:
+					[[fallthrough]];
+				case primitive_type::u8:
+					return llvm::Type::getInt8Ty(*ctx);
+				break;
+
+				case primitive_type::u0:
+					return llvm::Type::getVoidTy(*ctx);
+				break;
+
+				case primitive_type::boolean:
+					return llvm::Type::getInt1Ty(*ctx);
+				break;
+
+				case primitive_type::f64:
+					return llvm::Type::getDoubleTy(*ctx);
+				break;
+				case primitive_type::f32:
+					return llvm::Type::getFloatTy(*ctx);
+				break;
+				case primitive_type::f16:
+					return llvm::Type::getHalfTy(*ctx);
+				break;
+
+				default:
+					diag::error(error_code::ice, "unrecognised primitive type \"{}\" used in source", ty.name());
+					return nullptr;
+				break;
+			}
+		}
+		// todo: implement
+		diag::error(error_code::ice, "could not convert type \"{}\" to its corresponding llvm::Type*", ty.name());
+		return nullptr;
+	}
+
+	void codegen_struct(const semal::struct_t& structdata, const semal::output& semal_input);
+
 	output generate(const ast& tree, const semal::output& input, std::string module_name)
 	{
 		diag::assert_that(program == nullptr && builder == nullptr, error_code::ice, "previous codegen state has not been erased and you want me to move onto codegening another file...");
@@ -126,9 +199,37 @@ namespace code
 		builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 
 		// todo: codegen logic goes here.
+		for(const auto& [structname, structdata] : input.struct_decls)
+		{
+			codegen_struct(structdata, input);
+		}
 
 		llvm::verifyModule(*program);
 		ret.codegen_handle = program.get();
 		return ret;
+	}
+
+	// top level codegen bits. not thinking of nodes very much yet.
+
+	void codegen_struct(const semal::struct_t& structdata, const semal::output& semal_input)
+	{
+		if(structdata.userdata != nullptr)
+		{
+			// already codegen'd. stop.
+			return;
+		}
+
+		std::vector<llvm::Type*> llvm_data_members;
+		for(const struct_type::data_member& member : structdata.ty.data_members)
+		{
+			if(member.ty->is_struct())
+			{
+				struct_type memty = member.ty->as_struct();
+				codegen_struct(*semal_input.try_find_struct(memty.name.c_str()), semal_input);
+			}
+			llvm_data_members.push_back(as_llvm_type(*member.ty, semal_input));
+		}
+		llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, structdata.ty.name, false);
+		structdata.userdata = llvm_ty;
 	}
 }

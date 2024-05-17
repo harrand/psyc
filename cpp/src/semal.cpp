@@ -148,7 +148,7 @@ namespace semal
 		this->struct_decls[structdata.ty.name] = structdata;
 	}
 
-	const function_t* output::try_find_function(const char* name) const
+	const function_t* output::try_find_function(std::string_view name) const
 	{
 		for(const auto& [fnname, funcdata] : this->functions)
 		{
@@ -193,7 +193,7 @@ namespace semal
 		return nullptr;	
 	}
 
-	const local_variable_t* output::try_find_global_variable(const char* name) const
+	const local_variable_t* output::try_find_global_variable(std::string_view name) const
 	{
 		for(const auto& [varname, gvar] : this->global_variables)
 		{
@@ -205,7 +205,7 @@ namespace semal
 		return nullptr;
 	}
 
-	const local_variable_t* output::try_find_local_variable(const ast::path_t& context, const char* name) const
+	const local_variable_t* output::try_find_local_variable(const ast::path_t& context, std::string_view name) const
 	{
 		ast::path_const_view_t cv = context;
 		const scope_reference* current_scope = &this->variables;
@@ -213,7 +213,7 @@ namespace semal
 		{
 			for(std::size_t idx : context)
 			{
-				auto iter = current_scope->variables.find(name);
+				auto iter = current_scope->variables.find(name.data());
 				if(iter != current_scope->variables.end())
 				{
 					return &iter->second;
@@ -225,7 +225,7 @@ namespace semal
 
 	}
 
-	const struct_t* output::try_find_struct(const char* name) const
+	const struct_t* output::try_find_struct(std::string_view name) const
 	{
 		for(const auto& [structname, structdata] : this->struct_decls)
 		{
