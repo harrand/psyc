@@ -66,6 +66,7 @@ enum type_qualifier
 {
 	qualifier_none = 0,
 	qualifier_const = 0b00000001,
+	qualifier_weak = 0b00000010,
 };
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();
@@ -94,6 +95,10 @@ struct type
 	bool is_void() const;
 
 	bool is_const() const;
+	bool is_weak() const;
+
+	bool is_implicitly_convertible_to(const type& rhs) const;
+	bool is_explicitly_convertible_to(const type& rhs) const;
 
 	primitive_type as_primitive() const;
 	struct_type as_struct() const;

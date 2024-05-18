@@ -11,7 +11,7 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 {
 	semal::function_t
 	{
-		.return_ty = type::from_primitive(primitive_type::i8).pointer_to(),
+		.return_ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
 		.name = "malloc",
 		.params =
 		{
@@ -33,7 +33,7 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 		{
 			semal::local_variable_t
 			{
-				.ty = type::from_primitive(primitive_type::i8).pointer_to(),
+				.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
 				.name = "ptr",
 				.ctx = {},
 			}

@@ -151,6 +151,59 @@ bool type::is_const() const
 	return this->qualifiers & qualifier_const;
 }
 
+bool type::is_weak() const
+{
+	return this->qualifiers & qualifier_weak;
+}
+
+bool type::is_implicitly_convertible_to(const type& rhs) const
+{
+	if(*this == rhs)
+	{
+		return true;
+	}
+	// const T has the exact same rules as T
+	if(this->is_const())
+	{
+		auto const_this = *this;
+		const_this.qualifiers = type_qualifier(int(const_this.qualifiers) | qualifier_const);
+		return const_this.is_implicitly_convertible_to(rhs);
+	}
+	if(this->is_weak() || rhs.is_weak())
+	{
+		// weak types are implicitly convertible to a bunch of things.
+		if(this->is_integer_type() && rhs.is_integer_type())
+		{
+			// integer promotion.
+			return true;
+		}
+		if(this->is_floating_point_type() && rhs.is_floating_point_type())
+		{
+			// float promotion???
+			return true;
+		}
+		if(this->is_integer_type() && rhs.is_floating_point_type())
+		{
+			// integer -> floating point conversion.
+			return true;
+		}
+		if(this->is_pointer() && rhs.is_pointer())
+		{
+			// pointer -> pointer conversion.
+			return true;
+		}
+	}
+	return false;
+}
+
+bool type::is_explicitly_convertible_to(const type& rhs) const
+{
+	// you can explicitly convert (cast) to something if the weak variant of the current type is implicitly convertible.
+	auto weak_this = *this;
+	weak_this.qualifiers = type_qualifier(int(weak_this.qualifiers) | qualifier_weak);
+	return weak_this.is_implicitly_convertible_to(rhs);
+}
+
 primitive_type type::as_primitive() const
 {
 	diag::assert_that(this->is_primitive(), error_code::ice, "attempt to resolve non-primitive type \"{}\" as a primitive", this->name());
@@ -170,10 +223,14 @@ std::string type::name() const
 		return "<undefined type>";
 	}
 	std::string ret;
-	std::string qualstr;
+	std::string qualstr = "";
 	if(this->qualifiers & qualifier_const)
 	{
-		qualstr = " const";
+		qualstr += " const";
+	}
+	if(this->qualifiers & qualifier_weak)
+	{
+		qualstr += " weak";
 	}
 
 	if(this->is_primitive())

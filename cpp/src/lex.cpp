@@ -390,7 +390,7 @@ namespace lex
 
 	bool breaks_word(const tokenise_state& state, std::string_view str)
 	{
-		if(str.starts_with(" const"))
+		if(str.starts_with(" const") || str.starts_with(" weak"))
 		{
 			// don't break on a space if its immediately followed by const.
 			return false;
