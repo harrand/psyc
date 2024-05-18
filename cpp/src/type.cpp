@@ -172,6 +172,12 @@ bool type::is_implicitly_convertible_to(const type& rhs) const
 	if(this->is_weak() || rhs.is_weak())
 	{
 		// weak types are implicitly convertible to a bunch of things.
+		auto plain_this = this->without_qualifiers();
+		if(plain_this == type::from_primitive(primitive_type::i64) && rhs.is_pointer())
+		{
+			// i64 -> any pointer (i.e uintptr_t)
+			return true;
+		}
 		if(this->is_integer_type() && rhs.is_integer_type())
 		{
 			// integer promotion.

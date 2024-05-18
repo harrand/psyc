@@ -548,6 +548,7 @@ namespace semal
 			d.assert_that(std::holds_alternative<ast::identifier>(payload.rhs_expr->expr), std::format("in a cast, rhs of the cast token \"{}\" must be an identifier, not an expression or anything else.", payload.op.lexeme));
 			std::string type_name = std::get<ast::identifier>(payload.rhs_expr->expr).iden;
 			rhs = d.state.get_type_from_name(type_name);
+			d.assert_that(lhs.is_explicitly_convertible_to(rhs), std::format("cast from \"{}\" to \"{}\" is impossible", lhs.name(), rhs.name()));
 			d.assert_that(!rhs.is_undefined(), std::format("unknown cast destination type \"{}\"", type_name));
 			// todo: confirm that lhs can actually be casted to rhs.
 		}
