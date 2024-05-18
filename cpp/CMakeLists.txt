@@ -30,7 +30,7 @@ llvm_map_components_to_libnames(llvm_dependent_libs support core irreader execut
 	)
 separate_arguments(llvm_definitions_list NATIVE_COMMAND ${LLVM_DEFINITIONS})
 
-add_executable(psyc
+add_library(libpsyc
 	src/psyc_main.cpp
 	src/ast.cpp
 	src/ast.hpp
@@ -82,6 +82,11 @@ if(${stdlib_psy_sources})
 	)
 endif()
 
-target_include_directories(psyc PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(psyc PRIVATE ${llvm_definitions_list})
-target_link_libraries(psyc PRIVATE ${llvm_dependent_libs})
+target_include_directories(libpsyc PUBLIC ${LLVM_INCLUDE_DIRS})
+target_compile_definitions(libpsyc PUBLIC ${llvm_definitions_list})
+target_link_libraries(libpsyc PUBLIC ${llvm_dependent_libs})
+
+add_executable(psyc
+	src/psyc_main.cpp
+)
+target_link_libraries(psyc PRIVATE libpsyc)
