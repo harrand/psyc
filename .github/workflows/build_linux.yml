@@ -20,8 +20,17 @@ jobs:
       - name: 'Install newer GCC'
         run: sudo apt install gcc-13
 
+      - name: 'Set CXX Compiler'
+        id: set_compiler
+        run: |
+          if [ "${{ matrix.compiler }}" == "gcc-13" ]; then
+            echo "{cxx_compiler}={g++-13}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.compiler }}" == "clang-18" ]; then
+            echo "{cxx_compiler}={clang++-18}" >> $GITHUB_OUTPUT
+          fi
+
       - name: 'Configure psyc ${{ matrix.compiler }}_${{ matrix.build_config }}'
-        run: cmake --preset ci_${{ matrix.build_config }} -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_C_COMPILER=${{ matrix.compiler }}
+        run: cmake --preset ci_${{ matrix.build_config }} -DCMAKE_CXX_COMPILER=${{ steps.set_compiler.outputs.cxx_compiler }} -DCMAKE_C_COMPILER=${{ matrix.compiler }}
         working-directory: cpp
 
       - name: 'Build psyc ${{ matrix.compiler }}_${{ matrix.build_config }}'
