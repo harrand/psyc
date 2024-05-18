@@ -1,0 +1,34 @@
+name: "linux"
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        build_config: ['debug', 'release']
+        compiler: ['clang-18', 'gcc-13']
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 'Automatic LLVM Install'
+        run: sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" 
+
+      - name: 'Install newer GCC'
+        run: sudo apt install gcc-13
+        if: ${{ startsWith(${{ matrix.compiler }}, 'gcc') }}
+
+      - name: 'Configure psyc ${{ matrix.compiler }}_${{ matrix.build_config }}'
+        run: cmake --preset ci_${{ matrix.build_config }} -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_C_COMPILER=${{ matrix.compiler }}
+        working-directory: cpp
+
+      - name: 'Build psyc ${{ matrix.compiler }}_${{ matrix.build_config }}'
+        run: cmake --build ./build/ci_${{ matrix.build_config }} --target psyc
+        working-directory: cpp
+
+      - name: 'Compile a simple test program'
+        run: ./cpp/build/ci_${{ matrix.build_config }}/psyc -v ./samples/scratchpad.psy --dump-ast --dump-ir
+
