@@ -71,6 +71,22 @@ enum type_qualifier
 
 constexpr std::size_t array_size_dyn_array = std::numeric_limits<std::size_t>::max();
 
+enum class conversion_type
+{
+	none,
+	i2i,
+	f2f,
+	i2f,
+	p2p,
+	i2p,
+	impossible,
+};
+
+constexpr inline bool typecon_valid(const conversion_type& conv)
+{
+	return conv != conversion_type::impossible;
+}
+
 struct type
 {
 	std::variant
@@ -97,8 +113,8 @@ struct type
 	bool is_const() const;
 	bool is_weak() const;
 
-	bool is_implicitly_convertible_to(const type& rhs) const;
-	bool is_explicitly_convertible_to(const type& rhs) const;
+	conversion_type is_implicitly_convertible_to(const type& rhs) const;
+	conversion_type is_explicitly_convertible_to(const type& rhs) const;
 
 	primitive_type as_primitive() const;
 	struct_type as_struct() const;

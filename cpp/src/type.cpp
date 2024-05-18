@@ -156,11 +156,11 @@ bool type::is_weak() const
 	return this->qualifiers & qualifier_weak;
 }
 
-bool type::is_implicitly_convertible_to(const type& rhs) const
+conversion_type type::is_implicitly_convertible_to(const type& rhs) const
 {
 	if(*this == rhs)
 	{
-		return true;
+		return conversion_type::none;
 	}
 	// const T has the exact same rules as T
 	if(this->is_const())
@@ -176,33 +176,33 @@ bool type::is_implicitly_convertible_to(const type& rhs) const
 		if(plain_this == type::from_primitive(primitive_type::i64) && rhs.is_pointer())
 		{
 			// i64 -> any pointer (i.e uintptr_t)
-			return true;
+			return conversion_type::i2p;
 		}
 		if(this->is_integer_type() && rhs.is_integer_type())
 		{
 			// integer promotion.
-			return true;
+			return conversion_type::i2i;
 		}
 		if(this->is_floating_point_type() && rhs.is_floating_point_type())
 		{
 			// float promotion???
-			return true;
+			return conversion_type::f2f;
 		}
 		if(this->is_integer_type() && rhs.is_floating_point_type())
 		{
 			// integer -> floating point conversion.
-			return true;
+			return conversion_type::i2f;
 		}
 		if(this->is_pointer() && rhs.is_pointer())
 		{
 			// pointer -> pointer conversion.
-			return true;
+			return conversion_type::p2p;
 		}
 	}
-	return false;
+	return conversion_type::impossible;
 }
 
-bool type::is_explicitly_convertible_to(const type& rhs) const
+conversion_type type::is_explicitly_convertible_to(const type& rhs) const
 {
 	// you can explicitly convert (cast) to something if the weak variant of the current type is implicitly convertible.
 	auto weak_this = *this;

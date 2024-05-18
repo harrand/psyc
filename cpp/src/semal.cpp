@@ -548,7 +548,7 @@ namespace semal
 			d.assert_that(std::holds_alternative<ast::identifier>(payload.rhs_expr->expr), std::format("in a cast, rhs of the cast token \"{}\" must be an identifier, not an expression or anything else.", payload.op.lexeme));
 			std::string type_name = std::get<ast::identifier>(payload.rhs_expr->expr).iden;
 			rhs = d.state.get_type_from_name(type_name);
-			d.assert_that(lhs.is_explicitly_convertible_to(rhs), std::format("cast from \"{}\" to \"{}\" is impossible", lhs.name(), rhs.name()));
+			d.assert_that(typecon_valid(lhs.is_explicitly_convertible_to(rhs)), std::format("cast from \"{}\" to \"{}\" is impossible", lhs.name(), rhs.name()));
 			d.assert_that(!rhs.is_undefined(), std::format("unknown cast destination type \"{}\"", type_name));
 			// todo: confirm that lhs can actually be casted to rhs.
 		}
@@ -560,7 +560,7 @@ namespace semal
 		{
 			case lex::type::operator_equals:
 				d.assert_that(!lhs.is_const(), std::format("lhs of assignment is const: \"{}\"", lhs.name()));
-				d.assert_that(rhs.is_implicitly_convertible_to(lhs), std::format("cannot assign from type \"{}\" to a type \"{}\"", rhs.name(), lhs.name()));
+				d.assert_that(typecon_valid(rhs.is_implicitly_convertible_to(lhs)), std::format("cannot assign from type \"{}\" to a type \"{}\"", rhs.name(), lhs.name()));
 				return rhs;
 			break;
 			case lex::type::operator_asterisk:
@@ -654,7 +654,7 @@ namespace semal
 		for(std::size_t i = 0; i < argc; i++)
 		{
 			type passed_ty = expression(d, *payload.params[i]);
-			d.assert_that(passed_ty.is_implicitly_convertible_to(maybe_function->params[i].ty), std::format("type mismatch to argument {} (\"{}\") - expected \"{}\", but you provided \"{}\". do you need an explicit cast?", i, maybe_function->params[i].name, maybe_function->params[i].ty.name(), passed_ty.name()));
+			d.assert_that(typecon_valid(passed_ty.is_implicitly_convertible_to(maybe_function->params[i].ty)), std::format("type mismatch to argument {} (\"{}\") - expected \"{}\", but you provided \"{}\". do you need an explicit cast?", i, maybe_function->params[i].name, maybe_function->params[i].ty.name(), passed_ty.name()));
 		}
 		return maybe_function->return_ty;
 	}
@@ -722,7 +722,7 @@ namespace semal
 		if(payload.initialiser.has_value())
 		{
 			type expr_ty = expression(d, *payload.initialiser.value());
-			d.assert_that(expr_ty.is_implicitly_convertible_to(ty), std::format("initialiser of variable \"{}\" is of type \"{}\", which is not implicitly convertible to the variable's type of \"{}\". perhaps you forgot to insert an explicit cast?", payload.var_name, expr_ty.name(), ty.name()));
+			d.assert_that(typecon_valid(expr_ty.is_implicitly_convertible_to(ty)), std::format("initialiser of variable \"{}\" is of type \"{}\", which is not implicitly convertible to the variable's type of \"{}\". perhaps you forgot to insert an explicit cast?", payload.var_name, expr_ty.name(), ty.name()));
 		}
 		return ty;
 	}
