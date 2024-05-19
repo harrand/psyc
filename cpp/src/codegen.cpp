@@ -116,37 +116,6 @@ namespace code
 		program = nullptr;
 	}
 
-	struct data
-	{
-		const ast& tree;
-		const ast::node& node;
-		const ast::path_t& path;
-		const semal::output& semantic;
-
-		void error(std::string msg) const
-		{
-			diag::error(error_code::codegen, "at: {}: {}", node.meta.to_string(), msg);
-		}
-
-		void internal_error(std::string msg) const
-		{
-			diag::error(error_code::ice, "at: {}: {}", node.meta.to_string(), msg);
-		}
-
-		void warning(std::string msg) const
-		{
-			diag::warning("at: {}: {}", node.meta.to_string(), msg);
-		}
-
-		void assert_that(bool expr, std::string msg) const
-		{
-			if(!expr)
-			{
-				this->error(msg);
-			}
-		}
-	};
-
 	llvm::Type* as_llvm_type(const type& ty, const semal::output& semal_input)
 	{
 		diag::assert_that(!ty.is_undefined(), error_code::ice, "undefined type made it to codegen!");
@@ -310,6 +279,22 @@ namespace code
 		funcdata.userdata = llvm_fn;
 		// dont do blocks, just generate the functions themselves.
 	}
+	
+	struct value
+	{
+		llvm::Value* llv = nullptr;
+		type ty = type::undefined();
+		bool is_variable = false;
+		std::string variable_name = "";
+	};
+
+	struct data
+	{
+		const semal::context& ctx;
+		const semal::output& semal;
+	};
+	template<typename P>
+	value codegen_thing(const data& d, const P& payload);
 
 	void codegen_global_variable(const semal::local_variable_t& globdata, const semal::output& semal_input)
 	{
@@ -338,15 +323,10 @@ namespace code
 
 		if(decl.initialiser.has_value())
 		{
-			/*
 			// todo: assign llvm_initialiser to the codegen'd expression.
-			value init_value = codegen_thing({.tree = tree, .node = node, .path = globdata.context, .state = state}, decl.initialiser.value().expr);
-			if(init_value.llv == nullptr)
-			{
-				diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", globdata.name));
-			}
+			value init_value = codegen_thing(data{.ctx = globdata.ctx, .semal = semal_input}, decl.initialiser.value()->expr);
+			globdata.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "global variable \"{}\"'s initialiser expression codegen'd to a null value", globdata.name);
 			llvm_glob->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
-			*/
 		}
 		else
 		{
@@ -357,5 +337,155 @@ namespace code
 		globdata.userdata = llvm_glob.get();
 		// move the owning ptr into our global storage.
 		global_variable_storage.push_back(std::move(llvm_glob));	
+	}
+
+	// NODE STUFF
+
+	value integer_literal(const data& d, ast::integer_literal payload)
+	{
+		// decimal literals are always i64
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{64, static_cast<std::uint64_t>(payload.val), true}),
+			.ty = type::from_primitive(primitive_type::i64),
+			.is_variable = false
+		};
+	}
+
+	value decimal_literal(const data& d, ast::decimal_literal payload)
+	{
+		return
+		{
+			.llv = llvm::ConstantFP::get(builder->getDoubleTy(), llvm::APFloat{payload.val}),
+			.ty = type::from_primitive(primitive_type::f64),
+			.is_variable = false
+		};
+	}
+
+	/*
+	value char_literal(const data& d, ast::char_literal payload)
+	{
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)}),
+			.ty = type::from_primitive(primitive_type::i8),
+			.is_variable = false
+		};
+	}
+
+	value string_literal(const data& d, ast::string_literal payload)
+	{
+		return
+		{
+			.llv = builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get()),
+			.ty = type::from_primitive(primitive_type::i8).pointer_to(),
+			.is_variable = false
+		};
+	}
+	*/
+
+	value bool_literal(const data& d, ast::bool_literal payload)
+	{
+		return
+		{
+			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true}),
+			.ty = type::from_primitive(primitive_type::boolean),
+			.is_variable = false
+		};
+	}
+
+	value expression(const data& d, ast::expression payload)
+	{
+		return codegen_thing(d, payload.expr);
+	}
+
+	template<typename P>
+	value codegen_thing(const data& d, const P& payload)
+	{
+		value ret = {};
+		auto dispatch = util::overload
+		{
+			[&](ast::integer_literal lit)
+			{
+				ret = integer_literal(d, lit);
+			},
+			[&](ast::decimal_literal lit)
+			{
+				ret = decimal_literal(d, lit);
+			},
+			/*
+			[&](ast::char_literal lit)
+			{
+				ret = char_literal(d, lit);
+			},
+			[&](ast::string_literal lit)
+			{
+				ret = string_literal(d, lit);
+			},
+			*/
+			[&](ast::bool_literal lit)
+			{
+				ret = bool_literal(d, lit);
+			},
+			[&](ast::binary_operator op)
+			{
+				ret = binary_operator(d, op);
+			},
+			[&](ast::unary_operator op)
+			{
+				ret = unary_operator(d, op);
+			},
+			[&](ast::identifier id)
+			{
+				ret = identifier(d, id);
+			},
+			[&](ast::function_call call)
+			{
+				ret = function_call(d, call);
+			},
+			[&](ast::member_access mem)
+			{
+				ret = member_access(d, mem);
+			},
+			[&](ast::expression expr)
+			{
+				ret = expression(d, expr);
+			},
+			[&](ast::if_statement ifst)
+			{
+				ret = if_statement(d, ifst);
+			},
+			[&](ast::for_statement forst)
+			{
+				ret = for_statement(d, forst);
+			},
+			[&](ast::return_statement returnst)
+			{
+				ret = return_statement(d, returnst);
+			},
+			[&](ast::variable_declaration decl)
+			{
+				ret = variable_declaration(d, decl);
+			},
+			[&](ast::function_definition fdef)
+			{
+				ret = function_definition(d, fdef);
+			},
+			[&](ast::struct_definition sdef)
+			{
+				ret = struct_definition(d, sdef);
+			},
+			[&](ast::meta_region meta)
+			{
+				ret = meta_region(d, meta);
+			},
+			[&](auto)
+			{
+				d.ctx.error(error_code::nyi, "dispatch error (no codegen support for this node payload)");
+			}
+
+		};
+		std::visit(dispatch, payload);
+		return ret;
 	}
 }
