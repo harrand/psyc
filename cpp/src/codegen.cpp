@@ -966,7 +966,6 @@ namespace code
 		const semal::function_t* parent_function = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
 		d.ctx.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, error_code::ice, "could not deduct parent enclosing function within if-statement");
 		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
-		d.ctx.error(error_code::nyi, "if-statements are not yet implemented.");
 
 		llvm::BasicBlock* if_blk = nullptr;
 		{
@@ -997,6 +996,8 @@ namespace code
 				.state = d.state
 			}, "if_else", true);
 		}
+
+		d.ctx.warning("if-statements are not yet implemented. no corresponding code will be generated.");
 
 		// todo: if statement logic.
 
