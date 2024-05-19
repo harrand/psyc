@@ -119,7 +119,7 @@ namespace semal
 	{
 		if(this->functions.contains(fn.name))
 		{
-			fn.ctx.semal_error("redefinition of function \"{}\". previously defined in same file at: {}", fn.name, this->functions.at(fn.name).ctx.location().to_string());
+			fn.ctx.error(error_code::semal, "redefinition of function \"{}\". previously defined in same file at: {}", fn.name, this->functions.at(fn.name).ctx.location().to_string());
 		}
 		this->functions[fn.name] = fn;
 	}
@@ -128,7 +128,7 @@ namespace semal
 	{
 		if(this->global_variables.contains(gvar.name))
 		{
-			gvar.ctx.semal_error("redeclaration of global variable \"{}\". previously defined in same file at: {}", gvar.name, this->global_variables.at(gvar.name).ctx.location().to_string());
+			gvar.ctx.error(error_code::semal, "redeclaration of global variable \"{}\". previously defined in same file at: {}", gvar.name, this->global_variables.at(gvar.name).ctx.location().to_string());
 		}
 		this->global_variables[gvar.name] = gvar;
 	}
@@ -151,7 +151,7 @@ namespace semal
 	{
 		if(this->struct_decls.contains(structdata.ty.name))
 		{
-			structdata.ctx.semal_error("redeclaration of struct \"{}\". previously defined in same file at: {}", structdata.ty.name, this->struct_decls.at(structdata.ty.name).ctx.location().to_string());
+			structdata.ctx.error(error_code::semal, "redeclaration of struct \"{}\". previously defined in same file at: {}", structdata.ty.name, this->struct_decls.at(structdata.ty.name).ctx.location().to_string());
 		}
 		this->struct_decls[structdata.ty.name] = structdata;
 	}
@@ -250,7 +250,7 @@ namespace semal
 		output ret;
 		auto semal_assert = [&tree](ast::path_t path, bool expr, const char* fmt, auto... ts)
 		{
-			context{&tree, path}.semal_assert(expr, fmt, ts...);
+			context{&tree, path}.assert_that(expr, error_code::semal, fmt, ts...);
 		};
 
 		for(std::size_t i = 0; i < tree.root.children.size(); i++)
@@ -466,8 +466,8 @@ namespace semal
 				function_t fn = predecl.functions[func.func_name];
 				if(!func.is_extern)
 				{
-					fn.ctx.semal_assert(node.children.size() == 1, "non-extern functions must have an implementation.");
-					fn.ctx.semal_assert(std::holds_alternative<ast::block>(node.children.front().payload), "function implementation should consist of a block of code surrounded by braces");
+					fn.ctx.assert_that(node.children.size() == 1, error_code::semal, "non-extern functions must have an implementation.");
+					fn.ctx.assert_that(std::holds_alternative<ast::block>(node.children.front().payload), error_code::semal, "function implementation should consist of a block of code surrounded by braces");
 
 					auto block_path = path;
 					block_path.push_back(0);

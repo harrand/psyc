@@ -53,8 +53,8 @@ namespace code
 
 	struct object_debug_info
 	{
-		llvm::DICompileUnit* cu;
-		llvm::DIFile* file;
+		llvm::DICompileUnit* cu = nullptr;
+		llvm::DIFile* file = nullptr;
 		std::vector<llvm::DIScope*> scopes = {};
 		void push_scope(llvm::DIScope* scope)
 		{
@@ -218,6 +218,7 @@ namespace code
 	}
 
 	void codegen_struct(const semal::struct_t& structdata, const semal::output& semal_input);
+	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input);
 
 	output generate(const ast& tree, const semal::output& input, std::string module_name)
 	{
@@ -240,6 +241,10 @@ namespace code
 		for(const auto& [structname, structdata] : input.struct_decls)
 		{
 			codegen_struct(structdata, input);
+		}
+		for(const auto& [funcname, funcdata] : input.functions)
+		{
+			codegen_function(funcdata, input);
 		}
 
 		llvm::verifyModule(*program);
@@ -273,5 +278,30 @@ namespace code
 		}
 		llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, structdata.ty.name, false);
 		structdata.userdata = llvm_ty;
+	}
+
+	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input)
+	{
+		funcdata.ctx.assert_that(funcdata.userdata == nullptr, error_code::ice, "internal compiler error: while running codegen for function \"{}\", userdata ptr was not-null, implying it has already been codegen'd", funcdata.name);
+		llvm::Type* llvm_return = as_llvm_type(funcdata.return_ty, semal_input);
+		std::vector<llvm::Type*> llvm_params;
+		for(const semal::local_variable_t& param : funcdata.params)
+		{
+			llvm_params.push_back(as_llvm_type(param.ty, semal_input));
+		}
+
+		llvm::FunctionType* llvm_fty = llvm::FunctionType::get(llvm_return, llvm_params, false);
+		llvm::Function* llvm_fn = llvm::Function::Create(llvm_fty, llvm::Function::ExternalLinkage, funcdata.name, program.get());
+		std::size_t arg_counter = 0;
+		for(llvm::Argument& arg : llvm_fn->args())
+		{
+			// note: userdata for a variable declaration (that is a parameter) is an llvm::Argument* underlying.
+			// unlike a global variable that is llvm::GlobalVariable* and a local variable that is llvm::AllocaInst*.
+			funcdata.params[arg_counter].userdata = &arg;
+			arg.setName(funcdata.params[arg_counter++].name);
+		}
+
+		funcdata.userdata = llvm_fn;
+		// dont do blocks, just generate the functions themselves.
 	}
 }

@@ -14,16 +14,16 @@ namespace semal
 		ast::path_t path;
 		const srcloc& location() const;
 		template<typename... Ts>
-		void semal_error(std::string fmt, Ts&&... ts)
+		void error(error_code err, std::string fmt, Ts&&... ts) const
 		{
-			diag::error(error_code::semal, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
+			diag::error(err, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
 		}
 		template<typename... Ts>
-		void semal_assert(bool expr, std::string fmt, Ts&&... ts)
+		void assert_that(bool expr, error_code err, std::string fmt, Ts&&... ts) const
 		{
 			if(!expr)
 			{
-				diag::assert_that(expr, error_code::semal, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
+				diag::assert_that(expr, err, "at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
 			}
 		}
 	};
