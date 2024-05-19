@@ -885,6 +885,108 @@ namespace code
 		};
 	}
 
+	llvm::BasicBlock* block(const data& d)
+	{
+		return nullptr;
+	}
+
+	value if_statement(const data& d, ast::if_statement payload)
+	{
+		const ast::node& node = d.ctx.node();
+		const ast::node& if_blk_node = node.children[0];
+		const ast::node* else_blk_node = node.children.size() == 2 ? &node.children[1] : nullptr;
+		d.ctx.assert_that(std::holds_alternative<ast::block>(if_blk_node.payload), error_code::codegen, "ur if block sucks.");
+		if(else_blk_node != nullptr)
+		{
+			d.ctx.assert_that(std::holds_alternative<ast::block>(else_blk_node->payload), error_code::codegen, "ur else block sucks.");
+		}
+
+		value llvm_cond = expression(d, *payload.if_expr);
+		d.ctx.assert_that(llvm_cond.llv != nullptr, error_code::ice, "could not codegen condition inside if-statement");
+		d.ctx.assert_that(llvm_cond.ty.is_implicitly_convertible_to(type::from_primitive(primitive_type::boolean)) == conversion_type::none, error_code::type, "expression within if-condition does not resolve to a boolean.");
+
+		const semal::function_t* parent_function = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		d.ctx.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, error_code::ice, "could not deduct parent enclosing function within if-statement");
+		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
+		d.ctx.error(error_code::nyi, "if-statements are not yet implemented.");
+
+		llvm::BasicBlock* if_blk = nullptr;
+		{
+			auto if_blk_path = d.ctx.path;
+			if_blk_path.push_back(0);
+			if_blk = block(
+			data{
+				.ctx =
+				{
+					.tree = d.ctx.tree,
+					.path = if_blk_path
+				},
+				.state = d.state
+			});
+		}
+		llvm::BasicBlock* else_blk = nullptr;
+		if(else_blk_node != nullptr)
+		{
+			auto else_blk_path = d.ctx.path;
+			else_blk_path.push_back(1);
+			else_blk = block(
+			data{
+				.ctx =
+				{
+					.tree = d.ctx.tree,
+					.path = else_blk_path
+				},
+				.state = d.state
+			});
+		}
+
+		// todo: if statement logic.
+
+		return {};
+	}
+
+	value for_statement(const data& d, ast::for_statement payload)
+	{
+		d.ctx.warning("for-statements are not yet implemented. no corresponding code will be generated.");
+		return {};
+	}
+
+	value return_statement(const data& d, ast::return_statement payload)
+	{
+		const semal::function_t* func = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		if(!d.ctx.tree->try_get_next(d.ctx.path).has_value())
+		{
+			auto* llvm_func = static_cast<llvm::Function*>(func->userdata);	
+			llvm::BasicBlock* blk = get_defer_block_if_exists(llvm_func);
+			if(blk != nullptr)
+			{
+				// this function has a defer.
+				// what we need to do is put a branch from here to there, and put our return at the end of the defer block instead.
+				builder->CreateBr(blk);
+				builder->SetInsertPoint(blk);
+			}
+		}
+		if(!payload.expr.has_value())
+		{
+			return
+			{
+				.llv = builder->CreateRetVoid(),
+				.ty = type::from_primitive(primitive_type::u0),
+				.is_variable = false
+			};
+		}
+		type expected_ret_ty = func->return_ty;
+
+		value retval = expression(d, *payload.expr.value());
+		d.ctx.assert_that(retval.llv != nullptr, error_code::ice, "value of non-void return expression could not be properly deduced.");
+		return
+		{
+			.llv = builder->CreateRet(load_as(retval.llv, d, retval.ty, expected_ret_ty)),
+			.ty = expected_ret_ty,
+			.is_variable = false
+		};
+	}
+
 	template<typename P>
 	value codegen_thing(const data& d, const P& payload)
 	{

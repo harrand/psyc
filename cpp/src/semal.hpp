@@ -14,6 +14,12 @@ namespace semal
 		ast::path_t path;
 		const ast::node& node() const;
 		const srcloc& location() const;
+
+		template<typename... Ts>
+		void warning(std::string fmt, Ts&&... ts) const
+		{
+			diag::warning("at {}: {}", this->location().to_string(), std::vformat(fmt, std::make_format_args(ts...)));
+		}
 		template<typename... Ts>
 		void error(error_code err, std::string fmt, Ts&&... ts) const
 		{
