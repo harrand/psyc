@@ -987,6 +987,134 @@ namespace code
 		};
 	}
 
+	value variable_declaration(const data& d, ast::variable_declaration payload)
+	{
+		if(d.ctx.path.size() <= 1)
+		{
+			// its a global variable.
+			// globals are already done in the pre-pass.
+			const semal::local_variable_t* glob = d.state.try_find_global_variable(payload.var_name);
+			return
+			{
+				.llv = static_cast<llvm::GlobalVariable*>(glob->userdata),
+				.ty = glob->ty,
+				.is_variable = true,
+				.variable_name = glob->name
+			};
+		}
+		const semal::local_variable_t* var = d.state.try_find_local_variable(d.ctx.path, payload.var_name);
+		d.ctx.assert_that(var != nullptr, error_code::codegen,"could not find local variable \"{}\"", payload.var_name);
+		llvm::Type* llvm_ty = as_llvm_type(var->ty, d.state);
+		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
+		if(payload.initialiser.has_value())
+		{
+			if(var->ty.is_struct())
+			{
+				d.ctx.error(error_code::nyi, "inline initialiser of a struct-typed variable is not yet implemented.");
+			}	
+			else
+			{
+				value init_value = expression(d, *payload.initialiser.value());
+				d.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name);
+				builder->CreateStore(init_value.llv, llvm_var);
+			}
+		}
+
+		var->userdata = llvm_var;
+		return
+		{
+			.llv = llvm_var,
+			.ty = var->ty,
+			.is_variable = true,
+			.variable_name = var->name
+		};
+	}
+
+	value function_definition(const data& d, ast::function_definition payload)
+	{
+		// functions are already done in the pre-pass.
+		// however, none of their bodies are.
+		// add the body if it exists.
+		const semal::function_t* func_ptr = d.state.try_find_function(payload.func_name);
+		d.ctx.assert_that(func_ptr != nullptr, error_code::ice, "internal compiler error: semantic information for function \"{}\" did not exist.", payload.func_name);
+		const semal::function_t& funcdata = *func_ptr;
+
+		auto* llvm_fn = static_cast<llvm::Function*>(funcdata.userdata);
+		d.ctx.assert_that(llvm_fn != nullptr, error_code::ice, "llvm::Function* mapping for pre-def'd function \"{}\" did not exist.", payload.func_name);
+
+		const ast::node& func_node = funcdata.ctx.node();
+		funcdata.ctx.assert_that(std::holds_alternative<ast::function_definition>(func_node.payload), error_code::ice, "AST node corresponding to function definition \"{}\" (line {}) was not infact a function definition (variant id {}). something has gone horrendously wrong.", funcdata.name, func_node.payload.index());
+		const auto& decl = std::get<ast::function_definition>(func_node.payload);
+		if(!decl.is_extern)
+		{
+			d.ctx.assert_that(func_node.children.size() == 1, error_code::codegen, "non-extern function \"{}\" must have exactly one child node, but it actually has {}", funcdata.name, func_node.children.size());
+			const auto& node = func_node.children.front();
+			d.ctx.assert_that(std::holds_alternative<ast::block>(node.payload), error_code::codegen, "non-extern function \"{}\"'s child node was not a block (variant id {})", funcdata.name, node.payload.index());
+			auto blk_path = d.ctx.path;
+			blk_path.push_back(0);
+			llvm::BasicBlock* blk = block({.ctx = {.tree = d.ctx.tree, .path = blk_path}, .state = d.state});
+			builder->SetInsertPoint(blk);
+			// before we go onto child nodes...
+			// the parameters themselves are values. to write to them is not really a thing coz they aren't pointers.
+			// so what we do here is create pointers to each parameter on the stack.
+			for(const semal::local_variable_t& param : funcdata.params)
+			{
+				// get the initial argument
+				auto* arg = static_cast<llvm::Argument*>(param.userdata);
+				// problem is, if this argument is a struct type, CreateStructGEP doesn't like it coz i have no way of getting a pointer to it.
+				// i dont really know why. i guess function parameters in LLVM arent really considered normal local variables on the stack
+				// well im gonna do that now and hope that the optimiser saves me (feel free to remove this crap and just pass the arg directly if you've figured this out since).
+				llvm::AllocaInst* ptr = builder->CreateAlloca(arg->getType(), nullptr, std::format("paramcpy_{}", std::string{arg->getName()}));
+				builder->CreateStore(arg, ptr);
+				param.userdata = ptr;
+			}
+
+			bool has_return = false;
+			for(std::size_t i = 0; i < node.children.size(); i++)
+			{
+				const ast::node& child = node.children[i];
+				ast::path_t child_path = blk_path;
+				child_path.push_back(i);
+				if(std::holds_alternative<ast::return_statement>(child.payload))
+				{
+					has_return = true;
+				}
+				codegen_thing({.ctx = {.tree = d.ctx.tree, .path = child_path}, .state = d.state}, d.ctx.node().payload);
+			}
+
+			if(!has_return && funcdata.return_ty.is_void())
+			{
+				// automatically add a return :) you're welcome
+				builder->CreateRetVoid();
+			}
+		}
+		llvm::verifyFunction(*llvm_fn);
+		return {};
+	}
+
+	value struct_definition(const data& d, ast::struct_definition payload)
+	{
+		// functions are already done in the pre-pass.
+		const semal::struct_t* structdef = d.state.try_find_struct(payload.name);
+		for(const auto&[name, method] : structdef->methods)
+		{
+			const auto& node = method.ctx.node();
+			d.ctx.assert_that(std::holds_alternative<ast::function_definition>(node.payload), error_code::ice, "pooey");
+			function_definition(data
+			{
+				.ctx = method.ctx,
+				.state = d.state
+			}, std::get<ast::function_definition>(node.payload));
+		}
+		return {};
+	}
+
+	value meta_region(const data& d, ast::meta_region payload)
+	{
+		// functions are already done in the pre-pass.
+		return {};
+	}
+
 	template<typename P>
 	value codegen_thing(const data& d, const P& payload)
 	{
