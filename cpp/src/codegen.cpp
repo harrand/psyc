@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "diag.hpp"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 
@@ -46,8 +47,14 @@ namespace code
 	static std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
 	static std::unique_ptr<llvm::Module> program = nullptr;
 	static std::unique_ptr<llvm::IRBuilder<>> builder = nullptr;
+	static std::unique_ptr<llvm::DIBuilder> debug = nullptr;
 	// global variables are RAII objects meaning we will have to deal with their lifetimes. to do that, we're just chucking them in there, and spreading the underlying ptr all around the place (as we're allocing we have pointer stability so its safe).
 	static std::vector<std::unique_ptr<llvm::GlobalVariable>> global_variable_storage = {};
+
+	struct object_debug_info
+	{
+		llvm::DICompileUnit* cu;
+	} debug_info;
 
 	void static_initialise()
 	{
@@ -80,6 +87,7 @@ namespace code
 
 		global_variable_storage.clear();
 		builder = nullptr;
+		debug = nullptr;
 		program = nullptr;
 	}
 
@@ -189,7 +197,7 @@ namespace code
 
 	output generate(const ast& tree, const semal::output& input, std::string module_name)
 	{
-		diag::assert_that(program == nullptr && builder == nullptr, error_code::ice, "previous codegen state has not been erased and you want me to move onto codegening another file...");
+		diag::assert_that(program == nullptr && builder == nullptr && debug == nullptr, error_code::ice, "previous codegen state has not been erased and you want me to move onto codegening another file...");
 		output ret
 		{
 			.codegen_handle = nullptr,
@@ -197,6 +205,11 @@ namespace code
 		};
 		program = std::make_unique<llvm::Module>(module_name, *ctx);
 		builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
+		if(true)
+		{
+			debug = std::make_unique<llvm::DIBuilder>(*program);
+			debug_info.cu = debug->createCompileUnit(llvm::dwarf::DW_LANG_C, debug->createFile(module_name.c_str(), "."), "Psy Compiler", /*optimised*/ false, "", 0);
+		}
 
 		// todo: codegen logic goes here.
 		for(const auto& [structname, structdata] : input.struct_decls)
@@ -205,6 +218,10 @@ namespace code
 		}
 
 		llvm::verifyModule(*program);
+		if(debug != nullptr)
+		{
+			debug->finalize();
+		}
 		ret.codegen_handle = program.get();
 		return ret;
 	}
