@@ -12,6 +12,7 @@ namespace semal
 	{
 		const ast* tree;
 		ast::path_t path;
+		const ast::node& node() const;
 		const srcloc& location() const;
 		template<typename... Ts>
 		void error(error_code err, std::string fmt, Ts&&... ts) const
@@ -85,7 +86,7 @@ namespace semal
 		type get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const;
 	};
 
-	output analyse_predecl(ast tree);
+	output analyse_predecl(const ast& tree);
 	output analyse_full(const ast& tree, output predecl = {});
 
 	struct state

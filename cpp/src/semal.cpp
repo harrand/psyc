@@ -5,9 +5,13 @@
 
 namespace semal
 {
+	const ast::node& context::node() const
+	{
+		return this->tree->get(this->path);
+	}
 	const srcloc& context::location() const
 	{
-		return tree->get(this->path).meta;
+		return this->node().meta;
 	}
 
 	void output::combine(const output& rhs)
@@ -245,7 +249,7 @@ namespace semal
 		return nullptr;
 	}
 
-	output analyse_predecl(ast tree)
+	output analyse_predecl(const ast& tree)
 	{
 		output ret;
 		auto semal_assert = [&tree](ast::path_t path, bool expr, const char* fmt, auto... ts)

@@ -219,6 +219,7 @@ namespace code
 
 	void codegen_struct(const semal::struct_t& structdata, const semal::output& semal_input);
 	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input);
+	void codegen_global_variable(const semal::local_variable_t& globdata, const semal::output& semal_input);
 
 	output generate(const ast& tree, const semal::output& input, std::string module_name)
 	{
@@ -245,6 +246,10 @@ namespace code
 		for(const auto& [funcname, funcdata] : input.functions)
 		{
 			codegen_function(funcdata, input);
+		}
+		for(const auto& [globname, globdata] : input.global_variables)
+		{
+			codegen_global_variable(globdata, input);
 		}
 
 		llvm::verifyModule(*program);
@@ -303,5 +308,53 @@ namespace code
 
 		funcdata.userdata = llvm_fn;
 		// dont do blocks, just generate the functions themselves.
+	}
+
+	void codegen_global_variable(const semal::local_variable_t& globdata, const semal::output& semal_input)
+	{
+		if(globdata.userdata != nullptr)
+		{
+			// already done previously.
+			return;
+		}
+		llvm::Type* llvm_ty = as_llvm_type(globdata.ty, semal_input);
+		// note: globals may have an initialiser, which means we will need to codegen that even though we're so early on.
+		const ast::node& node = globdata.ctx.node();
+		/*
+			if(std::holds_alternative<ast::expression>(node.payload))
+			{
+				auto expr = std::get<ast::expression>(node.payload);
+				if(std::holds_alternative<ast::variable_declaration>(expr.expr))
+				*/
+		globdata.ctx.assert_that(std::holds_alternative<ast::expression>(globdata.ctx.node().payload), error_code::ice, "node corresponding to global variable \"{}\" was not infact an expression (variant id {}). something has gone horrendously wrong.", globdata.name, node.payload.index());
+		const auto& expr = std::get<ast::expression>(globdata.ctx.node().payload);
+		globdata.ctx.assert_that(std::holds_alternative<ast::variable_declaration>(expr.expr), error_code::ice, "node corresponding to global variable \"{}\" was an expression, but the expression did not resolve to a variable declaration (variant id {}). something has gone horrendously wrong.", globdata.name, expr.expr.index());
+		const auto& decl = std::get<ast::variable_declaration>(expr.expr);
+
+		// create our owning global variable.
+		std::unique_ptr<llvm::GlobalVariable> llvm_glob = std::make_unique<llvm::GlobalVariable>(*program, llvm_ty, false, llvm::GlobalValue::ExternalLinkage, nullptr);
+		llvm_glob->setName(globdata.name);
+
+		if(decl.initialiser.has_value())
+		{
+			/*
+			// todo: assign llvm_initialiser to the codegen'd expression.
+			value init_value = codegen_thing({.tree = tree, .node = node, .path = globdata.context, .state = state}, decl.initialiser.value().expr);
+			if(init_value.llv == nullptr)
+			{
+				diag::fatal_error(std::format("internal compiler error: global variable \"{}\"'s initialiser expression codegen'd to nullptr.", globdata.name));
+			}
+			llvm_glob->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
+			*/
+		}
+		else
+		{
+			globdata.ctx.error(error_code::codegen, "global variable \"{}\" does not have an initialiser. all globals *must* have an initialiser.", globdata.name);
+		}
+
+		// keep ahold of the underlying ptr.
+		globdata.userdata = llvm_glob.get();
+		// move the owning ptr into our global storage.
+		global_variable_storage.push_back(std::move(llvm_glob));	
 	}
 }
