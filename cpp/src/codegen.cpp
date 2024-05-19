@@ -190,6 +190,7 @@ namespace code
 	void codegen_struct(const semal::struct_t& structdata, const semal::output& semal_input);
 	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input);
 	void codegen_global_variable(const semal::local_variable_t& globdata, const semal::output& semal_input);
+	void codegen_nodes(const ast& tree, const semal::output& input);
 
 	output generate(const ast& tree, const semal::output& input, std::string module_name)
 	{
@@ -221,6 +222,8 @@ namespace code
 		{
 			codegen_global_variable(globdata, input);
 		}
+
+		codegen_nodes(tree, input);
 
 		llvm::verifyModule(*program);
 		if(debug != nullptr)
@@ -638,12 +641,8 @@ namespace code
 		// remember, type of binary expression is: type of the lhs expression
 		value lhs_value = expression(d, *payload.lhs_expr);
 		type ty = lhs_value.ty;
-		value rhs_value = expression(d, *payload.rhs_expr);
-		type rhs_ty = rhs_value.ty;
-		d.ctx.assert_that(lhs_value.llv != nullptr, error_code::codegen, "lhs operand to binary operator could not be properly deduced. syntax error?");
-		d.ctx.assert_that(rhs_value.llv != nullptr, error_code::codegen, "rhs operand to binary operator could not be properly deduced. syntax error?");
-		value ret = {};
 
+		type rhs_ty = type::undefined();
 		if(payload.op.t == lex::type::operator_cast)
 		{
 			// cast has different syntax so handle it here and early return.
@@ -658,6 +657,11 @@ namespace code
 				.variable_name = lhs_value.variable_name
 			};
 		}
+		value rhs_value = expression(d, *payload.rhs_expr);
+		rhs_ty = rhs_value.ty;
+		d.ctx.assert_that(lhs_value.llv != nullptr, error_code::codegen, "lhs operand to binary operator could not be properly deduced. syntax error?");
+		d.ctx.assert_that(rhs_value.llv != nullptr, error_code::codegen, "rhs operand to binary operator could not be properly deduced. syntax error?");
+		value ret = {};
 
 		bool want_lhs_ptr = payload.op.t == lex::type::operator_equals;
 
@@ -885,9 +889,18 @@ namespace code
 		};
 	}
 
-	llvm::BasicBlock* block(const data& d)
+	llvm::BasicBlock* block(const data& d, const char* name = "", bool force_no_parent = false)
 	{
-		return nullptr;
+		const semal::function_t* parent_fn = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		llvm::Function* llvm_parent = nullptr;
+		if(!force_no_parent && parent_fn != nullptr)
+		{
+			llvm_parent = static_cast<llvm::Function*>(parent_fn->userdata);
+		}
+
+		const ast::node& node = d.ctx.node();
+		d.ctx.assert_that(std::holds_alternative<ast::block>(node.payload), error_code::codegen, "atom(s) at location do not constitute an implementation block.");
+		return llvm::BasicBlock::Create(*ctx, name, llvm_parent);
 	}
 
 	value if_statement(const data& d, ast::if_statement payload)
@@ -922,7 +935,7 @@ namespace code
 					.path = if_blk_path
 				},
 				.state = d.state
-			});
+			}, "if_true");
 		}
 		llvm::BasicBlock* else_blk = nullptr;
 		if(else_blk_node != nullptr)
@@ -937,7 +950,7 @@ namespace code
 					.path = else_blk_path
 				},
 				.state = d.state
-			});
+			}, "if_else", true);
 		}
 
 		// todo: if statement logic.
@@ -979,6 +992,10 @@ namespace code
 
 		value retval = expression(d, *payload.expr.value());
 		d.ctx.assert_that(retval.llv != nullptr, error_code::ice, "value of non-void return expression could not be properly deduced.");
+		if(retval.is_variable)
+		{
+			retval = get_variable_val(retval, d);
+		}
 		return
 		{
 			.llv = builder->CreateRet(load_as(retval.llv, d, retval.ty, expected_ret_ty)),
@@ -1052,7 +1069,7 @@ namespace code
 			d.ctx.assert_that(std::holds_alternative<ast::block>(node.payload), error_code::codegen, "non-extern function \"{}\"'s child node was not a block (variant id {})", funcdata.name, node.payload.index());
 			auto blk_path = d.ctx.path;
 			blk_path.push_back(0);
-			llvm::BasicBlock* blk = block({.ctx = {.tree = d.ctx.tree, .path = blk_path}, .state = d.state});
+			llvm::BasicBlock* blk = block({.ctx = {.tree = d.ctx.tree, .path = blk_path}, .state = d.state}, "entry");
 			builder->SetInsertPoint(blk);
 			// before we go onto child nodes...
 			// the parameters themselves are values. to write to them is not really a thing coz they aren't pointers.
@@ -1079,7 +1096,8 @@ namespace code
 				{
 					has_return = true;
 				}
-				codegen_thing({.ctx = {.tree = d.ctx.tree, .path = child_path}, .state = d.state}, d.ctx.node().payload);
+				semal::context new_ctx = {.tree = d.ctx.tree, .path = child_path};
+				codegen_thing({.ctx = new_ctx, .state = d.state}, new_ctx.node().payload);
 			}
 
 			if(!has_return && funcdata.return_ty.is_void())
@@ -1203,5 +1221,13 @@ namespace code
 		};
 		std::visit(dispatch, payload);
 		return ret;
+	}
+
+	void codegen_nodes(const ast& tree, const semal::output& input)
+	{
+		for(std::size_t i = 0; i < tree.root.children.size(); i++)
+		{
+			codegen_thing({.ctx = {.tree = &tree, .path = ast::path_t{i}}, .state = input}, tree.root.children[i].payload);
+		}
 	}
 }
