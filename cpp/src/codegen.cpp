@@ -377,7 +377,7 @@ namespace code
 		};
 	}
 
-	llvm::Value* load_as(llvm::Value* ptr, const data& d, type from, type to, bool check = true)
+	llvm::Value* load_as(llvm::Value* ptr, const data& d, type from, type to, bool force_explicit_conversion = false, bool check = true)
 	{
 		llvm::Type* llvm_to = as_llvm_type(to, d.state);
 		llvm::Type* llvm_from = as_llvm_type(from, d.state);
@@ -385,7 +385,15 @@ namespace code
 		{
 			diag::error(error_code::ice, "type system failure");
 		}
-		conversion_type conv = from.is_implicitly_convertible_to(to);
+		conversion_type conv = conversion_type::impossible;
+		if(force_explicit_conversion)
+		{
+			conv = from.is_explicitly_convertible_to(to);
+		}
+		else
+		{
+			conv = from.is_implicitly_convertible_to(to);
+		}
 		switch(conv)
 		{
 			case conversion_type::impossible:
@@ -635,6 +643,21 @@ namespace code
 		d.ctx.assert_that(lhs_value.llv != nullptr, error_code::codegen, "lhs operand to binary operator could not be properly deduced. syntax error?");
 		d.ctx.assert_that(rhs_value.llv != nullptr, error_code::codegen, "rhs operand to binary operator could not be properly deduced. syntax error?");
 		value ret = {};
+
+		if(payload.op.t == lex::type::operator_cast)
+		{
+			// cast has different syntax so handle it here and early return.
+			d.ctx.assert_that(std::holds_alternative<ast::identifier>(payload.rhs_expr->expr), error_code::codegen,"in a cast, rhs of the cast token \"{}\" must be an identifier, not an expression or anything else.", payload.op.lexeme);
+			std::string type_name = std::get<ast::identifier>(payload.rhs_expr->expr).iden;
+			rhs_ty = d.state.get_type_from_name(type_name);
+			return
+			{
+				.llv = load_as(lhs_value.llv, d, ty, rhs_ty, true),
+				.ty = rhs_ty,
+				.is_variable = lhs_value.is_variable,
+				.variable_name = lhs_value.variable_name
+			};
+		}
 
 		bool want_lhs_ptr = payload.op.t == lex::type::operator_equals;
 

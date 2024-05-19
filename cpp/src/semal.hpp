@@ -71,7 +71,7 @@ namespace semal
 		std::map<std::string, struct_t> struct_decls = {};	
 
 		void combine(const output& rhs);
-		type get_type_from_name(std::string type_name);
+		type get_type_from_name(std::string type_name) const;
 		void register_function(function_t fn);
 		void register_global_variable(local_variable_t gvar);
 		void register_local_variable(local_variable_t gvar);

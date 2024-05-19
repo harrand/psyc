@@ -45,7 +45,7 @@ namespace semal
 		}
 	}
 
-	type output::get_type_from_name(std::string type_name)
+	type output::get_type_from_name(std::string type_name) const
 	{
 		type ret = type::undefined();
 		std::string cur_type = "";
