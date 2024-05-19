@@ -746,6 +746,145 @@ namespace code
 		return ret;
 	}
 
+	value identifier(const data& d, ast::identifier payload, type* output_identifier_type = nullptr)
+	{
+		// could be:
+		// a global variable
+		const semal::local_variable_t* gvar = d.state.try_find_global_variable(payload.iden);
+		if(gvar != nullptr)
+		{
+			if(gvar->userdata == nullptr)
+			{
+				// hasn't been codegen'd yet. this means we're probably in the middle of another global variable's initialiser.
+				// we have to do it now.
+				codegen_global_variable(*gvar, d.state);
+			}
+			d.ctx.assert_that(gvar->userdata != nullptr, error_code::ice,"userdata for global variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", gvar->name);
+			if(output_identifier_type != nullptr)
+			{
+				*output_identifier_type = gvar->ty;
+			}
+			return
+			{
+				.llv = static_cast<llvm::GlobalVariable*>(gvar->userdata),
+				.ty = gvar->ty.pointer_to(),
+				.is_variable = true,
+				.variable_name = gvar->name
+			};
+		}
+		// a local variable
+		const semal::local_variable_t* var = d.state.try_find_local_variable(d.ctx.path, payload.iden);
+		if(var != nullptr)
+		{
+			d.ctx.assert_that(var->userdata != nullptr, error_code::ice, "userdata for local variable \"{}\" within semantic analysis state was nullptr (i.e it still hasn't been codegen'd yet)", var->name);
+			if(output_identifier_type != nullptr)
+			{
+				*output_identifier_type = var->ty;
+			}
+			return
+			{
+				.llv = static_cast<llvm::AllocaInst*>(var->userdata),
+				.ty = var->ty.pointer_to(),
+				.is_variable = true,
+				.variable_name = var->name
+			};
+		}
+		// a function parameter
+		const semal::function_t* parent_function = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		if(parent_function != nullptr)
+		{
+			// go through its parameters and see if we're one.
+			for(const semal::local_variable_t& param : parent_function->params)
+			{
+				if(param.name == payload.iden)
+				{
+					// this is us!
+					auto* arg = static_cast<llvm::AllocaInst*>(param.userdata);
+					d.ctx.assert_that(arg != nullptr, error_code::ice, "argument \"{}\" to defined function \"{}\" was not codegen'd properly, as its userdata is null. this should've been written to during the pre-pass over functions.", payload.iden, parent_function->name);
+					// its easy. the llvm::Argument* is the actual argument value itself. we just return it as if it were a value!
+					// you can just CreateStore with it as a target. exactly the same as a local variable... i think...
+					if(output_identifier_type != nullptr)
+					{
+						*output_identifier_type = param.ty;
+					}
+					return
+					{
+						.llv = arg,
+						.ty = param.ty.pointer_to(),
+						.is_variable = true,
+						.variable_name = param.name
+					};
+				}
+			}
+		}
+
+		d.ctx.error(error_code::ice, "could not evaluate identifier \"{}\". tried global variable, local variable and function parameter :(", payload.iden);
+		return {};
+	}
+
+	value function_call(const data& d, ast::function_call payload)
+	{
+		const semal::function_t* func = d.state.try_find_function(payload.function_name);
+		if(payload.function_name.starts_with("__builtin"))
+		{
+			d.ctx.error(error_code::nyi, "call to \"{}\" - calls to builtins are NYI", payload.function_name);
+		}
+		d.ctx.assert_that(func != nullptr, error_code::codegen, "call to undefined function \"{}\"", payload.function_name);
+		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
+		d.ctx.assert_that(llvm_func != nullptr, error_code::ice, "function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name);
+		std::vector<llvm::Value*> llvm_params = {};
+		for(std::size_t i = 0; i < payload.params.size(); i++)
+		{
+			type expected_param_ty = func->params[i].ty;
+
+			value param_val = expression(d, *payload.params[i]);
+			// note: no narrowing as of yet.
+			d.ctx.assert_that(param_val.llv != nullptr, error_code::ice, "in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name);
+			llvm::Value* loaded_val = load_as(param_val.llv, d, param_val.ty, expected_param_ty);
+			d.ctx.assert_that(loaded_val != nullptr, error_code::type, "expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", expected_param_ty.name());
+			llvm_params.push_back(loaded_val);
+		}	
+		return 
+		{
+			.llv = builder->CreateCall(llvm_func, llvm_params, func->return_ty.is_void() ? "" : "calltmp"),
+			.ty = func->return_ty,
+			.is_variable = false
+		};
+	}
+
+	value member_access(const data& d, ast::member_access payload)
+	{
+		value lhs_var = expression(d, *payload.lhs);
+		d.ctx.assert_that(lhs_var.ty.is_pointer(), error_code::type, "lhs of member access should be a variable that resolves to a pointer type. instead it resolved to \"{}\"", lhs_var.ty.name());
+		lhs_var.ty = lhs_var.ty.dereference();
+
+		d.ctx.assert_that(lhs_var.ty.is_struct(), error_code::type, "lhs identifier of member access is not a struct type, but instead a \"{}\"", lhs_var.ty.name());
+		struct_type struct_ty = lhs_var.ty.as_struct();
+		// which data member are we?
+		// note: if we dont match to a data member here, then the code must be ill-formed.
+		std::optional<std::size_t> data_member_idx = std::nullopt;
+		for(std::size_t i = 0; i < struct_ty.data_members.size(); i++)
+		{
+			const struct_type::data_member& member = struct_ty.data_members[i];
+			if(member.member_name == payload.rhs)
+			{
+				// its this one!
+				data_member_idx = i;
+			}
+		}
+		d.ctx.assert_that(data_member_idx.has_value(), error_code::codegen, "access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs, struct_ty.name);
+		// get the data member via GEP
+		llvm::Type* llvm_struct_ty = as_llvm_type(lhs_var.ty, d.state);
+		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var.llv, data_member_idx.value());
+		return
+		{
+			.llv = ret,
+			.ty = struct_ty.data_members[data_member_idx.value()].ty->pointer_to(),
+			.is_variable = true,
+			.variable_name = struct_ty.data_members[data_member_idx.value()].member_name
+		};
+	}
+
 	template<typename P>
 	value codegen_thing(const data& d, const P& payload)
 	{
