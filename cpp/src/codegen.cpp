@@ -54,6 +54,30 @@ namespace code
 	struct object_debug_info
 	{
 		llvm::DICompileUnit* cu;
+		llvm::DIFile* file;
+		std::vector<llvm::DIScope*> scopes = {};
+		void push_scope(llvm::DIScope* scope)
+		{
+			this->scopes.push_back(scope);
+		}
+
+		void pop_scope()
+		{
+			diag::assert_that(this->scopes.size(), error_code::ice, "pop_scope invoked but we're apparantly at the top-level");
+		}
+		void emit_null_location() const
+		{
+			builder->SetCurrentDebugLocation(llvm::DebugLoc());
+		}
+		void emit_location(const ast::node& node) const
+		{
+			llvm::DIScope* scope = this->cu;
+			if(this->scopes.size())
+			{
+				scope = this->scopes.back();
+			}
+			builder->SetCurrentDebugLocation(llvm::DILocation::get(scope->getContext(), node.meta.line, node.meta.column, scope));
+		}
 	} debug_info;
 
 	void static_initialise()
@@ -209,6 +233,7 @@ namespace code
 		{
 			debug = std::make_unique<llvm::DIBuilder>(*program);
 			debug_info.cu = debug->createCompileUnit(llvm::dwarf::DW_LANG_C, debug->createFile(module_name.c_str(), "."), "Psy Compiler", /*optimised*/ false, "", 0);
+			debug_info.file = debug->createFile(debug_info.cu->getFilename(), debug_info.cu->getDirectory());
 		}
 
 		// todo: codegen logic goes here.
