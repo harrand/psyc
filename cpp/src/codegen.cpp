@@ -112,6 +112,7 @@ namespace code
 		global_variable_storage.clear();
 		builder = nullptr;
 		debug = nullptr;
+		debug_info = {};
 		program = nullptr;
 	}
 
