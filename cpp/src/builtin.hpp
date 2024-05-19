@@ -1,6 +1,5 @@
 #ifndef PSYC_BUILTIN_HPP
 #define PSYC_BUILTIN_HPP
-#include "ast.hpp"
 #include "semal.hpp"
 
 enum class builtin

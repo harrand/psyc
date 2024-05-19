@@ -23,7 +23,8 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 			}
 		},
 		.ctx = {},
-		.is_method = false
+		.is_method = false,
+		.is_builtin = true
 	},
 	semal::function_t
 	{
@@ -39,7 +40,8 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 			}
 		},
 		.ctx = {},
-		.is_method = false
+		.is_method = false,
+		.is_builtin = true
 	},
 };
 

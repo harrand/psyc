@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "diag.hpp"
+#include "builtin.hpp"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
@@ -642,6 +643,8 @@ namespace code
 		value lhs_value = expression(d, *payload.lhs_expr);
 		type ty = lhs_value.ty;
 
+		volatile bool check = lhs_value.variable_name == "val" && payload.op.t == lex::type::operator_asterisk;
+
 		type rhs_ty = type::undefined();
 		if(payload.op.t == lex::type::operator_cast)
 		{
@@ -704,7 +707,43 @@ namespace code
 				}
 				else
 				{
-					d.ctx.error(error_code::codegen, "Addition can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
+					d.ctx.error(error_code::codegen, "Subtraction can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
+				}
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
+			break;
+			case lex::type::operator_asterisk:
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFMul(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateMul(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else
+				{
+					d.ctx.error(error_code::codegen, "Multiplication can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
+				}
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
+			break;
+			case lex::type::operator_slash:
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFDiv(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else if(lhs_value.ty.is_unsigned_integer_type())
+				{
+					ret.llv = builder->CreateUDiv(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else if(lhs_value.ty.is_signed_integer_type())
+				{
+					ret.llv = builder->CreateSDiv(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else
+				{
+					d.ctx.error(error_code::codegen, "Division can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
 				}
 				ret.ty = lhs_value.ty;
 				ret.is_variable = false;
@@ -826,12 +865,14 @@ namespace code
 		return {};
 	}
 
+	value codegen_builtin(const data& d, ast::function_call payload, builtin b);
+
 	value function_call(const data& d, ast::function_call payload)
 	{
 		const semal::function_t* func = d.state.try_find_function(payload.function_name);
-		if(payload.function_name.starts_with("__builtin"))
+		if(func->is_builtin)
 		{
-			d.ctx.error(error_code::nyi, "call to \"{}\" - calls to builtins are NYI", payload.function_name);
+			return codegen_builtin(d, payload, try_find_builtin(payload.function_name));
 		}
 		d.ctx.assert_that(func != nullptr, error_code::codegen, "call to undefined function \"{}\"", payload.function_name);
 		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
@@ -842,6 +883,10 @@ namespace code
 			type expected_param_ty = func->params[i].ty;
 
 			value param_val = expression(d, *payload.params[i]);
+			if(param_val.is_variable)
+			{
+				param_val = get_variable_val(param_val, d);
+			}
 			// note: no narrowing as of yet.
 			d.ctx.assert_that(param_val.llv != nullptr, error_code::ice, "in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func->params[i].name);
 			llvm::Value* loaded_val = load_as(param_val.llv, d, param_val.ty, expected_param_ty);
@@ -1229,5 +1274,49 @@ namespace code
 		{
 			codegen_thing({.ctx = {.tree = &tree, .path = ast::path_t{i}}, .state = input}, tree.root.children[i].payload);
 		}
+	}
+
+	value codegen_builtin(const data& d, ast::function_call call, builtin b)
+	{
+		value ret
+		{
+			.llv = nullptr,
+			.ty = type::undefined(),
+			.is_variable = false
+		};
+		const semal::function_t& func = get_builtin_function(b);
+		switch(b)
+		{
+			case builtin::_undefined:
+				d.ctx.error(error_code::ice, "undefined builtin \"{}\"", call.function_name);
+			break;
+			case builtin::malloc:
+			{
+				value size = codegen_thing(d, call.params.front()->expr);
+				if(size.is_variable)
+				{
+					size = get_variable_val(size, d);
+				}
+				llvm::Type* intptr_type = as_llvm_type(func.params.front().ty, d.state);
+				ret.ty = func.return_ty;
+				ret.llv = builder->CreateMalloc(intptr_type, as_llvm_type(ret.ty, d.state), size.llv, llvm::ConstantInt::get(intptr_type, 1), nullptr);	
+			}
+			break;
+			case builtin::free:
+			{
+				value ptr = codegen_thing(d, call.params.front()->expr);
+				if(ptr.is_variable)
+				{
+					ptr = get_variable_val(ptr, d);
+				}
+				ret.llv = builder->CreateFree(ptr.llv);
+				ret.ty = func.return_ty;;
+			}
+			break;
+			default:
+				d.ctx.error(error_code::nyi, "missing codegen for builtin \"{}\"", call.function_name);
+			break;
+		}
+		return ret;
 	}
 }

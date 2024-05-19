@@ -50,6 +50,7 @@ namespace semal
 		std::vector<local_variable_t> params = {};
 		context ctx;
 		bool is_method = false;
+		bool is_builtin = false;
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
 	};
