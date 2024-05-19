@@ -257,7 +257,7 @@ namespace code
 
 	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input)
 	{
-		funcdata.ctx.assert_that(funcdata.userdata == nullptr, error_code::ice, "internal compiler error: while running codegen for function \"{}\", userdata ptr was not-null, implying it has already been codegen'd", funcdata.name);
+		funcdata.ctx.assert_that(funcdata.userdata == nullptr, error_code::ice, "while running codegen for function \"{}\", userdata ptr was not-null, implying it has already been codegen'd", funcdata.name);
 		llvm::Type* llvm_return = as_llvm_type(funcdata.return_ty, semal_input);
 		std::vector<llvm::Type*> llvm_params;
 		for(const semal::local_variable_t& param : funcdata.params)
@@ -291,7 +291,7 @@ namespace code
 	struct data
 	{
 		const semal::context& ctx;
-		const semal::output& semal;
+		const semal::output& state;
 	};
 	template<typename P>
 	value codegen_thing(const data& d, const P& payload);
@@ -324,7 +324,7 @@ namespace code
 		if(decl.initialiser.has_value())
 		{
 			// todo: assign llvm_initialiser to the codegen'd expression.
-			value init_value = codegen_thing(data{.ctx = globdata.ctx, .semal = semal_input}, decl.initialiser.value()->expr);
+			value init_value = codegen_thing(data{.ctx = globdata.ctx, .state = semal_input}, decl.initialiser.value()->expr);
 			globdata.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "global variable \"{}\"'s initialiser expression codegen'd to a null value", globdata.name);
 			llvm_glob->setInitializer(static_cast<llvm::Constant*>(init_value.llv));
 		}
@@ -339,7 +339,163 @@ namespace code
 		global_variable_storage.push_back(std::move(llvm_glob));	
 	}
 
+	// UTILITY STUFF
+	llvm::BasicBlock* get_defer_block_if_exists(llvm::Function* fn)
+	{
+		llvm::BasicBlock* back = &fn->back();
+		if(back->getName() == "defer")
+		{
+			return back;
+		}
+		return nullptr;
+	}
+
+	llvm::BasicBlock* safe_get_defer_block(llvm::Function* fn)
+	{
+		// get the defer block if there is one.
+		// if not, make one.
+		llvm::BasicBlock* already = get_defer_block_if_exists(fn);
+		if(already != nullptr)
+		{
+			return already;
+		}
+		return llvm::BasicBlock::Create(*ctx, "defer", fn);
+	}
+
+	value get_variable_val(const value& val, const data& d)
+	{
+		if(!val.ty.is_pointer())
+		{
+			d.ctx.error(error_code::ice,"variable \"{}\" was not a pointer (although the variable might not be a pointer, as far as the codegen implementation is concerned, it should be a pointer to whatever type you set it to)", val.variable_name);
+		}
+		return
+		{
+			.llv = builder->CreateLoad(as_llvm_type(val.ty.dereference(), d.state), val.llv),
+			.ty = val.ty.dereference(),
+			.is_variable = false,
+			.variable_name = val.variable_name
+		};
+	}
+
+	llvm::Value* load_as(llvm::Value* ptr, const data& d, type from, type to, bool check = true)
+	{
+		llvm::Type* llvm_to = as_llvm_type(to, d.state);
+		llvm::Type* llvm_from = as_llvm_type(from, d.state);
+		if(check && ptr->getType() != llvm_from)
+		{
+			diag::error(error_code::ice, "type system failure");
+		}
+		conversion_type conv = from.is_implicitly_convertible_to(to);
+		switch(conv)
+		{
+			case conversion_type::impossible:
+				d.ctx.error(error_code::type, "cannot implicitly convert \"{}\" to \"{}\". did you forget to use weak/cast?", from.name(), to.name());
+			break;
+			case conversion_type::none:
+				d.ctx.assert_that(llvm_from == llvm_to, error_code::ice, "implicit conversion from \"{}\" to \"{}\" was considered a no-op, but LLVM IR doesn't agree.", from.name(), to.name());
+				// no conversion necessary.
+				return ptr;
+			break;
+			case conversion_type::i2i:
+			{
+				// some int type to another int type.
+				std::size_t incorrect_bits = llvm_from->getIntegerBitWidth();
+				std::size_t correct_bits = llvm_to->getIntegerBitWidth();
+				if(incorrect_bits < correct_bits)
+				{
+					ptr = builder->CreateZExtOrBitCast(ptr, llvm_to);
+				}
+				else if(incorrect_bits > correct_bits)
+				{
+					ptr = builder->CreateTruncOrBitCast(ptr, llvm_to);
+				}
+				if(from.is_signed_integer_type() && to.is_unsigned_integer_type())
+				{
+					// signed -> unsigned
+					ptr = builder->CreateTrunc(ptr, llvm_to);	
+				}
+				else if(from.is_unsigned_integer_type() && to.is_signed_integer_type())
+				{
+					// unsigned -> signed
+					ptr = builder->CreateSExt(ptr, llvm_to);
+				}
+				return ptr;
+			}
+			case conversion_type::f2f:
+				// some float type to another float type
+				d.ctx.error(error_code::nyi, "converting between different floating point types (\"{}\" to \"{}\") is NYI", from.name(), to.name());
+			break;
+			case conversion_type::i2f:
+				// some int type to another float type
+				d.ctx.error(error_code::nyi, "converting from integer type to float type (\"{}\" to \"{}\") is NYI", from.name(), to.name());
+			break;
+			case conversion_type::p2p:
+				// llvm pointers are opaque, so can trivially just return the same pointer here.
+				return ptr;
+			break;
+			case conversion_type::i2p:
+				return builder->CreateIntToPtr(ptr, llvm::PointerType::get(*ctx, 0));
+			break;
+		}
+		return nullptr;
+		/*
+		// i8* and T* are implicitly convertible to-and-from.
+		if(from == to || (from.is_pointer() && to.is_pointer() && from.pointer_level == to.pointer_level && (from.dereference() == type::from_primitive(primitive_type::i8) || to.dereference() == type::from_primitive(primitive_type::i8))))
+		{
+			// nothing to do.
+			return ptr;
+		}
+		if(from.pointer_level > to.pointer_level)
+		{
+			// maybe need to load.
+			if(from.dereference() == to)
+			{
+				// definitely need to load.
+				return builder->CreateLoad(llvm_to, ptr);
+			}
+			else
+			{
+				return load_as(builder->CreateLoad(llvm_to, ptr), state, from.dereference(), to, false);
+			}
+		}
+		// integer promotion.
+		if(llvm_from->isIntegerTy() && llvm_to->isIntegerTy())
+		{
+			// need to do integer promotion.
+			std::size_t incorrect_bits = llvm_from->getIntegerBitWidth();
+			std::size_t correct_bits = llvm_to->getIntegerBitWidth();
+			if(incorrect_bits < correct_bits)
+			{
+				ptr = builder->CreateZExtOrBitCast(ptr, llvm_to);
+			}
+			else if(incorrect_bits > correct_bits)
+			{
+				ptr = builder->CreateTruncOrBitCast(ptr, llvm_to);
+			}
+			if(from.is_signed_integer_type() && to.is_unsigned_integer_type())
+			{
+				// signed -> unsigned
+				ptr = builder->CreateTrunc(ptr, llvm_to);	
+			}
+			else if(from.is_unsigned_integer_type() && to.is_signed_integer_type())
+			{
+				// unsigned -> signed
+				ptr = builder->CreateSExt(ptr, llvm_to);
+			}
+			return ptr;
+		}
+		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
+		diag::fatal_error("internal compiler error: codegen load_as returned nullptr");
+		return nullptr;
+		*/
+	}
+
 	// NODE STUFF
+
+	value expression(const data& d, ast::expression payload)
+	{
+		return codegen_thing(d, payload.expr);
+	}
 
 	value integer_literal(const data& d, ast::integer_literal payload)
 	{
@@ -394,9 +550,177 @@ namespace code
 		};
 	}
 
-	value expression(const data& d, ast::expression payload)
+	value unary_operator(const data& d, const ast::unary_operator& payload)
 	{
-		return codegen_thing(d, payload.expr);
+		const semal::function_t* enclosing_fn = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		d.ctx.assert_that(enclosing_fn != nullptr, error_code::ice, "enclosing function of unary operator could not be found.");
+
+		auto* llvm_enclosing_fn = static_cast<llvm::Function*>(enclosing_fn->userdata);
+		llvm::BasicBlock* cur_block = builder->GetInsertBlock();
+		bool defer = payload.op.t == lex::type::operator_defer;
+
+		if(defer)
+		{
+			llvm::BasicBlock* defer_blk = safe_get_defer_block(llvm_enclosing_fn);
+			builder->SetInsertPoint(defer_blk);	
+		}
+		value operandv = expression(d, *payload.expr);
+		if(defer)
+		{
+			builder->SetInsertPoint(cur_block);
+		}
+		d.ctx.assert_that(operandv.llv != nullptr, error_code::codegen, std::format("operand of unary expression could not be properly deduced. likely a syntax error."));
+		//d.assert_that(ty != nullptr, "internal compiler error: could not deduce type of expression");
+		//d.assert_that(ty->is_primitive(), std::format("operand to unary operator should be a primitive type. instead, it is a \"{}\"", ty->name()));
+		if(operandv.is_variable && payload.op.t != lex::type::operator_ref && payload.op.t != lex::type::operator_deref)
+		{
+			operandv = get_variable_val(operandv, d);
+		}
+		switch(payload.op.t)
+		{
+			case lex::type::operator_ref:
+				d.ctx.assert_that(operandv.ty.is_pointer(), error_code::codegen, "`ref xyz`, xyz must be a pointer (as it must be a local, global or function param.)");
+				operandv.is_variable = false;
+				return operandv;
+			break;
+			case lex::type::operator_deref:
+				d.ctx.assert_that(operandv.ty.is_pointer(), error_code::codegen, "`deref xyz`, xyz must be a pointer (coz its a deref...)");
+				return
+				{
+					.llv = builder->CreateLoad(as_llvm_type(operandv.ty.dereference(), d.state), operandv.llv),
+					.ty = operandv.ty.dereference(),
+					.is_variable = operandv.is_variable,
+					.variable_name = operandv.variable_name
+				};
+			break;
+			case lex::type::operator_minus:
+			{
+				llvm::Value* llv = nullptr;
+				if(operandv.ty.is_integer_type())
+				{
+					llv = builder->CreateNeg(operandv.llv);
+				}
+				else if(operandv.ty.is_floating_point_type())
+				{
+					llv = builder->CreateFNeg(operandv.llv);
+				}
+				else
+				{
+					d.ctx.error(error_code::codegen,"operand of unary operator \"-\" must be a floating or integer type, but instead it is a \"{}\"", operandv.ty.name());
+					return {};
+				}
+				return
+				{
+					.llv = llv,
+					.ty = operandv.ty,
+					.is_variable = false
+				};
+			}
+			break;
+			case lex::type::operator_defer: return operandv; break;
+			default:
+				d.ctx.error(error_code::nyi, "codegen for unary operator \"{}\" is not yet implemented.", payload.op.lexeme);
+				return {};
+			break;
+		}
+	}
+
+	value binary_operator(const data& d, const ast::binary_operator& payload)
+	{
+		// remember, type of binary expression is: type of the lhs expression
+		value lhs_value = expression(d, *payload.lhs_expr);
+		type ty = lhs_value.ty;
+		value rhs_value = expression(d, *payload.rhs_expr);
+		type rhs_ty = rhs_value.ty;
+		d.ctx.assert_that(lhs_value.llv != nullptr, error_code::codegen, "lhs operand to binary operator could not be properly deduced. syntax error?");
+		d.ctx.assert_that(rhs_value.llv != nullptr, error_code::codegen, "rhs operand to binary operator could not be properly deduced. syntax error?");
+		value ret = {};
+
+		bool want_lhs_ptr = payload.op.t == lex::type::operator_equals;
+
+		if(!want_lhs_ptr && lhs_value.is_variable)
+		{
+			lhs_value = get_variable_val(lhs_value, d);
+			ty = lhs_value.ty;
+		}
+		if(rhs_value.is_variable)
+		{
+			rhs_value = get_variable_val(rhs_value, d);
+			rhs_ty = rhs_value.ty;
+		}
+		switch(payload.op.t)
+		{
+			case lex::type::operator_plus:
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFAdd(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateAdd(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else
+				{
+					d.ctx.error(error_code::codegen,"Addition can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
+				}
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
+			break;
+			case lex::type::operator_minus:
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFSub(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateSub(lhs_value.llv, load_as(rhs_value.llv, d, rhs_value.ty, lhs_value.ty));
+				}
+				else
+				{
+					d.ctx.error(error_code::codegen, "Addition can only be performed on an integer or floating-point type. You provided \"{}\" and \"{}\"", lhs_value.ty.name(), rhs_value.ty.name());
+				}
+				ret.ty = lhs_value.ty;
+				ret.is_variable = false;
+			break;
+			case lex::type::operator_double_equals:
+				ret.llv = builder->CreateICmpEQ(lhs_value.llv, rhs_value.llv);
+				ret.ty = type::from_primitive(primitive_type::boolean);
+				ret.is_variable = false;
+			break;
+			/*
+			case lex::type::not_equals:
+				ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
+				ret.ty = type::from_primitive(primitive_type::boolean);
+				ret.is_variable = false;
+			break;
+			*/
+			case lex::type::operator_equals:
+			{
+				/*
+				std::string value_string;
+				llvm::raw_string_ostream os{value_string};
+				rhs_value.llv->print(os);
+				volatile std::string rhs_string = value_string;
+				value_string = "";
+				lhs_value.llv->print(os);
+				volatile std::string lhs_string = value_string;
+				*/
+				
+				builder->CreateStore(rhs_value.llv, lhs_value.llv);
+				// createstore returns a void type'd value, so we dont care about that for ret.
+				// just use the type semantic analysis gave us.
+				ret = lhs_value;
+			}
+			break;
+			default:
+				d.ctx.error(error_code::nyi, "binary operator \"{}\" is not yet implemented.", payload.op.lexeme);
+			break;
+		}
+		if(ret.llv == nullptr)
+		{
+			d.ctx.error(error_code::ice, "binary operator produced null value. that should never happen.");
+		}
+		return ret;
 	}
 
 	template<typename P>
