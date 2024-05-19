@@ -90,3 +90,10 @@ add_executable(psyc
 	src/psyc_main.cpp
 )
 target_link_libraries(psyc PRIVATE libpsyc)
+
+###################
+## PSYC - TESTS ##
+###################
+
+include(CTest)
+add_subdirectory(test)
