@@ -34,6 +34,8 @@ add_library(libpsyc
 	src/psyc_main.cpp
 	src/ast.cpp
 	src/ast.hpp
+	src/build.cpp
+	src/build.hpp
 	src/builtin.cpp
 	src/builtin.hpp
 	src/codegen.cpp

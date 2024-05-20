@@ -1,0 +1,116 @@
+#include "build.hpp"
+#include "lex.hpp"
+#include "parse.hpp"
+#include "semal.hpp"
+#include "codegen.hpp"
+#include "diag.hpp"
+#include "timer.hpp"
+
+namespace build
+{
+	ast::node try_find_build_meta_region(const info& i, std::string_view name, std::size_t* lex_timers, std::size_t* parse_timers);
+	ast turn_meta_region_into_program(std::string_view region_name, ast::node meta_region);
+
+	info gather(const config::compiler_args& args, std::size_t* lex_timers, std::size_t* parse_timers, std::size_t* semal_timers, std::size_t* codegen_timers)
+	{
+		info ret;
+		ret.compiler_args = args;
+		#ifdef _WIN32
+		#elif defined(__linux__)
+			ret.link_name += ".exe";
+		#else
+			static_assert("unknown platform");
+			ret.link_name += ".out";
+		#endif
+
+		// try to find the node that constitutes a build meta-region with the same name as the target provided.
+		ast::node meta_region = try_find_build_meta_region(ret, ret.compiler_args.target_name, lex_timers, parse_timers);
+		diag::assert_that(meta_region != ast::node{}, error_code::buildmeta, "build meta region target \"{}\" could not be found in the provided input file(s)", ret.compiler_args.target_name);
+		// turn that meta region into a function definition that we can jit compile + run.
+		ast metaprogram = turn_meta_region_into_program(ret.compiler_args.target_name, meta_region);
+
+		timer::start();
+		semal::output semal_predecl = semal::analyse_predecl(metaprogram);
+		semal::output semal = semal::analyse_full(metaprogram, semal_predecl);
+		if(semal_timers != nullptr)
+		{
+			*semal_timers += timer::elapsed_millis();
+		}
+		code::output metacode = code::generate(metaprogram, semal, "buildmeta");
+
+		// todo: retrieve the following from LLVM JIT:
+		// - linkage type
+		// - config type
+		// - output name (if linkage type is not none)
+		// - any extra input .psy files to compile.
+
+		return ret;
+	}
+
+	std::filesystem::path info::get_output_path() const
+	{
+		return this->compiler_args.output_dir / this->link_name;
+	}
+
+	ast::node try_find_build_meta_region_from_tree(std::string_view name, const ast& tree, ast::path_t path)
+	{
+		const ast::node& node = tree.get(path);
+		if(std::holds_alternative<ast::meta_region>(node.payload))
+		{
+			const auto& region = std::get<ast::meta_region>(node.payload);
+			if(region.name == name && region.type == "build")
+			{
+				return node;
+			}
+		}
+
+		for(std::size_t i = 0; i < node.children.size(); i++)
+		{
+			auto child_path = path;
+			child_path.push_back(i);
+			auto maybe_result = try_find_build_meta_region_from_tree(name, tree, child_path);
+			if(maybe_result != ast::node{})
+			{
+				return maybe_result;
+			}
+		}
+		return ast::node{};
+	}
+
+	ast::node try_find_build_meta_region(const info& i, std::string_view name, std::size_t* lex_timers, std::size_t* parse_timers)
+	{
+		for(const std::filesystem::path path : i.compiler_args.input_files)
+		{
+			timer::start();
+			lex::output tokens = lex::tokenise(path);
+			if(lex_timers != nullptr)
+			{
+				*lex_timers += timer::elapsed_millis();
+			}
+
+			timer::start();
+			ast tree = parse::tokens(tokens.tokens);
+			if(parse_timers != nullptr)
+			{
+				*parse_timers += timer::elapsed_millis();
+			}
+
+			auto maybe_result = try_find_build_meta_region_from_tree(name, tree, {});
+			if(maybe_result != ast::node{})
+			{
+				return maybe_result;
+			}
+		}
+		return ast::node{};
+	}
+
+	ast turn_meta_region_into_program(std::string_view region_name, ast::node meta_region)
+	{
+		ast ret;
+
+		meta_region.payload = ast::function_definition{.func_name = std::string{region_name}, .ret_type = type::from_primitive(primitive_type::u0).name()};
+		ret.root.children.push_back(meta_region);
+
+		return ret;
+	}
+}

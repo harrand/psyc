@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "build.hpp"
 #include "lex.hpp"
 #include "parse.hpp"
 #include "semal.hpp"
@@ -24,9 +25,9 @@ struct timers
 	void print()
 	{
 		constexpr int width = 12;
+		std::cout << std::left << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) << std::right << (this->buildmeta / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << std::right << (this->lexing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) << std::right << (this->parsing / 1000.0f) << " seconds" << std::endl;
-		std::cout << std::left << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) << std::right << (this->buildmeta / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "semal:" << std::setw(6) << std::setprecision(3) << std::right << (this->semal / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "codegen:" << std::setw(6) << std::setprecision(3) << std::right << (this->codegen / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "link:" << std::setw(6) << std::setprecision(3) << std::right << (this->link / 1000.0f) << " seconds" << std::endl;
@@ -45,10 +46,21 @@ struct timers
 int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
-	config::compiler_args args = parse_args(cli_args);
 	timers t;
 
 	code::static_initialise();
+
+	build::info binfo;
+	{
+		config::compiler_args args = parse_args(cli_args);
+		// buildmeta
+		timer::start();
+		binfo = build::gather(args);
+		t.buildmeta = timer::elapsed_millis();
+	}
+	// remember: binfo might have extra input files than was specified in the command line.
+	// this is because build meta regions are allowed to add extra inputs.
+	const config::compiler_args& args = binfo.compiler_args;
 
 	// lex
 	timer::start();
