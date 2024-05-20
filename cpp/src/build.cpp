@@ -14,8 +14,30 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
 
+build::info* cur_build_info = nullptr;
+
+void set_linkage_type(std::int64_t link_type_value)
+{
+	diag::assert_that(link_type_value < (int)build::linkage_type::_count, error_code::buildmeta, "unexpected linkage type \"{}\"", link_type_value);
+	cur_build_info->link = static_cast<build::linkage_type>(link_type_value);	
+}
+
+void set_build_type(std::int64_t build_type_value)
+{
+	diag::assert_that(build_type_value < (int)build::config_type::_count, error_code::buildmeta, "unexpected build type \"{}\"", build_type_value);
+	cur_build_info->config = static_cast<build::config_type>(build_type_value);
+}
+
+void install_functions(llvm::ExecutionEngine& exe)
+{
+	exe.addGlobalMapping("set_linkage_type", reinterpret_cast<std::uintptr_t>(&set_linkage_type));
+	exe.addGlobalMapping("set_build_type", reinterpret_cast<std::uintptr_t>(&set_build_type));
+}
+
+
 namespace build
 {
+
 	ast::node try_find_build_meta_region(const info& i, std::string_view name, std::size_t* lex_timers, std::size_t* parse_timers);
 	ast turn_meta_region_into_program(std::string_view region_name, ast::node meta_region);
 
@@ -24,11 +46,11 @@ namespace build
 		info ret;
 		ret.compiler_args = args;
 		#ifdef _WIN32
-		#elif defined(__linux__)
 			ret.link_name += ".exe";
+		#elif defined(__linux__)
+			ret.link_name += ".out";
 		#else
 			static_assert("unknown platform");
-			ret.link_name += ".out";
 		#endif
 		ret.target_triple = llvm::sys::getDefaultTargetTriple();
 		llvm::InitializeAllTargetInfos();
@@ -51,13 +73,37 @@ namespace build
 			*semal_timers += timer::elapsed_millis();
 		}
 		code::output metacode = code::generate(metaprogram, semal, "buildmeta");
+		// we now own the codegen handle.
+		llvm::Module* metaprogram_handle = static_cast<llvm::Module*>(code::unsafe_release());
+		// pass ownership directly into ExecutionEngine.
+		std::string error;
+		{
+			llvm::ExecutionEngine* exe = llvm::EngineBuilder(std::unique_ptr<llvm::Module>(metaprogram_handle))
+			.setErrorStr(&error)
+			.setMCJITMemoryManager(std::make_unique<llvm::SectionMemoryManager>())
+			.create();
+			diag::assert_that(exe != nullptr, error_code::ice, "failed to create LLVM execution engine while trying to execute build meta-region: {}", error);
 
-		// todo: retrieve the following from LLVM JIT:
-		// - linkage type
-		// - config type
-		// - output name (if linkage type is not none)
-		// - any extra input .psy files to compile.
+			// todo: install functions.
 
+			// retrieve the following from LLVM JIT:
+			// - DONE linkage type
+			// - DONE config type
+			// - TODO output name (if linkage type is not none)
+			// - TODO any extra input .psy files to compile.
+			install_functions(*exe);
+			int (*metafunc)() =(int (*)())exe->getFunctionAddress(ret.compiler_args.target_name);
+			// run the program.
+			cur_build_info = &ret;
+			int ret = metafunc();
+			cur_build_info = nullptr;
+
+			// do a sane cleanup.
+			// remember: at the end of this scope, ExecutionEngine dies which means the llvm::Module that it owns dies too.
+			// code cleanup releases the globals etc, but we need to release references manually first.
+			metaprogram_handle->dropAllReferences();
+			code::cleanup();
+		}
 		return ret;
 	}
 
@@ -122,7 +168,79 @@ namespace build
 	{
 		ast ret;
 
-		meta_region.payload = ast::function_definition{.func_name = std::string{region_name}, .ret_type = type::from_primitive(primitive_type::u0).name()};
+		// firstly we define some magical buildmeta-only extern functions.
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "set_linkage_type",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "lnkval",
+						.type_name = "i64",
+						.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "set_build_type",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "optval",
+						.type_name = "i64",
+						.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+
+		// same with some globals.
+		for(int i = 0; i < (int)build::linkage_type::_count; i++)
+		{
+			ret.root.children.push_back(ast::node{.payload = ast::expression{.expr =
+			{
+				ast::variable_declaration
+				{
+					.var_name = build::linkage_type_names[i],
+					.type_name = "i64",
+					.initialiser = ast::expression{.expr = ast::integer_literal{.val = i}}
+				}
+			}}});
+		}
+		for(int i = 0; i < (int)build::config_type::_count; i++)
+		{
+			ret.root.children.push_back(ast::node{.payload = ast::expression{.expr =
+			{
+				ast::variable_declaration
+				{
+					.var_name = build::config_type_names[i],
+					.type_name = "i64",
+					.initialiser = ast::expression{.expr = ast::integer_literal{.val = i}}
+				}
+			}}});
+		}
+
+		meta_region.payload = ast::function_definition{.func_name = std::string{region_name}, .ret_type = type::from_primitive(primitive_type::i64).name()};
+		// because its become a function that returns an integer, we *must* sneak in a return statement:
+		meta_region.children.front().children.push_back(ast::node
+		{
+			.payload = ast::return_statement
+			{
+				.expr = ast::expression{.expr = ast::integer_literal{.val = 0}}
+			}
+		});
 		ret.root.children.push_back(meta_region);
 
 		return ret;

@@ -17,6 +17,7 @@ namespace code
 	void static_initialise();
 	void static_terminate();
 
+	void* unsafe_release();
 	void cleanup();
 	// perform code generation. `codegen_handle` member of the returned output remains valid until you invoke `code::cleanup()`. ideally, you generate, then dump-ir/write-object, cleanup and then codegen another file.
 	output generate(const ast& tree, const semal::output& input, std::string module_name = "<unnamed_module>");

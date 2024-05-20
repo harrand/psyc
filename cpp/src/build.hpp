@@ -2,6 +2,7 @@
 #define PSYC_BUILD_HPP
 #include "config.hpp"
 #include <string>
+#include <array>
 
 namespace build
 {
@@ -9,13 +10,28 @@ namespace build
 	{
 		none,
 		executable,
-		library
+		library,
+		_count
+	};
+
+	constexpr std::array<const char*, (int)linkage_type::_count> linkage_type_names
+	{
+		"none",
+		"executable",
+		"library"
 	};
 
 	enum class config_type
 	{
 		debug,
-		release
+		release,
+		_count,
+	};
+
+	constexpr std::array<const char*, (int)config_type::_count> config_type_names
+	{
+		"debug",
+		"release",
 	};
 
 	struct info

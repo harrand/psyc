@@ -54,9 +54,12 @@ int main(int argc, char** argv)
 	{
 		config::compiler_args args = parse_args(cli_args);
 		// buildmeta
-		timer::start();
-		binfo = build::gather(args);
-		t.buildmeta = timer::elapsed_millis();
+		std::size_t metalex = 0;
+		std::size_t metaparse = 0;
+		std::size_t metasemal = 0;
+		std::size_t metacodegen = 0;
+		binfo = build::gather(args, &metalex, &metaparse, &metasemal, &metacodegen);
+		t.buildmeta = metalex + metaparse + metasemal + metacodegen;
 	}
 	// remember: binfo might have extra input files than was specified in the command line.
 	// this is because build meta regions are allowed to add extra inputs.

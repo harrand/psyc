@@ -92,6 +92,11 @@ namespace code
 		ctx = nullptr;
 	}
 
+	void* unsafe_release()
+	{
+		return program.release();
+	}
+
 	void cleanup()
 	{
 		// note: tearing down all this state is actually ridiculously error prone.
