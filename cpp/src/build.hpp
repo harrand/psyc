@@ -24,6 +24,7 @@ namespace build
 		config_type config = config_type::debug;
 		std::string link_name = "a";
 		std::vector<std::filesystem::path> extra_input_files = {};
+		std::string target_triple;
 		config::compiler_args compiler_args;
 
 		std::filesystem::path get_output_path() const;

@@ -6,6 +6,14 @@
 #include "diag.hpp"
 #include "timer.hpp"
 
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+// note: do not remove this, even if your editor says its unused. it's used.
+#include "llvm/ExecutionEngine/MCJIT.h"
+
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Host.h"
+
 namespace build
 {
 	ast::node try_find_build_meta_region(const info& i, std::string_view name, std::size_t* lex_timers, std::size_t* parse_timers);
@@ -22,6 +30,12 @@ namespace build
 			static_assert("unknown platform");
 			ret.link_name += ".out";
 		#endif
+		ret.target_triple = llvm::sys::getDefaultTargetTriple();
+		llvm::InitializeAllTargetInfos();
+		llvm::InitializeAllTargets();
+		llvm::InitializeAllTargetMCs();
+		llvm::InitializeAllAsmParsers();
+		llvm::InitializeAllAsmPrinters();
 
 		// try to find the node that constitutes a build meta-region with the same name as the target provided.
 		ast::node meta_region = try_find_build_meta_region(ret, ret.compiler_args.target_name, lex_timers, parse_timers);
