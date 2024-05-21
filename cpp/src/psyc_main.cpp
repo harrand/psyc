@@ -113,17 +113,17 @@ int main(int argc, char** argv)
 	for(const auto& [input_file, semantic_output] : semal.analysed_input_files)
 	{
 		codegen.codegend_input_files[input_file] = code::generate(parse.parsed_input_files[input_file], semantic_output, input_file.string());
-		codegen.codegend_input_files[input_file].write_to_object_file(binfo);
-		link.input_output_files[input_file] = codegen.codegend_input_files[input_file].get_output_filename();
-
 		if(args.should_dump_ir)
 		{
 			std::cout << "==========================\n";
 			std::cout << "ir for " << input_file << ":\n";
 			std::cout << codegen.codegend_input_files[input_file].dump_ir();
-			codegen.codegend_input_files[input_file].codegen_handle = nullptr;
 			std::cout << "\n==========================\n\n";
 		}
+		codegen.codegend_input_files[input_file].write_to_object_file(binfo);
+		link.input_output_files[input_file] = binfo.compiler_args.output_dir / codegen.codegend_input_files[input_file].get_output_filename();
+
+		codegen.codegend_input_files[input_file].codegen_handle = nullptr;
 		code::cleanup();
 	}
 

@@ -173,7 +173,7 @@ namespace link
 				}
 
 				int ret = std::system(cmd.c_str());
-				diag::assert_that(ret == 0, error_code::link, "detected that linker failed. unlucky, dickface!");
+				diag::assert_that(ret == 0, error_code::link, "detected that linker failed. command:\n{}", cmd);
 			}
 			break;
 			case build::linkage_type::library:
@@ -208,7 +208,7 @@ namespace link
 				#endif
 
 				int ret = std::system(cmd.c_str());
-				diag::assert_that(ret == 0, error_code::link, "detected that archiver failed. unlucky, dickface!");
+				diag::assert_that(ret == 0, error_code::link, "detected that archiver failed. command:\n{}", cmd);
 			}
 			break;
 			case build::linkage_type::none: break;

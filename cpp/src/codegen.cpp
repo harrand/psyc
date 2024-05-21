@@ -1055,7 +1055,7 @@ namespace code
 				.ctx = ctx,
 				.state = d.state
 				}, if_blk_node.children[i].payload);
-				contains_unconditional_return |= std::holds_alternative<ast::return_statement>(if_blk_node.children[i].payload);
+				contains_unconditional_return |= (std::holds_alternative<ast::expression>(if_blk_node.children[i].payload) && std::holds_alternative<ast::return_statement>(std::get<ast::expression>(if_blk_node.children[i].payload).expr));
 				// if we see a return before the last instruction, compile error.
 				// i.e if i < last and unconditional return, boom
 				ctx.assert_that(i >= (if_blk_node.children.size() - 1) || !contains_unconditional_return, error_code::codegen, "detected early-return within if block. all other code within the if-block is dead code.");
@@ -1079,7 +1079,7 @@ namespace code
 				.ctx = ctx,
 				.state = d.state
 				}, else_blk_node->children[i].payload);
-				contains_unconditional_return |= std::holds_alternative<ast::return_statement>(else_blk_node->children[i].payload);
+				contains_unconditional_return |= (std::holds_alternative<ast::expression>(else_blk_node->children[i].payload) && std::holds_alternative<ast::return_statement>(std::get<ast::expression>(else_blk_node->children[i].payload).expr));
 				// if we see a return before the last instruction, compile error.
 				// i.e if i < last and unconditional return, boom
 				ctx.assert_that(i >= (else_blk_node->children.size() - 1) || !contains_unconditional_return, error_code::codegen, "detected early-return within else block. all other code within the else-block is dead code.");
