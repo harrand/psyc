@@ -124,7 +124,23 @@ int main(int argc, char** argv)
 
 	t.codegen = timer::elapsed_millis();
 	// link
+	timer::start();
+	switch(binfo.link)
+	{
+		case build::linkage_type::executable:
 
+		break;
+		case build::linkage_type::library:
+
+		break;
+		case build::linkage_type::none:
+
+		break;
+		default:
+			diag::error(error_code::ice, "unknown or corrupted linkage type specified: {}", static_cast<int>(binfo.link));
+		break;
+	}
+	t.link = timer::elapsed_millis();
 	t.print();
 
 	code::static_terminate();
