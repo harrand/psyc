@@ -1,12 +1,6 @@
 #include "builtin.hpp"
 #include <array>
 
-std::array<const char*, (int)builtin::_count> builtin_names
-{
-	"malloc",
-	"free"	
-};
-
 std::array<semal::function_t, (int)builtin::_count> builtin_functions
 {
 	semal::function_t
@@ -43,13 +37,24 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 		.is_method = false,
 		.is_builtin = true
 	},
+	semal::function_t
+	{
+		.return_ty = type::from_primitive(primitive_type::u0),
+		.name = "debugbreak",
+		.params =
+		{
+		},
+		.ctx = {},
+		.is_method = false,
+		.is_builtin = true
+	},
 };
 
 builtin try_find_builtin(std::string_view funcname)
 {
 	for(int i = 0; i < (int)builtin::_count; i++)
 	{
-		if(std::format("__builtin_{}", builtin_names[i]) == funcname)
+		if(std::format("__builtin_{}", builtin_functions[i].name) == funcname)
 		{
 			return (builtin)i;
 		}

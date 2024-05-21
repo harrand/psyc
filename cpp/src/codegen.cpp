@@ -1524,6 +1524,10 @@ namespace code
 				ret.ty = func.return_ty;;
 			}
 			break;
+			case builtin::debugbreak:
+				ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::trap));
+				ret.ty = func.return_ty;
+			break;
 			default:
 				d.ctx.error(error_code::nyi, "missing codegen for builtin \"{}\"", call.function_name);
 			break;
