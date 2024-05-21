@@ -1003,7 +1003,8 @@ namespace code
 
 		value llvm_cond = expression(d, *payload.if_expr);
 		d.ctx.assert_that(llvm_cond.llv != nullptr, error_code::ice, "could not codegen condition inside if-statement");
-		d.ctx.assert_that(llvm_cond.ty.is_implicitly_convertible_to(type::from_primitive(primitive_type::boolean)) == conversion_type::none, error_code::type, "expression within if-condition does not resolve to a boolean.");
+		// if its a bool with any qualifiers, or implicitly converible to a plain bool, then we're good to go.
+		d.ctx.assert_that((llvm_cond.ty.is_primitive() && llvm_cond.ty.as_primitive() == primitive_type::boolean) || llvm_cond.ty.is_implicitly_convertible_to(type::from_primitive(primitive_type::boolean)) == conversion_type::none, error_code::type, "expression within if-condition does not resolve to a boolean.");
 
 		const semal::function_t* parent_function = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
 		d.ctx.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, error_code::ice, "could not deduct parent enclosing function within if-statement");
