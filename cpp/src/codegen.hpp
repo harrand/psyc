@@ -10,7 +10,7 @@ namespace code
 		std::string module_name;
 		std::string dump_ir() const;
 		std::string get_output_filename() const;
-		void write_to_object_file(std::filesystem::path output_dir);
+		void write_to_object_file(std::filesystem::path output_dir) const;
 	};
 
 	// initialise and terminate *once*, at the beginning and end of the compiler program respectively.

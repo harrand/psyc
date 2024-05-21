@@ -45,6 +45,8 @@ add_library(libpsyc
 	src/error.hpp
 	src/lex.cpp
 	src/lex.hpp
+	src/link.cpp
+	src/link.hpp
 	src/parse.cpp
 	src/parse.hpp
 	src/semal.cpp

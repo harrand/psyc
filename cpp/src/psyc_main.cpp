@@ -4,6 +4,7 @@
 #include "parse.hpp"
 #include "semal.hpp"
 #include "codegen.hpp"
+#include "link.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
 #include <filesystem>
@@ -125,21 +126,14 @@ int main(int argc, char** argv)
 	t.codegen = timer::elapsed_millis();
 	// link
 	timer::start();
-	switch(binfo.link)
+	link::state link;
+	for(const auto& [input_file, codegen_output] : codegen.codegend_input_files)
 	{
-		case build::linkage_type::executable:
-
-		break;
-		case build::linkage_type::library:
-
-		break;
-		case build::linkage_type::none:
-
-		break;
-		default:
-			diag::error(error_code::ice, "unknown or corrupted linkage type specified: {}", static_cast<int>(binfo.link));
-		break;
+		codegen_output.write_to_object_file(binfo.compiler_args.output_dir);
+		link.input_output_files[input_file] = codegen_output.get_output_filename();
 	}
+	link.build(binfo);
+
 	t.link = timer::elapsed_millis();
 	t.print();
 

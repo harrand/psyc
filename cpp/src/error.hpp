@@ -13,6 +13,7 @@ enum class error_code
 	type,
 	semal,
 	codegen,
+	link,
 	_count
 };
 
@@ -26,7 +27,8 @@ constexpr std::array<const char*, (int)error_code::_count> error_names
 	"parse",
 	"type",
 	"semantic analysis",
-	"code generation"
+	"code generation",
+	"linker"
 };
 
 #endif // PSYC_ERROR_HPP
