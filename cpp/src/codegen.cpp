@@ -648,8 +648,6 @@ namespace code
 		value lhs_value = expression(d, *payload.lhs_expr);
 		type ty = lhs_value.ty;
 
-		volatile bool check = lhs_value.variable_name == "val" && payload.op.t == lex::type::operator_asterisk;
-
 		type rhs_ty = type::undefined();
 		if(payload.op.t == lex::type::operator_cast)
 		{
@@ -657,6 +655,11 @@ namespace code
 			d.ctx.assert_that(std::holds_alternative<ast::identifier>(payload.rhs_expr->expr), error_code::codegen,"in a cast, rhs of the cast token \"{}\" must be an identifier, not an expression or anything else.", payload.op.lexeme);
 			std::string type_name = std::get<ast::identifier>(payload.rhs_expr->expr).iden;
 			rhs_ty = d.state.get_type_from_name(type_name);
+			if(lhs_value.is_variable)
+			{
+				lhs_value = get_variable_val(lhs_value, d);
+				ty = lhs_value.ty;
+			}
 			return
 			{
 				.llv = load_as(lhs_value.llv, d, ty, rhs_ty, true),
@@ -754,7 +757,14 @@ namespace code
 				ret.is_variable = false;
 			break;
 			case lex::type::operator_double_equals:
-				ret.llv = builder->CreateICmpEQ(lhs_value.llv, rhs_value.llv);
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFCmpUEQ(lhs_value.llv, rhs_value.llv);
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateICmpEQ(lhs_value.llv, rhs_value.llv);
+				}
 				ret.ty = type::from_primitive(primitive_type::boolean);
 				ret.is_variable = false;
 			break;
@@ -973,8 +983,8 @@ namespace code
 		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
 
 		llvm::BasicBlock* if_blk = nullptr;
+		auto if_blk_path = d.ctx.path;
 		{
-			auto if_blk_path = d.ctx.path;
 			if_blk_path.push_back(0);
 			if_blk = block(
 			data{
@@ -987,9 +997,9 @@ namespace code
 			}, "if_true");
 		}
 		llvm::BasicBlock* else_blk = nullptr;
+		auto else_blk_path = d.ctx.path;
 		if(else_blk_node != nullptr)
 		{
-			auto else_blk_path = d.ctx.path;
 			else_blk_path.push_back(1);
 			else_blk = block(
 			data{
@@ -999,13 +1009,91 @@ namespace code
 					.path = else_blk_path
 				},
 				.state = d.state
-			}, "if_else", true);
+			}, "if_else");
 		}
 
-		d.ctx.warning("if-statements are not yet implemented. no corresponding code will be generated.");
+		auto do_if_blk = [if_blk, if_blk_node, if_blk_path, &d]()->bool
+		{
+			bool contains_unconditional_return = false;
+			for(std::size_t i = 0; i < if_blk_node.children.size(); i++)
+			{
+				auto child_path = if_blk_path;
+				child_path.push_back(i);
+				semal::context ctx
+				{
+					.tree = d.ctx.tree,
+					.path = child_path
+				};
+				codegen_thing(data{
+				.ctx = ctx,
+				.state = d.state
+				}, if_blk_node.children[i].payload);
+				contains_unconditional_return |= std::holds_alternative<ast::return_statement>(if_blk_node.children[i].payload);
+				// if we see a return before the last instruction, compile error.
+				// i.e if i < last and unconditional return, boom
+				ctx.assert_that(i >= (if_blk_node.children.size() - 1) || !contains_unconditional_return, error_code::codegen, "detected early-return within if block. all other code within the if-block is dead code.");
+			}
+			return contains_unconditional_return;
+		};
+
+		auto do_else_blk = [else_blk, else_blk_node, else_blk_path, &d]()
+		{
+			bool contains_unconditional_return = false;
+			for(std::size_t i = 0; i < else_blk_node->children.size(); i++)
+			{
+				auto child_path = else_blk_path;
+				child_path.push_back(i);
+				semal::context ctx
+				{
+					.tree = d.ctx.tree,
+					.path = child_path
+				};
+				codegen_thing(data{
+				.ctx = ctx,
+				.state = d.state
+				}, else_blk_node->children[i].payload);
+				contains_unconditional_return |= std::holds_alternative<ast::return_statement>(else_blk_node->children[i].payload);
+				// if we see a return before the last instruction, compile error.
+				// i.e if i < last and unconditional return, boom
+				ctx.assert_that(i >= (else_blk_node->children.size() - 1) || !contains_unconditional_return, error_code::codegen, "detected early-return within else block. all other code within the else-block is dead code.");
+			}
+			return contains_unconditional_return;
+		};
+
+		llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*ctx, "cont", llvm_parent_fn);
+		//d.ctx.warning("if-statements are not yet implemented. no corresponding code will be generated.");
+		if(else_blk == nullptr)
+		{
+			// if
+			builder->CreateCondBr(llvm_cond.llv, if_blk, cont_blk);
+			builder->SetInsertPoint(if_blk);
+			if(!do_if_blk())
+			{
+				builder->CreateBr(cont_blk);
+			}
+
+			builder->SetInsertPoint(cont_blk);
+		}
+		else
+		{
+			// if-else
+			builder->CreateCondBr(llvm_cond.llv, if_blk, else_blk);
+			builder->SetInsertPoint(if_blk);
+			if(!do_if_blk())
+			{
+				builder->CreateBr(cont_blk);
+			}
+
+			builder->SetInsertPoint(else_blk);
+			if(!do_else_blk())
+			{
+				builder->CreateBr(cont_blk);
+			}
+			
+			builder->SetInsertPoint(cont_blk);
+		}
 
 		// todo: if statement logic.
-
 		return {};
 	}
 

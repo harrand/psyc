@@ -44,6 +44,8 @@ bool type::is_integer_type() const
 		case primitive_type::u16:
 			[[fallthrough]];
 		case primitive_type::u8:
+			[[fallthrough]];
+		case primitive_type::boolean:
 			return true;
 		break;
 		default:
@@ -67,6 +69,8 @@ bool type::is_signed_integer_type() const
 		case primitive_type::u16:
 			[[fallthrough]];
 		case primitive_type::u8:
+			[[fallthrough]];
+		case primitive_type::boolean:
 			return false;
 		break;
 		case primitive_type::i64:
@@ -100,6 +104,8 @@ bool type::is_unsigned_integer_type() const
 		case primitive_type::u16:
 			[[fallthrough]];
 		case primitive_type::u8:
+			[[fallthrough]];
+		case primitive_type::boolean:
 			return true;
 		break;
 		case primitive_type::i64:
