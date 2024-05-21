@@ -34,7 +34,7 @@ namespace code
 
 	std::string output::get_output_filename() const
 	{
-		return this->module_name + ".o";
+		return std::filesystem::path{this->module_name + ".o"}.filename().string();
 	}
 
 	void output::write_to_object_file(const build::info& binfo) const
