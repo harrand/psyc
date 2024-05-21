@@ -1274,6 +1274,10 @@ namespace code
 			else
 			{
 				value init_value = expression(d, *payload.initialiser.value());
+				if(init_value.is_variable)
+				{
+					init_value = get_variable_val(init_value, d);
+				}
 				d.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name);
 				builder->CreateStore(init_value.llv, llvm_var);
 			}

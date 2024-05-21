@@ -164,16 +164,9 @@ bool type::is_weak() const
 
 conversion_type type::is_implicitly_convertible_to(const type& rhs) const
 {
-	if(*this == rhs)
+	if(this->without_qualifiers() == rhs.without_qualifiers())
 	{
 		return conversion_type::none;
-	}
-	// const T has the exact same rules as T
-	if(this->is_const())
-	{
-		auto const_this = *this;
-		const_this.qualifiers = type_qualifier(int(const_this.qualifiers) | qualifier_const);
-		return const_this.is_implicitly_convertible_to(rhs);
 	}
 	if(this->is_weak() || rhs.is_weak())
 	{

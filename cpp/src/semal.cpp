@@ -528,6 +528,9 @@ namespace semal
 		d.assert_that(cond_expr_ty.is_primitive() && cond_expr_ty.as_primitive() == primitive_type::boolean, std::format("condition-expression (2nd part) of for-statement operand must be a boolean, you passed a {}", cond_expr_ty.name()));
 		const auto& node = d.tree.get(d.path);
 
+		expression(d, *payload.init_expr);
+		expression(d, *payload.iter_expr);
+
 		d.assert_that(node.children.size() == 1, std::format("for-statement AST node is expected to have *1* child representing its loop block, but the node actually has \"{}\"", node.children.size()));
 		const ast::node& child = node.children.front();
 		d.assert_that(std::holds_alternative<ast::block>(child.payload), std::format("child nodes of an for-statement node must only ever be blocks. detected a non-block AST child node."));
@@ -574,14 +577,14 @@ namespace semal
 			case lex::type::operator_plus:
 			[[fallthrough]];
 			case lex::type::operator_minus:
-				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
+				d.assert_that(typecon_valid(rhs.is_implicitly_convertible_to(lhs)), std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
 				d.assert_that(lhs.is_integer_type() || lhs.is_floating_point_type(), std::format("both sides of a \"{}\" binary operator must both be numeric types (e.g any integer or floating point type). you passed \"{}\" ({} numeric) and \"{}\" ({} numeric)", payload.op.lexeme, lhs.name(), lhs.is_integer_type() || lhs.is_floating_point_type() ? "is" : "isn't", rhs.name(), rhs.is_integer_type() || rhs.is_floating_point_type() ? "is" : "isn't"));
 				return rhs;
 			break;
 			case lex::type::operator_double_equals:
 			[[fallthrough]];
 			case lex::type::operator_notequals:
-				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
+				d.assert_that(typecon_valid(rhs.is_implicitly_convertible_to(lhs)), std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
 				return type::from_primitive(primitive_type::boolean);
 			break;
 			case lex::type::operator_cast:
