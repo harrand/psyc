@@ -72,7 +72,7 @@ namespace build
 		{
 			*semal_timers += timer::elapsed_millis();
 		}
-		code::output metacode = code::generate(metaprogram, semal, "buildmeta");
+		code::output metacode = code::generate(metaprogram, semal, ret, "buildmeta");
 		// we now own the codegen handle.
 		llvm::Module* metaprogram_handle = static_cast<llvm::Module*>(code::unsafe_release());
 		// pass ownership directly into ExecutionEngine.

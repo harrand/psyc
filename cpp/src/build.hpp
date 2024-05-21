@@ -36,7 +36,7 @@ namespace build
 
 	struct info
 	{
-		linkage_type link = linkage_type::executable;
+		linkage_type link = linkage_type::none;
 		config_type config = config_type::debug;
 		std::string link_name = "a";
 		std::vector<std::filesystem::path> extra_input_files = {};

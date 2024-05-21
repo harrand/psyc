@@ -112,7 +112,7 @@ int main(int argc, char** argv)
 	link::state link;
 	for(const auto& [input_file, semantic_output] : semal.analysed_input_files)
 	{
-		codegen.codegend_input_files[input_file] = code::generate(parse.parsed_input_files[input_file], semantic_output, input_file.string());
+		codegen.codegend_input_files[input_file] = code::generate(parse.parsed_input_files[input_file], semantic_output, binfo, input_file.string());
 		if(args.should_dump_ir)
 		{
 			std::cout << "==========================\n";

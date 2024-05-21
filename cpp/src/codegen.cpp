@@ -225,7 +225,7 @@ namespace code
 	void codegen_global_variable(const semal::local_variable_t& globdata, const semal::output& semal_input);
 	void codegen_nodes(const ast& tree, const semal::output& input);
 
-	output generate(const ast& tree, const semal::output& input, std::string module_name)
+	output generate(const ast& tree, const semal::output& input, const build::info& binfo, std::string module_name)
 	{
 		diag::assert_that(program == nullptr && builder == nullptr && debug == nullptr, error_code::ice, "previous codegen state has not been erased and you want me to move onto codegening another file...");
 		output ret
@@ -235,7 +235,7 @@ namespace code
 		};
 		program = std::make_unique<llvm::Module>(module_name, *ctx);
 		builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
-		if(true)
+		if(binfo.config == build::config_type::debug)
 		{
 			debug = std::make_unique<llvm::DIBuilder>(*program);
 			debug_info.cu = debug->createCompileUnit(llvm::dwarf::DW_LANG_C, debug->createFile(module_name.c_str(), "."), "Psy Compiler", /*optimised*/ false, "", 0);
@@ -1271,7 +1271,10 @@ namespace code
 					// automatically add a return :) you're welcome
 					builder->CreateRetVoid();
 				}
-				d.ctx.error(error_code::codegen, "missing return value for function \"{}\"", payload.func_name);
+				else
+				{
+					d.ctx.error(error_code::codegen, "missing return value for function \"{}\"", payload.func_name);
+				}
 			}
 			if(!has_return && funcdata.return_ty.is_void())
 			{
