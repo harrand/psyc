@@ -21,6 +21,10 @@ ast::node& ast::get(ast::path_const_view_t path)
 
 std::optional<ast::path_t> ast::try_get_previous(ast::path_t path) const
 {
+	if(path.empty())
+	{
+		return std::nullopt;
+	}
 	std::size_t back = path.back();
 	if(back == 0)
 	{
@@ -38,6 +42,10 @@ std::optional<ast::path_t> ast::try_get_previous(ast::path_t path) const
 
 std::optional<ast::path_t> ast::try_get_next(ast::path_t path) const
 {
+	if(path.empty())
+	{
+		return std::nullopt;
+	}
 	std::size_t back = path.back();
 	path.pop_back();
 	const node& parent = this->get(path);

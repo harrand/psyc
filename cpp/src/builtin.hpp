@@ -6,6 +6,7 @@ enum class builtin
 {
 	malloc,
 	free,
+	memcpy,
 	debugbreak,
 	_count,
 	_undefined,

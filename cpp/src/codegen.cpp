@@ -1351,7 +1351,10 @@ namespace code
 				if(funcdata.return_ty.is_void())
 				{
 					// automatically add a return :) you're welcome
-					builder->CreateRetVoid();
+					// we set the path to the last thing in the block.
+					ast::path_t last_child_path = blk_path;
+					last_child_path.push_back(node.children.empty() ? 0 : (node.children.size() - 1));
+					return_statement({.ctx = {.tree = d.ctx.tree, .path = last_child_path}, .state = d.state}, ast::return_statement{.expr = std::nullopt});
 				}
 				else
 				{
@@ -1496,6 +1499,15 @@ namespace code
 			.is_variable = false
 		};
 		const semal::function_t& func = get_builtin_function(b);
+		auto get_arg = [&d, &call](std::size_t id) -> value
+		{
+			value arg = codegen_thing(d, call.params[id]->expr);
+			if(arg.is_variable)
+			{
+				arg = get_variable_val(arg, d);
+			}
+			return arg;
+		};
 		switch(b)
 		{
 			case builtin::_undefined:
@@ -1503,11 +1515,7 @@ namespace code
 			break;
 			case builtin::malloc:
 			{
-				value size = codegen_thing(d, call.params.front()->expr);
-				if(size.is_variable)
-				{
-					size = get_variable_val(size, d);
-				}
+				value size = get_arg(0);
 				llvm::Type* intptr_type = as_llvm_type(func.params.front().ty, d.state);
 				ret.ty = func.return_ty;
 				ret.llv = builder->CreateMalloc(intptr_type, as_llvm_type(ret.ty, d.state), size.llv, llvm::ConstantInt::get(intptr_type, 1), nullptr);	
@@ -1515,13 +1523,19 @@ namespace code
 			break;
 			case builtin::free:
 			{
-				value ptr = codegen_thing(d, call.params.front()->expr);
-				if(ptr.is_variable)
-				{
-					ptr = get_variable_val(ptr, d);
-				}
+				value ptr = get_arg(0);
 				ret.llv = builder->CreateFree(ptr.llv);
 				ret.ty = func.return_ty;;
+			}
+			break;
+			case builtin::memcpy:
+			{
+				value dst = get_arg(0);
+				value src = get_arg(1);
+				value bytes = get_arg(2);
+
+				ret.llv = builder->CreateMemCpy(dst.llv, llvm::MaybeAlign{std::nullopt}, src.llv, llvm::MaybeAlign{std::nullopt}, bytes.llv);
+				ret.ty = func.return_ty;
 			}
 			break;
 			case builtin::debugbreak:

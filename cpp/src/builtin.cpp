@@ -5,13 +5,13 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 {
 	semal::function_t
 	{
-		.return_ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
+		.return_ty = type::from_primitive(primitive_type::i8).pointer_to(),
 		.name = "malloc",
 		.params =
 		{
 			semal::local_variable_t
 			{
-				.ty = type::from_primitive(primitive_type::u64),
+				.ty = type::from_primitive(primitive_type::u64, qualifier_weak),
 				.name = "size_bytes",
 				.ctx = {},
 			}
@@ -28,10 +28,39 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 		{
 			semal::local_variable_t
 			{
-				.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
+				.ty = type::from_primitive(primitive_type::i8).pointer_to(),
 				.name = "ptr",
 				.ctx = {},
 			}
+		},
+		.ctx = {},
+		.is_method = false,
+		.is_builtin = true
+	},
+	semal::function_t
+	{
+		.return_ty = type::from_primitive(primitive_type::u0),
+		.name = "memcpy",
+		.params =
+		{
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
+				.name = "dst",
+				.ctx = {},
+			},
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
+				.name = "src",
+				.ctx = {},
+			},
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::u64, qualifier_weak),
+				.name = "bytes",
+				.ctx = {},
+			},
 		},
 		.ctx = {},
 		.is_method = false,
