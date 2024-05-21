@@ -1125,7 +1125,72 @@ namespace code
 
 	value for_statement(const data& d, ast::for_statement payload)
 	{
-		d.ctx.warning("for-statements are not yet implemented. no corresponding code will be generated.");
+		const ast::node& node = d.ctx.node();
+		const ast::node& blk = node.children.front();
+		d.ctx.assert_that(std::holds_alternative<ast::block>(blk.payload), error_code::codegen, "ur for block sucks.");
+		value init = expression(d, *payload.init_expr);
+		value cond = expression(d, *payload.cond_expr);
+		//d.ctx.warning("for-statements are not yet implemented. no corresponding code will be generated.");
+
+		const semal::function_t* parent_function = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
+		d.ctx.assert_that(parent_function != nullptr && parent_function->userdata != nullptr, error_code::ice, "could not deduct parent enclosing function within if-statement");
+		auto* llvm_parent_fn = static_cast<llvm::Function*>(parent_function->userdata);
+
+		llvm::BasicBlock* iter_blk = nullptr;
+		auto iter_blk_path = d.ctx.path;
+		{
+			iter_blk_path.push_back(0);
+			iter_blk = block(
+				data
+				{
+					.ctx = 
+					{
+						.tree = d.ctx.tree,
+						.path = iter_blk_path
+					},
+					.state = d.state
+				}, "for_loop"
+			);
+		}
+
+		auto do_blk = [iter_blk, blk, iter_blk_path, &d, &payload]()->bool
+		{
+			bool contains_unconditional_return = false;
+			// do the block.
+			for(std::size_t i = 0; i < blk.children.size(); i++)
+			{
+				auto child_path = iter_blk_path;
+				child_path.push_back(i);
+				semal::context ctx
+				{
+					.tree = d.ctx.tree,
+					.path = child_path
+				};
+				codegen_thing(data{
+				.ctx = ctx,
+				.state = d.state
+				}, blk.children[i].payload);
+				contains_unconditional_return |= (std::holds_alternative<ast::expression>(blk.children[i].payload) && std::holds_alternative<ast::return_statement>(std::get<ast::expression>(blk.children[i].payload).expr));
+				// if we see a return before the last instruction, compile error.
+				// i.e if i < last and unconditional return, boom
+				ctx.assert_that(i >= (blk.children.size() - 1) || !contains_unconditional_return, error_code::codegen, "detected early-return within for-loop block. all other code within the for-block is dead code.");
+			}
+			// do the iter of the for loop.
+			expression(d, *payload.iter_expr);
+			return contains_unconditional_return;
+		};
+
+		llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*ctx, "cont", llvm_parent_fn);
+		// if
+		builder->CreateCondBr(cond.llv, iter_blk, cont_blk);
+		builder->SetInsertPoint(iter_blk);
+		if(!do_blk())
+		{
+			builder->CreateCondBr(expression(d, *payload.cond_expr).llv, iter_blk, cont_blk);
+			//builder->CreateBr(cont_blk);
+		}
+
+		builder->SetInsertPoint(cont_blk);
 		return {};
 	}
 
