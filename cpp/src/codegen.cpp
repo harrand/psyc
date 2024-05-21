@@ -1229,7 +1229,7 @@ namespace code
 				const ast::node& child = node.children[i];
 				ast::path_t child_path = blk_path;
 				child_path.push_back(i);
-				if(std::holds_alternative<ast::return_statement>(child.payload))
+				if(std::holds_alternative<ast::expression>(child.payload) && std::holds_alternative<ast::return_statement>(std::get<ast::expression>(child.payload).expr))
 				{
 					has_return = true;
 				}
@@ -1237,10 +1237,17 @@ namespace code
 				codegen_thing({.ctx = new_ctx, .state = d.state}, new_ctx.node().payload);
 			}
 
+			if(!has_return)
+			{
+				if(funcdata.return_ty.is_void())
+				{
+					// automatically add a return :) you're welcome
+					builder->CreateRetVoid();
+				}
+				d.ctx.error(error_code::codegen, "missing return value for function \"{}\"", payload.func_name);
+			}
 			if(!has_return && funcdata.return_ty.is_void())
 			{
-				// automatically add a return :) you're welcome
-				builder->CreateRetVoid();
 			}
 		}
 		llvm::verifyFunction(*llvm_fn);

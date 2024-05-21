@@ -236,9 +236,12 @@ namespace build
 		// because its become a function that returns an integer, we *must* sneak in a return statement:
 		meta_region.children.front().children.push_back(ast::node
 		{
-			.payload = ast::return_statement
+			.payload = ast::expression
 			{
-				.expr = ast::expression{.expr = ast::integer_literal{.val = 0}}
+				.expr = ast::return_statement
+				{
+					.expr = ast::expression{.expr = ast::integer_literal{.val = 0}}
+				}
 			}
 		});
 		ret.root.children.push_back(meta_region);
