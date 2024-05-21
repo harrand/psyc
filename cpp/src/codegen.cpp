@@ -1061,7 +1061,6 @@ namespace code
 		};
 
 		llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*ctx, "cont", llvm_parent_fn);
-		//d.ctx.warning("if-statements are not yet implemented. no corresponding code will be generated.");
 		if(else_blk == nullptr)
 		{
 			// if
@@ -1093,7 +1092,6 @@ namespace code
 			builder->SetInsertPoint(cont_blk);
 		}
 
-		// todo: if statement logic.
 		return {};
 	}
 
