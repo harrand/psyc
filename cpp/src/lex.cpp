@@ -298,6 +298,11 @@ namespace lex
 			state.advance();
 			return token{.t = type::operator_double_equals, .lexeme = "=="};
 		}
+		else if(data.starts_with("!="))
+		{
+			state.advance();
+			return token{.t = type::operator_notequals, .lexeme = "!="};
+		}
 		else if(data.starts_with("="))
 		{
 			return token{.t = type::operator_equals};

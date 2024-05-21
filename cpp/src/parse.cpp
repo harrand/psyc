@@ -31,6 +31,7 @@ namespace parse
 			|| t.t == lex::type::operator_slash
 			|| t.t == lex::type::operator_equals
 			|| t.t == lex::type::operator_double_equals
+			|| t.t == lex::type::operator_notequals
 			|| t.t == lex::type::operator_cast;
 	}
 	struct subtree

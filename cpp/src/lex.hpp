@@ -35,6 +35,7 @@ namespace lex
 		open_brack,
 		close_brack,
 		operator_double_equals,
+		operator_notequals,
 		operator_equals,
 		operator_plus,
 		operator_minus,

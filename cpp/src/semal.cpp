@@ -579,6 +579,8 @@ namespace semal
 				return rhs;
 			break;
 			case lex::type::operator_double_equals:
+			[[fallthrough]];
+			case lex::type::operator_notequals:
 				d.assert_that(lhs == rhs, std::format("both sides of a \"{}\" binary operation must have matching types - passed \"{}\" and \"{}\"", payload.op.lexeme, lhs.name(), rhs.name()));
 				return type::from_primitive(primitive_type::boolean);
 			break;

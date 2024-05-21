@@ -795,6 +795,18 @@ namespace code
 				ret.ty = type::from_primitive(primitive_type::boolean);
 				ret.is_variable = false;
 			break;
+			case lex::type::operator_notequals:
+				if(lhs_value.ty.is_floating_point_type())
+				{
+					ret.llv = builder->CreateFCmpUNE(lhs_value.llv, rhs_value.llv);
+				}
+				else if(lhs_value.ty.is_integer_type())
+				{
+					ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
+				}
+				ret.ty = type::from_primitive(primitive_type::boolean);
+				ret.is_variable = false;
+			break;
 			/*
 			case lex::type::not_equals:
 				ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
