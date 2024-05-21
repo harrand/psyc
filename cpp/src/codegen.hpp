@@ -1,6 +1,7 @@
 #ifndef PSYC_CODEGEN_HPP
 #define PSYC_CODEGEN_HPP
 #include "semal.hpp"
+#include "build.hpp"
 
 namespace code
 {
@@ -10,7 +11,7 @@ namespace code
 		std::string module_name;
 		std::string dump_ir() const;
 		std::string get_output_filename() const;
-		void write_to_object_file(std::filesystem::path output_dir) const;
+		void write_to_object_file(const build::info& binfo) const;
 	};
 
 	// initialise and terminate *once*, at the beginning and end of the compiler program respectively.

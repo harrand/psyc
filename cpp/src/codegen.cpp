@@ -37,11 +37,38 @@ namespace code
 		return this->module_name + ".o";
 	}
 
-	void output::write_to_object_file(std::filesystem::path output_dir) const
+	void output::write_to_object_file(const build::info& binfo) const
 	{
-		std::string object_filename = (output_dir / this->get_output_filename()).string();
+		std::string object_filename = (binfo.compiler_args.output_dir / this->get_output_filename()).string();
 
-		diag::error(error_code::nyi, "writing to object file is not yet implemented. i was told to write to \"{}\"", object_filename);
+		std::string error;
+		const llvm::Target* target = llvm::TargetRegistry::lookupTarget(binfo.target_triple, error);
+		if(target == nullptr)
+		{
+			diag::error(error_code::codegen, "error while retrieving LLVM output target information(s): {}", error);
+		}
+		const char* cpu = "generic";
+		const char* features = "";
+		llvm::TargetOptions opt;
+		auto target_machine = target->createTargetMachine(binfo.target_triple, cpu, features, opt, llvm::Reloc::PIC_);
+		// configure module (no i have no idea whats going on).
+		auto* program = static_cast<llvm::Module*>(this->codegen_handle);
+		program->setDataLayout(target_machine->createDataLayout());
+		program->setTargetTriple(binfo.target_triple);
+		std::error_code ec;
+		llvm::raw_fd_ostream dst(object_filename, ec, llvm::sys::fs::OF_None);
+		if(ec)
+		{
+			diag::error(error_code::codegen, "error while generating object files: {}", ec.message());
+		}
+		llvm::legacy::PassManager pass;
+		auto file_type = llvm::CodeGenFileType::ObjectFile;
+		if(target_machine->addPassesToEmitFile(pass, dst, nullptr, file_type, false))
+		{
+			diag::error(error_code::codegen, "target machine cannot emit a file of this type.");
+		}
+		pass.run(*program);
+		dst.flush();
 	}
 
 	// global state:

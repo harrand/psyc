@@ -109,29 +109,27 @@ int main(int argc, char** argv)
 	// codegen
 	timer::start();
 	code::state codegen;
+	link::state link;
 	for(const auto& [input_file, semantic_output] : semal.analysed_input_files)
 	{
 		codegen.codegend_input_files[input_file] = code::generate(parse.parsed_input_files[input_file], semantic_output, input_file.string());
+		codegen.codegend_input_files[input_file].write_to_object_file(binfo);
+		link.input_output_files[input_file] = codegen.codegend_input_files[input_file].get_output_filename();
+
 		if(args.should_dump_ir)
 		{
 			std::cout << "==========================\n";
 			std::cout << "ir for " << input_file << ":\n";
 			std::cout << codegen.codegend_input_files[input_file].dump_ir();
-			code::cleanup();
 			codegen.codegend_input_files[input_file].codegen_handle = nullptr;
 			std::cout << "\n==========================\n\n";
 		}
+		code::cleanup();
 	}
 
 	t.codegen = timer::elapsed_millis();
 	// link
 	timer::start();
-	link::state link;
-	for(const auto& [input_file, codegen_output] : codegen.codegend_input_files)
-	{
-		codegen_output.write_to_object_file(binfo.compiler_args.output_dir);
-		link.input_output_files[input_file] = codegen_output.get_output_filename();
-	}
 	link.build(binfo);
 
 	t.link = timer::elapsed_millis();
