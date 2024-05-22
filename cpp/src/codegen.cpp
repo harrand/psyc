@@ -1047,6 +1047,27 @@ namespace code
 		};
 	}
 
+	value array_access(const data& d, ast::array_access payload)
+	{
+		value lhs = expression(d, *payload.expr);
+		value rhs = expression(d, *payload.index);
+		if(lhs.is_variable)
+		{
+			lhs = get_variable_val(lhs, d);
+		}
+		if(rhs.is_variable)
+		{
+			rhs = get_variable_val(rhs, d);
+		}
+		d.ctx.assert_that(lhs.ty.is_pointer(), error_code::codegen, "array access lhs must be a pointer-type. you passed a \"{}\"", lhs.ty.name());
+		d.ctx.assert_that(typecon_valid(rhs.ty.is_implicitly_convertible_to(type::from_primitive(primitive_type::i64))), error_code::codegen, "array access rhs must be implicitly convertible to i64. you pased a \"{}\" which is not", rhs.ty.name());
+		return
+		{
+			.llv = builder->CreateInBoundsGEP(as_llvm_type(lhs.ty.dereference(), d.state), lhs.llv, llvm::ArrayRef{rhs.llv}),
+			.ty = lhs.ty
+		};
+	}
+
 	llvm::BasicBlock* block(const data& d, const char* name = "", bool force_no_parent = false)
 	{
 		const semal::function_t* parent_fn = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
@@ -1515,6 +1536,10 @@ namespace code
 			[&](ast::member_access mem)
 			{
 				ret = member_access(d, mem);
+			},
+			[&](ast::array_access arr)
+			{
+				ret = array_access(d, arr);
 			},
 			[&](ast::expression expr)
 			{

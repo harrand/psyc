@@ -56,6 +56,8 @@ namespace parse
 		bool reduce_from_identifier(std::size_t offset);
 		// given an ast::member_access subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_member_access(std::size_t offset);
+		// given an ast::array_access subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_array_access(std::size_t offset);
 		// given an ast::variable_declaration subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_variable_declaration(std::size_t offset);
 		// given an ast::function_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -563,9 +565,9 @@ namespace parse
 		}
 		// not a semicolon.
 		retr.undo();
-		// how about a close paren
+		// how about a close paren (or an open brack coz that means array access and we want the lhs to be a full expression instead of an iden)
 		auto close_paren = retr.retrieve<lex::token>();
-		if(close_paren.has_value() && close_paren->t == lex::type::close_paren)
+		if(close_paren.has_value() && (close_paren->t == lex::type::close_paren || close_paren->t == lex::type::open_brack || close_paren->t == lex::type::close_brack))
 		{
 			// iden) -> expr (but do not consume the token)
 			retr.undo();
@@ -593,6 +595,26 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::member_access>(&meta);
+
+		if(!retr.avail()){return false;}
+		bool capped = false;
+
+		auto semicolon = retr.retrieve<lex::token>();
+		capped = (semicolon.has_value() && semicolon->t == lex::type::semicolon);
+		if(!capped)
+		{
+			retr.undo();
+		}
+
+		retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+		return true;
+	}
+
+	bool parser_state::reduce_from_array_access(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::array_access>(&meta);
 
 		if(!retr.avail()){return false;}
 		bool capped = false;
@@ -693,6 +715,22 @@ namespace parse
 					}
 					retr.reduce_to(ast::member_access{.lhs = value, .rhs = iden->iden}, meta);
 					return true;
+				}
+				else if(tok->t == lex::type::open_brack)
+				{
+					if(!retr.avail()){return false;}
+					auto expr = retr.retrieve<ast::expression>();
+					if(!expr.has_value())
+					{
+						return false;
+					}
+					if(!retr.avail()){return false;}
+					auto close_brack = retr.retrieve<lex::token>();
+					if(!close_brack.has_value() || close_brack->t != lex::type::close_brack)
+					{
+						return false;
+					}
+					retr.reduce_to(ast::array_access{.expr = value, .index = expr.value()}, meta);
 				}
 			}
 		}
@@ -1178,6 +1216,10 @@ namespace parse
 					[&](ast::member_access arg)
 					{
 						ret = this->reduce_from_member_access(i);
+					},
+					[&](ast::array_access arg)
+					{
+						ret = this->reduce_from_array_access(i);
 					},
 					[&](ast::variable_declaration arg)
 					{

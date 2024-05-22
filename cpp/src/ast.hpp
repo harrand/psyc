@@ -63,6 +63,17 @@ struct ast
 		bool operator==(const member_access& rhs) const = default;
 	};
 
+	struct array_access
+	{
+		boxed_expression expr;
+		boxed_expression index;
+		std::string to_string() const
+		{
+			return std::format("array_access({}[{}])", expr->to_string(), index->to_string());
+		}
+		bool operator==(const array_access& rhs) const = default;
+	};
+
 	struct unary_operator
 	{
 		lex::token op;
@@ -158,6 +169,7 @@ struct ast
 			ast::bool_literal,
 			ast::identifier,
 			ast::member_access,
+			ast::array_access,
 			ast::variable_declaration,
 			ast::function_call,
 			ast::return_statement,
@@ -229,7 +241,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, member_access, function_call, if_statement, for_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

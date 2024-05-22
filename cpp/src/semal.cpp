@@ -690,6 +690,15 @@ namespace semal
 		return type::undefined();
 	}
 
+	type array_access(const data& d, const ast::array_access& payload)
+	{
+		type lhs_ty = expression(d, *payload.expr);
+		type rhs_ty = expression(d, *payload.index);
+		d.assert_that(lhs_ty.is_pointer(), std::format("detected use of array-access token `.`. the left-hand-side of the token must be a pointer type (coz array types are NYI), which \"{}\" is not.", lhs_ty.name()));
+		d.assert_that(typecon_valid(rhs_ty.is_implicitly_convertible_to(type::from_primitive(primitive_type::i64))), std::format("index of array access must be of type that is implicitly convertible to i64, which \"{}\" is not", rhs_ty.name()));
+		return lhs_ty.dereference();
+	}
+
 	type return_statement(const data& d, const ast::return_statement& payload)
 	{
 		const function_t* maybe_parent = d.state.try_find_parent_function(d.tree, d.path);
@@ -833,6 +842,10 @@ namespace semal
 			[&](ast::member_access mem)
 			{
 				ret = member_access(d, mem);
+			},
+			[&](ast::array_access mem)
+			{
+				ret = array_access(d, mem);
 			},
 			[&](ast::expression expr)
 			{
