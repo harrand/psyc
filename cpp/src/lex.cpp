@@ -269,6 +269,11 @@ namespace lex
 			state.advance(4);
 			return token{.t = type::bool_literal, .lexeme = "false"};
 		}
+		else if(data.starts_with("null"))
+		{
+			state.advance(3);
+			return token{.t = type::null_literal, .lexeme = "null"};
+		}
 		else if(data.starts_with("("))
 		{
 			return token{.t = type::open_paren};

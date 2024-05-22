@@ -647,6 +647,16 @@ namespace code
 		};
 	}
 
+	value null_literal(const data& d, ast::null_literal payload)
+	{
+		return
+		{
+			.llv = llvm::ConstantPointerNull::get(llvm::PointerType::get(*ctx, 0)),
+			.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
+			.is_variable = false
+		};
+	}
+
 	value unary_operator(const data& d, const ast::unary_operator& payload)
 	{
 		const semal::function_t* enclosing_fn = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
@@ -1516,6 +1526,10 @@ namespace code
 			[&](ast::bool_literal lit)
 			{
 				ret = bool_literal(d, lit);
+			},
+			[&](ast::null_literal lit)
+			{
+				ret = null_literal(d, lit);
 			},
 			[&](ast::binary_operator op)
 			{

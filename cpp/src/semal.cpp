@@ -810,6 +810,10 @@ namespace semal
 			{
 				ret = type::from_primitive(primitive_type::boolean);
 			},
+			[&](ast::null_literal lit)
+			{
+				ret = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak);
+			},
 			/*
 			[&](ast::char_literal lit)
 			{

@@ -42,6 +42,15 @@ struct ast
 		bool operator==(const bool_literal& rhs) const = default;
 	};
 
+	struct null_literal
+	{
+		std::string to_string() const
+		{
+			return "null";
+		}
+		bool operator==(const null_literal& rhs) const = default;
+	};
+
 	struct identifier
 	{
 		std::string iden;
@@ -167,6 +176,7 @@ struct ast
 			ast::integer_literal,
 			ast::decimal_literal,
 			ast::bool_literal,
+			ast::null_literal,
 			ast::identifier,
 			ast::member_access,
 			ast::array_access,
@@ -241,7 +251,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

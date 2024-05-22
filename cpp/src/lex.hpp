@@ -28,6 +28,7 @@ namespace lex
 		string_literal,
 		char_literal,
 		bool_literal,
+		null_literal,
 		open_paren,
 		close_paren,
 		open_brace,
