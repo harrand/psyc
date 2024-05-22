@@ -1,6 +1,7 @@
 #include "codegen.hpp"
 #include "diag.hpp"
 #include "builtin.hpp"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
@@ -10,6 +11,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
@@ -148,6 +150,56 @@ namespace code
 		debug = nullptr;
 		debug_info = {};
 		program = nullptr;
+	}
+
+	llvm::DIType* as_debug_type(const type& ty, const semal::output& semal_input)
+	{
+		diag::assert_that(!ty.is_undefined(), error_code::ice, "undefined type made it to codegen!");
+		if(ty.is_pointer())
+		{
+			return debug->createPointerType(as_debug_type(ty.dereference(), semal_input), ty.size_bytes() * 8);
+		}
+		if(ty.is_struct())
+		{
+			const semal::struct_t* structdata = semal_input.try_find_struct(ty.name());
+			diag::assert_that(structdata != nullptr, error_code::type, "struct type \"{}\" was not found within semantic analysis state, which is weird as it was recognised as a struct type. perhaps semantic analysis bug?", ty.name());
+			diag::assert_that(structdata->debuginfo != nullptr, error_code::ice, "found struct named \"{}\" but its debuginfo ptr is null, meaning it has not been codegen'd and i currently need it while evaluating something else.", ty.name());
+			return static_cast<llvm::DIType*>(structdata->debuginfo);
+			/*
+			const auto& struct_node = structdata->ctx.node();
+			return debug->createStructType(debug_info.emit_location(struct_node), structdata->ty.name, struct_node.meta.file, );
+			*/
+		}
+		if(ty.is_primitive())
+		{
+			auto make_prim = [&ty](auto encoding)->llvm::DIType*
+			{
+				return debug->createBasicType(ty.name(), ty.size_bytes() * 8, encoding);
+			};
+			if(ty.is_floating_point_type())
+			{
+				return make_prim(llvm::dwarf::DW_ATE_float);
+			}
+			else if(ty.as_primitive() == primitive_type::boolean)
+			{
+				return make_prim(llvm::dwarf::DW_ATE_boolean);
+			}
+			else if(ty.is_signed_integer_type())
+			{
+				return make_prim(llvm::dwarf::DW_ATE_signed);
+			}
+			else if(ty.is_unsigned_integer_type())
+			{
+				return make_prim(llvm::dwarf::DW_ATE_unsigned);
+			}
+			else if(ty.is_void())
+			{
+				// void is considered a 0-size uint
+				return make_prim(llvm::dwarf::DW_ATE_unsigned);
+			}
+		}
+		diag::error(error_code::ice, "not sure how to create debug-info type corresponding to type \"{}\"", ty.name());
+		return nullptr;
 	}
 
 	llvm::Type* as_llvm_type(const type& ty, const semal::output& semal_input)
@@ -1389,6 +1441,23 @@ namespace code
 				.ctx = method.ctx,
 				.state = d.state
 			}, std::get<ast::function_definition>(node.payload));
+		}
+
+		if(debug != nullptr)
+		{
+			const ast::node& node = d.ctx.node();
+			std::vector<llvm::Metadata*> members;
+			std::size_t offset_bytes = 0;
+
+			// couple of issues:
+			// - current code assumes struct is tightly packed, and alignment == size
+			// - structs could be from predecls in different files, this always assumes its in the file currently being codegen'd.
+			for(const auto& member : structdef->ty.data_members)
+			{
+				members.push_back(debug->createMemberType(debug_info.cu, member.member_name, debug_info.file, node.meta.line, member.ty->size_bytes(), member.ty->size_bytes(), offset_bytes * 8, llvm::DINode::FlagZero, as_debug_type(*member.ty, d.state)));
+				offset_bytes += member.ty->size_bytes();
+			}
+			structdef->debuginfo = debug->createStructType(debug_info.cu, structdef->ty.name, debug_info.file, node.meta.line, structdef->ty.size_bytes() * 8, structdef->ty.size_bytes() * 8, llvm::DINode::FlagZero, nullptr, debug->getOrCreateArray(members));	
 		}
 		return {};
 	}

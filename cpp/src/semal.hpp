@@ -41,6 +41,7 @@ namespace semal
 		context ctx;
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
+		mutable void* debuginfo = nullptr;
 	};
 
 	struct function_t
@@ -53,6 +54,7 @@ namespace semal
 		bool is_builtin = false;
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
+		mutable void* debuginfo = nullptr;
 	};
 
 	struct struct_t
@@ -62,6 +64,7 @@ namespace semal
 		std::unordered_map<std::string, function_t> methods = {};
 		// codegen may want to track extra data. however, semal doesnt care about any of this.
 		mutable void* userdata = nullptr;
+		mutable void* debuginfo = nullptr;
 	};
 
 	struct scope_reference
