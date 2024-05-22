@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <unordered_map>
 
-namespace link
+namespace linkage
 {
 	struct state
 	{

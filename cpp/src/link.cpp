@@ -1,7 +1,7 @@
 #include "link.hpp"
 #include "diag.hpp"
 
-namespace link
+namespace linkage
 {
 	// implementation details...
 	enum class linker_type
