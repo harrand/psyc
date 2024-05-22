@@ -1,6 +1,16 @@
 #include "type.hpp"
 #include "diag.hpp"
 
+std::size_t struct_type::size_bytes() const
+{
+	std::size_t sz = 0;
+	for(const auto& member : this->data_members)
+	{
+		sz += member.ty->size_bytes();
+	}
+	return sz;
+}
+
 bool type::is_undefined() const
 {
 	return std::holds_alternative<std::monostate>(this->ty);
@@ -252,6 +262,57 @@ std::string type::name() const
 	}
 
 	return ret;
+}
+
+std::size_t type::size_bytes() const
+{
+	if(this->is_pointer())
+	{
+		return 8;
+	}
+	if(this->is_struct())
+	{
+		return this->as_struct().size_bytes();
+	}
+	switch(this->as_primitive())
+	{
+		case primitive_type::i64:
+		[[fallthrough]];
+		case primitive_type::u64:
+		[[fallthrough]];
+		case primitive_type::f64:
+			return 8;
+		break;
+		case primitive_type::i32:
+		[[fallthrough]];
+		case primitive_type::u32:
+		[[fallthrough]];
+		case primitive_type::f32:
+			return 4;
+		break;
+		case primitive_type::i16:
+		[[fallthrough]];
+		case primitive_type::u16:
+		[[fallthrough]];
+		case primitive_type::f16:
+			return 2;
+		break;
+		case primitive_type::i8:
+		[[fallthrough]];
+		case primitive_type::u8:
+		[[fallthrough]];
+		case primitive_type::boolean:
+			return 1;
+		break;
+
+		case primitive_type::u0:
+			return 0;
+		break;
+		default:
+			diag::error(error_code::ice, "sizeof for type \"{}\" is unknown", this->name());
+			return 0;
+		break;
+	}
 }
 
 type type::dereference() const

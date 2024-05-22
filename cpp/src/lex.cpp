@@ -342,6 +342,11 @@ namespace lex
 		{
 			return token{.t = type::operator_cast};
 		}
+		else if(data.starts_with("sizeof"))
+		{
+			state.advance(6);
+			return token{.t = type::operator_sizeof, .lexeme = "sizeof"};
+		}
 		else if(data.starts_with("?"))
 		{
 			return token{.t = type::question_mark};

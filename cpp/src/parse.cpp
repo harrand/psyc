@@ -20,7 +20,8 @@ namespace parse
 			|| t.t == lex::type::operator_plus
 			|| t.t == lex::type::operator_ref
 			|| t.t == lex::type::operator_deref
-			|| t.t == lex::type::operator_defer;
+			|| t.t == lex::type::operator_defer
+			|| t.t == lex::type::operator_sizeof;
 	}
 
 	bool token_is_binary_operator(const lex::token& t)

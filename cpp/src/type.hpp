@@ -60,6 +60,7 @@ struct struct_type
 	std::string name;
 	std::vector<data_member> data_members = {};
 	bool operator==(const struct_type& rhs) const = default;
+	std::size_t size_bytes() const;
 };
 
 enum type_qualifier
@@ -120,6 +121,7 @@ struct type
 	struct_type as_struct() const;
 
 	std::string name() const;
+	std::size_t size_bytes() const;
 
 	type dereference() const;
 	type pointer_to(type_qualifier quals = qualifier_none) const;

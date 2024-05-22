@@ -599,6 +599,12 @@ namespace code
 		const semal::function_t* enclosing_fn = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
 		d.ctx.assert_that(enclosing_fn != nullptr, error_code::ice, "enclosing function of unary operator could not be found.");
 
+		if(payload.op.t == lex::type::operator_sizeof)
+		{
+			auto ty = d.state.get_type_from_name(std::get<ast::identifier>(payload.expr->expr).iden);
+			return integer_literal(d, ast::integer_literal{.val = static_cast<int>(ty.size_bytes())});
+		}
+
 		auto* llvm_enclosing_fn = static_cast<llvm::Function*>(enclosing_fn->userdata);
 		llvm::BasicBlock* cur_block = builder->GetInsertBlock();
 		bool defer = payload.op.t == lex::type::operator_defer;

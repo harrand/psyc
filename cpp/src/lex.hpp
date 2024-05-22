@@ -45,6 +45,7 @@ namespace lex
 		operator_deref,
 		operator_defer,
 		operator_cast,
+		operator_sizeof,
 		question_mark,
 		return_statement,
 		initialiser,

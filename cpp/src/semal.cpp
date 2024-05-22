@@ -599,6 +599,11 @@ namespace semal
 
 	type unary_operator(const data& d, const ast::unary_operator& payload)
 	{
+		if(payload.op.t == lex::type::operator_sizeof)
+		{
+			d.assert_that(std::holds_alternative<ast::identifier>(payload.expr->expr), std::format("unary operator \"{}\" must have operand equal to a typename.", payload.op.lexeme));
+			return type::from_primitive(primitive_type::i64);
+		}
 		type expr = expression(d, *payload.expr);
 		switch(payload.op.t)
 		{
