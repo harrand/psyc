@@ -110,6 +110,7 @@ namespace lex
 		tokenise_state state;
 
 		std::ifstream fstr(psy_file);
+		diag::assert_that(fstr.good(), error_code::badargs, "could not open input file \"{}\"", psy_file.string());
 		// slurp the whole file into a string.
 		std::stringstream buffer;
 		buffer << fstr.rdbuf();

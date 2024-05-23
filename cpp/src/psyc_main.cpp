@@ -61,6 +61,11 @@ int main(int argc, char** argv)
 		std::size_t metacodegen = 0;
 		binfo = build::gather(args, &metalex, &metaparse, &metasemal, &metacodegen);
 		t.buildmeta = metalex + metaparse + metasemal + metacodegen;
+
+		for(std::filesystem::path extra : binfo.extra_input_files)
+		{
+			binfo.compiler_args.input_files.push_back(extra);
+		}
 	}
 	// remember: binfo might have extra input files than was specified in the command line.
 	// this is because build meta regions are allowed to add extra inputs.

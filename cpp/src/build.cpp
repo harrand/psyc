@@ -33,13 +33,18 @@ void set_output_name(const char* name)
 	cur_build_info->link_name = name;
 }
 
+void add_source(const char* name)
+{
+	cur_build_info->extra_input_files.push_back(name);
+}
+
 void install_functions(llvm::ExecutionEngine& exe)
 {
 	exe.addGlobalMapping("set_linkage_type", reinterpret_cast<std::uintptr_t>(&set_linkage_type));
 	exe.addGlobalMapping("set_build_type", reinterpret_cast<std::uintptr_t>(&set_build_type));
 	exe.addGlobalMapping("set_output_name", reinterpret_cast<std::uintptr_t>(&set_output_name));
+	exe.addGlobalMapping("add_source", reinterpret_cast<std::uintptr_t>(&add_source));
 }
-
 
 namespace build
 {
@@ -221,6 +226,24 @@ namespace build
 					ast::variable_declaration
 					{
 						.var_name = "outname",
+						.type_name = "i8&",
+						.initialiser = ast::expression{.expr = ast::null_literal{}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "add_source",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "filename",
 						.type_name = "i8&",
 						.initialiser = ast::expression{.expr = ast::null_literal{}}
 					},
