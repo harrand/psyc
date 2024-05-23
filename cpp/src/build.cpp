@@ -28,10 +28,16 @@ void set_build_type(std::int64_t build_type_value)
 	cur_build_info->config = static_cast<build::config_type>(build_type_value);
 }
 
+void set_output_name(const char* name)
+{
+	cur_build_info->link_name = name;
+}
+
 void install_functions(llvm::ExecutionEngine& exe)
 {
 	exe.addGlobalMapping("set_linkage_type", reinterpret_cast<std::uintptr_t>(&set_linkage_type));
 	exe.addGlobalMapping("set_build_type", reinterpret_cast<std::uintptr_t>(&set_build_type));
+	exe.addGlobalMapping("set_output_name", reinterpret_cast<std::uintptr_t>(&set_output_name));
 }
 
 
@@ -199,6 +205,24 @@ namespace build
 						.var_name = "optval",
 						.type_name = "i64",
 						.initialiser = ast::expression{.expr = ast::integer_literal{.val = 0}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "set_output_name",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "outname",
+						.type_name = "i8&",
+						.initialiser = ast::expression{.expr = ast::null_literal{}}
 					},
 				},
 				.ret_type = "u0",

@@ -251,6 +251,22 @@ namespace parse
 						maybe_expr = ast::expression{.expr = maybe_decimal_literal.value()};
 						return maybe_expr;
 					}
+					this->undo();
+					// char literal
+					auto maybe_char_literal = this->retrieve<ast::char_literal>();
+					if(maybe_char_literal.has_value())
+					{
+						maybe_expr = ast::expression{.expr = maybe_char_literal.value()};
+						return maybe_expr;
+					}
+					this->undo();
+					// string literal
+					auto maybe_string_literal = this->retrieve<ast::string_literal>();
+					if(maybe_string_literal.has_value())
+					{
+						maybe_expr = ast::expression{.expr = maybe_string_literal.value()};
+						return maybe_expr;
+					}
 				}
 				return maybe_expr;
 			}
