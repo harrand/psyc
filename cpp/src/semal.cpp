@@ -545,6 +545,35 @@ namespace semal
 		return type::undefined();
 	}
 
+	type struct_initialiser(const data& d, const ast::struct_initialiser& payload)
+	{
+		type ret = d.state.get_type_from_name(payload.name);
+		d.assert_that(!ret.is_undefined(), std::format("struct initialiser type \"{}\" is not recognised as a valid type.", payload.name));
+		d.assert_that(ret.is_struct(), std::format("struct initialiser type \"{}\" is not recognised as a struct type.", payload.name));
+
+		auto try_get_member = [structty = ret.as_struct()](std::string_view member_name)->std::optional<type>
+		{
+			for(const auto& member : structty.data_members)
+			{
+				if(member.member_name == member_name)
+				{
+					return *member.ty;
+				}
+			}
+			return std::nullopt;
+		};
+
+		// go through each initialiser and make sure both that the member exists and type checks.
+		for(const auto& [member, init] : payload.designated_initialisers)
+		{
+			auto member_ty = try_get_member(member);
+			d.assert_that(member_ty.has_value(), std::format("in designated initialiser for struct \"{}\": no such data member \"{}\"", payload.name, member));
+			type expr_ty = expression(d, *init);
+			d.assert_that(typecon_valid(member_ty.value().is_implicitly_convertible_to(expr_ty)), std::format("designator \"{}\" for struct \"{}\" is of type \"{}\". the initialiser you passed is of type \"{}\" which is not implicitly convertible. did you forget to cast?", member, payload.name, member_ty->name(), expr_ty.name()));
+		}
+		return ret;
+	}
+
 	// node types.
 	type binary_operator(const data& d, const ast::binary_operator& payload)
 	{
@@ -862,6 +891,10 @@ namespace semal
 			[&](ast::for_statement forst)
 			{
 				ret = for_statement(d, forst);
+			},
+			[&](ast::struct_initialiser strinit)
+			{
+				ret = struct_initialiser(d, strinit);
 			},
 			[&](ast::return_statement returnst)
 			{

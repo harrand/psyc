@@ -1296,6 +1296,73 @@ namespace code
 		return {};
 	}
 
+	value struct_initialiser(const data& d, ast::struct_initialiser payload)
+	{
+		const semal::struct_t* structdata = d.state.try_find_struct(payload.name);
+		d.ctx.assert_that(structdata != nullptr, error_code::codegen, "struct type \"{}\" via struct initialiser was not recognised as a valid struct", payload.name);
+		const auto& structnode = structdata->ctx.node();
+		d.ctx.assert_that(std::holds_alternative<ast::struct_definition>(structnode.payload), error_code::codegen, "ruh roh raggy");
+
+		auto try_get_designated_initialiser = [&payload](std::string_view member_name)->std::optional<ast::expression>
+		{
+			for(const auto& [desig_member_name, expr] : payload.designated_initialisers)
+			{
+				if(desig_member_name == member_name)
+				{
+					return *expr;
+				}
+			}
+			return std::nullopt;
+		};
+
+		type structty = type::from_struct(structdata->ty);
+		value temp
+		{
+			.llv = builder->CreateAlloca(as_llvm_type(structty, d.state)),
+			.ty = structty.pointer_to(),
+			.is_variable = true
+		};
+
+		std::size_t member_idx = 0;
+		auto blk_node = structnode.children.front();
+		for(std::size_t i = 0; i < blk_node.children.size(); i++)
+		{
+			const auto& node = blk_node.children[i];
+			if(!std::holds_alternative<ast::expression>(node.payload))
+			{
+				continue;
+			}
+			const auto& declexpr = std::get<ast::expression>(node.payload);
+			if(!std::holds_alternative<ast::variable_declaration>(declexpr.expr))
+			{
+				continue;
+			}
+			const auto& member = std::get<ast::variable_declaration>(declexpr.expr);
+			// use either the default initialiser of the struct, or the expr used by the struct initialiser.
+			auto init_expr = try_get_designated_initialiser(member.var_name);
+			if(!init_expr.has_value())
+			{
+				// struct initialiser didnt initialise this member, fallback to the default expr if it has one.
+				if(member.initialiser.has_value())
+				{
+					init_expr = *member.initialiser.value();
+				}
+				else
+				{
+					// theres no default initialiser either...
+				}
+			}
+			if(init_expr.has_value())
+			{
+				value exprval = expression(d, init_expr.value());
+				llvm::Value* member_ptr = builder->CreateStructGEP(as_llvm_type(structty, d.state), temp.llv, member_idx++);
+				builder->CreateStore(exprval.llv, member_ptr);
+			}
+		}
+
+		return temp;
+	}
+
 	value return_statement(const data& d, ast::return_statement payload)
 	{
 		const semal::function_t* func = d.state.try_find_parent_function(*d.ctx.tree, d.ctx.path);
@@ -1357,20 +1424,13 @@ namespace code
 		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
 		if(payload.initialiser.has_value())
 		{
-			if(var->ty.is_struct())
+			value init_value = expression(d, *payload.initialiser.value());
+			if(init_value.is_variable)
 			{
-				d.ctx.error(error_code::nyi, "inline initialiser of a struct-typed variable is not yet implemented.");
-			}	
-			else
-			{
-				value init_value = expression(d, *payload.initialiser.value());
-				if(init_value.is_variable)
-				{
-					init_value = get_variable_val(init_value, d);
-				}
-				d.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name);
-				builder->CreateStore(init_value.llv, llvm_var);
+				init_value = get_variable_val(init_value, d);
 			}
+			d.ctx.assert_that(init_value.llv != nullptr, error_code::ice, "variable declaration \"{}\"'s initialiser expression codegen'd to nullptr.", payload.var_name);
+			builder->CreateStore(init_value.llv, llvm_var);
 		}
 
 		var->userdata = llvm_var;
@@ -1566,6 +1626,10 @@ namespace code
 			[&](ast::for_statement forst)
 			{
 				ret = for_statement(d, forst);
+			},
+			[&](ast::struct_initialiser structinit)
+			{
+				ret = struct_initialiser(d, structinit);
 			},
 			[&](ast::return_statement returnst)
 			{

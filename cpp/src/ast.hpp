@@ -167,6 +167,22 @@ struct ast
 		bool operator==(const for_statement& rhs) const = default;
 	};
 
+	struct struct_initialiser
+	{
+		std::string name;
+		std::vector<std::pair<std::string, boxed_expression>> designated_initialisers;
+		std::string to_string() const
+		{
+			std::string inits = "";
+			for(const auto& [name, expr] : designated_initialisers)
+			{
+				inits += std::format(".{} := {}", name, expr->to_string());
+			}
+			return std::format("struct_initialiser({}{{{}}})", name, inits);
+		}
+		bool operator==(const struct_initialiser& rhs) const = default;
+	};
+
 	struct expression
 	{
 		std::variant
@@ -184,7 +200,8 @@ struct ast
 			ast::function_call,
 			ast::return_statement,
 			ast::if_statement,
-			ast::for_statement
+			ast::for_statement,
+			ast::struct_initialiser
 		> expr;
 		bool capped = false;
 		std::string to_string() const
@@ -251,7 +268,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, struct_initialiser, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

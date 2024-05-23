@@ -68,6 +68,8 @@ namespace parse
 		bool reduce_from_if_statement(std::size_t offset);
 		// given an ast::for_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_for_statement(std::size_t offset);
+		// given an ast::struct_initialiser subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_struct_initialiser(std::size_t offset);
 		// given an ast::expression subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_expression(std::size_t offset);
 		// given an ast::function_definition subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -563,6 +565,73 @@ namespace parse
 			return true;
 		}
 		retr.undo();
+		// how about a designated initialiser.
+		auto maybe_open_brace = retr.retrieve<lex::token>();
+		if(maybe_open_brace.has_value() && maybe_open_brace->t == lex::type::open_brace)
+		{
+			std::size_t initial_idx = retr.get_offset();
+			std::vector<std::pair<std::string, ast::boxed_expression>> designated_initialisers = {};
+			std::optional<lex::token> close_brace = std::nullopt;
+			// keep trying to parse the close paren.
+			if(!retr.avail()){return false;}
+			while((close_brace = retr.retrieve<lex::token>(), !close_brace.has_value() || close_brace->t != lex::type::close_brace))
+			{
+				retr.undo();
+				if(!designated_initialisers.empty())
+				{
+					// need a comma.
+					auto comma = retr.retrieve<lex::token>();
+					if(!comma.has_value() || comma->t != lex::type::comma)
+					{
+						return false;
+					}
+					if(!retr.avail()){return false;}
+				}
+
+				// need a dot.
+				auto dot = retr.retrieve<lex::token>();
+				if(!dot.has_value() || dot->t != lex::type::dot)
+				{
+					return false;
+				}
+
+				// designator
+				if(!retr.avail()){return false;}
+				auto lhs = retr.retrieve<ast::identifier>();
+				if(!lhs.has_value())
+				{
+					return false;
+				}
+
+				// :=
+				if(!retr.avail()){return false;}
+				auto initialiser = retr.retrieve<lex::token>();
+				if(!initialiser.has_value() || initialiser->t != lex::type::initialiser)
+				{
+					return false;
+				}
+
+				// designatee
+				if(!retr.avail()){return false;}
+				auto expr = retr.retrieve<ast::expression>();
+				if(!expr.has_value())
+				{
+					return false;
+				}
+				designated_initialisers.push_back({lhs->iden, expr.value()});
+			}
+			// we're done. note a struct initialiser must contain *at least one* designated initialiser, otherwise all blocks could in theory reduce to a struct initialiser due to braces being very context sentitive.
+			if(designated_initialisers.size())
+			{
+				retr.reduce_to(ast::struct_initialiser{.name = value.iden, .designated_initialisers = designated_initialisers}, meta);
+				return true;
+			}
+			while(retr.get_offset() > initial_idx)
+			{
+				retr.undo();
+			}
+		}
+		retr.undo();
 
 		// getting difficult here...
 		// at some point we need to know whether an identifier should remain an identifier or become an expression
@@ -700,6 +769,26 @@ namespace parse
 
 		this->move_to_final_tree(offset);
 		return false;
+	}
+
+	bool parser_state::reduce_from_struct_initialiser(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::struct_initialiser>(&meta);
+
+		if(!retr.avail()){return false;}
+		bool capped = false;
+
+		auto semicolon = retr.retrieve<lex::token>();
+		capped = (semicolon.has_value() && semicolon->t == lex::type::semicolon);
+		if(!capped)
+		{
+			retr.undo();
+		}
+
+		retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+		return true;
 	}
 
 	bool parser_state::reduce_from_expression(std::size_t offset)
@@ -1274,6 +1363,10 @@ namespace parse
 					[&](ast::for_statement arg)
 					{
 						ret = this->reduce_from_for_statement(i);
+					},
+					[&](ast::struct_initialiser arg)
+					{
+						ret = this->reduce_from_struct_initialiser(i);
 					},
 					[&](ast::expression arg)
 					{
