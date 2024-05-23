@@ -176,6 +176,30 @@ namespace lex
 		{
 			return token{.t = type::semicolon};
 		}
+		else if(data.starts_with("'"))
+		{
+			std::size_t charlit_begin = state.cursor;
+			while(++state.cursor < (state.source.size() - 1) && state.source[state.cursor] != '\'')
+			{}
+			std::size_t charlit_end = state.cursor;
+			return token
+			{
+				.t = type::char_literal,
+				.lexeme = std::string(state.source.data() + charlit_begin + 1, charlit_end - charlit_begin - 1)
+			};
+		}
+		else if(data.starts_with("\""))
+		{
+			std::size_t strlit_begin = state.cursor;
+			while(++state.cursor < (state.source.size() - 1) && state.source[state.cursor] != '\"')
+			{}
+			std::size_t strlit_end = state.cursor;
+			return token
+			{
+				.t = type::string_literal,
+				.lexeme = std::string(state.source.data() + strlit_begin + 1, strlit_end - strlit_begin - 1)
+			};
+		}
 		else if(data.starts_with(":="))
 		{
 			state.advance();

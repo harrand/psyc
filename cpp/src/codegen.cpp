@@ -615,7 +615,6 @@ namespace code
 		};
 	}
 
-	/*
 	value char_literal(const data& d, ast::char_literal payload)
 	{
 		return
@@ -635,7 +634,6 @@ namespace code
 			.is_variable = false
 		};
 	}
-	*/
 
 	value bool_literal(const data& d, ast::bool_literal payload)
 	{
@@ -1584,7 +1582,6 @@ namespace code
 			{
 				ret = decimal_literal(d, lit);
 			},
-			/*
 			[&](ast::char_literal lit)
 			{
 				ret = char_literal(d, lit);
@@ -1593,7 +1590,6 @@ namespace code
 			{
 				ret = string_literal(d, lit);
 			},
-			*/
 			[&](ast::bool_literal lit)
 			{
 				ret = bool_literal(d, lit);

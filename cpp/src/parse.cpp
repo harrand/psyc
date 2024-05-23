@@ -14,6 +14,44 @@
 
 namespace parse
 {
+	std::string escape(std::string_view literal)
+	{
+		std::string ret;
+		static const std::unordered_map<std::string_view, char> escape_map = {
+			{"\\0", '\0'}, // Null terminator
+			{"\\a", '\a'}, // Bell (alert)
+			{"\\b", '\b'}, // Backspace
+			{"\\f", '\f'}, // Formfeed
+			{"\\n", '\n'}, // Newline (line feed)
+			{"\\r", '\r'}, // Carriage return
+			{"\\t", '\t'}, // Horizontal tab
+			{"\\v", '\v'}, // Vertical tab
+			{"\\\\", '\\'}, // Backslash
+			{"\\'", '\''}, // Single quote
+			{"\\\"", '\"'}, // Double quote
+			{"\\?", '\?'}  // Question mark
+		};
+		if(literal.size() == 1)
+		{
+			return std::string{literal};
+		}
+		for(std::size_t i = 0; i < literal.size(); i++)
+		{
+			const char* substr = literal.data() + i;
+			auto iter = escape_map.find(substr);
+			if(iter != escape_map.end())
+			{
+				ret += iter->second;
+				i++;
+			}
+			else
+			{
+				ret += literal[i];
+			}
+		}
+		return ret;
+	}
+
 	bool token_is_unary_operator(const lex::token& t)
 	{
 		return t.t == lex::type::operator_minus
@@ -50,6 +88,10 @@ namespace parse
 		bool reduce_from_integer_literal(std::size_t offset);
 		// given an ast::decimal_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_decimal_literal(std::size_t offset);
+		// given an ast::char_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_char_literal(std::size_t offset);
+		// given an ast::string_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_string_literal(std::size_t offset);
 		// given an ast::bool_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_bool_literal(std::size_t offset);
 		// given an ast::null_literal subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -284,6 +326,54 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::decimal_literal>(&meta);
+
+		// integer literals get reduced to expressions.
+		// if there is a leading semicolon - we eat it.
+		if(retr.avail())
+		{
+			bool capped = true;
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				capped = false;
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+			retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+			return true;
+		}
+		return false;
+	}
+
+	bool parser_state::reduce_from_char_literal(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::char_literal>(&meta);
+
+		// integer literals get reduced to expressions.
+		// if there is a leading semicolon - we eat it.
+		if(retr.avail())
+		{
+			bool capped = true;
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				capped = false;
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+			retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+			return true;
+		}
+		return false;
+	}
+
+	bool parser_state::reduce_from_string_literal(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::string_literal>(&meta);
 
 		// integer literals get reduced to expressions.
 		// if there is a leading semicolon - we eat it.
@@ -977,7 +1067,8 @@ namespace parse
 	{
 		retriever retr{*this, offset};
 		srcloc meta;
-		auto value = retr.must_retrieve<lex::token>(&meta);
+		ast::node node;
+		auto value = retr.must_retrieve<lex::token>(&meta, &node);
 		switch(value.t)
 		{
 			case lex::type::integer_literal:
@@ -992,6 +1083,20 @@ namespace parse
 				double val = std::stod(value.lexeme);
 				retr.reduce_to(ast::decimal_literal{.val = val}, meta);
 				return true;
+			}
+			break;
+			case lex::type::char_literal:
+			{
+				std::string charlit = value.lexeme;
+				this->node_assert(node, !charlit.empty(), "empty char-literal is invalid. must contain a single character.");
+				charlit = escape(charlit);
+				this->node_assert(node, charlit.size() == 1, std::format("char-literal must consist of 1 char, but \"{}\" contains {}", value.lexeme, charlit.size()));
+				retr.reduce_to(ast::char_literal{.val = charlit.front()}, meta);
+			}
+			break;
+			case lex::type::string_literal:
+			{
+				retr.reduce_to(ast::string_literal{.val = escape(value.lexeme)}, meta);
 			}
 			break;
 			case lex::type::bool_literal:
@@ -1323,6 +1428,14 @@ namespace parse
 					[&](ast::decimal_literal arg)
 					{
 						ret = this->reduce_from_decimal_literal(i);
+					},
+					[&](ast::char_literal arg)
+					{
+						ret = this->reduce_from_char_literal(i);
+					},
+					[&](ast::string_literal arg)
+					{
+						ret = this->reduce_from_string_literal(i);
 					},
 					[&](ast::bool_literal arg)
 					{

@@ -32,6 +32,24 @@ struct ast
 		}
 		bool operator==(const decimal_literal& rhs) const = default;
 	};
+	struct char_literal
+	{
+		char val;
+		std::string to_string() const
+		{
+			return std::format("char-literal(\'{}\' ascii: {})", val, static_cast<int>(val));
+		}
+		bool operator==(const char_literal& rhs) const = default;
+	};
+	struct string_literal
+	{
+		std::string val;
+		std::string to_string() const
+		{
+			return std::format("string-literal(\"{}\")", val);
+		}
+		bool operator==(const string_literal& rhs) const = default;
+	};
 	struct bool_literal
 	{
 		bool val;
@@ -191,6 +209,8 @@ struct ast
 			ast::binary_operator,
 			ast::integer_literal,
 			ast::decimal_literal,
+			ast::char_literal,
+			ast::string_literal,
 			ast::bool_literal,
 			ast::null_literal,
 			ast::identifier,
@@ -268,7 +288,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, struct_initialiser, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, struct_initialiser, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};
