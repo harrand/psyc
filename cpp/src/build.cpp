@@ -38,12 +38,18 @@ void add_source(const char* name)
 	cur_build_info->extra_input_files.push_back(name);
 }
 
+void add_link_library(const char* link_library)
+{
+	cur_build_info->link_libraries.push_back(link_library);
+}
+
 void install_functions(llvm::ExecutionEngine& exe)
 {
 	exe.addGlobalMapping("set_linkage_type", reinterpret_cast<std::uintptr_t>(&set_linkage_type));
 	exe.addGlobalMapping("set_build_type", reinterpret_cast<std::uintptr_t>(&set_build_type));
 	exe.addGlobalMapping("set_output_name", reinterpret_cast<std::uintptr_t>(&set_output_name));
 	exe.addGlobalMapping("add_source", reinterpret_cast<std::uintptr_t>(&add_source));
+	exe.addGlobalMapping("add_link_library", reinterpret_cast<std::uintptr_t>(&add_link_library));
 }
 
 namespace build
@@ -56,13 +62,6 @@ namespace build
 	{
 		info ret;
 		ret.compiler_args = args;
-		#ifdef _WIN32
-			ret.link_name += ".exe";
-		#elif defined(__linux__)
-			ret.link_name += ".out";
-		#else
-			static_assert("unknown platform");
-		#endif
 		ret.target_triple = llvm::sys::getDefaultTargetTriple();
 		llvm::InitializeAllTargetInfos();
 		llvm::InitializeAllTargets();
@@ -115,6 +114,13 @@ namespace build
 			metaprogram_handle->dropAllReferences();
 			code::cleanup();
 		}
+		#ifdef _WIN32
+			ret.link_name += ".exe";
+		#elif defined(__linux__)
+			ret.link_name += ".out";
+		#else
+			static_assert("unknown platform");
+		#endif
 		return ret;
 	}
 
@@ -252,6 +258,25 @@ namespace build
 				.is_extern = true
 			}
 		});
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "add_link_library",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "filename",
+						.type_name = "i8&",
+						.initialiser = ast::expression{.expr = ast::null_literal{}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+
 
 		// same with some globals.
 		for(int i = 0; i < (int)build::linkage_type::_count; i++)

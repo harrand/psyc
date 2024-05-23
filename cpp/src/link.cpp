@@ -140,7 +140,10 @@ namespace linkage
 
 	void state::build(build::info binfo)
 	{
-		// todo: link.
+		// todo: more formalised default link targets? maybe dont use libcmt.lib on debug, as thats definitely a release library
+		#ifdef _WIN32
+			binfo.link_libraries.push_back("libcmt.lib");
+		#endif
 		switch(binfo.link)
 		{
 			case build::linkage_type::executable:
@@ -155,9 +158,10 @@ namespace linkage
 					cmd += std::format(" \"{}\"", output.string());
 
 				}
-				#ifdef _WIN32
-					cmd += " libcmt.lib";
-				#endif
+				for(std::filesystem::path link_library : binfo.link_libraries)
+				{
+					cmd += std::format(" {}", link_library.string());
+				}
 
 				auto lt = divine_linker_type(binfo.compiler_args.linker_name);
 				std::string full_output = binfo.get_output_path().string();
@@ -203,9 +207,10 @@ namespace linkage
 					cmd += std::format(" \"{}\"", output.string());
 				}
 
-				#ifdef _WIN32
-					cmd += " libcmt.lib";
-				#endif
+				for(std::filesystem::path link_library : binfo.link_libraries)
+				{
+					cmd += std::format(" {}", link_library.string());
+				}
 
 				int ret = std::system(cmd.c_str());
 				diag::assert_that(ret == 0, error_code::link, "detected that archiver failed. command:\n{}", cmd);

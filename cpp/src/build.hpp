@@ -40,6 +40,7 @@ namespace build
 		config_type config = config_type::debug;
 		std::string link_name = "a";
 		std::vector<std::filesystem::path> extra_input_files = {};
+		std::vector<std::filesystem::path> link_libraries = {};
 		std::string target_triple;
 		config::compiler_args compiler_args;
 
