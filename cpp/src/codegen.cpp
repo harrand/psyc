@@ -1422,9 +1422,20 @@ namespace code
 		d.ctx.assert_that(var != nullptr, error_code::codegen,"could not find local variable \"{}\"", payload.var_name);
 		llvm::Type* llvm_ty = as_llvm_type(var->ty, d.state);
 		llvm::AllocaInst* llvm_var = builder->CreateAlloca(llvm_ty, nullptr, payload.var_name);
+		value init_value;
 		if(payload.initialiser.has_value())
 		{
-			value init_value = expression(d, *payload.initialiser.value());
+			init_value = expression(d, *payload.initialiser.value());
+		}
+		else if(var->ty.is_struct())
+		{
+			// if a struct wasn't given an initialiser, give them an empty struct initialiser.
+			// otherwise default struct member initialisers will be ignored.
+			init_value = struct_initialiser(d, {.name = payload.type_name, .designated_initialisers = {}});
+			d.ctx.assert_that(init_value.llv != nullptr, error_code::codegen, "default struct initialiser yielded nullptr.");
+		}
+		if(init_value.llv != nullptr)
+		{
 			if(init_value.is_variable)
 			{
 				init_value = get_variable_val(init_value, d);
