@@ -37,7 +37,7 @@ namespace parse
 		}
 		for(std::size_t i = 0; i < literal.size(); i++)
 		{
-			const char* substr = literal.data() + i;
+			std::string_view substr{literal.data() + i, 2};
 			auto iter = escape_map.find(substr);
 			if(iter != escape_map.end())
 			{
