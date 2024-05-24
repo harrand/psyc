@@ -201,14 +201,21 @@ namespace semal
 		while(path.size())
 		{
 			const ast::node& ancestor = tree.get(path);
+			const ast::node* distant_ancestor = nullptr;
+			if(path.size() >= 3)
+			{
+				auto distant_path = path; distant_path.pop_back(); distant_path.pop_back();
+				distant_ancestor = &tree.get(distant_path);
+			}
 			if(std::holds_alternative<ast::function_definition>(ancestor.payload))
 			{
-				const std::string& function_name = std::get<ast::function_definition>(ancestor.payload).func_name;
-				const function_t* found_func = this->try_find_function(function_name.c_str());
-				if(found_func == nullptr)
+				std::string function_name = std::get<ast::function_definition>(ancestor.payload).func_name;
+				bool is_method = distant_ancestor != nullptr && std::holds_alternative<ast::struct_definition>(distant_ancestor->payload);
+				if(is_method)
 				{
-					found_func = this->try_find_function(semal::mangle_method_name(function_name));
+					function_name = semal::mangle_method_name(function_name);
 				}
+				const function_t* found_func = this->try_find_function(function_name.c_str());
 				if(found_func == nullptr)
 				{
 					diag::ice("at: {}: internal compiler error: found a parent function of an AST node (named \"{}\"), but could not then retrieve the function data from semantic analysis state.", ancestor.meta.to_string(), function_name);
