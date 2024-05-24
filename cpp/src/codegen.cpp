@@ -975,11 +975,12 @@ namespace code
 	value function_call(const data& d, ast::function_call payload)
 	{
 		const semal::function_t* func = d.state.try_find_function(payload.function_name);
+		d.ctx.assert_that(func != nullptr, error_code::codegen, "call to undefined function \"{}\"", payload.function_name);
+		d.ctx.assert_that(!func->is_method, error_code::codegen, "call to method as \"{}.{}\" if it were a free function.", func->method_owner_struct_name, payload.function_name);
 		if(func->is_builtin)
 		{
 			return codegen_builtin(d, payload, try_find_builtin(payload.function_name));
 		}
-		d.ctx.assert_that(func != nullptr, error_code::codegen, "call to undefined function \"{}\"", payload.function_name);
 		auto* llvm_func = static_cast<llvm::Function*>(func->userdata);
 		d.ctx.assert_that(llvm_func != nullptr, error_code::ice, "function \"{}\" had a nullptr userdata, implying it has not been codegen'd", payload.function_name);
 		std::vector<llvm::Value*> llvm_params = {};

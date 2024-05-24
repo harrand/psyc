@@ -34,6 +34,7 @@ namespace semal
 			}
 		}
 	};
+
 	struct local_variable_t
 	{
 		type ty;
@@ -99,6 +100,7 @@ namespace semal
 
 	output analyse_predecl(const ast& tree);
 	output analyse_full(const ast& tree, output predecl = {});
+	std::string mangle_method_name(std::string method_name);
 
 	struct state
 	{

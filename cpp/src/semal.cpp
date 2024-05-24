@@ -174,7 +174,7 @@ namespace semal
 		{
 			for(const auto& [mthname, mthdata] : structdata.methods)
 			{
-				if(mthname == name)
+				if(mangle_method_name(mthname) == name)
 				{
 					return &mthdata;
 				}
@@ -205,6 +205,10 @@ namespace semal
 			{
 				const std::string& function_name = std::get<ast::function_definition>(ancestor.payload).func_name;
 				const function_t* found_func = this->try_find_function(function_name.c_str());
+				if(found_func == nullptr)
+				{
+					found_func = this->try_find_function(semal::mangle_method_name(function_name));
+				}
 				if(found_func == nullptr)
 				{
 					diag::ice("at: {}: internal compiler error: found a parent function of an AST node (named \"{}\"), but could not then retrieve the function data from semantic analysis state.", ancestor.meta.to_string(), function_name);
@@ -483,6 +487,11 @@ namespace semal
 			}
 		}
 		return ret;
+	}
+
+	std::string mangle_method_name(std::string method_name)
+	{
+		return "__method_" + method_name;
 	}
 
 	type output::get_type_from_payload(const ast::node::payload_t& payload, const ast& tree, const ast::path_t& path) const
