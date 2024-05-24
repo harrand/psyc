@@ -563,56 +563,6 @@ namespace code
 			break;
 		}
 		return nullptr;
-		/*
-		// i8* and T* are implicitly convertible to-and-from.
-		if(from == to || (from.is_pointer() && to.is_pointer() && from.pointer_level == to.pointer_level && (from.dereference() == type::from_primitive(primitive_type::i8) || to.dereference() == type::from_primitive(primitive_type::i8))))
-		{
-			// nothing to do.
-			return ptr;
-		}
-		if(from.pointer_level > to.pointer_level)
-		{
-			// maybe need to load.
-			if(from.dereference() == to)
-			{
-				// definitely need to load.
-				return builder->CreateLoad(llvm_to, ptr);
-			}
-			else
-			{
-				return load_as(builder->CreateLoad(llvm_to, ptr), state, from.dereference(), to, false);
-			}
-		}
-		// integer promotion.
-		if(llvm_from->isIntegerTy() && llvm_to->isIntegerTy())
-		{
-			// need to do integer promotion.
-			std::size_t incorrect_bits = llvm_from->getIntegerBitWidth();
-			std::size_t correct_bits = llvm_to->getIntegerBitWidth();
-			if(incorrect_bits < correct_bits)
-			{
-				ptr = builder->CreateZExtOrBitCast(ptr, llvm_to);
-			}
-			else if(incorrect_bits > correct_bits)
-			{
-				ptr = builder->CreateTruncOrBitCast(ptr, llvm_to);
-			}
-			if(from.is_signed_integer_type() && to.is_unsigned_integer_type())
-			{
-				// signed -> unsigned
-				ptr = builder->CreateTrunc(ptr, llvm_to);	
-			}
-			else if(from.is_unsigned_integer_type() && to.is_signed_integer_type())
-			{
-				// unsigned -> signed
-				ptr = builder->CreateSExt(ptr, llvm_to);
-			}
-			return ptr;
-		}
-		// pretty sure the code fucked this up as they are both non-pointers but of different types - let the caller handle this.
-		diag::fatal_error("internal compiler error: codegen load_as returned nullptr");
-		return nullptr;
-		*/
 	}
 
 	// NODE STUFF
@@ -908,25 +858,8 @@ namespace code
 				ret.ty = type::from_primitive(primitive_type::boolean);
 				ret.is_variable = false;
 			break;
-			/*
-			case lex::type::not_equals:
-				ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
-				ret.ty = type::from_primitive(primitive_type::boolean);
-				ret.is_variable = false;
-			break;
-			*/
 			case lex::type::operator_equals:
 			{
-				/*
-				std::string value_string;
-				llvm::raw_string_ostream os{value_string};
-				rhs_value.llv->print(os);
-				volatile std::string rhs_string = value_string;
-				value_string = "";
-				lhs_value.llv->print(os);
-				volatile std::string lhs_string = value_string;
-				*/
-				
 				builder->CreateStore(rhs_value.llv, lhs_value.llv);
 				// createstore returns a void type'd value, so we dont care about that for ret.
 				// just use the type semantic analysis gave us.
