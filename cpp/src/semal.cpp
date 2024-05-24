@@ -702,6 +702,44 @@ namespace semal
 		return maybe_function->return_ty;
 	}
 
+	type method_call(const data& d, const ast::method_call& payload)
+	{
+		type lhs_ty = expression(d, *payload.lhs);
+		type initial_ty = lhs_ty;
+		if(lhs_ty.is_pointer())
+		{
+			lhs_ty = lhs_ty.dereference();
+		}
+		d.assert_that(lhs_ty.is_struct(), std::format("detected use of member-access token within method call `.`. the left-hand-side of the token must be a struct or a pointer-to-struct type, which \"{}\" is not.", initial_ty.name()));
+		struct_type struct_ty = lhs_ty.as_struct();
+		const struct_t* structdata = d.state.try_find_struct(struct_ty.name);
+		d.assert_that(structdata != nullptr, std::format("in method call, lhs expression is of type \"{}\", which is meant to be a struct, but cannot find this type.", struct_ty.name));
+
+		auto method_iter = structdata->methods.find(payload.function_name);
+		d.assert_that(method_iter != structdata->methods.end(), std::format("in method call, struct \"{}\" has no method named \"{}\"", struct_ty.name, payload.function_name));
+		const function_t& func = method_iter->second;
+		std::size_t argc = payload.params.size();
+		d.assert_that(argc == func.params.size(), std::format("wrong number of arguments passed to call to method \"{}.{}\". expected {} arguments, but you provided {}", struct_ty.name, func.name, func.params.size(), argc));
+		for(std::size_t i = 0; i < argc; i++)
+		{
+			type passed_ty = expression(d, *payload.params[i]);
+			d.assert_that(typecon_valid(passed_ty.is_implicitly_convertible_to(func.params[i].ty)), std::format("type mismatch to argument {} (\"{}\") - expected \"{}\", but you provided \"{}\". do you need an explicit cast?", i, func.params[i].name, func.params[i].ty.name(), passed_ty.name()));
+		}
+		return func.return_ty;
+		/*
+		const function_t* maybe_function = d.state.try_find_function(payload.function_name.c_str());
+		d.assert_that(maybe_function != nullptr, std::format("call to undeclared function \"{}\"", payload.function_name));
+		std::size_t argc = payload.params.size();
+		d.assert_that(argc == maybe_function->params.size(), std::format("wrong number of arguments passed to call to \"{}\". expected {} arguments, but you provided {}", maybe_function->name, maybe_function->params.size(), argc));
+		for(std::size_t i = 0; i < argc; i++)
+		{
+			type passed_ty = expression(d, *payload.params[i]);
+			d.assert_that(typecon_valid(passed_ty.is_implicitly_convertible_to(maybe_function->params[i].ty)), std::format("type mismatch to argument {} (\"{}\") - expected \"{}\", but you provided \"{}\". do you need an explicit cast?", i, maybe_function->params[i].name, maybe_function->params[i].ty.name(), passed_ty.name()));
+		}
+		return maybe_function->return_ty;
+		*/
+	}
+
 	type member_access(const data& d, const ast::member_access& payload)
 	{
 		type lhs_ty = expression(d, *payload.lhs);
@@ -884,6 +922,10 @@ namespace semal
 			[&](ast::function_call call)
 			{
 				ret = function_call(d, call);
+			},
+			[&](ast::method_call call)
+			{
+				ret = method_call(d, call);
 			},
 			[&](ast::member_access mem)
 			{

@@ -135,6 +135,7 @@ struct ast
 		}
 		bool operator==(const variable_declaration& rhs) const = default;
 	};
+
 	struct function_call
 	{
 		std::string function_name;
@@ -151,6 +152,25 @@ struct ast
 			return std::format("function_call({}({}))", function_name, params_str);
 		}
 		bool operator==(const function_call& rhs) const = default;
+	};
+
+	struct method_call
+	{
+		boxed_expression lhs;
+		std::string function_name;
+		std::vector<boxed_expression> params;
+
+		std::string to_string() const
+		{
+			std::string params_str = "(";
+			for(const auto& param : this->params)
+			{
+				params_str += param->to_string();
+			}
+			params_str += ")";
+			return std::format("method_call({}.{}({}))", lhs->to_string(), function_name, params_str);
+		}
+		bool operator==(const method_call& rhs) const = default;
 	};
 
 	struct return_statement
@@ -218,6 +238,7 @@ struct ast
 			ast::array_access,
 			ast::variable_declaration,
 			ast::function_call,
+			ast::method_call,
 			ast::return_statement,
 			ast::if_statement,
 			ast::for_statement,
@@ -288,7 +309,7 @@ struct ast
 
 	struct node
 	{
-		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, if_statement, for_statement, struct_initialiser, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
+		using payload_t = std::variant<std::monostate, integer_literal, decimal_literal, char_literal, string_literal, bool_literal, null_literal, identifier, member_access, array_access, function_call, method_call, if_statement, for_statement, struct_initialiser, expression, return_statement, variable_declaration, function_definition, struct_definition, block, meta_region>;
 		payload_t payload = std::monostate{};
 		srcloc meta = {};
 		std::vector<node> children = {};

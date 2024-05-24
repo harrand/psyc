@@ -106,6 +106,8 @@ namespace parse
 		bool reduce_from_variable_declaration(std::size_t offset);
 		// given an ast::function_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_function_call(std::size_t offset);
+		// given an ast::method_call subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
+		bool reduce_from_method_call(std::size_t offset);
 		// given an ast::if_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
 		bool reduce_from_if_statement(std::size_t offset);
 		// given an ast::for_statement subtree at the offset, try to reduce its surrounding tokens/atoms into something bigger. returns true on success, false otherwise.
@@ -667,6 +669,43 @@ namespace parse
 			{
 				return false;
 			}
+			if(!retr.avail()){return false;}
+			auto method_open = retr.retrieve<lex::token>();
+			if(method_open.has_value() && method_open->t == lex::type::open_paren)
+			{
+				std::vector<ast::boxed_expression> params = {};
+				std::optional<lex::token> close_paren = std::nullopt;
+				// keep trying to parse the close paren.
+				if(!retr.avail()){return false;}
+				while((close_paren = retr.retrieve<lex::token>(), !close_paren.has_value() || close_paren->t != lex::type::close_paren))
+				{
+					// everytime we fail, try to parse a variable declaration instead.
+					retr.undo();
+					if(!params.empty())
+					{
+						// need a comma.
+						auto comma = retr.retrieve<lex::token>();
+						if(!comma.has_value() || comma->t != lex::type::comma)
+						{
+							return false;
+						}
+						if(!retr.avail()){return false;}
+					}
+					// function call parameters can either be:
+					auto cur_param = retr.retrieve_as_expression();
+					// an expression
+					if(!cur_param.has_value())
+					{
+						return false;
+					}
+					params.push_back(cur_param.value());
+					// make sure there's room for the next subtree.
+					if(!retr.avail()){return false;}
+				}
+				retr.reduce_to(ast::method_call{.lhs = ast::expression{.expr = value, .capped = false}, .function_name = rhs_iden->iden, .params = params}, meta);
+				return true;
+			}
+			retr.undo();
 			retr.reduce_to(ast::member_access{.lhs = ast::expression{.expr =value, .capped = false}, .rhs = rhs_iden->iden}, meta);
 			return true;
 		}
@@ -934,6 +973,43 @@ namespace parse
 					{
 						return false;
 					}
+					if(!retr.avail()){return false;}
+					auto method_open = retr.retrieve<lex::token>();
+					if(method_open.has_value() && method_open->t == lex::type::open_paren)
+					{
+						std::vector<ast::boxed_expression> params = {};
+						std::optional<lex::token> close_paren = std::nullopt;
+						// keep trying to parse the close paren.
+						if(!retr.avail()){return false;}
+						while((close_paren = retr.retrieve<lex::token>(), !close_paren.has_value() || close_paren->t != lex::type::close_paren))
+						{
+							// everytime we fail, try to parse a variable declaration instead.
+							retr.undo();
+							if(!params.empty())
+							{
+								// need a comma.
+								auto comma = retr.retrieve<lex::token>();
+								if(!comma.has_value() || comma->t != lex::type::comma)
+								{
+									return false;
+								}
+								if(!retr.avail()){return false;}
+							}
+							// function call parameters can either be:
+							auto cur_param = retr.retrieve_as_expression();
+							// an expression
+							if(!cur_param.has_value())
+							{
+								return false;
+							}
+							params.push_back(cur_param.value());
+							// make sure there's room for the next subtree.
+							if(!retr.avail()){return false;}
+						}
+						retr.reduce_to(ast::method_call{.lhs = value, .function_name = iden->iden, .params = params}, meta);
+						return true;
+					}
+					retr.undo();
 					retr.reduce_to(ast::member_access{.lhs = value, .rhs = iden->iden}, meta);
 					return true;
 				}
@@ -975,6 +1051,29 @@ namespace parse
 		retriever retr{*this, offset};
 		srcloc meta;
 		auto value = retr.must_retrieve<ast::function_call>(&meta);
+
+		if(retr.avail())
+		{
+			bool capped = true;
+			auto semicolon = retr.retrieve<lex::token>();
+			if(!semicolon.has_value() || semicolon->t != lex::type::semicolon)
+			{
+				capped = false;
+				retr.undo();
+			}
+			// we got a semicolon, but we're not going to do anything (we're about to swallow it)
+			retr.reduce_to(ast::expression{.expr = value, .capped = capped}, meta);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool parser_state::reduce_from_method_call(std::size_t offset)
+	{
+		retriever retr{*this, offset};
+		srcloc meta;
+		auto value = retr.must_retrieve<ast::method_call>(&meta);
 
 		if(retr.avail())
 		{
@@ -1480,6 +1579,10 @@ namespace parse
 					[&](ast::function_call arg)
 					{
 						ret = this->reduce_from_function_call(i);
+					},
+					[&](ast::method_call arg)
+					{
+						ret = this->reduce_from_method_call(i);
 					},
 					[&](ast::return_statement arg)
 					{
