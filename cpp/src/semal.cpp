@@ -705,7 +705,12 @@ namespace semal
 	type member_access(const data& d, const ast::member_access& payload)
 	{
 		type lhs_ty = expression(d, *payload.lhs);
-		d.assert_that(lhs_ty.is_struct(), std::format("detected use of member-access token `.`. the left-hand-side of the token must be a struct type, which \"{}\" is not.", lhs_ty.name()));
+		type initial_ty = lhs_ty;
+		if(lhs_ty.is_pointer())
+		{
+			lhs_ty = lhs_ty.dereference();
+		}
+		d.assert_that(lhs_ty.is_struct(), std::format("detected use of member-access token `.`. the left-hand-side of the token must be a struct or a pointer-to-struct type, which \"{}\" is not.", initial_ty.name()));
 		struct_type struct_ty = lhs_ty.as_struct();
 		for(std::size_t i = 0; i < struct_ty.data_members.size(); i++)
 		{

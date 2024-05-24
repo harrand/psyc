@@ -1032,11 +1032,30 @@ namespace code
 	value member_access(const data& d, ast::member_access payload)
 	{
 		value lhs_var = expression(d, *payload.lhs);
-		d.ctx.assert_that(lhs_var.ty.is_pointer(), error_code::type, "lhs of member access should be a variable that resolves to a pointer type. instead it resolved to \"{}\"", lhs_var.ty.name());
-		lhs_var.ty = lhs_var.ty.dereference();
+		type initial_ty = lhs_var.ty;
+		if(lhs_var.is_variable)
+		{
+			initial_ty = initial_ty.dereference();
+		}
+		// at this point, we expect the following:
+		// if its a variable, we expect either a struct* (member access) or a struct** (pointer access) as variable is a pointer (alloca) under-the-hood.
+		if(lhs_var.is_variable)
+		{
+			d.ctx.assert_that(lhs_var.ty.is_pointer(), error_code::ice, "somehow, lhs of member access is a variable thats not considered a pointer (alloca) under-the-hood. please submit a bug report.");
+			// lets convert it down to a struct* so the common code below works.
+			// if its a double pointer, we dereference it once (pointer access).
+			if(lhs_var.ty.dereference().is_pointer())
+			{
+				lhs_var = get_variable_val(lhs_var, d);
+			}
+			// else its a single pointer, we do nothing (member access)
+		}
+		else // if its not a variable, it must be a struct* (pointer access only. normal member access only makes sense with variables.)
+		{
+		}
+		d.ctx.assert_that(lhs_var.ty.is_pointer() && lhs_var.ty.dereference().is_struct(), error_code::type, "lhs of member access (non variable) *must* be a pointer-to-struct. instead you provided me with a \"{}\"", initial_ty.name());
 
-		d.ctx.assert_that(lhs_var.ty.is_struct(), error_code::type, "lhs identifier of member access is not a struct type, but instead a \"{}\"", lhs_var.ty.name());
-		struct_type struct_ty = lhs_var.ty.as_struct();
+		struct_type struct_ty = lhs_var.ty.dereference().as_struct();
 		// which data member are we?
 		// note: if we dont match to a data member here, then the code must be ill-formed.
 		std::optional<std::size_t> data_member_idx = std::nullopt;
@@ -1051,7 +1070,7 @@ namespace code
 		}
 		d.ctx.assert_that(data_member_idx.has_value(), error_code::codegen, "access to non-existent data member named \"{}\" within struct \"{}\"", payload.rhs, struct_ty.name);
 		// get the data member via GEP
-		llvm::Type* llvm_struct_ty = as_llvm_type(lhs_var.ty, d.state);
+		llvm::Type* llvm_struct_ty = as_llvm_type(type::from_struct(struct_ty), d.state);
 		llvm::Value* ret = builder->CreateStructGEP(llvm_struct_ty, lhs_var.llv, data_member_idx.value());
 		return
 		{
