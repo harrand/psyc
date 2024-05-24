@@ -342,6 +342,33 @@ namespace code
 		}
 		llvm::StructType* llvm_ty = llvm::StructType::create(llvm_data_members, structdata.ty.name, false);
 		structdata.userdata = llvm_ty;
+
+		for(const auto& [name, method] : structdata.methods)
+		{
+			method.ctx.assert_that(method.userdata == nullptr, error_code::ice, "while running codegen for method \"{}.{}\", userdata ptr was not-null, implying it has already been codegen'd", structdata.ty.name, name);
+			std::vector<llvm::Type*> llvm_params;
+			// first param is ptr to the struct.
+			llvm_params.push_back(as_llvm_type(type::from_struct(structdata.ty).pointer_to(), semal_input));
+			llvm::Type* llvm_return = as_llvm_type(method.return_ty, semal_input);
+			for(const semal::local_variable_t& param : method.params)
+			{
+				llvm_params.push_back(as_llvm_type(param.ty, semal_input));
+			}
+			llvm::FunctionType* llvm_fty = llvm::FunctionType::get(llvm_return, llvm_params, false);
+			llvm::Function* llvm_fn = llvm::Function::Create(llvm_fty, llvm::Function::ExternalLinkage, method.name, program.get());
+			llvm_fn->arg_begin()->setName("this");
+			std::size_t arg_counter = 0;
+			for(llvm::Argument* arg = llvm_fn->arg_begin() + 1; arg != llvm_fn->arg_end(); arg++)
+			{
+				// note: userdata for a variable declaration (that is a parameter) is an llvm::Argument* underlying.
+				// unlike a global variable that is llvm::GlobalVariable* and a local variable that is llvm::AllocaInst*.
+				method.params[arg_counter].userdata = &arg;
+				arg->setName(method.params[arg_counter++].name);
+			}
+
+			method.userdata = llvm_fn;
+			// dont do blocks, just generate the functions themselves.
+		}
 	}
 
 	void codegen_function(const semal::function_t& funcdata, const semal::output& semal_input)
@@ -965,6 +992,23 @@ namespace code
 		if(parent_function != nullptr)
 		{
 			// go through its parameters and see if we're one.
+			if(parent_function->is_method && payload.iden == "this")
+			{
+				// aha
+				// so this is a hidden parameter, meaning we cant use our semal api stuff coz it doesnt know `this` is a parameter.
+				// so we hack LLVM instead.
+				
+				// first get the llvm::Function*
+				auto* fn = static_cast<llvm::Function*>(parent_function->userdata);
+				// first argument is a pointer to the struct.
+				return
+				{
+					.llv = fn->arg_begin(),
+					.ty = d.state.get_type_from_name(parent_function->method_owner_struct_name).pointer_to(),
+					.is_variable = false,
+					.variable_name = payload.iden
+				};
+			}
 			for(const semal::local_variable_t& param : parent_function->params)
 			{
 				if(param.name == payload.iden)
@@ -1029,6 +1073,68 @@ namespace code
 		};
 	}
 
+	value method_call(const data& d, ast::method_call payload)
+	{
+		value lhs_var = expression(d, *payload.lhs);
+		type initial_ty = lhs_var.ty;
+		if(lhs_var.is_variable)
+		{
+			initial_ty = initial_ty.dereference();
+		}
+		// at this point, we expect the following:
+		// if its a variable, we expect either a struct* (member access) or a struct** (pointer access) as variable is a pointer (alloca) under-the-hood.
+		if(lhs_var.is_variable)
+		{
+			d.ctx.assert_that(lhs_var.ty.is_pointer(), error_code::ice, "somehow, lhs of member access (method) is a variable thats not considered a pointer (alloca) under-the-hood. please submit a bug report.");
+			// lets convert it down to a struct* so the common code below works.
+			// if its a double pointer, we dereference it once (pointer access).
+			if(lhs_var.ty.dereference().is_pointer())
+			{
+				lhs_var = get_variable_val(lhs_var, d);
+			}
+			// else its a single pointer, we do nothing (member access)
+		}
+		else // if its not a variable, it must be a struct* (pointer access only. normal member access only makes sense with variables.)
+		{
+		}
+		d.ctx.assert_that(lhs_var.ty.is_pointer() && lhs_var.ty.dereference().is_struct(), error_code::type, "lhs of member access (method) *must* be a pointer-to-struct. instead you provided me with a \"{}\"", initial_ty.name());
+		struct_type structty = lhs_var.ty.dereference().as_struct();
+		const semal::struct_t* structdata = d.state.try_find_struct(structty.name);
+		d.ctx.assert_that(structdata != nullptr, error_code::ice, "in method call \"{}.{}\", could not find userdata for struct.", structty.name, payload.function_name);
+		auto method_iter = structdata->methods.find(payload.function_name);
+		d.ctx.assert_that(method_iter != structdata->methods.end(), error_code::codegen, "struct \"{}\" has no method named \"{}\"", structty.name, payload.function_name);
+		const semal::function_t& func = method_iter->second;
+		d.ctx.assert_that(func.is_method, error_code::ice, "method \"{}.{}\" was not considered a real method... shenanigans at play", structty.name, payload.function_name);
+
+
+		auto* llvm_func = static_cast<llvm::Function*>(func.userdata);
+		d.ctx.assert_that(llvm_func != nullptr, error_code::ice, "method \"{}.{}\" had a nullptr userdata, implying it has not been codegen'd", structty.name, payload.function_name);
+		std::vector<llvm::Value*> llvm_params = {};
+		// add pointer to struct as first hidden parameter. that is how methods work.
+		llvm_params.push_back(lhs_var.llv);
+		for(std::size_t i = 0; i < payload.params.size(); i++)
+		{
+			type expected_param_ty = func.params[i].ty;
+
+			value param_val = expression(d, *payload.params[i]);
+			if(param_val.is_variable)
+			{
+				param_val = get_variable_val(param_val, d);
+			}
+			// note: no narrowing as of yet.
+			d.ctx.assert_that(param_val.llv != nullptr, error_code::ice, "in call to function \"{}\", underlying value of expression passed to parameter {} (\"{}\") could not be deduced correctly", payload.function_name, i, func.params[i].name);
+			llvm::Value* loaded_val = load_as(param_val.llv, d, param_val.ty, expected_param_ty);
+			d.ctx.assert_that(loaded_val != nullptr, error_code::type, "expected type \"{}\" but load_as returned nullptr, implying the parameter value does not match the correct type.", expected_param_ty.name());
+			llvm_params.push_back(loaded_val);
+		}	
+		return 
+		{
+			.llv = builder->CreateCall(llvm_func, llvm_params, func.return_ty.is_void() ? "" : "calltmp"),
+			.ty = func.return_ty,
+			.is_variable = false
+		};
+	}
+
 	value member_access(const data& d, ast::member_access payload)
 	{
 		value lhs_var = expression(d, *payload.lhs);
@@ -1053,7 +1159,7 @@ namespace code
 		else // if its not a variable, it must be a struct* (pointer access only. normal member access only makes sense with variables.)
 		{
 		}
-		d.ctx.assert_that(lhs_var.ty.is_pointer() && lhs_var.ty.dereference().is_struct(), error_code::type, "lhs of member access (non variable) *must* be a pointer-to-struct. instead you provided me with a \"{}\"", initial_ty.name());
+		d.ctx.assert_that(lhs_var.ty.is_pointer() && lhs_var.ty.dereference().is_struct(), error_code::type, "lhs of member access *must* be a pointer-to-struct. instead you provided me with a \"{}\"", initial_ty.name());
 
 		struct_type struct_ty = lhs_var.ty.dereference().as_struct();
 		// which data member are we?
@@ -1478,12 +1584,21 @@ namespace code
 		};
 	}
 
-	value function_definition(const data& d, ast::function_definition payload)
+	value function_definition(const data& d, ast::function_definition payload, const semal::struct_t* method_actually = nullptr)
 	{
 		// functions are already done in the pre-pass.
 		// however, none of their bodies are.
 		// add the body if it exists.
-		const semal::function_t* func_ptr = d.state.try_find_function(payload.func_name);
+		bool is_method = method_actually != nullptr;
+		const semal::function_t* func_ptr = nullptr;
+		if(is_method)
+		{
+			func_ptr = &method_actually->methods.at(payload.func_name);
+		}
+		else
+		{
+			func_ptr = d.state.try_find_function(payload.func_name);
+		}
 		d.ctx.assert_that(func_ptr != nullptr, error_code::ice, "internal compiler error: semantic information for function \"{}\" did not exist.", payload.func_name);
 		const semal::function_t& funcdata = *func_ptr;
 
@@ -1566,7 +1681,7 @@ namespace code
 			{
 				.ctx = method.ctx,
 				.state = d.state
-			}, std::get<ast::function_definition>(node.payload));
+			}, std::get<ast::function_definition>(node.payload), structdef);
 		}
 
 		if(debug != nullptr)
@@ -1639,6 +1754,10 @@ namespace code
 			[&](ast::function_call call)
 			{
 				ret = function_call(d, call);
+			},
+			[&](ast::method_call call)
+			{
+				ret = method_call(d, call);
 			},
 			[&](ast::member_access mem)
 			{

@@ -169,6 +169,17 @@ namespace semal
 				return &funcdata;
 			}
 		}
+		// how about a class method?
+		for(const auto& [structname, structdata] : this->struct_decls)
+		{
+			for(const auto& [mthname, mthdata] : structdata.methods)
+			{
+				if(mthname == name)
+				{
+					return &mthdata;
+				}
+			}
+		}
 		builtin maybe_builtin = try_find_builtin(name);
 		if(maybe_builtin != builtin::_undefined)
 		{
@@ -302,45 +313,30 @@ namespace semal
 					{
 						auto decl = std::get<ast::function_definition>(child.payload);
 
-						diag::error(error_code::nyi, "at: {}: attempt to define a method {}::{}", child.meta.to_string(), data.name, decl.func_name);
-						// this is a method.
-						/*
+						//diag::error(error_code::nyi, "at: {}: attempt to define a method {}::{}", child.meta.to_string(), data.name, decl.func_name);
 						function_t fn;
 						fn.is_method = true;
-						fn.name = ast::mangle_method_name(data.struct_name, decl.function_name);
-						auto child_path = path;
-						child_path.push_back(i);
-						fn.context = child_path;
-						fn.params.push_back({
-							.ty = type::from_struct(ty.ty).pointer_to(),
-							.name = "this",
-							.context = path
-						});
-						fn.return_ty = this->get_type_from_name(decl.return_type).first;
+						fn.method_owner_struct_name = data.name;
+						fn.name = decl.func_name;
+						fn.ctx = {.tree = &tree, .path = child_path};
+						fn.return_ty = ret.get_type_from_name(decl.ret_type);
 						for(const auto& param : decl.params)
 						{
-							type param_type = this->get_type_from_name(param.type_name).first;
-							if(param_type.is_undefined())
-							{
-								this->last_error = std::format("semal error on line {} - could not decipher type of method parameter {} (typename: {}). if its a struct, it must be defined before this struct.", node.meta.line_number, param.var_name, param.type_name);
-								return;
-							}
+							type param_type = ret.get_type_from_name(param.type_name);
+							semal_assert(child_path, !param_type.is_undefined(), "could not decipher type of method parameter {} (type: \"{}\"). if its a struct, it must be defined before this struct.", param.var_name, param.type_name);	
 							fn.params.push_back
 							(local_variable_t{
 								.ty = param_type,
 								.name = param.var_name,
-								.context = path,
+								.ctx = fn.ctx
 							});
 						}
-						if(this->functions.contains(fn.name))
+						if(ret.functions.contains(decl.func_name))
 						{
-							std::size_t previously_defined_on_line = tree.get(this->functions.at(fn.name).context).meta.line_number;
-							this->last_error = std::format("semal error on line {} - double definition of function {} (previous definition on line {})", node.meta.line_number, fn.name, previously_defined_on_line);
-							return;
+							const function_t& shadowed_fn = ret.functions[decl.func_name];
+							diag::warning("at {}: method \"{}.{}\" shares a name with global function {} (defined at: {}). this is not a problem, but something you might want to be aware of.", fn.ctx.location().to_string(), data.name, fn.name, shadowed_fn.name, shadowed_fn.ctx.location().to_string());
 						}
-						this->register_function(fn);
-						ty.methods[decl.function_name] = fn;
-						*/
+						ty.methods[decl.func_name] = fn;
 					}
 					else
 					{

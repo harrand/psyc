@@ -1107,7 +1107,7 @@ namespace parse
 		// in which case, you'll have to `if(offset == 0) move_to_final_tree` and then struct reduction should check for a function definition.
 		// however, in the case of a genuinely poorly-placed function definition, you've now fucked up the error messages, coz a bunch of shit won't ever parse coz this stays in the subtree list forever.
 		// im afraid thats going to be a bit of a PITA. good luck!
-		this->node_assert(func_node, offset == 0, std::format("function \"{}\" is not defined at the top-level scope. all functions must be defined there.", value.func_name));
+		//this->node_assert(func_node, offset == 0, std::format("function \"{}\" is not defined at the top-level scope. all functions must be defined there.", value.func_name));
 		this->move_to_final_tree(offset);
 		/*
 		if(offset == 0)
