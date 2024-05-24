@@ -2,44 +2,60 @@ puts :: (str : i8& const) -> u0 := extern;
 main :: () -> i64
 {
 	puts("hello world!");	
+	greeting : string;
+	defer greeting.cleanup();
+
+	greeting.resize(5);
+	greeting.print();
+	greeting.set("hey!");
+	greeting.print();
+
 	print();
-
-	mydata : data := data{.id := 0};
-	mydata.print();
-	mydata.id = 1;
-	mydata.print();
-
-	ptr : data& := ref mydata;
-	(deref ptr).id = 2;
-	mydata.print();
-	ptr.id = 3;
-	mydata.print();
-
-	mydata.increment();
-	mydata.print();
-
-	ptr.increment();
-	ptr.print();
-	print();
-
 	return 0;
 }
 
-putchar :: (ch : i8) -> u0 := extern;
-data :: struct
+strlen :: (str : i8& const) -> i64 := extern;
+strcpy :: (dst : i8& const, src : i8& const) -> i8& const := extern;
+string :: struct
 {
-	id : i64 := 0;
-
+	str : i8& := null;
+	resize :: (sz : i64) -> u0
+	{
+		if this.str != null
+		{
+			// free it first.
+			__builtin_free(this.str);
+		}
+		this.str = __builtin_malloc(sz);
+		i : i64;
+		for i = 0, (i != sz), i = (i + 1)
+		{
+			this.str[i] = '\0';
+		}
+	}
+	cleanup :: () -> u0
+	{
+		if this.str != null
+		{
+			__builtin_free(this.str);
+		}
+		this.str = null;
+	}
+	size :: () -> i64
+	{
+		if this.str == null
+		{
+			return 0;
+		}
+		return strlen(this.str);
+	}
+	set :: (literal : i8& const) -> u0
+	{
+		strcpy(this.str, literal);
+	}
 	print :: () -> u0
 	{
-		puts("data = ");
-		putchar('0' + (this.id@i8));
-		putchar('\n');
-	}
-
-	increment :: () -> u0
-	{
-		this.id = (this.id + 1);
+		puts(this.str);
 	}
 }
 

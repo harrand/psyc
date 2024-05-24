@@ -362,7 +362,7 @@ namespace code
 			{
 				// note: userdata for a variable declaration (that is a parameter) is an llvm::Argument* underlying.
 				// unlike a global variable that is llvm::GlobalVariable* and a local variable that is llvm::AllocaInst*.
-				method.params[arg_counter].userdata = &arg;
+				method.params[arg_counter].userdata = arg;
 				arg->setName(method.params[arg_counter++].name);
 			}
 
@@ -843,6 +843,11 @@ namespace code
 				{
 					ret.llv = builder->CreateICmpEQ(lhs_value.llv, rhs_value.llv);
 				}
+				else if(lhs_value.ty.is_pointer())
+				{
+					llvm::Value* ptrdiff = builder->CreatePtrDiff(as_llvm_type(lhs_value.ty.dereference(), d.state), lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateICmpEQ(ptrdiff, integer_literal(d, {.val = 0}).llv);
+				}
 				ret.ty = type::from_primitive(primitive_type::boolean);
 				ret.is_variable = false;
 			break;
@@ -854,6 +859,11 @@ namespace code
 				else if(lhs_value.ty.is_integer_type())
 				{
 					ret.llv = builder->CreateICmpNE(lhs_value.llv, rhs_value.llv);
+				}
+				else if(lhs_value.ty.is_pointer())
+				{
+					llvm::Value* ptrdiff = builder->CreatePtrDiff(as_llvm_type(lhs_value.ty.dereference(), d.state), lhs_value.llv, rhs_value.llv);
+					ret.llv = builder->CreateICmpNE(ptrdiff, integer_literal(d, {.val = 0}).llv);
 				}
 				ret.ty = type::from_primitive(primitive_type::boolean);
 				ret.is_variable = false;

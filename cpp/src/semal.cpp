@@ -466,15 +466,25 @@ namespace semal
 		for(std::size_t i = 0; i < tree.root.children.size(); i++)
 		{
 			const ast::node& node = tree.root.children[i];
-			const ast::path_t path{i};
+			ast::path_t path{i};
 			generic({.state = ret, .path = path, .tree = tree}, tree.get(path).payload);
 			// analyse all function implementation blocks.
-			if(std::holds_alternative<ast::function_definition>(node.payload))
+			auto semal_func = [&predecl, &tree, &ret](ast::function_definition func, ast::path_t path, std::optional<std::string> maybe_owner_struct)
 			{
-				auto func = std::get<ast::function_definition>(node.payload);	
-				diag::assert_that(predecl.functions.contains(func.func_name), error_code::ice, "function \"{}\" was not found in the predecl semal output, when this should always be the case.", func.func_name);
+				// if maybe owner struct has a value, then we're a method.
+				const auto& node = tree.get(path);
+				function_t fn;
+				if(maybe_owner_struct.has_value())
+				{
+					diag::assert_that(predecl.struct_decls[maybe_owner_struct.value()].methods.contains(func.func_name), error_code::ice, "method \"{}\" was not found in the predecl semal output for struct \"{}\", when this should always be the case", func.func_name, maybe_owner_struct.value());
+					fn = predecl.struct_decls[maybe_owner_struct.value()].methods[func.func_name];
+				}
+				else
+				{
+					diag::assert_that(predecl.functions.contains(func.func_name), error_code::ice, "function \"{}\" was not found in the predecl semal output, when this should always be the case.", func.func_name);
+					fn = predecl.functions[func.func_name];
+				}
 
-				function_t fn = predecl.functions[func.func_name];
 				if(!func.is_extern)
 				{
 					fn.ctx.assert_that(node.children.size() == 1, error_code::semal, "non-extern functions must have an implementation.");
@@ -489,6 +499,32 @@ namespace semal
 						auto child_path = block_path;
 						child_path.push_back(c);
 						generic({.state = ret, .path = child_path, .tree = tree}, tree.get(child_path).payload);
+					}
+				}
+				else
+				{
+					diag::assert_that(!maybe_owner_struct.has_value(), error_code::semal, "methods cannot be extern.");
+				}
+			};
+			if(std::holds_alternative<ast::function_definition>(node.payload))
+			{
+				//func = std::get<ast::function_definition>(node.payload);
+				// do func
+				semal_func(std::get<ast::function_definition>(node.payload), path, std::nullopt);
+			}
+			else if(std::holds_alternative<ast::struct_definition>(node.payload))
+			{
+				auto structty = std::get<ast::struct_definition>(node.payload);
+				auto blk_node = node.children.front();
+				path.push_back(0);
+				for(std::size_t j = 0; j < blk_node.children.size(); j++)
+				{
+					const auto& child_node = blk_node.children[j];
+					if(std::holds_alternative<ast::function_definition>(child_node.payload))
+					{
+						auto child_path = path;
+						child_path.push_back(j);
+						semal_func(std::get<ast::function_definition>(child_node.payload), child_path, structty.name);
 					}
 				}
 			}
@@ -687,6 +723,10 @@ namespace semal
 		const function_t* func = d.state.try_find_parent_function(d.tree, d.path);
 		if(func != nullptr)
 		{
+			if(func->is_method && payload.iden == "this")
+			{
+				return type::from_struct(d.state.try_find_struct(func->method_owner_struct_name)->ty).pointer_to();
+			}
 			for(const auto& param : func->params)
 			{
 				if(param.name == payload.iden)
