@@ -375,6 +375,7 @@ namespace code
 		type ty = type::undefined();
 		bool is_variable = false;
 		std::string variable_name = "";
+		bool is_constant_expression = false;
 	};
 
 	struct data
@@ -601,7 +602,8 @@ namespace code
 		{
 			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{64, static_cast<std::uint64_t>(payload.val), true}),
 			.ty = type::from_primitive(primitive_type::i64),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
@@ -611,7 +613,8 @@ namespace code
 		{
 			.llv = llvm::ConstantFP::get(builder->getDoubleTy(), llvm::APFloat{payload.val}),
 			.ty = type::from_primitive(primitive_type::f64),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
@@ -621,7 +624,8 @@ namespace code
 		{
 			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{8, static_cast<std::uint64_t>(payload.val)}),
 			.ty = type::from_primitive(primitive_type::i8),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
@@ -631,7 +635,8 @@ namespace code
 		{
 			.llv = builder->CreateGlobalStringPtr(payload.val, std::format("strlit_{}", payload.val), 0, program.get()),
 			.ty = type::from_primitive(primitive_type::i8).pointer_to(),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
@@ -641,7 +646,8 @@ namespace code
 		{
 			.llv = llvm::ConstantInt::get(*ctx, llvm::APInt{1, payload.val ? 1u : 0u, true}),
 			.ty = type::from_primitive(primitive_type::boolean),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
@@ -651,7 +657,8 @@ namespace code
 		{
 			.llv = llvm::ConstantPointerNull::get(llvm::PointerType::get(*ctx, 0)),
 			.ty = type::from_primitive(primitive_type::i8).pointer_to(qualifier_weak),
-			.is_variable = false
+			.is_variable = false,
+			.is_constant_expression = true
 		};
 	}
 
