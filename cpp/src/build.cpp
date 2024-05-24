@@ -232,7 +232,7 @@ namespace build
 					ast::variable_declaration
 					{
 						.var_name = "outname",
-						.type_name = "i8&",
+						.type_name = "i8& const",
 						.initialiser = ast::expression{.expr = ast::null_literal{}}
 					},
 				},
@@ -250,7 +250,7 @@ namespace build
 					ast::variable_declaration
 					{
 						.var_name = "filename",
-						.type_name = "i8&",
+						.type_name = "i8& const",
 						.initialiser = ast::expression{.expr = ast::null_literal{}}
 					},
 				},
@@ -268,7 +268,7 @@ namespace build
 					ast::variable_declaration
 					{
 						.var_name = "filename",
-						.type_name = "i8&",
+						.type_name = "i8& const",
 						.initialiser = ast::expression{.expr = ast::null_literal{}}
 					},
 				},

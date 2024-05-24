@@ -176,6 +176,10 @@ conversion_type type::is_implicitly_convertible_to(const type& rhs) const
 {
 	if(this->without_qualifiers() == rhs.without_qualifiers())
 	{
+		if(this->is_pointer() && this->is_const() && !rhs.is_const())
+		{
+			return conversion_type::impossible;
+		}
 		return conversion_type::none;
 	}
 	if(this->is_weak() || rhs.is_weak())
