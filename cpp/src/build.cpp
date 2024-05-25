@@ -14,6 +14,10 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 build::info* cur_build_info = nullptr;
 
 void set_linkage_type(std::int64_t link_type_value)
@@ -43,6 +47,11 @@ void add_link_library(const char* link_library)
 	cur_build_info->link_libraries.push_back(link_library);
 }
 
+void use_stdlib(std::uint8_t use)
+{
+	cur_build_info->using_stdlib = use;
+}
+
 void install_functions(llvm::ExecutionEngine& exe)
 {
 	exe.addGlobalMapping("set_linkage_type", reinterpret_cast<std::uintptr_t>(&set_linkage_type));
@@ -50,6 +59,35 @@ void install_functions(llvm::ExecutionEngine& exe)
 	exe.addGlobalMapping("set_output_name", reinterpret_cast<std::uintptr_t>(&set_output_name));
 	exe.addGlobalMapping("add_source", reinterpret_cast<std::uintptr_t>(&add_source));
 	exe.addGlobalMapping("add_link_library", reinterpret_cast<std::uintptr_t>(&add_link_library));
+	exe.addGlobalMapping("use_stdlib", reinterpret_cast<std::uintptr_t>(&use_stdlib));
+}
+
+const char* get_output_extension(build::linkage_type link)
+{
+	const char* extension = "";
+	switch(link)
+	{
+		case build::linkage_type::executable:
+			#ifdef _WIN32
+				extension = ".exe";
+			#elif defined(__linux__)
+				extension = ".out";
+			#else
+				static_assert("unknown platform");
+			#endif
+		break;
+		case build::linkage_type::library:
+			#ifdef _WIN32
+				extension = ".lib";
+			#elif defined(__linux__)
+				extension = ".a";
+			#else
+				static_assert("unknown platform");
+			#endif
+		break;
+		default: break;
+	}
+	return extension;
 }
 
 namespace build
@@ -114,13 +152,19 @@ namespace build
 			metaprogram_handle->dropAllReferences();
 			code::cleanup();
 		}
-		#ifdef _WIN32
-			ret.link_name += ".exe";
-		#elif defined(__linux__)
-			ret.link_name += ".out";
-		#else
-			static_assert("unknown platform");
-		#endif
+		ret.link_name += get_output_extension(ret.link);
+		if(ret.using_stdlib)
+		{
+			std::string psyc_path;
+			#ifdef _WIN32
+				psyc_path.resize(MAX_PATH);
+				GetModuleFileNameA(nullptr, psyc_path.data(), psyc_path.size());
+			#endif
+			std::filesystem::path psyc_dir = std::filesystem::path{psyc_path}.parent_path();
+			std::filesystem::path stdlib_path = psyc_dir / "stdlib.psy";
+			diag::assert_that(std::filesystem::exists(stdlib_path), error_code::buildmeta, "could not find stdlib implementation. expected to find: \"{}\"", stdlib_path.string());
+			ret.extra_input_files.push_back(stdlib_path);
+		}
 		return ret;
 	}
 
@@ -270,6 +314,24 @@ namespace build
 						.var_name = "filename",
 						.type_name = "i8& const",
 						.initialiser = ast::expression{.expr = ast::null_literal{}}
+					},
+				},
+				.ret_type = "u0",
+				.is_extern = true
+			}
+		});
+		ret.root.children.push_back(ast::node
+		{
+			.payload = ast::function_definition
+			{
+				.func_name = "use_stdlib",
+				.params =
+				{
+					ast::variable_declaration
+					{
+						.var_name = "use",
+						.type_name = "bool",
+						.initialiser = ast::expression{.expr = ast::bool_literal{.val = true}}
 					},
 				},
 				.ret_type = "u0",

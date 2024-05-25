@@ -160,7 +160,7 @@ namespace linkage
 				}
 				for(std::filesystem::path link_library : binfo.link_libraries)
 				{
-					cmd += std::format(" {}", link_library.string());
+					cmd += std::format(" \"{}\"", link_library.string());
 				}
 
 				auto lt = divine_linker_type(binfo.compiler_args.linker_name);
@@ -209,7 +209,7 @@ namespace linkage
 
 				for(std::filesystem::path link_library : binfo.link_libraries)
 				{
-					cmd += std::format(" {}", link_library.string());
+					cmd += std::format(" \"{}\"", link_library.string());
 				}
 
 				int ret = std::system(cmd.c_str());

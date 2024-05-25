@@ -39,6 +39,7 @@ namespace build
 		linkage_type link = linkage_type::none;
 		config_type config = config_type::debug;
 		std::string link_name = "a";
+		bool using_stdlib = true;
 		std::vector<std::filesystem::path> extra_input_files = {};
 		std::vector<std::filesystem::path> link_libraries = {};
 		std::string target_triple;
