@@ -903,7 +903,7 @@ namespace parse
 		auto value = retr.must_retrieve<ast::if_statement>(&meta);
 
 		this->move_to_final_tree(offset);
-		return false;
+		return true;
 	}
 
 	bool parser_state::reduce_from_for_statement(std::size_t offset)
@@ -913,7 +913,7 @@ namespace parse
 		auto value = retr.must_retrieve<ast::for_statement>(&meta);
 
 		this->move_to_final_tree(offset);
-		return false;
+		return true;
 	}
 
 	bool parser_state::reduce_from_struct_initialiser(std::size_t offset)
@@ -1035,6 +1035,7 @@ namespace parse
 		if(value.capped)
 		{
 			this->move_to_final_tree(offset);
+			return true;
 		}
 		/*
 		if(offset == 0)
@@ -1116,7 +1117,7 @@ namespace parse
 		}
 		*/
 
-		return false;
+		return true;
 	}
 
 	bool parser_state::reduce_from_struct_definition(std::size_t offset)
@@ -1207,11 +1208,13 @@ namespace parse
 				charlit = escape(charlit);
 				this->node_assert(node, charlit.size() == 1, std::format("char-literal must consist of 1 char, but \"{}\" contains {}", value.lexeme, charlit.size()));
 				retr.reduce_to(ast::char_literal{.val = charlit.front()}, meta);
+				return true;
 			}
 			break;
 			case lex::type::string_literal:
 			{
 				retr.reduce_to(ast::string_literal{.val = escape(value.lexeme)}, meta);
+				return true;
 			}
 			break;
 			case lex::type::bool_literal:
@@ -1315,6 +1318,7 @@ namespace parse
 					return false;
 				}
 
+				if(!retr.avail()){return false;}
 				auto cond_expr = retr.retrieve<ast::expression>();
 				if(!cond_expr.has_value())
 				{
@@ -1528,7 +1532,8 @@ namespace parse
 			return false;
 		}
 
-		bool ret = true;
+		volatile bool check = this->tokidx == 252;
+		bool ret = false;
 		for(std::size_t i = 0; i < this->subtrees.size(); i++)
 		{
 			if(this->subtrees[i].tree != ast{})
@@ -1538,87 +1543,87 @@ namespace parse
 				{
 					[&](ast::integer_literal arg)
 					{
-						ret = this->reduce_from_integer_literal(i);
+						ret |= this->reduce_from_integer_literal(i);
 					},
 					[&](ast::decimal_literal arg)
 					{
-						ret = this->reduce_from_decimal_literal(i);
+						ret |= this->reduce_from_decimal_literal(i);
 					},
 					[&](ast::char_literal arg)
 					{
-						ret = this->reduce_from_char_literal(i);
+						ret |= this->reduce_from_char_literal(i);
 					},
 					[&](ast::string_literal arg)
 					{
-						ret = this->reduce_from_string_literal(i);
+						ret |= this->reduce_from_string_literal(i);
 					},
 					[&](ast::bool_literal arg)
 					{
-						ret = this->reduce_from_bool_literal(i);
+						ret |= this->reduce_from_bool_literal(i);
 					},
 					[&](ast::null_literal arg)
 					{
-						ret = this->reduce_from_null_literal(i);
+						ret |= this->reduce_from_null_literal(i);
 					},
 					[&](ast::identifier arg)
 					{
-						ret = this->reduce_from_identifier(i);
+						ret |= this->reduce_from_identifier(i);
 					},
 					[&](ast::member_access arg)
 					{
-						ret = this->reduce_from_member_access(i);
+						ret |= this->reduce_from_member_access(i);
 					},
 					[&](ast::array_access arg)
 					{
-						ret = this->reduce_from_array_access(i);
+						ret |= this->reduce_from_array_access(i);
 					},
 					[&](ast::variable_declaration arg)
 					{
-						ret = this->reduce_from_variable_declaration(i);
+						ret |= this->reduce_from_variable_declaration(i);
 					},
 					[&](ast::function_call arg)
 					{
-						ret = this->reduce_from_function_call(i);
+						ret |= this->reduce_from_function_call(i);
 					},
 					[&](ast::method_call arg)
 					{
-						ret = this->reduce_from_method_call(i);
+						ret |= this->reduce_from_method_call(i);
 					},
 					[&](ast::return_statement arg)
 					{
-						ret = this->reduce_from_return_statement(i);
+						ret |= this->reduce_from_return_statement(i);
 					},
 					[&](ast::if_statement arg)
 					{
-						ret = this->reduce_from_if_statement(i);
+						ret |= this->reduce_from_if_statement(i);
 					},
 					[&](ast::for_statement arg)
 					{
-						ret = this->reduce_from_for_statement(i);
+						ret |= this->reduce_from_for_statement(i);
 					},
 					[&](ast::struct_initialiser arg)
 					{
-						ret = this->reduce_from_struct_initialiser(i);
+						ret |= this->reduce_from_struct_initialiser(i);
 					},
 					[&](ast::expression arg)
 					{
-						ret = this->reduce_from_expression(i);
+						ret |= this->reduce_from_expression(i);
 					},
 					[&](ast::function_definition arg)
 					{
-						ret = this->reduce_from_function_definition(i);
+						ret |= this->reduce_from_function_definition(i);
 					},
 					[&](ast::struct_definition arg)
 					{
-						ret = this->reduce_from_struct_definition(i);
+						ret |= this->reduce_from_struct_definition(i);
 					},
 					[&](ast::block arg)
 					{
-						ret = this->reduce_from_block(i);
+						ret |= this->reduce_from_block(i);
 					},
 					[&](ast::meta_region arg)
 					{
-						ret = this->reduce_from_meta_region(i);
+						ret |= this->reduce_from_meta_region(i);
 					},
 					[this, node = this->subtrees[i].tree.root](auto arg)
 					{
@@ -1628,7 +1633,7 @@ namespace parse
 			}
 			else
 			{
-				ret = this->reduce_from_token(i);
+				ret |= this->reduce_from_token(i);
 			}
 		}
 		return ret;
@@ -1644,7 +1649,6 @@ namespace parse
 			shift();
 			while(this->reduce()){}
 		}
-		while(this->reduce()){}
 		// next level and go again (until when???)
 		std::size_t error_count = 0;
 
