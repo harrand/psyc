@@ -1644,6 +1644,7 @@ namespace parse
 			shift();
 			while(this->reduce()){}
 		}
+		while(this->reduce()){}
 		// next level and go again (until when???)
 		std::size_t error_count = 0;
 

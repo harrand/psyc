@@ -3,6 +3,7 @@
 #include "builtin.hpp"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/DIBuilder.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 
@@ -1814,8 +1815,15 @@ namespace code
 			}
 			break;
 			case builtin::debugbreak:
-				ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::trap));
+			{
+				// trap doesn't seem to be continuable so this is not a good fit.
+				//ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::trap));
+				// inline-asm int3 is a winner if it can be done:
+				llvm::InlineAsm* int3 = llvm::InlineAsm::get(llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx), false), "int3", "~{dirflag},~{fpsr},~{flags}", true, false, llvm::InlineAsm::AsmDialect::AD_ATT);
+				llvm::CallInst* int3call = builder->CreateCall(int3, {});
+				int3call->addAttributeAtIndex(llvm::AttributeList::FunctionIndex, llvm::Attribute::NoUnwind);
 				ret.ty = func.return_ty;
+			}
 			break;
 			default:
 				d.ctx.error(error_code::nyi, "missing codegen for builtin \"{}\"", call.function_name);
