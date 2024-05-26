@@ -77,6 +77,57 @@ std::array<semal::function_t, (int)builtin::_count> builtin_functions
 		.is_method = false,
 		.is_builtin = true
 	},
+	semal::function_t
+	{
+		.return_ty = type::from_primitive(primitive_type::f64),
+		.name = "sin",
+		.params =
+		{
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::f64, qualifier_weak),
+				.name = "num",
+				.ctx = {},
+			},
+		},
+		.ctx = {},
+		.is_method = false,
+		.is_builtin = true
+	},
+	semal::function_t
+	{
+		.return_ty = type::from_primitive(primitive_type::f64),
+		.name = "cos",
+		.params =
+		{
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::f64, qualifier_weak),
+				.name = "num",
+				.ctx = {},
+			},
+		},
+		.ctx = {},
+		.is_method = false,
+		.is_builtin = true
+	},
+	semal::function_t
+	{
+		.return_ty = type::from_primitive(primitive_type::f64),
+		.name = "tan",
+		.params =
+		{
+			semal::local_variable_t
+			{
+				.ty = type::from_primitive(primitive_type::f64, qualifier_weak),
+				.name = "num",
+				.ctx = {},
+			},
+		},
+		.ctx = {},
+		.is_method = false,
+		.is_builtin = true
+	},
 };
 
 builtin try_find_builtin(std::string_view funcname)

@@ -1825,6 +1825,29 @@ namespace code
 				ret.ty = func.return_ty;
 			}
 			break;
+			case builtin::sine:
+			{
+				value num = get_arg(0);
+				ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::sin, {as_llvm_type(num.ty, d.state)}), {num.llv});
+				ret.ty = func.return_ty;
+			}
+			break;
+			case builtin::cosine:
+			{
+				value num = get_arg(0);
+				ret.llv = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::sin, {as_llvm_type(num.ty, d.state)}), {num.llv});
+				ret.ty = func.return_ty;
+			}
+			break;
+			case builtin::tangent:
+			{
+				value num = get_arg(0);
+				llvm::Value* sine = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::sin, {as_llvm_type(num.ty, d.state)}), {num.llv});
+				llvm::Value* cosine = builder->CreateCall(llvm::Intrinsic::getDeclaration(program.get(), llvm::Intrinsic::sin, {as_llvm_type(num.ty, d.state)}), {num.llv});
+				ret.llv = builder->CreateFDiv(sine, cosine);
+				ret.ty = func.return_ty;
+			}
+			break;
 			default:
 				d.ctx.error(error_code::nyi, "missing codegen for builtin \"{}\"", call.function_name);
 			break;

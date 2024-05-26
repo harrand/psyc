@@ -8,6 +8,9 @@ enum class builtin
 	free,
 	memcpy,
 	debugbreak,
+	sine,
+	cosine,
+	tangent,
 	_count,
 	_undefined,
 };
