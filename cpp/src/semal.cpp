@@ -831,7 +831,7 @@ namespace semal
 		{
 			type ret = expression(d, *payload.expr.value());
 			d.assert_that(!maybe_parent->return_ty.is_void(), std::format("return statement was an expression of type \"{}\", but the enclosing function \"{}\" returns {}. do not return an expression.", ret.name(), maybe_parent->name, maybe_parent->return_ty.name()));
-			d.assert_that(ret == maybe_parent->return_ty, std::format("type of `return` statement \"{}\" does not match the return-type of the enclosing function \"{}\", which is a \"{}\"", ret.name(), maybe_parent->name, maybe_parent->return_ty.name()));
+			d.assert_that(typecon_valid(ret.is_implicitly_convertible_to(maybe_parent->return_ty)), std::format("type of `return` statement \"{}\" does not match the return-type of the enclosing function \"{}\", which is a \"{}\"", ret.name(), maybe_parent->name, maybe_parent->return_ty.name()));
 			return ret;
 		}
 		d.assert_that(maybe_parent->return_ty.is_void(), std::format("detected empty `return` statement within function \"{}\" which doesn't return u0. `return;` is only valid in functions that return `u0`.", maybe_parent->name));
