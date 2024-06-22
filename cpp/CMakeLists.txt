@@ -58,6 +58,12 @@ add_library(libpsyc
 	src/type.hpp
 	src/util.cpp
 	src/util.hpp
+
+	src2/diag.hpp
+	src2/error.hpp
+	src2/lex.cpp
+	src2/lex.hpp
+	src2/srcloc.hpp
 )
 
 cmake_path(GET PROJECT_SOURCE_DIR PARENT_PATH psyc_root_dir)
