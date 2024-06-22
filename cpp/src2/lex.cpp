@@ -25,6 +25,31 @@ namespace lex
 			this->cursor += count;
 		}
 
+		void advance(const char* cstr)
+		{
+			this->advance(std::strlen(cstr));
+		}
+
+		bool finished() const
+		{
+			return this->cursor >= source.size();
+		}
+
+		template<typename Pred>
+		std::size_t advance_until(Pred p)
+		{
+			auto start = this->cursor;
+			auto cur = start;
+			std::string_view str;
+			do
+			{
+				str = this->source.substr(cur++);
+			}while(str.size() && !p(str));
+			std::size_t dst = cur - start;
+			this->advance(dst);
+			return dst;
+		}
+
 		template<typename... Ts>
 		void error(std::format_string<Ts...> fmt, Ts&&... ts)
 		{
@@ -79,6 +104,8 @@ namespace lex
 		};
 	}
 
+	bool word_should_break(std::string_view str);
+
 	token tokenise_once(internal_state& state, std::string_view data)
 	{
 		while(data.starts_with("\n"))
@@ -96,60 +123,110 @@ namespace lex
 				// just check for "name" at the start
 				if(data.starts_with(name))
 				{
-					// advance the state. for nearly everything, advance by the lexeme size. for some things (e.g line comment) we have a different behaviour.
+					// advance the state. for nearly everything, advance by the lexeme size (and the lexeme is equal to the lex type name). for some things (e.g line comment) we have a different behaviour.
+					std::string lexeme{name};
 					switch(t)
 					{
 						case type::comment:
 						[[fallthrough]];
 						case type::doc_comment:
+						{
 							// advance till end of line
-							diag::nyi("single-line comments");
+							std::size_t dst = state.advance_until([](std::string_view str)->bool
+							{
+								return str.starts_with("\n");
+							});
+							lexeme = data.substr(0, dst);
+						}
 						break;
 						case type::mlcomment:
 						[[fallthrough]];
 						case type::mldoc_comment:
+						{
 							// advance till "*/" is found
-							diag::nyi("multi-line comments");
+							std::size_t dst = state.advance_until([](std::string_view str)->bool
+							{
+								return str.starts_with("*/");
+							});
+							if(state.finished())
+							{
+								state.error("multi-line comment is never terminated by */");
+							}
+							lexeme = data.substr(0, dst);
+						}
 						break;
 						default:
 							state.advance(name.size());
 						break;
 					}
-					return token{.t = t, .lexeme = std::string{name}};
+					return token{t, lexeme};
 				}
 			}
 			if(name.empty())
 			{
 				// its not a trivial check. need to check specifics.
-				switch(t)
+				if(data.starts_with("true"))
 				{
-					case type::identifier:
-						diag::nyi("identifiers");
-					break;
-					case type::integer_literal:
-						diag::nyi("integer-literals");
-					break;
-					case type::decimal_literal:
-						diag::nyi("decimal-literals");
-					break;
-					case type::string_literal:
-						diag::nyi("string-literals");
-					break;
-					case type::char_literal:
-						diag::nyi("char-literals");
-					break;
-					case type::bool_literal:
-						diag::nyi("bool-literals");
-					break;
-					case type::null_literal:
-						diag::nyi("null-literals");
-					break;
-					default:
-						state.error("unknown token(s) {}", name.substr(0, std::min(name.size(), std::size_t{8})));
-					break;
+					state.advance("true");
+					return token{.t = type::bool_literal, .lexeme = "true"};
+				}
+				else if(data.starts_with("false"))
+				{
+					state.advance("false");
+					return token{.t = type::bool_literal, .lexeme = "false"};
+				}
+				else if(data.starts_with("null"))
+				{
+					state.advance("null");
+					return token{.t = type::null_literal, .lexeme = "null"};
+				}
+				else if(std::isdigit(data.front()))
+				{
+					// if it starts with a digit, it's an integer/decimal literal.
+					std::size_t counter = 0;
+					std::size_t dot_count = 0;
+					std::string_view next;
+					do
+					{
+						next = data.substr(++counter);
+						if(next.starts_with("."))
+						{
+							dot_count++;
+						}
+					} while (!word_should_break(next));
+					--counter;
+					std::string_view lexeme = data.substr(0, counter);
+					if(dot_count > 1)
+					{
+						state.error("malformed decimal literal  \"{}\" contained more than one \".\" character", lexeme);
+					}
+					state.advance(counter);
+					type t = dot_count == 0 ? type::integer_literal : type::decimal_literal;
+					return token{t, std::string{lexeme}};
+				}
+				else
+				{
+					// identifier.
+					std::size_t dst = state.advance_until(word_should_break);
+					state.advance(dst);
+					return token{.t = type::identifier, .lexeme =std::string{data.substr(0, dst)}};
 				}
 			}
 		}
 		return token{.t = type::_undefined};
+	}
+
+	bool word_should_break(std::string_view str)
+	{
+		if(str.starts_with(" const") || str.starts_with(" weak"))
+		{
+			// don't break on a space if its immediately followed by const.
+			return false;
+		}
+		return (!std::isalnum(str.front())
+				&& str.front() != '_'
+				&& str.front() != '&')
+			|| std::isspace(str.front())
+		;
 	}
 }
