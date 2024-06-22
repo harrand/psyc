@@ -2,6 +2,10 @@
 #define PSYC_LEX_HPP
 #include "srcloc.hpp"
 #include <array>
+#include <string>
+#include <vector>
+#include <span>
+#include <unordered_map>
 
 namespace lex
 {
@@ -103,6 +107,23 @@ namespace lex
 		{
 			return this->t == rhs.t && this->lexeme == rhs.lexeme;
 		}
+	};
+
+	using tokens_list = std::vector<token>;
+	using const_token_view = std::span<const token>;
+	using token_view = std::span<token>;
+
+	struct output
+	{
+		tokens_list tokens = {};
+		std::string psy_source = {};
+	};
+
+	output tokenise(std::filesystem::path psy_file);
+
+	struct state
+	{
+		std::unordered_map<std::filesystem::path, output> tokenised_input_files = {};
 	};
 }
 #endif // PSYC_LEX_HPP
