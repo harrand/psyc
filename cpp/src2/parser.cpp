@@ -11,7 +11,12 @@ namespace parse
 
 	}
 
-	void parser::step()
+	void parser::parse()
+	{
+		while(this->step()){}
+	}
+
+	bool parser::step()
 	{
 		auto state = this->get_parsed_state();
 		if(state.empty())
@@ -20,15 +25,16 @@ namespace parse
 			diag::error(error_code::nyi, "done!");
 		}
 		reduction reduction = find_reduction(state);
+		// reduce_fn == null means no reductions available. we must shift.
 		if(reduction.is_null())
 		{
-			shift();
+			return shift();
 		}
 		else
 		{
 			reduction.reduce_fn(this->make_reducer());
+			return true;
 		}
-		// reduce_fn == null means no reductions available. we must shift.
 	}
 
 	bool parser::shift()
@@ -48,11 +54,6 @@ namespace parse
 		return true;
 	}
 
-	void parser::reduce()
-	{
-		// using each subtree
-	}
-
 	subtree_state parser::get_parsed_state() const
 	{
 		subtree_state ret;
@@ -67,5 +68,18 @@ namespace parse
 	reducer parser::make_reducer()
 	{
 		return {.subtrees = this->subtrees};
+	}
+
+	syntax::node_ptr parser::get_output()
+	{
+		diag::assert_that(this->subtrees.size() == 1, error_code::parse, "did not parse to a single AST. {} subtrees remaining", this->subtrees.size());
+		return std::move(this->subtrees.front());
+	}
+
+	syntax::node_ptr tokens(lex::const_token_view toks)
+	{
+		parser state{toks};
+		state.parse();
+		return state.get_output();
 	}
 }

@@ -11,17 +11,25 @@ namespace parse
 	public:
 		parser(lex::const_token_view tokens);
 
-		void step();
+		void parse();
+		bool step();
 
 		bool shift();
-		void reduce();
 		subtree_state get_parsed_state() const;
 
 		reducer make_reducer();
+		syntax::node_ptr get_output();
 	private:
 		lex::const_token_view tokens;
 		lex::const_token_view unscanned_tokens;
 		std::vector<syntax::node_ptr> subtrees = {};
+	};
+
+	syntax::node_ptr tokens(lex::const_token_view toks);
+
+	struct state
+	{
+		std::unordered_map<std::filesystem::path, syntax::node_ptr> parsed_input_files = {};
 	};
 }
 

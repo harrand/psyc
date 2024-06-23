@@ -1,10 +1,6 @@
 #include "config.hpp"
-#include "build.hpp"
 #include "lex.hpp"
-#include "parse.hpp"
-#include "semal.hpp"
-#include "codegen.hpp"
-#include "link.hpp"
+#include "parser.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
 #include <filesystem>
@@ -49,8 +45,7 @@ int main(int argc, char** argv)
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	timers t;
 
-	code::static_initialise();
-
+	/*
 	build::info binfo;
 	{
 		config::compiler_args args = parse_args(cli_args);
@@ -67,9 +62,11 @@ int main(int argc, char** argv)
 			binfo.compiler_args.input_files.push_back(extra);
 		}
 	}
+	*/
 	// remember: binfo might have extra input files than was specified in the command line.
 	// this is because build meta regions are allowed to add extra inputs.
-	const config::compiler_args& args = binfo.compiler_args;
+	//const config::compiler_args& args = binfo.compiler_args;
+	config::compiler_args args = parse_args(cli_args);
 
 	// lex
 	timer::start();
@@ -90,14 +87,13 @@ int main(int argc, char** argv)
 		{
 			std::cout << "==========================\n";
 			std::cout << "ast for " << input_file << ":\n";
-			parse.parsed_input_files[input_file].pretty_print();
+			//parse.parsed_input_files[input_file].pretty_print();
 			std::cout << "==========================\n\n";
 		}
 	}
 	t.parsing = timer::elapsed_millis();
 
-	// buildmeta
-
+	/*
 	// semal
 	timer::start();
 	semal::state semal;
@@ -138,9 +134,10 @@ int main(int argc, char** argv)
 	link.build(binfo);
 
 	t.link = timer::elapsed_millis();
+	*/
 	t.print();
 
-	code::static_terminate();
+	//code::static_terminate();
 	return 0;
 }
 

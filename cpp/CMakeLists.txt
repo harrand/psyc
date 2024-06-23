@@ -31,36 +31,9 @@ llvm_map_components_to_libnames(llvm_dependent_libs support core irreader execut
 separate_arguments(llvm_definitions_list NATIVE_COMMAND ${LLVM_DEFINITIONS})
 
 add_library(libpsyc
-	src/psyc_main.cpp
-	src/ast.cpp
-	src/ast.hpp
-	src/build.cpp
-	src/build.hpp
-	src/builtin.cpp
-	src/builtin.hpp
-	src/codegen.cpp
-	src/codegen.hpp
-	src/config.hpp
-	src/diag.hpp
-	src/error.hpp
-	src/lex.cpp
-	src/lex.hpp
-	src/link.cpp
-	src/link.hpp
-	src/parse.cpp
-	src/parse.hpp
-	src/semal.cpp
-	src/semal.hpp
-	src/srcloc.hpp
-	src/timer.cpp
-	src/timer.hpp
-	src/type.cpp
-	src/type.hpp
-	src/util.cpp
-	src/util.hpp
-
 	src2/ast.cpp
 	src2/ast.hpp
+	src2/config.hpp
 	src2/diag.hpp
 	src2/error.hpp
 	src2/lex.cpp
@@ -73,6 +46,8 @@ add_library(libpsyc
 	src2/parser.cpp
 	src2/parser.hpp
 	src2/srcloc.hpp
+	src2/timer.cpp
+	src2/timer.hpp
 	src2/util.cpp
 	src2/util.hpp
 )
@@ -108,7 +83,7 @@ target_compile_definitions(libpsyc PUBLIC ${llvm_definitions_list})
 target_link_libraries(libpsyc PUBLIC ${llvm_dependent_libs})
 
 add_executable(psyc
-	src/psyc_main.cpp
+	src2/psyc_main.cpp
 )
 target_link_libraries(psyc PRIVATE libpsyc)
 
