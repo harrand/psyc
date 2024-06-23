@@ -5,6 +5,7 @@
 #include "lex.hpp"
 #include <string>
 #include <memory>
+#include <variant>
 #include <vector>
 
 namespace syntax
@@ -83,6 +84,63 @@ namespace syntax
 			virtual const char* name() const final
 			{
 				return "decimal literal";
+			}
+		};
+
+		struct identifier : public inode
+		{
+			identifier(std::string iden = ""): iden(iden){}
+			std::string iden;
+
+			virtual std::string to_string() const final
+			{
+				return std::format("identifier({})", this->iden);
+			}
+			virtual const char* name() const final
+			{
+				return "identifier";
+			}
+		};
+
+		struct primary_expression : public inode
+		{
+			enum class type
+			{
+				identifier,
+				integer_literal,
+				decimal_literal,
+				string_literal,
+				char_literal,
+				bool_literal,
+				null_literal,
+				parenthesised_expression,
+				_count
+			};
+			constexpr static std::array<const char*, int(type::_count)> type_names
+			{
+				"iden",
+				"intlit",
+				"declit",
+				"strlit",
+				"charlit",
+				"boollit",
+				"nulllit",
+				"(expr)"
+			};
+
+			primary_expression(type t, const inode* expr): t(t), expr(expr){}
+
+			type t;
+			const inode* expr;
+
+			virtual std::string to_string() const final
+			{
+				return std::format("prim-expr_{}({})", primary_expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "primary expression";
 			}
 		};
 	}

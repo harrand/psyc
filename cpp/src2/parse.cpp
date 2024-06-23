@@ -61,5 +61,6 @@ namespace parse
 	void populate_parse_table()
 	{
 		#include "parse_token.cpp"
+		#include "parse_identifier.cpp"
 	}
 }
