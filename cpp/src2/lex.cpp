@@ -117,7 +117,7 @@ namespace lex
 		for(int i = 0; i < static_cast<int>(type::_count); i++)
 		{
 			auto t = static_cast<type>(i);
-			std::string_view name = type_name[i];
+			std::string_view name = get_trait(t).name;
 			if(!name.empty())
 			{
 				// just check for "name" at the start

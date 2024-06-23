@@ -55,50 +55,65 @@ namespace lex
 		_count
 	};
 
-	constexpr std::array<const char*, static_cast<int>(type::_count)> type_name =
+	// info about a token type
+	struct trait
 	{
-		"==",
-		"=",
-		"::",
-		":",
-		";",
-		"(",
-		")",
-		"{",
-		"}",
-		"[",
-		"->",
-		"]",
-		"...",
-		".",
-		",",
-		"!",
-		"?",
-		"///",
-		"//",
-		"/**",
-		"/*",
-		"static_if",
-		"build",
-		"namespace",
-		"struct",
-		"typedef",
-		"return",
-		"if",
-		"else",
-		"for",
-		"defer",
-		"deref",
-		"ref",
-		"",
-		"",
-		"",
-		"",
-		"",
-		"",
-		"null",
-		"<UNDEFINED TOKEN>"
+		// what is its name (i.e the string we look for when lexing the source code)
+		const char* name = "";
+		// should the parser skip over this token type?
+		bool parse_skip = false;
 	};
+
+	constexpr std::array<trait, static_cast<int>(type::_count)> lex_traits =
+	{
+		trait{.name = "=="},
+		trait{.name = "="},
+		trait{.name = "::"},
+		trait{.name = ":"},
+		trait{.name = ";"},
+		trait{.name = "("},
+		trait{.name = ")"},
+		trait{.name = "{"},
+		trait{.name = "}"},
+		trait{.name = "["},
+		trait{.name = "->"},
+		trait{.name = "]"},
+		trait{.name = "..."},
+		trait{.name = "."},
+		trait{.name = ","},
+		trait{.name = "!"},
+		trait{.name = "?"},
+		trait{.name = "///", .parse_skip = true},
+		trait{.name = "//", .parse_skip = true},
+		trait{.name = "/**", .parse_skip = true},
+		trait{.name = "/*", .parse_skip = true},
+		trait{.name = "static_if"},
+		trait{.name = "build"},
+		trait{.name = "namespace"},
+		trait{.name = "struct"},
+		trait{.name = "typedef"},
+		trait{.name = "return"},
+		trait{.name = "if"},
+		trait{.name = "else"},
+		trait{.name = "for"},
+		trait{.name = "defer"},
+		trait{.name = "deref"},
+		trait{.name = "ref"},
+		trait{.name = ""},
+		trait{.name = ""},
+		trait{.name = ""},
+		trait{.name = ""},
+		trait{.name = ""},
+		trait{.name = ""},
+		trait{.name = "null"},
+		trait{.name = "<UNDEFINED TOKEN>"}
+	};
+
+	constexpr trait get_trait(type t)
+	{
+		return lex_traits[static_cast<int>(t)];
+	}
+
 
 	struct token
 	{
