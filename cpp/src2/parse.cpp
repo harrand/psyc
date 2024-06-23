@@ -33,7 +33,10 @@ namespace parse
 		diag::assert_that(state.size(), error_code::ice, "requested to find reduction but state is empty.");
 		const subtree_index& front = state.front();
 		auto iter = parse_table.find(front.idx);
-		diag::assert_that(iter != parse_table.end(), error_code::parse, "program should not start with a {}", front.name_hint);
+		if(iter == parse_table.end())
+		{
+			return reduction::null();
+		}
 
 		return find_reduction_impl(state.subspan(1), &iter->second);
 	}

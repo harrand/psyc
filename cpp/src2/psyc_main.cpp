@@ -45,6 +45,8 @@ int main(int argc, char** argv)
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	timers t;
 
+	parse::populate_parse_table();
+
 	/*
 	build::info binfo;
 	{

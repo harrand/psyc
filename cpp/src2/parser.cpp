@@ -18,23 +18,21 @@ namespace parse
 
 	bool parser::step()
 	{
-		auto state = this->get_parsed_state();
-		if(state.empty())
+		constexpr std::size_t max_lookahead = 8;
+		for(std::size_t i = 0; std::cmp_less(i, std::min(max_lookahead, this->subtrees.size())); i++)
 		{
-			// we're done.
-			diag::error(error_code::nyi, "done!");
+			auto state = this->get_parsed_state(i);
+			if(!state.empty())
+			{
+				reduction reduc = find_reduction(state);
+				if(!reduc.is_null())
+				{
+					reduc.reduce_fn(this->make_reducer(i));
+					return true;
+				}
+			}
 		}
-		reduction reduction = find_reduction(state);
-		// reduce_fn == null means no reductions available. we must shift.
-		if(reduction.is_null())
-		{
-			return shift();
-		}
-		else
-		{
-			reduction.reduce_fn(this->make_reducer());
-			return true;
-		}
+		return shift();
 	}
 
 	bool parser::shift()
@@ -54,20 +52,20 @@ namespace parse
 		return true;
 	}
 
-	subtree_state parser::get_parsed_state() const
+	subtree_state parser::get_parsed_state(std::size_t lookahead) const
 	{
 		subtree_state ret;
-		ret.reserve(this->subtrees.size());
-		for(const auto& subtree : this->subtrees)
+		ret.reserve(this->subtrees.size() - lookahead);
+		for(auto iter = this->subtrees.begin() + lookahead; iter != this->subtrees.end(); iter++)
 		{
-			ret.push_back(subtree_index{.idx = subtree->hash(), .name_hint = subtree->name()});
+			ret.push_back(subtree_index{.idx = iter->get()->hash(), .name_hint = iter->get()->name()});
 		}
 		return ret;
 	}
 
-	reducer parser::make_reducer()
+	reducer parser::make_reducer(std::size_t offset)
 	{
-		return {.subtrees = this->subtrees};
+		return {.subtrees = this->subtrees, .idx = offset};
 	}
 
 	syntax::node_ptr parser::get_output()

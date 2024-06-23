@@ -15,9 +15,9 @@ namespace parse
 		bool step();
 
 		bool shift();
-		subtree_state get_parsed_state() const;
+		subtree_state get_parsed_state(std::size_t lookahead) const;
 
-		reducer make_reducer();
+		reducer make_reducer(std::size_t offset);
 		syntax::node_ptr get_output();
 	private:
 		lex::const_token_view tokens;
