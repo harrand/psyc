@@ -8,7 +8,12 @@
 namespace parse
 {
 	using subtree_view = std::span<const syntax::node_ptr>;
-	using reduce_function_t = bool(*)(subtree_view);
+	struct reducer
+	{
+		std::vector<syntax::node_ptr>& subtrees;
+		std::size_t idx = 0;
+	};
+	using reduce_function_t = bool(*)(reducer);
 
 	struct subtree_index
 	{

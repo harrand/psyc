@@ -26,7 +26,7 @@ namespace parse
 		}
 		else
 		{
-			reduction.reduce_fn(this->subtrees);
+			reduction.reduce_fn(this->make_reducer());
 		}
 		// reduce_fn == null means no reductions available. we must shift.
 	}
@@ -62,5 +62,10 @@ namespace parse
 			ret.push_back(subtree_index{.idx = subtree->hash(), .name_hint = subtree->name()});
 		}
 		return ret;
+	}
+
+	reducer parser::make_reducer()
+	{
+		return {.subtrees = this->subtrees};
 	}
 }

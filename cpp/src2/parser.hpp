@@ -16,6 +16,8 @@ namespace parse
 		bool shift();
 		void reduce();
 		subtree_state get_parsed_state() const;
+
+		reducer make_reducer();
 	private:
 		lex::const_token_view tokens;
 		lex::const_token_view unscanned_tokens;

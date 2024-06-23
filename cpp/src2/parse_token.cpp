@@ -9,6 +9,7 @@ void foo(){
 CHORD_BEGIN
 	STATE(TOKEN(integer_literal))
 	const lex::token& integer = GETTOKEN();
+	REDUCE_TO(std::make_unique<syntax::node::integer_literal>(std::stoi(integer.lexeme)));
 	return true;
 CHORD_END
 
