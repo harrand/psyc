@@ -2,6 +2,7 @@
 #include "diag.hpp"
 #include "ast.hpp"
 #include <unordered_map>
+#include <tuple>
 
 #define HASH(x) syntax::node::x{}.hash()
 #define TOKEN_HASH(toktype) syntax::node::unparsed_token{{.t = lex::type::toktype}}.hash()
@@ -47,6 +48,15 @@ namespace parse
 			entry = &entry->children[idx.idx];
 		}
 
+		diag::assert_that(entry->reduce_fn == nullptr, error_code::ice, "duplicate definition of reduce function");
 		entry->reduce_fn = reduce_fn;
+	}
+
+	#define INFUNC
+	#include "parse_macros.hpp"
+
+	void populate_parse_table()
+	{
+		#include "parse_token.cpp"
 	}
 }

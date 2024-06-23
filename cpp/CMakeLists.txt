@@ -65,6 +65,9 @@ add_library(libpsyc
 	src2/error.hpp
 	src2/lex.cpp
 	src2/lex.hpp
+
+	src2/parse_macros.hpp
+
 	src2/parse.cpp
 	src2/parse.hpp
 	src2/parser.cpp

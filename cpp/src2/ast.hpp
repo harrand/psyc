@@ -1,5 +1,5 @@
-#ifndef PSYC_AST_HPP
-#define PSYC_AST_HPP
+#ifndef PSYC_AST2_HPP
+#define PSYC_AST2_HPP
 #include "srcloc.hpp"
 #include "util.hpp"
 #include "lex.hpp"
@@ -60,7 +60,7 @@ namespace syntax
 
 		struct integer_literal : public inode
 		{
-			integer_literal(std::int64_t val): val(val){}
+			integer_literal(std::int64_t val = 0): val(val){}
 			std::int64_t val;
 			virtual std::string to_string() const final
 			{
@@ -74,7 +74,7 @@ namespace syntax
 
 		struct decimal_literal : public inode
 		{
-			decimal_literal(double val): val(val){}
+			decimal_literal(double val = 0.0): val(val){}
 			double val;
 			virtual std::string to_string() const final
 			{
@@ -90,4 +90,4 @@ namespace syntax
 	node_ptr make_node(const lex::token& t);
 }
 
-#endif // PSYC_AST_HPP
+#endif // PSYC_AST2_HPP

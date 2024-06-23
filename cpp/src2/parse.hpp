@@ -1,5 +1,5 @@
-#ifndef PSYC_PARSE_HPP
-#define PSYC_PARSE_HPP
+#ifndef PSYC_PARSE2_HPP
+#define PSYC_PARSE2_HPP
 #include "ast.hpp"
 #include <vector>
 #include <cstddef>
@@ -31,6 +31,8 @@ namespace parse
 
 	reduction find_reduction(subtree_state_view state);
 	void add_new_reduction(subtree_state_view hashes, reduce_function_t reduce_fn);
+	void populate_parse_table();
+
 }
 
-#endif // PSYC_PARSE_HPP
+#endif // PSYC_PARSE2_HPP
