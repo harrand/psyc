@@ -40,8 +40,10 @@ namespace syntax
 			}
 			virtual std::size_t hash() const final
 			{
-				// 2 unparsed tokens should hash to the same value iff their type and lexeme are the same.
-				return std::hash<int>{}(static_cast<int>(tok.t)) ^ std::hash<std::string>{}(tok.lexeme);
+				// when should two unparsed tokens yield the same hash code?
+				// well, we never care about the lexeme itself, but we do care about the type.
+				// if im checking for reductions and i know i have a token, i will need to know if the token is a semicolon for example. however, i wont need to know what exactly the comment is, nor what the identifier value is.
+				return typeid(*this).hash_code() ^ std::hash<int>{}(static_cast<int>(tok.t));
 			}
 		};
 
