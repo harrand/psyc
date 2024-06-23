@@ -16,8 +16,11 @@ namespace syntax
 	{
 	public:
 		virtual ~inode() = default;
+		// imeplemented asap below.
 		virtual std::string to_string() const;
+		// each node type implements this in their own file, coz it can get really really long.
 		virtual node_ptr reduce(void* ctx);
+		virtual std::size_t hash() const;
 
 		std::vector<node_ptr> children = {};
 		srcloc loc = srcloc::undefined();
@@ -35,7 +38,14 @@ namespace syntax
 			{
 				return std::format("token({})", tok.lexeme);
 			}
+			virtual std::size_t hash() const final
+			{
+				// 2 unparsed tokens should hash to the same value iff their type and lexeme are the same.
+				return std::hash<int>{}(static_cast<int>(tok.t)) ^ std::hash<std::string>{}(tok.lexeme);
+			}
 		};
+
+		#define DEFAULT_HASH virtual std::size_t hash() const final{return typeid(*this).hash_code();}
 
 		struct integer_literal : public inode
 		{
@@ -44,6 +54,17 @@ namespace syntax
 			{
 				return std::format("integer-literal({})", this->val);
 			}
+			DEFAULT_HASH
+		};
+
+		struct decimal_literal : public inode
+		{
+			double val;
+			virtual std::string to_string() const final
+			{
+				return std::format("decimal-literal({})", this->val);
+			}
+			DEFAULT_HASH
 		};
 	}
 

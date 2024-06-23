@@ -33,6 +33,6 @@ namespace parse
 
 	void parser::reduce()
 	{
-
+		// using each subtree
 	}
 }
