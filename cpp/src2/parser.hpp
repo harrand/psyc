@@ -1,6 +1,7 @@
 #ifndef PSYC_PARSER_HPP
 #define PSYC_PARSER_HPP
 #include "lex.hpp"
+#include "ast.hpp"
 
 namespace parse
 {
@@ -16,7 +17,7 @@ namespace parse
 	private:
 		lex::const_token_view tokens;
 		lex::const_token_view unscanned_tokens;
-		//std::vector<ast> subtrees = {};
+		std::vector<syntax::node_ptr> subtrees = {};
 	};
 }
 

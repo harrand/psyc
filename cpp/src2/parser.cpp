@@ -27,9 +27,8 @@ namespace parse
 			return shift();
 		}
 
-		// we have a token t
-		// append it as a new subtree.
-		//this->subtrees.push_back(make_subtree(t));
+		this->subtrees.push_back(syntax::make_node(t));
+		return true;
 	}
 
 	void parser::reduce()
