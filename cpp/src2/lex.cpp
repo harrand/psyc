@@ -45,7 +45,7 @@ namespace lex
 			{
 				str = this->source.substr(cur++);
 			}while(str.size() && !p(str));
-			std::size_t dst = cur - start;
+			std::size_t dst = cur - start - 1;
 			this->advance(dst);
 			return dst;
 		}
@@ -96,6 +96,7 @@ namespace lex
 				state.error("ill-defined token(s) detected");
 			}
 			tok.meta_srcloc = curloc;
+			tokens.push_back(tok);
 		}
 		return
 		{
@@ -108,11 +109,12 @@ namespace lex
 
 	token tokenise_once(internal_state& state, std::string_view data)
 	{
-		while(data.starts_with("\n"))
+		while(data.starts_with("\n") || std::isspace(data.front()))
 		{
 			state.col = 0;
 			state.line++;
 			state.cursor++;
+			data = data.substr(1);
 		}
 		for(int i = 0; i < static_cast<int>(type::_count); i++)
 		{
@@ -194,13 +196,12 @@ namespace lex
 							dot_count++;
 						}
 					} while (!word_should_break(next));
-					--counter;
 					std::string_view lexeme = data.substr(0, counter);
+					state.advance(counter);
 					if(dot_count > 1)
 					{
 						state.error("malformed decimal literal  \"{}\" contained more than one \".\" character", lexeme);
 					}
-					state.advance(counter);
 					type t = dot_count == 0 ? type::integer_literal : type::decimal_literal;
 					return token{t, std::string{lexeme}};
 				}
@@ -208,7 +209,6 @@ namespace lex
 				{
 					// identifier.
 					std::size_t dst = state.advance_until(word_should_break);
-					state.advance(dst);
 					return token{.t = type::identifier, .lexeme =std::string{data.substr(0, dst)}};
 				}
 			}
