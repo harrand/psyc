@@ -19,6 +19,7 @@ namespace parse
 		{
 			reduce_success,
 			shift,
+			shift_but_clear_lookahead,
 			error
 		} t;
 		std::string errmsg = "";

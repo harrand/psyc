@@ -6,6 +6,18 @@ namespace parse{
 void foo(){
 #endif
 
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(semicol))
+	if(LAST_IS_LOOKAHEAD_TOKEN())
+	{
+		return {.t = result::type::shift_but_clear_lookahead};
+	}
+	const syntax::node::identifier& iden = GETNODE(identifier);
+	syntax::node_ptr idenptr = iden.unique_clone();
+	REDUCE_TO(std::make_unique<syntax::node::primary_expression>(syntax::node::primary_expression::type::identifier, std::move(idenptr)));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden:: could be alot of things. shift for more info.
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol))

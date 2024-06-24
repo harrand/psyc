@@ -36,6 +36,13 @@ namespace parse
 						case result::type::shift:
 							return shift();
 						break;
+						case result::type::shift_but_clear_lookahead:
+						{
+							bool ret = shift();
+							this->lookahead = std::nullopt;
+							return ret;
+						}
+						break;
 						case result::type::error:
 							diag::error(error_code::parse, "{}", res.errmsg);
 							return false;

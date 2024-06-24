@@ -3,9 +3,9 @@
 #include "srcloc.hpp"
 #include "util.hpp"
 #include "lex.hpp"
+#include "util.hpp"
 #include <string>
 #include <memory>
-#include <variant>
 #include <vector>
 
 namespace syntax
@@ -13,7 +13,7 @@ namespace syntax
 	class inode;
 	using node_ptr = std::unique_ptr<inode>;
 
-	class inode
+	class inode : public util::unique_cloneable<inode>
 	{
 	public:
 		inode() = default;
@@ -44,12 +44,15 @@ namespace syntax
 		struct unparsed_token : public inode
 		{
 			unparsed_token(lex::token tok, bool is_lookahead = false): tok(tok), is_lookahead(is_lookahead){}
+			unparsed_token(const unparsed_token& cpy): tok(cpy.tok), is_lookahead(cpy.is_lookahead){}
+			//unparsed_token(const unparsed_token& cpy) = default;
 			lex::token tok;
 			bool is_lookahead;
 			virtual std::string to_string() const final
 			{
 				return std::format("token({})", tok.lexeme);
 			}
+			COPY_UNIQUE_CLONEABLE(inode)
 			virtual const char* name() const final
 			{
 				return this->tok.lexeme.c_str();
@@ -71,7 +74,10 @@ namespace syntax
 		struct integer_literal : public inode
 		{
 			integer_literal(std::int64_t val = 0): val(val){}
+			integer_literal(const integer_literal& cpy): val(cpy.val){}
+
 			std::int64_t val;
+			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
 				return std::format("integer-literal({})", this->val);
@@ -85,7 +91,10 @@ namespace syntax
 		struct decimal_literal : public inode
 		{
 			decimal_literal(double val = 0.0): val(val){}
+			decimal_literal(const decimal_literal& cpy): val(cpy.val){}
+
 			double val;
+			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
 				return std::format("decimal-literal({})", this->val);
@@ -99,8 +108,10 @@ namespace syntax
 		struct identifier : public inode
 		{
 			identifier(std::string iden = ""): iden(iden){}
+			identifier(const identifier& cpy): iden(cpy.iden){}
 			std::string iden;
 
+			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
 				return std::format("identifier({})", this->iden);
@@ -137,11 +148,14 @@ namespace syntax
 				"(expr)"
 			};
 
-			primary_expression(type t, const inode* expr): t(t), expr(expr){}
+			primary_expression(type t, node_ptr expr): t(t), expr(std::move(expr)){}
+			primary_expression(const primary_expression& cpy):
+			t(cpy.t), expr(cpy.expr->unique_clone()){}
 
 			type t;
-			const inode* expr;
+			node_ptr expr;
 
+			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
 				return std::format("prim-expr_{}({})", primary_expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
