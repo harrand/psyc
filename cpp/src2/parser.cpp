@@ -51,6 +51,11 @@ namespace parse
 				}
 				else
 				{
+					if(!this->lookahead.has_value() && this->unscanned_tokens.empty())
+					{
+						// parsing is complete. no more reductions go to and no more things to scan.
+						return false;
+					}
 					std::string subtree_str;
 					for(std::size_t j = i; j < this->subtrees.size(); j++)
 					{
