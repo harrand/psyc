@@ -26,6 +26,10 @@ namespace syntax
 		{
 			return typeid(*this).hash_code();
 		}
+		virtual bool is_lookahead_token() const
+		{
+			return false;
+		}
 
 		std::vector<node_ptr> children = {};
 		srcloc loc = srcloc::undefined();
@@ -39,8 +43,9 @@ namespace syntax
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
 		struct unparsed_token : public inode
 		{
-			unparsed_token(lex::token tok): tok(tok){}
+			unparsed_token(lex::token tok, bool is_lookahead = false): tok(tok), is_lookahead(is_lookahead){}
 			lex::token tok;
+			bool is_lookahead;
 			virtual std::string to_string() const final
 			{
 				return std::format("token({})", tok.lexeme);
@@ -55,6 +60,10 @@ namespace syntax
 				// well, we never care about the lexeme itself, but we do care about the type.
 				// if im checking for reductions and i know i have a token, i will need to know if the token is a semicolon for example. however, i wont need to know what exactly the comment is, nor what the identifier value is.
 				return inode::hash() ^ std::hash<int>{}(static_cast<int>(tok.t));
+			}
+			virtual bool is_lookahead_token() const override
+			{
+				return this->is_lookahead;
 			}
 		};
 

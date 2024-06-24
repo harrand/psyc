@@ -95,7 +95,7 @@ namespace parse
 		}
 		if(this->lookahead.has_value())
 		{
-			ret.push_back(subtree_index{.idx = syntax::node::unparsed_token{this->lookahead.value()}.hash(), .name_hint = "lookahead token"});
+			ret.push_back(subtree_index{.idx = syntax::node::unparsed_token{this->lookahead.value(), true}.hash(), .name_hint = "lookahead token"});
 		}
 		return ret;
 	}

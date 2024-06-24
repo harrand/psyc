@@ -14,6 +14,7 @@
 #define SETINDEX(i) reduce.idx = i
 #define GETNODE(x) *static_cast<const syntax::node::x*>(reduce.subtrees[reduce.idx++].get())
 #define GETTOKEN() (diag::assert_that(reduce.idx < count, error_code::ice, "internal parse error. subtrees out of bounds (limit {})", count), static_cast<const syntax::node::unparsed_token*>(reduce.subtrees[reduce.idx++].get())->tok)
+#define LAST_IS_LOOKAHEAD_TOKEN() reduce.subtrees[count - 1]->is_lookahead_token()
 // reduce everything emcompassed by the state to a single new subtree.
 #define REDUCE_TO(x) reduce.subtrees.erase(reduce.subtrees.begin() + 0, reduce.subtrees.begin() + 0 + count); reduce.subtrees.insert(reduce.subtrees.begin() + 0, x)
 

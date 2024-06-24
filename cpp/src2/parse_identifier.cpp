@@ -14,6 +14,14 @@ CHORD_BEGIN
 	return {.t = result::type::shift};
 CHORD_END
 
+// something::else
+// cant be a function definition
+// could be a namespace access.
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), NODE(identifier))
+	return {.t = result::type::shift};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
