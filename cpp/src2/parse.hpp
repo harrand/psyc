@@ -45,7 +45,13 @@ namespace parse
 	};
 
 	reduction find_reduction(subtree_state_view state);
-	void add_new_reduction(subtree_state_view hashes, reduce_function_t reduce_fn);
+	template<std::size_t N>
+	void add_new_reduction(std::array<subtree_index, N> hashes, reduce_function_t reduce_fn)
+	{
+		add_new_reduction_impl(hashes, reduce_fn);
+	}
+
+	void add_new_reduction_impl(subtree_state_view hashes, reduce_function_t reduce_fn);
 	void populate_parse_table();
 
 }

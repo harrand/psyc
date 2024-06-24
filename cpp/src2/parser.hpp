@@ -15,13 +15,14 @@ namespace parse
 		bool step();
 
 		bool shift();
-		subtree_state get_parsed_state(std::size_t lookahead) const;
+		subtree_state get_parsed_state(std::size_t offset) const;
 
 		reducer make_reducer(std::size_t offset);
 		syntax::node_ptr get_output();
 	private:
 		lex::const_token_view tokens;
 		lex::const_token_view unscanned_tokens;
+		std::optional<lex::token> lookahead = std::nullopt;
 		std::vector<syntax::node_ptr> subtrees = {};
 	};
 

@@ -25,7 +25,12 @@ namespace parse
 		{
 			return {.reduce_fn = prev->reduce_fn, .offset = 0};
 		}
-		return reduction::null();
+		auto iter = prev->children.find(state.front().idx);
+		if(iter == prev->children.end())
+		{
+			return reduction::null();
+		}
+		return find_reduction_impl(state.subspan(1), &iter->second);
 	}
 
 	reduction find_reduction(subtree_state_view state)
@@ -41,7 +46,7 @@ namespace parse
 		return find_reduction_impl(state.subspan(1), &iter->second);
 	}
 
-	void add_new_reduction(subtree_state_view hashes, reduce_function_t reduce_fn)
+	void add_new_reduction_impl(subtree_state_view hashes, reduce_function_t reduce_fn)
 	{
 		diag::assert_that(hashes.size(), error_code::nyi, "attempt to add reduction for the empty subtree state.");
 		const subtree_index& front = hashes.front();

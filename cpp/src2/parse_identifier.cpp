@@ -6,12 +6,12 @@ namespace parse{
 void foo(){
 #endif
 
-// remember, we always try to munch the biggest reduction possible. this one is tiny, so it will only happen as a last resort.
+// iden:: could be alot of things. shift for more info.
 CHORD_BEGIN
-	STATE(NODE(identifier))
+	STATE(NODE(identifier), TOKEN(colcol))
 	const auto& iden = GETNODE(identifier);
-	REDUCE_TO(std::make_unique<syntax::node::primary_expression>(syntax::node::primary_expression::type::identifier, &iden));
-	return {.t = result::type::reduce_success};
+	//REDUCE_TO(std::make_unique<syntax::node::primary_expression>(syntax::node::primary_expression::type::identifier, &iden));
+	return {.t = result::type::shift};
 CHORD_END
 
 #ifndef INFUNC

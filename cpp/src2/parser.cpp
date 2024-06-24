@@ -18,8 +18,8 @@ namespace parse
 
 	bool parser::step()
 	{
-		constexpr std::size_t max_lookahead = 8;
-		for(std::size_t i = 0; std::cmp_less(i, std::min(max_lookahead, this->subtrees.size())); i++)
+		constexpr std::size_t max_offset = 8;
+		for(std::size_t i = 0; std::cmp_less(i, std::min(max_offset, this->subtrees.size())); i++)
 		{
 			auto state = this->get_parsed_state(i);
 			if(!state.empty())
@@ -65,16 +65,28 @@ namespace parse
 		}
 
 		this->subtrees.push_back(syntax::make_node(t));
+		if(this->unscanned_tokens.size())
+		{
+			this->lookahead = this->unscanned_tokens.front();
+		}
+		else
+		{
+			this->lookahead = std::nullopt;
+		}
 		return true;
 	}
 
-	subtree_state parser::get_parsed_state(std::size_t lookahead) const
+	subtree_state parser::get_parsed_state(std::size_t offset) const
 	{
 		subtree_state ret;
-		ret.reserve(this->subtrees.size() - lookahead);
-		for(auto iter = this->subtrees.begin() + lookahead; iter != this->subtrees.end(); iter++)
+		ret.reserve(this->subtrees.size() - offset);
+		for(auto iter = this->subtrees.begin() + offset; iter != this->subtrees.end(); iter++)
 		{
 			ret.push_back(subtree_index{.idx = iter->get()->hash(), .name_hint = iter->get()->name()});
+		}
+		if(this->lookahead.has_value())
+		{
+			ret.push_back(subtree_index{.idx = syntax::node::unparsed_token{this->lookahead.value()}.hash(), .name_hint = "lookahead token"});
 		}
 		return ret;
 	}
