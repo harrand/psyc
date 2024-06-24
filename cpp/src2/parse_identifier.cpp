@@ -11,7 +11,7 @@ CHORD_BEGIN
 	STATE(NODE(identifier))
 	const auto& iden = GETNODE(identifier);
 	REDUCE_TO(std::make_unique<syntax::node::primary_expression>(syntax::node::primary_expression::type::identifier, &iden));
-	return true;
+	return {.t = result::type::reduce_success};
 CHORD_END
 
 #ifndef INFUNC

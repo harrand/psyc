@@ -27,8 +27,24 @@ namespace parse
 				reduction reduc = find_reduction(state);
 				if(!reduc.is_null())
 				{
-					reduc.reduce_fn(this->make_reducer(i));
-					return true;
+					result res = reduc.reduce_fn(this->make_reducer(i));
+					switch(res.t)
+					{
+						case result::type::reduce_success:
+							return true;
+						break;
+						case result::type::shift:
+							return shift();
+						break;
+						case result::type::error:
+							diag::error(error_code::parse, "{}", res.errmsg);
+							return false;
+						break;
+					}
+				}
+				else
+				{
+					diag::error(error_code::parse, "ruh roh");
 				}
 			}
 		}

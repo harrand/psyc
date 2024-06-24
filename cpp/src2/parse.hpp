@@ -13,7 +13,17 @@ namespace parse
 		std::vector<syntax::node_ptr>& subtrees;
 		std::size_t idx = 0;
 	};
-	using reduce_function_t = bool(*)(reducer);
+	struct result
+	{
+		enum class type
+		{
+			reduce_success,
+			shift,
+			error
+		} t;
+		std::string errmsg = "";
+	};
+	using reduce_function_t = result(*)(reducer);
 
 	struct subtree_index
 	{

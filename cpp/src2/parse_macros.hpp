@@ -5,7 +5,7 @@
 
 #define TOKEN(x) subtree_index{.idx =syntax::node::unparsed_token{lex::token{lex::type::x}}.hash()}
 #define NODE(x) subtree_index{.idx = syntax::node::x{}.hash()}
-#define STATE(...) []()->std::span<const subtree_index>{return std::array{__VA_ARGS__};}(), [](reducer reduce)->bool{std::size_t index = 0; constexpr std::size_t count = VARARGS_COUNT(__VA_ARGS__);diag::assert_that(reduce.subtrees.size() >= count, error_code::ice, "current parser state ({} subtrees) is too small for this chord, which demands at least {} subtrees", reduce.subtrees.size(), count);
+#define STATE(...) []()->std::span<const subtree_index>{return std::array{__VA_ARGS__};}(), [](reducer reduce)->result{std::size_t index = 0; constexpr std::size_t count = VARARGS_COUNT(__VA_ARGS__);diag::assert_that(reduce.subtrees.size() >= count, error_code::ice, "current parser state ({} subtrees) is too small for this chord, which demands at least {} subtrees", reduce.subtrees.size(), count);
 
 #define CHORD_BEGIN add_new_reduction(
 #define CHORD_END });
