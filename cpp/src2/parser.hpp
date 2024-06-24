@@ -24,6 +24,7 @@ namespace parse
 		lex::const_token_view unscanned_tokens;
 		std::optional<lex::token> lookahead = std::nullopt;
 		std::vector<syntax::node_ptr> subtrees = {};
+		syntax::node_ptr output = nullptr;
 	};
 
 	syntax::node_ptr tokens(lex::const_token_view toks);

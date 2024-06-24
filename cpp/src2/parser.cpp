@@ -8,7 +8,7 @@ namespace parse
 	tokens(tokens),
 	unscanned_tokens(tokens)
 	{
-
+		this->output = std::make_unique<syntax::node::root>(tokens.front().meta_srcloc.file);
 	}
 
 	void parser::parse()
@@ -41,6 +41,14 @@ namespace parse
 							bool ret = shift();
 							this->lookahead = std::nullopt;
 							return ret;
+						}
+						break;
+						case result::type::send_to_output:
+						{
+							auto ptr = std::move(this->subtrees[i]);
+							this->subtrees.erase(this->subtrees.begin() + i);
+							this->output->children.push_back(std::move(ptr));
+							return true;
 						}
 						break;
 						case result::type::error:
@@ -119,8 +127,8 @@ namespace parse
 
 	syntax::node_ptr parser::get_output()
 	{
-		diag::assert_that(this->subtrees.size() == 1, error_code::parse, "did not parse to a single AST. {} subtrees remaining", this->subtrees.size());
-		return std::move(this->subtrees.front());
+		diag::assert_that(this->subtrees.empty(), error_code::nyi, "{} remaining subtrees that were never sent to the output AST", this->subtrees.size());
+		return std::move(this->output);
 	}
 
 	syntax::node_ptr tokens(lex::const_token_view toks)

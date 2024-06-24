@@ -40,6 +40,25 @@ namespace syntax
 		struct expression;
 		using boxed_expression = util::box<expression>;
 
+		struct root : public inode
+		{
+			root(std::filesystem::path source_file = {}): source_file(source_file){}
+
+			root(const root& cpy): source_file(cpy.source_file){}
+
+			std::filesystem::path source_file;
+
+			virtual std::string to_string() const final
+			{
+				return this->source_file.string();
+			}
+			virtual const char* name() const final
+			{
+				return "root node";
+			}
+			COPY_UNIQUE_CLONEABLE(inode)
+		};
+
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
 		struct unparsed_token : public inode
 		{
@@ -134,6 +153,7 @@ namespace syntax
 				bool_literal,
 				null_literal,
 				parenthesised_expression,
+				_unknown,
 				_count
 			};
 			constexpr static std::array<const char*, int(type::_count)> type_names
@@ -148,7 +168,7 @@ namespace syntax
 				"(expr)"
 			};
 
-			primary_expression(type t, node_ptr expr): t(t), expr(std::move(expr)){}
+			primary_expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
 			primary_expression(const primary_expression& cpy):
 			t(cpy.t), expr(cpy.expr->unique_clone()){}
 

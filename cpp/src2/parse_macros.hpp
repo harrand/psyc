@@ -17,5 +17,6 @@
 #define LAST_IS_LOOKAHEAD_TOKEN() reduce.subtrees.size() == (count - 1)
 // reduce everything emcompassed by the state to a single new subtree.
 #define REDUCE_TO(x) reduce.subtrees.erase(reduce.subtrees.begin() + 0, reduce.subtrees.begin() + 0 + count); reduce.subtrees.insert(reduce.subtrees.begin() + 0, x)
+#define REDUCE_TO_INDEXED(x, i) reduce.subtrees.erase(reduce.subtrees.begin() + i, reduce.subtrees.begin() + count); reduce.subtrees.insert(reduce.subtrees.begin() + i, x)
 
 #endif // PSYC_PARSE_MACROS_HPP

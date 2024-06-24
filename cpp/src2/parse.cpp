@@ -67,5 +67,6 @@ namespace parse
 	{
 		#include "parse_token.cpp"
 		#include "parse_identifier.cpp"
+		#include "parse_primary_expression.cpp"
 	}
 }
