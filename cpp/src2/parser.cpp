@@ -44,7 +44,16 @@ namespace parse
 				}
 				else
 				{
-					diag::error(error_code::parse, "ruh roh");
+					std::string subtree_str;
+					for(std::size_t j = i; j < this->subtrees.size(); j++)
+					{
+						subtree_str += this->subtrees[j]->to_string();
+						if(j < (this->subtrees.size() - 1))
+						{
+							subtree_str += "\n";
+						}
+					}
+					diag::error(error_code::parse, "invalid syntax. state: \n{{\n{}\n}}", subtree_str);
 				}
 			}
 		}
