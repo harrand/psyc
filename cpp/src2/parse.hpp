@@ -12,6 +12,8 @@ namespace parse
 	{
 		std::vector<syntax::node_ptr>& subtrees;
 		std::size_t idx = 0;
+
+		std::span<const syntax::node_ptr> view() const;
 	};
 	struct result
 	{

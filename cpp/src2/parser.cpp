@@ -59,6 +59,7 @@ namespace parse
 				}
 				else
 				{
+					/*
 					if(!this->lookahead.has_value() && this->unscanned_tokens.empty())
 					{
 						// parsing is complete. no more reductions go to and no more things to scan.
@@ -74,6 +75,8 @@ namespace parse
 						}
 					}
 					diag::error(error_code::parse, "invalid syntax. state: \n{{\n{}\n}}", subtree_str);
+					*/
+					// continue
 				}
 			}
 		}

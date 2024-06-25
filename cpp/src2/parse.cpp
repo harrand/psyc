@@ -9,6 +9,11 @@
 
 namespace parse
 {
+	std::span<const syntax::node_ptr> reducer::view() const
+	{
+		return std::span<const syntax::node_ptr>{this->subtrees}.subspan(this->idx);
+	}
+
 	struct parse_entry
 	{
 		reduce_function_t reduce_fn = nullptr;
