@@ -28,7 +28,6 @@
 // get the token at the current index, and increment the index. if the thing at the current index is not a token as per your state definition, then the behaviour is undefined. as you match against a specific token type already this may or may not be very useful.
 #define GETTOKEN() (diag::assert_that(reduce.idx + index < count, error_code::ice, "internal parse error. subtrees out of bounds (limit {})", count), static_cast<const syntax::node::unparsed_token*>(reduce.subtrees[reduce.idx + index++].get())->tok)
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
-#define LAST_IS_LOOKAHEAD_TOKEN() (reduce.subtrees.size() - reduce.idx) == (count - 1)
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
 #define REDUCE_TO(x) reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx, reduce.subtrees.begin() + reduce.idx + count); reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, x)
