@@ -176,7 +176,7 @@ namespace syntax
 			type t;
 			node_ptr expr;
 
-			bool is_null() const{return this->expr != nullptr || this->t == type::_unknown;}
+			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
@@ -231,7 +231,7 @@ namespace syntax
 
 			virtual std::string to_string() const final
 			{
-				return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(":= {}", expr.to_string()));
+				return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
 			}
 
 			virtual const char* name() const final
