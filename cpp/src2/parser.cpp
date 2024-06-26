@@ -39,7 +39,7 @@ namespace parse
 						case result::type::send_to_output:
 						{
 							auto ptr = std::move(this->subtrees[i]);
-							this->subtrees.erase(this->subtrees.begin() + i);
+							this->subtrees.erase(this->subtrees.begin() + i, this->subtrees.begin() + i + state.size());
 							this->output->children.push_back(std::move(ptr));
 							return true;
 						}

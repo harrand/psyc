@@ -189,7 +189,7 @@ namespace syntax
 
 		struct expression_list : public inode
 		{
-			expression_list(std::vector<expression> exprs): exprs(exprs){}
+			expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
 			expression_list(const expression_list& rhs): exprs(rhs.exprs){}
 
 			std::vector<expression> exprs;

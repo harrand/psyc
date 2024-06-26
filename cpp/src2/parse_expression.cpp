@@ -8,8 +8,18 @@ void foo(){
 
 // if nothing is preceding an expression, send it to the output.
 CHORD_BEGIN
-	STATE(NODE(expression))
+	STATE(NODE(expression), TOKEN(semicol))
 	return {.t = reduce.no_prefix() ? result::type::send_to_output : result::type::silent_reject};
+CHORD_END
+
+// expr,
+// becomes an expression list
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(comma))
+	std::vector<syntax::node::expression> exprs;
+	exprs.push_back(GETNODE(expression));
+	REDUCE_TO(std::make_unique<syntax::node::expression_list>(std::move(exprs)));
+	return {.t = result::type::reduce_success};
 CHORD_END
 
 #ifndef INFUNC
