@@ -95,7 +95,16 @@ namespace parse
 
 	syntax::node_ptr parser::get_output()
 	{
-		diag::assert_that(this->subtrees.empty(), error_code::nyi, "{} remaining subtrees that were never sent to the output AST", this->subtrees.size());
+		if(this->subtrees.size())
+		{
+			diag::error_nonblocking(error_code::parse, "{} remaining subtrees that were never sent to the output AST. remaining subtree ASTs:\n{{\n", this->subtrees.size());
+			for(const auto& tree : this->subtrees)
+			{
+				tree->pretty_print();
+			}
+			std::cout << "\n}" << std::endl;
+			diag::detail::on_error();
+		}
 		return std::move(this->output);
 	}
 

@@ -31,6 +31,8 @@ namespace syntax
 			return false;
 		}
 
+		void pretty_print() const;
+
 		std::vector<node_ptr> children = {};
 		srcloc loc = srcloc::undefined();
 	};

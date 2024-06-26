@@ -6,6 +6,16 @@
 
 namespace diag
 {
+	namespace detail
+	{
+		inline void on_error()
+		{
+			#ifndef NDEBUG
+				asm volatile("int3");
+			#endif
+			std::exit(-1);
+		}
+	}
 	template<typename... Ts>
 	void generic_msg(std::string_view preamble, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
@@ -36,10 +46,7 @@ namespace diag
 	{
 		std::string error_preamble = std::format("\033[1;31m{} error", error_names[static_cast<int>(err)]);
 		generic_msg(error_preamble, fmt, std::forward<Ts>(ts)...);
-		#ifndef NDEBUG
-			asm volatile("int3");
-		#endif
-		std::exit(-1);
+		detail::on_error();
 	}
 
 	template<typename... Ts>
