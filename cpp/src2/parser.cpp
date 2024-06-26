@@ -20,39 +20,43 @@ namespace parse
 	{
 		for(std::size_t i = 0; i < this->subtrees.size(); i++)
 		{
-			auto state = this->get_parsed_state(i);
-			if(!state.empty())
+			auto base_state = this->get_parsed_state(i);
+			for(std::size_t j = 0; j < base_state.size(); j++)
 			{
-				reduction reduc = find_reduction(state);
-				if(!reduc.is_null())
+				auto state = subtree_state_view{base_state}.subspan(0, base_state.size() - j);
+				if(!state.empty())
 				{
-					result res = reduc.reduce_fn(this->make_reducer(i));
-					switch(res.t)
+					reduction reduc = find_reduction(state);
+					if(!reduc.is_null())
 					{
-						case result::type::reduce_success:
-							return true;
-						break;
-						case result::type::shift:
-							return shift();
-						break;
-						case result::type::send_to_output:
+						result res = reduc.reduce_fn(this->make_reducer(i));
+						switch(res.t)
 						{
-							auto ptr = std::move(this->subtrees[i]);
-							this->subtrees.erase(this->subtrees.begin() + i, this->subtrees.begin() + i + state.size());
-							this->output->children.push_back(std::move(ptr));
-							return true;
+							case result::type::reduce_success:
+								return true;
+							break;
+							case result::type::shift:
+								return shift();
+							break;
+							case result::type::send_to_output:
+							{
+								auto ptr = std::move(this->subtrees[i]);
+								this->subtrees.erase(this->subtrees.begin() + i, this->subtrees.begin() + i + state.size());
+								this->output->children.push_back(std::move(ptr));
+								return true;
+							}
+							break;
+							case result::type::error:
+								diag::error(error_code::parse, "{}", res.errmsg);
+								return false;
+							break;
+							case result::type::silent_reject: continue; break;
 						}
-						break;
-						case result::type::error:
-							diag::error(error_code::parse, "{}", res.errmsg);
-							return false;
-						break;
-						case result::type::silent_reject: continue; break;
 					}
-				}
-				else
-				{
-					// continue
+					else
+					{
+						// continue
+					}
 				}
 			}
 		}
