@@ -18,7 +18,7 @@ CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(comma))
 	std::vector<syntax::node::expression> exprs;
 	exprs.push_back(GETNODE(expression));
-	REDUCE_TO(std::make_unique<syntax::node::expression_list>(std::move(exprs)));
+	REDUCE_TO(expression_list, std::move(exprs));
 	return {.t = result::type::reduce_success};
 CHORD_END
 

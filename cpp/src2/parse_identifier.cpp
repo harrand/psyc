@@ -11,7 +11,7 @@ void foo(){
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(semicol))
 	syntax::node::identifier iden = GETNODE(identifier);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, iden.unique_clone()), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -20,7 +20,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(comma))
 	syntax::node::identifier iden = GETNODE(identifier);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, iden.unique_clone()), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -31,7 +31,7 @@ CHORD_BEGIN
 	syntax::node::identifier name = GETNODE(identifier);
 	SETINDEX(2);
 	syntax::node::identifier type_name = GETNODE(identifier);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::variable_decl>(name, type_name, syntax::node::expression{}), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, variable_decl, name, type_name, syntax::node::expression{});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -44,7 +44,7 @@ CHORD_BEGIN
 	syntax::node::identifier type_name = GETNODE(identifier);
 	SETINDEX(5);
 	syntax::node::expression initialiser = GETNODE(expression);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::variable_decl>(name, type_name, initialiser), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, variable_decl, name, type_name, initialiser);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -55,7 +55,7 @@ CHORD_BEGIN
 	syntax::node::identifier name = GETNODE(identifier);
 	SETINDEX(3);
 	syntax::node::expression initialiser = GETNODE(expression);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::variable_decl>(name, syntax::node::identifier{syntax::node::inferred_typename}, syntax::node::expression{}), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, variable_decl, name, syntax::node::identifier{syntax::node::inferred_typename}, syntax::node::expression{});
 	return {.t = result::type::reduce_success};
 CHORD_END
 

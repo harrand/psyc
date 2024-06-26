@@ -11,7 +11,7 @@ void foo(){
 CHORD_BEGIN
 	STATE(NODE(integer_literal), TOKEN(semicol))
 	syntax::node::integer_literal intlit = GETNODE(integer_literal);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::expression>(syntax::node::expression::type::integer_literal, intlit.unique_clone()), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::integer_literal, intlit.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -20,7 +20,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(integer_literal), TOKEN(comma))
 	syntax::node::integer_literal intlit = GETNODE(integer_literal);
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::expression>(syntax::node::expression::type::integer_literal, intlit.unique_clone()), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::integer_literal, intlit.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
 

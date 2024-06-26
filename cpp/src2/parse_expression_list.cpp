@@ -12,7 +12,7 @@ CHORD_BEGIN
 	STATE(NODE(expression_list), NODE(expression), TOKEN(comma))
 	syntax::node::expression_list list = GETNODE(expression_list);
 	list.exprs.push_back(GETNODE(expression));
-	REDUCE_TO(std::make_unique<syntax::node::expression_list>(list));
+	REDUCE_TO(expression_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -22,7 +22,7 @@ CHORD_BEGIN
 	STATE(NODE(expression_list), NODE(expression), TOKEN(semicol))
 	syntax::node::expression_list list = GETNODE(expression_list);
 	list.exprs.push_back(GETNODE(expression));
-	REDUCE_TO_ADVANCED(std::make_unique<syntax::node::expression_list>(list), 0, 1);
+	REDUCE_TO_ADVANCED(0, 1, expression_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
