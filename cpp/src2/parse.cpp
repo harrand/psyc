@@ -76,6 +76,7 @@ namespace parse
 	void populate_parse_table()
 	{
 		#include "parse_token.cpp"
+		#include "parse_integer_literal.cpp"
 		#include "parse_identifier.cpp"
 		#include "parse_expression.cpp"
 		#include "parse_expression_list.cpp"

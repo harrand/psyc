@@ -37,9 +37,6 @@ namespace syntax
 
 	namespace node
 	{
-		struct expression;
-		using boxed_expression = util::box<expression>;
-
 		struct root : public inode
 		{
 			root(std::filesystem::path source_file = {}): source_file(source_file){}
@@ -124,6 +121,8 @@ namespace syntax
 			}
 		};
 
+		constexpr const char* inferred_typename = "<AUTOTYPE>";
+
 		struct identifier : public inode
 		{
 			identifier(std::string iden = ""): iden(iden){}
@@ -170,10 +169,12 @@ namespace syntax
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
 			expression(const expression& cpy):
-			t(cpy.t), expr(cpy.expr->unique_clone()){}
+			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()){}
 
 			type t;
 			node_ptr expr;
+
+			bool is_null() const{return this->expr != nullptr || this->t == type::_unknown;}
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
@@ -212,6 +213,28 @@ namespace syntax
 			virtual const char* name() const final
 			{
 				return "expression list";
+			}
+		};
+
+		struct variable_decl : public inode
+		{
+			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}): var_name(var_name), type_name(type_name), expr(expr){}
+			variable_decl(const variable_decl& cpy): var_name(cpy.var_name), type_name(cpy.type_name), expr(cpy.expr){}
+
+			identifier var_name;
+			identifier type_name;
+			expression expr;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+
+			virtual std::string to_string() const final
+			{
+				return std::format("variable_decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(":= {}", expr.to_string()));
+			}
+
+			virtual const char* name() const final
+			{
+				return "variable declaration";
 			}
 		};
 	}
