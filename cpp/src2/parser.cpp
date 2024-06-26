@@ -48,6 +48,7 @@ namespace parse
 							diag::error(error_code::parse, "{}", res.errmsg);
 							return false;
 						break;
+						case result::type::silent_reject: continue; break;
 					}
 				}
 				else

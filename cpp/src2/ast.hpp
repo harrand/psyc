@@ -141,7 +141,7 @@ namespace syntax
 			}
 		};
 
-		struct primary_expression : public inode
+		struct expression : public inode
 		{
 			enum class type
 			{
@@ -168,8 +168,8 @@ namespace syntax
 				"(expr)"
 			};
 
-			primary_expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
-			primary_expression(const primary_expression& cpy):
+			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
+			expression(const expression& cpy):
 			t(cpy.t), expr(cpy.expr->unique_clone()){}
 
 			type t;
@@ -178,12 +178,40 @@ namespace syntax
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				return std::format("prim-expr_{}({})", primary_expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
+				return std::format("prim-expr_{}({})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
 			}
 
 			virtual const char* name() const final
 			{
 				return "primary expression";
+			}
+		};
+
+		struct expression_list : public inode
+		{
+			expression_list(std::vector<expression> exprs): exprs(exprs){}
+			expression_list(const expression_list& rhs): exprs(rhs.exprs){}
+
+			std::vector<expression> exprs;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				std::string contents = "";
+				for(std::size_t i = 0; i < this->exprs.size(); i++)
+				{
+					contents += this->exprs[i].to_string();
+					if(i < (this->exprs.size() - 1))
+					{
+						contents += ", ";
+					}
+				}
+				return std::format("expr-list({})", contents);
+			}
+
+			virtual const char* name() const final
+			{
+				return "expression list";
 			}
 		};
 	}

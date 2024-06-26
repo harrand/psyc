@@ -14,6 +14,11 @@ namespace parse
 		return std::span<const syntax::node_ptr>{this->subtrees}.subspan(this->idx);
 	}
 
+	bool reducer::no_prefix() const
+	{
+		return this->idx == 0;
+	}
+
 	struct parse_entry
 	{
 		reduce_function_t reduce_fn = nullptr;
@@ -72,6 +77,6 @@ namespace parse
 	{
 		#include "parse_token.cpp"
 		#include "parse_identifier.cpp"
-		#include "parse_primary_expression.cpp"
+		#include "parse_expression.cpp"
 	}
 }

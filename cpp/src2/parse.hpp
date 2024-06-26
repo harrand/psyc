@@ -14,6 +14,7 @@ namespace parse
 		std::size_t idx = 0;
 
 		std::span<const syntax::node_ptr> view() const;
+		bool no_prefix() const;
 	};
 	struct result
 	{
@@ -22,6 +23,7 @@ namespace parse
 			reduce_success,
 			shift,
 			send_to_output,
+			silent_reject,
 			error
 		} t;
 		std::string errmsg = "";

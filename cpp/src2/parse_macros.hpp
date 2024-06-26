@@ -30,6 +30,7 @@
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
-#define REDUCE_TO(x) reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx, reduce.subtrees.begin() + reduce.idx + count); reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, x)
+#define REDUCE_TO_ADVANCED(x, prefix, suffix) reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, x)
+#define REDUCE_TO(x) REDUCE_TO_ADVANCED(x, 0, 0)
 
 #endif // PSYC_PARSE_MACROS_HPP
