@@ -18,8 +18,7 @@ namespace parse
 
 	bool parser::step()
 	{
-		constexpr std::size_t max_offset = 8;
-		for(std::size_t i = 0; std::cmp_less(i, std::min(max_offset, this->subtrees.size())); i++)
+		for(std::size_t i = 0; i < this->subtrees.size(); i++)
 		{
 			auto state = this->get_parsed_state(i);
 			if(!state.empty())

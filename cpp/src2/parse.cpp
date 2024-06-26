@@ -80,5 +80,7 @@ namespace parse
 		#include "parse_identifier.cpp"
 		#include "parse_expression.cpp"
 		#include "parse_expression_list.cpp"
+		#include "parse_variable_decl.cpp"
+		#include "parse_variable_decl_list.cpp"
 	}
 }

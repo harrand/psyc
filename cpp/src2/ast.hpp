@@ -231,12 +231,62 @@ namespace syntax
 
 			virtual std::string to_string() const final
 			{
-				return std::format("variable_decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(":= {}", expr.to_string()));
+				return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(":= {}", expr.to_string()));
 			}
 
 			virtual const char* name() const final
 			{
 				return "variable declaration";
+			}
+		};
+
+		struct variable_decl_list : public inode
+		{
+			variable_decl_list(std::vector<variable_decl> decls = {}): decls(decls){}
+			variable_decl_list(const variable_decl_list& rhs): decls(rhs.decls){}
+
+			std::vector<variable_decl> decls;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				std::string contents = "";
+				for(std::size_t i = 0; i < this->decls.size(); i++)
+				{
+					contents += this->decls[i].to_string();
+					if(i < (this->decls.size() - 1))
+					{
+						contents += ", ";
+					}
+				}
+				return std::format("variable-decl-list({})", contents);
+			}
+
+			virtual const char* name() const final
+			{
+				return "variable list";
+			}
+		};
+		
+		struct function_decl : public inode
+		{
+			function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
+
+			function_decl(const function_decl& cpy): func_name(cpy.func_name), params(cpy.params), return_type_name(cpy.return_type_name){}
+
+			identifier func_name;
+			variable_decl_list params;
+			identifier return_type_name;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("function-decl({} :: {} -> {})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "variable list";
 			}
 		};
 	}

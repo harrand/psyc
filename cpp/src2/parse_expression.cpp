@@ -15,8 +15,10 @@ CHORD_END
 // expr,
 // becomes an expression list
 CHORD_BEGIN
-	STATE(NODE(expression), TOKEN(comma))
+	STATE(NODE(expression), TOKEN(comma), NODE(expression))
 	std::vector<syntax::node::expression> exprs;
+	exprs.push_back(GETNODE(expression));
+	SETINDEX(2);
 	exprs.push_back(GETNODE(expression));
 	REDUCE_TO(expression_list, std::move(exprs));
 	return {.t = result::type::reduce_success};

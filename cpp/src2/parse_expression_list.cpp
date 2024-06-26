@@ -9,20 +9,11 @@ void foo(){
 // expr-list expr,
 // adds the expr to the list.
 CHORD_BEGIN
-	STATE(NODE(expression_list), NODE(expression), TOKEN(comma))
+	STATE(NODE(expression_list), TOKEN(comma), NODE(expression))
 	syntax::node::expression_list list = GETNODE(expression_list);
+	SETINDEX(2);
 	list.exprs.push_back(GETNODE(expression));
 	REDUCE_TO(expression_list, list);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// expr-list expr;
-// adds the expr to the list but does not consume the semicol
-CHORD_BEGIN
-	STATE(NODE(expression_list), NODE(expression), TOKEN(semicol))
-	syntax::node::expression_list list = GETNODE(expression_list);
-	list.exprs.push_back(GETNODE(expression));
-	REDUCE_TO_ADVANCED(0, 1, expression_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
