@@ -6,7 +6,7 @@ namespace parse{
 void foo(){
 #endif
 
-// decl, decl
+// decl,
 // becomes a decl list
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(comma), NODE(variable_decl))
@@ -33,6 +33,25 @@ CHORD_BEGIN
 	SETINDEX(3);
 	auto expr_init = GETNODE(expression);
 	REDUCE_TO(variable_decl, var.var_name, var.type_name, expr_init);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// decl := expr
+// if decl didnt have an initialiser before, add that expr as the initialiser.
+// if it did, emit a compile error.
+// i.e exactly the same as above, but covering the case where a leading semicolon exists (this sometimes happens if the expr doesnt consume the semicol)
+CHORD_BEGIN
+	STATE(NODE(variable_decl), TOKEN(col), TOKEN(eq), NODE(expression), TOKEN(semicol))
+
+	syntax::node::variable_decl var = GETNODE(variable_decl);
+	// two initialisers next to each other?
+	if(!var.expr.is_null())
+	{
+		return {.t = result::type::error, .errmsg = std::format("two adjacent initialisers found for variable \"{}\"", var.var_name.iden)};
+	}
+	SETINDEX(3);
+	auto expr_init = GETNODE(expression);
+	REDUCE_TO_ADVANCED(0, 1, variable_decl, var.var_name, var.type_name, expr_init);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
