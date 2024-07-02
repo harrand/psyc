@@ -123,6 +123,22 @@ namespace syntax
 			}
 		};
 
+		struct null_literal : public inode
+		{
+			null_literal(){}
+			null_literal(const null_literal& cpy): null_literal{}{}
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return "null-literal()";
+			}
+			virtual const char* name() const final
+			{
+				return "null literal";
+			}
+		};
+
 		constexpr const char* inferred_typename = "<AUTOTYPE>";
 
 		struct identifier : public inode
@@ -172,6 +188,12 @@ namespace syntax
 			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
 			expression(const expression& cpy):
 			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()){}
+			expression& operator=(expression rhs)
+			{
+				std::swap(this->t, rhs.t);
+				std::swap(this->expr, rhs.expr);
+				return *this;
+			}
 
 			type t;
 			node_ptr expr;

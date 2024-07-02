@@ -47,6 +47,9 @@ namespace syntax
 			case lex::type::decimal_literal:
 				ret = std::make_unique<node::decimal_literal>(std::stod(t.lexeme));
 			break;
+			case lex::type::null_literal:
+				ret = std::make_unique<node::null_literal>();
+			break;
 			default:
 				ret = std::make_unique<node::unparsed_token>(t);
 			break;
