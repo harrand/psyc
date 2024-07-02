@@ -66,6 +66,43 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: () -> iden
+// function declaration with no args
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen),TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	syntax::node::identifier name = GETNODE(identifier);
+	SETINDEX(5);
+	syntax::node::identifier return_type_name = GETNODE(identifier);
+
+	REDUCE_TO(function_decl, name, syntax::node::variable_decl_list{}, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden(expr-list)
+// function call
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
+
+	syntax::node::identifier name = GETNODE(identifier);
+	SETINDEX(2);
+	syntax::node::expression_list params = GETNODE(expression_list);
+
+	REDUCE_TO(function_call, name, params);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden()
+// function call with no args
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oparen), TOKEN(cparen))
+
+	syntax::node::identifier name = GETNODE(identifier);
+
+	REDUCE_TO(function_call, name, syntax::node::expression_list{});
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

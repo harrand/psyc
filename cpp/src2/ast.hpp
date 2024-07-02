@@ -272,21 +272,44 @@ namespace syntax
 		{
 			function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
 
-			function_decl(const function_decl& cpy): func_name(cpy.func_name), params(cpy.params), return_type_name(cpy.return_type_name){}
+			function_decl(const function_decl& cpy): func_name(cpy.func_name), params(cpy.params), return_type_name(cpy.return_type_name), is_extern(cpy.is_extern){}
 
 			identifier func_name;
 			variable_decl_list params;
+			identifier return_type_name;
+			bool is_extern = false;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("function-decl({} :: {} -> {}{})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			}
+
+			virtual const char* name() const final
+			{
+				return "function declaration";
+			}
+		};
+
+		struct function_call : public inode
+		{
+			function_call(identifier func_name = {}, expression_list params = {}): func_name(func_name), params(params){}
+
+			function_call(const function_call& cpy): func_name(cpy.func_name), params(cpy.params){}
+
+			identifier func_name;
+			expression_list params;
 			identifier return_type_name;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				return std::format("function-decl({} :: {} -> {})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string());
+				return std::format("function-call({}({}))", this->func_name.to_string(), this->params.to_string());
 			}
 
 			virtual const char* name() const final
 			{
-				return "variable list";
+				return "function call";
 			}
 		};
 	}
