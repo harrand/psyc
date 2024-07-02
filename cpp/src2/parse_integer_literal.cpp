@@ -24,6 +24,15 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// intlit)
+// turn into expr but keep the cparen
+CHORD_BEGIN
+	STATE(NODE(integer_literal), TOKEN(cparen))
+	syntax::node::integer_literal intlit = GETNODE(integer_literal);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::integer_literal, intlit.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
