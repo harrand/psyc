@@ -334,6 +334,39 @@ namespace syntax
 				return "function call";
 			}
 		};
+
+		struct meta_region : public inode
+		{
+			enum class type
+			{
+				name_space,
+				static_if,
+				_unknown,
+				_count
+			};
+			constexpr static std::array<const char*, int(type::_count)> type_names
+			{
+				"namespace",
+				"static_if",
+			};
+
+			meta_region(identifier metaname, type t): metaname(metaname), t(t){}
+			meta_region(const meta_region& cpy): metaname(cpy.metaname), t(cpy.t){}
+
+			identifier metaname;
+			type t;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("meta-region({} : {})", this->metaname.to_string(), type_names[static_cast<int>(this->t)]);
+			}
+
+			virtual const char* name() const final
+			{
+				return "meta region";
+			}
+		};
 	}
 
 	node_ptr make_node(const lex::token& t);
