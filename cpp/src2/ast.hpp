@@ -170,6 +170,7 @@ namespace syntax
 				bool_literal,
 				null_literal,
 				parenthesised_expression,
+				function_call,
 				_unknown,
 				_count
 			};
@@ -182,7 +183,8 @@ namespace syntax
 				"charlit",
 				"boollit",
 				"nulllit",
-				"(expr)"
+				"(expr)",
+				"call"
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
@@ -203,12 +205,12 @@ namespace syntax
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				return std::format("prim-expr_{}({})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
+				return std::format("expr-{}({})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
 			}
 
 			virtual const char* name() const final
 			{
-				return "primary expression";
+				return "expression";
 			}
 		};
 

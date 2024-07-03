@@ -37,7 +37,7 @@ namespace parse
 						break;
 						case result::type::send_to_output:
 						{
-							auto ptr = std::move(this->subtrees[i]);
+							auto ptr = std::move(this->subtrees[i + res.offset]);
 							this->subtrees.erase(this->subtrees.begin() + i, this->subtrees.begin() + i + state.size());
 							this->output->children.push_back(std::move(ptr));
 							return true;

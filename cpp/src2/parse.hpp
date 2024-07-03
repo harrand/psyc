@@ -27,6 +27,8 @@ namespace parse
 			error
 		} t;
 		std::string errmsg = "";
+		// nth element of the state which should be sent in the case of a send-to-output result (i.e 0 means send the first part of the state, 1 means the 2nd). send-to-output only ever sends 1 subtree to the output for a given chord.
+		std::size_t offset = 0;
 	};
 	using reduce_function_t = result(*)(reducer);
 

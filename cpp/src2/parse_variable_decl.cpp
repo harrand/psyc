@@ -36,6 +36,11 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+CHORD_BEGIN
+	STATE(NODE(variable_decl), TOKEN(semicol))
+	return {.t = result::type::send_to_output};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
