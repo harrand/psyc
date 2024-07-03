@@ -103,6 +103,17 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: alias := expr
+// type alias
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_alias), TOKEN(col), TOKEN(eq), NODE(expression))
+	syntax::node::identifier name = GETNODE(identifier);
+	SETINDEX(5);
+	syntax::node::expression expr = GETNODE(expression);
+	REDUCE_TO(alias, name, expr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

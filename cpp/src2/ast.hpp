@@ -367,6 +367,26 @@ namespace syntax
 				return "meta region";
 			}
 		};
+
+		struct alias : public inode
+		{
+			alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
+			alias(const alias& cpy): alias_name(cpy.alias_name), type_value_expr(cpy.type_value_expr){}
+
+			identifier alias_name;
+			expression type_value_expr;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("alias({} ::= {})", this->alias_name.iden, type_value_expr.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "alias specifier";
+			}
+		};
 	}
 
 	node_ptr make_node(const lex::token& t);
