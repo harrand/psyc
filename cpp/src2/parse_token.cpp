@@ -41,6 +41,8 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// { decl
+// starts an unfinished block
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(variable_decl))
 	SETINDEX(1);
@@ -50,6 +52,36 @@ CHORD_BEGIN
 		return {.t = result::type::silent_reject};
 	}
 	REDUCE_TO(unfinished_block, decl.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// { block
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(block))
+	SETINDEX(1);
+	auto blk = GETNODE(block);
+	REDUCE_TO(unfinished_block, blk.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// { meta-region
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(meta_region))
+	SETINDEX(1);
+	auto reg = GETNODE(meta_region);
+	REDUCE_TO(unfinished_block, reg.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// { alias
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(alias))
+	SETINDEX(1);
+	auto al = GETNODE(alias);
+	REDUCE_TO(unfinished_block, al.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
 

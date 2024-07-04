@@ -406,7 +406,7 @@ namespace syntax
 				"static_if",
 			};
 
-			meta_region(identifier metaname, type t): metaname(metaname), t(t){}
+			meta_region(identifier metaname = {}, type t = type::_unknown): metaname(metaname), t(t){}
 
 			identifier metaname;
 			type t;

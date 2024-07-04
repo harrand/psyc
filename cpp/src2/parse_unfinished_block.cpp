@@ -34,6 +34,33 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(block))
+	auto blk = GETNODE(unfinished_block);
+	auto blk2 = GETNODE(block);
+	blk.extend(blk2.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(meta_region))
+	auto blk = GETNODE(unfinished_block);
+	auto reg = GETNODE(meta_region);
+	blk.extend(reg.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(alias))
+	auto blk = GETNODE(unfinished_block);
+	auto al = GETNODE(alias);
+	blk.extend(al.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
 	STATE(NODE(unfinished_block), TOKEN(cbrace))
 	auto blk = GETNODE(unfinished_block);
 	auto tok = GETTOKEN();
