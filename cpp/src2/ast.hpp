@@ -91,6 +91,36 @@ namespace syntax
 			}
 		};
 
+		struct block : public inode
+		{
+			block(): start(srcloc::undefined()), finish(srcloc::undefined()){}
+
+			block(unfinished_block blk, srcloc finish):
+			start(blk.start),
+			finish(finish)
+			{
+				this->children = std::move(blk.children);
+			}
+
+			srcloc start;
+			srcloc finish;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("block from {} to {}", this->start.to_string(), this->finish.to_string());
+			}
+			virtual const char* name() const final
+			{
+				return "block";
+			}
+
+			void extend(node_ptr node)
+			{
+				this->children.push_back(std::move(node));
+			}
+		};
+
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
 		struct unparsed_token : public inode
 		{

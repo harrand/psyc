@@ -33,6 +33,14 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), TOKEN(cbrace))
+	auto blk = GETNODE(unfinished_block);
+	auto tok = GETTOKEN();
+	REDUCE_TO(block, blk, tok.meta_srcloc);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
