@@ -358,6 +358,7 @@ namespace syntax
 			variable_decl_list params;
 			identifier return_type_name;
 			bool is_extern = false;
+			bool capped = false;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final

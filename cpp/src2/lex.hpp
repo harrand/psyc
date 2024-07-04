@@ -51,6 +51,7 @@ namespace lex
 		char_literal,
 		bool_literal,
 		null_literal,
+		source_begin,
 		_undefined,
 		_count
 	};
@@ -99,6 +100,7 @@ namespace lex
 		trait{.name = "defer"},
 		trait{.name = "deref"},
 		trait{.name = "ref"},
+		trait{.name = ""},
 		trait{.name = ""},
 		trait{.name = ""},
 		trait{.name = ""},

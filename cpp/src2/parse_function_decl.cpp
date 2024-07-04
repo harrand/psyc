@@ -32,11 +32,12 @@ CHORD_BEGIN
 	STATE(NODE(function_decl), NODE(block))
 	syntax::node::function_decl fn = GETNODE(function_decl);
 	syntax::node::block blk = GETNODE(block);
-	if(fn.children.size())
+	if(fn.capped)
 	{
 		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for function \"{}\"", fn.func_name.iden)};
 	}
 	fn.children.push_back(blk.unique_clone());
+	fn.capped = true;
 	REDUCE_TO(function_decl, fn);
 	return {.t = result::type::reduce_success};
 CHORD_END

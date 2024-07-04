@@ -85,6 +85,18 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// source-begin function-decl
+CHORD_BEGIN
+	STATE(TOKEN(source_begin), NODE(function_decl))
+	SETINDEX(1);
+	auto fn = GETNODE(function_decl);
+	if(fn.capped || fn.is_extern)
+	{
+		return {.t = result::type::send_to_output, .offset = 1};
+	}
+	return {.t = result::type::silent_reject};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

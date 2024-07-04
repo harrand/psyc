@@ -65,6 +65,7 @@ namespace lex
 	output tokenise(std::filesystem::path psy_file)
 	{
 		tokens_list tokens = {};
+		tokens.push_back(token{.t = type::source_begin, .lexeme = "begin token", .meta_srcloc = {.file = psy_file, .line = 0, .column = 0}});
 		internal_state state;
 
 		std::ifstream fstr(psy_file);
