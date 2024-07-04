@@ -85,6 +85,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// { structdata
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(structdata))
+	SETINDEX(1);
+	auto structd = GETNODE(structdata);
+	REDUCE_TO(unfinished_block, structd.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // source-begin function-decl
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(function_decl))
