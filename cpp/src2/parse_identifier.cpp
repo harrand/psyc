@@ -26,6 +26,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden)
+// turn into expr but keep the cparen
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(cparen))
+
+	syntax::node::identifier iden = GETNODE(identifier);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN
@@ -80,13 +90,27 @@ CHORD_BEGIN
 CHORD_END
 
 // iden(expr-list)
-// function call
+// function call (multiple arguments)
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
 
 	syntax::node::identifier name = GETNODE(identifier);
 	SETINDEX(2);
 	syntax::node::expression_list params = GETNODE(expression_list);
+
+	REDUCE_TO(function_call, name, params);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden(expr)
+// function call (single argument)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oparen), NODE(expression), TOKEN(cparen))
+
+	syntax::node::identifier name = GETNODE(identifier);
+	SETINDEX(2);
+	std::vector<syntax::node::expression> params = {};
+	params.push_back(GETNODE(expression));
 
 	REDUCE_TO(function_call, name, params);
 	return {.t = result::type::reduce_success};
@@ -103,10 +127,10 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// iden :: alias := expr
+// iden :: alias := expr;
 // type alias
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_alias), TOKEN(col), TOKEN(eq), NODE(expression))
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_alias), TOKEN(col), TOKEN(eq), NODE(expression), TOKEN(semicol))
 	syntax::node::identifier name = GETNODE(identifier);
 	SETINDEX(5);
 	syntax::node::expression expr = GETNODE(expression);

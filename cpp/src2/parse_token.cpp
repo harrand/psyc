@@ -26,6 +26,33 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// { expr
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	if(!expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(unfinished_block, expr.unique_clone());
+
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(variable_decl))
+	SETINDEX(1);
+	auto decl = GETNODE(variable_decl);
+	if(!decl.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(unfinished_block, decl.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

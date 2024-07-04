@@ -6,12 +6,6 @@ namespace parse{
 void foo(){
 #endif
 
-// if nothing is preceding an expression, send it to the output.
-CHORD_BEGIN
-	STATE(NODE(expression), TOKEN(semicol))
-	return {.t = reduce.no_prefix() ? result::type::send_to_output : result::type::silent_reject};
-CHORD_END
-
 // expr,
 // becomes an expression list
 CHORD_BEGIN
@@ -21,6 +15,16 @@ CHORD_BEGIN
 	SETINDEX(2);
 	exprs.push_back(GETNODE(expression));
 	REDUCE_TO(expression_list, std::move(exprs));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expression;
+// reduces into an expression that is guaranteed to be capped.
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(semicol))
+	auto expr = GETNODE(expression);
+	expr.capped = true;
+	REDUCE_TO(expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

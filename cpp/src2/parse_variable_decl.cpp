@@ -36,9 +36,13 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// consume semicol
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(semicol))
-	return {.t = result::type::send_to_output};
+	auto decl = GETNODE(variable_decl);
+	decl.capped = true;
+	REDUCE_TO(variable_decl, decl);
+	return {.t = result::type::reduce_success};
 CHORD_END
 
 #ifndef INFUNC

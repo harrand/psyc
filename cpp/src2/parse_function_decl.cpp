@@ -6,10 +6,10 @@ namespace parse{
 void foo(){
 #endif
 
-// function-decl := extern
+// function-decl := extern;
 // mark a function as extern.
 CHORD_BEGIN
-	STATE(NODE(function_decl), TOKEN(col), TOKEN(eq), NODE(identifier))
+	STATE(NODE(function_decl), TOKEN(col), TOKEN(eq), NODE(identifier), TOKEN(semicol))
 	syntax::node::function_decl fn = GETNODE(function_decl);
 	SETINDEX(3);
 	syntax::node::identifier value = GETNODE(identifier);

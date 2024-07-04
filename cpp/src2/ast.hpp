@@ -4,6 +4,7 @@
 #include "util.hpp"
 #include "lex.hpp"
 #include "util.hpp"
+#include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -17,6 +18,13 @@ namespace syntax
 	{
 	public:
 		inode() = default;
+		inode(const inode& cpy): children(), loc(cpy.loc)
+		{
+			for(const auto& child_ptr : cpy.children)
+			{
+				this->children.push_back(child_ptr->unique_clone());
+			}
+		}
 		virtual ~inode() = default;
 		// imeplemented asap below.
 		virtual std::string to_string() const = 0;
@@ -43,8 +51,6 @@ namespace syntax
 		{
 			root(std::filesystem::path source_file = {}): source_file(source_file){}
 
-			root(const root& cpy): source_file(cpy.source_file){}
-
 			std::filesystem::path source_file;
 
 			virtual std::string to_string() const final
@@ -58,12 +64,38 @@ namespace syntax
 			COPY_UNIQUE_CLONEABLE(inode)
 		};
 
+		struct unfinished_block : public inode
+		{
+			unfinished_block(): start(srcloc::undefined()){}
+			unfinished_block(node_ptr node):
+			start(node->loc)
+			{
+				this->children.push_back(std::move(node));
+			}
+
+			srcloc start;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("unfinished block starting at {}", this->start.to_string());
+			}
+			virtual const char* name() const final
+			{
+				return "unfinished block";
+			}
+
+			void extend(node_ptr node)
+			{
+				this->children.push_back(std::move(node));
+			}
+		};
+
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
 		struct unparsed_token : public inode
 		{
 			unparsed_token(lex::token tok, bool is_lookahead = false): tok(tok), is_lookahead(is_lookahead){}
-			unparsed_token(const unparsed_token& cpy): tok(cpy.tok), is_lookahead(cpy.is_lookahead){}
-			//unparsed_token(const unparsed_token& cpy) = default;
+
 			lex::token tok;
 			bool is_lookahead;
 			virtual std::string to_string() const final
@@ -92,7 +124,6 @@ namespace syntax
 		struct integer_literal : public inode
 		{
 			integer_literal(std::int64_t val = 0): val(val){}
-			integer_literal(const integer_literal& cpy): val(cpy.val){}
 
 			std::int64_t val;
 			COPY_UNIQUE_CLONEABLE(inode)
@@ -109,7 +140,6 @@ namespace syntax
 		struct decimal_literal : public inode
 		{
 			decimal_literal(double val = 0.0): val(val){}
-			decimal_literal(const decimal_literal& cpy): val(cpy.val){}
 
 			double val;
 			COPY_UNIQUE_CLONEABLE(inode)
@@ -126,7 +156,6 @@ namespace syntax
 		struct null_literal : public inode
 		{
 			null_literal(){}
-			null_literal(const null_literal& cpy): null_literal{}{}
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
@@ -144,7 +173,6 @@ namespace syntax
 		struct identifier : public inode
 		{
 			identifier(std::string iden = ""): iden(iden){}
-			identifier(const identifier& cpy): iden(cpy.iden){}
 			std::string iden;
 
 			COPY_UNIQUE_CLONEABLE(inode)
@@ -187,18 +215,20 @@ namespace syntax
 				"call"
 			};
 
-			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)){}
-			expression(const expression& cpy):
-			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()){}
+			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)), capped(false){}
+			expression(const expression& cpy): inode(cpy),
+			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()), capped(cpy.capped){}
 			expression& operator=(expression rhs)
 			{
 				std::swap(this->t, rhs.t);
 				std::swap(this->expr, rhs.expr);
+				std::swap(this->capped, rhs.capped);
 				return *this;
 			}
 
 			type t;
 			node_ptr expr;
+			bool capped;
 
 			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
 
@@ -217,7 +247,6 @@ namespace syntax
 		struct expression_list : public inode
 		{
 			expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
-			expression_list(const expression_list& rhs): exprs(rhs.exprs){}
 
 			std::vector<expression> exprs;
 
@@ -244,12 +273,12 @@ namespace syntax
 
 		struct variable_decl : public inode
 		{
-			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}): var_name(var_name), type_name(type_name), expr(expr){}
-			variable_decl(const variable_decl& cpy): var_name(cpy.var_name), type_name(cpy.type_name), expr(cpy.expr){}
+			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}): var_name(var_name), type_name(type_name), expr(expr), capped(false){}
 
 			identifier var_name;
 			identifier type_name;
 			expression expr;
+			bool capped;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 
@@ -267,7 +296,6 @@ namespace syntax
 		struct variable_decl_list : public inode
 		{
 			variable_decl_list(std::vector<variable_decl> decls = {}): decls(decls){}
-			variable_decl_list(const variable_decl_list& rhs): decls(rhs.decls){}
 
 			std::vector<variable_decl> decls;
 
@@ -296,8 +324,6 @@ namespace syntax
 		{
 			function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
 
-			function_decl(const function_decl& cpy): func_name(cpy.func_name), params(cpy.params), return_type_name(cpy.return_type_name), is_extern(cpy.is_extern){}
-
 			identifier func_name;
 			variable_decl_list params;
 			identifier return_type_name;
@@ -318,8 +344,6 @@ namespace syntax
 		struct function_call : public inode
 		{
 			function_call(identifier func_name = {}, expression_list params = {}): func_name(func_name), params(params){}
-
-			function_call(const function_call& cpy): func_name(cpy.func_name), params(cpy.params){}
 
 			identifier func_name;
 			expression_list params;
@@ -353,7 +377,6 @@ namespace syntax
 			};
 
 			meta_region(identifier metaname, type t): metaname(metaname), t(t){}
-			meta_region(const meta_region& cpy): metaname(cpy.metaname), t(cpy.t){}
 
 			identifier metaname;
 			type t;
@@ -373,7 +396,6 @@ namespace syntax
 		struct alias : public inode
 		{
 			alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
-			alias(const alias& cpy): alias_name(cpy.alias_name), type_value_expr(cpy.type_value_expr){}
 
 			identifier alias_name;
 			expression type_value_expr;
