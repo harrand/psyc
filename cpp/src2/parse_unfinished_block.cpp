@@ -7,6 +7,7 @@ namespace parse{
 void foo(){
 #endif
 
+// add a variable_decl to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(variable_decl))
 	auto blk = GETNODE(unfinished_block);
@@ -20,6 +21,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add an expression to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(expression))
 	auto blk = GETNODE(unfinished_block);
@@ -33,6 +35,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add a nested block to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(block))
 	auto blk = GETNODE(unfinished_block);
@@ -42,6 +45,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add a meta region to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(meta_region))
 	auto blk = GETNODE(unfinished_block);
@@ -51,6 +55,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add an alias to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(alias))
 	auto blk = GETNODE(unfinished_block);
@@ -60,6 +65,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// close off an unfinished block, spawning a proper block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), TOKEN(cbrace))
 	auto blk = GETNODE(unfinished_block);
