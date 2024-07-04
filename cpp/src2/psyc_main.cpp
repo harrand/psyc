@@ -89,7 +89,7 @@ int main(int argc, char** argv)
 		{
 			std::cout << "==========================\n";
 			std::cout << "ast for " << input_file << ":\n";
-			//parse.parsed_input_files[input_file].pretty_print();
+			parse.parsed_input_files[input_file]->pretty_print();
 			std::cout << "==========================\n\n";
 		}
 	}

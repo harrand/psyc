@@ -97,6 +97,18 @@ CHORD_BEGIN
 	return {.t = result::type::silent_reject};
 CHORD_END
 
+// source-begin meta-region
+CHORD_BEGIN
+	STATE(TOKEN(source_begin), NODE(meta_region))
+	SETINDEX(1);
+	auto reg = GETNODE(meta_region);
+	if(reg.capped)
+	{
+		return {.t = result::type::send_to_output, .offset = 1};
+	}
+	return {.t = result::type::silent_reject};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

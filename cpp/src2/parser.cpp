@@ -94,7 +94,7 @@ namespace parse
 
 	syntax::node_ptr parser::get_output()
 	{
-		if(this->subtrees.size())
+		if(!(this->subtrees.size() == 1 && this->subtrees.front()->hash() == syntax::node::unparsed_token{{.t = lex::type::source_begin}}.hash()))
 		{
 			diag::error_nonblocking(error_code::parse, "{} remaining subtrees that were never sent to the output AST. remaining subtree ASTs:\n{{\n", this->subtrees.size());
 			for(const auto& tree : this->subtrees)

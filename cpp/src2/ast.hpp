@@ -411,6 +411,7 @@ namespace syntax
 
 			identifier metaname;
 			type t;
+			bool capped = false;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
