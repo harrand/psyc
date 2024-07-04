@@ -138,6 +138,24 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: struct structdata
+// create a named struct
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_struct), NODE(structdata))
+
+	auto name = GETNODE(identifier);
+	SETINDEX(3);
+	auto structd = GETNODE(structdata);
+	if(structd.capped)
+	{
+		return {.t = result::type::error, .errmsg = std::format("struct \"{}\" detected dodgy syntax. struct block seen even though the struct is considered capped.", name.iden)};
+	}
+	structd.struct_name = name;
+	structd.capped = true;
+	REDUCE_TO(structdata, structd);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

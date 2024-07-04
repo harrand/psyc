@@ -96,5 +96,6 @@ namespace parse
 		#include "parse_variable_decl_list.cpp"
 		#include "parse_meta_region.cpp"
 		#include "parse_unfinished_block.cpp"
+		#include "parse_unfinished_struct.cpp"
 	}
 }

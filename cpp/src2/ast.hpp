@@ -25,6 +25,17 @@ namespace syntax
 				this->children.push_back(child_ptr->unique_clone());
 			}
 		}
+		inode& operator=(const inode& rhs)
+		{
+			this->children.clear();
+			for(const auto& child_ptr : rhs.children)
+			{
+				this->children.push_back(child_ptr->unique_clone());
+			}
+			this->loc = rhs.loc;
+			return *this;
+		}
+
 		virtual ~inode() = default;
 		// imeplemented asap below.
 		virtual std::string to_string() const = 0;
@@ -113,6 +124,36 @@ namespace syntax
 			virtual const char* name() const final
 			{
 				return "block";
+			}
+
+			void extend(node_ptr node)
+			{
+				this->children.push_back(std::move(node));
+			}
+		};
+
+		struct unfinished_struct : public inode
+		{
+			unfinished_struct(): start(srcloc::undefined()){}
+			unfinished_struct(unfinished_block blk): inode(blk), start(blk.start)
+			{
+			}
+			unfinished_struct(node_ptr node):
+			start(node->loc)
+			{
+				this->children.push_back(std::move(node));
+			}
+
+			srcloc start;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("unfinished struct starting at {}", this->start.to_string());
+			}
+			virtual const char* name() const final
+			{
+				return "unfinished struct";
 			}
 
 			void extend(node_ptr node)
@@ -441,6 +482,26 @@ namespace syntax
 			virtual const char* name() const final
 			{
 				return "alias specifier";
+			}
+		};
+
+		struct structdata : public inode
+		{
+			structdata(identifier struct_name = {}, std::vector<variable_decl> data_members = {}): struct_name(struct_name), data_members(data_members){}
+
+			identifier struct_name;
+			std::vector<variable_decl> data_members;
+			bool capped = false;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("struct({}{})", this->struct_name.iden, this->children.size() ? std::format("{} methods", this->children.size()) : "");
+			}
+
+			virtual const char* name() const final
+			{
+				return "struct";
 			}
 		};
 	}

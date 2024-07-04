@@ -42,6 +42,24 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// function-decl {}
+// function implementation with no code inside. still a valid function implementation.
+CHORD_BEGIN
+	STATE(NODE(function_decl), TOKEN(obrace), TOKEN(cbrace))
+	auto fn = GETNODE(function_decl);
+	if(fn.is_extern)
+	{
+		return {.t = result::type::error, .errmsg = std::format("function \"{}\" marked as extern, but is also followed by an implementation block. extern functions have no implementation.", fn.func_name.iden)};
+	}
+	if(fn.capped)
+	{
+		return {.t = result::type::error, .errmsg = std::format("function \"{}\" has two implementation blocks? it must have only one, or be marked as extern with no block at all.", fn.func_name.iden)};
+	}
+	fn.capped = true;
+	REDUCE_TO(function_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
