@@ -138,6 +138,33 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: struct block
+// create a named struct (no methods)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_struct), NODE(block))
+
+	auto name = GETNODE(identifier);
+	SETINDEX(3);
+	auto blk = GETNODE(block);
+	std::vector<syntax::node::variable_decl> members = {};
+	for(auto iter = blk.children.begin(); iter != blk.children.end();)
+	{
+		if((*iter)->hash() == syntax::node::variable_decl{}.hash())
+		{
+			// this is a data member.
+			members.push_back(*static_cast<syntax::node::variable_decl*>((*iter).get()));
+			iter = blk.children.erase(iter);
+		}
+		else
+		{
+			// todo: error out? this should only ever be variable decls?
+			iter++;
+		}
+	}
+	REDUCE_TO(structdata, name, members, true);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden :: struct structdata
 // create a named struct
 CHORD_BEGIN

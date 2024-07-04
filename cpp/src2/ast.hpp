@@ -487,7 +487,7 @@ namespace syntax
 
 		struct structdata : public inode
 		{
-			structdata(identifier struct_name = {}, std::vector<variable_decl> data_members = {}): struct_name(struct_name), data_members(data_members){}
+			structdata(identifier struct_name = {}, std::vector<variable_decl> data_members = {}, bool capped = false): struct_name(struct_name), data_members(data_members), capped(capped){}
 
 			identifier struct_name;
 			std::vector<variable_decl> data_members;
@@ -496,7 +496,16 @@ namespace syntax
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				return std::format("struct({}{})", this->struct_name.iden, this->children.size() ? std::format("{} methods", this->children.size()) : "");
+				std::string members_str;
+				for(const auto& member : this->data_members)
+				{
+					members_str += member.to_string();
+				}
+				if(members_str.size())
+				{
+					members_str = std::format(" (members: \t{})", members_str);
+				}
+				return std::format("struct({}{})", this->struct_name.iden, members_str);
 			}
 
 			virtual const char* name() const final

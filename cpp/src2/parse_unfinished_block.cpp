@@ -93,6 +93,20 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add a structdata to the end of the unfinished block.
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(structdata))
+	auto blk = GETNODE(unfinished_block);
+	auto structd = GETNODE(structdata);
+	if(!structd.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	blk.extend(structd.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

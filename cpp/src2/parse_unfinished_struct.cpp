@@ -80,10 +80,13 @@ CHORD_BEGIN
 		}
 		else
 		{
+			// todo: error out? this should only ever be variable decls?
 			iter++;
 		}
 	}
-	REDUCE_TO(structdata, syntax::node::identifier{}, members);
+	auto ret = std::make_unique<syntax::node::structdata>(syntax::node::identifier{}, members);
+	ret->children = std::move(blk.children);
+	REDUCE_TO(structdata, *ret);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
