@@ -347,7 +347,7 @@ namespace syntax
 
 		struct variable_decl : public inode
 		{
-			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}): var_name(var_name), type_name(type_name), expr(expr), capped(false){}
+			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}, bool capped = false): var_name(var_name), type_name(type_name), expr(expr), capped(capped){}
 
 			identifier var_name;
 			identifier type_name;

@@ -36,6 +36,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden@
+// turn into expr but keep the cast
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(cast))
+
+	syntax::node::identifier iden = GETNODE(identifier);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN
@@ -56,7 +66,11 @@ CHORD_BEGIN
 	syntax::node::identifier name = GETNODE(identifier);
 	SETINDEX(3);
 	syntax::node::expression initialiser = GETNODE(expression);
-	REDUCE_TO(variable_decl, name, syntax::node::identifier{syntax::node::inferred_typename}, initialiser);
+	if(!initialiser.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(variable_decl, name, syntax::node::identifier{syntax::node::inferred_typename}, initialiser, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

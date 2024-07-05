@@ -32,7 +32,11 @@ CHORD_BEGIN
 	}
 	SETINDEX(3);
 	auto expr_init = GETNODE(expression);
-	REDUCE_TO(variable_decl, var.var_name, var.type_name, expr_init);
+	if(!expr_init.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(variable_decl, var.var_name, var.type_name, expr_init, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

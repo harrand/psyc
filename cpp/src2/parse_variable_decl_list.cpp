@@ -25,6 +25,10 @@ CHORD_BEGIN
 	syntax::node::variable_decl_list list = GETNODE(variable_decl_list);
 	SETINDEX(3);
 	syntax::node::expression initialiser = GETNODE(expression);
+	if(!initialiser.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
 	if(list.decls.empty())
 	{
 		return {.t = result::type::error, .errmsg = std::format("attempt to assign an initialiser expression to an empty decl list")};

@@ -6,7 +6,7 @@ namespace parse{
 void foo(){
 #endif
 
-// expr,
+// expr,expr
 // becomes an expression list
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(comma), NODE(expression))
@@ -25,6 +25,34 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	expr.capped = true;
 	REDUCE_TO(expression, expr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expression,
+// reduces into an expression that is guaranteed to be capped. doesn't consume the comma
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(comma))
+	auto expr = GETNODE(expression);
+	if(expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	expr.capped = true;
+	REDUCE_TO_ADVANCED(0, 1, expression, expr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expression)
+// reduces into an expression that is guaranteed to be capped. doesn't consume the comma
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(cparen))
+	auto expr = GETNODE(expression);
+	if(expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	expr.capped = true;
+	REDUCE_TO_ADVANCED(0, 1, expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
