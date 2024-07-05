@@ -11,9 +11,19 @@ void foo(){
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(comma), NODE(expression))
 	std::vector<syntax::node::expression> exprs;
-	exprs.push_back(GETNODE(expression));
+	auto expr1 = GETNODE(expression);
+	if(!expr1.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	exprs.push_back(expr1);
 	SETINDEX(2);
-	exprs.push_back(GETNODE(expression));
+	auto expr2 = GETNODE(expression);
+	if(!expr2.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	exprs.push_back(expr2);
 	REDUCE_TO(expression_list, std::move(exprs));
 	return {.t = result::type::reduce_success};
 CHORD_END
