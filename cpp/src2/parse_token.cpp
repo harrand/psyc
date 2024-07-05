@@ -6,6 +6,14 @@ namespace parse{
 void foo(){
 #endif
 
+CHORD_BEGIN
+	STATE(TOKEN(oparen), NODE(expression), TOKEN(cparen))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::parenthesised_expression, expr.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // == iden : namespace ==
 // namespace meta region
 CHORD_BEGIN

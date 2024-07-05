@@ -270,6 +270,7 @@ namespace syntax
 				null_literal,
 				parenthesised_expression,
 				function_call,
+				cast,
 				_unknown,
 				_count
 			};
@@ -282,13 +283,14 @@ namespace syntax
 				"charlit",
 				"boollit",
 				"nulllit",
-				"(expr)",
-				"call"
+				"parenthesised",
+				"call",
+				"cast"
 			};
 
-			expression(type t = type::_unknown, node_ptr expr = nullptr): t(t), expr(std::move(expr)), capped(false){}
+			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
 			expression(const expression& cpy): inode(cpy),
-			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()), capped(cpy.capped){}
+			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()), extra(cpy.extra == nullptr ? nullptr : cpy.extra->unique_clone()), capped(cpy.capped){}
 			expression& operator=(expression rhs)
 			{
 				std::swap(this->t, rhs.t);
@@ -299,6 +301,7 @@ namespace syntax
 
 			type t;
 			node_ptr expr;
+			node_ptr extra = nullptr;
 			bool capped;
 
 			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
@@ -306,7 +309,7 @@ namespace syntax
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				return std::format("expr-{}({})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string());
+				return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra != nullptr ? std::format(", {}", this->extra->to_string()) : "");
 			}
 
 			virtual const char* name() const final
