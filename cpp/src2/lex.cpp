@@ -92,12 +92,15 @@ namespace lex
 			};
 
 			token tok = tokenise_once(state, data);
-			if(tok.t == type::_undefined)
+			if(tok.t == type::_undefined && state.cursor < state.source.size())
 			{
 				state.error("ill-defined token(s) detected");
 			}
 			tok.meta_srcloc = curloc;
-			tokens.push_back(tok);
+			if(tok.t != type::_undefined)
+			{
+				tokens.push_back(tok);
+			}
 		}
 		return
 		{
@@ -116,6 +119,10 @@ namespace lex
 			state.line++;
 			state.cursor++;
 			data = data.substr(1);
+			if(data.empty())
+			{
+				return token{.t = type::_undefined};
+			}
 		}
 		for(int i = 0; i < static_cast<int>(type::_count); i++)
 		{
