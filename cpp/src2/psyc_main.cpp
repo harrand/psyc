@@ -84,7 +84,7 @@ int main(int argc, char** argv)
 	parse::state parse;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
-		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file].tokens);
+		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file]);
 		if(args.should_dump_ast)
 		{
 			std::cout << "==========================\n";

@@ -9,7 +9,7 @@ namespace parse
 	class parser
 	{
 	public:
-		parser(lex::const_token_view tokens);
+		parser(lex::output tokens);
 
 		void parse();
 		bool step();
@@ -20,13 +20,14 @@ namespace parse
 		reducer make_reducer(std::size_t offset);
 		syntax::node_ptr get_output();
 	private:
-		lex::const_token_view tokens;
+		lex::tokens_list tokens;
 		lex::const_token_view unscanned_tokens;
+		std::string source;
 		std::vector<syntax::node_ptr> subtrees = {};
 		syntax::node_ptr output = nullptr;
 	};
 
-	syntax::node_ptr tokens(lex::const_token_view toks);
+	syntax::node_ptr tokens(lex::output tokens);
 
 	struct state
 	{

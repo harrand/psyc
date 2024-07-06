@@ -19,7 +19,7 @@ namespace diag
 	template<typename... Ts>
 	void generic_msg(std::string_view preamble, std::format_string<Ts...> fmt, Ts&&... ts)
 	{
-		std::cout << std::format("psyc: {}: \033[0m{}", preamble, std::format(fmt, std::forward<Ts>(ts)...)) << std::endl;
+		std::cout << std::format("psyc: {} \033[0m{}", preamble, std::format(fmt, std::forward<Ts>(ts)...)) << std::endl;
 	}
 
 	template<typename... Ts>
