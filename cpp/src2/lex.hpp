@@ -45,6 +45,10 @@ namespace lex
 		keyword_defer,
 		keyword_deref,
 		keyword_ref,
+		plus,
+		minus,
+		asterisk,
+		slash,
 		identifier,
 		integer_literal,
 		decimal_literal,
@@ -52,10 +56,6 @@ namespace lex
 		char_literal,
 		bool_literal,
 		null_literal,
-		plus,
-		minus,
-		asterisk,
-		slash,
 		source_begin,
 		_undefined,
 		_count
@@ -106,6 +106,10 @@ namespace lex
 		trait{.name = "defer"},
 		trait{.name = "deref"},
 		trait{.name = "ref"},
+		trait{.name = "+"},
+		trait{.name = "-"},
+		trait{.name = "*"},
+		trait{.name = "/"},
 		trait{.name = ""},
 		trait{.name = ""},
 		trait{.name = ""},
@@ -114,10 +118,6 @@ namespace lex
 		trait{.name = ""},
 		trait{.name = ""},
 		trait{.name = "null"},
-		trait{.name = "+"},
-		trait{.name = "-"},
-		trait{.name = "*"},
-		trait{.name = "/"},
 		trait{.name = "<UNDEFINED TOKEN>"}
 	};
 

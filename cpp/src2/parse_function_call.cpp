@@ -42,6 +42,42 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// call+
+// turn into expr but keep the plus
+CHORD_BEGIN
+	STATE(NODE(function_call), TOKEN(plus))
+	syntax::node::function_call call = GETNODE(function_call);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::function_call, call.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// call-
+// turn into expr but keep the minus
+CHORD_BEGIN
+	STATE(NODE(function_call), TOKEN(minus))
+	syntax::node::function_call call = GETNODE(function_call);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::function_call, call.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// call*
+// turn into expr but keep the multiply
+CHORD_BEGIN
+	STATE(NODE(function_call), TOKEN(asterisk))
+	syntax::node::function_call call = GETNODE(function_call);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::function_call, call.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// call/
+// turn into expr but keep the divide
+CHORD_BEGIN
+	STATE(NODE(function_call), TOKEN(slash))
+	syntax::node::function_call call = GETNODE(function_call);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::function_call, call.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

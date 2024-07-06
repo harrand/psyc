@@ -290,10 +290,10 @@ namespace syntax
 				"parenthesised",
 				"call",
 				"cast",
-				"+",
-				"-",
-				"*",
-				"/"
+				"\"+\"",
+				"\"-\"",
+				"\"*\"",
+				"\"/\""
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}

@@ -88,6 +88,50 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expr+expr
+// reduces to an addition
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(plus), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto typeexpr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::addition, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expr-expr
+// reduces to a subtraction
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(minus), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto typeexpr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::subtraction, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expr*expr
+// reduces to a multiplication
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(asterisk), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto typeexpr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::multiplication, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expr/expr
+// reduces to a division
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(slash), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto typeexpr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::division, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
