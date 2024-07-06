@@ -44,7 +44,7 @@ namespace parse
 						}
 						break;
 						case result::type::error:
-							diag::error(error_code::parse, "{}", res.errmsg);
+							diag::error(error_code::parse, "within {} at {}: {}", this->subtrees[i]->name(), this->subtrees[i]->loc.to_string(), res.errmsg);
 							return false;
 						break;
 						case result::type::silent_reject: continue; break;
