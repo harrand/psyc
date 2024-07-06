@@ -132,6 +132,22 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expr=expr
+// reduces to an assignment
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(eq), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto typeexpr = GETNODE(expression);
+	// assignment requires rhs expression to be capped. this could be wrong in some cases, the reason i've added it is that this means it has highest precedence. i.e x = y + z reduces to eq(x, plus(y, z)) and not plus(eq(x, y), z)
+	if(!typeexpr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(expression, syntax::node::expression::type::assign, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

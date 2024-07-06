@@ -78,6 +78,15 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// call=
+// turn into expr but keep the eq
+CHORD_BEGIN
+	STATE(NODE(function_call), TOKEN(eq))
+	syntax::node::function_call call = GETNODE(function_call);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::function_call, call.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

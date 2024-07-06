@@ -271,10 +271,14 @@ namespace syntax
 				parenthesised_expression,
 				function_call,
 				cast,
+				deref,
+				ref,
+				defer,
 				addition,
 				subtraction,
 				multiplication,
 				division,
+				assign,
 				_unknown,
 				_count
 			};
@@ -290,10 +294,14 @@ namespace syntax
 				"parenthesised",
 				"call",
 				"cast",
+				"deref",
+				"ref",
+				"defer",
 				"\"+\"",
 				"\"-\"",
 				"\"*\"",
-				"\"/\""
+				"\"/\"",
+				"\"=\""
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}

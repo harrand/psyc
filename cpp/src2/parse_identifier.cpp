@@ -86,6 +86,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden=
+// turn into expr but keep the eq
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(eq))
+
+	syntax::node::identifier iden = GETNODE(identifier);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN

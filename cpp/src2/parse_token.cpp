@@ -103,6 +103,36 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// ref expr
+// creates a ref expression
+CHORD_BEGIN
+	STATE(TOKEN(keyword_ref), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::ref, expr.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// deref expr
+// creates a deref expression
+CHORD_BEGIN
+	STATE(TOKEN(keyword_deref), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::deref, expr.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// defer expr
+// creates a deferred expression
+CHORD_BEGIN
+	STATE(TOKEN(keyword_defer), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::defer, expr.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // source-begin function-decl
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(function_decl))
