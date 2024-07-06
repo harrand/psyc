@@ -85,8 +85,7 @@ namespace parse
 	void populate_parse_table()
 	{
 		#include "parse_token.cpp"
-		#include "parse_integer_literal.cpp"
-		#include "parse_null_literal.cpp"
+		#include "parse_literals.cpp"
 		#include "parse_identifier.cpp"
 		#include "parse_function_call.cpp"
 		#include "parse_expression.cpp"
