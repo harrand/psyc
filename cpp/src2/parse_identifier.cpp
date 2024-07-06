@@ -6,6 +6,15 @@ namespace parse{
 void foo(){
 #endif
 
+// iden.
+// convert to expr but keep the dot
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(dot))
+	auto iden = GETNODE(identifier);
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN

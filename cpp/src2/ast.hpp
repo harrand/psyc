@@ -279,6 +279,7 @@ namespace syntax
 				multiplication,
 				division,
 				assign,
+				dot_access,
 				_unknown,
 				_count
 			};
@@ -301,7 +302,8 @@ namespace syntax
 				"\"-\"",
 				"\"*\"",
 				"\"/\"",
-				"\"=\""
+				"\"=\"",
+				"\".\""
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
