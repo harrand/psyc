@@ -1,4 +1,3 @@
-
 #include "parse_macros.hpp"
 #ifndef INFUNC
 #include "diag.hpp"
@@ -71,6 +70,25 @@ CHORD_BEGIN
 	auto blk = GETNODE(unfinished_block);
 	auto stmt = GETNODE(if_statement);
 	blk.extend(stmt.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// add an else-statement as a child of the if-statement that is at the end of the unfinished block so far. if the last child of this unfinished block is not an if-statement, then emit an error.
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(else_statement))
+	auto blk = GETNODE(unfinished_block);
+	auto else_stmt = GETNODE(else_statement);
+	if(blk.children.empty())
+	{
+		return {.t = result::type::error, .errmsg = "123"};
+	}
+	auto last_child = blk.children.back().get();
+	if(last_child->hash() != syntax::node::if_statement{}.hash())
+	{
+		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child->name())};
+	}
+	last_child->children.push_back(else_stmt.unique_clone());
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END

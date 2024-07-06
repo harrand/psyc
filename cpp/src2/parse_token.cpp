@@ -186,6 +186,38 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// else block
+// else statement with no condition but with code.
+CHORD_BEGIN
+	STATE(TOKEN(keyword_else), NODE(block))
+	SETINDEX(1);
+	auto blk = GETNODE(block);
+	REDUCE_TO(else_statement, syntax::node::expression{}, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// else {}
+// else statement with no condition nor code. pointless but valid.
+CHORD_BEGIN
+	STATE(TOKEN(keyword_else), TOKEN(obrace), TOKEN(cbrace))
+	SETINDEX(1);
+	auto open = GETTOKEN();
+	auto close = GETTOKEN();
+	syntax::node::block empty_blk;
+	empty_blk.start = open.meta_srcloc;
+	empty_blk.finish = close.meta_srcloc;
+	REDUCE_TO(else_statement, syntax::node::expression{}, empty_blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(keyword_else), NODE(if_statement))
+	SETINDEX(1);
+	auto stmt = GETNODE(if_statement);
+	REDUCE_TO(else_statement, stmt.cond, *static_cast<syntax::node::block*>(stmt.children.front().get()));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // source-begin function-decl
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(function_decl))

@@ -638,6 +638,31 @@ namespace syntax
 				return "if-statement";
 			}
 		};
+
+		struct else_statement : public inode
+		{
+			else_statement(expression cond = {}, block blk = {}): cond(cond)
+			{
+				this->children.push_back(blk.unique_clone());
+			}
+
+			expression cond;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				if(this->cond.is_null())
+				{
+					return "else()";
+				}
+				return std::format("else-if({})", this->cond.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "else-statement";
+			}
+		};
 		
 	}
 
