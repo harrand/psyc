@@ -12,6 +12,7 @@ namespace lex
 	enum class type
 	{
 		eqeq,
+		neq,
 		eq,
 		colcol,
 		col,
@@ -73,6 +74,7 @@ namespace lex
 	constexpr std::array<trait, static_cast<int>(type::_count)> lex_traits =
 	{
 		trait{.name = "=="},
+		trait{.name = "!="},
 		trait{.name = "="},
 		trait{.name = "::"},
 		trait{.name = ":"},

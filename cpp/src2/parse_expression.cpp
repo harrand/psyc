@@ -173,6 +173,28 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expr == expr
+// equality compare
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(eqeq), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto expr2 = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::eqcompare, expr.unique_clone(), expr2.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expr != expr
+// inequality compare
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(neq), NODE(expression))
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto expr2 = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::neqcompare, expr.unique_clone(), expr2.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

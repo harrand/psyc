@@ -279,6 +279,8 @@ namespace syntax
 				multiplication,
 				division,
 				assign,
+				eqcompare,
+				neqcompare,
 				dot_access,
 				struct_initialiser,
 				_unknown,
@@ -304,6 +306,8 @@ namespace syntax
 				"\"*\"",
 				"\"/\"",
 				"\"=\"",
+				"\"==\"",
+				"\"!=\"",
 				"\".\"",
 				"structinit"
 			};

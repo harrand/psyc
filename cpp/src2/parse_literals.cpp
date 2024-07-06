@@ -71,6 +71,20 @@ CHORD_BEGIN\
 CHORD_END\
  \
 CHORD_BEGIN\
+	STATE(NODE(ty), TOKEN(eqeq))\
+	syntax::node::ty intlit = GETNODE(ty);\
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
+	return {.t = result::type::reduce_success};\
+CHORD_END\
+ \
+CHORD_BEGIN\
+	STATE(NODE(ty), TOKEN(neq))\
+	syntax::node::ty intlit = GETNODE(ty);\
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
+	return {.t = result::type::reduce_success};\
+CHORD_END\
+ \
+CHORD_BEGIN\
 	STATE(NODE(ty), TOKEN(cbrace))\
 	syntax::node::ty intlit = GETNODE(ty);\
 	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
