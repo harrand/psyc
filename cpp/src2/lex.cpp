@@ -238,13 +238,20 @@ namespace lex
 							}
 						}
 						std::string_view line = state.source.substr(before, after - before);
-						std::string bottom_text = "└";
-						for(std::size_t i = 0; i < 1 + (state.cursor - before); i++)
+						std::string bottom_text = "└─";
+						std::string mid_text = "│ ";
+						for(std::size_t i = 0; i < state.cursor - before; i++)
 						{
 							bottom_text += "─";
+							mid_text += "═";
+						}
+						mid_text += "│";
+						for(std::size_t i = 0; i < after - state.cursor; i++)
+						{
+							mid_text += "═";
 						}
 						bottom_text += "┘";
-						diag::error(error_code::lex, "illegal token(s):\n┌──[{}]\n│\n│ {}\n{}", curloc.to_string(), line, bottom_text);
+						diag::error(error_code::lex, "illegal token \"{}\" (ascii {}) detected:\n┌──[{}]\n│\n│ {}\n{}\n{}", data.front(), static_cast<int>(data.front()), curloc.to_string(), line, mid_text, bottom_text);
 					}
 					return token{.t = type::identifier, .lexeme =std::string{data.substr(0, dst)}};
 				}
