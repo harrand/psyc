@@ -196,7 +196,7 @@ namespace lex
 						{
 							dot_count++;
 						}
-					} while (!word_should_break(next));
+					} while (next.front() == '.' || !word_should_break(next));
 					std::string_view lexeme = data.substr(0, counter);
 					state.advance(counter);
 					if(dot_count > 1)
