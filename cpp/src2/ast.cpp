@@ -16,9 +16,14 @@ namespace syntax
 			node_list.pop();
 			std::size_t indent = indents.top();
 			indents.pop();
-			for(std::size_t i = 0; i < indent; i++)
+			if(indent > 0)
 			{
 				std::cout << "  ";
+				for(std::size_t i = 0; i < (indent - 1); i++)
+				{
+					std::cout << "│ ";
+				}
+				std::cout << "├─";
 			}
 			if(cur != nullptr)
 			{

@@ -21,7 +21,8 @@ struct timers
 	std::uint64_t link = 0u;
 	void print()
 	{
-		constexpr int width = 12;
+		constexpr int width = 13;
+		std::cout << "\n========= SUMMARY =========\n";
 		std::cout << std::left << std::setw(width) << "buildmeta:" << std::setw(6) << std::setprecision(3) << std::right << (this->buildmeta / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "lexer:" << std::setw(6) << std::setprecision(3) << std::right << (this->lexing / 1000.0f) << " seconds" << std::endl;
 		std::cout << std::left << std::setw(width) << "parser:" << std::setw(6) << std::setprecision(3) << std::right << (this->parsing / 1000.0f) << " seconds" << std::endl;
@@ -87,10 +88,7 @@ int main(int argc, char** argv)
 		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file]);
 		if(args.should_dump_ast)
 		{
-			std::cout << "==========================\n";
-			std::cout << "ast for " << input_file << ":\n";
 			parse.parsed_input_files[input_file]->pretty_print();
-			std::cout << "==========================\n\n";
 		}
 	}
 	t.parsing = timer::elapsed_millis();
