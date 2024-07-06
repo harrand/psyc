@@ -183,6 +183,20 @@ namespace lex
 					state.advance("null");
 					return token{.t = type::null_literal, .lexeme = "null"};
 				}
+				else if(data.starts_with("'"))
+				{
+					state.advance();
+					std::size_t dst = state.advance_until([](std::string_view sv){return sv.starts_with("'");});
+					state.advance();
+					return token{.t = type::char_literal, .lexeme = std::string{data.substr(1, dst)}};
+				}
+				else if(data.starts_with("\""))
+				{
+					state.advance();
+					std::size_t dst = state.advance_until([](std::string_view sv){return sv.starts_with("\"");});
+					state.advance();
+					return token{.t = type::string_literal, .lexeme = std::string{data.substr(1, dst)}};
+				}
 				else if(std::isdigit(data.front()))
 				{
 					// if it starts with a digit, it's an integer/decimal literal.

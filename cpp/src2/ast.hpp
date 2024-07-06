@@ -224,6 +224,38 @@ namespace syntax
 			}
 		};
 
+		struct char_literal : public inode
+		{
+			char_literal(char val = ' '): val(val){}
+
+			char val;
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("char-literal('{}' (dec {})", this->val, static_cast<int>(this->val));
+			}
+			virtual const char* name() const final
+			{
+				return "char literal";
+			}
+		};
+
+		struct string_literal : public inode
+		{
+			string_literal(std::string val = ""): val(val){}
+
+			std::string val;
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("string-literal(\"{}\")", this->val);
+			}
+			virtual const char* name() const final
+			{
+				return "string literal";
+			}
+		};
+
 		struct null_literal : public inode
 		{
 			null_literal(){}

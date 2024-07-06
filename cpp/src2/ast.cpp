@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "diag.hpp"
 #include <stack>
 #include <iostream>
 
@@ -38,6 +39,44 @@ namespace syntax
 		}
 	}
 
+	std::string escape(std::string_view literal)
+	{
+		std::string ret;
+		static const std::unordered_map<std::string_view, char> escape_map = {
+			{"\\0", '\0'}, // Null terminator
+			{"\\a", '\a'}, // Bell (alert)
+			{"\\b", '\b'}, // Backspace
+			{"\\f", '\f'}, // Formfeed
+			{"\\n", '\n'}, // Newline (line feed)
+			{"\\r", '\r'}, // Carriage return
+			{"\\t", '\t'}, // Horizontal tab
+			{"\\v", '\v'}, // Vertical tab
+			{"\\\\", '\\'}, // Backslash
+			{"\\'", '\''}, // Single quote
+			{"\\\"", '\"'}, // Double quote
+			{"\\?", '\?'}  // Question mark
+		};
+		if(literal.size() == 1)
+		{
+			return std::string{literal};
+		}
+		for(std::size_t i = 0; i < literal.size(); i++)
+		{
+			std::string_view substr{literal.data() + i, 2};
+			auto iter = escape_map.find(substr);
+			if(iter != escape_map.end())
+			{
+				ret += iter->second;
+				i++;
+			}
+			else
+			{
+				ret += literal[i];
+			}
+		}
+		return ret;
+	}
+
 	node_ptr make_node(const lex::token& t)
 	{
 		node_ptr ret = nullptr;
@@ -54,6 +93,21 @@ namespace syntax
 			break;
 			case lex::type::null_literal:
 				ret = std::make_unique<node::null_literal>();
+			break;
+			case lex::type::char_literal:
+			{
+				std::string charlit = t.lexeme;
+				diag::assert_that(!charlit.empty(), error_code::lex, "empty char-literal detected at {}. char literals must contain a single character.", t.meta_srcloc.to_string());
+				charlit = escape(charlit);
+				diag::assert_that(charlit.size() == 1, error_code::lex, "char-literal must consist of 1 character, but \'{}\' contains {}", t.lexeme, charlit.size());
+				ret = std::make_unique<node::char_literal>(charlit.front());
+			}
+			break;
+			case lex::type::string_literal:
+			{
+				std::string stringlit = t.lexeme;
+				ret = std::make_unique<node::string_literal>(escape(stringlit));
+			}
 			break;
 			default:
 				ret = std::make_unique<node::unparsed_token>(t);
