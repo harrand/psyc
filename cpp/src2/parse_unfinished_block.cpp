@@ -65,6 +65,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// add an if-statement to the end of the unfinished block.
+CHORD_BEGIN
+	STATE(NODE(unfinished_block), NODE(if_statement))
+	auto blk = GETNODE(unfinished_block);
+	auto stmt = GETNODE(if_statement);
+	blk.extend(stmt.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // close off an unfinished block, spawning a proper block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), TOKEN(cbrace))

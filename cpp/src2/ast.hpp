@@ -618,6 +618,26 @@ namespace syntax
 				return "designated initialiser list";
 			}
 		};
+
+		struct if_statement : public inode
+		{
+			if_statement(expression cond = {}, block blk = {}): cond(cond)
+			{
+				this->children.push_back(blk.unique_clone());
+			}
+			expression cond;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("if-statement({})", this->cond.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "if-statement";
+			}
+		};
 		
 	}
 

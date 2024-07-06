@@ -93,6 +93,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// { if-statement
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(if_statement))
+	SETINDEX(1);
+	auto stmt = GETNODE(if_statement);
+	REDUCE_TO(unfinished_block, stmt.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // { structdata
 // starts an unfinished block
 CHORD_BEGIN
@@ -146,6 +156,33 @@ CHORD_BEGIN
 		return {.t = result::type::silent_reject};
 	}
 	REDUCE_TO(designated_initialiser, member_iden, initialiser);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// if expr {}
+// create an if statement with no code inside (pointless but valid)
+CHORD_BEGIN
+	STATE(TOKEN(keyword_if), NODE(expression), TOKEN(obrace), TOKEN(cbrace))
+	SETINDEX(1);
+	auto cond = GETNODE(expression);
+	SETINDEX(2);
+	auto open = GETTOKEN();
+	auto close = GETTOKEN();
+	syntax::node::block empty_blk;
+	empty_blk.start = open.meta_srcloc;
+	empty_blk.finish = close.meta_srcloc;
+	REDUCE_TO(if_statement, cond, empty_blk);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// if expr block
+// create an if statement with code inside
+CHORD_BEGIN
+	STATE(TOKEN(keyword_if), NODE(expression), NODE(block))
+	SETINDEX(1);
+	auto cond = GETNODE(expression);
+	auto blk = GETNODE(block);
+	REDUCE_TO(if_statement, cond, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
