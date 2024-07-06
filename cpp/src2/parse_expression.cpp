@@ -66,29 +66,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// iden@iden
-// reduces to a cast
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(cast), NODE(identifier))
-	auto iden = GETNODE(identifier);
-	SETINDEX(2);
-	auto iden2 = GETNODE(identifier);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, iden.unique_clone()), iden2.unique_clone());
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// iden@expr
-// reduces to a cast
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(cast), NODE(expression))
-	auto iden = GETNODE(identifier);
-	SETINDEX(2);
-	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, iden.unique_clone()), expr.unique_clone(), expr.capped);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-
 // expr@iden
 // reduces to a cast
 CHORD_BEGIN
