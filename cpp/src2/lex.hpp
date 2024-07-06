@@ -52,6 +52,10 @@ namespace lex
 		char_literal,
 		bool_literal,
 		null_literal,
+		plus,
+		minus,
+		asterisk,
+		slash,
 		source_begin,
 		_undefined,
 		_count
@@ -110,6 +114,10 @@ namespace lex
 		trait{.name = ""},
 		trait{.name = ""},
 		trait{.name = "null"},
+		trait{.name = "+"},
+		trait{.name = "-"},
+		trait{.name = "*"},
+		trait{.name = "/"},
 		trait{.name = "<UNDEFINED TOKEN>"}
 	};
 

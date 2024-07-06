@@ -271,6 +271,10 @@ namespace syntax
 				parenthesised_expression,
 				function_call,
 				cast,
+				addition,
+				subtraction,
+				multiplication,
+				division,
 				_unknown,
 				_count
 			};
@@ -285,7 +289,11 @@ namespace syntax
 				"nulllit",
 				"parenthesised",
 				"call",
-				"cast"
+				"cast",
+				"+",
+				"-",
+				"*",
+				"/"
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
