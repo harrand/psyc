@@ -224,6 +224,28 @@ namespace lex
 				{
 					// identifier.
 					std::size_t dst = state.advance_until(word_should_break);
+					if(dst == 0)
+					{
+						srcloc curloc{.file = state.filename, .line = state.line, .column = state.col};
+						std::size_t after = state.cursor + data.find_first_of('\n');
+						std::size_t before = after;
+						for(std::size_t i = after - 1; i > 0; i--)
+						{
+							before = i + 1;
+							if(state.source[i] == '\n')
+							{
+								break;
+							}
+						}
+						std::string_view line = state.source.substr(before, after - before);
+						std::string bottom_text = "└";
+						for(std::size_t i = 0; i < 1 + (state.cursor - before); i++)
+						{
+							bottom_text += "─";
+						}
+						bottom_text += "┘";
+						diag::error(error_code::lex, "illegal token(s):\n┌──[{}]\n│\n│ {}\n{}", curloc.to_string(), line, bottom_text);
+					}
 					return token{.t = type::identifier, .lexeme =std::string{data.substr(0, dst)}};
 				}
 			}
