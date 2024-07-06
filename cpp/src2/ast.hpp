@@ -280,6 +280,7 @@ namespace syntax
 				division,
 				assign,
 				dot_access,
+				struct_initialiser,
 				_unknown,
 				_count
 			};
@@ -303,7 +304,8 @@ namespace syntax
 				"\"*\"",
 				"\"/\"",
 				"\"=\"",
-				"\".\""
+				"\".\"",
+				"structinit"
 			};
 
 			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
@@ -534,6 +536,53 @@ namespace syntax
 				return "struct";
 			}
 		};
+
+		struct designated_initialiser : public inode
+		{
+			designated_initialiser(identifier member = {}, expression initialiser = {}): member(member), initialiser(initialiser){}
+
+			identifier member;
+			expression initialiser;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("member-initialiser({} := {})", this->member.iden, this->initialiser.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "designated initialiser";
+			}
+		};
+
+		struct designated_initialiser_list : public inode
+		{
+			designated_initialiser_list(std::vector<designated_initialiser> inits = {}): inits(inits){}
+
+			std::vector<designated_initialiser> inits;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				std::string contents = "";
+				for(std::size_t i = 0; i < this->inits.size(); i++)
+				{
+					contents += this->inits[i].to_string();
+					if(i < (this->inits.size() - 1))
+					{
+						contents += ", ";
+					}
+				}
+				return std::format("desig-init-list({})", contents);
+			}
+
+			virtual const char* name() const final
+			{
+				return "designated initialiser list";
+			}
+		};
+		
 	}
 
 	node_ptr make_node(const lex::token& t);

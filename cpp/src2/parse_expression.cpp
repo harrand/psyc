@@ -66,6 +66,20 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expression}
+// reduces into an expression that is guaranteed to be capped. doesn't consume the cbrace
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(cbrace))
+	auto expr = GETNODE(expression);
+	if(expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	expr.capped = true;
+	REDUCE_TO_ADVANCED(0, 1, expression, expr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // expr@iden
 // reduces to a cast
 CHORD_BEGIN

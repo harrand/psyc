@@ -166,6 +166,39 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden{}
+// struct initialiser (no initialisers)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(obrace), TOKEN(cbrace))
+	auto struct_name = GETNODE(identifier);
+	std::vector<syntax::node::designated_initialiser> inits = {};
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden{desig-init}
+// struct initialiser (single initialiser)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser), TOKEN(cbrace))
+	auto struct_name = GETNODE(identifier);
+	SETINDEX(2);
+	std::vector<syntax::node::designated_initialiser> inits = {};
+	inits.push_back(GETNODE(designated_initialiser));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden{desig-init-list}
+// struct initialiser (multiple initialisers)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser_list), TOKEN(cbrace))
+	auto struct_name = GETNODE(identifier);
+	SETINDEX(2);
+	auto inits = GETNODE(designated_initialiser_list);
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), inits.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif

@@ -68,7 +68,14 @@ CHORD_BEGIN\
 	syntax::node::ty intlit = GETNODE(ty);\
 	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
 	return {.t = result::type::reduce_success};\
-CHORD_END
+CHORD_END\
+ \
+CHORD_BEGIN\
+	STATE(NODE(ty), TOKEN(cbrace))\
+	syntax::node::ty intlit = GETNODE(ty);\
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
+	return {.t = result::type::reduce_success};\
+CHORD_END\
 
 REDUCE_LITERALS(integer_literal)
 REDUCE_LITERALS(decimal_literal)

@@ -133,6 +133,22 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// .iden := init
+// designated initialiser
+CHORD_BEGIN
+	STATE(TOKEN(dot), NODE(identifier), TOKEN(col), TOKEN(eq), NODE(expression))
+	SETINDEX(1);
+	auto member_iden = GETNODE(identifier);
+	SETINDEX(4);
+	auto initialiser = GETNODE(expression);
+	if(!initialiser.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(designated_initialiser, member_iden, initialiser);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // source-begin function-decl
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(function_decl))
