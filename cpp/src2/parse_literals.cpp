@@ -95,6 +95,7 @@ REDUCE_LITERALS(integer_literal)
 REDUCE_LITERALS(decimal_literal)
 REDUCE_LITERALS(null_literal)
 REDUCE_LITERALS(identifier)
+REDUCE_LITERALS(function_call)
 
 #ifndef INFUNC
 }}
