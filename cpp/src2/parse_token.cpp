@@ -139,7 +139,11 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_defer), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::defer, expr.unique_clone());
+	if(!expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(expression, syntax::node::expression::type::defer, expr.unique_clone(), nullptr, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -210,11 +214,25 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// else if-statement
+// turn into else-statement with a cond.
 CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(if_statement))
 	SETINDEX(1);
 	auto stmt = GETNODE(if_statement);
 	REDUCE_TO(else_statement, stmt.cond, *static_cast<syntax::node::block*>(stmt.children.front().get()));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(keyword_return), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	if(!expr.capped)
+	{
+		return {.t = result::type::silent_reject};
+	}
+	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr.unique_clone(), nullptr, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
