@@ -46,15 +46,28 @@ namespace parse
 						break;
 						case result::type::error:
 						{
-							const syntax::node_ptr& cur = this->subtrees[i];
+							const syntax::node_ptr& cur = this->subtrees[i + res.offset];
 							std::string_view relevant_src = this->source;
 							const auto& loc = cur->loc;
-							for(std::size_t i = 0; i < loc.line; i++)
+							for(std::size_t i = 1; i < loc.line; i++)
 							{
 								relevant_src = relevant_src.substr(relevant_src.find_first_of('\n'));
 							}
-							relevant_src = relevant_src.substr(loc.column, relevant_src.substr(loc.column).find_first_of('\n'));
-							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n├── {}", cur->name(), res.errmsg, cur->loc.to_string(), relevant_src.substr(0, cur->to_string().size()));
+							relevant_src = relevant_src.substr(loc.column - 1, relevant_src.substr(loc.column - 1).find_first_of('\n'));
+							std::string bottom_text = "└─";
+							std::string mid_text = "│ ";
+							for(std::size_t i = 1; i < loc.column; i++)
+							{
+								bottom_text += "─";
+								mid_text += "═";
+							}
+							mid_text += "│";
+							for(std::size_t i = 0; i < relevant_src.size() - loc.column; i++)
+							{
+								mid_text += "═";
+							}
+							bottom_text += "┘";
+							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur->name(), res.errmsg, cur->loc.to_string(), relevant_src.substr(0, cur->to_string().size()), mid_text, bottom_text);
 							return false;
 						}
 						break;

@@ -242,6 +242,18 @@ CHORD_BEGIN
 	return {.t = result::type::silent_reject};
 CHORD_END
 
+// source-begin meta-region
+CHORD_BEGIN
+	STATE(TOKEN(source_begin), NODE(variable_decl))
+	SETINDEX(1);
+	auto decl = GETNODE(variable_decl);
+	if(decl.capped)
+	{
+		return {.t = result::type::send_to_output, .offset = 1};
+	}
+	return {.t = result::type::silent_reject};
+CHORD_END
+
 // source-begin struct
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(structdata))
@@ -252,6 +264,13 @@ CHORD_BEGIN
 		return {.t = result::type::send_to_output, .offset = 1};
 	}
 	return {.t = result::type::silent_reject};
+CHORD_END
+
+// source-begin if-statement
+// error: if statements must be within a block.
+CHORD_BEGIN
+	STATE(TOKEN(source_begin), NODE(if_statement))
+	return {.t = result::type::error, .errmsg = "if-statements must be within a block, not in the global scope", .offset = 1};
 CHORD_END
 
 #ifndef INFUNC
