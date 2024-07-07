@@ -315,6 +315,7 @@ namespace syntax
 				eqcompare,
 				neqcompare,
 				dot_access,
+				namespace_access,
 				struct_initialiser,
 				_unknown,
 				_count
@@ -343,6 +344,7 @@ namespace syntax
 				"\"==\"",
 				"\"!=\"",
 				"\".\"",
+				"\"::\"",
 				"structinit"
 			};
 

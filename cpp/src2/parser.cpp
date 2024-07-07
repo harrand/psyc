@@ -62,9 +62,12 @@ namespace parse
 								mid_text += "═";
 							}
 							mid_text += "│";
-							for(std::size_t i = 0; i < relevant_src.size() - loc.column; i++)
+							if(relevant_src.size() > loc.column)
 							{
-								mid_text += "═";
+								for(std::size_t i = 0; i < relevant_src.size() - loc.column; i++)
+								{
+									mid_text += "═";
+								}
 							}
 							bottom_text += "┘";
 							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur->name(), res.errmsg, cur->loc.to_string(), relevant_src.substr(0, cur->to_string().size()), mid_text, bottom_text);

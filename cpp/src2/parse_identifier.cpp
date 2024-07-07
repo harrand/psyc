@@ -199,6 +199,17 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden::iden
+// namespace access
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), NODE(identifier))
+	auto lhs = GETNODE(identifier);
+	SETINDEX(2);
+	auto rhs = GETNODE(identifier);
+	REDUCE_TO(expression, syntax::node::expression::type::namespace_access, std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, lhs.unique_clone()), std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, rhs.unique_clone()));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 #ifndef INFUNC
 }}
 #endif
