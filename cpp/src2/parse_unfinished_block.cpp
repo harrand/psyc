@@ -108,16 +108,12 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(function_decl))
 	auto blk = GETNODE(unfinished_block);
 	auto fn = GETNODE(function_decl);
-	if(fn.is_extern)
-	{
-		return {.t = result::type::error, .errmsg = std::format("block contains method declaration \"{}\" which is marked as extern. methods cannot be extern.", fn.func_name.iden)};
-	}
-	if(!fn.capped)
+	if(!fn.capped && !fn.is_extern)
 	{
 		return {.t = result::type::silent_reject};
 	}
-	blk.children.push_back(fn.unique_clone());
-	REDUCE_TO(unfinished_struct, blk);
+	blk.extend(fn.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

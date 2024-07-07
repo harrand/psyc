@@ -132,36 +132,6 @@ namespace syntax
 			}
 		};
 
-		struct unfinished_struct : public inode
-		{
-			unfinished_struct(): start(srcloc::undefined()){}
-			unfinished_struct(unfinished_block blk): inode(blk), start(blk.start)
-			{
-			}
-			unfinished_struct(node_ptr node):
-			start(node->loc)
-			{
-				this->children.push_back(std::move(node));
-			}
-
-			srcloc start;
-
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
-			{
-				return std::format("unfinished struct starting at {}", this->start.to_string());
-			}
-			virtual const char* name() const final
-			{
-				return "unfinished struct";
-			}
-
-			void extend(node_ptr node)
-			{
-				this->children.push_back(std::move(node));
-			}
-		};
-
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
 		struct unparsed_token : public inode
 		{
@@ -550,25 +520,15 @@ namespace syntax
 
 		struct structdata : public inode
 		{
-			structdata(identifier struct_name = {}, std::vector<variable_decl> data_members = {}, bool capped = false): struct_name(struct_name), data_members(data_members), capped(capped){}
+			structdata(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
 
 			identifier struct_name;
-			std::vector<variable_decl> data_members;
 			bool capped = false;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
 			{
-				std::string members_str;
-				for(const auto& member : this->data_members)
-				{
-					members_str += member.to_string();
-				}
-				if(members_str.size())
-				{
-					members_str = std::format(" (members: \t{})", members_str);
-				}
-				return std::format("struct({}{})", this->struct_name.iden, members_str);
+				return std::format("struct({})", this->struct_name.iden);
 			}
 
 			virtual const char* name() const final

@@ -129,40 +129,9 @@ CHORD_BEGIN
 	auto name = GETNODE(identifier);
 	SETINDEX(3);
 	auto blk = GETNODE(block);
-	std::vector<syntax::node::variable_decl> members = {};
-	for(auto iter = blk.children.begin(); iter != blk.children.end();)
-	{
-		if((*iter)->hash() == syntax::node::variable_decl{}.hash())
-		{
-			// this is a data member.
-			members.push_back(*static_cast<syntax::node::variable_decl*>((*iter).get()));
-			iter = blk.children.erase(iter);
-		}
-		else
-		{
-			// todo: error out? this should only ever be variable decls?
-			iter++;
-		}
-	}
-	REDUCE_TO(structdata, name, members, true);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// iden :: struct structdata
-// create a named struct
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_struct), NODE(structdata))
-
-	auto name = GETNODE(identifier);
-	SETINDEX(3);
-	auto structd = GETNODE(structdata);
-	if(structd.capped)
-	{
-		return {.t = result::type::error, .errmsg = std::format("struct \"{}\" detected dodgy syntax. struct block seen even though the struct is considered capped.", name.iden)};
-	}
-	structd.struct_name = name;
-	structd.capped = true;
-	REDUCE_TO(structdata, structd);
+	auto result_struct = syntax::node::structdata{name, true};
+	result_struct.children.push_back(blk.unique_clone());
+	REDUCE_TO(structdata, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
