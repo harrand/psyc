@@ -147,6 +147,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// typeinfo expr
+// creates a typeinfo based upon the type of `expr`
+CHORD_BEGIN
+	STATE(TOKEN(keyword_typeinfo), NODE(expression))
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	REDUCE_TO(expression, syntax::node::expression::type::typeinfo, expr.unique_clone());
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // .iden := init
 // designated initialiser
 CHORD_BEGIN
