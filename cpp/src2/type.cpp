@@ -115,7 +115,7 @@ type_system::struct_builder& type_system::struct_builder::add_member(std::string
 	if(memty == nullptr || (memty != nullptr && !memty->is_well_formed()))
 	{
 		std::string suggestion = this->sys.suggest_valid_typename_for_typo(type_name);
-		diag::error(error_code::type, "unknown type \"{}\"\ncontext: as type of {}'s data-member \"{}\"{}", type_name, this->struct_name, name, suggestion.size() ? std::format("\n\tdid you mean: \"{}\"", suggestion) : "");
+		diag::error(error_code::type, "unknown type \"{}\"\ncontext: as type of data-member {}::{}{}", type_name, this->struct_name, name, suggestion.size() ? std::format("\n\tdid you mean: \"{}\"", suggestion) : "");
 	}
 	this->members.push_back({.name = name, .ty = std::move(memty)});
 	return *this;
@@ -202,8 +202,8 @@ std::string type_system::suggest_valid_typename_for_typo(std::string invalid_typ
 		}
 	}
 
-	constexpr int wrong_char_threshold = 4;
-	if(dist <= wrong_char_threshold)
+	constexpr std::size_t wrong_char_threshold = 4;
+	if(std::cmp_less_equal(dist, std::min(wrong_char_threshold, std::min(suggestion.size(), invalid_typename.size()))))
 	{
 		return suggestion;
 	}

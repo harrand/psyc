@@ -2,6 +2,7 @@
 #include "diag.hpp"
 #include <stack>
 #include <iostream>
+#include <set>
 
 namespace syntax
 {
@@ -9,6 +10,7 @@ namespace syntax
 	{
 		std::stack<const inode*> node_list;
 		std::stack<std::size_t> indents;
+		std::set<std::size_t> parents = {};
 		node_list.push(this);
 		indents.push(0);
 		while(node_list.size())
@@ -19,12 +21,25 @@ namespace syntax
 			indents.pop();
 			if(indent > 0)
 			{
-				std::cout << "  ";
-				for(std::size_t i = 0; i < (indent - 1); i++)
+				for(std::size_t i = 0; i < indent; i++)
 				{
-					std::cout << "│ ";
+					if(std::find(parents.begin(), parents.end(), i - 1) != parents.end())
+					{
+						std::cout << "│ ";
+					}
+					else
+					{
+						std::cout << "  ";
+					}
 				}
-				std::cout << "├─";
+				if(indent > 1 && cur->children.empty() && (indents.size() && indents.top() != indent))
+				{
+					std::cout << "└─";
+				}
+				else
+				{
+					std::cout << "├─";
+				}
 			}
 			if(cur != nullptr)
 			{
@@ -35,6 +50,14 @@ namespace syntax
 				const inode* child = cur->children[cur->children.size() - 1 - i].get();
 				node_list.push(child);
 				indents.push(indent + 1);
+			}
+			while(parents.size() && indent < *parents.rbegin())
+			{
+				parents.erase(std::prev(parents.end()));
+			}
+			if(this->children.size())
+			{
+				parents.insert(indent);
 			}
 		}
 	}

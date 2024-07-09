@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 	sys.make_struct("morbin2")
 		.add_member("unrelated", "f32")
 		.add_member("morb", "morbinston")
-		.add_member("morbius", "123")
+		.add_member("morbius", "u0")
 		.build();
 
 
