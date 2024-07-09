@@ -48,6 +48,8 @@ add_library(libpsyc
 	src2/srcloc.hpp
 	src2/timer.cpp
 	src2/timer.hpp
+	src2/type.cpp
+	src2/type.hpp
 	src2/util.cpp
 	src2/util.hpp
 )

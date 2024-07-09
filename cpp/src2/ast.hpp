@@ -4,7 +4,6 @@
 #include "util.hpp"
 #include "lex.hpp"
 #include "util.hpp"
-#include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include <string>
 #include <memory>
 #include <vector>
