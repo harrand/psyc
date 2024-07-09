@@ -80,9 +80,28 @@ namespace semal
 				}
 				else
 				{
-					sem_assert_ice(false, (&node), "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's not null but not an expr or iden either. parse reduction has gone awry. hash: {} (iden: {}, expr: {})", hash, syntax::node::identifier{}.hash(), syntax::node::expression{}.hash());
+					sem_assert_ice(false, (&node), "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it is infact a {}. parse reduction has gone awry. hash: {} (iden: {}, expr: {})", node.name(), hash, syntax::node::identifier{}.hash(), syntax::node::expression{}.hash());
 				}
 			}
+			break;
+			case type::deref:
+				this->ty = expression(tsys, *static_cast<syntax::node::expression*>(node.expr.get())).ty->deref();
+			break;
+			case type::ref:
+				this->ty = expression(tsys, *static_cast<syntax::node::expression*>(node.expr.get())).ty->ref();
+			break;
+			case type::defer:
+				this->ty = expression(tsys, *static_cast<syntax::node::expression*>(node.expr.get())).ty;
+			break;
+			case type::eqcompare:
+				this->ty = tsys.get_type("bool");
+			break;
+			case type::neqcompare:
+				this->ty = tsys.get_type("bool");
+			break;
+			case type::struct_initialiser:
+				sem_assert(node.expr->hash() == syntax::node::identifier{}.hash(), (&node), "struct initialiser expression lhs must be an identifier, but instead it is a {}", node.expr->name());
+				this->ty = tsys.get_type(static_cast<syntax::node::identifier*>(node.expr.get())->iden);
 			break;
 			default:
 				diag::error(error_code::nyi, "semantic analysis for expression type {} is NYI", syntax::node::expression::type_names[static_cast<int>(node.t)]);
