@@ -3,6 +3,7 @@
 #include "parser.hpp"
 #include "timer.hpp"
 #include "diag.hpp"
+#include "type.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -45,6 +46,18 @@ int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	timers t;
+
+	type_system sys;
+	sys.make_struct("morbinston")
+		.add_member("nested", "i64")
+		.build();
+
+	sys.make_struct("morbin2")
+		.add_member("unrelated", "f32")
+		.add_member("morb", "morbinston")
+		.add_member("morbius", "123")
+		.build();
+
 
 	parse::populate_parse_table();
 

@@ -1,8 +1,9 @@
 #ifndef PSYC_TYPE_HPP
 #define PSYC_TYPE_HPP
 #include "util.hpp"
-#include "llvm/Demangle/MicrosoftDemangleNodes.h"
 #include <string>
+#include <array>
+#include <unordered_map>
 
 struct itype;
 using type_ptr = std::unique_ptr<itype>;
@@ -16,6 +17,7 @@ struct itype : public util::unique_cloneable<itype>
 		primitive_type,
 		struct_type,
 		pointer_type,
+		alias_type,
 		ill_formed,
 		_count
 	};
@@ -79,6 +81,7 @@ constexpr std::array<const char*, static_cast<int>(primitive::_count)> primitive
 
 	"u64",
 	"u32",
+	"u16",
 	"u8",
 	"u0",
 
@@ -91,10 +94,57 @@ constexpr std::array<const char*, static_cast<int>(primitive::_count)> primitive
 
 struct primitive_type : public itype
 {
-	COPY_UNIQUE_CLONEABLE(itype)
 	primitive_type(std::string primitive_typename);
+	COPY_UNIQUE_CLONEABLE(itype)
 
 	primitive prim;
+};
+
+struct alias_type : public itype
+{
+	alias_type(type_ptr alias, std::string alias_name);
+	alias_type(const alias_type& cpy);
+	COPY_UNIQUE_CLONEABLE(itype)
+	type_ptr original() const;
+
+	type_ptr alias;
+};
+
+struct struct_type : public itype
+{
+	struct data_member
+	{
+		std::string name;
+		type_ptr ty;
+	};
+
+	struct_type(std::string name, std::vector<data_member> members = {});
+	struct_type(const struct_type& cpy);
+	COPY_UNIQUE_CLONEABLE(itype)
+
+	std::vector<data_member> members;
+};
+
+class type_system
+{
+public:
+	type_system() = default;
+	struct struct_builder
+	{
+		type_system& sys;
+		std::string struct_name;
+		std::vector<struct_type::data_member> members = {};
+
+		struct_builder& add_member(std::string name, std::string type_name);
+		void build();
+	};
+
+	struct_builder make_struct(std::string name);
+	void make_alias(std::string name, std::string typename_to_alias);
+	type_ptr get_type(std::string type_name) const;
+private:
+	std::string suggest_valid_typename_for_typo(std::string invalid_typename) const;
+	std::unordered_map<std::string, type_ptr> types = {};
 };
 
 namespace type_helpers
