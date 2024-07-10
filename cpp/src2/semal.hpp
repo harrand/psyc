@@ -33,6 +33,27 @@ namespace semal
 		std::string_view get_name() const;
 		const itype& get_type() const;
 	};
+
+	struct function
+	{
+		function(const type_system& tsys, syntax::node::function_decl& node);
+		type_ptr return_ty;
+		syntax::node::function_decl* node;
+		std::vector<type_ptr> param_types;
+
+		std::string_view get_name() const;
+		const itype& get_return_type() const;
+		std::span<const type_ptr> get_param_types() const;
+	};
+
+	struct struct_decl
+	{
+		struct_decl(type_system& tsys, syntax::node::structdata& node);
+		type_ptr ty;
+		syntax::node::structdata* node;
+
+		const itype& get_type() const;
+	};
 }
 
 #endif // PSYC_SEMAL_HPP

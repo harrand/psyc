@@ -125,10 +125,18 @@ struct struct_type : public itype
 	std::vector<data_member> members;
 };
 
+struct incomplete_type : public itype
+{
+	incomplete_type(std::string name);
+	incomplete_type(const incomplete_type& cpy);
+
+	COPY_UNIQUE_CLONEABLE(itype)
+};
+
 class type_system
 {
 public:
-	type_system() = default;
+	type_system();
 	struct struct_builder
 	{
 		type_system& sys;
@@ -144,6 +152,7 @@ public:
 	type_ptr get_type(std::string type_name) const;
 	std::string suggest_valid_typename_for_typo(std::string invalid_typename) const;
 private:
+	void add_compiler_supported_types();
 	std::unordered_map<std::string, type_ptr> types = {};
 };
 

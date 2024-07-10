@@ -113,12 +113,16 @@ namespace semal
 	ty(),
 	node(&node)
 	{
+		// variable declaration. getting its type is simple, *unless* its an inferred typename e.g `mytype ::= get_callback_count();`
 		if(node.type_name.iden != syntax::node::inferred_typename)
 		{
+			// easy one: typename explicitly specified
 			this->ty = tsys.get_type(node.type_name.iden);
 		}
 		else
 		{
+			// inferred typename. the type of our variable decl is the type evaluated by its initialiser expression.
+			// obviously, it better have an impression.
 			sem_assert(!this->node->expr.is_null(), this->node, "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", this->get_name());
 			this->ty = expression(tsys, this->node->expr).get_type().unique_clone();
 		}
@@ -132,6 +136,48 @@ namespace semal
 	const itype& variable::get_type() const
 	{
 		sem_assert_ice(this->ty != nullptr, this->node, "semal variable {}'s ast node was nullptr", this->get_name());
+		return *this->ty;
+	}
+
+	function::function(const type_system& tsys, syntax::node::function_decl& node):
+	return_ty(tsys.get_type(node.return_type_name.iden)),
+	node(&node),
+	param_types()
+	{
+		// populate param types.
+		for(syntax::node::variable_decl& param : node.params.decls)
+		{
+			this->param_types.push_back(variable(tsys, param).get_type().unique_clone());
+		}
+	}
+
+	struct_decl::struct_decl(type_system& tsys, syntax::node::structdata& node):
+	ty(nullptr),
+	node(&node)
+	{
+		// note: struct types don't exist in the type system by default because they are of course written by the programmer.
+		// so we need: a mutable reference to the type system
+		// and now we go ahead and construct the type and insert it into the type system.
+		sem_assert_ice(this->node->children.size() == 1 && this->node->children.front()->hash() == syntax::node::block{}.hash(), this->node, "Struct declaration AST node must have a single child: a block. instead, it has {} children{}", this->node->children.size(), this->node->children.size() ? std::format(" (the first of which is a {})", this->node->children.front()->name()) : "");
+
+		type_system::struct_builder builder = tsys.make_struct(node.struct_name.iden);
+
+		// get the children of the block. this is where methods and data member variable declarations will be.
+		// however, possible TODO: you will almost certainly want to extract the method declarations here too, so it's easy to lookup by method name.
+		for(const syntax::node_ptr& ptr : this->node->children.front()->children)
+		{
+			// the data members of a struct are encoded in the type. methods however are *not*
+			if(ptr->hash() == syntax::node::variable_decl{}.hash())
+			{
+				const auto& data_member = static_cast<const syntax::node::variable_decl&>(*ptr);
+				builder.add_member(data_member.var_name.iden, data_member.type_name.iden);
+			}
+		}
+	}
+
+	const itype& struct_decl::get_type() const
+	{
+		sem_assert_ice(this->ty != nullptr, this->node, "semal struct's {}'s ast node was nullptr", this->node->struct_name.iden);
 		return *this->ty;
 	}
 }
