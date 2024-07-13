@@ -103,12 +103,12 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// { structdata
+// { struct_decl
 // starts an unfinished block
 CHORD_BEGIN
-	STATE(TOKEN(obrace), NODE(structdata))
+	STATE(TOKEN(obrace), NODE(struct_decl))
 	SETINDEX(1);
-	auto structd = GETNODE(structdata);
+	auto structd = GETNODE(struct_decl);
 	REDUCE_TO(unfinished_block, structd.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -284,9 +284,9 @@ CHORD_END
 
 // source-begin struct
 CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(structdata))
+	STATE(TOKEN(source_begin), NODE(struct_decl))
 	SETINDEX(1);
-	auto structd = GETNODE(structdata);
+	auto structd = GETNODE(struct_decl);
 	if(structd.capped)
 	{
 		return {.t = result::type::send_to_output, .offset = 1};

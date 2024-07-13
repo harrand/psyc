@@ -4,6 +4,7 @@
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
+#include "semal.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -106,9 +107,15 @@ int main(int argc, char** argv)
 	}
 	t.parsing = timer::elapsed_millis();
 
-	/*
 	// semal
 	timer::start();
+	type_system tsys;
+	for(const std::filesystem::path input_file : args.input_files)
+	{
+		const syntax::node_ptr& ast = parse.parsed_input_files[input_file];
+		semal::analyse(ast.get(), tsys);
+	}
+	/*
 	semal::state semal;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
@@ -118,8 +125,11 @@ int main(int argc, char** argv)
 	{
 		semal.analysed_input_files[input_file] = semal::analyse_full(parse.parsed_input_files[input_file], semal.program_decls);
 	}
+	*/
 	t.semal = timer::elapsed_millis();
-	
+
+
+	/*
 	// codegen
 	timer::start();
 	code::state codegen;

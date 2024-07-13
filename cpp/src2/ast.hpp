@@ -519,9 +519,9 @@ namespace syntax
 			}
 		};
 
-		struct structdata : public inode
+		struct struct_decl : public inode
 		{
-			structdata(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
+			struct_decl(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
 
 			identifier struct_name;
 			bool capped = false;

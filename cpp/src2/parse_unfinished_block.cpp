@@ -117,11 +117,11 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// add a structdata to the end of the unfinished block.
+// add a struct_decl to the end of the unfinished block.
 CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(structdata))
+	STATE(NODE(unfinished_block), NODE(struct_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto structd = GETNODE(structdata);
+	auto structd = GETNODE(struct_decl);
 	if(!structd.capped)
 	{
 		return {.t = result::type::silent_reject};

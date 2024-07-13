@@ -129,9 +129,9 @@ CHORD_BEGIN
 	auto name = GETNODE(identifier);
 	SETINDEX(3);
 	auto blk = GETNODE(block);
-	auto result_struct = syntax::node::structdata{name, true};
+	auto result_struct = syntax::node::struct_decl{name, true};
 	result_struct.children.push_back(blk.unique_clone());
-	REDUCE_TO(structdata, result_struct);
+	REDUCE_TO(struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

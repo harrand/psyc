@@ -7,38 +7,38 @@ namespace semal
 {
 	struct identifier
 	{
-		identifier(const type_system& tsys, syntax::node::identifier& node);
+		identifier(const type_system& tsys, const syntax::node::identifier& node);
 
 		type_ptr ty;
-		syntax::node::identifier* node;
+		const syntax::node::identifier* node;
 
 		const itype& get_type() const;
 	};
 
 	struct expression
 	{
-		expression(const type_system& tsys, syntax::node::expression& node);
+		expression(const type_system& tsys, const syntax::node::expression& node);
 		type_ptr ty;
-		syntax::node::expression* node;
+		const syntax::node::expression* node;
 
 		const itype& get_type() const;
 	};
 
-	struct variable
+	struct variable_decl
 	{
-		variable(const type_system& tsys, syntax::node::variable_decl& node);
+		variable_decl(const type_system& tsys, const syntax::node::variable_decl& node);
 		type_ptr ty;
-		syntax::node::variable_decl* node;
+		const syntax::node::variable_decl* node;
 
 		std::string_view get_name() const;
 		const itype& get_type() const;
 	};
 
-	struct function
+	struct function_decl
 	{
-		function(const type_system& tsys, syntax::node::function_decl& node);
+		function_decl(const type_system& tsys, const syntax::node::function_decl& node);
 		type_ptr return_ty;
-		syntax::node::function_decl* node;
+		const syntax::node::function_decl* node;
 		std::vector<type_ptr> param_types;
 
 		std::string_view get_name() const;
@@ -48,12 +48,27 @@ namespace semal
 
 	struct struct_decl
 	{
-		struct_decl(type_system& tsys, syntax::node::structdata& node);
+		struct_decl(type_system& tsys, const syntax::node::struct_decl& node);
 		type_ptr ty;
-		syntax::node::structdata* node;
+		const syntax::node::struct_decl* node;
 
 		const itype& get_type() const;
 	};
+
+	struct namespace_access
+	{
+		namespace_access(const type_system& tsys, const syntax::node::identifier& lhs, const syntax::node::expression& rhs);
+		std::string namespace_name;
+		type_ptr evaluated_ty;
+	};
+
+	struct block
+	{
+		block(type_system& tsys, const syntax::node::block& node);
+		const syntax::node::block* node;
+	};
+
+	void analyse(const syntax::inode* ast, type_system& tsys);
 }
 
 #endif // PSYC_SEMAL_HPP
