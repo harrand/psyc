@@ -61,6 +61,7 @@ int main(int argc, char** argv)
 
 
 	parse::populate_parse_table();
+	semal::populate_table();
 
 	/*
 	build::info binfo;
