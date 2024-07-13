@@ -144,12 +144,13 @@ public:
 		std::vector<struct_type::data_member> members = {};
 
 		struct_builder& add_member(std::string name, std::string type_name);
-		void build();
+		type_ptr build();
 	};
 
 	struct_builder make_struct(std::string name);
 	void make_alias(std::string name, std::string typename_to_alias);
 	type_ptr get_type(std::string type_name) const;
+	type_ptr get_primitive_type(primitive prim) const;
 	std::string suggest_valid_typename_for_typo(std::string invalid_typename) const;
 private:
 	void add_compiler_supported_types();

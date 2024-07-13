@@ -157,7 +157,7 @@ type_system::struct_builder& type_system::struct_builder::add_member(std::string
 	return *this;
 }
 
-void type_system::struct_builder::build()
+type_ptr type_system::struct_builder::build()
 {
 	this->sys.types[this->struct_name] = std::make_unique<struct_type>(this->struct_name, std::move(this->members));
 	// as promised, if any data members are ill-formed, then we would've errored out earlier UNLESS we determined they were a pointer or something to our struct type itself. so let's try again and assert that it works now its a complete type.
@@ -170,6 +170,7 @@ void type_system::struct_builder::build()
 			diag::assert_that(mem.ty != nullptr && mem.ty->is_well_formed(), error_code::type, "data member {}::{} was of incomplete type {}, but still failed to resolve the type after the struct has completed.", this->struct_name, mem.name, mem_name);
 		}
 	}
+	return this->sys.types[this->struct_name]->unique_clone();
 }
 
 type_system::struct_builder type_system::make_struct(std::string name)
@@ -223,6 +224,11 @@ type_ptr type_system::get_type(std::string type_name) const
 		}
 	}
 	return ret;
+}
+
+type_ptr type_system::get_primitive_type(primitive prim) const
+{
+	return primitive_type{primitive_names[static_cast<int>(prim)]}.unique_clone();
 }
 
 static int levenshtein_distance(std::string_view s1, std::string_view s2)
