@@ -112,8 +112,11 @@ namespace semal
 				this->ty = tsys.get_type("typeinfo");
 			break;
 			case type::namespace_access:
-				sem_assert(static_cast<syntax::node::expression*>(node.expr.get())->expr->hash() == syntax::node::identifier{}.hash(), this->node, "left-hand-side of namespace access x::y must be an identifier. instead it is a {}", node.expr->name());
-				this->ty = namespace_access(tsys, *static_cast<syntax::node::identifier*>(static_cast<syntax::node::expression*>(node.expr.get())->expr.get()), *static_cast<syntax::node::expression*>(node.extra.get())).evaluated_ty;
+			{
+				sem_assert(node.expr->hash() == syntax::node::namespace_access{}.hash(), (&node), "namespace access expression lhs must be a namespace access, but instead it is a {}", node.expr->name());
+				auto access = static_cast<syntax::node::namespace_access*>(node.expr.get());
+				this->ty = namespace_access(tsys, *access).evaluated_ty;
+			}
 			break;
 			case type::assign:
 				// lhs = rhs
@@ -219,26 +222,34 @@ namespace semal
 		return *this->ty;
 	}
 
-	namespace_access::namespace_access(const type_system& tsys, const syntax::node::identifier& lhs, const syntax::node::expression& rhs):
-	namespace_name(lhs.iden),
+	namespace_access::namespace_access(const type_system& tsys, const syntax::node::namespace_access& access):
+	node(&access),
 	evaluated_ty(nullptr)
 	{
 		// rhs should either be:
 		// - an identifier (e.g bar in foo::bar) representing a struct or global variable
 		// - a function call (e.g mynamespace::function(...)) calling a function in a certain namespace.
-		if(rhs.expr->hash() == syntax::node::identifier{}.hash())
+		auto parts = access.lhs_parts;
+		std::string full_namespace_name = "";
+		while(parts.size())
 		{
-			std::string iden = static_cast<const syntax::node::identifier*>(rhs.expr.get())->iden;
-			diag::warning("at {}: type checking for {}::{} is NYI", lhs.loc.to_string(), this->namespace_name, iden);
+			full_namespace_name += parts.front() + "::";
+			parts.erase(parts.begin());
 		}
-		else if(rhs.expr->hash() == syntax::node::function_call{}.hash())
+		// todo: actually use the full namespace name. none of that context is used currently.
+		if(access.rhs.expr->hash() == syntax::node::identifier{}.hash())
 		{
-			const auto& call = static_cast<const syntax::node::function_call*>(rhs.expr.get());
+			std::string iden = static_cast<const syntax::node::identifier*>(access.rhs.expr.get())->iden;
+			diag::warning("at {}: type checking for {}{} is NYI", access.loc.to_string(), full_namespace_name, iden);
+		}
+		else if(access.rhs.expr->hash() == syntax::node::function_call{}.hash())
+		{
+			const auto& call = static_cast<const syntax::node::function_call*>(access.rhs.expr.get());
 			this->evaluated_ty = tsys.get_type(call->return_type_name.iden);
 		}
 		else
 		{
-			sem_assert(false, (&lhs), "right-hand-side of namespace access should be either an identifier or a function call. instead, you've provided a {}", rhs.expr->name());
+			sem_assert(false, (&access), "right-hand-side of namespace access should be either an identifier or a function call. instead, you've provided a {}", access.rhs.expr->name());
 		}
 	}
 

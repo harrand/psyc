@@ -376,6 +376,45 @@ namespace syntax
 			}
 		};
 
+
+		struct namespace_access : public inode
+		{
+			namespace_access(identifier lhs = {}, expression rhs = {}):
+			inode(lhs),
+			lhs_parts({lhs.iden}),
+			rhs(rhs){}
+			namespace_access(identifier lhs, const namespace_access& rhs):
+			inode(lhs),
+			lhs_parts({lhs.iden}),
+			rhs(rhs.rhs)
+			{
+				// a::b::foo() = iden(a)::namespace_access(iden(b), expr(foo()))
+				for(std::string part : rhs.lhs_parts)
+				{
+					this->lhs_parts.push_back(part);
+				}
+			}
+			
+			std::vector<std::string> lhs_parts;
+			expression rhs;
+
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				std::string lhs_total;
+				for(auto part : this->lhs_parts)
+				{
+					lhs_total += part;
+				}
+				return std::format("namespace-access({}::{})", lhs_total, this->rhs.to_string());
+			}
+
+			virtual const char* name() const final
+			{
+				return "namespace access";
+			}
+		};
+
 		struct variable_decl : public inode
 		{
 			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}, bool capped = false): var_name(var_name), type_name(type_name), expr(expr), capped(capped){}

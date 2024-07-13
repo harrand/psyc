@@ -200,9 +200,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::namespace_access)
+	if(struct_name.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute either an identifier (i.e `my_struct_name` or a namespace access e.g `myapi::struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
@@ -214,9 +214,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), NODE(designated_initialiser), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::namespace_access)
+	if(struct_name.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute either an identifier (i.e `my_struct_name` or a namespace access e.g `myapi::struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
@@ -230,24 +230,13 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), NODE(designated_initialiser_list), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::namespace_access)
+	if(struct_name.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute either an identifier (i.e `my_struct_name` or a namespace access e.g `myapi::struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	SETINDEX(2);
 	auto inits = GETNODE(designated_initialiser_list);
 	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), inits.unique_clone());
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// expr::iden
-// namespace access
-CHORD_BEGIN
-	STATE(NODE(expression), TOKEN(colcol), NODE(identifier))
-	auto lhs = GETNODE(expression);
-	SETINDEX(2);
-	auto rhs = GETNODE(identifier);
-	REDUCE_TO(expression, syntax::node::expression::type::namespace_access, lhs.unique_clone(), std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, rhs.unique_clone()));
 	return {.t = result::type::reduce_success};
 CHORD_END
 

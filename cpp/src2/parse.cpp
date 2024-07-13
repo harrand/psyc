@@ -96,6 +96,7 @@ namespace parse
 		#include "parse_designated_initialiser.cpp"
 		#include "parse_designated_initialiser_list.cpp"
 		#include "parse_meta_region.cpp"
+		#include "parse_namespace_access.cpp"
 		#include "parse_unfinished_block.cpp"
 		#include "parse_if_statement.cpp"
 	}

@@ -6,15 +6,6 @@ namespace parse{
 void foo(){
 #endif
 
-// iden.
-// convert to expr but keep the dot
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(dot))
-	auto iden = GETNODE(identifier);
-	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::identifier, iden.unique_clone());
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN
@@ -175,7 +166,18 @@ CHORD_BEGIN
 	auto lhs = GETNODE(identifier);
 	SETINDEX(2);
 	auto rhs = GETNODE(identifier);
-	REDUCE_TO(expression, syntax::node::expression::type::namespace_access, std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, lhs.unique_clone()), std::make_unique<syntax::node::expression>(syntax::node::expression::type::identifier, rhs.unique_clone()));
+	REDUCE_TO(namespace_access, lhs, syntax::node::expression{syntax::node::expression::type::identifier, rhs.unique_clone()});
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden::namespace-access
+// nested namespace access
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), NODE(namespace_access))
+	auto lhs = GETNODE(identifier);
+	SETINDEX(2);
+	auto rhs = GETNODE(namespace_access);
+	REDUCE_TO(namespace_access, lhs, rhs);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

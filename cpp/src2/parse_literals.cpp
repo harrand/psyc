@@ -22,6 +22,13 @@ CHORD_BEGIN\
 CHORD_END\
  \
 CHORD_BEGIN\
+	STATE(NODE(ty), TOKEN(dot))\
+	syntax::node::ty intlit = GETNODE(ty);\
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
+	return {.t = result::type::reduce_success};\
+CHORD_END\
+ \
+CHORD_BEGIN\
 	STATE(NODE(ty), TOKEN(cparen))\
 	syntax::node::ty intlit = GETNODE(ty);\
 	REDUCE_TO_ADVANCED(0, 1, expression, syntax::node::expression::type::ty, intlit.unique_clone());\
@@ -98,6 +105,7 @@ REDUCE_LITERALS(char_literal)
 REDUCE_LITERALS(string_literal)
 REDUCE_LITERALS(identifier)
 REDUCE_LITERALS(function_call)
+REDUCE_LITERALS(namespace_access)
 
 #ifndef INFUNC
 }}

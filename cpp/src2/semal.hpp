@@ -57,8 +57,8 @@ namespace semal
 
 	struct namespace_access
 	{
-		namespace_access(const type_system& tsys, const syntax::node::identifier& lhs, const syntax::node::expression& rhs);
-		std::string namespace_name;
+		namespace_access(const type_system& tsys, const syntax::node::namespace_access& access);
+		const syntax::node::namespace_access* node;
 		type_ptr evaluated_ty;
 	};
 
