@@ -17,6 +17,11 @@ itype::itype(std::string name, hint h): name(name), h(h){}
 	return this->name;
 }
 
+std::string itype::get_qualified_name() const
+{
+	return std::format("{}{}{}", this->get_name(), this->is_const() ? " const" : "", this->is_weak() ? " weak" : "");
+}
+
 const char* itype::hint_name() const
 {
 	return hint_names[static_cast<int>(this->h)];
@@ -37,9 +42,80 @@ bool itype::is_primitive() const
 	return this->h == hint::primitive_type;
 }
 
+bool itype::is_integer() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(static_cast<const primitive_type*>(this)->prim)
+	{
+		case primitive::i64:
+			[[fallthrough]];
+		case primitive::i32:
+			[[fallthrough]];
+		case primitive::i16:
+			[[fallthrough]];
+		case primitive::i8:
+			[[fallthrough]];
+		case primitive::u64:
+			[[fallthrough]];
+		case primitive::u32:
+			[[fallthrough]];
+		case primitive::u16:
+			[[fallthrough]];
+		case primitive::u8:
+			[[fallthrough]];
+		case primitive::boolean:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
+bool itype::is_floating_point() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(static_cast<const primitive_type*>(this)->prim)
+	{
+		case primitive::f64:
+			[[fallthrough]];
+		case primitive::f32:
+			[[fallthrough]];
+		case primitive::f16:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
 bool itype::is_well_formed() const
 {
 	return this->h != hint::ill_formed;
+}
+
+bool itype::is_weak() const
+{
+	return this->quals & qual_weak;
+}
+
+bool itype::is_const() const
+{
+	return this->quals & qual_const;
+}
+
+type_ptr itype::discarded_qualifiers() const
+{
+	auto ret = this->unique_clone();
+	ret->quals = qual_none;
+	return ret;
 }
 
 /*virtual*/ type_ptr itype::deref() const
@@ -52,7 +128,53 @@ bool itype::is_well_formed() const
 	return std::make_unique<pointer_type>(this->unique_clone());
 }
 
-pointer_type::pointer_type(type_ptr base_type): itype(*base_type), base(std::move(base_type)){}
+/*virtual*/ typeconv itype::can_implicitly_convert_to(const itype& rhs) const
+{
+	if(*this->discarded_qualifiers() == *rhs.discarded_qualifiers())
+	{
+		if(this->is_pointer() && this->is_const() && !rhs.is_const())
+		{
+			return typeconv::cant;
+		}
+		return typeconv::noop;
+	}
+	if(this->is_weak() || rhs.is_weak())
+	{
+		type_ptr plain_this = this->discarded_qualifiers();
+		type_ptr plain_rhs = rhs.discarded_qualifiers();
+		if(plain_this->is_primitive() && *plain_this == primitive_type{primitive::i64} && rhs.is_pointer())
+		{
+			return typeconv::i2p;
+		}
+		if(plain_rhs->is_primitive() && *plain_rhs == primitive_type{primitive::i64} && this->is_pointer())
+		{
+			return typeconv::p2i;
+		}
+		if(this->is_integer() && rhs.is_integer())
+		{
+			return typeconv::i2i;
+		}
+		if(this->is_floating_point() && rhs.is_floating_point())
+		{
+			return typeconv::f2f;
+		}
+		if(this->is_integer() && rhs.is_floating_point())
+		{
+			return typeconv::i2f;
+		}
+		if(this->is_floating_point() && rhs.is_integer())
+		{
+			return typeconv::f2i;
+		}
+		if(this->is_pointer() && rhs.is_pointer())
+		{
+			return typeconv::p2p;
+		}
+	}
+	return typeconv::cant;
+}
+
+pointer_type::pointer_type(type_ptr base_type): itype(*base_type->discarded_qualifiers()), base(std::move(base_type)){}
 
 pointer_type::pointer_type(const pointer_type& cpy): itype(cpy), base(cpy.base->unique_clone())
 {
@@ -61,7 +183,7 @@ pointer_type::pointer_type(const pointer_type& cpy): itype(cpy), base(cpy.base->
 
 /*virtual*/ std::string pointer_type::get_name() const /*final*/
 {
-	return std::format("{}&", this->base->get_name());
+	return std::format("{}&", this->base->get_qualified_name());
 }
 
 /*virtual*/ type_ptr pointer_type::deref() const /*final*/
@@ -189,47 +311,53 @@ type_system::struct_builder type_system::make_struct(std::string name)
 type_ptr type_system::make_alias(std::string name, std::string typename_to_alias)
 {
 	type_ptr aliased = this->get_type(typename_to_alias);
-	this->types[name] = alias_type{std::move(aliased), name}.unique_clone();
+	this->types[name] = alias_type{aliased->unique_clone(), name}.unique_clone();
 	return aliased->unique_clone();
 }
 
 type_ptr type_system::get_type(std::string type_name) const
 {
 	type_ptr ret = nullptr;
-	std::size_t ptr_level = 0;
-	for(auto iter = type_name.begin(); iter != type_name.end();)
+	for(auto iter = type_name.begin(); iter != type_name.end();iter++)
 	{
-		if(*iter == '&')
+		std::string_view previous{type_name.begin(), iter};
+		std::string next{&*iter};
+		const bool found_const = next.starts_with(" const");
+		const bool found_weak = next.starts_with(" weak");
+		const bool found_ptr = next.starts_with("&");
+		if(found_const || found_weak || found_ptr)
 		{
-			ptr_level++;
-			iter = type_name.erase(iter);
+			ret = this->get_type(std::string{previous});
+			if(found_const)
+			{
+				ret->quals = static_cast<type_qualifier>(ret->quals | qual_const);
+			}
+			if(found_weak)
+			{
+				ret->quals = static_cast<type_qualifier>(ret->quals | qual_weak);
+			}
+			if(found_ptr)
+			{
+				ret = ret->ref();
+			}
 		}
-		else
-		{
-			iter++;
-		}
+	}
+	if(ret != nullptr)
+	{
+		return ret;
 	}
 	primitive_type prim{type_name};
 	if(prim.is_well_formed())
 	{
-		ret = prim.unique_clone();
+		return prim.unique_clone();
 	}
 
 	auto iter = this->types.find(type_name);
 	if(iter != this->types.end())
 	{
-		ret = iter->second->unique_clone();
+		return iter->second->unique_clone();
 	}
-
-	if(ret != nullptr)
-	{
-		while(ptr_level > 0)
-		{
-			ret = ret->ref();
-			ptr_level--;
-		}
-	}
-	return ret;
+	return nullptr;
 }
 
 type_ptr type_system::get_primitive_type(primitive prim) const

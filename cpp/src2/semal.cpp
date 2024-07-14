@@ -269,7 +269,19 @@ namespace semal
 				return tsys.get_primitive_type(primitive::boolean);
 			break;
 			case type::struct_initialiser:
-				return tsys.get_type(static_cast<syntax::node::identifier*>(node.expr.get())->iden);
+				if(node.expr->hash() == syntax::node::identifier{}.hash())
+				{
+					return tsys.get_type(static_cast<syntax::node::identifier*>(node.expr.get())->iden);
+				}
+				else if(node.expr->hash() == syntax::node::namespace_access{}.hash())
+				{
+					return GETTYPE((*node.expr));
+				}
+				else
+				{
+					sem_assert(false, "struct initialiser lhs should always be either an identifier or a namespace access, instead you've provided a {}", node.expr->name());
+					ILL_FORMED;
+				}
 			break;
 			case type::typeinfo:
 				return tsys.get_type("typeinfo");

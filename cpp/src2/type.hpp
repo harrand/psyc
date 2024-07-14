@@ -10,6 +10,26 @@ using type_ptr = std::unique_ptr<itype>;
 
 struct pointer_type;
 
+enum type_qualifier
+{
+	qual_none = 0x0,
+	qual_const = 0x1,	
+	qual_weak = 0x2
+};
+
+enum class typeconv
+{
+	noop,
+	i2i,
+	f2f,
+	i2f,
+	f2i,
+	p2p,
+	i2p,
+	p2i,
+	cant	
+};
+
 struct itype : public util::unique_cloneable<itype>
 {
 	enum class hint
@@ -27,19 +47,30 @@ struct itype : public util::unique_cloneable<itype>
 	itype(const itype& cpy) = default;
 
 	virtual std::string get_name() const;
+	std::string get_qualified_name() const;
 	const char* hint_name() const;
 	bool is_pointer() const;
 	bool is_struct() const;
 	bool is_primitive() const;
+	bool is_integer() const;
+	bool is_floating_point() const;
 	bool is_well_formed() const;
+
+	bool is_weak() const;
+	bool is_const() const;
+	type_ptr discarded_qualifiers() const;
 
 	virtual type_ptr deref() const;
 	virtual type_ptr ref() const;
+
+	typeconv can_implicitly_convert_to(const itype& rhs) const;
+	typeconv can_explicitly_convert_to(const itype& rhs) const;
 
 	bool operator==(const itype& rhs) const{return this->get_name() == rhs.get_name();}
 
 	std::string name;
 	hint h;
+	type_qualifier quals = qual_none;
 };
 
 struct pointer_type : public itype

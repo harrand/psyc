@@ -59,6 +59,9 @@ int main(int argc, char** argv)
 		.add_member("morbius", "u0")
 		.build();
 
+	primitive_type ty{primitive::f64};
+	ty.quals = static_cast<type_qualifier>(qual_const | qual_weak);
+	diag::note("{}", ty.ref()->get_qualified_name());
 
 	parse::populate_parse_table();
 	semal::populate_table();
