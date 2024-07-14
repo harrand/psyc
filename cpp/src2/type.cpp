@@ -186,10 +186,11 @@ type_system::struct_builder type_system::make_struct(std::string name)
 	return {.sys = *this, .struct_name = name};
 }
 
-void type_system::make_alias(std::string name, std::string typename_to_alias)
+type_ptr type_system::make_alias(std::string name, std::string typename_to_alias)
 {
 	type_ptr aliased = this->get_type(typename_to_alias);
 	this->types[name] = alias_type{std::move(aliased), name}.unique_clone();
+	return aliased->unique_clone();
 }
 
 type_ptr type_system::get_type(std::string type_name) const

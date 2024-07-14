@@ -151,7 +151,7 @@ public:
 	};
 
 	struct_builder make_struct(std::string name);
-	void make_alias(std::string name, std::string typename_to_alias);
+	type_ptr make_alias(std::string name, std::string typename_to_alias);
 	type_ptr get_type(std::string type_name) const;
 	type_ptr get_primitive_type(primitive prim) const;
 	std::string suggest_valid_typename_for_typo(std::string invalid_typename) const;

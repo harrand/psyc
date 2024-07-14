@@ -105,7 +105,7 @@ namespace semal
 				{
 					return GETTYPE((*decl));
 				}
-				sem_assert(false, "undefined variable {}", node.iden);
+				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
 			}
 			return ret;
@@ -170,6 +170,10 @@ namespace semal
 			return tsys.get_type(node.return_type_name.iden);
 		TYPECHECK_END
 
+		TYPECHECK_BEGIN(function_call)
+			return tsys.get_type(node.return_type_name.iden);
+		TYPECHECK_END
+
 		TYPECHECK_BEGIN(namespace_access)
 			std::string full_namespace_name;
 			auto parts = node.lhs_parts;
@@ -185,6 +189,23 @@ namespace semal
 		TYPECHECK_BEGIN(if_statement)
 			type_ptr cond_ty = GETTYPE(node.cond);
 			sem_assert(*cond_ty == primitive_type{primitive::boolean}, "evaluated type of if-statement condition must be a bool, but you provided a {}", cond_ty->get_name());
+			return nullptr;
+		TYPECHECK_END
+
+		TYPECHECK_BEGIN(else_statement)
+			if(!node.cond.is_null())
+			{
+				GETTYPE(node.cond);
+			}
+			return nullptr;
+		TYPECHECK_END
+
+		TYPECHECK_BEGIN(meta_region)
+			return nullptr;
+		TYPECHECK_END
+
+		TYPECHECK_BEGIN(alias)
+			tsys.make_alias(node.alias_name.iden, GETTYPE(node.type_value_expr)->get_name());
 			return nullptr;
 		TYPECHECK_END
 		
@@ -241,9 +262,6 @@ namespace semal
 			case type::ref:
 				return GETTYPE((*node.expr))->ref();
 			break;
-			case type::defer:
-				return GETTYPE((*node.expr));
-			break;
 			case type::eqcompare:
 				return tsys.get_primitive_type(primitive::boolean);
 			break;
@@ -257,8 +275,54 @@ namespace semal
 				return tsys.get_type("typeinfo");
 			break;
 			case type::namespace_access:
+			[[fallthrough]];
+			case type::addition:
+			[[fallthrough]];
+			case type::subtraction:
+			[[fallthrough]];
+			case type::multiplication:
+			[[fallthrough]];
+			case type::division:
+			[[fallthrough]];
+			case type::identifier:
+			[[fallthrough]];
+			case type::defer:
 			{
 				return GETTYPE((*node.expr));
+			}
+			break;
+			case type::dot_access:
+			{
+				type_ptr lhs_ty = GETTYPE((*node.expr));
+				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), lhs_ty->get_name());
+				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
+
+				auto rhs_expr = static_cast<const syntax::node::expression*>(node.extra.get());
+				sem_assert(node.extra->hash() == syntax::node::expression{}.hash(), "rhs of dot-access expression must be an expression, instead you have provided a {}", node.extra->name());
+				auto rhs_hash = rhs_expr->expr->hash();
+				if(rhs_hash == syntax::node::identifier{}.hash())
+				{
+					std::string_view member_name = static_cast<const syntax::node::identifier*>(rhs_expr->expr.get())->iden;
+					// should be a data member
+					for(const auto& member : struct_ty.members)
+					{
+						if(member.name == member_name)
+						{
+							return member.ty->unique_clone();
+						}
+					}
+					sem_assert(false, "struct {} has no such member named {}", struct_ty.get_name(), member_name);
+				}
+				else if(rhs_hash == syntax::node::function_call{}.hash())
+				{
+					const auto* call = static_cast<const syntax::node::function_call*>(rhs_expr->expr.get());
+					return GETTYPE((*call));
+				}
+				else
+				{
+					sem_assert(false, "rhs of dot-access is of expression-type \"{}\", which is unexpected.", syntax::node::expression::type_names[static_cast<int>(rhs_expr->t)]);
+				}
+				ILL_FORMED;
 			}
 			break;
 			case type::assign:
