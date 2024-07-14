@@ -1,10 +1,61 @@
 #include "semal.hpp"
 #include "diag.hpp"
+#include <vector>
+#include <queue>
 
 namespace semal
 {
 	#define sem_assert_ice(expr, fmt, ...) diag::assert_that(expr, error_code::ice, "at {}: {}", node.loc.to_string(), std::format(fmt, ##__VA_ARGS__))
 	#define sem_assert(expr, fmt, ...) diag::assert_that(expr, error_code::semal, "at {}: {}", node.loc.to_string(), std::format(fmt, ##__VA_ARGS__))
+
+	struct var_scope
+	{
+		std::unordered_map<std::string, const syntax::node::variable_decl*> decls = {};
+		const syntax::node::block* block = nullptr;
+	};
+	// stack starts with a single empty scope (this is global scope. should expect global variables to be defined here.)
+	std::vector<var_scope> var_stack = {var_scope{}};
+	// sometimes variable decls appear before the block scope they're in (e.g a function-decl will semal its parameters before its block (first child)).
+	// when this happens, we put them here instead. next time a scope is pushed, move everything in the queue into the new scope.
+	std::queue<const syntax::node::variable_decl*> premature_scope_variables = {};
+	const syntax::node::variable_decl* find_variable(const std::string& name)
+	{
+		for(var_scope& scope : var_stack)
+		{
+			auto iter = scope.decls.find(name);
+			if(iter != scope.decls.end())
+			{
+				return iter->second;
+			}
+		}
+		return nullptr;
+	}
+	var_scope& push_scope()
+	{
+		var_scope& ret = var_stack.emplace_back();
+		while(premature_scope_variables.size())
+		{
+			const auto* var = premature_scope_variables.front();
+			ret.decls[var->var_name.iden] = var;
+			premature_scope_variables.pop();
+		}
+		return ret;
+	}
+	void pop_scope(){diag::assert_that(var_stack.size(), error_code::ice, "attempt to pop_scope when var stack was already empty."); var_stack.pop_back();}
+	void add_var(const syntax::node::variable_decl& decl)
+	{
+		if(decl.impl_should_add_to_current_scope)
+		{
+			if(decl.impl_is_defined_before_parent_block)
+			{
+				premature_scope_variables.push(&decl);
+			}
+			else
+			{
+				var_stack.back().decls[decl.var_name.iden] = &decl;
+			}
+		}
+	}
 
 	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> type_checking_table;
 	#define TYPECHECK_BEGIN(x) type_checking_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
@@ -16,6 +67,11 @@ namespace semal
 
 	void analyse(const syntax::inode* ast, type_system& tsys)
 	{
+		bool should_create_scope = ast->hash() == syntax::node::block{}.hash();
+		if(should_create_scope)
+		{
+			push_scope();
+		}
 		auto iter = type_checking_table.find(ast->hash());
 		diag::assert_that(iter != type_checking_table.end(), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", ast->name(), ast->hash());
 		type_ptr ty = iter->second(ast);
@@ -31,6 +87,10 @@ namespace semal
 				analyse(child.get(), tsys);
 			}	
 		}
+		if(should_create_scope)
+		{
+			pop_scope();
+		}
 	}
 
 	void populate_table()
@@ -39,7 +99,13 @@ namespace semal
 			type_ptr ret = tsys.get_type(node.iden);
 			if(ret == nullptr)
 			{
-				sem_assert(false, "semantic analysis for identifiers that aren't directly typenames (iden: {}) is NYI", node.iden);
+				// find a variable declared by this name.
+				const syntax::node::variable_decl* decl = find_variable(node.iden);
+				if(decl != nullptr)
+				{
+					return GETTYPE((*decl));
+				}
+				sem_assert(false, "undefined variable {}", node.iden);
 				ILL_FORMED;
 			}
 			return ret;
@@ -58,6 +124,7 @@ namespace semal
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(variable_decl)
+			add_var(node);
 			if(node.type_name.iden != syntax::node::inferred_typename)
 			{
 				return tsys.get_type(node.type_name.iden);
@@ -77,6 +144,7 @@ namespace semal
 				if(ptr->hash() == syntax::node::variable_decl{}.hash())
 				{
 					const auto& data_member = static_cast<const syntax::node::variable_decl&>(*ptr);
+					data_member.impl_should_add_to_current_scope = false;
 					type_ptr data_member_type = GETTYPE(data_member);
 					builder.add_member(data_member.var_name.iden, data_member_type->get_name());
 				}
@@ -85,6 +153,20 @@ namespace semal
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(function_decl)
+			if(node.children.empty()){}
+			else if(node.children.size() != 1 || node.children.front()->hash() != syntax::node::block{}.hash())
+			{
+				sem_assert(false, "function declaration AST node should have either 0 or 1 children (that child being a block). Instead, it has {} children, first one being a \"{}\"", node.children.size(), node.children.front()->name());
+			}
+			for(const auto& param : node.params.decls)
+			{
+				if(node.children.empty())
+				{
+					param.impl_should_add_to_current_scope = false;
+				}
+				param.impl_is_defined_before_parent_block = true;
+				GETTYPE(param);
+			}
 			return tsys.get_type(node.return_type_name.iden);
 		TYPECHECK_END
 

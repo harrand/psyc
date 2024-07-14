@@ -423,6 +423,8 @@ namespace syntax
 			identifier type_name;
 			expression expr;
 			bool capped;
+			mutable bool impl_should_add_to_current_scope = true;
+			mutable bool impl_is_defined_before_parent_block = false;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 
