@@ -126,6 +126,24 @@ namespace syntax
 				ret = std::make_unique<node::char_literal>(charlit.front());
 			}
 			break;
+			case lex::type::bool_literal:
+			{
+				bool val = false;
+				if(t.lexeme == "true")
+				{
+					val = true;
+				}
+				else if(t.lexeme == "false")
+				{
+					val = false;
+				}
+				else
+				{
+					diag::assert_that(false, error_code::type, "bool literal had lexeme \"{}\", but it should only be \"true\" or \"false\"", t.lexeme);
+				}
+				ret = std::make_unique<node::bool_literal>(val);
+			}
+			break;
 			case lex::type::string_literal:
 			{
 				std::string stringlit = t.lexeme;

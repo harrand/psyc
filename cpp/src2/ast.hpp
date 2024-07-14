@@ -209,6 +209,22 @@ namespace syntax
 			}
 		};
 
+		struct bool_literal : public inode
+		{
+			bool_literal(bool val = false): val(val){}
+
+			bool val;
+			COPY_UNIQUE_CLONEABLE(inode)
+			virtual std::string to_string() const final
+			{
+				return std::format("bool-literal({})", this->val ? "true" : "false");
+			}
+			virtual const char* name() const final
+			{
+				return "bool literal";
+			}
+		};
+
 		struct string_literal : public inode
 		{
 			string_literal(std::string val = ""): val(val){}

@@ -84,6 +84,11 @@ itype(primitive_typename, itype::hint::primitive_type)
 	itype::h = itype::hint::ill_formed;
 }
 
+primitive_type::primitive_type(primitive prim):
+itype(primitive_names[static_cast<int>(prim)], itype::hint::primitive_type),
+prim(prim)
+{}
+
 alias_type::alias_type(type_ptr alias, std::string alias_name): itype(alias_name, itype::hint::alias_type), alias(std::move(alias))
 {
 

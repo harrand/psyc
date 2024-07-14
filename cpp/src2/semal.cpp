@@ -181,6 +181,12 @@ namespace semal
 			// todo: actually use the namespace name?
 			return GETTYPE((*node.rhs.expr));
 		TYPECHECK_END
+
+		TYPECHECK_BEGIN(if_statement)
+			type_ptr cond_ty = GETTYPE(node.cond);
+			sem_assert(*cond_ty == primitive_type{primitive::boolean}, "evaluated type of if-statement condition must be a bool, but you provided a {}", cond_ty->get_name());
+			return nullptr;
+		TYPECHECK_END
 		
 		TYPECHECK_BEGIN(expression)
 			using type = syntax::node::expression::type;

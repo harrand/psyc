@@ -36,6 +36,8 @@ struct itype : public util::unique_cloneable<itype>
 	virtual type_ptr deref() const;
 	virtual type_ptr ref() const;
 
+	bool operator==(const itype& rhs) const{return this->get_name() == rhs.get_name();}
+
 	std::string name;
 	hint h;
 };
@@ -95,6 +97,7 @@ constexpr std::array<const char*, static_cast<int>(primitive::_count)> primitive
 struct primitive_type : public itype
 {
 	primitive_type(std::string primitive_typename);
+	primitive_type(primitive prim);
 	COPY_UNIQUE_CLONEABLE(itype)
 
 	primitive prim;
