@@ -342,6 +342,7 @@ namespace syntax
 			{
 				std::swap(this->t, rhs.t);
 				std::swap(this->expr, rhs.expr);
+				std::swap(this->extra, rhs.extra);
 				std::swap(this->capped, rhs.capped);
 				return *this;
 			}

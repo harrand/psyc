@@ -125,12 +125,23 @@ namespace semal
 
 		TYPECHECK_BEGIN(variable_decl)
 			add_var(node);
+			type_ptr ret = nullptr;
 			if(node.type_name.iden != syntax::node::inferred_typename)
 			{
-				return tsys.get_type(node.type_name.iden);
+				ret = tsys.get_type(node.type_name.iden);
 			}
-			sem_assert(!node.expr.is_null(), "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", node.var_name.iden);
-			return GETTYPE(node.expr);
+			else
+			{
+				sem_assert(!node.expr.is_null(), "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", node.var_name.iden);
+				ret = GETTYPE(node.expr);
+			}
+			if(!node.expr.is_null())
+			{
+				type_ptr init_type = GETTYPE(node.expr);
+				typeconv conv = init_type->can_implicitly_convert_to(*ret);
+				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init_type->get_qualified_name(), node.var_name.iden, ret->get_qualified_name());
+			}
+			return ret;
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(struct_decl)
@@ -188,7 +199,8 @@ namespace semal
 
 		TYPECHECK_BEGIN(if_statement)
 			type_ptr cond_ty = GETTYPE(node.cond);
-			sem_assert(*cond_ty == primitive_type{primitive::boolean}, "evaluated type of if-statement condition must be a bool, but you provided a {}", cond_ty->get_name());
+			typeconv conv = cond_ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
+			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond_ty->get_name());
 			return nullptr;
 		TYPECHECK_END
 
@@ -338,9 +350,16 @@ namespace semal
 			}
 			break;
 			case type::assign:
+			{
 				// lhs = rhs
 				// todo: make sure rhs is convertible to rhs and lhs is not const.
-				return GETTYPE((*node.extra));
+				type_ptr lhs = GETTYPE((*node.expr));
+				type_ptr rhs = GETTYPE((*node.extra));
+				typeconv conv = lhs->can_implicitly_convert_to(*rhs);
+				typeconv explicit_conv = lhs->can_explicitly_convert_to(*rhs);
+				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs->get_qualified_name(), lhs->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
+				return lhs;
+			}
 			break;
 				default:
 					sem_assert(false, "semantic analysis for expression type {} is NYI", syntax::node::expression::type_names[static_cast<int>(node.t)]);

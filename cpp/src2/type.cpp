@@ -128,7 +128,7 @@ type_ptr itype::discarded_qualifiers() const
 	return std::make_unique<pointer_type>(this->unique_clone());
 }
 
-/*virtual*/ typeconv itype::can_implicitly_convert_to(const itype& rhs) const
+typeconv itype::can_implicitly_convert_to(const itype& rhs) const
 {
 	if(*this->discarded_qualifiers() == *rhs.discarded_qualifiers())
 	{
@@ -172,6 +172,14 @@ type_ptr itype::discarded_qualifiers() const
 		}
 	}
 	return typeconv::cant;
+}
+
+typeconv itype::can_explicitly_convert_to(const itype& rhs) const
+{
+	// you can explicitly convert (cast) to something if the weak variant of the current type is implicitly convertible.
+	auto weak_this = this->unique_clone();
+	weak_this->quals = type_qualifier(weak_this->quals | qual_weak);
+	return weak_this->can_implicitly_convert_to(rhs);
 }
 
 pointer_type::pointer_type(type_ptr base_type): itype(*base_type->discarded_qualifiers()), base(std::move(base_type)){}
