@@ -84,19 +84,19 @@ namespace lex
 		while(state.cursor < str.size())
 		{
 			std::string_view data = str.data() + state.cursor;
-			const srcloc curloc
+			token tok = tokenise_once(state, data);
+			if(tok.t == type::_undefined && state.cursor < state.source.size())
+			{
+				state.error("ill-defined token(s) detected");
+			}
+
+			tok.meta_srcloc = srcloc
 			{
 				.file = psy_file,
 				.line = state.line,
 				.column = state.col
 			};
 
-			token tok = tokenise_once(state, data);
-			if(tok.t == type::_undefined && state.cursor < state.source.size())
-			{
-				state.error("ill-defined token(s) detected");
-			}
-			tok.meta_srcloc = curloc;
 			if(tok.t != type::_undefined)
 			{
 				tokens.push_back(tok);
@@ -115,8 +115,11 @@ namespace lex
 	{
 		while(data.starts_with("\n") || std::isspace(data.front()))
 		{
-			state.col = 0;
-			state.line++;
+			if(data.starts_with("\n"))
+			{
+				state.col = 0;
+				state.line++;
+			}
 			state.cursor++;
 			data = data.substr(1);
 			if(data.empty())
