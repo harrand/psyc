@@ -294,6 +294,30 @@ namespace semal
 				return tsys.get_primitive_type(primitive::boolean);
 			break;
 			case type::struct_initialiser:
+			{
+				// lhs can either be an identifier or a namespace access.
+				// i need the struct name, so we check both cases
+				std::string struct_name;
+				if(node.expr->hash() == syntax::node::identifier{}.hash())
+				{
+					struct_name = static_cast<syntax::node::identifier*>(node.expr.get())->iden;
+				}
+				else if(node.expr->hash() == syntax::node::namespace_access{}.hash())
+				{
+					auto access = static_cast<const syntax::node::namespace_access*>(node.expr.get());
+					// you should be able to get the left parts here easily once you get to that.
+					sem_assert(access->rhs.expr->hash() == syntax::node::identifier{}.hash(), "struct initialiser's type name is within a namespace. that namespace access' rhs should be an expression that resolves to an identifier, but instead resolves to a {}", access->rhs.expr->name());
+					struct_name = static_cast<syntax::node::identifier*>(access->rhs.expr.get())->iden;
+				}
+				else
+				{
+					sem_assert(false, "struct initialiser lhs should always be either an identifier or a namespace access, instead you've provided a {}", node.expr->name());
+					ILL_FORMED;
+				}
+				auto struct_ty = tsys.get_type(struct_name);
+				sem_assert(struct_ty != nullptr && struct_ty->is_well_formed(), "unknown struct type \"{}\" in struct initialiser", struct_name);
+				sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
+
 				sem_assert(node.extra->hash() == syntax::node::designated_initialiser_list{}.hash(), "should be desiginitlist >:(");
 				GETTYPE((*node.extra.get()));
 				for(const auto& init : static_cast<const syntax::node::designated_initialiser_list*>(node.extra.get())->inits)
@@ -301,25 +325,8 @@ namespace semal
 					type_ptr ty = GETTYPE(init);
 					// todo: get the type of the data member and type check it
 				}
-
-
-				if(node.expr->hash() == syntax::node::identifier{}.hash())
-				{
-					std::string struct_name = static_cast<syntax::node::identifier*>(node.expr.get())->iden;
-					auto struct_ty = tsys.get_type(struct_name);
-					sem_assert(struct_ty != nullptr && struct_ty->is_well_formed(), "unknown struct type \"{}\" in struct initialiser", struct_name);
-					sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
-					return struct_ty;
-				}
-				else if(node.expr->hash() == syntax::node::namespace_access{}.hash())
-				{
-					return GETTYPE((*node.expr));
-				}
-				else
-				{
-					sem_assert(false, "struct initialiser lhs should always be either an identifier or a namespace access, instead you've provided a {}", node.expr->name());
-					ILL_FORMED;
-				}
+				return struct_ty;
+			}
 			break;
 			case type::typeinfo:
 				return tsys.get_type("typeinfo");
