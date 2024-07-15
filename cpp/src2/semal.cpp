@@ -220,6 +220,19 @@ namespace semal
 			tsys.make_alias(node.alias_name.iden, GETTYPE(node.type_value_expr)->get_name());
 			return nullptr;
 		TYPECHECK_END
+
+		TYPECHECK_BEGIN(designated_initialiser_list)
+			for(const auto& init : node.inits)
+			{
+				GETTYPE(init);
+			}
+			return nullptr;
+		TYPECHECK_END
+
+		TYPECHECK_BEGIN(designated_initialiser)
+			GETTYPE(node.initialiser);
+			return nullptr;
+		TYPECHECK_END
 		
 		TYPECHECK_BEGIN(expression)
 			using type = syntax::node::expression::type;
@@ -281,9 +294,22 @@ namespace semal
 				return tsys.get_primitive_type(primitive::boolean);
 			break;
 			case type::struct_initialiser:
+				sem_assert(node.extra->hash() == syntax::node::designated_initialiser_list{}.hash(), "should be desiginitlist >:(");
+				GETTYPE((*node.extra.get()));
+				for(const auto& init : static_cast<const syntax::node::designated_initialiser_list*>(node.extra.get())->inits)
+				{
+					type_ptr ty = GETTYPE(init);
+					// todo: get the type of the data member and type check it
+				}
+
+
 				if(node.expr->hash() == syntax::node::identifier{}.hash())
 				{
-					return tsys.get_type(static_cast<syntax::node::identifier*>(node.expr.get())->iden);
+					std::string struct_name = static_cast<syntax::node::identifier*>(node.expr.get())->iden;
+					auto struct_ty = tsys.get_type(struct_name);
+					sem_assert(struct_ty != nullptr && struct_ty->is_well_formed(), "unknown struct type \"{}\" in struct initialiser", struct_name);
+					sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
+					return struct_ty;
 				}
 				else if(node.expr->hash() == syntax::node::namespace_access{}.hash())
 				{
