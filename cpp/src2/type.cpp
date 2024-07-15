@@ -6,6 +6,7 @@ constexpr static std::array<const char*, static_cast<int>(itype::hint::_count)> 
 	"primitive",
 	"struct",
 	"pointer",
+	"alias",
 	"ill-formed"
 };
 
@@ -120,7 +121,8 @@ type_ptr itype::discarded_qualifiers() const
 
 /*virtual*/ type_ptr itype::deref() const
 {
-	diag::error(error_code::type, "attempt to dereference {} type {}, but you can only dereference pointer types", this->hint_name(), this->get_name()); return nullptr;
+	diag::error(error_code::type, "attempt to dereference non-pointer type \"{}\", which is a {} type", this->get_name(), this->hint_name());
+	return nullptr;
 }
 
 /*virtual*/ type_ptr itype::ref() const

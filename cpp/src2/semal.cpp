@@ -182,7 +182,7 @@ namespace semal
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(function_call)
-			return tsys.get_type(node.return_type_name.iden);
+			ILL_FORMED;
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(namespace_access)
@@ -258,12 +258,6 @@ namespace semal
 					// todo: weak?
 					return tsys.get_primitive_type(primitive::i8)->ref();
 				break;
-				case type::parenthesised_expression:
-					return GETTYPE((*node.expr.get()));
-				break;
-				case type::function_call:
-					return tsys.get_type(static_cast<syntax::node::function_call*>(node.expr.get())->return_type_name.iden);
-				break;
 				case type::return_statement:
 					if(node.expr == nullptr)
 					{
@@ -278,6 +272,9 @@ namespace semal
 				sem_assert_ice(node.extra != nullptr, "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's a nullptr. parse reduction has gone awry");
 				auto hash = node.extra->hash();
 				sem_assert(hash == syntax::node::identifier{}.hash(), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
+				type_ptr ty = GETTYPE((*node.extra));
+				type_ptr lhs_ty = GETTYPE((*node.expr));
+				sem_assert(lhs_ty->can_explicitly_convert_to(*ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs_ty->get_qualified_name(), ty->get_qualified_name());
 				return GETTYPE((*node.extra));
 			}
 			break;
@@ -344,6 +341,10 @@ namespace semal
 			case type::identifier:
 			[[fallthrough]];
 			case type::defer:
+			[[fallthrough]];
+			case type::function_call:
+			[[fallthrough]];
+			case type::parenthesised_expression:
 			{
 				return GETTYPE((*node.expr));
 			}

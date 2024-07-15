@@ -511,7 +511,6 @@ namespace syntax
 
 			identifier func_name;
 			expression_list params;
-			identifier return_type_name;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final
