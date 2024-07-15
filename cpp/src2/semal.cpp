@@ -405,7 +405,8 @@ namespace semal
 			case type::dot_access:
 			{
 				type_ptr lhs_ty = GETTYPE((*node.expr));
-				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), lhs_ty->get_name());
+				std::string struct_name = lhs_ty->get_name();
+				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), struct_name);
 				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
 
 				auto rhs_expr = static_cast<const syntax::node::expression*>(node.extra.get());
@@ -427,6 +428,10 @@ namespace semal
 				else if(rhs_hash == syntax::node::function_call{}.hash())
 				{
 					const auto* call = static_cast<const syntax::node::function_call*>(rhs_expr->expr.get());
+					const syntax::node::function_decl* fn = find_function(call->func_name.iden);
+					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call->func_name.iden);
+					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call->func_name.iden, struct_name);
+					sem_assert(fn->struct_owner == struct_name, "attempt to call method \"{}\" as method of struct \"{}\", but the method actually belongs to the struct \"{}\"", call->func_name.iden, struct_name, fn->struct_owner);
 					return GETTYPE((*call));
 				}
 				else
