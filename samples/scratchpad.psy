@@ -10,11 +10,20 @@ foo :: struct
 	nested : foo_nested;
 }
 
+get_foo :: () -> foo&
+{
+	f : foo;	
+	return ref f;
+}
+
+morb :: () -> u0 := extern;
+
 my_global_var : i64 := 0;
 
 myfn2 :: () -> u0 := extern;
 myfn :: (mypar1 : i64, mypar2 : f64 := 5@f64, mypar3 ::= 69) -> i64
 {
+	x ::= 5;
 	myptr ::= typeinfo i64;
 	myptr2 : i64& := ref mypar1;
 	//foo::bar;
@@ -60,13 +69,13 @@ myfn :: (mypar1 : i64, mypar2 : f64 := 5@f64, mypar3 ::= 69) -> i64
 	myvar2 : i64 := (5@f64 + 5)@i64;
 	myvar3 ::= ref 69;
 	myvar2 = deref myvar3 + 5;
-	deref get_foo()@i64&;
+	deref (get_foo()@i64&);
 
 	myvar4 ::= myvar2@u64@u32;
 	myvar5 ::= (myfn2() + (myvar4 * 200)) / 500;
 	myvar6 ::= 420.69;
 
-	myfn3(myvar3, myfn2()@i64, myfn3(myvar3@i64)@i64);
+	myfn2(myvar3, myfn2()@i64, myfn2(myvar3@i64)@i64);
 }
 
 == windows : static_if ==
@@ -74,7 +83,7 @@ myfn :: (mypar1 : i64, mypar2 : f64 := 5@f64, mypar3 ::= 69) -> i64
 	== winapi : namespace ==
 	{
 		UINT :: alias := u32 weak;
-		HANDLE :: alias := i8& weak;
+		HANDLE :: alias := i8&;
 		DWORD :: alias := u32 weak;
 		WORD :: alias := u16 weak;
 		BYTE :: alias := u8 weak;
@@ -89,21 +98,23 @@ myfn :: (mypar1 : i64, mypar2 : f64 := 5@f64, mypar3 ::= 69) -> i64
 		LPARAM :: alias := LONG_PTR weak;
 		LRESULT :: alias := LONG_PTR weak;
 
-		HINSTANCE :: alias := HANDLE weak;
-		HICON :: alias := HANDLE weak;
-		HCURSOR :: alias := HANDLE weak;
-		HBRUSH :: alias := HANDLE weak;
-		HWND :: alias := HANDLE weak;
-		HDC :: alias := HANDLE weak;
+		HINSTANCE :: alias := HANDLE;
+		HICON :: alias := HANDLE;
+		HCURSOR :: alias := HANDLE;
+		HBRUSH :: alias := HANDLE;
+		HMENU :: alias := HANDLE;
+		HWND :: alias := HANDLE;
+		HDC :: alias := HANDLE;
 		// TODO: constexpr?	
 
 		WNDCLASSEXA :: struct
 		{
-			cbSize : u32 := __builtin_sizeof(WNDCLASSEX);
+			//cbSize : u32 := __builtin_sizeof(WNDCLASSEX);
+			cbSize : u32 := 108@u32;
 			style : u32;
 			lpfnWndProc : i8&;
-			cbClsExtra : i32 := 0;
-			cbWndExtra : i32 := 0;
+			cbClsExtra : i32 := 0@i32;
+			cbWndExtra : i32 := 0@i32;
 			hInstance : HINSTANCE := null;
 			hIcon : HICON := null;
 			hCursor : HCURSOR := null;
@@ -111,8 +122,6 @@ myfn :: (mypar1 : i64, mypar2 : f64 := 5@f64, mypar3 ::= 69) -> i64
 			lpszMenuName : i8& := null;
 			lpszClassName : i8&;
 			hIconSm : HICON := null;
-
-			morb :: () -> u0{}
 		}
 
 		CreateWindowExA ::

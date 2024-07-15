@@ -38,6 +38,11 @@ bool itype::is_struct() const
 	return this->h == hint::struct_type;
 }
 
+bool itype::is_alias() const
+{
+	return this->h == hint::alias_type;
+}
+
 bool itype::is_primitive() const
 {
 	return this->h == hint::primitive_type;
@@ -142,6 +147,25 @@ typeconv itype::can_implicitly_convert_to(const itype& rhs) const
 	}
 	if(this->is_weak() || rhs.is_weak())
 	{
+		// if either types are weak alias types, then they can be explicitly converted to anything that its base type implicitly converts to
+		if(this->is_alias() || rhs.is_alias())
+		{
+			type_ptr base_lhs = this->unique_clone();
+			while(base_lhs->is_alias())
+			{
+				base_lhs = static_cast<alias_type*>(base_lhs.get())->original();
+			}
+			type_ptr base_rhs = rhs.unique_clone();
+			while(base_rhs->is_alias())
+			{
+				base_rhs = static_cast<alias_type*>(base_rhs.get())->original();
+			}
+			auto alias_typeconv = base_lhs->can_implicitly_convert_to(*base_rhs);
+			if(alias_typeconv != typeconv::cant)
+			{
+				return alias_typeconv;
+			}
+		}
 		type_ptr plain_this = this->discarded_qualifiers();
 		type_ptr plain_rhs = rhs.discarded_qualifiers();
 		if(plain_this->is_primitive() && *plain_this == primitive_type{primitive::i64} && rhs.is_pointer())
@@ -184,7 +208,10 @@ typeconv itype::can_explicitly_convert_to(const itype& rhs) const
 	return weak_this->can_implicitly_convert_to(rhs);
 }
 
-pointer_type::pointer_type(type_ptr base_type): itype(*base_type->discarded_qualifiers()), base(std::move(base_type)){}
+pointer_type::pointer_type(type_ptr base_type): itype(*base_type->discarded_qualifiers()), base(std::move(base_type))
+{
+	this->h = hint::pointer_type;
+}
 
 pointer_type::pointer_type(const pointer_type& cpy): itype(cpy), base(cpy.base->unique_clone())
 {

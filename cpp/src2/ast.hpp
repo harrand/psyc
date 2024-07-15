@@ -490,6 +490,7 @@ namespace syntax
 			identifier func_name;
 			variable_decl_list params;
 			identifier return_type_name;
+			std::string struct_owner = "";
 			bool is_extern = false;
 			bool capped = false;
 

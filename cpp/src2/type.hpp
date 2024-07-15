@@ -51,6 +51,7 @@ struct itype : public util::unique_cloneable<itype>
 	const char* hint_name() const;
 	bool is_pointer() const;
 	bool is_struct() const;
+	bool is_alias() const;
 	bool is_primitive() const;
 	bool is_integer() const;
 	bool is_floating_point() const;

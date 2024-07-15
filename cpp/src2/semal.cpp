@@ -11,6 +11,7 @@ namespace semal
 	struct var_scope
 	{
 		std::unordered_map<std::string, const syntax::node::variable_decl*> decls = {};
+		std::unordered_map<std::string, syntax::node::function_decl> fn_decls = {};
 		const syntax::node::block* block = nullptr;
 	};
 	// stack starts with a single empty scope (this is global scope. should expect global variables to be defined here.)
@@ -26,6 +27,18 @@ namespace semal
 			if(iter != scope.decls.end())
 			{
 				return iter->second;
+			}
+		}
+		return nullptr;
+	}
+	const syntax::node::function_decl* find_function(const std::string& name)
+	{
+		for(var_scope& scope : var_stack)
+		{
+			auto iter = scope.fn_decls.find(name);
+			if(iter != scope.fn_decls.end())
+			{
+				return &iter->second;
 			}
 		}
 		return nullptr;
@@ -55,6 +68,23 @@ namespace semal
 				var_stack.back().decls[decl.var_name.iden] = &decl;
 			}
 		}
+	}
+	void add_fn(const syntax::node::function_decl& fndecl)
+	{
+		auto maybe_already_fn = find_function(fndecl.func_name.iden);
+		if(maybe_already_fn != nullptr)
+		{
+			if(maybe_already_fn->loc != fndecl.loc)
+			{
+				const auto& node = fndecl;
+				sem_assert(false, "redefinition of function named \"{}\" (previously defined at {})", fndecl.func_name.iden, maybe_already_fn->loc.to_string());
+			}
+			else
+			{
+				return;
+			}
+		}
+		var_stack.back().fn_decls[fndecl.func_name.iden] = fndecl;
 	}
 
 	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> type_checking_table;
@@ -159,11 +189,26 @@ namespace semal
 					type_ptr data_member_type = GETTYPE(data_member);
 					builder.add_member(data_member.var_name.iden, data_member_type->get_name());
 				}
+				else if(ptr->hash() == syntax::node::function_decl{}.hash())
+				{
+					auto decl = *static_cast<const syntax::node::function_decl*>(ptr.get());
+					decl.struct_owner = node.struct_name.iden;
+					// add a struct_ty& as the first parameter called `this`
+					decl.params.decls.insert(decl.params.decls.begin(), syntax::node::variable_decl{
+						syntax::node::identifier{"this"},
+						syntax::node::identifier{std::format("{}&", node.struct_name.iden)}});
+					GETTYPE(decl);
+				}
+				else
+				{
+					sem_assert(false, "unexpected {} within block for struct named \"{}\", only expecting to see function (method) or variable declarations.", ptr->name(), node.struct_name.iden);
+				}
 			}
 			return builder.build();
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(function_decl)
+			add_fn(node);
 			if(node.children.empty()){}
 			else if(node.children.size() != 1 || node.children.front()->hash() != syntax::node::block{}.hash())
 			{
@@ -182,7 +227,9 @@ namespace semal
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(function_call)
-			ILL_FORMED;
+			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
+			sem_assert(decl != nullptr, "unknown function \"{}\"", node.func_name.iden);
+			return GETTYPE((*decl));
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(namespace_access)
@@ -245,8 +292,11 @@ namespace semal
 					return tsys.get_primitive_type(primitive::f64);
 				break;
 				case type::string_literal:
-					// todo: const?
-					return tsys.get_primitive_type(primitive::u8)->ref();
+				{
+					type_ptr ret = tsys.get_primitive_type(primitive::u8)->ref();
+					ret->quals = qual_const;
+					return ret;
+				}
 				break;
 				case type::char_literal:
 					return tsys.get_primitive_type(primitive::u8);
@@ -255,8 +305,11 @@ namespace semal
 					return tsys.get_primitive_type(primitive::boolean);
 				break;
 				case type::null_literal:
-					// todo: weak?
-					return tsys.get_primitive_type(primitive::i8)->ref();
+				{
+					type_ptr ret = tsys.get_primitive_type(primitive::i8)->ref();
+					ret->quals = qual_weak;
+					return ret;
+				}
 				break;
 				case type::return_statement:
 					if(node.expr == nullptr)
