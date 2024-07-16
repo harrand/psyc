@@ -134,7 +134,7 @@ namespace semal
 				const syntax::node::variable_decl* decl = find_variable(node.iden);
 				if(decl != nullptr)
 				{
-					return GETTYPE((*decl));
+					return GETTYPE(*decl);
 				}
 				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
@@ -149,7 +149,7 @@ namespace semal
 		TYPECHECK_BEGIN(block)
 			for(const auto& child : node.children)
 			{
-				GETTYPE((*child));
+				GETTYPE(*child);
 			}
 			return nullptr;
 		TYPECHECK_END
@@ -230,7 +230,7 @@ namespace semal
 		TYPECHECK_BEGIN(function_call)
 			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
 			sem_assert(decl != nullptr, "unknown function \"{}\"", node.func_name.iden);
-			return GETTYPE((*decl));
+			return GETTYPE(*decl);
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(namespace_access)
@@ -242,7 +242,7 @@ namespace semal
 				parts.erase(parts.begin());
 			}
 			// todo: actually use the namespace name?
-			return GETTYPE((*node.rhs.expr));
+			return GETTYPE(*node.rhs.expr);
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(if_statement)
@@ -317,7 +317,7 @@ namespace semal
 					{
 						return nullptr;
 					}
-					return GETTYPE((*static_cast<syntax::node::expression*>(node.expr.get())));
+					return GETTYPE(*NODE_AS(node.expr.get(), expression));
 				break;
 			case type::cast:
 			{
@@ -325,17 +325,17 @@ namespace semal
 				// node.extra is either an identifier or yet another expression.
 				sem_assert_ice(node.extra != nullptr, "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's a nullptr. parse reduction has gone awry");
 				sem_assert(NODE_IS(node.extra, identifier), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
-				type_ptr ty = GETTYPE((*node.extra));
-				type_ptr lhs_ty = GETTYPE((*node.expr));
+				type_ptr ty = GETTYPE(*node.extra);
+				type_ptr lhs_ty = GETTYPE(*node.expr);
 				sem_assert(lhs_ty->can_explicitly_convert_to(*ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs_ty->get_qualified_name(), ty->get_qualified_name());
-				return GETTYPE((*node.extra));
+				return GETTYPE(*node.extra);
 			}
 			break;
 			case type::deref:
-				return GETTYPE((*node.expr))->deref();
+				return GETTYPE(*node.expr)->deref();
 			break;
 			case type::ref:
-				return GETTYPE((*node.expr))->ref();
+				return GETTYPE(*node.expr)->ref();
 			break;
 			case type::eqcompare:
 				return tsys.get_primitive_type(primitive::boolean);
@@ -399,12 +399,12 @@ namespace semal
 			[[fallthrough]];
 			case type::parenthesised_expression:
 			{
-				return GETTYPE((*node.expr));
+				return GETTYPE(*node.expr);
 			}
 			break;
 			case type::dot_access:
 			{
-				type_ptr lhs_ty = GETTYPE((*node.expr));
+				type_ptr lhs_ty = GETTYPE(*node.expr);
 				std::string struct_name = lhs_ty->get_name();
 				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), struct_name);
 				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
@@ -431,7 +431,7 @@ namespace semal
 					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call->func_name.iden);
 					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call->func_name.iden, struct_name);
 					sem_assert(fn->struct_owner == struct_name, "attempt to call method \"{}\" as method of struct \"{}\", but the method actually belongs to the struct \"{}\"", call->func_name.iden, struct_name, fn->struct_owner);
-					return GETTYPE((*call));
+					return GETTYPE(*call);
 				}
 				else
 				{
