@@ -49,11 +49,20 @@ namespace syntax
 			return false;
 		}
 
+		template<typename T> requires std::is_base_of_v<inode, T>
+		bool is() const
+		{
+			return this->hash() == T{}.hash();
+		}
+
 		void pretty_print() const;
 
 		std::vector<node_ptr> children = {};
 		srcloc loc = srcloc::undefined();
 	};
+
+	#define NODE_IS(some_node, node_type) (some_node)->is<syntax::node::node_type>()
+	#define NODE_AS(some_node, node_type) static_cast<syntax::node::node_type*>(some_node)
 
 	namespace node
 	{

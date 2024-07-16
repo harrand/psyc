@@ -92,12 +92,13 @@ namespace semal
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
 	#define TYPECHECK_END };
 	#define ILL_FORMED return incomplete_type("badtype").unique_clone()
-	#define GETTYPE(n) [&](){diag::assert_that(type_checking_table.contains(n.hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", n.name(), n.hash()); return type_checking_table.at(n.hash())(&n);}()
+	#define GETTYPE(n) [&](){diag::assert_that(type_checking_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); return type_checking_table.at((n).hash())(&(n));}()
 	type_system tsys;
 
 	void analyse(const syntax::inode* ast, type_system& tsys)
 	{
-		bool should_create_scope = ast->hash() == syntax::node::block{}.hash();
+		//bool should_create_scope = ast->is<syntax::node::block>();
+		bool should_create_scope = NODE_IS(ast, block);
 		if(should_create_scope)
 		{
 			push_scope();
@@ -175,21 +176,21 @@ namespace semal
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(struct_decl)
-			sem_assert_ice(node.children.size() == 1 && node.children.front()->hash() == syntax::node::block{}.hash(), "Struct Declaration AST node must have a single child, and that child must be a block. Instead it has {} child{}{}", node.children.size(), node.children.size() == 1 ? "" : "ren", node.children.size() > 1 ? std::format("(first child is a \"{}\")", node.children.front()->name()) : "");
+			sem_assert_ice(node.children.size() == 1 && NODE_IS(node.children.front(), block), "Struct Declaration AST node must have a single child, and that child must be a block. Instead it has {} child{}{}", node.children.size(), node.children.size() == 1 ? "" : "ren", node.children.size() > 1 ? std::format("(first child is a \"{}\")", node.children.front()->name()) : "");
 			type_system::struct_builder builder = tsys.make_struct(node.struct_name.iden);
 			// get the children of the block. this is where methods and data member variable declarations will be.
 			// however, possible TODO: you will almost certainly want to extract the method declarations here too, so it's easy to lookup by method name.
 			for(const syntax::node_ptr& ptr : node.children.front()->children)
 			{
 				// the data members of a struct are encoded in the type. methods however are *not*
-				if(ptr->hash() == syntax::node::variable_decl{}.hash())
+				if(NODE_IS(ptr, variable_decl))
 				{
 					const auto& data_member = static_cast<const syntax::node::variable_decl&>(*ptr);
 					data_member.impl_should_add_to_current_scope = false;
 					type_ptr data_member_type = GETTYPE(data_member);
 					builder.add_member(data_member.var_name.iden, data_member_type->get_name());
 				}
-				else if(ptr->hash() == syntax::node::function_decl{}.hash())
+				else if(NODE_IS(ptr, function_decl))
 				{
 					auto decl = *static_cast<const syntax::node::function_decl*>(ptr.get());
 					decl.struct_owner = node.struct_name.iden;
@@ -210,7 +211,7 @@ namespace semal
 		TYPECHECK_BEGIN(function_decl)
 			add_fn(node);
 			if(node.children.empty()){}
-			else if(node.children.size() != 1 || node.children.front()->hash() != syntax::node::block{}.hash())
+			else if(node.children.size() != 1 || !NODE_IS(node.children.front(), block))
 			{
 				sem_assert(false, "function declaration AST node should have either 0 or 1 children (that child being a block). Instead, it has {} children, first one being a \"{}\"", node.children.size(), node.children.front()->name());
 			}
@@ -323,8 +324,7 @@ namespace semal
 				// get the extra expression's type.
 				// node.extra is either an identifier or yet another expression.
 				sem_assert_ice(node.extra != nullptr, "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's a nullptr. parse reduction has gone awry");
-				auto hash = node.extra->hash();
-				sem_assert(hash == syntax::node::identifier{}.hash(), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
+				sem_assert(NODE_IS(node.extra, identifier), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
 				type_ptr ty = GETTYPE((*node.extra));
 				type_ptr lhs_ty = GETTYPE((*node.expr));
 				sem_assert(lhs_ty->can_explicitly_convert_to(*ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs_ty->get_qualified_name(), ty->get_qualified_name());
@@ -348,16 +348,16 @@ namespace semal
 				// lhs can either be an identifier or a namespace access.
 				// i need the struct name, so we check both cases
 				std::string struct_name;
-				if(node.expr->hash() == syntax::node::identifier{}.hash())
+				if(NODE_IS(node.expr, identifier))
 				{
-					struct_name = static_cast<syntax::node::identifier*>(node.expr.get())->iden;
+					struct_name = NODE_AS(node.expr.get(), identifier)->iden;
 				}
-				else if(node.expr->hash() == syntax::node::namespace_access{}.hash())
+				else if(NODE_IS(node.expr, namespace_access))
 				{
-					auto access = static_cast<const syntax::node::namespace_access*>(node.expr.get());
+					auto access = NODE_AS(node.expr.get(), namespace_access);
 					// you should be able to get the left parts here easily once you get to that.
-					sem_assert(access->rhs.expr->hash() == syntax::node::identifier{}.hash(), "struct initialiser's type name is within a namespace. that namespace access' rhs should be an expression that resolves to an identifier, but instead resolves to a {}", access->rhs.expr->name());
-					struct_name = static_cast<syntax::node::identifier*>(access->rhs.expr.get())->iden;
+					sem_assert(NODE_IS(access->rhs.expr, identifier), "struct initialiser's type name is within a namespace. that namespace access' rhs should be an expression that resolves to an identifier, but instead resolves to a {}", access->rhs.expr->name());
+					struct_name = NODE_AS(access->rhs.expr.get(), identifier)->iden;
 				}
 				else
 				{
@@ -368,9 +368,9 @@ namespace semal
 				sem_assert(struct_ty != nullptr && struct_ty->is_well_formed(), "unknown struct type \"{}\" in struct initialiser", struct_name);
 				sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
 
-				sem_assert(node.extra->hash() == syntax::node::designated_initialiser_list{}.hash(), "should be desiginitlist >:(");
-				GETTYPE((*node.extra.get()));
-				for(const auto& init : static_cast<const syntax::node::designated_initialiser_list*>(node.extra.get())->inits)
+				sem_assert(NODE_IS(node.extra, designated_initialiser_list), "should be desiginitlist >:(");
+				GETTYPE(*node.extra.get());
+				for(const auto& init : NODE_AS(node.extra.get(), designated_initialiser_list)->inits)
 				{
 					type_ptr ty = GETTYPE(init);
 					// todo: get the type of the data member and type check it
@@ -409,12 +409,11 @@ namespace semal
 				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), struct_name);
 				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
 
-				auto rhs_expr = static_cast<const syntax::node::expression*>(node.extra.get());
-				sem_assert(node.extra->hash() == syntax::node::expression{}.hash(), "rhs of dot-access expression must be an expression, instead you have provided a {}", node.extra->name());
-				auto rhs_hash = rhs_expr->expr->hash();
-				if(rhs_hash == syntax::node::identifier{}.hash())
+				sem_assert(NODE_IS(node.extra, expression), "rhs of dot-access expression must be an expression, instead you have provided a {}", node.extra->name());
+				auto rhs_expr = NODE_AS(node.extra.get(), expression);
+				if(NODE_IS(rhs_expr->expr, identifier))
 				{
-					std::string_view member_name = static_cast<const syntax::node::identifier*>(rhs_expr->expr.get())->iden;
+					std::string_view member_name = NODE_AS(rhs_expr->expr.get(), identifier)->iden;
 					// should be a data member
 					for(const auto& member : struct_ty.members)
 					{
@@ -425,9 +424,9 @@ namespace semal
 					}
 					sem_assert(false, "struct {} has no such member named {}", struct_ty.get_name(), member_name);
 				}
-				else if(rhs_hash == syntax::node::function_call{}.hash())
+				else if(NODE_IS(rhs_expr->expr, function_call))
 				{
-					const auto* call = static_cast<const syntax::node::function_call*>(rhs_expr->expr.get());
+					const auto* call = NODE_AS(rhs_expr->expr.get(), function_call);
 					const syntax::node::function_decl* fn = find_function(call->func_name.iden);
 					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call->func_name.iden);
 					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call->func_name.iden, struct_name);
@@ -445,8 +444,9 @@ namespace semal
 			{
 				// lhs = rhs
 				// todo: make sure rhs is convertible to rhs and lhs is not const.
-				type_ptr lhs = GETTYPE((*node.expr));
-				type_ptr rhs = GETTYPE((*node.extra));
+				type_ptr lhs = GETTYPE(*node.expr);
+				sem_assert(!lhs->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs->get_qualified_name());
+				type_ptr rhs = GETTYPE(*node.extra);
 				typeconv conv = lhs->can_implicitly_convert_to(*rhs);
 				typeconv explicit_conv = lhs->can_explicitly_convert_to(*rhs);
 				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs->get_qualified_name(), lhs->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
