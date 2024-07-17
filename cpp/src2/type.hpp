@@ -55,7 +55,10 @@ struct itype : public util::unique_cloneable<itype>
 	bool is_primitive() const;
 	bool is_integer() const;
 	bool is_floating_point() const;
+	bool is_signed() const;
+	bool is_unsigned() const;
 	bool is_well_formed() const;
+	short numeric_bit_count() const;
 
 	bool is_weak() const;
 	bool is_const() const;

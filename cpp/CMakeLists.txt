@@ -48,6 +48,8 @@ add_library(libpsyc
 	src2/semal.cpp
 	src2/semal.hpp
 	src2/srcloc.hpp
+	src2/static.cpp
+	src2/static.hpp
 	src2/timer.cpp
 	src2/timer.hpp
 	src2/type.cpp

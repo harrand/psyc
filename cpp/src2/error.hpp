@@ -13,6 +13,7 @@ enum class error_code
 	type,
 	semal,
 	codegen,
+	coneval,
 	link,
 	_count
 };
@@ -28,6 +29,7 @@ constexpr std::array<const char*, (int)error_code::_count> error_names
 	"type",
 	"semantic analysis",
 	"code generation",
+	"constant evaluation",
 	"linker"
 };
 

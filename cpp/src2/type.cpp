@@ -102,9 +102,99 @@ bool itype::is_floating_point() const
 	}
 }
 
+bool itype::is_signed() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(static_cast<const primitive_type*>(this)->prim)
+	{
+		case primitive::f64:
+			[[fallthrough]];
+		case primitive::f32:
+			[[fallthrough]];
+		case primitive::f16:
+			[[fallthrough]];
+		case primitive::i64:
+			[[fallthrough]];
+		case primitive::i32:
+			[[fallthrough]];
+		case primitive::i16:
+			[[fallthrough]];
+		case primitive::i8:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
+bool itype::is_unsigned() const
+{
+	if(!this->is_primitive())
+	{
+		return false;
+	}
+	switch(static_cast<const primitive_type*>(this)->prim)
+	{
+		case primitive::u64:
+			[[fallthrough]];
+		case primitive::u32:
+			[[fallthrough]];
+		case primitive::u16:
+			[[fallthrough]];
+		case primitive::u8:
+			return true;
+		break;
+		default:
+			return false;
+		break;
+	}
+}
+
 bool itype::is_well_formed() const
 {
 	return this->h != hint::ill_formed;
+}
+
+short itype::numeric_bit_count() const
+{
+	diag::assert_that(this->is_integer() || this->is_floating_point(), error_code::type, "requested numeric bit count of type {} which is not an integer nor floating-point type", this->get_qualified_name());
+	switch(static_cast<const primitive_type*>(this)->prim)
+	{
+		case primitive::f64:
+		[[fallthrough]];
+		case primitive::i64:
+		[[fallthrough]];
+		case primitive::u64:
+			return 64;
+		break;
+		case primitive::f32:
+		[[fallthrough]];
+		case primitive::i32:
+		[[fallthrough]];
+		case primitive::u32:
+			return 32;
+		break;
+		case primitive::f16:
+		[[fallthrough]];
+		case primitive::i16:
+		[[fallthrough]];
+		case primitive::u16:
+			return 16;
+		break;
+		case primitive::i8:
+		[[fallthrough]];
+		case primitive::u8:
+			return 8;
+		break;
+		default:
+			diag::error(error_code::ice, "unable to retrieve numeric bit count for integral/floating-point type {}", this->get_qualified_name());
+			return false;
+		break;
+	}
 }
 
 bool itype::is_weak() const

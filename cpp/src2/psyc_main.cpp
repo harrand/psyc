@@ -59,6 +59,14 @@ int main(int argc, char** argv)
 		.add_member("morbius", "u0")
 		.build();
 
+	static_value i64_literal_123
+	{
+		.ty = sys.get_primitive_type(primitive::i64),
+		.val = std::int64_t{123}
+	};
+	static_value val2 = i64_literal_123.do_explicit_convert(sys.get_primitive_type(primitive::u32), {});
+	auto result = std::any_cast<std::uint32_t>(val2.val);
+
 	primitive_type ty{primitive::f64};
 	ty.quals = static_cast<type_qualifier>(qual_const | qual_weak);
 	diag::note("{}", ty.ref()->get_qualified_name());

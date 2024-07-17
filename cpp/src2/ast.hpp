@@ -4,6 +4,7 @@
 #include "util.hpp"
 #include "lex.hpp"
 #include "util.hpp"
+#include "static.hpp"
 #include <string>
 #include <memory>
 #include <vector>
