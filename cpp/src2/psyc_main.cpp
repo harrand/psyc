@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 		.val = std::int64_t{123}
 	};
 	static_value val2 = i64_literal_123.do_explicit_convert(sys.get_primitive_type(primitive::u32), {});
-	auto result = std::any_cast<std::uint32_t>(val2.val);
+	auto result = val2.value_as<std::uint32_t>();
 
 	primitive_type ty{primitive::f64};
 	ty.quals = static_cast<type_qualifier>(qual_const | qual_weak);

@@ -13,6 +13,12 @@ struct static_value
 	static static_value null();
 	static static_value type_only(type_ptr ty);
 
+	template<typename T>
+	T value_as() const
+	{
+		return std::any_cast<T>(this->val);
+	}
+
 	static_value clone() const;
 	static_value do_convert(type_ptr to, srcloc ctx);
 	static_value do_explicit_convert(type_ptr to, srcloc ctx);
