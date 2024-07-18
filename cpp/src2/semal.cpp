@@ -136,6 +136,11 @@ namespace semal
 				{
 					return GETTYPE(*decl);
 				}
+				const syntax::node::function_decl* fn = find_function(node.iden);
+				if(fn != nullptr)
+				{
+					return GETTYPE(*fn);
+				}
 				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
 			}
@@ -215,6 +220,7 @@ namespace semal
 			{
 				sem_assert(false, "function declaration AST node should have either 0 or 1 children (that child being a block). Instead, it has {} children, first one being a \"{}\"", node.children.size(), node.children.front()->name());
 			}
+			std::vector<std::string> param_type_names;
 			for(const auto& param : node.params.decls)
 			{
 				if(node.children.empty())
@@ -222,15 +228,22 @@ namespace semal
 					param.impl_should_add_to_current_scope = false;
 				}
 				param.impl_is_defined_before_parent_block = true;
-				GETTYPE(param);
+				param_type_names.push_back(GETTYPE(param)->get_qualified_name());
 			}
-			return tsys.get_type(node.return_type_name.iden);
+			return tsys.get_function_type(node.return_type_name.iden, param_type_names);
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(function_call)
 			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
-			sem_assert(decl != nullptr, "unknown function \"{}\"", node.func_name.iden);
-			return GETTYPE(*decl);
+			if(decl != nullptr)
+			{
+				return tsys.get_type(decl->return_type_name.iden);
+			}
+			const syntax::node::variable_decl* fnptr = find_variable(node.func_name.iden);
+			sem_assert(fnptr != nullptr, "unknown function \"{}\"", node.func_name.iden);
+			auto fnptr_ty = GETTYPE(*fnptr);
+			sem_assert(fnptr_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fnptr_ty->get_qualified_name());
+			return static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone();
 		TYPECHECK_END
 
 		TYPECHECK_BEGIN(namespace_access)
