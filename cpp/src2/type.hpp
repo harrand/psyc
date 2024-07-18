@@ -14,7 +14,8 @@ enum type_qualifier
 {
 	qual_none = 0x0,
 	qual_const = 0x1,	
-	qual_weak = 0x2
+	qual_weak = 0x2,
+	qual_static = 0x4,
 };
 
 enum class typeconv
@@ -67,6 +68,11 @@ struct itype : public util::unique_cloneable<itype>
 
 	bool is_weak() const;
 	bool is_const() const;
+	bool is_static() const;
+
+	void add_qualifier(type_qualifier q);
+	type_ptr with_qualifier(type_qualifier q) const; 
+
 	type_ptr discarded_qualifiers() const;
 
 	virtual type_ptr deref() const;

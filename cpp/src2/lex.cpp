@@ -272,7 +272,7 @@ namespace lex
 
 	bool word_should_break(std::string_view str)
 	{
-		if(str.starts_with(" const") || str.starts_with(" weak"))
+		if(str.starts_with(" const") || str.starts_with(" weak") || str.starts_with(" static"))
 		{
 			// don't break on a space if its immediately followed by const.
 			return false;

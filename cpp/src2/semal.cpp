@@ -197,7 +197,7 @@ namespace semal
 				}
 				else if(NODE_IS(ptr, function_decl))
 				{
-					auto decl = *static_cast<const syntax::node::function_decl*>(ptr.get());
+					auto& decl = *const_cast<syntax::node::function_decl*>(static_cast<const syntax::node::function_decl*>(ptr.get()));
 					decl.struct_owner = node.struct_name.iden;
 					// add a struct_ty& as the first parameter called `this`
 					decl.params.decls.insert(decl.params.decls.begin(), syntax::node::variable_decl{
@@ -300,30 +300,22 @@ namespace semal
 			switch(node.t)
 			{
 				case type::integer_literal:
-					return tsys.get_primitive_type(primitive::i64);
+					return tsys.get_primitive_type(primitive::i64)->with_qualifier(qual_static);
 				break;
 				case type::decimal_literal:
-					return tsys.get_primitive_type(primitive::f64);
+					return tsys.get_primitive_type(primitive::f64)->with_qualifier(qual_static);
 				break;
 				case type::string_literal:
-				{
-					type_ptr ret = tsys.get_primitive_type(primitive::u8)->ref();
-					ret->quals = qual_const;
-					return ret;
-				}
+					return tsys.get_primitive_type(primitive::u8)->ref()->with_qualifier(qual_static);
 				break;
 				case type::char_literal:
-					return tsys.get_primitive_type(primitive::u8);
+					return tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_static);
 				break;
 				case type::bool_literal:
-					return tsys.get_primitive_type(primitive::boolean);
+					return tsys.get_primitive_type(primitive::boolean)->with_qualifier(qual_static);
 				break;
 				case type::null_literal:
-				{
-					type_ptr ret = tsys.get_primitive_type(primitive::i8)->ref();
-					ret->quals = qual_weak;
-					return ret;
-				}
+					return tsys.get_primitive_type(primitive::i8)->ref()->with_qualifier(qual_weak)->with_qualifier(qual_static);
 				break;
 				case type::return_statement:
 					if(node.expr == nullptr)
@@ -392,7 +384,7 @@ namespace semal
 			}
 			break;
 			case type::typeinfo:
-				return tsys.get_type("typeinfo");
+				return tsys.get_type("typeinfo")->with_qualifier(qual_static);
 			break;
 			case type::namespace_access:
 			[[fallthrough]];
@@ -460,8 +452,8 @@ namespace semal
 				type_ptr lhs = GETTYPE(*node.expr);
 				sem_assert(!lhs->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs->get_qualified_name());
 				type_ptr rhs = GETTYPE(*node.extra);
-				typeconv conv = lhs->can_implicitly_convert_to(*rhs);
-				typeconv explicit_conv = lhs->can_explicitly_convert_to(*rhs);
+				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
+				typeconv explicit_conv = rhs->can_explicitly_convert_to(*lhs);
 				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs->get_qualified_name(), lhs->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
 				return lhs;
 			}
