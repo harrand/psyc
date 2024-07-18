@@ -7,6 +7,7 @@ constexpr static std::array<const char*, static_cast<int>(itype::hint::_count)> 
 	"struct",
 	"pointer",
 	"alias",
+	"function",
 	"ill-formed"
 };
 
@@ -36,6 +37,11 @@ bool itype::is_pointer() const
 bool itype::is_struct() const
 {
 	return this->h == hint::struct_type;
+}
+
+bool itype::is_function() const
+{
+	return this->h == hint::function_type;
 }
 
 bool itype::is_alias() const
@@ -237,6 +243,19 @@ typeconv itype::can_implicitly_convert_to(const itype& rhs) const
 	}
 	if(this->is_weak() || rhs.is_weak())
 	{
+		if(this->is_function() && rhs.is_function())
+		{
+			// you can always convert from a function type to another so long as one of them is weak (i.e explicit conversion).
+			return typeconv::fn2fn;
+		}
+		else if(this->is_function() && rhs.is_pointer())
+		{
+			return typeconv::fn2p;
+		}
+		else if(this->is_pointer() && rhs.is_function())
+		{
+			return typeconv::p2fn;
+		}
 		// if either types are weak alias types, then they can be explicitly converted to anything that its base type implicitly converts to
 		if(this->is_alias() || rhs.is_alias())
 		{
@@ -337,6 +356,35 @@ primitive_type::primitive_type(primitive prim):
 itype(primitive_names[static_cast<int>(prim)], itype::hint::primitive_type),
 prim(prim)
 {}
+
+function_type::function_type(type_ptr return_type, std::vector<type_ptr> params): itype("function_pointer", hint::function_type), return_type(std::move(return_type)), params(std::move(params))
+{
+
+}
+
+/*virtual*/ std::string function_type::get_name() const /*final*/
+{
+	std::string params_str;
+	for(std::size_t i = 0; i < this->params.size(); i++)
+	{
+		params_str += this->params[i]->get_qualified_name();
+		if(i != (this->params.size() - 1))
+		{
+			params_str += ", ";
+		}
+	}
+	return std::format("&({})->{}", params_str, this->return_type->get_qualified_name());
+}
+
+function_type::function_type(const function_type& cpy): itype(cpy),
+return_type(cpy.return_type->unique_clone()),
+params(cpy.params.size())
+{
+	for(std::size_t i = 0; i < cpy.params.size(); i++)
+	{
+		this->params[i] = cpy.params[i]->unique_clone();
+	}	
+}
 
 alias_type::alias_type(type_ptr alias, std::string alias_name): itype(alias_name, itype::hint::alias_type), alias(std::move(alias))
 {
@@ -445,6 +493,34 @@ type_ptr type_system::make_alias(std::string name, std::string typename_to_alias
 type_ptr type_system::get_type(std::string type_name) const
 {
 	type_ptr ret = nullptr;
+	if(type_name.starts_with("&"))
+	{
+		std::vector<std::string> param_typenames = {};
+		// its a function type.
+		auto oparenpos = type_name.find_first_of("(");
+		auto arrowpos = type_name.find_last_of("->");
+		std::string curparam;
+		for(std::size_t i = oparenpos + 1; i < arrowpos - 2; i++)
+		{
+			char c = type_name[i];
+			if(c == ',')
+			{
+				param_typenames.push_back(curparam);
+				curparam = "";
+			}
+			else
+			{
+				curparam += c;
+			}
+		}
+		if(!curparam.empty())
+		{
+			param_typenames.push_back(curparam);
+		}
+		
+		std::string retty{type_name.begin() + arrowpos + 1, type_name.end()};
+		return this->get_function_type(retty, param_typenames);
+	}
 	for(auto iter = type_name.begin(); iter != type_name.end();iter++)
 	{
 		std::string_view previous{type_name.begin(), iter};
@@ -490,6 +566,17 @@ type_ptr type_system::get_type(std::string type_name) const
 type_ptr type_system::get_primitive_type(primitive prim) const
 {
 	return primitive_type{primitive_names[static_cast<int>(prim)]}.unique_clone();
+}
+
+type_ptr type_system::get_function_type(std::string return_type_name, std::vector<std::string> param_type_names) const
+{
+	type_ptr ret_ty = this->get_type(return_type_name);
+	std::vector<type_ptr> param_tys;
+	for(const std::string& param : param_type_names)
+	{
+		param_tys.push_back(this->get_type(param));
+	}
+	return function_type{std::move(ret_ty), std::move(param_tys)}.unique_clone();
 }
 
 static int levenshtein_distance(std::string_view s1, std::string_view s2)

@@ -59,6 +59,12 @@ int main(int argc, char** argv)
 		.add_member("morbius", "u0")
 		.build();
 
+	type_ptr my_func_ty = sys.get_function_type("i64", {"i32", "f64", "typeinfo"});
+	type_ptr my_other_func_ty = sys.get_function_type("u0", {});
+	volatile typeconv fn_conv = my_func_ty->can_explicitly_convert_to(*my_other_func_ty);
+	volatile typeconv fn_p_conv = sys.get_type("morbinston")->ref()->can_explicitly_convert_to(*my_func_ty);
+	volatile typeconv p_fn_conv = my_func_ty->can_explicitly_convert_to(*sys.get_type("morbinston")->ref());
+
 	static_value i64_literal_123
 	{
 		.ty = sys.get_primitive_type(primitive::i64),

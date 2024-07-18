@@ -27,6 +27,9 @@ enum class typeconv
 	p2p,
 	i2p,
 	p2i,
+	fn2fn,
+	p2fn,
+	fn2p,
 	cant	
 };
 
@@ -38,6 +41,7 @@ struct itype : public util::unique_cloneable<itype>
 		struct_type,
 		pointer_type,
 		alias_type,
+		function_type,
 		ill_formed,
 		_count
 	};
@@ -51,6 +55,7 @@ struct itype : public util::unique_cloneable<itype>
 	const char* hint_name() const;
 	bool is_pointer() const;
 	bool is_struct() const;
+	bool is_function() const;
 	bool is_alias() const;
 	bool is_primitive() const;
 	bool is_integer() const;
@@ -138,6 +143,18 @@ struct primitive_type : public itype
 	primitive prim;
 };
 
+struct function_type : public itype
+{
+	function_type(type_ptr return_type, std::vector<type_ptr> params);
+	function_type(const function_type& cpy);
+	COPY_UNIQUE_CLONEABLE(itype)
+
+	type_ptr return_type;
+	std::vector<type_ptr> params;
+
+	virtual std::string get_name() const final;
+};
+
 struct alias_type : public itype
 {
 	alias_type(type_ptr alias, std::string alias_name);
@@ -189,6 +206,7 @@ public:
 	type_ptr make_alias(std::string name, std::string typename_to_alias);
 	type_ptr get_type(std::string type_name) const;
 	type_ptr get_primitive_type(primitive prim) const;
+	type_ptr get_function_type(std::string return_type_name, std::vector<std::string> param_type_names) const;
 	std::string suggest_valid_typename_for_typo(std::string invalid_typename) const;
 private:
 	void add_compiler_supported_types();

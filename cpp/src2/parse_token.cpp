@@ -24,6 +24,69 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// &()->iden
+// identifier (function type name with no parameters)
+CHORD_BEGIN
+	STATE(TOKEN(ampersand), TOKEN(oparen), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+	SETINDEX(4);
+	auto retty = GETNODE(identifier);
+	REDUCE_TO(identifier, std::format("&()->{}", retty.iden));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// &expr-parenthesised->iden
+// identifier (function type name with a single parameter)
+CHORD_BEGIN
+	STATE(TOKEN(ampersand), NODE(expression), TOKEN(arrow), NODE(identifier))
+	auto start = GETTOKEN();
+	SETINDEX(1);
+	auto expr = GETNODE(expression);
+	SETINDEX(3);
+	auto retty = GETNODE(identifier);
+
+	if(expr.t != syntax::node::expression::type::parenthesised_expression)
+	{
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", expr.name())};
+	}
+	auto exprparen = NODE_AS(expr.expr.get(), expression);
+	if(exprparen->t != syntax::node::expression::type::identifier)
+	{
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", exprparen->name())};
+	}
+	auto expriden = NODE_AS(exprparen->expr.get(), identifier);
+
+	REDUCE_TO(identifier, std::format("&({})->{}", expriden->iden, retty.iden));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// &(expr_list)->iden
+// identifier (function type name with two or more parameters)
+CHORD_BEGIN
+	STATE(TOKEN(ampersand), TOKEN(oparen), NODE(expression_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+	auto start = GETTOKEN();
+	SETINDEX(2);
+	auto list = GETNODE(expression_list);
+	SETINDEX(5);
+	auto retty = GETNODE(identifier);
+	std::string param_list;
+	for(std::size_t i = 0; i < list.exprs.size(); i++)
+	{
+		const auto& expr = list.exprs[i];
+		if(expr.t != syntax::node::expression::type::identifier)
+		{
+			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), expr.name())};
+		}
+		auto param = NODE_AS(expr.expr.get(), identifier);
+		param_list += param->iden;
+		if(i < (list.exprs.size() - 1))
+		{
+			param_list += ",";
+		}
+	}
+	REDUCE_TO(identifier, std::format("&({})->{}", param_list, retty.iden));
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // { expr
 // starts an unfinished block
 CHORD_BEGIN
