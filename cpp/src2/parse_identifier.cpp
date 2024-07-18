@@ -101,6 +101,15 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: namespace
+// namespace meta region
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_namespace))
+	syntax::node::identifier name = GETNODE(identifier);
+	REDUCE_TO(meta_region, name, syntax::node::meta_region::type::name_space);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden :: alias := expr;
 // type alias
 CHORD_BEGIN
