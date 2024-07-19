@@ -98,7 +98,7 @@ namespace lex
 		trait{.name = "//", .parse_skip = true},
 		trait{.name = "/**", .parse_skip = true},
 		trait{.name = "/*", .parse_skip = true},
-		trait{.name = "static_if"},
+		trait{.name = "static if"},
 		trait{.name = "build"},
 		trait{.name = "namespace"},
 		trait{.name = "struct"},

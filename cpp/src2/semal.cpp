@@ -263,6 +263,11 @@ namespace semal
 			type_ptr cond_ty = GETTYPE(node.cond);
 			typeconv conv = cond_ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
 			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond_ty->get_name());
+			if(node.is_static)
+			{
+				sem_assert(cond_ty->is_static(), "condition static-if statement must be a static expression (known at compile time). you passed a: \"{}\"", cond_ty->get_qualified_name());
+				// todo: get the condition value. if its false, cast-away constness and kill the block child so no compilation occurs.
+			}
 			return nullptr;
 		TYPECHECK_END
 

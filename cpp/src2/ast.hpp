@@ -654,11 +654,12 @@ namespace syntax
 
 		struct if_statement : public inode
 		{
-			if_statement(expression cond = {}, block blk = {}): cond(cond)
+			if_statement(expression cond = {}, block blk = {}, bool is_static = false): cond(cond), is_static(is_static)
 			{
 				this->children.push_back(blk.unique_clone());
 			}
 			expression cond;
+			bool is_static;
 
 			COPY_UNIQUE_CLONEABLE(inode)
 			virtual std::string to_string() const final

@@ -14,16 +14,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// == iden : static_if ==
-// static_if meta region
-CHORD_BEGIN
-	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_static_if), TOKEN(eqeq))
-	SETINDEX(1);
-	syntax::node::identifier name = GETNODE(identifier);
-	REDUCE_TO(meta_region, name, syntax::node::meta_region::type::static_if);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // &()->iden
 // identifier (function type name with no parameters)
 CHORD_BEGIN
@@ -253,6 +243,33 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// static if expr {}
+// create an if statement with no code inside (pointless but valid)
+CHORD_BEGIN
+	STATE(TOKEN(keyword_static_if), NODE(expression), TOKEN(obrace), TOKEN(cbrace))
+	SETINDEX(1);
+	auto cond = GETNODE(expression);
+	SETINDEX(2);
+	auto open = GETTOKEN();
+	auto close = GETTOKEN();
+	syntax::node::block empty_blk;
+	empty_blk.start = open.meta_srcloc;
+	empty_blk.finish = close.meta_srcloc;
+	REDUCE_TO(if_statement, cond, empty_blk, true);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// static if expr block
+// create an if statement with code inside
+CHORD_BEGIN
+	STATE(TOKEN(keyword_static_if), NODE(expression), NODE(block))
+	SETINDEX(1);
+	auto cond = GETNODE(expression);
+	auto blk = GETNODE(block);
+	REDUCE_TO(if_statement, cond, blk, true);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // else block
 // else statement with no condition but with code.
 CHORD_BEGIN
@@ -351,7 +368,13 @@ CHORD_END
 // error: if statements must be within a block.
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(if_statement))
-	return {.t = result::type::error, .errmsg = "if-statements must be within a block, not in the global scope", .offset = 1};
+	SETINDEX(1);
+	auto ifst = GETNODE(if_statement);
+	if(!ifst.is_static)
+	{
+		return {.t = result::type::error, .errmsg = "non-static if-statements must be within a block, not in the global scope", .offset = 1};
+	}
+	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 #ifndef INFUNC
