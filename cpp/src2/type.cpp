@@ -230,6 +230,11 @@ type_ptr itype::with_qualifier(type_qualifier q) const
 	return ret;
 }
 
+void itype::remove_qualifier(type_qualifier q)
+{
+	this->quals = static_cast<type_qualifier>(this->quals & ~q);
+}
+
 type_ptr itype::discarded_qualifiers() const
 {
 	auto ret = this->unique_clone();

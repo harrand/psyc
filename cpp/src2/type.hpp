@@ -72,6 +72,8 @@ struct itype : public util::unique_cloneable<itype>
 
 	void add_qualifier(type_qualifier q);
 	type_ptr with_qualifier(type_qualifier q) const; 
+	void remove_qualifier(type_qualifier q);
+	type_ptr without_qualifier(type_qualifier q) const;
 
 	type_ptr discarded_qualifiers() const;
 

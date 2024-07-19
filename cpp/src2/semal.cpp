@@ -169,7 +169,8 @@ namespace semal
 			else
 			{
 				sem_assert(!node.expr.is_null(), "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", node.var_name.iden);
-				ret = GETTYPE(node.expr);
+				ret = GETTYPE(node.expr)->discarded_qualifiers();
+				// if variable type is inferred, the resultant type will drop all qualifiers (to avoid issues such as `myvar ::= 5` causing myvar to be a `i64 static` because a integer literal is static)
 			}
 			if(!node.expr.is_null())
 			{
@@ -343,10 +344,15 @@ namespace semal
 				return GETTYPE(*node.expr)->ref();
 			break;
 			case type::eqcompare:
-				return tsys.get_primitive_type(primitive::boolean);
-			break;
+			[[fallthrough]];
 			case type::neqcompare:
+			{
+				type_ptr lhs = GETTYPE(*node.expr);
+				type_ptr rhs = GETTYPE(*node.extra);
+				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
+				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs->get_qualified_name(), rhs->get_qualified_name());
 				return tsys.get_primitive_type(primitive::boolean);
+			}
 			break;
 			case type::struct_initialiser:
 			{
