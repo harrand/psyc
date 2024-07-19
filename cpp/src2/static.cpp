@@ -149,6 +149,11 @@ static_value static_value::do_explicit_convert(type_ptr to, srcloc ctx)
 	return cpy.do_convert(std::move(to), ctx);
 }
 
+bool static_value::has_value() const
+{
+	return this->val.has_value();
+}
+
 static_value static_value::clone() const
 {
 	static_value cpy;

@@ -18,6 +18,7 @@ struct static_value
 	{
 		return std::any_cast<T>(this->val);
 	}
+	bool has_value() const;
 
 	static_value clone() const;
 	static_value do_convert(type_ptr to, srcloc ctx);
