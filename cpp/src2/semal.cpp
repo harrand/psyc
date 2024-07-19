@@ -109,12 +109,12 @@ namespace semal
 		var_stack.back().fn_decls[fndecl.func_name.iden] = fndecl;
 	}
 
-	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> type_checking_table;
-	#define SEMAL_BEGIN(x) type_checking_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
+	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> semal_table;
+	#define SEMAL_BEGIN(x) semal_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
 	#define SEMAL_END };
 	#define ILL_FORMED return incomplete_type("badtype").unique_clone()
-	#define GETTYPE(n) [&](){diag::assert_that(type_checking_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); return type_checking_table.at((n).hash())(&(n));}()
+	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); return semal_table.at((n).hash())(&(n));}()
 	type_system tsys;
 
 	void analyse(const syntax::inode* ast, type_system& tsys)
@@ -125,8 +125,8 @@ namespace semal
 		{
 			push_scope();
 		}
-		auto iter = type_checking_table.find(ast->hash());
-		diag::assert_that(iter != type_checking_table.end(), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", ast->name(), ast->hash());
+		auto iter = semal_table.find(ast->hash());
+		diag::assert_that(iter != semal_table.end(), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", ast->name(), ast->hash());
 		type_ptr ty = iter->second(ast);
 		if(ty != nullptr)
 		{
@@ -156,12 +156,12 @@ namespace semal
 				const syntax::node::variable_decl* decl = find_variable(node.iden);
 				if(decl != nullptr)
 				{
-					return GETTYPE(*decl);
+					return GETVAL(*decl);
 				}
 				const syntax::node::function_decl* fn = find_function(node.iden);
 				if(fn != nullptr)
 				{
-					return GETTYPE(*fn)->with_qualifier(qual_static);
+					return GETVAL(*fn)->with_qualifier(qual_static);
 				}
 				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
@@ -176,7 +176,7 @@ namespace semal
 		SEMAL_BEGIN(block)
 			for(const auto& child : node.children)
 			{
-				GETTYPE(*child);
+				GETVAL(*child);
 			}
 			return nullptr;
 		SEMAL_END
@@ -191,12 +191,12 @@ namespace semal
 			else
 			{
 				sem_assert(!node.expr.is_null(), "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", node.var_name.iden);
-				ret = GETTYPE(node.expr)->discarded_qualifiers();
+				ret = GETVAL(node.expr)->discarded_qualifiers();
 				// if variable type is inferred, the resultant type will drop all qualifiers (to avoid issues such as `myvar ::= 5` causing myvar to be a `i64 static` because a integer literal is static)
 			}
 			if(!node.expr.is_null())
 			{
-				type_ptr init_type = GETTYPE(node.expr);
+				type_ptr init_type = GETVAL(node.expr);
 				typeconv conv = init_type->can_implicitly_convert_to(*ret);
 				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init_type->get_qualified_name(), node.var_name.iden, ret->get_qualified_name());
 			}
@@ -215,7 +215,7 @@ namespace semal
 				{
 					const auto& data_member = static_cast<const syntax::node::variable_decl&>(*ptr);
 					data_member.impl_should_add_to_current_scope = false;
-					type_ptr data_member_type = GETTYPE(data_member);
+					type_ptr data_member_type = GETVAL(data_member);
 					builder.add_member(data_member.var_name.iden, data_member_type->get_name());
 				}
 				else if(NODE_IS(ptr, function_decl))
@@ -226,7 +226,7 @@ namespace semal
 					decl.params.decls.insert(decl.params.decls.begin(), syntax::node::variable_decl{
 						syntax::node::identifier{"this"},
 						syntax::node::identifier{std::format("{}&", node.struct_name.iden)}});
-					GETTYPE(decl);
+					GETVAL(decl);
 				}
 				else
 				{
@@ -251,7 +251,7 @@ namespace semal
 					param.impl_should_add_to_current_scope = false;
 				}
 				param.impl_is_defined_before_parent_block = true;
-				param_type_names.push_back(GETTYPE(param)->get_qualified_name());
+				param_type_names.push_back(GETVAL(param)->get_qualified_name());
 			}
 			return tsys.get_function_type(node.return_type_name.iden, param_type_names);
 		SEMAL_END
@@ -264,7 +264,7 @@ namespace semal
 			}
 			const syntax::node::variable_decl* fnptr = find_variable(node.func_name.iden);
 			sem_assert(fnptr != nullptr, "unknown function \"{}\"", node.func_name.iden);
-			auto fnptr_ty = GETTYPE(*fnptr);
+			auto fnptr_ty = GETVAL(*fnptr);
 			sem_assert(fnptr_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fnptr_ty->get_qualified_name());
 			return static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone();
 		SEMAL_END
@@ -278,11 +278,11 @@ namespace semal
 				parts.erase(parts.begin());
 			}
 			// todo: actually use the namespace name?
-			return GETTYPE(*node.rhs.expr);
+			return GETVAL(*node.rhs.expr);
 		SEMAL_END
 
 		SEMAL_BEGIN(if_statement)
-			type_ptr cond_ty = GETTYPE(node.cond);
+			type_ptr cond_ty = GETVAL(node.cond);
 			typeconv conv = cond_ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
 			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond_ty->get_name());
 			if(node.is_static)
@@ -296,7 +296,7 @@ namespace semal
 		SEMAL_BEGIN(else_statement)
 			if(!node.cond.is_null())
 			{
-				GETTYPE(node.cond);
+				GETVAL(node.cond);
 			}
 			return nullptr;
 		SEMAL_END
@@ -306,20 +306,20 @@ namespace semal
 		SEMAL_END
 
 		SEMAL_BEGIN(alias)
-			tsys.make_alias(node.alias_name.iden, GETTYPE(node.type_value_expr)->get_name());
+			tsys.make_alias(node.alias_name.iden, GETVAL(node.type_value_expr)->get_name());
 			return nullptr;
 		SEMAL_END
 
 		SEMAL_BEGIN(designated_initialiser_list)
 			for(const auto& init : node.inits)
 			{
-				GETTYPE(init);
+				GETVAL(init);
 			}
 			return nullptr;
 		SEMAL_END
 
 		SEMAL_BEGIN(designated_initialiser)
-			GETTYPE(node.initialiser);
+			GETVAL(node.initialiser);
 			return nullptr;
 		SEMAL_END
 		
@@ -350,7 +350,7 @@ namespace semal
 					{
 						return nullptr;
 					}
-					return GETTYPE(*NODE_AS(node.expr.get(), expression));
+					return GETVAL(*NODE_AS(node.expr.get(), expression));
 				break;
 			case type::cast:
 			{
@@ -358,24 +358,24 @@ namespace semal
 				// node.extra is either an identifier or yet another expression.
 				sem_assert_ice(node.extra != nullptr, "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's a nullptr. parse reduction has gone awry");
 				sem_assert(NODE_IS(node.extra, identifier), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
-				type_ptr ty = GETTYPE(*node.extra);
-				type_ptr lhs_ty = GETTYPE(*node.expr);
+				type_ptr ty = GETVAL(*node.extra);
+				type_ptr lhs_ty = GETVAL(*node.expr);
 				sem_assert(lhs_ty->can_explicitly_convert_to(*ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs_ty->get_qualified_name(), ty->get_qualified_name());
-				return GETTYPE(*node.extra);
+				return GETVAL(*node.extra);
 			}
 			break;
 			case type::deref:
-				return GETTYPE(*node.expr)->deref();
+				return GETVAL(*node.expr)->deref();
 			break;
 			case type::ref:
-				return GETTYPE(*node.expr)->ref();
+				return GETVAL(*node.expr)->ref();
 			break;
 			case type::eqcompare:
 			[[fallthrough]];
 			case type::neqcompare:
 			{
-				type_ptr lhs = GETTYPE(*node.expr);
-				type_ptr rhs = GETTYPE(*node.extra);
+				type_ptr lhs = GETVAL(*node.expr);
+				type_ptr rhs = GETVAL(*node.extra);
 				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
 				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs->get_qualified_name(), rhs->get_qualified_name());
 				type_ptr ret = tsys.get_primitive_type(primitive::boolean);
@@ -412,10 +412,10 @@ namespace semal
 				sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
 
 				sem_assert(NODE_IS(node.extra, designated_initialiser_list), "should be desiginitlist >:(");
-				GETTYPE(*node.extra.get());
+				GETVAL(*node.extra.get());
 				for(const auto& init : NODE_AS(node.extra.get(), designated_initialiser_list)->inits)
 				{
-					type_ptr ty = GETTYPE(init);
+					type_ptr ty = GETVAL(init);
 					// todo: get the type of the data member and type check it
 				}
 				return struct_ty;
@@ -442,12 +442,12 @@ namespace semal
 			[[fallthrough]];
 			case type::parenthesised_expression:
 			{
-				return GETTYPE(*node.expr);
+				return GETVAL(*node.expr);
 			}
 			break;
 			case type::dot_access:
 			{
-				type_ptr lhs_ty = GETTYPE(*node.expr);
+				type_ptr lhs_ty = GETVAL(*node.expr);
 				std::string struct_name = lhs_ty->get_name();
 				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), struct_name);
 				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
@@ -474,7 +474,7 @@ namespace semal
 					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call->func_name.iden);
 					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call->func_name.iden, struct_name);
 					sem_assert(fn->struct_owner == struct_name, "attempt to call method \"{}\" as method of struct \"{}\", but the method actually belongs to the struct \"{}\"", call->func_name.iden, struct_name, fn->struct_owner);
-					return GETTYPE(*call);
+					return GETVAL(*call);
 				}
 				else
 				{
@@ -487,9 +487,9 @@ namespace semal
 			{
 				// lhs = rhs
 				// todo: make sure rhs is convertible to rhs and lhs is not const.
-				type_ptr lhs = GETTYPE(*node.expr);
+				type_ptr lhs = GETVAL(*node.expr);
 				sem_assert(!lhs->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs->get_qualified_name());
-				type_ptr rhs = GETTYPE(*node.extra);
+				type_ptr rhs = GETVAL(*node.extra);
 				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
 				typeconv explicit_conv = rhs->can_explicitly_convert_to(*lhs);
 				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs->get_qualified_name(), lhs->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
