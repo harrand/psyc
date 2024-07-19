@@ -11,6 +11,11 @@ static_value static_value::type_only(type_ptr ty)
 	return {.ty = std::move(ty)};
 }
 
+static_value static_value::create(type_ptr ty, std::any val)
+{
+	return {.ty = std::move(ty), .val = std::move(val)};
+}
+
 std::int64_t get_int_value(const itype& ty, const std::any& int_of_some_size)
 {
 	auto bit_count = ty.numeric_bit_count();
@@ -91,7 +96,7 @@ std::any to_int_value(const itype& ty, std::int64_t ival)
 	}
 }
 
-static_value static_value::do_convert(type_ptr to, srcloc ctx)
+static_value static_value::do_convert(type_ptr to, srcloc ctx) const
 {
 	auto conv = this->ty->can_implicitly_convert_to(*to);
 	switch(conv)
@@ -142,7 +147,7 @@ static_value static_value::do_convert(type_ptr to, srcloc ctx)
 	}
 }
 
-static_value static_value::do_explicit_convert(type_ptr to, srcloc ctx)
+static_value static_value::do_explicit_convert(type_ptr to, srcloc ctx) const
 {
 	auto cpy = this->clone();
 	cpy.ty->quals = static_cast<type_qualifier>(cpy.ty->quals | qual_weak);
@@ -164,4 +169,21 @@ static_value static_value::clone() const
 		cpy.children[name] = child_val.clone();
 	}
 	return cpy;
+}
+
+void static_value::set_value(const static_value& newval)
+{
+	if(newval.has_value())
+	{
+		*this = newval.do_convert(this->ty.unique_clone(), newval);
+	}
+	else
+	{
+		this->clear_value();
+	}
+}
+
+void static_value::clear_value()
+{
+	this->val = std::any{};
 }
