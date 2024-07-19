@@ -8,6 +8,28 @@ namespace semal
 	#define sem_assert_ice(expr, fmt, ...) diag::assert_that(expr, error_code::ice, "at {}: {}", node.loc.to_string(), std::format(fmt, ##__VA_ARGS__))
 	#define sem_assert(expr, fmt, ...) diag::assert_that(expr, error_code::semal, "at {}: {}", node.loc.to_string(), std::format(fmt, ##__VA_ARGS__))
 
+	syntax::node::variable_decl static_default_variables[] =
+	{
+		syntax::node::variable_decl
+		{
+			syntax::node::identifier{"os"},
+			syntax::node::identifier{"u8 const& static"},
+			syntax::node::expression
+			{
+				syntax::node::expression::type::string_literal,
+				#ifdef _WIN32
+				syntax::node::string_literal{"windows"}.unique_clone()
+				#elif defined(__linux__)
+				syntax::node::string_literal{"linux"}.unique_clone()
+				#elif defined(__APPLE__)
+				syntax::node::string_literal{"macos"}.unique_clone()
+				#else
+				syntax::node::string_literal{"unknown"}.unique_clone()
+				#endif
+			}
+		}
+	};
+
 	struct var_scope
 	{
 		std::unordered_map<std::string, const syntax::node::variable_decl*> decls = {};
@@ -139,7 +161,7 @@ namespace semal
 				const syntax::node::function_decl* fn = find_function(node.iden);
 				if(fn != nullptr)
 				{
-					return GETTYPE(*fn);
+					return GETTYPE(*fn)->with_qualifier(qual_static);
 				}
 				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
@@ -312,7 +334,7 @@ namespace semal
 					return tsys.get_primitive_type(primitive::f64)->with_qualifier(qual_static);
 				break;
 				case type::string_literal:
-					return tsys.get_primitive_type(primitive::u8)->ref()->with_qualifier(qual_static);
+					return tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_const)->ref()->with_qualifier(qual_static);
 				break;
 				case type::char_literal:
 					return tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_static);
@@ -356,7 +378,12 @@ namespace semal
 				type_ptr rhs = GETTYPE(*node.extra);
 				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
 				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs->get_qualified_name(), rhs->get_qualified_name());
-				return tsys.get_primitive_type(primitive::boolean);
+				type_ptr ret = tsys.get_primitive_type(primitive::boolean);
+				if(lhs->is_static() && rhs->is_static())
+				{
+					ret->add_qualifier(qual_static);
+				}
+				return ret;
 			}
 			break;
 			case type::struct_initialiser:
@@ -475,5 +502,10 @@ namespace semal
 				break;
 			}
 		TYPECHECK_END
+
+		for(const syntax::node::variable_decl& static_default : static_default_variables)
+		{
+			analyse(&static_default, tsys);
+		}
 	}
 }
