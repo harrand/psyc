@@ -171,11 +171,11 @@ static_value static_value::clone() const
 	return cpy;
 }
 
-void static_value::set_value(const static_value& newval)
+void static_value::set_value(const static_value& newval, srcloc ctx)
 {
 	if(newval.has_value())
 	{
-		*this = newval.do_convert(this->ty.unique_clone(), newval);
+		*this = newval.do_convert(this->ty->unique_clone(), ctx);
 	}
 	else
 	{

@@ -110,9 +110,9 @@ namespace semal
 	}
 
 	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> type_checking_table;
-	#define TYPECHECK_BEGIN(x) type_checking_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
+	#define SEMAL_BEGIN(x) type_checking_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
-	#define TYPECHECK_END };
+	#define SEMAL_END };
 	#define ILL_FORMED return incomplete_type("badtype").unique_clone()
 	#define GETTYPE(n) [&](){diag::assert_that(type_checking_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); return type_checking_table.at((n).hash())(&(n));}()
 	type_system tsys;
@@ -148,7 +148,7 @@ namespace semal
 
 	void populate_table()
 	{
-		TYPECHECK_BEGIN(identifier)
+		SEMAL_BEGIN(identifier)
 			type_ptr ret = tsys.get_type(node.iden);
 			if(ret == nullptr)
 			{
@@ -167,21 +167,21 @@ namespace semal
 				ILL_FORMED;
 			}
 			return ret;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(root)
+		SEMAL_BEGIN(root)
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(block)
+		SEMAL_BEGIN(block)
 			for(const auto& child : node.children)
 			{
 				GETTYPE(*child);
 			}
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(variable_decl)
+		SEMAL_BEGIN(variable_decl)
 			add_var(node);
 			type_ptr ret = nullptr;
 			if(node.type_name.iden != syntax::node::inferred_typename)
@@ -201,9 +201,9 @@ namespace semal
 				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init_type->get_qualified_name(), node.var_name.iden, ret->get_qualified_name());
 			}
 			return ret;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(struct_decl)
+		SEMAL_BEGIN(struct_decl)
 			sem_assert_ice(node.children.size() == 1 && NODE_IS(node.children.front(), block), "Struct Declaration AST node must have a single child, and that child must be a block. Instead it has {} child{}{}", node.children.size(), node.children.size() == 1 ? "" : "ren", node.children.size() > 1 ? std::format("(first child is a \"{}\")", node.children.front()->name()) : "");
 			type_system::struct_builder builder = tsys.make_struct(node.struct_name.iden);
 			// get the children of the block. this is where methods and data member variable declarations will be.
@@ -234,9 +234,9 @@ namespace semal
 				}
 			}
 			return builder.build();
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(function_decl)
+		SEMAL_BEGIN(function_decl)
 			add_fn(node);
 			if(node.children.empty()){}
 			else if(node.children.size() != 1 || !NODE_IS(node.children.front(), block))
@@ -254,9 +254,9 @@ namespace semal
 				param_type_names.push_back(GETTYPE(param)->get_qualified_name());
 			}
 			return tsys.get_function_type(node.return_type_name.iden, param_type_names);
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(function_call)
+		SEMAL_BEGIN(function_call)
 			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
 			if(decl != nullptr)
 			{
@@ -267,9 +267,9 @@ namespace semal
 			auto fnptr_ty = GETTYPE(*fnptr);
 			sem_assert(fnptr_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fnptr_ty->get_qualified_name());
 			return static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone();
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(namespace_access)
+		SEMAL_BEGIN(namespace_access)
 			std::string full_namespace_name;
 			auto parts = node.lhs_parts;
 			while(parts.size())
@@ -279,9 +279,9 @@ namespace semal
 			}
 			// todo: actually use the namespace name?
 			return GETTYPE(*node.rhs.expr);
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(if_statement)
+		SEMAL_BEGIN(if_statement)
 			type_ptr cond_ty = GETTYPE(node.cond);
 			typeconv conv = cond_ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
 			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond_ty->get_name());
@@ -291,39 +291,39 @@ namespace semal
 				// todo: get the condition value. if its false, cast-away constness and kill the block child so no compilation occurs.
 			}
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(else_statement)
+		SEMAL_BEGIN(else_statement)
 			if(!node.cond.is_null())
 			{
 				GETTYPE(node.cond);
 			}
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(meta_region)
+		SEMAL_BEGIN(meta_region)
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(alias)
+		SEMAL_BEGIN(alias)
 			tsys.make_alias(node.alias_name.iden, GETTYPE(node.type_value_expr)->get_name());
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(designated_initialiser_list)
+		SEMAL_BEGIN(designated_initialiser_list)
 			for(const auto& init : node.inits)
 			{
 				GETTYPE(init);
 			}
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 
-		TYPECHECK_BEGIN(designated_initialiser)
+		SEMAL_BEGIN(designated_initialiser)
 			GETTYPE(node.initialiser);
 			return nullptr;
-		TYPECHECK_END
+		SEMAL_END
 		
-		TYPECHECK_BEGIN(expression)
+		SEMAL_BEGIN(expression)
 			using type = syntax::node::expression::type;
 			switch(node.t)
 			{
@@ -501,7 +501,7 @@ namespace semal
 					ILL_FORMED;
 				break;
 			}
-		TYPECHECK_END
+		SEMAL_END
 
 		for(const syntax::node::variable_decl& static_default : static_default_variables)
 		{

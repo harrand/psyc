@@ -27,7 +27,7 @@ struct static_value
 	static_value do_explicit_convert(type_ptr to, srcloc ctx) const;
 
 	// assign to a new value (if newval has no value, then it is considered a runtime value meaning we will no longer have a compile-time value either)
-	void set_value(const static_value& newval);
+	void set_value(const static_value& newval, srcloc ctx);
 	// clear the value, meaning it is no longer a value known at compile-time
 	void clear_value();
 };
