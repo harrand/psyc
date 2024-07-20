@@ -16,6 +16,11 @@ static_value static_value::create(type_ptr ty, std::any val)
 	return {.ty = std::move(ty), .val = std::move(val)};
 }
 
+bool static_value::is_null() const
+{
+	return this->ty == nullptr && !this->has_value();
+}
+
 std::int64_t get_int_value(const itype& ty, const std::any& int_of_some_size)
 {
 	auto bit_count = ty.numeric_bit_count();
@@ -162,7 +167,10 @@ bool static_value::has_value() const
 static_value static_value::clone() const
 {
 	static_value cpy;
-	cpy.ty = this->ty->unique_clone();
+	if(this->ty != nullptr)
+	{
+		cpy.ty = this->ty->unique_clone();
+	}
 	cpy.val = this->val;
 	for(const auto& [name, child_val] : this->children)
 	{

@@ -114,7 +114,7 @@ namespace semal
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
 	#define SEMAL_END };
 	#define ILL_FORMED return incomplete_type("badtype").unique_clone()
-	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); return semal_table.at((n).hash())(&(n));}()
+	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); static_value ret = static_value::type_only(semal_table.at((n).hash())(&(n))); if(node.semal.is_null()){node.semal = ret.clone();} return std::move(ret.ty);}()
 	type_system tsys;
 
 	void analyse(const syntax::inode* ast, type_system& tsys)

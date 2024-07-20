@@ -18,7 +18,7 @@ namespace syntax
 	{
 	public:
 		inode() = default;
-		inode(const inode& cpy): children(), loc(cpy.loc)
+		inode(const inode& cpy): children(), loc(cpy.loc), semal(cpy.semal.clone())
 		{
 			for(const auto& child_ptr : cpy.children)
 			{
@@ -60,6 +60,7 @@ namespace syntax
 
 		std::vector<node_ptr> children = {};
 		srcloc loc = srcloc::undefined();
+		mutable static_value semal;
 	};
 
 	#define NODE_IS(some_node, node_type) (some_node)->is<syntax::node::node_type>()

@@ -1,6 +1,5 @@
 #ifndef PSYC_STATIC_HPP
 #define PSYC_STATIC_HPP
-#include "ast.hpp"
 #include "type.hpp"
 #include "srcloc.hpp"
 #include <any>
@@ -14,6 +13,8 @@ struct static_value
 	static static_value null();
 	static static_value type_only(type_ptr ty);
 	static static_value create(type_ptr ty, std::any val);
+
+	bool is_null() const;
 
 	template<typename T>
 	T value_as() const
