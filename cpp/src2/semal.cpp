@@ -154,7 +154,7 @@ namespace semal
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
 	#define SEMAL_END };
 	#define ILL_FORMED return static_value::type_only(incomplete_type("badtype").unique_clone())
-	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); static_value ret = semal_table.at((n).hash())(&(n)); if(node.semal.is_null()){node.semal = ret.clone();} return ret;}()
+	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); static_value ret = semal_table.at((n).hash())(&(n)); if(node.semal.is_null()){node.semal = ret.clone();} if(ret.ty != nullptr) {sem_assert(ret.ty->is_static() ? ret.has_value() : true, "value of type {} must have static value available at compile time", ret.ty->get_qualified_name());} return ret;}()
 	type_system tsys;
 
 	void analyse(const syntax::inode* ast, type_system& tsys)
@@ -240,6 +240,11 @@ namespace semal
 				typeconv conv = init.ty->can_implicitly_convert_to(*ret.ty);
 				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init.ty->get_qualified_name(), node.var_name.iden, ret.ty->get_qualified_name());
 				ret = init.do_convert(ret.ty->unique_clone(), node.loc);
+				if(!ret.ty->is_static())
+				{
+					// dont pretend to have a constexpr value if the var isnt actually constxpr.
+					ret.clear_value();
+				}
 			}
 			return ret;
 		SEMAL_END
@@ -335,7 +340,7 @@ namespace semal
 			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond.ty->get_name());
 			if(node.is_static)
 			{
-				sem_assert(cond.has_value(), "condition static-if statement must be computable at compile time, which I wasn't able to do.");
+				sem_assert(cond.has_value(), "condition of static-if statement must be computable at compile time, which it isn't");
 				sem_assert(cond.ty->is_static(), "condition static-if statement must be a static expression (known at compile time). you passed a: \"{}\"", cond.ty->get_qualified_name());
 				// todo: get the condition value. if its false, cast-away constness and kill the block child so no compilation occurs.
 				bool cond_value = cond.value_as<bool>();
@@ -451,10 +456,23 @@ namespace semal
 			}
 			break;
 			case type::deref:
-				return static_value::type_only(GETVAL(*node.expr).ty->deref());
+			{
+				// note: deref cannot return a static value, only a type. how do you get the address of something at compile time?
+				static_value val = GETVAL(*node.expr);
+				val.clear_value();
+				val.ty = val.ty->deref();
+				return val;
+			}
 			break;
 			case type::ref:
-				return static_value::type_only(GETVAL(*node.expr).ty->ref());
+			{
+				// note: ref cannot return a static value, only a type. how do you get the address of something at compile time?
+				static_value val = GETVAL(*node.expr);
+				val.clear_value();
+				val.ty->remove_qualifier(qual_static);
+				val.ty = val.ty->ref();
+				return val;
+			}
 			break;
 			case type::eqcompare:
 			{
@@ -529,17 +547,167 @@ namespace semal
 			}
 			break;
 			case type::typeinfo:
-				return static_value::type_only(tsys.get_type("typeinfo")->with_qualifier(qual_static));
+				return static_value::typeinfo(tsys, *GETVAL(*node.expr).ty);
+				//return static_value::type_only(tsys.get_type("typeinfo")->with_qualifier(qual_static));
+			break;
+			case type::addition:
+			{
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "addition lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "in addition, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				if(lhs.has_value() && rhs.has_value())
+				{
+					std::int64_t rhsv;
+					if(rhs.ty->is_integer())
+					{
+						rhsv = get_int_value(*rhs.ty, rhs.val);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						rhsv = std::any_cast<double>(rhs.val);
+					}
+					else
+					{
+						diag::ice("dont know how to static-add \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+
+					if(lhs.ty->is_integer())
+					{
+						lhs.val = to_int_value(*lhs.ty, get_int_value(*lhs.ty, lhs.val) + rhsv);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						lhs.val = std::any_cast<double>(lhs.val) + rhsv;
+					}
+					else
+					{
+						diag::ice("dont know how to static-add \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+				}
+				return lhs;
+			}
+			break;
+			case type::subtraction:
+			{
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "subtraction lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "in subtraction, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				if(lhs.has_value() && rhs.has_value())
+				{
+					std::int64_t rhsv;
+					if(rhs.ty->is_integer())
+					{
+						rhsv = get_int_value(*rhs.ty, rhs.val);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						rhsv = std::any_cast<double>(rhs.val);
+					}
+					else
+					{
+						diag::ice("dont know how to static-subtract \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+
+					if(lhs.ty->is_integer())
+					{
+						lhs.val = to_int_value(*lhs.ty, get_int_value(*lhs.ty, lhs.val) - rhsv);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						lhs.val = std::any_cast<double>(lhs.val) - rhsv;
+					}
+					else
+					{
+						diag::ice("dont know how to static-subtract \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+				}
+				return lhs;
+			}
+			break;
+			case type::multiplication:
+			{
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "multiplication lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "in multiplication, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				if(lhs.has_value() && rhs.has_value())
+				{
+					std::int64_t rhsv;
+					if(rhs.ty->is_integer())
+					{
+						rhsv = get_int_value(*rhs.ty, rhs.val);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						rhsv = std::any_cast<double>(rhs.val);
+					}
+					else
+					{
+						diag::ice("dont know how to static-multiply \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+
+					if(lhs.ty->is_integer())
+					{
+						lhs.val = to_int_value(*lhs.ty, get_int_value(*lhs.ty, lhs.val) * rhsv);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						lhs.val = std::any_cast<double>(lhs.val) * rhsv;
+					}
+					else
+					{
+						diag::ice("dont know how to static-multiply \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+				}
+				return lhs;
+			}
+			break;
+			case type::division:
+			{
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "division lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "in division, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				if(lhs.has_value() && rhs.has_value())
+				{
+					std::int64_t rhsv;
+					if(rhs.ty->is_integer())
+					{
+						rhsv = get_int_value(*rhs.ty, rhs.val);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						rhsv = std::any_cast<double>(rhs.val);
+					}
+					else
+					{
+						diag::ice("dont know how to static-divide \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+					sem_assert(rhsv != 0, "division by zero detected at compile-time");
+
+					if(lhs.ty->is_integer())
+					{
+						lhs.val = to_int_value(*lhs.ty, get_int_value(*lhs.ty, lhs.val) / rhsv);
+					}
+					else if(lhs.ty->is_floating_point())
+					{
+						lhs.val = std::any_cast<double>(lhs.val) / rhsv;
+					}
+					else
+					{
+						diag::ice("dont know how to static-divide \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+					}
+				}
+				return lhs;
+			}
 			break;
 			case type::namespace_access:
-			[[fallthrough]];
-			case type::addition:
-			[[fallthrough]];
-			case type::subtraction:
-			[[fallthrough]];
-			case type::multiplication:
-			[[fallthrough]];
-			case type::division:
 			[[fallthrough]];
 			case type::identifier:
 			[[fallthrough]];
@@ -601,8 +769,7 @@ namespace semal
 				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
 				typeconv explicit_conv = rhs.ty->can_explicitly_convert_to(*lhs.ty);
 				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
-				lhs.set_value(rhs, node.loc);
-				return lhs;
+				return static_value::type_only(lhs.ty->unique_clone());
 			}
 			break;
 				default:

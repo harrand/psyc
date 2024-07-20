@@ -13,6 +13,7 @@ struct static_value
 	static static_value null();
 	static static_value type_only(type_ptr ty);
 	static static_value create(type_ptr ty, std::any val);
+	static static_value typeinfo(const type_system& tsys, const itype& ty);
 
 	bool is_null() const;
 

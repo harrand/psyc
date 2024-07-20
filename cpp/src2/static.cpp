@@ -16,6 +16,20 @@ static_value static_value::create(type_ptr ty, std::any val)
 	return {.ty = std::move(ty), .val = std::move(val)};
 }
 
+static_value static_value::typeinfo(const type_system& tsys, const itype& ty)
+{
+	static_value ret = static_value::type_only(tsys.get_type("typeinfo"));
+	diag::assert_that(ret.ty->is_struct(), error_code::ice, "type \"typeinfo\" has not been registered as a valid struct type.");
+	auto& typeinfo_t = *static_cast<struct_type*>(ret.ty.get());
+	#define FIND_MEMBER(x) std::find_if(typeinfo_t.members.begin(), typeinfo_t.members.end(), [](const struct_type::data_member& member){return member.name == #x;})
+
+	auto name_member = FIND_MEMBER(name);
+	diag::assert_that(name_member != typeinfo_t.members.end(), error_code::ice, "typeinfo struct type does not contain a member named \"name\"");
+	ret.children["name"] = static_value::create(ty.unique_clone(), std::string{ty.get_name()});
+
+	return ret;
+}
+
 bool static_value::is_null() const
 {
 	return this->ty == nullptr && !this->has_value() && this->children.empty();
