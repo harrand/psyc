@@ -348,6 +348,11 @@ typeconv itype::can_explicitly_convert_to(const itype& rhs) const
 	return weak_this->can_implicitly_convert_to(rhs);
 }
 
+bool itype::equality_comparable(const itype& rhs) const
+{
+	return (this->can_implicitly_convert_to(rhs) != typeconv::cant) || (rhs.can_implicitly_convert_to(*this) != typeconv::cant);
+}
+
 pointer_type::pointer_type(type_ptr base_type): itype(*base_type->discarded_qualifiers()), base(std::move(base_type))
 {
 	this->h = hint::pointer_type;

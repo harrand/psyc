@@ -82,6 +82,7 @@ struct itype : public util::unique_cloneable<itype>
 
 	typeconv can_implicitly_convert_to(const itype& rhs) const;
 	typeconv can_explicitly_convert_to(const itype& rhs) const;
+	bool equality_comparable(const itype& rhs) const;
 
 	bool operator==(const itype& rhs) const{return this->get_name() == rhs.get_name();}
 

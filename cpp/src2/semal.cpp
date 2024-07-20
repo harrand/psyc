@@ -478,15 +478,13 @@ namespace semal
 			{
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				static_value rhs_conv = rhs.do_convert(lhs.ty->unique_clone(), node.loc);
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "comparison is invalid because lhs type \"{}\" is not equality-comparaable to rhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				
 				type_ptr retty = tsys.get_primitive_type(primitive::boolean);
 
-				if(lhs.has_value() && rhs_conv.has_value())
+				if(lhs.has_value() && rhs.has_value())
 				{
-					return static_value::create(retty->with_qualifier(qual_static), lhs.equals(rhs_conv));
+					return static_value::create(retty->with_qualifier(qual_static), lhs.equals(rhs));
 				}
 				return static_value::type_only(std::move(retty));
 			}
@@ -495,15 +493,13 @@ namespace semal
 			{
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				static_value rhs_conv = rhs.do_convert(lhs.ty->unique_clone(), node.loc);
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "comparison is invalid because lhs type \"{}\" is not equality-comparaable to rhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				
 				type_ptr retty = tsys.get_primitive_type(primitive::boolean);
 
-				if(lhs.has_value() && rhs_conv.has_value())
+				if(lhs.has_value() && rhs.has_value())
 				{
-					return static_value::create(std::move(retty), !lhs.equals(rhs_conv));
+					return static_value::create(retty->with_qualifier(qual_static), !lhs.equals(rhs));
 				}
 				return static_value::type_only(std::move(retty));
 			}
@@ -764,7 +760,8 @@ namespace semal
 				// todo: make sure rhs is convertible to rhs and lhs is not const.
 				static_value lhs = GETVAL(*node.expr);
 				//type_ptr lhs = GETVAL(*node.expr);
-				sem_assert(!lhs.ty->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs.ty->get_qualified_name());
+				sem_assert(!lhs.ty->is_const(), "lhs of assignment is \"{}\". cannot assign to const values.", lhs.ty->get_qualified_name());
+				sem_assert(!lhs.ty->is_static(), "lhs of assignment is \"{}\". cannot assign to static values.", lhs.ty->get_qualified_name());
 				static_value rhs = GETVAL(*node.extra);
 				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
 				typeconv explicit_conv = rhs.ty->can_explicitly_convert_to(*lhs.ty);
