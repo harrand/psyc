@@ -22,6 +22,7 @@ struct static_value
 		return std::any_cast<T>(this->val);
 	}
 	bool has_value() const;
+	bool has_children() const;
 
 	static_value clone() const;
 	static_value do_convert(type_ptr to, srcloc ctx) const;
@@ -35,5 +36,8 @@ struct static_value
 	// clear the value, meaning it is no longer a value known at compile-time
 	void clear_value();
 };
+
+std::int64_t get_int_value(const itype& ty, const std::any& int_of_some_size);
+std::any to_int_value(const itype& ty, std::int64_t ival);
 
 #endif // PSYC_STATIC_HPP

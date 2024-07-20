@@ -255,22 +255,26 @@ namespace semal
 					param.impl_should_add_to_current_scope = false;
 				}
 				param.impl_is_defined_before_parent_block = true;
-				param_type_names.push_back(GETVAL(param)->get_qualified_name());
+				param_type_names.push_back(GETVAL(param).ty->get_qualified_name());
 			}
-			return tsys.get_function_type(node.return_type_name.iden, param_type_names);
+			// static value representing a function is just a string representing the function name. (this is because functions as values are static i.e available at compile time.)
+			return static_value::create(
+				tsys.get_function_type(node.return_type_name.iden, param_type_names),
+				node.func_name
+			);
 		SEMAL_END
 
 		SEMAL_BEGIN(function_call)
 			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
 			if(decl != nullptr)
 			{
-				return tsys.get_type(decl->return_type_name.iden);
+				return static_value::type_only(tsys.get_type(decl->return_type_name.iden));
 			}
 			const syntax::node::variable_decl* fnptr = find_variable(node.func_name.iden);
 			sem_assert(fnptr != nullptr, "unknown function \"{}\"", node.func_name.iden);
-			auto fnptr_ty = GETVAL(*fnptr);
+			auto fnptr_ty = GETVAL(*fnptr).ty;
 			sem_assert(fnptr_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fnptr_ty->get_qualified_name());
-			return static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone();
+			return static_value::type_only(static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone());
 		SEMAL_END
 
 		SEMAL_BEGIN(namespace_access)
@@ -286,15 +290,24 @@ namespace semal
 		SEMAL_END
 
 		SEMAL_BEGIN(if_statement)
-			type_ptr cond_ty = GETVAL(node.cond);
-			typeconv conv = cond_ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
-			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond_ty->get_name());
+			static_value cond = GETVAL(node.cond);
+			typeconv conv = cond.ty->can_implicitly_convert_to(primitive_type{primitive::boolean});
+			sem_assert(conv != typeconv::cant, "evaluated type of if-statement condition must be implicitly convertible to a bool, which {} is not", cond.ty->get_name());
 			if(node.is_static)
 			{
-				sem_assert(cond_ty->is_static(), "condition static-if statement must be a static expression (known at compile time). you passed a: \"{}\"", cond_ty->get_qualified_name());
+				sem_assert(cond.has_value(), "condition static-if statement must be computable at compile time, which I wasn't able to do.");
+				sem_assert(cond.ty->is_static(), "condition static-if statement must be a static expression (known at compile time). you passed a: \"{}\"", cond.ty->get_qualified_name());
 				// todo: get the condition value. if its false, cast-away constness and kill the block child so no compilation occurs.
+				bool cond_value = cond.value_as<bool>();
+				if(!cond_value)
+				{
+					auto& mutable_node = const_cast<syntax::node::if_statement&>(node);
+					// first child of an if statement is always a block containing instructions. if a static-if condition is false, that code should not be compiled, so we simply clear that blocks children:
+					auto& if_blk = *node.children.front();
+					if_blk.children.clear();
+				}
 			}
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(else_statement)
@@ -302,16 +315,16 @@ namespace semal
 			{
 				GETVAL(node.cond);
 			}
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(meta_region)
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(alias)
-			tsys.make_alias(node.alias_name.iden, GETVAL(node.type_value_expr)->get_name());
-			return nullptr;
+			tsys.make_alias(node.alias_name.iden, GETVAL(node.type_value_expr).ty->get_name());
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(designated_initialiser_list)
@@ -319,12 +332,12 @@ namespace semal
 			{
 				GETVAL(init);
 			}
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(designated_initialiser)
 			GETVAL(node.initialiser);
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 		
 		SEMAL_BEGIN(expression)
@@ -332,27 +345,52 @@ namespace semal
 			switch(node.t)
 			{
 				case type::integer_literal:
-					return tsys.get_primitive_type(primitive::i64)->with_qualifier(qual_static);
+				{
+					static_value ret = static_value::type_only(tsys.get_primitive_type(primitive::i64)->with_qualifier(qual_static));
+					std::int64_t val = NODE_AS(node.expr.get(), integer_literal)->val;
+					ret.val = to_int_value(*ret.ty, val);
+					return ret;
+				}
 				break;
 				case type::decimal_literal:
-					return tsys.get_primitive_type(primitive::f64)->with_qualifier(qual_static);
+					return static_value::create(
+						tsys.get_primitive_type(primitive::f64)->with_qualifier(qual_static),
+
+						NODE_AS(node.expr.get(), decimal_literal)->val
+					);
 				break;
 				case type::string_literal:
-					return tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_const)->ref()->with_qualifier(qual_static);
+					return static_value::create(
+						tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_const)->ref()->with_qualifier(qual_static),
+
+						NODE_AS(node.expr.get(), string_literal)->val
+					);
 				break;
 				case type::char_literal:
-					return tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_static);
+					return static_value::create(
+						tsys.get_primitive_type(primitive::u8)->with_qualifier(qual_static),
+
+						NODE_AS(node.expr.get(), char_literal)->val
+					);
 				break;
 				case type::bool_literal:
-					return tsys.get_primitive_type(primitive::boolean)->with_qualifier(qual_static);
+					return static_value::create(
+						tsys.get_primitive_type(primitive::boolean)->with_qualifier(qual_static),
+
+						NODE_AS(node.expr.get(), bool_literal)->val
+					);
 				break;
 				case type::null_literal:
-					return tsys.get_primitive_type(primitive::i8)->ref()->with_qualifier(qual_weak)->with_qualifier(qual_static);
+					return static_value::create(
+						tsys.get_primitive_type(primitive::i8)->ref()->with_qualifier(qual_weak)->with_qualifier(qual_static),
+
+						nullptr
+					);
 				break;
 				case type::return_statement:
 					if(node.expr == nullptr)
 					{
-						return nullptr;
+						return static_value::null();
 					}
 					return GETVAL(*NODE_AS(node.expr.get(), expression));
 				break;

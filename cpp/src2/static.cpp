@@ -178,6 +178,11 @@ bool static_value::has_value() const
 	return this->val.has_value();
 }
 
+bool static_value::has_children() const
+{
+	return this->children.size();
+}
+
 static_value static_value::clone() const
 {
 	static_value cpy;
