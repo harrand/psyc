@@ -24,6 +24,8 @@ struct static_value
 	bool has_value() const;
 	bool has_children() const;
 
+	bool equals(const static_value& rhs) const;
+
 	static_value clone() const;
 	static_value do_convert(type_ptr to, srcloc ctx) const;
 	static_value do_explicit_convert(type_ptr to, srcloc ctx) const;

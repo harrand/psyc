@@ -54,6 +54,9 @@ std::int64_t get_int_value(const itype& ty, const std::any& int_of_some_size)
 		case -8:
 			return std::any_cast<std::uint8_t>(int_of_some_size);
 		break;
+		case 1:
+			return std::any_cast<bool>(int_of_some_size);
+		break;
 		default:
 			diag::error(error_code::ice, "panic: any -> int of some size ({})", ty.get_qualified_name());
 			return {};
@@ -145,6 +148,20 @@ static_value static_value::do_convert(type_ptr to, srcloc ctx) const
 				.val = to_int_value(*to, get_int_value(*this->ty, this->val))
 			};
 		break;
+		case typeconv::f2i:
+			return
+			{
+				.ty = to->unique_clone(),
+				.val = to_int_value(*to, std::any_cast<double>(this->val))
+			};
+		break;
+		case typeconv::i2f:
+			return
+			{
+				.ty = to->unique_clone(),
+				.val = static_cast<double>(get_int_value(*this->ty, this->val))
+			};
+		break;
 		default:
 			diag::error(error_code::nyi, "at {}: no implementation for type conversion (id {}) from {} to {}", ctx.to_string(), static_cast<int>(conv), this->ty->get_qualified_name(), to->get_qualified_name());
 			return {};
@@ -175,12 +192,31 @@ static_value static_value::discarded_type_qualifiers() const
 
 bool static_value::has_value() const
 {
-	return this->val.has_value();
+	return this->val.has_value() || this->children.size();
 }
 
 bool static_value::has_children() const
 {
 	return this->children.size();
+}
+
+bool static_value::equals(const static_value& rhs) const
+{
+	// todo: impl
+	if(this->ty->is_integer() && rhs.ty->is_integer())
+	{
+		auto lhs_val = get_int_value(*this->ty, this->val);
+		auto rhs_val = get_int_value(*rhs.ty, rhs.val);
+		return lhs_val == rhs_val;
+	}
+	if(this->ty->is_floating_point() && rhs.ty->is_floating_point())
+	{
+		auto lhs_val = std::any_cast<double>(this->val);
+		auto rhs_val = std::any_cast<double>(rhs.val);
+		return lhs_val == rhs_val;
+	}
+	diag::nyi("static-value equality comparison between types \"{}\" and \"{}\" are not yet implemented.", this->ty->get_qualified_name(), rhs.ty->get_qualified_name());
+	return false;
 }
 
 static_value static_value::clone() const

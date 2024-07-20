@@ -12,19 +12,59 @@ namespace semal
 	{
 		syntax::node::variable_decl
 		{
-			syntax::node::identifier{"os"},
-			syntax::node::identifier{"u8 const& static"},
+			syntax::node::identifier{"os_unknown"},
+			syntax::node::identifier{"i64 const static"},
 			syntax::node::expression
 			{
-				syntax::node::expression::type::string_literal,
+				syntax::node::expression::type::integer_literal,
+				syntax::node::integer_literal{0}.unique_clone()
+			}
+		},
+		syntax::node::variable_decl
+		{
+			syntax::node::identifier{"os_windows"},
+			syntax::node::identifier{"i64 const static"},
+			syntax::node::expression
+			{
+				syntax::node::expression::type::integer_literal,
+				syntax::node::integer_literal{1}.unique_clone()
+			}
+		},
+		syntax::node::variable_decl
+		{
+			syntax::node::identifier{"os_linux"},
+			syntax::node::identifier{"i64 const static"},
+			syntax::node::expression
+			{
+				syntax::node::expression::type::integer_literal,
+				syntax::node::integer_literal{2}.unique_clone()
+			}
+		},
+		syntax::node::variable_decl
+		{
+			syntax::node::identifier{"os_macos"},
+			syntax::node::identifier{"i64 const static"},
+			syntax::node::expression
+			{
+				syntax::node::expression::type::integer_literal,
+				syntax::node::integer_literal{3}.unique_clone()
+			}
+		},
+		syntax::node::variable_decl
+		{
+			syntax::node::identifier{"host_os"},
+			syntax::node::identifier{"i64 const static"},
+			syntax::node::expression
+			{
+				syntax::node::expression::type::identifier,
 				#ifdef _WIN32
-				syntax::node::string_literal{"windows"}.unique_clone()
+				syntax::node::identifier{"os_windows"}.unique_clone()
 				#elif defined(__linux__)
-				syntax::node::string_literal{"linux"}.unique_clone()
+				syntax::node::identifier{"os_linux"}.unique_clone()
 				#elif defined(__APPLE__)
-				syntax::node::string_literal{"macos"}.unique_clone()
+				syntax::node::identifier{"os_macos"}.unique_clone()
 				#else
-				syntax::node::string_literal{"unknown"}.unique_clone()
+				syntax::node::identifier{"os_unknown"}.unique_clone()
 				#endif
 			}
 		}
@@ -400,32 +440,54 @@ namespace semal
 				// node.extra is either an identifier or yet another expression.
 				sem_assert_ice(node.extra != nullptr, "in a cast expression, the `extra` (rhs) must be either an expression or an identifier. it's a nullptr. parse reduction has gone awry");
 				sem_assert(NODE_IS(node.extra, identifier), "rhs of cast expression x@y should be an identifier. what you gave me was a \"{}\"", node.extra->name());
-				type_ptr ty = GETVAL(*node.extra);
-				type_ptr lhs_ty = GETVAL(*node.expr);
-				sem_assert(lhs_ty->can_explicitly_convert_to(*ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs_ty->get_qualified_name(), ty->get_qualified_name());
-				return GETVAL(*node.extra);
+				static_value rhs = GETVAL(*node.extra);
+				static_value lhs = GETVAL(*node.expr);
+				sem_assert(lhs.ty->can_explicitly_convert_to(*rhs.ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				if(lhs.has_value())
+				{
+					return lhs.do_explicit_convert(rhs.ty->unique_clone(), node.loc);
+				}
+				return static_value::type_only(std::move(rhs.ty));
 			}
 			break;
 			case type::deref:
-				return GETVAL(*node.expr)->deref();
+				return static_value::type_only(GETVAL(*node.expr).ty->deref());
 			break;
 			case type::ref:
-				return GETVAL(*node.expr)->ref();
+				return static_value::type_only(GETVAL(*node.expr).ty->ref());
 			break;
 			case type::eqcompare:
-			[[fallthrough]];
+			{
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				static_value rhs_conv = rhs.do_convert(lhs.ty->unique_clone(), node.loc);
+				
+				type_ptr retty = tsys.get_primitive_type(primitive::boolean);
+
+				if(lhs.has_value() && rhs_conv.has_value())
+				{
+					return static_value::create(retty->with_qualifier(qual_static), lhs.equals(rhs_conv));
+				}
+				return static_value::type_only(std::move(retty));
+			}
+			break;
 			case type::neqcompare:
 			{
-				type_ptr lhs = GETVAL(*node.expr);
-				type_ptr rhs = GETVAL(*node.extra);
-				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
-				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs->get_qualified_name(), rhs->get_qualified_name());
-				type_ptr ret = tsys.get_primitive_type(primitive::boolean);
-				if(lhs->is_static() && rhs->is_static())
+				static_value lhs = GETVAL(*node.expr);
+				static_value rhs = GETVAL(*node.extra);
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "comparison is invalid, because rhs type \"{}\" cannot be implicitly converted to lhs type \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				static_value rhs_conv = rhs.do_convert(lhs.ty->unique_clone(), node.loc);
+				
+				type_ptr retty = tsys.get_primitive_type(primitive::boolean);
+
+				if(lhs.has_value() && rhs_conv.has_value())
 				{
-					ret->add_qualifier(qual_static);
+					return static_value::create(std::move(retty), !lhs.equals(rhs_conv));
 				}
-				return ret;
+				return static_value::type_only(std::move(retty));
 			}
 			break;
 			case type::struct_initialiser:
@@ -453,18 +515,21 @@ namespace semal
 				sem_assert(struct_ty != nullptr && struct_ty->is_well_formed(), "unknown struct type \"{}\" in struct initialiser", struct_name);
 				sem_assert(struct_ty->is_struct(), "non-struct type \"{}\" detected in struct initialiser. type appears to be a {} type", struct_name, struct_ty->hint_name());
 
+				static_value ret = static_value::type_only(struct_ty->unique_clone());
+
 				sem_assert(NODE_IS(node.extra, designated_initialiser_list), "should be desiginitlist >:(");
 				GETVAL(*node.extra.get());
 				for(const auto& init : NODE_AS(node.extra.get(), designated_initialiser_list)->inits)
 				{
-					type_ptr ty = GETVAL(init);
+					static_value dinit = GETVAL(init);
+					ret.children[init.member.iden] = dinit.clone();
 					// todo: get the type of the data member and type check it
 				}
-				return struct_ty;
+				return ret;
 			}
 			break;
 			case type::typeinfo:
-				return tsys.get_type("typeinfo")->with_qualifier(qual_static);
+				return static_value::type_only(tsys.get_type("typeinfo")->with_qualifier(qual_static));
 			break;
 			case type::namespace_access:
 			[[fallthrough]];
@@ -489,7 +554,7 @@ namespace semal
 			break;
 			case type::dot_access:
 			{
-				type_ptr lhs_ty = GETVAL(*node.expr);
+				type_ptr lhs_ty = GETVAL(*node.expr).ty;
 				std::string struct_name = lhs_ty->get_name();
 				sem_assert(lhs_ty->is_struct(), "lhs of dot-access expression should be a struct type, instead you passed {} {}", lhs_ty->hint_name(), struct_name);
 				const auto& struct_ty = static_cast<const struct_type&>(*lhs_ty);
@@ -504,7 +569,7 @@ namespace semal
 					{
 						if(member.name == member_name)
 						{
-							return member.ty->unique_clone();
+							return static_value::type_only(member.ty->unique_clone());
 						}
 					}
 					sem_assert(false, "struct {} has no such member named {}", struct_ty.get_name(), member_name);
@@ -529,12 +594,14 @@ namespace semal
 			{
 				// lhs = rhs
 				// todo: make sure rhs is convertible to rhs and lhs is not const.
-				type_ptr lhs = GETVAL(*node.expr);
-				sem_assert(!lhs->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs->get_qualified_name());
-				type_ptr rhs = GETVAL(*node.extra);
-				typeconv conv = rhs->can_implicitly_convert_to(*lhs);
-				typeconv explicit_conv = rhs->can_explicitly_convert_to(*lhs);
-				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs->get_qualified_name(), lhs->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
+				static_value lhs = GETVAL(*node.expr);
+				//type_ptr lhs = GETVAL(*node.expr);
+				sem_assert(!lhs.ty->is_const(), "lhs of assignment is const. cannot assign to const values. type of lhs: \"{}\"", lhs.ty->get_qualified_name());
+				static_value rhs = GETVAL(*node.extra);
+				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
+				typeconv explicit_conv = rhs.ty->can_explicitly_convert_to(*lhs.ty);
+				sem_assert(conv != typeconv::cant, "assignment invalid because rhs type ({}) cannot be implicitly converted to lhs type ({}){}", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: an explicit cast will allow this conversion!" : "");
+				lhs.set_value(rhs, node.loc);
 				return lhs;
 			}
 			break;

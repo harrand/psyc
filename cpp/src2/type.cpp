@@ -196,6 +196,9 @@ short itype::numeric_bit_count() const
 		case primitive::u8:
 			return 8;
 		break;
+		case primitive::boolean:
+			return 1;
+		break;
 		default:
 			diag::error(error_code::ice, "unable to retrieve numeric bit count for integral/floating-point type {}", this->get_qualified_name());
 			return false;
