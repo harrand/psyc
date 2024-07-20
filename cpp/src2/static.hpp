@@ -27,6 +27,9 @@ struct static_value
 	static_value do_convert(type_ptr to, srcloc ctx) const;
 	static_value do_explicit_convert(type_ptr to, srcloc ctx) const;
 
+	static_value with_type_qualifier(type_qualifier q) const;
+	static_value discarded_type_qualifiers() const;
+
 	// assign to a new value (if newval has no value, then it is considered a runtime value meaning we will no longer have a compile-time value either)
 	void set_value(const static_value& newval, srcloc ctx);
 	// clear the value, meaning it is no longer a value known at compile-time

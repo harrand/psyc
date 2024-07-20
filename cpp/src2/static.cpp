@@ -18,7 +18,7 @@ static_value static_value::create(type_ptr ty, std::any val)
 
 bool static_value::is_null() const
 {
-	return this->ty == nullptr && !this->has_value();
+	return this->ty == nullptr && !this->has_value() && this->children.empty();
 }
 
 std::int64_t get_int_value(const itype& ty, const std::any& int_of_some_size)
@@ -157,6 +157,20 @@ static_value static_value::do_explicit_convert(type_ptr to, srcloc ctx) const
 	auto cpy = this->clone();
 	cpy.ty->quals = static_cast<type_qualifier>(cpy.ty->quals | qual_weak);
 	return cpy.do_convert(std::move(to), ctx);
+}
+
+static_value static_value::with_type_qualifier(type_qualifier q) const
+{
+	auto cpy = this->clone();
+	cpy.ty->add_qualifier(q);
+	return cpy;
+}
+
+static_value static_value::discarded_type_qualifiers() const
+{
+	auto cpy = this->clone();
+	cpy.ty = cpy.ty->discarded_qualifiers();
+	return cpy;
 }
 
 bool static_value::has_value() const

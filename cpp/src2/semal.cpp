@@ -109,12 +109,12 @@ namespace semal
 		var_stack.back().fn_decls[fndecl.func_name.iden] = fndecl;
 	}
 
-	std::unordered_map<std::size_t, type_ptr(*)(const syntax::inode* node)> semal_table;
-	#define SEMAL_BEGIN(x) semal_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->type_ptr{ \
+	std::unordered_map<std::size_t, static_value(*)(const syntax::inode* node)> semal_table;
+	#define SEMAL_BEGIN(x) semal_table[syntax::node::x{}.hash()] = [](const syntax::inode* base_node)->static_value{ \
 	const auto& node = *static_cast<const syntax::node::x*>(base_node);
 	#define SEMAL_END };
-	#define ILL_FORMED return incomplete_type("badtype").unique_clone()
-	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); static_value ret = static_value::type_only(semal_table.at((n).hash())(&(n))); if(node.semal.is_null()){node.semal = ret.clone();} return std::move(ret.ty);}()
+	#define ILL_FORMED return static_value::type_only(incomplete_type("badtype").unique_clone())
+	#define GETVAL(n) [&](){diag::assert_that(semal_table.contains((n).hash()), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", (n).name(), (n).hash()); static_value ret = semal_table.at((n).hash())(&(n)); if(node.semal.is_null()){node.semal = ret.clone();} return ret;}()
 	type_system tsys;
 
 	void analyse(const syntax::inode* ast, type_system& tsys)
@@ -127,10 +127,10 @@ namespace semal
 		}
 		auto iter = semal_table.find(ast->hash());
 		diag::assert_that(iter != semal_table.end(), error_code::nyi, "type checking NYI for \"{}\" nodes (hash: {})", ast->name(), ast->hash());
-		type_ptr ty = iter->second(ast);
-		if(ty != nullptr)
+		static_value val = iter->second(ast);
+		if(val.ty != nullptr)
 		{
-			diag::assert_that(ty->is_well_formed(), error_code::type, "type checking of AST node {} (at {}) yielded a {} type: {}", ast->name(), ast->loc.to_string(), ty->hint_name(), ty->get_name());
+			diag::assert_that(val.ty->is_well_formed(), error_code::type, "type checking of AST node {} (at {}) yielded a {} type: {}", ast->name(), ast->loc.to_string(), val.ty->hint_name(), val.ty->get_name());
 		}
 		// todo: verify the type?
 		for(const auto& child : ast->children)
@@ -161,16 +161,16 @@ namespace semal
 				const syntax::node::function_decl* fn = find_function(node.iden);
 				if(fn != nullptr)
 				{
-					return GETVAL(*fn)->with_qualifier(qual_static);
+					return GETVAL(*fn).with_type_qualifier(qual_static);
 				}
 				sem_assert(false, "could not decipher type of identifier \"{}\". wasn't a valid typename, nor was it a name of a variable available in this scope.", node.iden);
 				ILL_FORMED;
 			}
-			return ret;
+			return static_value::type_only(ret->unique_clone());
 		SEMAL_END
 
 		SEMAL_BEGIN(root)
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(block)
@@ -178,27 +178,28 @@ namespace semal
 			{
 				GETVAL(*child);
 			}
-			return nullptr;
+			return static_value::null();
 		SEMAL_END
 
 		SEMAL_BEGIN(variable_decl)
 			add_var(node);
-			type_ptr ret = nullptr;
+			static_value ret = static_value::null();
 			if(node.type_name.iden != syntax::node::inferred_typename)
 			{
-				ret = tsys.get_type(node.type_name.iden);
+				ret = static_value::type_only(tsys.get_type(node.type_name.iden));
 			}
 			else
 			{
 				sem_assert(!node.expr.is_null(), "variable declaration {} does not explicitly specify its type but also doesn't have an initialiser. if you want to infer the type, you must give it a valid initialiser at the point of declaration.", node.var_name.iden);
-				ret = GETVAL(node.expr)->discarded_qualifiers();
+				ret = GETVAL(node.expr).discarded_type_qualifiers();
 				// if variable type is inferred, the resultant type will drop all qualifiers (to avoid issues such as `myvar ::= 5` causing myvar to be a `i64 static` because a integer literal is static)
 			}
 			if(!node.expr.is_null())
 			{
-				type_ptr init_type = GETVAL(node.expr);
-				typeconv conv = init_type->can_implicitly_convert_to(*ret);
-				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init_type->get_qualified_name(), node.var_name.iden, ret->get_qualified_name());
+				static_value init = GETVAL(node.expr);
+				typeconv conv = init.ty->can_implicitly_convert_to(*ret.ty);
+				sem_assert(conv != typeconv::cant, "initialiser of variable {} is of type ({}) which is not implicitly convertible to {}'s type ({})", node.var_name.iden, init.ty->get_qualified_name(), node.var_name.iden, ret.ty->get_qualified_name());
+				ret = init.do_convert(ret.ty->unique_clone(), node.loc);
 			}
 			return ret;
 		SEMAL_END
@@ -206,6 +207,7 @@ namespace semal
 		SEMAL_BEGIN(struct_decl)
 			sem_assert_ice(node.children.size() == 1 && NODE_IS(node.children.front(), block), "Struct Declaration AST node must have a single child, and that child must be a block. Instead it has {} child{}{}", node.children.size(), node.children.size() == 1 ? "" : "ren", node.children.size() > 1 ? std::format("(first child is a \"{}\")", node.children.front()->name()) : "");
 			type_system::struct_builder builder = tsys.make_struct(node.struct_name.iden);
+			static_value ret;
 			// get the children of the block. this is where methods and data member variable declarations will be.
 			// however, possible TODO: you will almost certainly want to extract the method declarations here too, so it's easy to lookup by method name.
 			for(const syntax::node_ptr& ptr : node.children.front()->children)
@@ -215,8 +217,9 @@ namespace semal
 				{
 					const auto& data_member = static_cast<const syntax::node::variable_decl&>(*ptr);
 					data_member.impl_should_add_to_current_scope = false;
-					type_ptr data_member_type = GETVAL(data_member);
-					builder.add_member(data_member.var_name.iden, data_member_type->get_name());
+					static_value memberval = GETVAL(data_member);
+					builder.add_member(data_member.var_name.iden, memberval.ty->get_name());
+					ret.children[data_member.var_name.iden] = memberval.clone();
 				}
 				else if(NODE_IS(ptr, function_decl))
 				{
@@ -233,7 +236,8 @@ namespace semal
 					sem_assert(false, "unexpected {} within block for struct named \"{}\", only expecting to see function (method) or variable declarations.", ptr->name(), node.struct_name.iden);
 				}
 			}
-			return builder.build();
+			ret.ty = builder.build();
+			return ret;
 		SEMAL_END
 
 		SEMAL_BEGIN(function_decl)
