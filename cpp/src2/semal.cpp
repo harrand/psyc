@@ -471,7 +471,7 @@ namespace semal
 				static_value rhs = GETVAL(*node.extra);
 				static_value lhs = GETVAL(*node.expr);
 				sem_assert(lhs.ty->can_explicitly_convert_to(*rhs.ty) != typeconv::cant, "explicit cast from {} to {} is invalid", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				if(lhs.has_value())
+				if(lhs.has_value() && rhs.ty->is_static())
 				{
 					return lhs.do_explicit_convert(rhs.ty->unique_clone(), node.loc);
 				}
@@ -573,9 +573,8 @@ namespace semal
 			{
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
-				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "addition lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "in addition, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				sem_assert((lhs.ty->is_pointer() && rhs.ty->is_pointer()) || ((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point())), "addition lhs and rhs must both be numeric (integer or floating point) or pointer types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "cannot add types \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				if(lhs.has_value() && rhs.has_value())
 				{
 					std::int64_t rhsv;
@@ -612,9 +611,8 @@ namespace semal
 			{
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
-				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "subtraction lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "in subtraction, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				sem_assert((lhs.ty->is_pointer() && rhs.ty->is_pointer()) || ((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point())), "subtraction lhs and rhs must both be numeric (integer or floating point) or pointer types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "cannot subtract types \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				if(lhs.has_value() && rhs.has_value())
 				{
 					std::int64_t rhsv;
@@ -622,7 +620,7 @@ namespace semal
 					{
 						rhsv = get_int_value(*rhs.ty, rhs.val);
 					}
-					else if(lhs.ty->is_floating_point())
+					else if(rhs.ty->is_floating_point())
 					{
 						rhsv = std::any_cast<double>(rhs.val);
 					}
@@ -652,8 +650,7 @@ namespace semal
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
 				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "multiplication lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "in multiplication, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "cannot multiply types \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				if(lhs.has_value() && rhs.has_value())
 				{
 					std::int64_t rhsv;
@@ -691,8 +688,7 @@ namespace semal
 				static_value lhs = GETVAL(*node.expr);
 				static_value rhs = GETVAL(*node.extra);
 				sem_assert((lhs.ty->is_integer() || lhs.ty->is_floating_point()) && (rhs.ty->is_integer() || rhs.ty->is_floating_point()), "division lhs and rhs must both be numeric (integer or floating point) types. you provided \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
-				typeconv conv = rhs.ty->can_implicitly_convert_to(*lhs.ty);
-				sem_assert(conv != typeconv::cant, "in division, rhs type \"{}\" must be implicitly convertible to lhs type \"{}\", which is not the case", rhs.ty->get_qualified_name(), lhs.ty->get_qualified_name());
+				sem_assert(lhs.ty->equality_comparable(*rhs.ty), "cannot multiply types \"{}\" and \"{}\"", lhs.ty->get_qualified_name(), rhs.ty->get_qualified_name());
 				if(lhs.has_value() && rhs.has_value())
 				{
 					std::int64_t rhsv;
@@ -763,12 +759,16 @@ namespace semal
 				}
 				else if(NODE_IS(rhs_expr->expr, function_call))
 				{
-					const auto* call = NODE_AS(rhs_expr->expr.get(), function_call);
-					const syntax::node::function_decl* fn = find_function(call->func_name.iden);
-					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call->func_name.iden);
-					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call->func_name.iden, struct_name);
-					sem_assert(fn->struct_owner == struct_name, "attempt to call method \"{}\" as method of struct \"{}\", but the method actually belongs to the struct \"{}\"", call->func_name.iden, struct_name, fn->struct_owner);
-					return GETVAL(*call);
+					auto call = *NODE_AS(rhs_expr->expr.get(), function_call);
+
+					// method call - add `this` first param.
+					call.params.exprs.insert(call.params.exprs.begin(), syntax::node::expression{syntax::node::expression::type::ref, node.expr->unique_clone()});
+
+					const syntax::node::function_decl* fn = find_function(call.func_name.iden);
+					sem_assert(fn != nullptr, "call to undefined function \"{}\" (as method)", call.func_name.iden);
+					sem_assert(!fn->struct_owner.empty(), "attempt to call free-function \"{}\" as method of struct \"{}\"", call.func_name.iden, struct_name);
+					sem_assert(fn->struct_owner == struct_name, "attempt to call method \"{}\" as method of struct \"{}\", but the method actually belongs to the struct \"{}\"", call.func_name.iden, struct_name, fn->struct_owner);
+					return GETVAL(call);
 				}
 				else
 				{
