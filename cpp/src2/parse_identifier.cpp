@@ -63,6 +63,23 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden :: (variable-decl) -> iden
+// function declaration with one arg
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	syntax::node::identifier name = GETNODE(identifier);
+	SETINDEX(3);
+	syntax::node::variable_decl param = GETNODE(variable_decl);
+	SETINDEX(6);
+	syntax::node::identifier return_type_name = GETNODE(identifier);
+	std::vector<syntax::node::variable_decl> params;
+	params.push_back(param);
+
+	REDUCE_TO(function_decl, name, params, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden(expr-list)
 // function call (multiple arguments)
 CHORD_BEGIN

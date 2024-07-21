@@ -300,7 +300,9 @@ namespace semal
 					param.impl_should_add_to_current_scope = false;
 				}
 				param.impl_is_defined_before_parent_block = true;
-				param_type_names.push_back(GETVAL(param).ty->get_qualified_name());
+				type_ptr param_ty = GETVAL(param).ty;
+				sem_assert(!param_ty->is_static(), "function parameters cannot be static. function \"{}\"'s param named \"{}\" is of type \"{}\"", node.func_name.iden, param.var_name.iden, param_ty->get_qualified_name());
+				param_type_names.push_back(param_ty->get_qualified_name());
 			}
 			// static value representing a function is just a string representing the function name. (this is because functions as values are static i.e available at compile time.)
 			return static_value::create(
@@ -311,15 +313,36 @@ namespace semal
 
 		SEMAL_BEGIN(function_call)
 			const syntax::node::function_decl* decl = find_function(node.func_name.iden);
+			type_ptr fn_ty;
 			if(decl != nullptr)
 			{
-				return static_value::type_only(tsys.get_type(decl->return_type_name.iden));
+				std::vector<type_ptr> params;
+				for(const syntax::node::variable_decl& param : decl->params.decls)
+				{
+					params.push_back(GETVAL(param).ty);
+				}
+				
+				fn_ty = function_type{tsys.get_type(decl->return_type_name.iden), std::move(params)}.unique_clone();
 			}
-			const syntax::node::variable_decl* fnptr = find_variable(node.func_name.iden);
-			sem_assert(fnptr != nullptr, "unknown function \"{}\"", node.func_name.iden);
-			auto fnptr_ty = GETVAL(*fnptr).ty;
-			sem_assert(fnptr_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fnptr_ty->get_qualified_name());
-			return static_value::type_only(static_cast<function_type*>(fnptr_ty.get())->return_type->unique_clone());
+			else
+			{
+				const syntax::node::variable_decl* fnptr = find_variable(node.func_name.iden);
+				sem_assert(fnptr != nullptr, "unknown function \"{}\"", node.func_name.iden);
+				fn_ty = GETVAL(*fnptr).ty;
+			}
+			sem_assert(fn_ty->is_function(), "attempt to invoke variable {} which is of non-function-type {}. you can only invoke functions or function pointers.", node.func_name.iden, fn_ty->get_qualified_name());
+			auto* fn = static_cast<function_type*>(fn_ty.get());
+			sem_assert(node.params.exprs.size() == fn->params.size(), "call to function \"{}\" with {} arguments, but it expects {} arguments", node.func_name.iden, node.params.exprs.size(), fn->params.size());
+			for(std::size_t i = 0; i < fn->params.size(); i++)
+			{
+				static_value param_val = GETVAL(node.params.exprs[i]);
+				const itype& expected_ty = *fn->params[i];
+				typeconv conv = param_val.ty->can_implicitly_convert_to(expected_ty);
+				typeconv explicit_conv = param_val.ty->can_explicitly_convert_to(expected_ty);
+				sem_assert(conv != typeconv::cant, "in call to function \"{}\", cannot implicitly convert parameter at id {} from \"{}\" to expected type \"{}\"{}", node.func_name.iden, i, param_val.ty->get_qualified_name(), expected_ty.get_qualified_name(), explicit_conv != typeconv::cant ? "\nhint: you should try explicitly casting the parameter to the type above" : "");
+			}
+			type_ptr ret = fn->return_type->unique_clone();
+			return static_value::type_only(fn->return_type->unique_clone());
 		SEMAL_END
 
 		SEMAL_BEGIN(namespace_access)
