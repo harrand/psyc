@@ -14,6 +14,14 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+CHORD_BEGIN
+	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
+	SETINDEX(1);
+	auto iden = GETNODE(identifier);
+	REDUCE_TO(meta_region, iden, syntax::node::meta_region::type::build);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // &()->iden
 // identifier (function type name with no parameters)
 CHORD_BEGIN

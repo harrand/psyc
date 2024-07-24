@@ -542,6 +542,7 @@ namespace syntax
 			{
 				name_space,
 				static_if,
+				build,
 				_unknown,
 				_count
 			};
@@ -549,6 +550,7 @@ namespace syntax
 			{
 				"namespace",
 				"static_if",
+				"build",
 			};
 
 			meta_region(identifier metaname = {}, type t = type::_unknown): metaname(metaname), t(t){}
