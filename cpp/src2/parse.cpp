@@ -79,25 +79,24 @@ namespace parse
 		entry->reduce_fn = reduce_fn;
 	}
 
-	#define INFUNC
 	#include "parse_macros.hpp"
 
 	void populate_parse_table()
 	{
-		#include "parse_token.cpp"
-		#include "parse_literals.cpp"
-		#include "parse_identifier.cpp"
-		#include "parse_function_call.cpp"
-		#include "parse_expression.cpp"
-		#include "parse_expression_list.cpp"
-		#include "parse_function_decl.cpp"
-		#include "parse_variable_decl.cpp"
-		#include "parse_variable_decl_list.cpp"
-		#include "parse_designated_initialiser.cpp"
-		#include "parse_designated_initialiser_list.cpp"
-		#include "parse_meta_region.cpp"
-		#include "parse_namespace_access.cpp"
-		#include "parse_unfinished_block.cpp"
-		#include "parse_if_statement.cpp"
+		#include "parse_chords/parse_token.inl"
+		#include "parse_chords/parse_literals.inl"
+		#include "parse_chords/parse_identifier.inl"
+		#include "parse_chords/parse_function_call.inl"
+		#include "parse_chords/parse_expression.inl"
+		#include "parse_chords/parse_expression_list.inl"
+		#include "parse_chords/parse_function_decl.inl"
+		#include "parse_chords/parse_variable_decl.inl"
+		#include "parse_chords/parse_variable_decl_list.inl"
+		#include "parse_chords/parse_designated_initialiser.inl"
+		#include "parse_chords/parse_designated_initialiser_list.inl"
+		#include "parse_chords/parse_meta_region.inl"
+		#include "parse_chords/parse_namespace_access.inl"
+		#include "parse_chords/parse_unfinished_block.inl"
+		#include "parse_chords/parse_if_statement.inl"
 	}
 }
