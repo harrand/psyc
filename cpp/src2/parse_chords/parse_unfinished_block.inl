@@ -75,6 +75,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = "123"};
 	}
+
 	auto last_child = blk.children.back();
 	if(!NODE_IS(last_child, if_statement))
 	{

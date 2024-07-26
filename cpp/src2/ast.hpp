@@ -667,7 +667,7 @@ namespace syntax
 		void pretty_print() const;
 	};
 
-	#define NODE_IS(some_node, node_type) static_cast<syntax::nodenew>(some_node).hash() == syntax::nodenew{.payload = syntax::node::node_type{}}.hash()
+	#define NODE_IS(some_node, node_type) (static_cast<syntax::nodenew>(some_node).hash() == syntax::nodenew{.payload = syntax::node::node_type{}}.hash())
 	#define NODE_AS(some_node, node_type) std::get<syntax::node::node_type>(static_cast<syntax::nodenew>(some_node).payload)
 
 	nodenew make_node(const lex::token& t);
