@@ -139,7 +139,7 @@ CHORD_BEGIN
 	SETINDEX(3);
 	auto blk = GETNODE(block);
 	auto result_struct = syntax::node::struct_decl{name, true};
-	result_struct.children.push_back(blk.unique_clone());
+	result_struct.children.push_back(blk);
 	REDUCE_TO(struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -150,7 +150,7 @@ CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), TOKEN(cbrace))
 	auto struct_name = GETNODE(identifier);
 	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -162,7 +162,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -173,7 +173,7 @@ CHORD_BEGIN
 	auto struct_name = GETNODE(identifier);
 	SETINDEX(2);
 	auto inits = GETNODE(designated_initialiser_list);
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), inits.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -184,7 +184,7 @@ CHORD_BEGIN
 	auto lhs = GETNODE(identifier);
 	SETINDEX(2);
 	auto rhs = GETNODE(identifier);
-	REDUCE_TO(namespace_access, lhs, syntax::node::expression{syntax::node::expression::type::identifier, rhs.unique_clone()});
+	REDUCE_TO(namespace_access, lhs, syntax::node::expression{syntax::node::expression::type::identifier, rhs});
 	return {.t = result::type::reduce_success};
 CHORD_END
 

@@ -28,6 +28,11 @@ namespace util
 		// unique_ptr destroys `T` for us.
 		~box() = default;
 
+		explicit operator T() const
+		{
+			return *this->_impl;
+		}
+
 		// Access propagates constness.
 		T &operator*() { return *_impl; }
 		const T &operator*() const { return *_impl; }

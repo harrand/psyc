@@ -9,7 +9,7 @@ namespace parse
 	unscanned_tokens(this->tokens),
 	source(tokens.psy_source)
 	{
-		this->output = std::make_unique<syntax::node::root>(this->tokens.front().meta_srcloc.file);
+		this->output.payload = syntax::node::root(this->tokens.front().meta_srcloc.file);
 	}
 
 	void parser::parse()
@@ -48,7 +48,7 @@ namespace parse
 						{
 							const syntax::nodenew& cur = this->subtrees[i + res.offset];
 							std::string_view relevant_src = this->source;
-							const auto& loc = cur->loc;
+							const auto& loc = cur.loc;
 							for(std::size_t i = 1; i < loc.line; i++)
 							{
 								relevant_src = relevant_src.substr(relevant_src.find_first_of('\n'));

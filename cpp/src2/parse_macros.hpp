@@ -5,8 +5,8 @@
 #define my_str(a) #a
 #define VARARGS_COUNT(...) std::tuple_size<decltype(std::make_tuple(__VA_ARGS__))>::value
 
-#define TOKEN(x) subtree_index{.idx = syntax::make_node(lex::token{lex::type::x, "0"})->hash(), .name_hint = my_xstr(x)}
-#define NODE(x) subtree_index{.idx = syntax::node::x{}.hash(), .name_hint = my_xstr(x)}
+#define TOKEN(x) subtree_index{.idx = syntax::make_node(lex::token{lex::type::x, "0"}).hash(), .name_hint = my_xstr(x)}
+#define NODE(x) subtree_index{.idx = syntax::nodenew{.payload = syntax::node::x{}}.hash(), .name_hint = my_xstr(x)}
 // set the state for a given chord. you're expected to pass a collection of NODEs or TOKENs. e.g NODE(integer_literal) or TOKEN(semicol)
 // this creates a reduction function that will be called if the set of subtrees (with the lookahead token appended to the end if there is one) within the parser matches the state you specified.
 // the reduction function must return a result. possible results are:
@@ -24,13 +24,13 @@
 // set the current index to a certain position within the state (e.g SETINDEX(2) means the token/node at index 2 in the state will be retrieved next)
 #define SETINDEX(i) index = i
 // get the node at the current index, and increment the index. if the node type you specify does not match what you said it would be in the state, then the behaviour is undefined.
-#define GETNODE(x) *static_cast<const syntax::node::x*>(reduce.subtrees[reduce.idx + index++].get())
+#define GETNODE(x) std::get<syntax::node::x>(reduce.subtrees[reduce.idx + index++].payload)
 // get the token at the current index, and increment the index. if the thing at the current index is not a token as per your state definition, then the behaviour is undefined. as you match against a specific token type already this may or may not be very useful.
-#define GETTOKEN() static_cast<const syntax::node::unparsed_token*>(reduce.subtrees[reduce.idx + index++].get())->tok
+#define GETTOKEN() std::get<syntax::node::unparsed_token>(reduce.subtrees[reduce.idx + index++].payload).tok
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
-#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) auto meta = reduce.subtrees[reduce.idx + prefix]->loc; reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, std::make_unique<syntax::node::type>(__VA_ARGS__)); reduce.subtrees[reduce.idx]->loc = meta;
+#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) [&](){auto meta = reduce.subtrees[reduce.idx + prefix].loc; reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, syntax::nodenew{.payload = syntax::node::type(__VA_ARGS__), .loc = meta}); return reduce.subtrees[reduce.idx];}();
 #define REDUCE_TO(type, ...) REDUCE_TO_ADVANCED(0, 0, type, __VA_ARGS__)
 
 #endif // PSYC_PARSE_MACROS_HPP

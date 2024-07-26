@@ -34,6 +34,19 @@ namespace syntax
 
 		struct unfinished_block
 		{
+			//unfinished_block(): start(srcloc::undefined()){}
+			unfinished_block() = default;
+			/*
+			template<typename T>
+			unfinished_block(T node):
+			start(node.loc)
+			{
+				this->children.push_back(syntax::nodenew{.payload = node});
+			}
+			*/
+			template<typename T>
+			unfinished_block(T node){}
+
 			srcloc start;
 			
 			std::string to_string() const
@@ -43,6 +56,12 @@ namespace syntax
 			const char* name() const
 			{
 				return "unfinished block";
+			}
+
+			template<typename T>
+			void extend(T node)
+			{
+
 			}
 		};
 
@@ -259,7 +278,9 @@ namespace syntax
 				"structinit"
 			};
 
-			expression(type t = type::_unknown, boxed_node expr = {}, boxed_node extra = {}, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
+			expression() = default;
+			template<typename T>
+			expression(type t = type::_unknown, T expr = {}, T extra = {}, bool capped = false): t(t), expr(syntax::nodenew{.payload = expr}), extra(syntax::nodenew{.payload = extra}), capped(capped){}
 
 			type t = type::_unknown;
 			boxed_node expr = {};
@@ -637,6 +658,9 @@ namespace syntax
 
 		void pretty_print() const;
 	};
+
+	#define NODE_IS(some_node, node_type) (some_node).hash() == syntax::nodenew{.payload = node_type{}}.hash()
+	#define NODE_AS(some_node, node_type) std::get<syntax::node::node_type>(static_cast<syntax::nodenew>(some_node).payload)
 
 	nodenew make_node(const lex::token& t);
 }

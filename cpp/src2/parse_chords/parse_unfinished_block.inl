@@ -7,7 +7,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	blk.extend(decl.unique_clone());
+	blk.extend(decl);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -21,7 +21,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	blk.extend(expr.unique_clone());
+	blk.extend(expr);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -31,7 +31,7 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(block))
 	auto blk = GETNODE(unfinished_block);
 	auto blk2 = GETNODE(block);
-	blk.extend(blk2.unique_clone());
+	blk.extend(blk2);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -41,7 +41,7 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(meta_region))
 	auto blk = GETNODE(unfinished_block);
 	auto reg = GETNODE(meta_region);
-	blk.extend(reg.unique_clone());
+	blk.extend(reg);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -51,7 +51,7 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(alias))
 	auto blk = GETNODE(unfinished_block);
 	auto al = GETNODE(alias);
-	blk.extend(al.unique_clone());
+	blk.extend(al);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -61,7 +61,7 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(if_statement))
 	auto blk = GETNODE(unfinished_block);
 	auto stmt = GETNODE(if_statement);
-	blk.extend(stmt.unique_clone());
+	blk.extend(stmt);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -75,12 +75,12 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = "123"};
 	}
-	auto last_child = blk.children.back().get();
-	if(last_child->hash() != syntax::node::if_statement{}.hash())
+	auto last_child = blk.children.back();
+	if(last_child.hash() != syntax::node::if_statement{}.hash())
 	{
-		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child->name())};
+		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child.name())};
 	}
-	last_child->children.push_back(else_stmt.unique_clone());
+	last_child.children.push_back(else_stmt);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -104,7 +104,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	blk.extend(fn.unique_clone());
+	blk.extend(fn);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -118,7 +118,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	blk.extend(structd.unique_clone());
+	blk.extend(structd);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END

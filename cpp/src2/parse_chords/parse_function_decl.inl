@@ -28,7 +28,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for function \"{}\"", fn.func_name.iden)};
 	}
-	fn.children.push_back(blk.unique_clone());
+	fn.children.push_back(blk);
 	fn.capped = true;
 	REDUCE_TO(function_decl, fn);
 	return {.t = result::type::reduce_success};

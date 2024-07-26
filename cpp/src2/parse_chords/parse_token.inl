@@ -2,7 +2,7 @@ CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(expression), TOKEN(cparen))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::parenthesised_expression, expr.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::parenthesised_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -24,7 +24,7 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// &expr-parenthesised->iden
+// &expr-parenthesised -> iden
 // identifier (function type name with a single parameter)
 CHORD_BEGIN
 	STATE(TOKEN(ampersand), NODE(expression), TOKEN(arrow), NODE(identifier))
@@ -38,14 +38,14 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", expr.name())};
 	}
-	auto exprparen = NODE_AS(expr.expr.get(), expression);
-	if(exprparen->t != syntax::node::expression::type::identifier)
+	auto exprparen = NODE_AS(expr.expr, expression);
+	if(exprparen.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", exprparen->name())};
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", exprparen.name())};
 	}
-	auto expriden = NODE_AS(exprparen->expr.get(), identifier);
+	auto expriden = NODE_AS(exprparen.expr, identifier);
 
-	REDUCE_TO(identifier, std::format("&({})->{}", expriden->iden, retty.iden));
+	REDUCE_TO(identifier, std::format("&({})->{}", expriden.iden, retty.iden));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -66,8 +66,8 @@ CHORD_BEGIN
 		{
 			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), expr.name())};
 		}
-		auto param = NODE_AS(expr.expr.get(), identifier);
-		param_list += param->iden;
+		auto param = NODE_AS(expr.expr, identifier);
+		param_list += param.iden;
 		if(i < (list.exprs.size() - 1))
 		{
 			param_list += ",";
@@ -87,7 +87,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(unfinished_block, expr.unique_clone());
+	REDUCE_TO(unfinished_block, expr);
 
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -102,7 +102,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(unfinished_block, decl.unique_clone());
+	REDUCE_TO(unfinished_block, decl);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -112,7 +112,7 @@ CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(block))
 	SETINDEX(1);
 	auto blk = GETNODE(block);
-	REDUCE_TO(unfinished_block, blk.unique_clone());
+	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -122,7 +122,7 @@ CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(meta_region))
 	SETINDEX(1);
 	auto reg = GETNODE(meta_region);
-	REDUCE_TO(unfinished_block, reg.unique_clone());
+	REDUCE_TO(unfinished_block, reg);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -132,7 +132,7 @@ CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(alias))
 	SETINDEX(1);
 	auto al = GETNODE(alias);
-	REDUCE_TO(unfinished_block, al.unique_clone());
+	REDUCE_TO(unfinished_block, al);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -142,7 +142,7 @@ CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(if_statement))
 	SETINDEX(1);
 	auto stmt = GETNODE(if_statement);
-	REDUCE_TO(unfinished_block, stmt.unique_clone());
+	REDUCE_TO(unfinished_block, stmt);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -152,7 +152,7 @@ CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(struct_decl))
 	SETINDEX(1);
 	auto structd = GETNODE(struct_decl);
-	REDUCE_TO(unfinished_block, structd.unique_clone());
+	REDUCE_TO(unfinished_block, structd);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -162,7 +162,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_ref), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::ref, expr.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::ref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -172,7 +172,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_deref), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::deref, expr.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::deref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -186,7 +186,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::defer, expr.unique_clone(), nullptr, true);
+	REDUCE_TO(expression, syntax::node::expression::type::defer, expr, nullptr, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -196,7 +196,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_typeinfo), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::typeinfo, expr.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::typeinfo, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -300,7 +300,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(if_statement))
 	SETINDEX(1);
 	auto stmt = GETNODE(if_statement);
-	REDUCE_TO(else_statement, stmt.cond, *static_cast<syntax::node::block*>(stmt.children.front().get()));
+	REDUCE_TO(else_statement, stmt.cond, *static_cast<syntax::node::block*>(stmt.children.front()));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -312,7 +312,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr.unique_clone(), nullptr, true);
+	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr, nullptr, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

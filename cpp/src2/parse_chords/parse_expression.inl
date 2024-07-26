@@ -79,7 +79,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto iden = GETNODE(identifier);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, expr.unique_clone(), iden.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::cast, expr, iden);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -90,7 +90,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::cast, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -101,7 +101,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::addition, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::addition, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -112,7 +112,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::subtraction, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::subtraction, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -123,7 +123,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::multiplication, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::multiplication, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -134,7 +134,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::division, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::division, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -150,7 +150,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::assign, expr.unique_clone(), typeexpr.unique_clone(), typeexpr.capped);
+	REDUCE_TO(expression, syntax::node::expression::type::assign, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -161,7 +161,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::dot_access, expr.unique_clone(), expr2.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::dot_access, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -172,7 +172,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::eqcompare, expr.unique_clone(), expr2.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::eqcompare, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -183,7 +183,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::neqcompare, expr.unique_clone(), expr2.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::neqcompare, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -197,7 +197,7 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -213,7 +213,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -228,6 +228,6 @@ CHORD_BEGIN
 	}
 	SETINDEX(2);
 	auto inits = GETNODE(designated_initialiser_list);
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), inits.unique_clone());
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END
