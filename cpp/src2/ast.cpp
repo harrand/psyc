@@ -6,16 +6,60 @@
 
 namespace syntax
 {
-	void inode::pretty_print() const
+	std::string nodenew::to_string() const
 	{
-		std::stack<const inode*> node_list;
+		std::string ret;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				ret = "<empty>";
+			},
+			[&ret](auto arg)
+			{
+				ret = arg.to_string();
+			}
+		}, this->payload);
+		return ret;
+	}
+
+	const char* nodenew::name() const
+	{
+		const char* ret;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				ret = "<empty>";
+			},
+			[&ret](auto arg)
+			{
+				ret = arg.name();
+			}
+		}, this->payload);
+		return ret;
+	}
+
+	std::size_t nodenew::hash() const
+	{
+		auto ret = std::hash{this->payload.index()}();
+		if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
+		{
+			return ret ^ std::get<syntax::node::unparsed_token>(this->payload).hash();
+		}
+		return ret;
+	}
+
+	void nodenew::pretty_print() const
+	{
+		std::stack<const nodenew*> node_list;
 		std::stack<std::size_t> indents;
 		std::set<std::size_t> parents = {};
 		node_list.push(this);
 		indents.push(0);
 		while(node_list.size())
 		{
-			const inode* cur = node_list.top();
+			const nodenew* cur = node_list.top();
 			node_list.pop();
 			std::size_t indent = indents.top();
 			indents.pop();
@@ -47,8 +91,8 @@ namespace syntax
 			}
 			for(std::size_t i = 0; i < cur->children.size(); i++)
 			{
-				const inode* child = cur->children[cur->children.size() - 1 - i].get();
-				node_list.push(child);
+				const nodenew& child = cur->children[cur->children.size() - 1 - i];
+				node_list.push(&child);
 				indents.push(indent + 1);
 			}
 			while(parents.size() && indent < *parents.rbegin())

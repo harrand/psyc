@@ -12,257 +12,169 @@
 
 namespace syntax
 {
-	class inode;
-	using node_ptr = std::unique_ptr<inode>;
-
-	class inode : public util::unique_cloneable<inode>
-	{
-	public:
-		inode() = default;
-		inode(const inode& cpy): children(), loc(cpy.loc), semal(cpy.semal.clone())
-		{
-			for(const auto& child_ptr : cpy.children)
-			{
-				this->children.push_back(child_ptr->unique_clone());
-			}
-		}
-		inode& operator=(const inode& rhs)
-		{
-			this->children.clear();
-			for(const auto& child_ptr : rhs.children)
-			{
-				this->children.push_back(child_ptr->unique_clone());
-			}
-			this->loc = rhs.loc;
-			return *this;
-		}
-
-		virtual ~inode() = default;
-		// imeplemented asap below.
-		virtual std::string to_string() const = 0;
-		virtual const char* name() const = 0;
-		// each node type implements this in their own file, coz it can get really really long.
-		virtual std::size_t hash() const
-		{
-			return typeid(*this).hash_code();
-		}
-		virtual bool is_lookahead_token() const
-		{
-			return false;
-		}
-
-		template<typename T> requires std::is_base_of_v<inode, T>
-		bool is() const
-		{
-			return this->hash() == T{}.hash();
-		}
-
-		void pretty_print() const;
-
-		std::vector<node_ptr> children = {};
-		srcloc loc = srcloc::undefined();
-		mutable static_value semal;
-	};
-
 	#define NODE_IS(some_node, node_type) (some_node)->is<syntax::node::node_type>()
 	#define NODE_AS(some_node, node_type) static_cast<syntax::node::node_type*>(some_node)
 
 	namespace node
 	{
-		struct root : public inode
+		struct root
 		{
-			root(std::filesystem::path source_file = {}): source_file(source_file){}
-
 			std::filesystem::path source_file;
 
-			virtual std::string to_string() const final
+			std::string to_string() const
 			{
 				return this->source_file.string();
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "root node";
 			}
-			COPY_UNIQUE_CLONEABLE(inode)
+			
 		};
 
-		struct unfinished_block : public inode
+		struct unfinished_block
 		{
-			unfinished_block(): start(srcloc::undefined()){}
-			unfinished_block(node_ptr node):
-			start(node->loc)
-			{
-				this->children.push_back(std::move(node));
-			}
-
 			srcloc start;
-
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("unfinished block starting at {}", this->start.to_string());
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "unfinished block";
 			}
-
-			void extend(node_ptr node)
-			{
-				this->children.push_back(std::move(node));
-			}
 		};
 
-		struct block : public inode
+		struct block
 		{
-			block(): start(srcloc::undefined()), finish(srcloc::undefined()){}
-
-			block(unfinished_block blk, srcloc finish):
-			start(blk.start),
-			finish(finish)
-			{
-				this->children = std::move(blk.children);
-			}
-
 			srcloc start;
 			srcloc finish;
-
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("block from {} to {}", this->start.to_string(), this->finish.to_string());
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "block";
-			}
-
-			void extend(node_ptr node)
-			{
-				this->children.push_back(std::move(node));
 			}
 		};
 
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
-		struct unparsed_token : public inode
+		struct unparsed_token
 		{
-			unparsed_token(lex::token tok, bool is_lookahead = false): tok(tok), is_lookahead(is_lookahead){}
-
 			lex::token tok;
-			bool is_lookahead;
-			virtual std::string to_string() const final
+
+			std::string to_string() const
 			{
 				return std::format("token({})", tok.lexeme);
 			}
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual const char* name() const final
+			
+			const char* name() const
 			{
 				return this->tok.lexeme.c_str();
 			}
-			virtual std::size_t hash() const final
+			std::size_t hash() const
 			{
 				// when should two unparsed tokens yield the same hash code?
 				// well, we never care about the lexeme itself, but we do care about the type.
 				// if im checking for reductions and i know i have a token, i will need to know if the token is a semicolon for example. however, i wont need to know what exactly the comment is, nor what the identifier value is.
-				return inode::hash() ^ std::hash<int>{}(static_cast<int>(tok.t));
-			}
-			virtual bool is_lookahead_token() const override
-			{
-				return this->is_lookahead;
+				return std::hash<int>{}(static_cast<int>(tok.t));
 			}
 		};
 
 
-		struct integer_literal : public inode
+		struct integer_literal
 		{
 			integer_literal(std::int64_t val = 0): val(val){}
 
 			std::int64_t val;
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("integer-literal({})", this->val);
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "integer literal";
 			}
 		};
 
-		struct decimal_literal : public inode
+		struct decimal_literal
 		{
 			decimal_literal(double val = 0.0): val(val){}
 
 			double val;
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("decimal-literal({})", this->val);
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "decimal literal";
 			}
 		};
 
-		struct char_literal : public inode
+		struct char_literal
 		{
 			char_literal(char val = ' '): val(val){}
 
 			char val;
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("char-literal('{}' (dec {})", this->val, static_cast<int>(this->val));
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "char literal";
 			}
 		};
 
-		struct bool_literal : public inode
+		struct bool_literal
 		{
 			bool_literal(bool val = false): val(val){}
 
 			bool val;
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("bool-literal({})", this->val ? "true" : "false");
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "bool literal";
 			}
 		};
 
-		struct string_literal : public inode
+		struct string_literal
 		{
 			string_literal(std::string val = ""): val(val){}
 
 			std::string val;
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("string-literal(\"{}\")", this->val);
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "string literal";
 			}
 		};
 
-		struct null_literal : public inode
+		struct null_literal
 		{
 			null_literal(){}
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return "null-literal()";
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "null literal";
 			}
@@ -270,23 +182,23 @@ namespace syntax
 
 		constexpr const char* inferred_typename = "<AUTOTYPE>";
 
-		struct identifier : public inode
+		struct identifier
 		{
 			identifier(std::string iden = ""): iden(iden){}
 			std::string iden;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("identifier({})", this->iden);
 			}
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "identifier";
 			}
 		};
 
-		struct expression : public inode
+		struct expression
 		{
 			enum class type
 			{
@@ -366,26 +278,26 @@ namespace syntax
 
 			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra != nullptr ? std::format(", {}", this->extra->to_string()) : "");
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "expression";
 			}
 		};
 
-		struct expression_list : public inode
+		struct expression_list
 		{
 			expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
 
 			std::vector<expression> exprs;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				std::string contents = "";
 				for(std::size_t i = 0; i < this->exprs.size(); i++)
@@ -399,14 +311,14 @@ namespace syntax
 				return std::format("expr-list({})", contents);
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "expression list";
 			}
 		};
 
 
-		struct namespace_access : public inode
+		struct namespace_access
 		{
 			namespace_access(identifier lhs = {}, expression rhs = {}):
 			inode(lhs),
@@ -427,8 +339,8 @@ namespace syntax
 			std::vector<std::string> lhs_parts;
 			expression rhs;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				std::string lhs_total;
 				for(auto part : this->lhs_parts)
@@ -438,13 +350,13 @@ namespace syntax
 				return std::format("namespace-access({}::{})", lhs_total, this->rhs.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "namespace access";
 			}
 		};
 
-		struct variable_decl : public inode
+		struct variable_decl
 		{
 			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}, bool capped = false): var_name(var_name), type_name(type_name), expr(expr), capped(capped){}
 
@@ -455,27 +367,27 @@ namespace syntax
 			mutable bool impl_should_add_to_current_scope = true;
 			mutable bool impl_is_defined_before_parent_block = false;
 
-			COPY_UNIQUE_CLONEABLE(inode)
+			
 
-			virtual std::string to_string() const final
+			std::string to_string() const
 			{
 				return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "variable declaration";
 			}
 		};
 
-		struct variable_decl_list : public inode
+		struct variable_decl_list
 		{
 			variable_decl_list(std::vector<variable_decl> decls = {}): decls(decls){}
 
 			std::vector<variable_decl> decls;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				std::string contents = "";
 				for(std::size_t i = 0; i < this->decls.size(); i++)
@@ -489,13 +401,13 @@ namespace syntax
 				return std::format("variable-decl-list({})", contents);
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "variable list";
 			}
 		};
 		
-		struct function_decl : public inode
+		struct function_decl
 		{
 			function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
 
@@ -506,38 +418,38 @@ namespace syntax
 			bool is_extern = false;
 			bool capped = false;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("function-decl({} :: {} -> {}{})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "function declaration";
 			}
 		};
 
-		struct function_call : public inode
+		struct function_call
 		{
 			function_call(identifier func_name = {}, expression_list params = {}): func_name(func_name), params(params){}
 
 			identifier func_name;
 			expression_list params;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("function-call({}({}))", this->func_name.to_string(), this->params.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "function call";
 			}
 		};
 
-		struct meta_region : public inode
+		struct meta_region
 		{
 			enum class type
 			{
@@ -560,83 +472,83 @@ namespace syntax
 			type t;
 			bool capped = false;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("meta-region({} : {})", this->metaname.to_string(), type_names[static_cast<int>(this->t)]);
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "meta region";
 			}
 		};
 
-		struct alias : public inode
+		struct alias
 		{
 			alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
 
 			identifier alias_name;
 			expression type_value_expr;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("alias({} ::= {})", this->alias_name.iden, type_value_expr.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "alias specifier";
 			}
 		};
 
-		struct struct_decl : public inode
+		struct struct_decl
 		{
 			struct_decl(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
 
 			identifier struct_name;
 			bool capped = false;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("struct({})", this->struct_name.iden);
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "struct";
 			}
 		};
 
-		struct designated_initialiser : public inode
+		struct designated_initialiser
 		{
 			designated_initialiser(identifier member = {}, expression initialiser = {}): member(member), initialiser(initialiser){}
 
 			identifier member;
 			expression initialiser;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				return std::format("member-initialiser({} := {})", this->member.iden, this->initialiser.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "designated initialiser";
 			}
 		};
 
-		struct designated_initialiser_list : public inode
+		struct designated_initialiser_list
 		{
 			designated_initialiser_list(std::vector<designated_initialiser> inits = {}): inits(inits){}
 
 			std::vector<designated_initialiser> inits;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				std::string contents = "";
 				for(std::size_t i = 0; i < this->inits.size(); i++)
@@ -650,13 +562,13 @@ namespace syntax
 				return std::format("desig-init-list({})", contents);
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "designated initialiser list";
 			}
 		};
 
-		struct if_statement : public inode
+		struct if_statement
 		{
 			if_statement(expression cond = {}, block blk = {}, bool is_static = false): cond(cond), is_static(is_static)
 			{
@@ -665,19 +577,18 @@ namespace syntax
 			expression cond;
 			bool is_static;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			std::string to_string() const
 			{
 				return std::format("if-statement({})", this->cond.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "if-statement";
 			}
 		};
 
-		struct else_statement : public inode
+		struct else_statement
 		{
 			else_statement(expression cond = {}, block blk = {}): cond(cond)
 			{
@@ -686,8 +597,8 @@ namespace syntax
 
 			expression cond;
 
-			COPY_UNIQUE_CLONEABLE(inode)
-			virtual std::string to_string() const final
+			
+			std::string to_string() const
 			{
 				if(this->cond.is_null())
 				{
@@ -696,7 +607,7 @@ namespace syntax
 				return std::format("else-if({})", this->cond.to_string());
 			}
 
-			virtual const char* name() const final
+			const char* name() const
 			{
 				return "else-statement";
 			}
@@ -736,22 +647,11 @@ namespace syntax
 		srcloc loc;
 		std::vector<nodenew> children = {};
 
-		std::string to_string() const
-		{
-			std::string ret;
-			std::visit([&ret](auto&& arg)
-			{
-				if constexpr(std::is_same_v<std::decay_t<decltype(arg)>, std::monostate>)
-				{
-					ret = "<empty>";
-				}
-				else
-				{
-					ret = arg.to_string();
-				}
-			}, this->payload);
-			return ret;
-		}
+		std::string to_string() const;
+		const char* name() const;
+		std::size_t hash() const;
+
+		void pretty_print() const;
 	};
 
 	node_ptr make_node(const lex::token& t);
