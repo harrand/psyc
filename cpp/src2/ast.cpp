@@ -8,10 +8,40 @@ namespace syntax
 {
 	namespace node
 	{
+		expression::expression():
+		expr(syntax::nodenew{}),
+		extra(syntax::nodenew{})
+		{
+
+		}
+
+		bool expression::is_null() const
+		{
+			return !this->expr->has_value() || this->t == type::_unknown;
+		}
+
 		std::string expression::to_string() const
 		{
-			return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra != nullptr ? std::format(", {}", this->extra->to_string()) : "");
+			return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra->has_value() ? std::format(", {}", this->extra->to_string()) : "");
 		}
+
+		if_statement::if_statement(expression cond, block blk, bool is_static):
+		cond(cond),
+		is_static(is_static)
+		{
+			this->children.push_back(syntax::nodenew{.payload = blk});
+		}
+
+		else_statement::else_statement(expression cond, block blk):
+		cond(cond)
+		{
+			this->children.push_back(syntax::nodenew{.payload = blk});
+		}
+	}
+
+	bool nodenew::has_value() const
+	{
+		return !std::holds_alternative<std::monostate>(this->payload);
 	}
 
 	std::string nodenew::to_string() const
@@ -58,6 +88,74 @@ namespace syntax
 		return ret;
 	}
 
+	std::vector<boxed_node>& nodenew::children()
+	{
+		std::vector<boxed_node>* ret = nullptr;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				__builtin_unreachable();	
+			},
+			[&ret](auto& arg)
+			{
+				ret = &arg.children;
+			}
+		}, this->payload);
+		return *ret;
+	}
+
+	const std::vector<boxed_node>& nodenew::children() const
+	{
+		const std::vector<boxed_node>* ret = nullptr;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				__builtin_unreachable();	
+			},
+			[&ret](auto& arg)
+			{
+				ret = &arg.children;
+			}
+		}, this->payload);
+		return *ret;
+	}
+
+	srcloc& nodenew::loc()
+	{
+		srcloc* ret = nullptr;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				diag::ice("attempt to get location (writable) of null node");
+			},
+			[&ret](auto& arg)
+			{
+				ret = &arg.loc;
+			}
+		}, this->payload);
+		return *ret;
+	}
+
+	const srcloc& nodenew::loc() const
+	{
+		const srcloc* ret = nullptr;
+		std::visit(util::overload
+		{
+			[&ret](std::monostate)
+			{
+				__builtin_unreachable();	
+			},
+			[&ret](auto& arg)
+			{
+				ret = &arg.loc;
+			}
+		}, this->payload);
+		return *ret;
+	}
+
 	void nodenew::pretty_print() const
 	{
 		std::stack<const nodenew*> node_list;
@@ -84,7 +182,7 @@ namespace syntax
 						std::cout << "  ";
 					}
 				}
-				if(indent > 1 && cur->children.empty() && (indents.size() && indents.top() != indent))
+				if(indent > 1 && cur->children().empty() && (indents.size() && indents.top() != indent))
 				{
 					std::cout << "└─";
 				}
@@ -97,9 +195,9 @@ namespace syntax
 			{
 				std::cout << cur->to_string() << "\n";
 			}
-			for(std::size_t i = 0; i < cur->children.size(); i++)
+			for(std::size_t i = 0; i < cur->children().size(); i++)
 			{
-				const nodenew& child = cur->children[cur->children.size() - 1 - i];
+				const nodenew& child = *cur->children()[cur->children().size() - 1 - i];
 				node_list.push(&child);
 				indents.push(indent + 1);
 			}
@@ -107,7 +205,7 @@ namespace syntax
 			{
 				parents.erase(std::prev(parents.end()));
 			}
-			if(this->children.size())
+			if(this->children().size())
 			{
 				parents.insert(indent);
 			}
@@ -154,7 +252,7 @@ namespace syntax
 
 	nodenew make_node(const lex::token& t)
 	{
-		nodenew ret{.loc = t.meta_srcloc};
+		nodenew ret;
 		switch(t.t)
 		{
 			case lex::type::identifier:
@@ -203,8 +301,12 @@ namespace syntax
 			}
 			break;
 			default:
-				ret.payload = node::unparsed_token(t);
+				ret.payload = node::unparsed_token{.tok = t};
 			break;
+		}
+		if(ret.has_value())
+		{
+			ret.loc() = t.meta_srcloc;
 		}
 		return ret;
 	}

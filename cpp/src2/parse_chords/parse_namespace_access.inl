@@ -9,7 +9,7 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("namespace-access followed by {{}} is considered an empty struct initialiser. however, the right-most term of the namespace access \"{}\" was not an identifier as expected, but instead a {}", struct_name.rhs.to_string(), struct_name.rhs.name())};
 	}
 	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -27,6 +27,6 @@ CHORD_BEGIN
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END

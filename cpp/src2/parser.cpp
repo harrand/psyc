@@ -9,7 +9,7 @@ namespace parse
 	unscanned_tokens(this->tokens),
 	source(tokens.psy_source)
 	{
-		this->output.payload = syntax::node::root(this->tokens.front().meta_srcloc.file);
+		this->output.payload = syntax::node::root{.source_file = this->tokens.front().meta_srcloc.file};
 	}
 
 	void parser::parse()
@@ -40,7 +40,7 @@ namespace parse
 						{
 							auto ptr = std::move(this->subtrees[i + res.offset]);
 							this->subtrees.erase(this->subtrees.begin() + i + res.offset, this->subtrees.begin() + i + state.size());
-							this->output.children.push_back(std::move(ptr));
+							this->output.children().push_back(ptr);
 							return true;
 						}
 						break;
@@ -48,7 +48,7 @@ namespace parse
 						{
 							const syntax::nodenew& cur = this->subtrees[i + res.offset];
 							std::string_view relevant_src = this->source;
-							const auto& loc = cur.loc;
+							const auto& loc = cur.loc();
 							for(std::size_t i = 1; i < loc.line; i++)
 							{
 								relevant_src = relevant_src.substr(relevant_src.find_first_of('\n'));
@@ -70,7 +70,7 @@ namespace parse
 								}
 							}
 							bottom_text += "┘";
-							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur.name(), res.errmsg, cur.loc.to_string(), relevant_src.substr(0, cur.to_string().size()), mid_text, bottom_text);
+							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur.name(), res.errmsg, cur.loc().to_string(), relevant_src.substr(0, cur.to_string().size()), mid_text, bottom_text);
 							return false;
 						}
 						break;
@@ -121,7 +121,7 @@ namespace parse
 
 	syntax::nodenew parser::get_output()
 	{
-		if(!(this->subtrees.size() == 1 && this->subtrees.front().hash() == syntax::node::unparsed_token{{.t = lex::type::source_begin}}.hash()))
+		if(!(this->subtrees.size() == 1 && this->subtrees.front().hash() == syntax::nodenew{.payload = syntax::node::unparsed_token{.tok = {.t = lex::type::source_begin}}}.hash()))
 		{
 			diag::error_nonblocking(error_code::parse, "{} remaining subtrees that were never sent to the output AST. remaining subtree ASTs:\n{{\n", this->subtrees.size());
 			for(const auto& tree : this->subtrees)

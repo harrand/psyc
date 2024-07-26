@@ -15,9 +15,15 @@ namespace syntax
 	struct nodenew;
 	using boxed_node = util::box<nodenew>;
 
+	struct nodecomn
+	{
+		srcloc loc = srcloc::undefined();
+		std::vector<boxed_node> children = {};
+	};
+
 	namespace node
 	{
-		struct root
+		struct root : public nodecomn
 		{
 			std::filesystem::path source_file;
 
@@ -32,20 +38,15 @@ namespace syntax
 			
 		};
 
-		struct unfinished_block
+		struct unfinished_block : public nodecomn
 		{
-			//unfinished_block(): start(srcloc::undefined()){}
-			unfinished_block() = default;
-			/*
+			unfinished_block(): start(srcloc::undefined()){}
 			template<typename T>
 			unfinished_block(T node):
 			start(node.loc)
 			{
 				this->children.push_back(syntax::nodenew{.payload = node});
 			}
-			*/
-			template<typename T>
-			unfinished_block(T node){}
 
 			srcloc start;
 			
@@ -61,14 +62,22 @@ namespace syntax
 			template<typename T>
 			void extend(T node)
 			{
-
+				this->children.push_back(syntax::nodenew{.payload = node});	
 			}
 		};
 
-		struct block
+		struct block : public nodecomn
 		{
-			srcloc start;
-			srcloc finish;
+			block() = default;
+			block(unfinished_block blk, srcloc finish):
+			start(blk.start),
+			finish(finish)
+			{
+				this->children = std::move(blk.children);
+			}
+
+			srcloc start = srcloc::undefined();
+			srcloc finish = srcloc::undefined();
 			
 			std::string to_string() const
 			{
@@ -81,7 +90,7 @@ namespace syntax
 		};
 
 		// these are very noisy now sadly. because they are subclasses of inode you cant use designated initialisers, so the constructor noise cant be removed.
-		struct unparsed_token
+		struct unparsed_token : public nodecomn
 		{
 			lex::token tok;
 
@@ -104,7 +113,7 @@ namespace syntax
 		};
 
 
-		struct integer_literal
+		struct integer_literal : public nodecomn
 		{
 			integer_literal(std::int64_t val = 0): val(val){}
 
@@ -120,7 +129,7 @@ namespace syntax
 			}
 		};
 
-		struct decimal_literal
+		struct decimal_literal : public nodecomn
 		{
 			decimal_literal(double val = 0.0): val(val){}
 
@@ -136,7 +145,7 @@ namespace syntax
 			}
 		};
 
-		struct char_literal
+		struct char_literal : public nodecomn
 		{
 			char_literal(char val = ' '): val(val){}
 
@@ -152,7 +161,7 @@ namespace syntax
 			}
 		};
 
-		struct bool_literal
+		struct bool_literal : public nodecomn
 		{
 			bool_literal(bool val = false): val(val){}
 
@@ -168,7 +177,7 @@ namespace syntax
 			}
 		};
 
-		struct string_literal
+		struct string_literal : public nodecomn
 		{
 			string_literal(std::string val = ""): val(val){}
 
@@ -184,7 +193,7 @@ namespace syntax
 			}
 		};
 
-		struct null_literal
+		struct null_literal : public nodecomn
 		{
 			null_literal(){}
 
@@ -201,7 +210,7 @@ namespace syntax
 
 		constexpr const char* inferred_typename = "<AUTOTYPE>";
 
-		struct identifier
+		struct identifier : public nodecomn
 		{
 			identifier(std::string iden = ""): iden(iden){}
 			std::string iden;
@@ -217,7 +226,7 @@ namespace syntax
 			}
 		};
 
-		struct expression
+		struct expression : public nodecomn
 		{
 			enum class type
 			{
@@ -275,19 +284,23 @@ namespace syntax
 				"\"!=\"",
 				"\".\"",
 				"\"::\"",
-				"structinit"
+				"structinit",
+				"unknown"
 			};
 
-			expression() = default;
+			expression();
+
+			template<typename T, typename U = T>
+			expression(type t, T expr, U extra, bool capped = false): t(t), expr(util::box{syntax::nodenew{.payload = expr}}), extra(util::box{syntax::nodenew{.payload = extra}}), capped(capped){}
 			template<typename T>
-			expression(type t = type::_unknown, T expr = {}, T extra = {}, bool capped = false): t(t), expr(syntax::nodenew{.payload = expr}), extra(syntax::nodenew{.payload = extra}), capped(capped){}
+			expression(type t, T expr): expression(t, expr, T{}, false){}
 
 			type t = type::_unknown;
-			boxed_node expr = {};
-			boxed_node extra = {};
+			boxed_node expr;
+			boxed_node extra;
 			bool capped = false;
 
-			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
+			bool is_null() const;
 			
 			std::string to_string() const;
 			const char* name() const
@@ -296,7 +309,7 @@ namespace syntax
 			}
 		};
 
-		struct expression_list
+		struct expression_list : public nodecomn
 		{
 			expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
 
@@ -323,7 +336,7 @@ namespace syntax
 		};
 
 
-		struct namespace_access
+		struct namespace_access : public nodecomn
 		{
 			namespace_access(identifier lhs = {}, expression rhs = {}):
 			lhs_parts({lhs.iden}),
@@ -358,7 +371,7 @@ namespace syntax
 			}
 		};
 
-		struct variable_decl
+		struct variable_decl : public nodecomn
 		{
 			variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}, bool capped = false): var_name(var_name), type_name(type_name), expr(expr), capped(capped){}
 
@@ -382,7 +395,7 @@ namespace syntax
 			}
 		};
 
-		struct variable_decl_list
+		struct variable_decl_list : public nodecomn
 		{
 			variable_decl_list(std::vector<variable_decl> decls = {}): decls(decls){}
 
@@ -409,7 +422,7 @@ namespace syntax
 			}
 		};
 		
-		struct function_decl
+		struct function_decl : public nodecomn
 		{
 			function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
 
@@ -432,7 +445,7 @@ namespace syntax
 			}
 		};
 
-		struct function_call
+		struct function_call : public nodecomn
 		{
 			function_call(identifier func_name = {}, expression_list params = {}): func_name(func_name), params(params){}
 
@@ -451,7 +464,7 @@ namespace syntax
 			}
 		};
 
-		struct meta_region
+		struct meta_region : public nodecomn
 		{
 			enum class type
 			{
@@ -486,7 +499,7 @@ namespace syntax
 			}
 		};
 
-		struct alias
+		struct alias : public nodecomn
 		{
 			alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
 
@@ -505,7 +518,7 @@ namespace syntax
 			}
 		};
 
-		struct struct_decl
+		struct struct_decl : public nodecomn
 		{
 			struct_decl(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
 
@@ -524,7 +537,7 @@ namespace syntax
 			}
 		};
 
-		struct designated_initialiser
+		struct designated_initialiser : public nodecomn
 		{
 			designated_initialiser(identifier member = {}, expression initialiser = {}): member(member), initialiser(initialiser){}
 
@@ -543,7 +556,7 @@ namespace syntax
 			}
 		};
 
-		struct designated_initialiser_list
+		struct designated_initialiser_list : public nodecomn
 		{
 			designated_initialiser_list(std::vector<designated_initialiser> inits = {}): inits(inits){}
 
@@ -570,14 +583,10 @@ namespace syntax
 			}
 		};
 
-		struct if_statement
+		struct if_statement : public nodecomn
 		{
-			if_statement(expression cond = {}, block blk = {}, bool is_static = false): cond(cond), is_static(is_static){}
-			/*
-			{
-				this->children.push_back(blk.unique_clone());
-			}
-			*/
+			if_statement(expression cond = {}, block blk = {}, bool is_static = false);
+
 			expression cond;
 			bool is_static;
 
@@ -592,14 +601,9 @@ namespace syntax
 			}
 		};
 
-		struct else_statement
+		struct else_statement : public nodecomn
 		{
-			else_statement(expression cond = {}, block blk = {}): cond(cond){}
-			/*
-			{
-				this->children.push_back(blk.unique_clone());
-			}
-			*/
+			else_statement(expression cond = {}, block blk = {});
 
 			expression cond;
 
@@ -649,17 +653,21 @@ namespace syntax
 			node::else_statement
 			>;
 		payload_t payload = std::monostate{};
-		srcloc loc;
-		std::vector<nodenew> children = {};
+
+		bool has_value() const;
 
 		std::string to_string() const;
 		const char* name() const;
 		std::size_t hash() const;
+		std::vector<boxed_node>& children();
+		const std::vector<boxed_node>& children() const;
+		srcloc& loc();
+		const srcloc& loc() const;
 
 		void pretty_print() const;
 	};
 
-	#define NODE_IS(some_node, node_type) (some_node).hash() == syntax::nodenew{.payload = node_type{}}.hash()
+	#define NODE_IS(some_node, node_type) static_cast<syntax::nodenew>(some_node).hash() == syntax::nodenew{.payload = syntax::node::node_type{}}.hash()
 	#define NODE_AS(some_node, node_type) std::get<syntax::node::node_type>(static_cast<syntax::nodenew>(some_node).payload)
 
 	nodenew make_node(const lex::token& t);

@@ -197,7 +197,7 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -213,7 +213,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, std::make_unique<syntax::node::designated_initialiser_list>(inits));
+	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 

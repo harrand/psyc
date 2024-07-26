@@ -186,7 +186,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::defer, expr, nullptr, true);
+	REDUCE_TO(expression, syntax::node::expression::type::defer, expr, {}, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -300,7 +300,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(if_statement))
 	SETINDEX(1);
 	auto stmt = GETNODE(if_statement);
-	REDUCE_TO(else_statement, stmt.cond, *static_cast<syntax::node::block*>(stmt.children.front()));
+	REDUCE_TO(else_statement, stmt.cond, NODE_AS(stmt.children.front(), block));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -312,7 +312,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr, nullptr, true);
+	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr, {}, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

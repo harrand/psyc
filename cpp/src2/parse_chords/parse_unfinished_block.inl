@@ -76,11 +76,11 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = "123"};
 	}
 	auto last_child = blk.children.back();
-	if(last_child.hash() != syntax::node::if_statement{}.hash())
+	if(!NODE_IS(last_child, if_statement))
 	{
-		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child.name())};
+		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child->name())};
 	}
-	last_child.children.push_back(else_stmt);
+	last_child->children().push_back(syntax::nodenew{.payload = else_stmt});
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
