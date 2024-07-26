@@ -28,6 +28,7 @@ namespace parse
 				if(!reduc.is_null())
 				{
 					result res = reduc.reduce_fn(this->make_reducer(i));
+					this->total_reduction_count++;
 					switch(res.t)
 					{
 						case result::type::reduce_success:
@@ -74,7 +75,7 @@ namespace parse
 							return false;
 						}
 						break;
-						case result::type::silent_reject: continue; break;
+						case result::type::silent_reject: this->silent_rejection_count++; continue; break;
 					}
 				}
 				else

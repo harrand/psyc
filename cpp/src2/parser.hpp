@@ -25,6 +25,8 @@ namespace parse
 		std::string source;
 		std::vector<syntax::nodenew> subtrees = {};
 		syntax::nodenew output = {};
+		std::size_t total_reduction_count = 0;
+		std::size_t silent_rejection_count = 0;
 	};
 
 	syntax::nodenew tokens(lex::output tokens);
