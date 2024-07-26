@@ -12,8 +12,8 @@
 
 namespace syntax
 {
-	#define NODE_IS(some_node, node_type) (some_node)->is<syntax::node::node_type>()
-	#define NODE_AS(some_node, node_type) static_cast<syntax::node::node_type*>(some_node)
+	struct nodenew;
+	using boxed_node = util::box<nodenew>;
 
 	namespace node
 	{
@@ -259,31 +259,16 @@ namespace syntax
 				"structinit"
 			};
 
-			expression(type t = type::_unknown, node_ptr expr = nullptr, node_ptr extra = nullptr, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
-			expression(const expression& cpy): inode(cpy),
-			t(cpy.t), expr(cpy.expr == nullptr ? nullptr : cpy.expr->unique_clone()), extra(cpy.extra == nullptr ? nullptr : cpy.extra->unique_clone()), capped(cpy.capped){}
-			expression& operator=(expression rhs)
-			{
-				std::swap(this->t, rhs.t);
-				std::swap(this->expr, rhs.expr);
-				std::swap(this->extra, rhs.extra);
-				std::swap(this->capped, rhs.capped);
-				return *this;
-			}
+			expression(type t = type::_unknown, boxed_node expr = {}, boxed_node extra = {}, bool capped = false): t(t), expr(std::move(expr)), extra(std::move(extra)), capped(capped){}
 
-			type t;
-			node_ptr expr;
-			node_ptr extra = nullptr;
-			bool capped;
+			type t = type::_unknown;
+			boxed_node expr = {};
+			boxed_node extra = {};
+			bool capped = false;
 
 			bool is_null() const{return this->expr == nullptr || this->t == type::_unknown;}
-
 			
-			std::string to_string() const
-			{
-				return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra != nullptr ? std::format(", {}", this->extra->to_string()) : "");
-			}
-
+			std::string to_string() const;
 			const char* name() const
 			{
 				return "expression";
@@ -295,7 +280,6 @@ namespace syntax
 			expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
 
 			std::vector<expression> exprs;
-
 			
 			std::string to_string() const
 			{
@@ -321,11 +305,9 @@ namespace syntax
 		struct namespace_access
 		{
 			namespace_access(identifier lhs = {}, expression rhs = {}):
-			inode(lhs),
 			lhs_parts({lhs.iden}),
 			rhs(rhs){}
 			namespace_access(identifier lhs, const namespace_access& rhs):
-			inode(lhs),
 			lhs_parts({lhs.iden}),
 			rhs(rhs.rhs)
 			{
@@ -339,7 +321,6 @@ namespace syntax
 			std::vector<std::string> lhs_parts;
 			expression rhs;
 
-			
 			std::string to_string() const
 			{
 				std::string lhs_total;
@@ -570,10 +551,12 @@ namespace syntax
 
 		struct if_statement
 		{
-			if_statement(expression cond = {}, block blk = {}, bool is_static = false): cond(cond), is_static(is_static)
+			if_statement(expression cond = {}, block blk = {}, bool is_static = false): cond(cond), is_static(is_static){}
+			/*
 			{
 				this->children.push_back(blk.unique_clone());
 			}
+			*/
 			expression cond;
 			bool is_static;
 
@@ -590,14 +573,15 @@ namespace syntax
 
 		struct else_statement
 		{
-			else_statement(expression cond = {}, block blk = {}): cond(cond)
+			else_statement(expression cond = {}, block blk = {}): cond(cond){}
+			/*
 			{
 				this->children.push_back(blk.unique_clone());
 			}
+			*/
 
 			expression cond;
 
-			
 			std::string to_string() const
 			{
 				if(this->cond.is_null())
@@ -654,7 +638,7 @@ namespace syntax
 		void pretty_print() const;
 	};
 
-	node_ptr make_node(const lex::token& t);
+	nodenew make_node(const lex::token& t);
 }
 
 #endif // PSYC_AST2_HPP

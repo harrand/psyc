@@ -13,6 +13,7 @@ namespace util
 
 	public:
 		// Automatic construction from a `T`, not a `T*`.
+		box() : _impl(nullptr){}
 		box(T &&obj) : _impl(new T(std::move(obj))) {}
 		box(const T &obj) : _impl(new T(obj)) {}
 
@@ -41,6 +42,10 @@ namespace util
 				return *this->_impl == *rhs._impl;
 			}
 			return this->_impl.get() == rhs._impl.get();
+		}
+		bool operator==(std::nullptr_t) const
+		{
+			return this->_impl == nullptr;
 		}
 	};
 

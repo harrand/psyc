@@ -40,13 +40,13 @@ namespace parse
 						{
 							auto ptr = std::move(this->subtrees[i + res.offset]);
 							this->subtrees.erase(this->subtrees.begin() + i + res.offset, this->subtrees.begin() + i + state.size());
-							this->output->children.push_back(std::move(ptr));
+							this->output.children.push_back(std::move(ptr));
 							return true;
 						}
 						break;
 						case result::type::error:
 						{
-							const syntax::node_ptr& cur = this->subtrees[i + res.offset];
+							const syntax::nodenew& cur = this->subtrees[i + res.offset];
 							std::string_view relevant_src = this->source;
 							const auto& loc = cur->loc;
 							for(std::size_t i = 1; i < loc.line; i++)
@@ -70,7 +70,7 @@ namespace parse
 								}
 							}
 							bottom_text += "┘";
-							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur->name(), res.errmsg, cur->loc.to_string(), relevant_src.substr(0, cur->to_string().size()), mid_text, bottom_text);
+							diag::error(error_code::parse, "within {}\n{}\n┌──[{}]\n│\n│ {}\n{}\n{}", cur.name(), res.errmsg, cur.loc.to_string(), relevant_src.substr(0, cur.to_string().size()), mid_text, bottom_text);
 							return false;
 						}
 						break;
@@ -109,7 +109,7 @@ namespace parse
 		ret.reserve(this->subtrees.size() - offset);
 		for(auto iter = this->subtrees.begin() + offset; iter != this->subtrees.end(); iter++)
 		{
-			ret.push_back(subtree_index{.idx = iter->get()->hash(), .name_hint = iter->get()->name()});
+			ret.push_back(subtree_index{.idx = iter->hash(), .name_hint = iter->name()});
 		}
 		return ret;
 	}
@@ -119,14 +119,14 @@ namespace parse
 		return {.subtrees = this->subtrees, .idx = offset};
 	}
 
-	syntax::node_ptr parser::get_output()
+	syntax::nodenew parser::get_output()
 	{
-		if(!(this->subtrees.size() == 1 && this->subtrees.front()->hash() == syntax::node::unparsed_token{{.t = lex::type::source_begin}}.hash()))
+		if(!(this->subtrees.size() == 1 && this->subtrees.front().hash() == syntax::node::unparsed_token{{.t = lex::type::source_begin}}.hash()))
 		{
 			diag::error_nonblocking(error_code::parse, "{} remaining subtrees that were never sent to the output AST. remaining subtree ASTs:\n{{\n", this->subtrees.size());
 			for(const auto& tree : this->subtrees)
 			{
-				tree->pretty_print();
+				tree.pretty_print();
 			}
 			std::cout << "\n}" << std::endl;
 			diag::detail::on_error();
@@ -134,7 +134,7 @@ namespace parse
 		return std::move(this->output);
 	}
 
-	syntax::node_ptr tokens(lex::output tokens)
+	syntax::nodenew tokens(lex::output tokens)
 	{
 		parser state{tokens};
 		state.parse();

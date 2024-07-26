@@ -7,13 +7,13 @@
 
 namespace parse
 {
-	using subtree_view = std::span<const syntax::node_ptr>;
+	using subtree_view = std::span<const syntax::nodenew>;
 	struct reducer
 	{
-		std::vector<syntax::node_ptr>& subtrees;
+		std::vector<syntax::nodenew>& subtrees;
 		std::size_t idx = 0;
 
-		std::span<const syntax::node_ptr> view() const;
+		std::span<const syntax::nodenew> view() const;
 		bool no_prefix() const;
 	};
 	struct result

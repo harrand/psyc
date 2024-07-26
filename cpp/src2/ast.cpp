@@ -6,6 +6,14 @@
 
 namespace syntax
 {
+	namespace node
+	{
+		std::string expression::to_string() const
+		{
+			return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra != nullptr ? std::format(", {}", this->extra->to_string()) : "");
+		}
+	}
+
 	std::string nodenew::to_string() const
 	{
 		std::string ret;
@@ -42,7 +50,7 @@ namespace syntax
 
 	std::size_t nodenew::hash() const
 	{
-		auto ret = std::hash{this->payload.index()}();
+		std::size_t ret = std::hash<std::size_t>{}(this->payload.index());
 		if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
 		{
 			return ret ^ std::get<syntax::node::unparsed_token>(this->payload).hash();
@@ -144,22 +152,22 @@ namespace syntax
 		return ret;
 	}
 
-	node_ptr make_node(const lex::token& t)
+	nodenew make_node(const lex::token& t)
 	{
-		node_ptr ret = nullptr;
+		nodenew ret{.loc = t.meta_srcloc};
 		switch(t.t)
 		{
 			case lex::type::identifier:
-				ret = std::make_unique<node::identifier>(t.lexeme);
+				ret.payload = node::identifier(t.lexeme);
 			break;
 			case lex::type::integer_literal:
-				ret = std::make_unique<node::integer_literal>(std::stoi(t.lexeme));
+				ret.payload = node::integer_literal(std::stoi(t.lexeme));
 			break;
 			case lex::type::decimal_literal:
-				ret = std::make_unique<node::decimal_literal>(std::stod(t.lexeme));
+				ret.payload = node::decimal_literal(std::stod(t.lexeme));
 			break;
 			case lex::type::null_literal:
-				ret = std::make_unique<node::null_literal>();
+				ret.payload = node::null_literal();
 			break;
 			case lex::type::char_literal:
 			{
@@ -167,7 +175,7 @@ namespace syntax
 				diag::assert_that(!charlit.empty(), error_code::lex, "empty char-literal detected at {}. char literals must contain a single character.", t.meta_srcloc.to_string());
 				charlit = escape(charlit);
 				diag::assert_that(charlit.size() == 1, error_code::lex, "char-literal must consist of 1 character, but \'{}\' contains {}", t.lexeme, charlit.size());
-				ret = std::make_unique<node::char_literal>(charlit.front());
+				ret.payload = node::char_literal(charlit.front());
 			}
 			break;
 			case lex::type::bool_literal:
@@ -185,20 +193,19 @@ namespace syntax
 				{
 					diag::assert_that(false, error_code::type, "bool literal had lexeme \"{}\", but it should only be \"true\" or \"false\"", t.lexeme);
 				}
-				ret = std::make_unique<node::bool_literal>(val);
+				ret.payload = node::bool_literal(val);
 			}
 			break;
 			case lex::type::string_literal:
 			{
 				std::string stringlit = t.lexeme;
-				ret = std::make_unique<node::string_literal>(escape(stringlit));
+				ret.payload = node::string_literal(escape(stringlit));
 			}
 			break;
 			default:
-				ret = std::make_unique<node::unparsed_token>(t);
+				ret.payload = node::unparsed_token(t);
 			break;
 		}
-		ret->loc = t.meta_srcloc;
 		return ret;
 	}
 }

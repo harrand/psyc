@@ -4,7 +4,6 @@
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
-#include "semal.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -78,7 +77,6 @@ int main(int argc, char** argv)
 	diag::note("{}", ty.ref()->get_qualified_name());
 
 	parse::populate_parse_table();
-	semal::populate_table();
 
 	/*
 	build::info binfo;
@@ -120,7 +118,7 @@ int main(int argc, char** argv)
 		parse.parsed_input_files[input_file] = parse::tokens(lex.tokenised_input_files[input_file]);
 		if(args.should_dump_ast)
 		{
-			parse.parsed_input_files[input_file]->pretty_print();
+			parse.parsed_input_files[input_file].pretty_print();
 		}
 	}
 	t.parsing = timer::elapsed_millis();
@@ -130,8 +128,8 @@ int main(int argc, char** argv)
 	type_system tsys;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
-		const syntax::node_ptr& ast = parse.parsed_input_files[input_file];
-		semal::analyse(ast.get(), tsys);
+		const syntax::nodenew& ast = parse.parsed_input_files[input_file];
+		//semal::analyse(ast, tsys);
 	}
 	/*
 	semal::state semal;

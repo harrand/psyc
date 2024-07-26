@@ -9,9 +9,9 @@
 
 namespace parse
 {
-	std::span<const syntax::node_ptr> reducer::view() const
+	std::span<const syntax::nodenew> reducer::view() const
 	{
-		return std::span<const syntax::node_ptr>{this->subtrees}.subspan(this->idx);
+		return std::span<const syntax::nodenew>{this->subtrees}.subspan(this->idx);
 	}
 
 	bool reducer::no_prefix() const
