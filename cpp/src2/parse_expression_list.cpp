@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // expr-list expr,
 // adds the expr to the list.
 CHORD_BEGIN
@@ -21,7 +13,3 @@ CHORD_BEGIN
 	REDUCE_TO(expression_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

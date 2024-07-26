@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // desiginit, desiginit
 // becomes a desiginit list
 CHORD_BEGIN
@@ -17,7 +9,3 @@ CHORD_BEGIN
 	REDUCE_TO(designated_initialiser_list, std::move(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

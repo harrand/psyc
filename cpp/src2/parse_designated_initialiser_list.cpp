@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // desiglist, desiginit
 // add to the end of a desiglist
 CHORD_BEGIN
@@ -16,7 +8,3 @@ CHORD_BEGIN
 	REDUCE_TO(designated_initialiser_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

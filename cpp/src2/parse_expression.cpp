@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // expr,expr
 // becomes an expression list
 CHORD_BEGIN
@@ -239,7 +231,3 @@ CHORD_BEGIN
 	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), inits.unique_clone());
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

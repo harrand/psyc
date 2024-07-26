@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 #define REDUCE_LITERALS(ty) \
 CHORD_BEGIN\
 	STATE(NODE(ty), TOKEN(semicol))\
@@ -107,7 +99,3 @@ REDUCE_LITERALS(string_literal)
 REDUCE_LITERALS(identifier)
 REDUCE_LITERALS(function_call)
 REDUCE_LITERALS(namespace_access)
-
-#ifndef INFUNC
-}}
-#endif

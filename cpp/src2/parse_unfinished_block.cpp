@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // add a variable_decl to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(variable_decl))
@@ -130,7 +122,3 @@ CHORD_BEGIN
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

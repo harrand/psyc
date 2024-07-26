@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // meta-region block
 // set the blk as the meta-region's only child. error out if the decl already has one or more child.
 CHORD_BEGIN
@@ -39,7 +31,3 @@ CHORD_BEGIN
 	REDUCE_TO(meta_region, reg);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

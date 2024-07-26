@@ -1,12 +1,3 @@
-
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // namespace-access{}
 // struct initialiser where the struct is in a namespace (no initialisers)
 CHORD_BEGIN
@@ -39,7 +30,3 @@ CHORD_BEGIN
 	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name.unique_clone(), std::make_unique<syntax::node::designated_initialiser_list>(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

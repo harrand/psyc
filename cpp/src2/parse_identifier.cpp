@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 // iden : iden
 // explicitly-typed variable declaration with no initialiser.
 CHORD_BEGIN
@@ -206,7 +198,3 @@ CHORD_BEGIN
 	REDUCE_TO(namespace_access, lhs, rhs);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif

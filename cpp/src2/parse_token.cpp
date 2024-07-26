@@ -1,11 +1,3 @@
-#include "parse_macros.hpp"
-#ifndef INFUNC
-#include "diag.hpp"
-#include "parse.hpp"
-namespace parse{
-void foo(){
-#endif
-
 CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(expression), TOKEN(cparen))
 	SETINDEX(1);
@@ -384,7 +376,3 @@ CHORD_BEGIN
 	}
 	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
-
-#ifndef INFUNC
-}}
-#endif
