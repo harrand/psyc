@@ -50,6 +50,9 @@ namespace util
 	};
 
 	template<typename T>
+	box(T) -> box<T>;
+
+	template<typename T>
 	class unique_cloneable
 	{
 	public:

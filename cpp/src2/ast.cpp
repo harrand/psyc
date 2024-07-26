@@ -112,7 +112,7 @@ namespace syntax
 		{
 			[&ret](std::monostate)
 			{
-				__builtin_unreachable();	
+				diag::ice("attempt to get location (read-only) of null node");
 			},
 			[&ret](auto& arg)
 			{
