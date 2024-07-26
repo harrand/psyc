@@ -8,6 +8,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <variant>
 
 namespace syntax
 {
@@ -700,8 +701,58 @@ namespace syntax
 				return "else-statement";
 			}
 		};
-		
 	}
+
+	struct nodenew
+	{
+		using payload_t = std::variant<std::monostate,
+			node::root,
+			node::unfinished_block,
+			node::block,
+			node::unparsed_token,
+			node::integer_literal,
+			node::decimal_literal,
+			node::char_literal,
+			node::bool_literal,
+			node::string_literal,
+			node::null_literal,
+			node::identifier,
+			node::expression,
+			node::expression_list,
+			node::namespace_access,
+			node::variable_decl,
+			node::variable_decl_list,
+			node::function_decl,
+			node::function_call,
+			node::meta_region,
+			node::alias,
+			node::struct_decl,
+			node::designated_initialiser,
+			node::designated_initialiser_list,
+			node::if_statement,
+			node::else_statement
+			>;
+		payload_t payload = std::monostate{};
+		srcloc loc;
+		std::vector<nodenew> children = {};
+
+		std::string to_string() const
+		{
+			std::string ret;
+			std::visit([&ret](auto&& arg)
+			{
+				if constexpr(std::is_same_v<std::decay_t<decltype(arg)>, std::monostate>)
+				{
+					ret = "<empty>";
+				}
+				else
+				{
+					ret = arg.to_string();
+				}
+			}, this->payload);
+			return ret;
+		}
+	};
 
 	node_ptr make_node(const lex::token& t);
 }
