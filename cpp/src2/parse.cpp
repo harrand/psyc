@@ -26,7 +26,7 @@ namespace parse
 	};
 	std::unordered_map<std::size_t, parse_entry> parse_table;
 
-	reduction find_reduction_impl(subtree_state_view state, parse_entry* prev, std::optional<reduction> last_good = std::nullopt)
+	reduction find_reduction_impl(subtree_view state, parse_entry* prev, std::optional<reduction> last_good = std::nullopt)
 	{
 		diag::assert_that(prev != nullptr, error_code::ice, "previous parse entry was nullptr.");
 
@@ -35,7 +35,7 @@ namespace parse
 		{
 			return {.reduce_fn = prev->reduce_fn, .offset = 0};
 		}
-		auto iter = prev->children.find(state.front().idx);
+		auto iter = prev->children.find(state.front().hash());
 		if(iter == prev->children.end())
 		{
 			if(last_good.has_value())
@@ -52,10 +52,10 @@ namespace parse
 		return find_reduction_impl(state.subspan(1), &iter->second, this_good);
 	}
 
-	reduction find_reduction(subtree_state_view state)
+	reduction find_reduction(subtree_view state)
 	{
 		diag::assert_that(state.size(), error_code::ice, "requested to find reduction but state is empty.");
-		const subtree_index& front = state.front();
+		subtree_index front{.idx = state.front().hash(), .name_hint = state.front().name()};
 		auto iter = parse_table.find(front.idx);
 		if(iter == parse_table.end())
 		{

@@ -78,16 +78,6 @@ namespace syntax
 		return ret;
 	}
 
-	std::size_t nodenew::hash() const
-	{
-		std::size_t ret = std::hash<std::size_t>{}(this->payload.index());
-		if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
-		{
-			return ret ^ std::get<syntax::node::unparsed_token>(this->payload).hash();
-		}
-		return ret;
-	}
-
 	std::vector<boxed_node>& nodenew::children()
 	{
 		std::vector<boxed_node>* ret = nullptr;

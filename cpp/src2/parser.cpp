@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "parse.hpp"
 #include "diag.hpp"
+#include "profile.hpp"
 
 namespace parse
 {
@@ -19,6 +20,8 @@ namespace parse
 
 	bool parser::step()
 	{
+		PROFZONE("parser step");
+		PROFTEXTF("%zu", this->total_reduction_count);
 		for(std::size_t i = 0; i < this->subtrees.size(); i++)
 		{
 			auto state = this->get_parsed_state(i);
@@ -104,15 +107,9 @@ namespace parse
 		return true;
 	}
 
-	subtree_state parser::get_parsed_state(std::size_t offset) const
+	subtree_view parser::get_parsed_state(std::size_t offset) const
 	{
-		subtree_state ret;
-		ret.reserve(this->subtrees.size() - offset);
-		for(auto iter = this->subtrees.begin() + offset; iter != this->subtrees.end(); iter++)
-		{
-			ret.push_back(subtree_index{.idx = iter->hash(), .name_hint = iter->name()});
-		}
-		return ret;
+		return subtree_view{this->subtrees}.subspan(offset);
 	}
 
 	reducer parser::make_reducer(std::size_t offset)

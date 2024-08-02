@@ -15,7 +15,7 @@ namespace parse
 		bool step();
 
 		bool shift();
-		subtree_state get_parsed_state(std::size_t offset) const;
+		subtree_view get_parsed_state(std::size_t offset) const;
 
 		reducer make_reducer(std::size_t offset);
 		syntax::nodenew get_output();

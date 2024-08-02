@@ -51,7 +51,7 @@ namespace parse
 		static reduction null(){return {};}
 	};
 
-	reduction find_reduction(subtree_state_view state);
+	reduction find_reduction(subtree_view state);
 	template<std::size_t N>
 	void add_new_reduction(std::array<subtree_index, N> hashes, reduce_function_t reduce_fn)
 	{
