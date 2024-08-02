@@ -1,6 +1,7 @@
 #include "parse.hpp"
 #include "diag.hpp"
 #include "ast.hpp"
+#include "profile.hpp"
 #include <unordered_map>
 #include <tuple>
 
@@ -54,6 +55,7 @@ namespace parse
 
 	reduction find_reduction(subtree_view state)
 	{
+		PROFZONE("find reduction");
 		diag::assert_that(state.size(), error_code::ice, "requested to find reduction but state is empty.");
 		subtree_index front{.idx = state.front().hash(), .name_hint = state.front().name()};
 		auto iter = parse_table.find(front.idx);
@@ -83,6 +85,7 @@ namespace parse
 
 	void populate_parse_table()
 	{
+		PROFZONE("parse table populate");
 		#include "parse_chords/parse_token.inl"
 		#include "parse_chords/parse_literals.inl"
 		#include "parse_chords/parse_identifier.inl"

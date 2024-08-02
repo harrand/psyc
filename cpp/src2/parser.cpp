@@ -30,6 +30,7 @@ namespace parse
 				reduction reduc = find_reduction(state);
 				if(!reduc.is_null())
 				{
+					PROFZONE("reduce");
 					result res = reduc.reduce_fn(this->make_reducer(i));
 					this->total_reduction_count++;
 					switch(res.t)
@@ -92,6 +93,7 @@ namespace parse
 
 	bool parser::shift()
 	{
+		PROFZONE("shift");
 		if(this->unscanned_tokens.empty())
 		{
 			return false;

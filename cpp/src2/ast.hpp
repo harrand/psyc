@@ -659,24 +659,7 @@ namespace syntax
 
 		std::string to_string() const;
 		const char* name() const;
-		__attribute__((always_inline))
-		inline std::size_t hash() const
-		{
-			PROFZONE("node hash");
-			PROFNAMEF("%s hash", this->name());
-			PROFZONE_BEGIN(index);
-			std::size_t ret = std::hash<std::size_t>{}(this->payload.index());
-			PROFZONE_END(index);
-			PROFZONE_BEGIN(branch);
-			if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
-			{
-				auto newret = ret ^ std::get<syntax::node::unparsed_token>(this->payload).hash();
-				PROFZONE_END(branch);
-				return newret;
-			}
-			PROFZONE_END(branch);
-			return ret;
-		}
+		std::size_t hash() const;
 		std::vector<boxed_node>& children();
 		const std::vector<boxed_node>& children() const;
 		srcloc& loc();

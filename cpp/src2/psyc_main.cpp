@@ -4,6 +4,7 @@
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
+#include "profile.hpp"
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -44,6 +45,7 @@ struct timers
 
 int main(int argc, char** argv)
 {
+	PROFZONE("psyc main");
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	timers t;
 
