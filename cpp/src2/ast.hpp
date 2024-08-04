@@ -32,10 +32,6 @@ namespace syntax
 			{
 				return this->source_file.string();
 			}
-			const char* name() const
-			{
-				return "root node";
-			}
 			
 		};
 
@@ -54,10 +50,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("unfinished block starting at {}", this->start.to_string());
-			}
-			const char* name() const
-			{
-				return "unfinished block";
 			}
 
 			template<typename T>
@@ -83,10 +75,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("block from {} to {}", this->start.to_string(), this->finish.to_string());
-			}
-			const char* name() const
-			{
-				return "block";
 			}
 		};
 
@@ -124,10 +112,6 @@ namespace syntax
 			{
 				return std::format("integer-literal({})", this->val);
 			}
-			const char* name() const
-			{
-				return "integer literal";
-			}
 		};
 
 		struct decimal_literal : public nodecomn
@@ -156,10 +140,6 @@ namespace syntax
 			{
 				return std::format("char-literal('{}' (dec {})", this->val, static_cast<int>(this->val));
 			}
-			const char* name() const
-			{
-				return "char literal";
-			}
 		};
 
 		struct bool_literal : public nodecomn
@@ -171,10 +151,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("bool-literal({})", this->val ? "true" : "false");
-			}
-			const char* name() const
-			{
-				return "bool literal";
 			}
 		};
 
@@ -188,10 +164,6 @@ namespace syntax
 			{
 				return std::format("string-literal(\"{}\")", this->val);
 			}
-			const char* name() const
-			{
-				return "string literal";
-			}
 		};
 
 		struct null_literal : public nodecomn
@@ -202,10 +174,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return "null-literal()";
-			}
-			const char* name() const
-			{
-				return "null literal";
 			}
 		};
 
@@ -220,10 +188,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("identifier({})", this->iden);
-			}
-			const char* name() const
-			{
-				return "identifier";
 			}
 		};
 
@@ -304,10 +268,6 @@ namespace syntax
 			bool is_null() const;
 			
 			std::string to_string() const;
-			const char* name() const
-			{
-				return "expression";
-			}
 		};
 
 		struct expression_list : public nodecomn
@@ -328,11 +288,6 @@ namespace syntax
 					}
 				}
 				return std::format("expr-list({})", contents);
-			}
-
-			const char* name() const
-			{
-				return "expression list";
 			}
 		};
 
@@ -365,11 +320,6 @@ namespace syntax
 				}
 				return std::format("namespace-access({}::{})", lhs_total, this->rhs.to_string());
 			}
-
-			const char* name() const
-			{
-				return "namespace access";
-			}
 		};
 
 		struct variable_decl : public nodecomn
@@ -388,11 +338,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
-			}
-
-			const char* name() const
-			{
-				return "variable declaration";
 			}
 		};
 
@@ -416,11 +361,6 @@ namespace syntax
 				}
 				return std::format("variable-decl-list({})", contents);
 			}
-
-			const char* name() const
-			{
-				return "variable list";
-			}
 		};
 		
 		struct function_decl : public nodecomn
@@ -439,11 +379,6 @@ namespace syntax
 			{
 				return std::format("function-decl({} :: {} -> {}{})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 			}
-
-			const char* name() const
-			{
-				return "function declaration";
-			}
 		};
 
 		struct function_call : public nodecomn
@@ -457,11 +392,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("function-call({}({}))", this->func_name.to_string(), this->params.to_string());
-			}
-
-			const char* name() const
-			{
-				return "function call";
 			}
 		};
 
@@ -493,11 +423,6 @@ namespace syntax
 			{
 				return std::format("meta-region({} : {})", this->metaname.to_string(), type_names[static_cast<int>(this->t)]);
 			}
-
-			const char* name() const
-			{
-				return "meta region";
-			}
 		};
 
 		struct alias : public nodecomn
@@ -511,11 +436,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("alias({} ::= {})", this->alias_name.iden, type_value_expr.to_string());
-			}
-
-			const char* name() const
-			{
-				return "alias specifier";
 			}
 		};
 
@@ -550,11 +470,6 @@ namespace syntax
 			{
 				return std::format("member-initialiser({} := {})", this->member.iden, this->initialiser.to_string());
 			}
-
-			const char* name() const
-			{
-				return "designated initialiser";
-			}
 		};
 
 		struct designated_initialiser_list : public nodecomn
@@ -577,11 +492,6 @@ namespace syntax
 				}
 				return std::format("desig-init-list({})", contents);
 			}
-
-			const char* name() const
-			{
-				return "designated initialiser list";
-			}
 		};
 
 		struct if_statement : public nodecomn
@@ -594,11 +504,6 @@ namespace syntax
 			std::string to_string() const
 			{
 				return std::format("if-statement({})", this->cond.to_string());
-			}
-
-			const char* name() const
-			{
-				return "if-statement";
 			}
 		};
 
@@ -615,11 +520,6 @@ namespace syntax
 					return "else()";
 				}
 				return std::format("else-if({})", this->cond.to_string());
-			}
-
-			const char* name() const
-			{
-				return "else-statement";
 			}
 		};
 	}
@@ -659,7 +559,7 @@ namespace syntax
 			"root",
 			"block",
 			"unfinished block",
-			"unparsed token",
+			"token",
 			"integer literal",
 			"decimal literal",
 			"char literal",

@@ -36,12 +36,12 @@ CHORD_BEGIN
 
 	if(expr.t != syntax::node::expression::type::parenthesised_expression)
 	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", expr.name())};
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", syntax::node::expression::type_names[static_cast<int>(expr.t)])};
 	}
 	auto exprparen = NODE_AS(expr.expr, expression);
 	if(exprparen.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", exprparen.name())};
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", syntax::node::expression::type_names[static_cast<int>(exprparen.t)])};
 	}
 	auto expriden = NODE_AS(exprparen.expr, identifier);
 
@@ -64,7 +64,7 @@ CHORD_BEGIN
 		const auto& expr = list.exprs[i];
 		if(expr.t != syntax::node::expression::type::identifier)
 		{
-			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), expr.name())};
+			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), syntax::node::expression::type_names[static_cast<int>(expr.t)])};
 		}
 		auto param = NODE_AS(expr.expr, identifier);
 		param_list += param.iden;

@@ -6,7 +6,7 @@ CHORD_BEGIN
 	// rhs of the namespace access better be an identifier.
 	if(struct_name.rhs.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("namespace-access followed by {{}} is considered an empty struct initialiser. however, the right-most term of the namespace access \"{}\" was not an identifier as expected, but instead a {}", struct_name.rhs.to_string(), struct_name.rhs.name())};
+		return {.t = result::type::error, .errmsg = std::format("namespace-access followed by {{}} is considered an empty struct initialiser. however, the right-most term of the namespace access \"{}\" was not an identifier as expected, but instead an expression", struct_name.rhs.to_string())};
 	}
 	std::vector<syntax::node::designated_initialiser> inits = {};
 	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
@@ -22,7 +22,7 @@ CHORD_BEGIN
 	// rhs of the namespace access better be an identifier.
 	if(struct_name.rhs.t != syntax::node::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("namespace-access followed by {{...}} is considered a struct initialiser. however, the right-most term of the namespace access \"{}\" was not an identifier as expected, but instead a {}", struct_name.rhs.to_string(), struct_name.rhs.name())};
+		return {.t = result::type::error, .errmsg = std::format("namespace-access followed by {{...}} is considered a struct initialiser. however, the right-most term of the namespace access \"{}\" was not an identifier as expected, but instead an expression", struct_name.rhs.to_string())};
 	}
 	SETINDEX(2);
 	std::vector<syntax::node::designated_initialiser> inits = {};
