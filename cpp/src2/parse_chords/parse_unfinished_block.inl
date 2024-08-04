@@ -81,7 +81,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child->name())};
 	}
-	last_child->children().push_back(syntax::nodenew{.payload = else_stmt});
+	last_child->children().push_back(syntax::node{.payload = else_stmt});
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END

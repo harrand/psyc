@@ -3,10 +3,10 @@
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(col), NODE(identifier))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(2);
-	syntax::node::identifier type_name = GETNODE(identifier);
-	REDUCE_TO(variable_decl, name, type_name, syntax::node::expression{});
+	syntax::identifier type_name = GETNODE(identifier);
+	REDUCE_TO(variable_decl, name, type_name, syntax::expression{});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -15,14 +15,14 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(eq), NODE(expression))
 	
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(3);
-	syntax::node::expression initialiser = GETNODE(expression);
+	syntax::expression initialiser = GETNODE(expression);
 	if(!initialiser.capped)
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(variable_decl, name, syntax::node::identifier{syntax::node::inferred_typename}, initialiser, true);
+	REDUCE_TO(variable_decl, name, syntax::identifier{syntax::inferred_typename}, initialiser, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -32,11 +32,11 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(3);
-	syntax::node::variable_decl_list params = GETNODE(variable_decl_list);
+	syntax::variable_decl_list params = GETNODE(variable_decl_list);
 	SETINDEX(6);
-	syntax::node::identifier return_type_name = GETNODE(identifier);
+	syntax::identifier return_type_name = GETNODE(identifier);
 
 	REDUCE_TO(function_decl, name, params, return_type_name);
 	return {.t = result::type::reduce_success};
@@ -47,11 +47,11 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen),TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(5);
-	syntax::node::identifier return_type_name = GETNODE(identifier);
+	syntax::identifier return_type_name = GETNODE(identifier);
 
-	REDUCE_TO(function_decl, name, syntax::node::variable_decl_list{}, return_type_name);
+	REDUCE_TO(function_decl, name, syntax::variable_decl_list{}, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -60,12 +60,12 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(3);
-	syntax::node::variable_decl param = GETNODE(variable_decl);
+	syntax::variable_decl param = GETNODE(variable_decl);
 	SETINDEX(6);
-	syntax::node::identifier return_type_name = GETNODE(identifier);
-	std::vector<syntax::node::variable_decl> params;
+	syntax::identifier return_type_name = GETNODE(identifier);
+	std::vector<syntax::variable_decl> params;
 	params.push_back(param);
 
 	REDUCE_TO(function_decl, name, params, return_type_name);
@@ -77,9 +77,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(2);
-	syntax::node::expression_list params = GETNODE(expression_list);
+	syntax::expression_list params = GETNODE(expression_list);
 
 	REDUCE_TO(function_call, name, params);
 	return {.t = result::type::reduce_success};
@@ -90,9 +90,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(oparen), NODE(expression), TOKEN(cparen))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(2);
-	std::vector<syntax::node::expression> params = {};
+	std::vector<syntax::expression> params = {};
 	params.push_back(GETNODE(expression));
 
 	REDUCE_TO(function_call, name, params);
@@ -104,9 +104,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(oparen), TOKEN(cparen))
 
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 
-	REDUCE_TO(function_call, name, syntax::node::expression_list{});
+	REDUCE_TO(function_call, name, syntax::expression_list{});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -114,8 +114,8 @@ CHORD_END
 // namespace meta region
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_namespace))
-	syntax::node::identifier name = GETNODE(identifier);
-	REDUCE_TO(meta_region, name, syntax::node::meta_region::type::name_space);
+	syntax::identifier name = GETNODE(identifier);
+	REDUCE_TO(meta_region, name, syntax::meta_region::type::name_space);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -123,9 +123,9 @@ CHORD_END
 // type alias
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_alias), TOKEN(col), TOKEN(eq), NODE(expression), TOKEN(semicol))
-	syntax::node::identifier name = GETNODE(identifier);
+	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(5);
-	syntax::node::expression expr = GETNODE(expression);
+	syntax::expression expr = GETNODE(expression);
 	REDUCE_TO(alias, name, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -138,8 +138,8 @@ CHORD_BEGIN
 	auto name = GETNODE(identifier);
 	SETINDEX(3);
 	auto blk = GETNODE(block);
-	auto result_struct = syntax::node::struct_decl{name, true};
-	result_struct.children.push_back(syntax::nodenew{.payload = blk});
+	auto result_struct = syntax::struct_decl{name, true};
+	result_struct.children.push_back(syntax::node{.payload = blk});
 	REDUCE_TO(struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -149,8 +149,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), TOKEN(cbrace))
 	auto struct_name = GETNODE(identifier);
-	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list(inits));
+	std::vector<syntax::designated_initialiser> inits = {};
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list(inits));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -160,9 +160,9 @@ CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser), TOKEN(cbrace))
 	auto struct_name = GETNODE(identifier);
 	SETINDEX(2);
-	std::vector<syntax::node::designated_initialiser> inits = {};
+	std::vector<syntax::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -173,7 +173,7 @@ CHORD_BEGIN
 	auto struct_name = GETNODE(identifier);
 	SETINDEX(2);
 	auto inits = GETNODE(designated_initialiser_list);
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, inits);
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -184,7 +184,7 @@ CHORD_BEGIN
 	auto lhs = GETNODE(identifier);
 	SETINDEX(2);
 	auto rhs = GETNODE(identifier);
-	REDUCE_TO(namespace_access, lhs, syntax::node::expression{syntax::node::expression::type::identifier, rhs});
+	REDUCE_TO(namespace_access, lhs, syntax::expression{syntax::expression::type::identifier, rhs});
 	return {.t = result::type::reduce_success};
 CHORD_END
 

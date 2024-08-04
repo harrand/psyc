@@ -2,7 +2,7 @@ CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(expression), TOKEN(cparen))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::parenthesised_expression, expr);
+	REDUCE_TO(expression, syntax::expression::type::parenthesised_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -10,7 +10,7 @@ CHORD_BEGIN
 	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
 	SETINDEX(1);
 	auto iden = GETNODE(identifier);
-	REDUCE_TO(meta_region, iden, syntax::node::meta_region::type::build);
+	REDUCE_TO(meta_region, iden, syntax::meta_region::type::build);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -34,14 +34,14 @@ CHORD_BEGIN
 	SETINDEX(3);
 	auto retty = GETNODE(identifier);
 
-	if(expr.t != syntax::node::expression::type::parenthesised_expression)
+	if(expr.t != syntax::expression::type::parenthesised_expression)
 	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", syntax::node::expression::type_names[static_cast<int>(expr.t)])};
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", syntax::expression::type_names[static_cast<int>(expr.t)])};
 	}
 	auto exprparen = NODE_AS(expr.expr, expression);
-	if(exprparen.t != syntax::node::expression::type::identifier)
+	if(exprparen.t != syntax::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", syntax::node::expression::type_names[static_cast<int>(exprparen.t)])};
+		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", syntax::expression::type_names[static_cast<int>(exprparen.t)])};
 	}
 	auto expriden = NODE_AS(exprparen.expr, identifier);
 
@@ -62,9 +62,9 @@ CHORD_BEGIN
 	for(std::size_t i = 0; i < list.exprs.size(); i++)
 	{
 		const auto& expr = list.exprs[i];
-		if(expr.t != syntax::node::expression::type::identifier)
+		if(expr.t != syntax::expression::type::identifier)
 		{
-			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), syntax::node::expression::type_names[static_cast<int>(expr.t)])};
+			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), syntax::expression::type_names[static_cast<int>(expr.t)])};
 		}
 		auto param = NODE_AS(expr.expr, identifier);
 		param_list += param.iden;
@@ -162,7 +162,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_ref), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::ref, expr);
+	REDUCE_TO(expression, syntax::expression::type::ref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -172,7 +172,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_deref), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::deref, expr);
+	REDUCE_TO(expression, syntax::expression::type::deref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -186,7 +186,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::defer, expr, {}, true);
+	REDUCE_TO(expression, syntax::expression::type::defer, expr, {}, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -196,7 +196,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_typeinfo), NODE(expression))
 	SETINDEX(1);
 	auto expr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::typeinfo, expr);
+	REDUCE_TO(expression, syntax::expression::type::typeinfo, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -225,7 +225,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	auto open = GETTOKEN();
 	auto close = GETTOKEN();
-	syntax::node::block empty_blk;
+	syntax::block empty_blk;
 	empty_blk.start = open.meta_srcloc;
 	empty_blk.finish = close.meta_srcloc;
 	REDUCE_TO(if_statement, cond, empty_blk);
@@ -252,7 +252,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	auto open = GETTOKEN();
 	auto close = GETTOKEN();
-	syntax::node::block empty_blk;
+	syntax::block empty_blk;
 	empty_blk.start = open.meta_srcloc;
 	empty_blk.finish = close.meta_srcloc;
 	REDUCE_TO(if_statement, cond, empty_blk, true);
@@ -276,7 +276,7 @@ CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(block))
 	SETINDEX(1);
 	auto blk = GETNODE(block);
-	REDUCE_TO(else_statement, syntax::node::expression{}, blk);
+	REDUCE_TO(else_statement, syntax::expression{}, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -287,10 +287,10 @@ CHORD_BEGIN
 	SETINDEX(1);
 	auto open = GETTOKEN();
 	auto close = GETTOKEN();
-	syntax::node::block empty_blk;
+	syntax::block empty_blk;
 	empty_blk.start = open.meta_srcloc;
 	empty_blk.finish = close.meta_srcloc;
-	REDUCE_TO(else_statement, syntax::node::expression{}, empty_blk);
+	REDUCE_TO(else_statement, syntax::expression{}, empty_blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -312,7 +312,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::return_statement, expr, {}, true);
+	REDUCE_TO(expression, syntax::expression::type::return_statement, expr, {}, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

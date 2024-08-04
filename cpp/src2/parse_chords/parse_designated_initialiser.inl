@@ -2,7 +2,7 @@
 // becomes a desiginit list
 CHORD_BEGIN
 	STATE(NODE(designated_initialiser), TOKEN(comma), NODE(designated_initialiser))
-	std::vector<syntax::node::designated_initialiser> inits;
+	std::vector<syntax::designated_initialiser> inits;
 	inits.push_back(GETNODE(designated_initialiser));
 	SETINDEX(2);
 	inits.push_back(GETNODE(designated_initialiser));

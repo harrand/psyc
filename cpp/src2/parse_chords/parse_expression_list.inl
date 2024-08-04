@@ -2,7 +2,7 @@
 // adds the expr to the list.
 CHORD_BEGIN
 	STATE(NODE(expression_list), TOKEN(comma), NODE(expression))
-	syntax::node::expression_list list = GETNODE(expression_list);
+	syntax::expression_list list = GETNODE(expression_list);
 	SETINDEX(2);
 	auto expr = GETNODE(expression);
 	if(!expr.capped)

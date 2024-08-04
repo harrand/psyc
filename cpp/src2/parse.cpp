@@ -5,14 +5,14 @@
 #include <unordered_map>
 #include <tuple>
 
-#define HASH(x) syntax::node::x{}.hash()
-#define TOKEN_HASH(toktype) syntax::node::unparsed_token{{.t = lex::type::toktype}}.hash()
+#define HASH(x) syntax::x{}.hash()
+#define TOKEN_HASH(toktype) syntax::unparsed_token{{.t = lex::type::toktype}}.hash()
 
 namespace parse
 {
-	std::span<const syntax::nodenew> reducer::view() const
+	std::span<const syntax::node> reducer::view() const
 	{
-		return std::span<const syntax::nodenew>{this->subtrees}.subspan(this->idx);
+		return std::span<const syntax::node>{this->subtrees}.subspan(this->idx);
 	}
 
 	bool reducer::no_prefix() const

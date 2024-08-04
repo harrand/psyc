@@ -2,9 +2,9 @@
 // mark a function as extern.
 CHORD_BEGIN
 	STATE(NODE(function_decl), TOKEN(col), TOKEN(eq), NODE(identifier), TOKEN(semicol))
-	syntax::node::function_decl fn = GETNODE(function_decl);
+	syntax::function_decl fn = GETNODE(function_decl);
 	SETINDEX(3);
-	syntax::node::identifier value = GETNODE(identifier);
+	syntax::identifier value = GETNODE(identifier);
 	if(value.iden == "extern")
 	{
 		if(fn.is_extern)
@@ -22,13 +22,13 @@ CHORD_END
 // set the blk as the function-decl's only child. error out if the decl already has one or more child.
 CHORD_BEGIN
 	STATE(NODE(function_decl), NODE(block))
-	syntax::node::function_decl fn = GETNODE(function_decl);
-	syntax::node::block blk = GETNODE(block);
+	syntax::function_decl fn = GETNODE(function_decl);
+	syntax::block blk = GETNODE(block);
 	if(fn.capped)
 	{
 		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for function \"{}\"", fn.func_name.iden)};
 	}
-	fn.children.push_back(syntax::nodenew{.payload = blk});
+	fn.children.push_back(syntax::node{.payload = blk});
 	fn.capped = true;
 	REDUCE_TO(function_decl, fn);
 	return {.t = result::type::reduce_success};

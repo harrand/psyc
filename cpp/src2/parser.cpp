@@ -10,7 +10,7 @@ namespace parse
 	unscanned_tokens(this->tokens),
 	source(tokens.psy_source)
 	{
-		this->output.payload = syntax::node::root{.source_file = this->tokens.front().meta_srcloc.file};
+		this->output.payload = syntax::root{.source_file = this->tokens.front().meta_srcloc.file};
 	}
 
 	void parser::parse()
@@ -52,7 +52,7 @@ namespace parse
 						break;
 						case result::type::error:
 						{
-							const syntax::nodenew& cur = this->subtrees[i + res.offset];
+							const syntax::node& cur = this->subtrees[i + res.offset];
 							std::string_view relevant_src = this->source;
 							const auto& loc = cur.loc();
 							for(std::size_t i = 1; i < loc.line; i++)
@@ -120,9 +120,9 @@ namespace parse
 		return {.subtrees = this->subtrees, .idx = offset};
 	}
 
-	syntax::nodenew parser::get_output()
+	syntax::node parser::get_output()
 	{
-		if(!(this->subtrees.size() == 1 && this->subtrees.front().hash() == syntax::nodenew{.payload = syntax::node::unparsed_token{.tok = {.t = lex::type::source_begin}}}.hash()))
+		if(!(this->subtrees.size() == 1 && this->subtrees.front().hash() == syntax::node{.payload = syntax::unparsed_token{.tok = {.t = lex::type::source_begin}}}.hash()))
 		{
 			diag::error_nonblocking(error_code::parse, "{} remaining subtrees that were never sent to the output AST. remaining subtree ASTs:\n{{\n", this->subtrees.size());
 			for(const auto& tree : this->subtrees)
@@ -135,7 +135,7 @@ namespace parse
 		return std::move(this->output);
 	}
 
-	syntax::nodenew tokens(lex::output tokens)
+	syntax::node tokens(lex::output tokens)
 	{
 		parser state{tokens};
 		state.parse();

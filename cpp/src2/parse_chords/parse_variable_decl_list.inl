@@ -3,7 +3,7 @@
 CHORD_BEGIN
 	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(variable_decl))
 
-	syntax::node::variable_decl_list list = GETNODE(variable_decl_list);
+	syntax::variable_decl_list list = GETNODE(variable_decl_list);
 	SETINDEX(2);
 	list.decls.push_back(GETNODE(variable_decl));
 	REDUCE_TO(variable_decl_list, list);
@@ -14,9 +14,9 @@ CHORD_END
 // adds the initialiser to the last element in the decl list
 CHORD_BEGIN
 	STATE(NODE(variable_decl_list), TOKEN(col), TOKEN(eq), NODE(expression))
-	syntax::node::variable_decl_list list = GETNODE(variable_decl_list);
+	syntax::variable_decl_list list = GETNODE(variable_decl_list);
 	SETINDEX(3);
-	syntax::node::expression initialiser = GETNODE(expression);
+	syntax::expression initialiser = GETNODE(expression);
 	if(!initialiser.capped)
 	{
 		return {.t = result::type::silent_reject};

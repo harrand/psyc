@@ -141,7 +141,7 @@ int main(int argc, char** argv)
 	type_system tsys;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
-		const syntax::nodenew& ast = parse.parsed_input_files[input_file];
+		const syntax::node& ast = parse.parsed_input_files[input_file];
 		//semal::analyse(ast, tsys);
 	}
 	/*

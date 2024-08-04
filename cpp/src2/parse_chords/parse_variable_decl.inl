@@ -2,7 +2,7 @@
 // becomes a decl list
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(comma), NODE(variable_decl))
-	std::vector<syntax::node::variable_decl> decls;
+	std::vector<syntax::variable_decl> decls;
 	decls.push_back(GETNODE(variable_decl));
 	SETINDEX(2);
 	decls.push_back(GETNODE(variable_decl));
@@ -16,7 +16,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(col), TOKEN(eq), NODE(expression))
 
-	syntax::node::variable_decl var = GETNODE(variable_decl);
+	syntax::variable_decl var = GETNODE(variable_decl);
 	// two initialisers next to each other?
 	if(!var.expr.is_null())
 	{

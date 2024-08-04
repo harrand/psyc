@@ -6,45 +6,42 @@
 
 namespace syntax
 {
-	namespace node
+	expression::expression():
+	expr(syntax::node{}),
+	extra(syntax::node{})
 	{
-		expression::expression():
-		expr(syntax::nodenew{}),
-		extra(syntax::nodenew{})
-		{
 
-		}
-
-		bool expression::is_null() const
-		{
-			return !this->expr->has_value() || this->t == type::_unknown;
-		}
-
-		std::string expression::to_string() const
-		{
-			return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra->has_value() ? std::format(", {}", this->extra->to_string()) : "");
-		}
-
-		if_statement::if_statement(expression cond, block blk, bool is_static):
-		cond(cond),
-		is_static(is_static)
-		{
-			this->children.push_back(syntax::nodenew{.payload = blk});
-		}
-
-		else_statement::else_statement(expression cond, block blk):
-		cond(cond)
-		{
-			this->children.push_back(syntax::nodenew{.payload = blk});
-		}
 	}
 
-	bool nodenew::has_value() const
+	bool expression::is_null() const
+	{
+		return !this->expr->has_value() || this->t == type::_unknown;
+	}
+
+	std::string expression::to_string() const
+	{
+		return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra->has_value() ? std::format(", {}", this->extra->to_string()) : "");
+	}
+
+	if_statement::if_statement(expression cond, block blk, bool is_static):
+	cond(cond),
+	is_static(is_static)
+	{
+		this->children.push_back(syntax::node{.payload = blk});
+	}
+
+	else_statement::else_statement(expression cond, block blk):
+	cond(cond)
+	{
+		this->children.push_back(syntax::node{.payload = blk});
+	}
+
+	bool node::has_value() const
 	{
 		return !std::holds_alternative<std::monostate>(this->payload);
 	}
 
-	std::string nodenew::to_string() const
+	std::string node::to_string() const
 	{
 		std::string ret;
 		std::visit(util::overload
@@ -61,24 +58,24 @@ namespace syntax
 		return ret;
 	}
 
-	const char* nodenew::name() const
+	const char* node::name() const
 	{
 		PROFZONE("node name");
 		return payload_names[this->payload.index()];
 	}
 
-	std::size_t nodenew::hash() const
+	std::size_t node::hash() const
 	{
 		PROFZONE("node hash");
 		std::size_t ret = std::hash<std::size_t>{}(this->payload.index());
-		if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
+		if(std::holds_alternative<syntax::unparsed_token>(this->payload))
 		{
-			ret ^= std::get<syntax::node::unparsed_token>(this->payload).hash();
+			ret ^= std::get<syntax::unparsed_token>(this->payload).hash();
 		}
 		return ret;
 	}
 
-	std::vector<boxed_node>& nodenew::children()
+	std::vector<boxed_node>& node::children()
 	{
 		std::vector<boxed_node>* ret = nullptr;
 		std::visit(util::overload
@@ -95,7 +92,7 @@ namespace syntax
 		return *ret;
 	}
 
-	const std::vector<boxed_node>& nodenew::children() const
+	const std::vector<boxed_node>& node::children() const
 	{
 		const std::vector<boxed_node>* ret = nullptr;
 		std::visit(util::overload
@@ -112,7 +109,7 @@ namespace syntax
 		return *ret;
 	}
 
-	srcloc& nodenew::loc()
+	srcloc& node::loc()
 	{
 		srcloc* ret = nullptr;
 		std::visit(util::overload
@@ -129,7 +126,7 @@ namespace syntax
 		return *ret;
 	}
 
-	const srcloc& nodenew::loc() const
+	const srcloc& node::loc() const
 	{
 		const srcloc* ret = nullptr;
 		std::visit(util::overload
@@ -146,16 +143,16 @@ namespace syntax
 		return *ret;
 	}
 
-	void nodenew::pretty_print() const
+	void node::pretty_print() const
 	{
-		std::stack<const nodenew*> node_list;
+		std::stack<const node*> node_list;
 		std::stack<std::size_t> indents;
 		std::set<std::size_t> parents = {};
 		node_list.push(this);
 		indents.push(0);
 		while(node_list.size())
 		{
-			const nodenew* cur = node_list.top();
+			const node* cur = node_list.top();
 			node_list.pop();
 			std::size_t indent = indents.top();
 			indents.pop();
@@ -187,7 +184,7 @@ namespace syntax
 			}
 			for(std::size_t i = 0; i < cur->children().size(); i++)
 			{
-				const nodenew& child = *cur->children()[cur->children().size() - 1 - i];
+				const node& child = *cur->children()[cur->children().size() - 1 - i];
 				node_list.push(&child);
 				indents.push(indent + 1);
 			}
@@ -240,22 +237,22 @@ namespace syntax
 		return ret;
 	}
 
-	nodenew make_node(const lex::token& t)
+	node make_node(const lex::token& t)
 	{
-		nodenew ret;
+		node ret;
 		switch(t.t)
 		{
 			case lex::type::identifier:
-				ret.payload = node::identifier(t.lexeme);
+				ret.payload = identifier(t.lexeme);
 			break;
 			case lex::type::integer_literal:
-				ret.payload = node::integer_literal(std::stoi(t.lexeme));
+				ret.payload = integer_literal(std::stoi(t.lexeme));
 			break;
 			case lex::type::decimal_literal:
-				ret.payload = node::decimal_literal(std::stod(t.lexeme));
+				ret.payload = decimal_literal(std::stod(t.lexeme));
 			break;
 			case lex::type::null_literal:
-				ret.payload = node::null_literal();
+				ret.payload = null_literal();
 			break;
 			case lex::type::char_literal:
 			{
@@ -263,7 +260,7 @@ namespace syntax
 				diag::assert_that(!charlit.empty(), error_code::lex, "empty char-literal detected at {}. char literals must contain a single character.", t.meta_srcloc.to_string());
 				charlit = escape(charlit);
 				diag::assert_that(charlit.size() == 1, error_code::lex, "char-literal must consist of 1 character, but \'{}\' contains {}", t.lexeme, charlit.size());
-				ret.payload = node::char_literal(charlit.front());
+				ret.payload = char_literal(charlit.front());
 			}
 			break;
 			case lex::type::bool_literal:
@@ -281,17 +278,17 @@ namespace syntax
 				{
 					diag::assert_that(false, error_code::type, "bool literal had lexeme \"{}\", but it should only be \"true\" or \"false\"", t.lexeme);
 				}
-				ret.payload = node::bool_literal(val);
+				ret.payload = bool_literal(val);
 			}
 			break;
 			case lex::type::string_literal:
 			{
 				std::string stringlit = t.lexeme;
-				ret.payload = node::string_literal(escape(stringlit));
+				ret.payload = string_literal(escape(stringlit));
 			}
 			break;
 			default:
-				ret.payload = node::unparsed_token{.tok = t};
+				ret.payload = unparsed_token{.tok = t};
 			break;
 		}
 		if(ret.has_value())

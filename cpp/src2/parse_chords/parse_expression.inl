@@ -2,7 +2,7 @@
 // becomes an expression list
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(comma), NODE(expression))
-	std::vector<syntax::node::expression> exprs;
+	std::vector<syntax::expression> exprs;
 	auto expr1 = GETNODE(expression);
 	if(!expr1.capped)
 	{
@@ -79,7 +79,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto iden = GETNODE(identifier);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, expr, iden);
+	REDUCE_TO(expression, syntax::expression::type::cast, expr, iden);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -90,7 +90,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::cast, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::cast, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -101,7 +101,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::addition, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::addition, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -112,7 +112,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::subtraction, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::subtraction, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -123,7 +123,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::multiplication, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::multiplication, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -134,7 +134,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::division, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::division, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -150,7 +150,7 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::silent_reject};
 	}
-	REDUCE_TO(expression, syntax::node::expression::type::assign, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::assign, expr, typeexpr, typeexpr.capped);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -161,7 +161,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::dot_access, expr, expr2);
+	REDUCE_TO(expression, syntax::expression::type::dot_access, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -172,7 +172,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::eqcompare, expr, expr2);
+	REDUCE_TO(expression, syntax::expression::type::eqcompare, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -183,7 +183,7 @@ CHORD_BEGIN
 	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
-	REDUCE_TO(expression, syntax::node::expression::type::neqcompare, expr, expr2);
+	REDUCE_TO(expression, syntax::expression::type::neqcompare, expr, expr2);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -192,12 +192,12 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::identifier)
+	if(struct_name.t != syntax::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier", syntax::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
-	std::vector<syntax::node::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
+	std::vector<syntax::designated_initialiser> inits = {};
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -206,14 +206,14 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), NODE(designated_initialiser), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::identifier)
+	if(struct_name.t != syntax::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	SETINDEX(2);
-	std::vector<syntax::node::designated_initialiser> inits = {};
+	std::vector<syntax::designated_initialiser> inits = {};
 	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, syntax::node::designated_initialiser_list{inits});
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list{inits});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -222,12 +222,12 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(obrace), NODE(designated_initialiser_list), TOKEN(cbrace))
 	auto struct_name = GETNODE(expression);
-	if(struct_name.t != syntax::node::expression::type::identifier)
+	if(struct_name.t != syntax::expression::type::identifier)
 	{
-		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::node::expression::type_names[static_cast<int>(struct_name.t)])};
+		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	SETINDEX(2);
 	auto inits = GETNODE(designated_initialiser_list);
-	REDUCE_TO(expression, syntax::node::expression::type::struct_initialiser, struct_name, inits);
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END
