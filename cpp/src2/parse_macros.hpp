@@ -30,7 +30,7 @@
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
-#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::node::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, syntax::nodenew{.payload = payload});
+#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) PROFZONE_BEGIN(do_reduce); auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::node::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, syntax::nodenew{.payload = payload}); PROFZONE_END(do_reduce);
 #define REDUCE_TO(type, ...) REDUCE_TO_ADVANCED(0, 0, type, __VA_ARGS__)
 
 #endif // PSYC_PARSE_MACROS_HPP
