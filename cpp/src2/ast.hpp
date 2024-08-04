@@ -653,6 +653,35 @@ namespace syntax
 			node::if_statement,
 			node::else_statement
 			>;
+		static constexpr const char* payload_names[] =
+		{
+			"unknown",
+			"root",
+			"block",
+			"unfinished block",
+			"unparsed token",
+			"integer literal",
+			"decimal literal",
+			"char literal",
+			"bool literal",
+			"string literal",
+			"null literal",
+			"identifier",
+			"expression",
+			"expression list",
+			"namespace access",
+			"variable declaration",
+			"variable declaration list",
+			"function declaration",
+			"function call",
+			"meta region",
+			"alias",
+			"struct declaration",
+			"designated initialiser",
+			"designated initialiser list",
+			"if statement",
+			"else statement"
+		};
 		payload_t payload = std::monostate{};
 
 		bool has_value() const;

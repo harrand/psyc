@@ -29,6 +29,7 @@ namespace parse
 
 	reduction find_reduction_impl(subtree_view state, parse_entry* prev, std::optional<reduction> last_good = std::nullopt)
 	{
+		PROFZONE("find impl");
 		diag::assert_that(prev != nullptr, error_code::ice, "previous parse entry was nullptr.");
 
 		// we reached the end, return the current resolve function.
@@ -36,7 +37,9 @@ namespace parse
 		{
 			return {.reduce_fn = prev->reduce_fn, .offset = 0};
 		}
+		PROFZONE_BEGIN(stdfind);
 		auto iter = prev->children.find(state.front().hash());
+		PROFZONE_END(stdfind);
 		if(iter == prev->children.end())
 		{
 			if(last_good.has_value())
@@ -57,8 +60,13 @@ namespace parse
 	{
 		PROFZONE("find reduction");
 		diag::assert_that(state.size(), error_code::ice, "requested to find reduction but state is empty.");
-		subtree_index front{.idx = state.front().hash(), .name_hint = state.front().name()};
+		PROFZONE_BEGIN(get_front);
+		const auto& statefront = state.front();
+		subtree_index front{.idx = statefront.hash(), .name_hint = statefront.name()};
+		PROFZONE_END(get_front);
+		PROFZONE_BEGIN(parse_table_find);
 		auto iter = parse_table.find(front.idx);
+		PROFZONE_END(parse_table_find);
 		if(iter == parse_table.end())
 		{
 			return reduction::null();

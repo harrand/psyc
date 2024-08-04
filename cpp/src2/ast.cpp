@@ -63,34 +63,18 @@ namespace syntax
 
 	const char* nodenew::name() const
 	{
-		const char* ret;
-		std::visit(util::overload
-		{
-			[&ret](std::monostate)
-			{
-				ret = "<empty>";
-			},
-			[&ret](auto arg)
-			{
-				ret = arg.name();
-			}
-		}, this->payload);
-		return ret;
+		PROFZONE("node name");
+		return payload_names[this->payload.index()];
 	}
 
 	std::size_t nodenew::hash() const
 	{
 		PROFZONE("node hash");
-		PROFNAMEF("%s hash", this->name());
-		PROFZONE_BEGIN(index);
 		std::size_t ret = std::hash<std::size_t>{}(this->payload.index());
-		PROFZONE_END(index);
-		PROFZONE_BEGIN(branch);
 		if(std::holds_alternative<syntax::node::unparsed_token>(this->payload))
 		{
 			ret ^= std::get<syntax::node::unparsed_token>(this->payload).hash();
 		}
-		PROFZONE_END(branch);
 		return ret;
 	}
 

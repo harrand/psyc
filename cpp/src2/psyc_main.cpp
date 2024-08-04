@@ -10,6 +10,10 @@
 #include <string_view>
 #include <iomanip>
 
+//temp
+#include <thread>
+#include <chrono>
+
 config::compiler_args parse_args(std::span<const std::string_view> cli_args);
 void print_version_info();
 
@@ -46,6 +50,7 @@ struct timers
 int main(int argc, char** argv)
 {
 	PROFZONE("psyc main");
+	PROFZONE_BEGIN(init);
 	const std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	timers t;
 
@@ -103,6 +108,8 @@ int main(int argc, char** argv)
 	//const config::compiler_args& args = binfo.compiler_args;
 	config::compiler_args args = parse_args(cli_args);
 
+	PROFZONE_END(init);
+	PROFZONE_BEGIN(lex);
 	// lex
 	timer::start();
 	lex::state lex;
@@ -112,6 +119,8 @@ int main(int argc, char** argv)
 	}
 	t.lexing = timer::elapsed_millis();
 
+	PROFZONE_END(lex);
+	PROFZONE_BEGIN(parse);
 	// parse
 	timer::start();
 	parse::state parse;
@@ -124,6 +133,8 @@ int main(int argc, char** argv)
 		}
 	}
 	t.parsing = timer::elapsed_millis();
+	PROFZONE_END(parse);
+	PROFZONE_BEGIN(semal);
 
 	// semal
 	timer::start();
@@ -145,7 +156,7 @@ int main(int argc, char** argv)
 	}
 	*/
 	t.semal = timer::elapsed_millis();
-
+	PROFZONE_END(semal);
 
 	/*
 	// codegen
@@ -179,6 +190,7 @@ int main(int argc, char** argv)
 	t.print();
 
 	//code::static_terminate();
+	//std::this_thread::sleep_for(std::chrono::seconds(1));
 	return 0;
 }
 
