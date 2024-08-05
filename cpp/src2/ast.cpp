@@ -203,6 +203,7 @@ namespace syntax
 
 	void node::pretty_print() const
 	{
+		PROFZONE("pretty print");
 		std::stack<const node*> node_list;
 		std::stack<std::size_t> indents;
 		std::set<std::size_t> parents = {};

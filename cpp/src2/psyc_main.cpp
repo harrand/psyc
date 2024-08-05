@@ -4,6 +4,7 @@
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
+#include "semal.hpp"
 #include "profile.hpp"
 #include <filesystem>
 #include <span>
@@ -142,7 +143,7 @@ int main(int argc, char** argv)
 	for(const std::filesystem::path input_file : args.input_files)
 	{
 		const syntax::node& ast = parse.parsed_input_files[input_file];
-		//semal::analyse(ast, tsys);
+		semal::unit file = semal::analyse_file(ast, tsys);
 	}
 	/*
 	semal::state semal;
