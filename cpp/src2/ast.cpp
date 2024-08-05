@@ -131,6 +131,18 @@ namespace syntax
 		return children[path.front()]->evaluate_path(path.subspan(1));
 	}
 
+	node& node::evaluate_parent(node::path_view_t path)
+	{
+		diag::assert_that(path.size(), error_code::ice, "attempt to get parent-path using an empty path.");
+		return this->evaluate_path(path.last(path.size() - 1));
+	}
+
+	const node& node::evaluate_parent(node::path_view_t path) const
+	{
+		diag::assert_that(path.size(), error_code::ice, "attempt to get parent-path using an empty path.");
+		return this->evaluate_path(path.last(path.size() - 1));
+	}
+
 	void node::iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch)
 	{
 		auto& children = this->children();

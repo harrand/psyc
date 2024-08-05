@@ -593,6 +593,8 @@ namespace syntax
 		const std::vector<boxed_node>& children() const;
 		node& evaluate_path(path_view_t path);
 		const node& evaluate_path(path_view_t path) const;
+		node& evaluate_parent(path_view_t path);
+		const node& evaluate_parent(path_view_t path) const;
 		void iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch = {});
 		void iterate(std::function<void(path_view_t, const node&)> callback, path_t impl_path_dont_touch = {}) const;
 		srcloc& loc();
