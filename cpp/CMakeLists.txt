@@ -3,8 +3,6 @@ project(psyc)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
-option(TRACY_ENABLE ON)
-option(TRACY_NO_EXIT ON)
 option(PSYC_PROFILE_BUILD OFF)
 
 set(PSYC_FIND_EXTERNAL_LLVM OFF CACHE BOOL "Enable this to locate an existing LLVM on your machine via `find_package`. If disabled, llvm will be built from scratch as a submodule.")
@@ -92,6 +90,8 @@ target_compile_definitions(libpsyc PUBLIC ${llvm_definitions_list})
 target_link_libraries(libpsyc PUBLIC ${llvm_dependent_libs})
 
 if(PSYC_PROFILE_BUILD)
+	set(TRACY_ENABLE ON)
+	set(TRACY_NO_EXIT ON)
 	add_subdirectory(tracy)
 	target_link_libraries(libpsyc PUBLIC TracyClient)
 	target_compile_definitions(libpsyc PUBLIC "-DPSYC_PROFILE")
