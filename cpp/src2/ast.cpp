@@ -1,8 +1,9 @@
 #include "ast.hpp"
 #include "diag.hpp"
 #include <stack>
-#include <iostream>
 #include <set>
+#include <sstream>
+#include <cstdio>
 
 namespace syntax
 {
@@ -207,6 +208,9 @@ namespace syntax
 		std::stack<const node*> node_list;
 		std::stack<std::size_t> indents;
 		std::set<std::size_t> parents = {};
+		std::string streamdata;
+		streamdata.reserve(4096);
+		std::ostringstream stream(std::move(streamdata));
 		node_list.push(this);
 		indents.push(0);
 		while(node_list.size())
@@ -221,25 +225,25 @@ namespace syntax
 				{
 					if(std::find(parents.begin(), parents.end(), i - 1) != parents.end())
 					{
-						std::cout << "│ ";
+						stream << "│ ";
 					}
 					else
 					{
-						std::cout << "  ";
+						stream << "  ";
 					}
 				}
 				if(indent > 1 && cur->children().empty() && (indents.size() && indents.top() != indent))
 				{
-					std::cout << "└─";
+					stream << "└─";
 				}
 				else
 				{
-					std::cout << "├─";
+					stream << "├─";
 				}
 			}
 			if(cur != nullptr)
 			{
-				std::cout << cur->to_string() << "\n";
+				stream << cur->to_string() << "\n";
 			}
 			for(std::size_t i = 0; i < cur->children().size(); i++)
 			{
@@ -256,6 +260,7 @@ namespace syntax
 				parents.insert(indent);
 			}
 		}
+		std::puts(stream.str().c_str());
 	}
 
 	std::string escape(std::string_view literal)

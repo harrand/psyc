@@ -46,6 +46,8 @@ add_library(libpsyc
 	src2/parse.hpp
 	src2/parser.cpp
 	src2/parser.hpp
+	src2/profile.cpp
+	src2/profile.hpp
 	src2/semal.cpp
 	src2/semal.hpp
 	src2/srcloc.hpp
