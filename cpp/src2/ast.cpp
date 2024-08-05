@@ -109,6 +109,52 @@ namespace syntax
 		return *ret;
 	}
 
+	node& node::evaluate_path(node::path_view_t path)
+	{
+		if(path.empty())
+		{
+			return *this;
+		}
+		auto& children = this->children();
+		diag::assert_that(children.size() > path.front(), error_code::ice, "invalid child index {} when evaluating path (only have {} children)", path.front(), children.size());
+		return children[path.front()]->evaluate_path(path.subspan(1));
+	}
+
+	const node& node::evaluate_path(node::path_view_t path) const
+	{
+		if(path.empty())
+		{
+			return *this;
+		}
+		const auto& children = this->children();
+		diag::assert_that(children.size() > path.front(), error_code::ice, "invalid child index {} when evaluating path (only have {} children)", path.front(), children.size());
+		return children[path.front()]->evaluate_path(path.subspan(1));
+	}
+
+	void node::iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch)
+	{
+		auto& children = this->children();
+		for(std::size_t i = 0; i < children.size(); i++)
+		{
+			auto path_cpy = impl_path_dont_touch;
+			path_cpy.push_back(i);
+			callback(path_cpy, *children[i]);
+			children[i]->iterate(callback, path_cpy);
+		}
+	}
+
+	void node::iterate(std::function<void(path_view_t, const node&)> callback, path_t impl_path_dont_touch) const
+	{
+		const auto& children = this->children();
+		for(std::size_t i = 0; i < children.size(); i++)
+		{
+			auto path_cpy = impl_path_dont_touch;
+			path_cpy.push_back(i);
+			callback(path_cpy, *children[i]);
+			children[i]->iterate(callback, path_cpy);
+		}
+	}
+
 	srcloc& node::loc()
 	{
 		srcloc* ret = nullptr;
@@ -133,7 +179,7 @@ namespace syntax
 		{
 			[&ret](std::monostate)
 			{
-				__builtin_unreachable();	
+				diag::ice("attempt to get location (read-only) of null node");
 			},
 			[&ret](auto& arg)
 			{

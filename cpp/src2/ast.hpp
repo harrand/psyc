@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 #include <variant>
+#include <functional>
 
 namespace syntax
 {
@@ -550,6 +551,8 @@ namespace syntax
 			if_statement,
 			else_statement
 			>;
+		using path_t = std::vector<std::size_t>;
+		using path_view_t = std::span<const std::size_t>;
 		static constexpr const char* payload_names[] =
 		{
 			"unknown",
@@ -588,6 +591,10 @@ namespace syntax
 		std::size_t hash() const;
 		std::vector<boxed_node>& children();
 		const std::vector<boxed_node>& children() const;
+		node& evaluate_path(path_view_t path);
+		const node& evaluate_path(path_view_t path) const;
+		void iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch = {});
+		void iterate(std::function<void(path_view_t, const node&)> callback, path_t impl_path_dont_touch = {}) const;
 		srcloc& loc();
 		const srcloc& loc() const;
 
