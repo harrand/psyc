@@ -24,6 +24,7 @@ namespace semal
 		const syntax::node& ast;
 	};
 	unit analyse_file(const syntax::node& ast, type_system& tsys);
+	void populate_semal_table();
 }
 
 #endif // PSYC_SEMAL_HPP

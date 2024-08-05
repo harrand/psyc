@@ -85,6 +85,7 @@ int main(int argc, char** argv)
 	diag::note("{}", ty.ref()->get_qualified_name());
 
 	parse::populate_parse_table();
+	semal::populate_semal_table();
 
 	/*
 	build::info binfo;
