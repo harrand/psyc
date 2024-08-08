@@ -486,6 +486,16 @@ namespace syntax
 		}
 	};
 
+	struct capped_struct_decl : public struct_decl
+	{
+		capped_struct_decl(identifier struct_name = {}): struct_decl(struct_name, true){}
+		capped_struct_decl(const struct_decl& cpy): struct_decl(cpy)
+		{
+			struct_decl::capped = true;
+		}
+
+	};
+
 	struct designated_initialiser : public nodecomn
 	{
 		designated_initialiser(identifier member = {}, expression initialiser = {}): member(member), initialiser(initialiser){}
@@ -570,12 +580,15 @@ namespace syntax
 			expression_list,
 			namespace_access,
 			variable_decl,
+			capped_variable_decl,
 			variable_decl_list,
 			function_decl,
+			capped_function_decl,
 			function_call,
 			meta_region,
 			alias,
 			struct_decl,
+			capped_struct_decl,
 			designated_initialiser,
 			designated_initialiser_list,
 			if_statement,
@@ -597,16 +610,19 @@ namespace syntax
 			"string literal",
 			"null literal",
 			"identifier",
+			"capped expression",
 			"expression",
 			"expression list",
 			"namespace access",
 			"variable declaration",
+			"capped variable declaration",
 			"variable declaration list",
 			"function declaration",
 			"function call",
 			"meta region",
 			"alias",
 			"struct declaration",
+			"capped struct declaration",
 			"designated initialiser",
 			"designated initialiser list",
 			"if statement",
