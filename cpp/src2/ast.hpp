@@ -269,6 +269,20 @@ namespace syntax
 		std::string to_string() const;
 	};
 
+	struct capped_expression : public expression
+	{
+		capped_expression();
+		capped_expression(const expression& expr): expression(expr)
+		{
+			this->capped = true;
+		}
+		template<typename T, typename U = T>
+		capped_expression(type t, T expr, U extra): expression(t, expr, extra, true){}
+		template<typename T>
+		capped_expression(type t, T expr): expression(t, expr, T{}, true){}
+	};
+
+
 	struct expression_list : public nodecomn
 	{
 		expression_list(std::vector<expression> exprs = {}): exprs(exprs){}
@@ -340,12 +354,20 @@ namespace syntax
 		}
 	};
 
+	struct capped_variable_decl : public variable_decl
+	{
+		capped_variable_decl(const variable_decl& cpy): variable_decl(cpy)
+		{
+			variable_decl::capped = true;
+		}
+		capped_variable_decl(identifier var_name = {}, identifier type_name = {}, expression expr = {}): variable_decl(var_name, type_name, expr, true){}
+	};
+
 	struct variable_decl_list : public nodecomn
 	{
 		variable_decl_list(std::vector<variable_decl> decls = {}): decls(decls){}
 
 		std::vector<variable_decl> decls;
-
 		
 		std::string to_string() const
 		{
@@ -372,11 +394,18 @@ namespace syntax
 		std::string struct_owner = "";
 		bool is_extern = false;
 		bool capped = false;
-
 		
 		std::string to_string() const
 		{
 			return std::format("function-decl({} :: {} -> {}{})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+		}
+	};
+
+	struct capped_function_decl : public function_decl
+	{
+		capped_function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): function_decl(func_name, params, return_type_name)
+		{
+			function_decl::capped = true;
 		}
 	};
 
@@ -537,6 +566,7 @@ namespace syntax
 			null_literal,
 			identifier,
 			expression,
+			capped_expression,
 			expression_list,
 			namespace_access,
 			variable_decl,
