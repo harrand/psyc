@@ -1,6 +1,6 @@
 CHORD_BEGIN
 	STATE(NODE(if_statement), NODE(else_statement))
-	auto stmt = GETNODE(if_statement);
+	auto stmt = std::move(GETNODE(if_statement));
 	auto else_stmt = GETNODE(else_statement);
 	stmt.children.push_back(syntax::node{.payload = else_stmt});
 	REDUCE_TO(if_statement, stmt);

@@ -38,7 +38,7 @@ CHORD_END
 // function implementation with no code inside. still a valid function implementation.
 CHORD_BEGIN
 	STATE(NODE(function_decl), TOKEN(obrace), TOKEN(cbrace))
-	auto fn = GETNODE(function_decl);
+	auto fn = std::move(GETNODE(function_decl));
 	if(fn.is_extern)
 	{
 		return {.t = result::type::error, .errmsg = std::format("function \"{}\" marked as extern, but is also followed by an implementation block. extern functions have no implementation.", fn.func_name.iden)};

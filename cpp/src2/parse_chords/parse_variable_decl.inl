@@ -35,7 +35,7 @@ CHORD_END
 // consume semicol
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(semicol))
-	auto decl = GETNODE(variable_decl);
+	auto decl = std::move(GETNODE(variable_decl));
 	decl.capped = true;
 	REDUCE_TO(variable_decl, decl);
 	return {.t = result::type::reduce_success};
