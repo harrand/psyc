@@ -87,9 +87,12 @@ if(${stdlib_psy_sources})
 	)
 endif()
 
+set(MI_OVERRIDE ON)
+add_subdirectory(mimalloc)
+
 target_include_directories(libpsyc PUBLIC ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(libpsyc PUBLIC ${llvm_definitions_list})
-target_link_libraries(libpsyc PUBLIC ${llvm_dependent_libs})
+target_link_libraries(libpsyc PUBLIC ${llvm_dependent_libs} mimalloc-static)
 
 if(PSYC_PROFILE_BUILD)
 	set(TRACY_ENABLE ON)
