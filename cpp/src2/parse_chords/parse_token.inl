@@ -1,7 +1,7 @@
 CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(expression), TOKEN(cparen))
 	SETINDEX(1);
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::parenthesised_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -9,7 +9,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
 	SETINDEX(1);
-	auto iden = std::move(GETNODE(identifier));
+	auto iden = GETNODE(identifier);
 	REDUCE_TO(meta_region, iden, syntax::meta_region::type::build);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -19,7 +19,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(ampersand), TOKEN(oparen), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 	SETINDEX(4);
-	auto retty = std::move(GETNODE(identifier));
+	auto retty = GETNODE(identifier);
 	REDUCE_TO(identifier, std::format("&()->{}", retty.iden));
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -30,9 +30,9 @@ CHORD_BEGIN
 	STATE(TOKEN(ampersand), NODE(expression), TOKEN(arrow), NODE(identifier))
 	auto start = GETTOKEN();
 	SETINDEX(1);
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(3);
-	auto retty = std::move(GETNODE(identifier));
+	auto retty = GETNODE(identifier);
 
 	if(expr.t != syntax::expression::type::parenthesised_expression)
 	{
@@ -55,9 +55,9 @@ CHORD_BEGIN
 	STATE(TOKEN(ampersand), TOKEN(oparen), NODE(expression_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 	auto start = GETTOKEN();
 	SETINDEX(2);
-	auto list = std::move(GETNODE(expression_list));
+	auto list = GETNODE(expression_list);
 	SETINDEX(5);
-	auto retty = std::move(GETNODE(identifier));
+	auto retty = GETNODE(identifier);
 	std::string param_list;
 	for(std::size_t i = 0; i < list.exprs.size(); i++)
 	{
@@ -103,7 +103,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(block))
 	SETINDEX(1);
-	auto blk = std::move(GETNODE(block));
+	auto blk = GETNODE(block);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -113,7 +113,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(meta_region))
 	SETINDEX(1);
-	auto reg = std::move(GETNODE(meta_region));
+	auto reg = GETNODE(meta_region);
 	REDUCE_TO(unfinished_block, reg);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -123,7 +123,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(alias))
 	SETINDEX(1);
-	auto al = std::move(GETNODE(alias));
+	auto al = GETNODE(alias);
 	REDUCE_TO(unfinished_block, al);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -133,7 +133,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(if_statement))
 	SETINDEX(1);
-	auto stmt = std::move(GETNODE(if_statement));
+	auto stmt = GETNODE(if_statement);
 	REDUCE_TO(unfinished_block, stmt);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -143,7 +143,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(obrace), NODE(struct_decl))
 	SETINDEX(1);
-	auto structd = std::move(GETNODE(struct_decl));
+	auto structd = GETNODE(struct_decl);
 	REDUCE_TO(unfinished_block, structd);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -153,7 +153,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_ref), NODE(expression))
 	SETINDEX(1);
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::ref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -163,7 +163,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_deref), NODE(expression))
 	SETINDEX(1);
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::deref, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -183,7 +183,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_typeinfo), NODE(expression))
 	SETINDEX(1);
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::typeinfo, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -205,7 +205,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_if), NODE(expression), TOKEN(obrace), TOKEN(cbrace))
 	SETINDEX(1);
-	auto cond = std::move(GETNODE(expression));
+	auto cond = GETNODE(expression);
 	SETINDEX(2);
 	auto open = GETTOKEN();
 	auto close = GETTOKEN();
@@ -221,8 +221,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_if), NODE(expression), NODE(block))
 	SETINDEX(1);
-	auto cond = std::move(GETNODE(expression));
-	auto blk = std::move(GETNODE(block));
+	auto cond = GETNODE(expression);
+	auto blk = GETNODE(block);
 	REDUCE_TO(if_statement, cond, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -232,7 +232,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_static_if), NODE(expression), TOKEN(obrace), TOKEN(cbrace))
 	SETINDEX(1);
-	auto cond = std::move(GETNODE(expression));
+	auto cond = GETNODE(expression);
 	SETINDEX(2);
 	auto open = GETTOKEN();
 	auto close = GETTOKEN();
@@ -248,8 +248,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_static_if), NODE(expression), NODE(block))
 	SETINDEX(1);
-	auto cond = std::move(GETNODE(expression));
-	auto blk = std::move(GETNODE(block));
+	auto cond = GETNODE(expression);
+	auto blk = GETNODE(block);
 	REDUCE_TO(if_statement, cond, blk, true);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -259,7 +259,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(block))
 	SETINDEX(1);
-	auto blk = std::move(GETNODE(block));
+	auto blk = GETNODE(block);
 	REDUCE_TO(else_statement, syntax::expression{}, blk);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -283,7 +283,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(keyword_else), NODE(if_statement))
 	SETINDEX(1);
-	auto stmt = std::move(GETNODE(if_statement));
+	auto stmt = GETNODE(if_statement);
 	REDUCE_TO(else_statement, stmt.cond, NODE_AS(stmt.children.front(), block));
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -307,14 +307,10 @@ CHORD_END
 
 // source-begin meta-region
 CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(meta_region))
+	STATE(TOKEN(source_begin), NODE(capped_meta_region))
 	SETINDEX(1);
-	auto reg = GETNODE(meta_region);
-	if(reg.capped)
-	{
-		return {.t = result::type::send_to_output, .offset = 1};
-	}
-	return {.t = result::type::silent_reject};
+	auto reg = GETNODE(capped_meta_region);
+	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin meta-region
@@ -338,7 +334,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(if_statement))
 	SETINDEX(1);
-	auto ifst = std::move(GETNODE(if_statement));
+	auto ifst = GETNODE(if_statement);
 	if(!ifst.is_static)
 	{
 		return {.t = result::type::error, .errmsg = "non-static if-statements must be within a block, not in the global scope", .offset = 1};

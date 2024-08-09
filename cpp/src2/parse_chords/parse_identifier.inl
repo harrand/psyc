@@ -131,9 +131,9 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_struct), NODE(block))
 
-	auto name = std::move(GETNODE(identifier));
+	auto name = GETNODE(identifier);
 	SETINDEX(3);
-	auto blk = std::move(GETNODE(block));
+	auto blk = GETNODE(block);
 	auto result_struct = syntax::struct_decl{name, true};
 	result_struct.children.push_back(syntax::node{.payload = blk});
 	REDUCE_TO(capped_struct_decl, result_struct);
@@ -168,7 +168,7 @@ CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser_list), TOKEN(cbrace))
 	auto struct_name = GETNODE(identifier);
 	SETINDEX(2);
-	auto inits = std::move(GETNODE(designated_initialiser_list));
+	auto inits = GETNODE(designated_initialiser_list);
 	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -177,9 +177,9 @@ CHORD_END
 // namespace access
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), NODE(identifier))
-	auto lhs = std::move(GETNODE(identifier));
+	auto lhs = GETNODE(identifier);
 	SETINDEX(2);
-	auto rhs = std::move(GETNODE(identifier));
+	auto rhs = GETNODE(identifier);
 	REDUCE_TO(namespace_access, lhs, syntax::expression{syntax::expression::type::identifier, rhs});
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -188,9 +188,9 @@ CHORD_END
 // nested namespace access
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(colcol), NODE(namespace_access))
-	auto lhs = std::move(GETNODE(identifier));
+	auto lhs = GETNODE(identifier);
 	SETINDEX(2);
-	auto rhs = std::move(GETNODE(namespace_access));
+	auto rhs = GETNODE(namespace_access);
 	REDUCE_TO(namespace_access, lhs, rhs);
 	return {.t = result::type::reduce_success};
 CHORD_END

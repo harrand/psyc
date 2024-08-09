@@ -16,7 +16,7 @@ CHORD_END
 // reduces into an expression that is guaranteed to be capped.
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(semicol))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	REDUCE_TO(capped_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -52,9 +52,9 @@ CHORD_END
 // reduces to a cast
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(cast), NODE(identifier))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto iden = std::move(GETNODE(identifier));
+	auto iden = GETNODE(identifier);
 	REDUCE_TO(expression, syntax::expression::type::cast, expr, iden);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -63,9 +63,9 @@ CHORD_END
 // reduces to a cast
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(cast), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(expression));
+	auto typeexpr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::cast, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -74,9 +74,9 @@ CHORD_END
 // reduces to a cast
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(cast), NODE(capped_expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(capped_expression));
+	auto typeexpr = GETNODE(capped_expression);
 	REDUCE_TO(capped_expression, syntax::expression::type::cast, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -85,9 +85,9 @@ CHORD_END
 // reduces to an addition
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(plus), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(expression));
+	auto typeexpr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::addition, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -96,9 +96,9 @@ CHORD_END
 // reduces to a subtraction
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(minus), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(expression));
+	auto typeexpr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::subtraction, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -107,9 +107,9 @@ CHORD_END
 // reduces to a multiplication
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(asterisk), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(expression));
+	auto typeexpr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::multiplication, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -118,9 +118,9 @@ CHORD_END
 // reduces to a division
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(slash), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
-	auto typeexpr = std::move(GETNODE(expression));
+	auto typeexpr = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::division, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -141,7 +141,7 @@ CHORD_END
 // dot access
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(dot), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::dot_access, expr, expr2);
@@ -152,7 +152,7 @@ CHORD_END
 // equality compare
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(eqeq), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::eqcompare, expr, expr2);
@@ -163,7 +163,7 @@ CHORD_END
 // inequality compare
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(neq), NODE(expression))
-	auto expr = std::move(GETNODE(expression));
+	auto expr = GETNODE(expression);
 	SETINDEX(2);
 	auto expr2 = GETNODE(expression);
 	REDUCE_TO(expression, syntax::expression::type::neqcompare, expr, expr2);
@@ -210,7 +210,7 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("pattern: {}{{}} is invalid, the preceding token(s) should instead constitute an identifier (i.e `my_struct_name`)", syntax::expression::type_names[static_cast<int>(struct_name.t)])};
 	}
 	SETINDEX(2);
-	auto inits = std::move(GETNODE(designated_initialiser_list));
+	auto inits = GETNODE(designated_initialiser_list);
 	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, inits);
 	return {.t = result::type::reduce_success};
 CHORD_END

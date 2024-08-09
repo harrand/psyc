@@ -460,6 +460,18 @@ namespace syntax
 		}
 	};
 
+	struct capped_meta_region : public meta_region
+	{
+		capped_meta_region(identifier metaname = {}, type t = type::_unknown): meta_region(metaname, t)
+		{
+			meta_region::capped = true;
+		}
+		capped_meta_region(const meta_region& cpy): meta_region(cpy)
+		{
+			meta_region::capped = true;
+		}
+	};
+
 	struct alias : public nodecomn
 	{
 		alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
@@ -593,6 +605,7 @@ namespace syntax
 			capped_function_decl,
 			function_call,
 			meta_region,
+			capped_meta_region,
 			alias,
 			struct_decl,
 			capped_struct_decl,
@@ -628,6 +641,7 @@ namespace syntax
 			"capped function declaration",
 			"function call",
 			"meta region",
+			"capped meta region",
 			"alias",
 			"struct declaration",
 			"capped struct declaration",

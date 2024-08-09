@@ -23,7 +23,6 @@ namespace parse
 			reduce_success,
 			shift,
 			send_to_output,
-			silent_reject,
 			error
 		} t;
 		std::string errmsg = "";

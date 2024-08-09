@@ -81,7 +81,6 @@ namespace parse
 							return false;
 						}
 						break;
-						case result::type::silent_reject: this->silent_rejection_count++; continue; break;
 					}
 				}
 				else

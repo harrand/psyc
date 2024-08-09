@@ -9,8 +9,7 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for meta-region \"{}\"", reg.metaname.iden)};
 	}
 	reg.children.push_back(syntax::node{.payload = blk});
-	reg.capped = true;
-	REDUCE_TO(meta_region, reg);
+	REDUCE_TO(capped_meta_region, reg);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -27,7 +26,6 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for meta-region \"{}\"", reg.metaname.iden)};
 	}
 	reg.children.push_back(syntax::node{.payload = blk});
-	reg.capped = true;
-	REDUCE_TO(meta_region, reg);
+	REDUCE_TO(capped_meta_region, reg);
 	return {.t = result::type::reduce_success};
 CHORD_END

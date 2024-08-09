@@ -1,8 +1,8 @@
 // add a variable_decl to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(capped_variable_decl))
-	auto blk = std::move(GETNODE(unfinished_block));
-	auto decl = std::move(GETNODE(capped_variable_decl));
+	auto blk = GETNODE(unfinished_block);
+	auto decl = GETNODE(capped_variable_decl);
 	blk.extend(decl);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -21,7 +21,7 @@ CHORD_END
 // add a nested block to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(block))
-	auto blk = std::move(GETNODE(unfinished_block));
+	auto blk = GETNODE(unfinished_block);
 	auto blk2 = GETNODE(block);
 	blk.extend(blk2);
 	REDUCE_TO(unfinished_block, blk);
@@ -31,8 +31,8 @@ CHORD_END
 // add a meta region to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(meta_region))
-	auto blk = std::move(GETNODE(unfinished_block));
-	auto reg = std::move(GETNODE(meta_region));
+	auto blk = GETNODE(unfinished_block);
+	auto reg = GETNODE(meta_region);
 	blk.extend(reg);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -41,8 +41,8 @@ CHORD_END
 // add an alias to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(alias))
-	auto blk = std::move(GETNODE(unfinished_block));
-	auto al = std::move(GETNODE(alias));
+	auto blk = GETNODE(unfinished_block);
+	auto al = GETNODE(alias);
 	blk.extend(al);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -51,8 +51,8 @@ CHORD_END
 // add an if-statement to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(if_statement))
-	auto blk = std::move(GETNODE(unfinished_block));
-	auto stmt = std::move(GETNODE(if_statement));
+	auto blk = GETNODE(unfinished_block);
+	auto stmt = GETNODE(if_statement);
 	blk.extend(stmt);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -61,7 +61,7 @@ CHORD_END
 // add an else-statement as a child of the if-statement that is at the end of the unfinished block so far. if the last child of this unfinished block is not an if-statement, then emit an error.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(else_statement))
-	auto blk = std::move(GETNODE(unfinished_block));
+	auto blk = GETNODE(unfinished_block);
 	auto else_stmt = GETNODE(else_statement);
 	if(blk.children.empty())
 	{
@@ -81,7 +81,7 @@ CHORD_END
 // close off an unfinished block, spawning a proper block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), TOKEN(cbrace))
-	auto blk = std::move(GETNODE(unfinished_block));
+	auto blk = GETNODE(unfinished_block);
 	auto tok = GETTOKEN();
 	REDUCE_TO(block, blk, tok.meta_srcloc);
 	return {.t = result::type::reduce_success};

@@ -26,7 +26,6 @@ namespace parse
 		std::vector<syntax::node> subtrees = {};
 		syntax::node output = {};
 		std::size_t total_reduction_count = 0;
-		std::size_t silent_rejection_count = 0;
 		std::size_t continuous_rejection_count = 0;
 	};
 

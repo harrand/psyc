@@ -24,13 +24,13 @@
 // set the current index to a certain position within the state (e.g SETINDEX(2) means the token/node at index 2 in the state will be retrieved next)
 #define SETINDEX(i) index = i
 // get the node at the current index, and increment the index. if the node type you specify does not match what you said it would be in the state, then the behaviour is undefined.
-#define GETNODE(x) std::get<syntax::x>(reduce.subtrees[reduce.idx + index++].payload)
+#define GETNODE(x) std::move(std::get<syntax::x>(reduce.subtrees[reduce.idx + index++].payload))
 // get the token at the current index, and increment the index. if the thing at the current index is not a token as per your state definition, then the behaviour is undefined. as you match against a specific token type already this may or may not be very useful.
-#define GETTOKEN() std::get<syntax::unparsed_token>(reduce.subtrees[reduce.idx + index++].payload).tok
+#define GETTOKEN() std::move(std::get<syntax::unparsed_token>(reduce.subtrees[reduce.idx + index++].payload).tok)
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
-#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) PROFZONE_BEGIN(do_reduce); auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees.insert(reduce.subtrees.begin() + reduce.idx, syntax::node{.payload = payload}); PROFZONE_END(do_reduce);
+#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) PROFZONE_BEGIN(do_reduce); auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix + 1, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees[reduce.idx] = syntax::node{.payload = payload}; PROFZONE_END(do_reduce);
 #define REDUCE_TO(type, ...) REDUCE_TO_ADVANCED(0, 0, type, __VA_ARGS__)
 
 #endif // PSYC_PARSE_MACROS_HPP
