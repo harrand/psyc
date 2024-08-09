@@ -2,9 +2,8 @@
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(capped_variable_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto decl = GETNODE(capped_variable_decl);
-	blk.extend(decl);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(capped_variable_decl));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -12,9 +11,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(capped_expression))
 	auto blk = GETNODE(unfinished_block);
-	auto expr = GETNODE(capped_expression);
-	blk.extend(expr);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(capped_expression));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -22,9 +20,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(block))
 	auto blk = GETNODE(unfinished_block);
-	auto blk2 = GETNODE(block);
-	blk.extend(blk2);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(block));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -32,9 +29,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(meta_region))
 	auto blk = GETNODE(unfinished_block);
-	auto reg = GETNODE(meta_region);
-	blk.extend(reg);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(meta_region));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -42,9 +38,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(alias))
 	auto blk = GETNODE(unfinished_block);
-	auto al = GETNODE(alias);
-	blk.extend(al);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(alias));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -52,9 +47,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(if_statement))
 	auto blk = GETNODE(unfinished_block);
-	auto stmt = GETNODE(if_statement);
-	blk.extend(stmt);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(if_statement));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -62,7 +56,6 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(else_statement))
 	auto blk = GETNODE(unfinished_block);
-	auto else_stmt = GETNODE(else_statement);
 	if(blk.children.empty())
 	{
 		return {.t = result::type::error, .errmsg = "123"};
@@ -73,8 +66,8 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = std::format("else-statement must proceed an if-statement. it instead seems to proceed a {}", last_child->name())};
 	}
-	last_child->children().push_back(syntax::node{.payload = else_stmt});
-	REDUCE_TO(unfinished_block, blk);
+	last_child->children().push_back(syntax::node{.payload = GETNODE(else_statement)});
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -83,7 +76,7 @@ CHORD_BEGIN
 	STATE(NODE(unfinished_block), TOKEN(cbrace))
 	auto blk = GETNODE(unfinished_block);
 	auto tok = GETTOKEN();
-	REDUCE_TO(block, blk, tok.meta_srcloc);
+	REDUCE_TO(block, std::move(blk), tok.meta_srcloc);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -92,9 +85,8 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(capped_function_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto fn = GETNODE(capped_function_decl);
-	blk.extend(fn);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(capped_function_decl));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -102,8 +94,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(capped_struct_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto structd = GETNODE(capped_struct_decl);
-	blk.extend(structd);
-	REDUCE_TO(unfinished_block, blk);
+	blk.extend(GETNODE(capped_struct_decl));
+	REDUCE_TO(unfinished_block, std::move(blk));
 	return {.t = result::type::reduce_success};
 CHORD_END

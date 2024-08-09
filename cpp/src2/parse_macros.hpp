@@ -16,7 +16,7 @@
 	- shift-but-clear-lookahead (same as shift, but the lookahead symbol is cleared out. this is useful if you've found a perfect match but the last element is the lookahead symbol, meaning you're one shift away from being able to do the reduction)
 	- error (syntax error). potentially useful if you want to give helpful error messages in the case of a certain known-erroneous pattern
 */
-#define STATE(...) [](){return std::array{__VA_ARGS__};}(), [](reducer reduce)->result{std::size_t index = 0; constexpr std::size_t count = VARARGS_COUNT(__VA_ARGS__);diag::assert_that(reduce.subtrees.size() - reduce.idx + 1 >= count, error_code::ice, "current parser state ({} subtrees excluding +1 lookahead token) is too small for this chord, which demands at least {} subtrees + lookaheads total", reduce.subtrees.size(), count);
+#define STATE(...) [](){return std::array{__VA_ARGS__};}(), [](reducer reduce)->result{PROFZONE("reduce fn");std::size_t index = 0; constexpr std::size_t count = VARARGS_COUNT(__VA_ARGS__);diag::assert_that(reduce.subtrees.size() - reduce.idx + 1 >= count, error_code::ice, "current parser state ({} subtrees excluding +1 lookahead token) is too small for this chord, which demands at least {} subtrees + lookaheads total", reduce.subtrees.size(), count);
 
 #define CHORD_BEGIN add_new_reduction(
 #define CHORD_END });
@@ -30,7 +30,7 @@
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
 // reduce everything emcompassed by the state to a single new subtree.
 // currently we assume a reduction function will only perform one single reduction, and will always reduce the entire state into that single result. this is unaffected by the current index as per SETINDEX
-#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) PROFZONE_BEGIN(do_reduce); auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix + 1, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees[reduce.idx] = syntax::node{.payload = payload}; PROFZONE_END(do_reduce);
+#define REDUCE_TO_ADVANCED(prefix, suffix, type, ...) auto meta = reduce.subtrees[reduce.idx + prefix].loc(); reduce.subtrees.erase(reduce.subtrees.begin() + reduce.idx + prefix + 1, reduce.subtrees.begin() + reduce.idx + count - suffix); auto payload = syntax::type(__VA_ARGS__); payload.loc = meta; reduce.subtrees[reduce.idx] = syntax::node{.payload = payload};
 #define REDUCE_TO(type, ...) REDUCE_TO_ADVANCED(0, 0, type, __VA_ARGS__)
 
 #endif // PSYC_PARSE_MACROS_HPP

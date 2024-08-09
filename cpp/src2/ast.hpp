@@ -41,6 +41,7 @@ namespace syntax
 		unfinished_block(T node):
 		start(node.loc)
 		{
+			this->children.reserve(64);
 			this->children.push_back(syntax::node{.payload = node});
 		}
 
