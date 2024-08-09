@@ -14,7 +14,7 @@ CHORD_END
 // if decl didnt have an initialiser before, add that expr as the initialiser.
 // if it did, emit a compile error.
 CHORD_BEGIN
-	STATE(NODE(variable_decl), TOKEN(col), TOKEN(eq), NODE(expression))
+	STATE(NODE(variable_decl), TOKEN(col), TOKEN(eq), NODE(capped_expression))
 
 	syntax::variable_decl var = GETNODE(variable_decl);
 	// two initialisers next to each other?
@@ -23,12 +23,8 @@ CHORD_BEGIN
 		return {.t = result::type::error, .errmsg = std::format("two adjacent initialisers found for variable \"{}\"", var.var_name.iden)};
 	}
 	SETINDEX(3);
-	auto expr_init = GETNODE(expression);
-	if(!expr_init.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	REDUCE_TO(variable_decl, var.var_name, var.type_name, expr_init, true);
+	auto expr_init = GETNODE(capped_expression);
+	REDUCE_TO(capped_variable_decl, var.var_name, var.type_name, expr_init);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -36,7 +32,6 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(semicol))
 	auto decl = std::move(GETNODE(variable_decl));
-	decl.capped = true;
-	REDUCE_TO(variable_decl, decl);
+	REDUCE_TO(capped_variable_decl, decl);
 	return {.t = result::type::reduce_success};
 CHORD_END

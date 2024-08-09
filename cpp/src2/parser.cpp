@@ -33,6 +33,7 @@ namespace parse
 					PROFZONE("reduce");
 					result res = reduc.reduce_fn(this->make_reducer(i));
 					this->total_reduction_count++;
+					this->continuous_rejection_count = 0;
 					switch(res.t)
 					{
 						case result::type::reduce_success:
@@ -86,6 +87,27 @@ namespace parse
 				else
 				{
 					// continue
+					if(this->continuous_rejection_count++ >= 128)
+					{
+						std::string names;
+						std::size_t j = 0;
+						for(auto iter = this->subtrees.begin() + i; iter != this->subtrees.end();iter++)
+						{
+							names += std::format("{}: {} ({})\n", i + j++, iter->name(), iter->to_string());
+						}
+						diag::error_nonblocking(error_code::parse, "reduce_fn was nullptr {} times in a row. location: {}\nsubtree state:\n{}", this->continuous_rejection_count, this->subtrees[i].loc().to_string(), names);
+
+						// print out 0..i just incase
+						if(i > 0)
+						{
+							names = {};
+							for(j = 0; j < i; j++)
+							{
+								names += std::format("{}: {} ({})\n", j, this->subtrees[j].name(), this->subtrees[j].to_string());
+							}
+							diag::error(error_code::parse, "preceding subtree state (0->{}):\n{}", i, names);
+						}
+					}
 				}
 			}
 		}
@@ -107,6 +129,7 @@ namespace parse
 		}
 
 		this->subtrees.push_back(syntax::make_node(t));
+		this->continuous_rejection_count = 0;
 		return true;
 	}
 

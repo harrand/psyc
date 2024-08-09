@@ -271,7 +271,10 @@ namespace syntax
 
 	struct capped_expression : public expression
 	{
-		capped_expression();
+		capped_expression(): expression()
+		{
+			expression::capped = true;
+		}
 		capped_expression(const expression& expr): expression(expr)
 		{
 			this->capped = true;
@@ -403,6 +406,10 @@ namespace syntax
 
 	struct capped_function_decl : public function_decl
 	{
+		capped_function_decl(const function_decl& cpy): function_decl(cpy)
+		{
+			function_decl::capped = true;
+		}
 		capped_function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): function_decl(func_name, params, return_type_name)
 		{
 			function_decl::capped = true;
@@ -610,14 +617,15 @@ namespace syntax
 			"string literal",
 			"null literal",
 			"identifier",
-			"capped expression",
 			"expression",
+			"capped expression",
 			"expression list",
 			"namespace access",
 			"variable declaration",
 			"capped variable declaration",
 			"variable declaration list",
 			"function declaration",
+			"capped function declaration",
 			"function call",
 			"meta region",
 			"alias",

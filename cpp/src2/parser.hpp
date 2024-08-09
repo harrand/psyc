@@ -27,6 +27,7 @@ namespace parse
 		syntax::node output = {};
 		std::size_t total_reduction_count = 0;
 		std::size_t silent_rejection_count = 0;
+		std::size_t continuous_rejection_count = 0;
 	};
 
 	syntax::node tokens(lex::output tokens);

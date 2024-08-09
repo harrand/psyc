@@ -12,7 +12,7 @@ CHORD_BEGIN
 			return {.t = result::type::error, .errmsg = std::format("function \"{}\" was marked as `extern` twice.", fn.func_name.iden)};
 		}
 		fn.is_extern = true;
-		REDUCE_TO(function_decl, fn);
+		REDUCE_TO(capped_function_decl, fn);
 		return {.t = result::type::reduce_success};
 	}
 	return {.t = result::type::error, .errmsg = std::format("assignment rhs of a function declaration {} must be one of the following: `extern`. the value \"{}\" is unrecognised", fn.func_name.iden, value.iden)};
@@ -24,13 +24,8 @@ CHORD_BEGIN
 	STATE(NODE(function_decl), NODE(block))
 	syntax::function_decl fn = GETNODE(function_decl);
 	syntax::block blk = GETNODE(block);
-	if(fn.capped)
-	{
-		return {.t = result::type::error, .errmsg = std::format("detected multiple implementation blocks for function \"{}\"", fn.func_name.iden)};
-	}
 	fn.children.push_back(syntax::node{.payload = blk});
-	fn.capped = true;
-	REDUCE_TO(function_decl, fn);
+	REDUCE_TO(capped_function_decl, fn);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -43,11 +38,6 @@ CHORD_BEGIN
 	{
 		return {.t = result::type::error, .errmsg = std::format("function \"{}\" marked as extern, but is also followed by an implementation block. extern functions have no implementation.", fn.func_name.iden)};
 	}
-	if(fn.capped)
-	{
-		return {.t = result::type::error, .errmsg = std::format("function \"{}\" has two implementation blocks? it must have only one, or be marked as extern with no block at all.", fn.func_name.iden)};
-	}
-	fn.capped = true;
-	REDUCE_TO(function_decl, fn);
+	REDUCE_TO(capped_function_decl, fn);
 	return {.t = result::type::reduce_success};
 CHORD_END

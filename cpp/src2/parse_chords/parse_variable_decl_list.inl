@@ -1,11 +1,23 @@
 // decl-list decl,
 // adds the decl to the list.
 CHORD_BEGIN
-	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(variable_decl))
-
-	syntax::variable_decl_list list = GETNODE(variable_decl_list);
+	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(capped_variable_decl))
+	auto list = GETNODE(variable_decl_list);
 	SETINDEX(2);
-	list.decls.push_back(GETNODE(variable_decl));
+	list.decls.push_back(GETNODE(capped_variable_decl));
+	REDUCE_TO(variable_decl_list, list);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(variable_decl_list))
+	auto list = GETNODE(variable_decl_list);
+	SETINDEX(2);
+	auto rhs = GETNODE(variable_decl_list);
+	for(const auto& decl : rhs.decls)
+	{
+		list.decls.push_back(decl);
+	}
 	REDUCE_TO(variable_decl_list, list);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -13,14 +25,10 @@ CHORD_END
 // decl-list := expr
 // adds the initialiser to the last element in the decl list
 CHORD_BEGIN
-	STATE(NODE(variable_decl_list), TOKEN(col), TOKEN(eq), NODE(expression))
+	STATE(NODE(variable_decl_list), TOKEN(col), TOKEN(eq), NODE(capped_expression))
 	syntax::variable_decl_list list = GETNODE(variable_decl_list);
 	SETINDEX(3);
-	syntax::expression initialiser = GETNODE(expression);
-	if(!initialiser.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto initialiser = GETNODE(capped_expression);
 	if(list.decls.empty())
 	{
 		return {.t = result::type::error, .errmsg = std::format("attempt to assign an initialiser expression to an empty decl list")};

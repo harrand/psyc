@@ -80,13 +80,9 @@ CHORD_END
 // { expr
 // starts an unfinished block
 CHORD_BEGIN
-	STATE(TOKEN(obrace), NODE(expression))
+	STATE(TOKEN(obrace), NODE(capped_expression))
 	SETINDEX(1);
-	auto expr = GETNODE(expression);
-	if(!expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto expr = GETNODE(capped_expression);
 	REDUCE_TO(unfinished_block, expr);
 
 	return {.t = result::type::reduce_success};
@@ -95,13 +91,9 @@ CHORD_END
 // { decl
 // starts an unfinished block
 CHORD_BEGIN
-	STATE(TOKEN(obrace), NODE(variable_decl))
+	STATE(TOKEN(obrace), NODE(capped_variable_decl))
 	SETINDEX(1);
-	auto decl = GETNODE(variable_decl);
-	if(!decl.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto decl = GETNODE(capped_variable_decl);
 	REDUCE_TO(unfinished_block, decl);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -179,14 +171,10 @@ CHORD_END
 // defer expr
 // creates a deferred expression
 CHORD_BEGIN
-	STATE(TOKEN(keyword_defer), NODE(expression))
+	STATE(TOKEN(keyword_defer), NODE(capped_expression))
 	SETINDEX(1);
-	auto expr = GETNODE(expression);
-	if(!expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	REDUCE_TO(expression, syntax::expression::type::defer, expr, {}, true);
+	auto expr = GETNODE(capped_expression);
+	REDUCE_TO(capped_expression, syntax::expression::type::defer, expr, {});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -203,15 +191,11 @@ CHORD_END
 // .iden := init
 // designated initialiser
 CHORD_BEGIN
-	STATE(TOKEN(dot), NODE(identifier), TOKEN(col), TOKEN(eq), NODE(expression))
+	STATE(TOKEN(dot), NODE(identifier), TOKEN(col), TOKEN(eq), NODE(capped_expression))
 	SETINDEX(1);
 	auto member_iden = GETNODE(identifier);
 	SETINDEX(4);
-	auto initialiser = GETNODE(expression);
-	if(!initialiser.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto initialiser = GETNODE(capped_expression);
 	REDUCE_TO(designated_initialiser, member_iden, initialiser);
 	return {.t = result::type::reduce_success};
 CHORD_END
@@ -304,28 +288,21 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// return cappedexpr
+// return a statement.
 CHORD_BEGIN
-	STATE(TOKEN(keyword_return), NODE(expression))
+	STATE(TOKEN(keyword_return), NODE(capped_expression))
 	SETINDEX(1);
-	auto expr = GETNODE(expression);
-	if(!expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	REDUCE_TO(expression, syntax::expression::type::return_statement, expr, {}, true);
+	auto expr = GETNODE(capped_expression);
+	REDUCE_TO(capped_expression, syntax::expression::type::return_statement, expr, {});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
 // source-begin function-decl
 CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(function_decl))
+	STATE(TOKEN(source_begin), NODE(capped_function_decl))
 	SETINDEX(1);
-	auto fn = GETNODE(function_decl);
-	if(fn.capped || fn.is_extern)
-	{
-		return {.t = result::type::send_to_output, .offset = 1};
-	}
-	return {.t = result::type::silent_reject};
+	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin meta-region
@@ -342,26 +319,18 @@ CHORD_END
 
 // source-begin meta-region
 CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(variable_decl))
+	STATE(TOKEN(source_begin), NODE(capped_variable_decl))
 	SETINDEX(1);
-	auto decl = GETNODE(variable_decl);
-	if(decl.capped)
-	{
-		return {.t = result::type::send_to_output, .offset = 1};
-	}
-	return {.t = result::type::silent_reject};
+	auto decl = GETNODE(capped_variable_decl);
+	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin struct
 CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(struct_decl))
+	STATE(TOKEN(source_begin), NODE(capped_struct_decl))
 	SETINDEX(1);
-	auto structd = GETNODE(struct_decl);
-	if(structd.capped)
-	{
-		return {.t = result::type::send_to_output, .offset = 1};
-	}
-	return {.t = result::type::silent_reject};
+	auto structd = GETNODE(capped_struct_decl);
+	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin if-statement

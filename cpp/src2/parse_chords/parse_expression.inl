@@ -1,20 +1,12 @@
-// expr,expr
+// cappedexpr,cappedexpr
 // becomes an expression list
 CHORD_BEGIN
-	STATE(NODE(expression), TOKEN(comma), NODE(expression))
+	STATE(NODE(capped_expression), TOKEN(comma), NODE(capped_expression))
 	std::vector<syntax::expression> exprs;
-	auto expr1 = GETNODE(expression);
-	if(!expr1.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto expr1 = GETNODE(capped_expression);
 	exprs.push_back(expr1);
 	SETINDEX(2);
-	auto expr2 = GETNODE(expression);
-	if(!expr2.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto expr2 = GETNODE(capped_expression);
 	exprs.push_back(expr2);
 	REDUCE_TO(expression_list, std::move(exprs));
 	return {.t = result::type::reduce_success};
@@ -25,8 +17,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(semicol))
 	auto expr = std::move(GETNODE(expression));
-	expr.capped = true;
-	REDUCE_TO(expression, expr);
+	REDUCE_TO(capped_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -35,12 +26,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(comma))
 	auto expr = GETNODE(expression);
-	if(expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	expr.capped = true;
-	REDUCE_TO_ADVANCED(0, 1, expression, expr);
+	REDUCE_TO_ADVANCED(0, 1, capped_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -49,12 +35,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(cparen))
 	auto expr = GETNODE(expression);
-	if(expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	expr.capped = true;
-	REDUCE_TO_ADVANCED(0, 1, expression, expr);
+	REDUCE_TO_ADVANCED(0, 1, capped_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -63,12 +44,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(expression), TOKEN(cbrace))
 	auto expr = GETNODE(expression);
-	if(expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	expr.capped = true;
-	REDUCE_TO_ADVANCED(0, 1, expression, expr);
+	REDUCE_TO_ADVANCED(0, 1, capped_expression, expr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -90,7 +66,18 @@ CHORD_BEGIN
 	auto expr = std::move(GETNODE(expression));
 	SETINDEX(2);
 	auto typeexpr = std::move(GETNODE(expression));
-	REDUCE_TO(expression, syntax::expression::type::cast, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::cast, expr, typeexpr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// expr@cappedexpr
+// reduces to a cast
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(cast), NODE(capped_expression))
+	auto expr = std::move(GETNODE(expression));
+	SETINDEX(2);
+	auto typeexpr = std::move(GETNODE(capped_expression));
+	REDUCE_TO(capped_expression, syntax::expression::type::cast, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -101,7 +88,7 @@ CHORD_BEGIN
 	auto expr = std::move(GETNODE(expression));
 	SETINDEX(2);
 	auto typeexpr = std::move(GETNODE(expression));
-	REDUCE_TO(expression, syntax::expression::type::addition, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::addition, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -112,7 +99,7 @@ CHORD_BEGIN
 	auto expr = std::move(GETNODE(expression));
 	SETINDEX(2);
 	auto typeexpr = std::move(GETNODE(expression));
-	REDUCE_TO(expression, syntax::expression::type::subtraction, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::subtraction, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -123,7 +110,7 @@ CHORD_BEGIN
 	auto expr = std::move(GETNODE(expression));
 	SETINDEX(2);
 	auto typeexpr = std::move(GETNODE(expression));
-	REDUCE_TO(expression, syntax::expression::type::multiplication, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::multiplication, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -134,7 +121,7 @@ CHORD_BEGIN
 	auto expr = std::move(GETNODE(expression));
 	SETINDEX(2);
 	auto typeexpr = std::move(GETNODE(expression));
-	REDUCE_TO(expression, syntax::expression::type::division, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::division, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -146,11 +133,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	auto typeexpr = GETNODE(expression);
 	// assignment requires rhs expression to be capped. this could be wrong in some cases, the reason i've added it is that this means it has highest precedence. i.e x = y + z reduces to eq(x, plus(y, z)) and not plus(eq(x, y), z)
-	if(!typeexpr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	REDUCE_TO(expression, syntax::expression::type::assign, expr, typeexpr, typeexpr.capped);
+	REDUCE_TO(expression, syntax::expression::type::assign, expr, typeexpr);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

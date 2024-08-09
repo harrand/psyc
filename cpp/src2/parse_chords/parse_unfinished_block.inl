@@ -1,12 +1,8 @@
 // add a variable_decl to the end of the unfinished block.
 CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(variable_decl))
+	STATE(NODE(unfinished_block), NODE(capped_variable_decl))
 	auto blk = std::move(GETNODE(unfinished_block));
-	auto decl = std::move(GETNODE(variable_decl));
-	if(!decl.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto decl = std::move(GETNODE(capped_variable_decl));
 	blk.extend(decl);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -14,13 +10,9 @@ CHORD_END
 
 // add an expression to the end of the unfinished block.
 CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(expression))
+	STATE(NODE(unfinished_block), NODE(capped_expression))
 	auto blk = GETNODE(unfinished_block);
-	auto expr = GETNODE(expression);
-	if(!expr.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto expr = GETNODE(capped_expression);
 	blk.extend(expr);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -98,13 +90,9 @@ CHORD_END
 // unfinished-block function-decl
 // add the function decl to the end of the block, and convert the block into an unfinished-struct. this is because if a block has a function declaration inside of it, it must be a struct method.
 CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(function_decl))
+	STATE(NODE(unfinished_block), NODE(capped_function_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto fn = GETNODE(function_decl);
-	if(!fn.capped && !fn.is_extern)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto fn = GETNODE(capped_function_decl);
 	blk.extend(fn);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};
@@ -112,13 +100,9 @@ CHORD_END
 
 // add a struct_decl to the end of the unfinished block.
 CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(struct_decl))
+	STATE(NODE(unfinished_block), NODE(capped_struct_decl))
 	auto blk = GETNODE(unfinished_block);
-	auto structd = GETNODE(struct_decl);
-	if(!structd.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
+	auto structd = GETNODE(capped_struct_decl);
 	blk.extend(structd);
 	REDUCE_TO(unfinished_block, blk);
 	return {.t = result::type::reduce_success};

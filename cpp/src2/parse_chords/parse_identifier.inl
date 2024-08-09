@@ -13,16 +13,12 @@ CHORD_END
 // iden ::= expr
 // weakly-typed variable declaration with an initialiser.
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(eq), NODE(expression))
+	STATE(NODE(identifier), TOKEN(colcol), TOKEN(eq), NODE(capped_expression))
 	
 	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(3);
-	syntax::expression initialiser = GETNODE(expression);
-	if(!initialiser.capped)
-	{
-		return {.t = result::type::silent_reject};
-	}
-	REDUCE_TO(variable_decl, name, syntax::identifier{syntax::inferred_typename}, initialiser, true);
+	auto initialiser = GETNODE(capped_expression);
+	REDUCE_TO(capped_variable_decl, name, syntax::identifier{syntax::inferred_typename}, initialiser);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -140,7 +136,7 @@ CHORD_BEGIN
 	auto blk = std::move(GETNODE(block));
 	auto result_struct = syntax::struct_decl{name, true};
 	result_struct.children.push_back(syntax::node{.payload = blk});
-	REDUCE_TO(struct_decl, result_struct);
+	REDUCE_TO(capped_struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
