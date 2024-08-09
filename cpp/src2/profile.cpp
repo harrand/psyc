@@ -15,5 +15,5 @@ void operator delete ( void * ptr ) noexcept
 }
 
 #else
-#include "mimalloc-override.h"
+#include "mimalloc-new-delete.h"
 #endif
