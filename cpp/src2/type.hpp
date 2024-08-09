@@ -41,6 +41,7 @@ struct itype : public util::unique_cloneable<itype>
 		primitive_type,
 		struct_type,
 		pointer_type,
+		array_type,
 		alias_type,
 		function_type,
 		ill_formed,
@@ -55,6 +56,7 @@ struct itype : public util::unique_cloneable<itype>
 	std::string get_qualified_name() const;
 	const char* hint_name() const;
 	bool is_pointer() const;
+	bool is_array() const;
 	bool is_struct() const;
 	bool is_function() const;
 	bool is_alias() const;
@@ -187,6 +189,17 @@ struct struct_type : public itype
 	COPY_UNIQUE_CLONEABLE(itype)
 
 	std::vector<data_member> members;
+};
+
+struct array_type : public itype
+{
+	array_type(type_ptr element_type, std::size_t array_size);
+	array_type(const array_type& cpy);
+	type_ptr get_element_type() const;
+	COPY_UNIQUE_CLONEABLE(itype)
+
+	type_ptr element_type;
+	std::size_t array_size;
 };
 
 struct incomplete_type : public itype

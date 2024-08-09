@@ -71,6 +71,10 @@ int main(int argc, char** argv)
 	volatile typeconv fn_conv = my_func_ty->can_explicitly_convert_to(*my_other_func_ty);
 	volatile typeconv fn_p_conv = sys.get_type("morbinston")->ref()->can_explicitly_convert_to(*my_func_ty);
 	volatile typeconv p_fn_conv = my_func_ty->can_explicitly_convert_to(*sys.get_type("morbinston")->ref());
+	type_ptr my_arr_ty = sys.get_type("i64[123]");
+	diag::assert_that(my_arr_ty != nullptr, error_code::type, "couldnt resolve i64[123] to a valid type");
+	diag::assert_that(my_arr_ty->is_array(), error_code::type, "type system doesnt think i64[123] is an array type...");
+	diag::assert_that(static_cast<array_type*>(my_arr_ty.get())->get_element_type()->is_primitive(), error_code::type, "type system doesnt think element type of i64[123] is a primitive.");
 
 	static_value i64_literal_123
 	{

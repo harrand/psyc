@@ -1,5 +1,6 @@
 #include "type.hpp"
 #include "diag.hpp"
+#include <sstream>
 
 constexpr static std::array<const char*, static_cast<int>(itype::hint::_count)> hint_names
 {
@@ -32,6 +33,11 @@ const char* itype::hint_name() const
 bool itype::is_pointer() const
 {
 	return this->h == hint::pointer_type;
+}
+
+bool itype::is_array() const
+{
+	return this->h == hint::array_type;
 }
 
 bool itype::is_struct() const
@@ -445,6 +451,17 @@ struct_type::struct_type(const struct_type& cpy): itype(cpy), members()
 	}
 }
 
+array_type::array_type(type_ptr element_type, std::size_t array_size): itype(std::format("{}[{}]", element_type->get_qualified_name(), array_size), itype::hint::array_type), element_type(std::move(element_type)), array_size(array_size){}
+
+array_type::array_type(const array_type& cpy): itype(cpy),
+element_type(cpy.element_type->unique_clone()),
+array_size(cpy.array_size){}
+
+type_ptr array_type::get_element_type() const
+{
+	return this->element_type->unique_clone();
+}
+
 incomplete_type::incomplete_type(std::string name): itype(name, itype::hint::ill_formed){}
 
 incomplete_type::incomplete_type(const incomplete_type& cpy): itype(cpy){}
@@ -565,7 +582,8 @@ type_ptr type_system::get_type(std::string type_name) const
 		const bool found_static = next.starts_with(" static");
 		const bool found_weak = next.starts_with(" weak");
 		const bool found_ptr = next.starts_with("&");
-		if(found_const || found_static || found_weak || found_ptr)
+		const bool found_arr = next.starts_with("[");
+		if(found_const || found_static || found_weak || found_ptr || found_arr)
 		{
 			ret = this->get_type(std::string{previous});
 			if(found_const)
@@ -583,6 +601,20 @@ type_ptr type_system::get_type(std::string type_name) const
 			if(found_ptr)
 			{
 				ret = ret->ref();
+			}
+			if(found_arr)
+			{
+				auto close_pos = next.find_first_of("]");
+				diag::assert_that(close_pos != std::string_view::npos, error_code::type, "invalid typename \"{}\" - found open bracket without terminating close bracket", type_name);
+				std::string_view arr_bits = std::string_view{next}.substr(1, close_pos - 1);
+
+				std::stringstream ss(std::string{arr_bits});
+				std::size_t arr_size;
+				ss >> arr_size;
+				diag::assert_that(!ss.fail(), error_code::type, "in attempt to get type from typename \"{}\", could not convert \"{}\" to an integer literal. please note that passing static integers as array sizes is NYI", type_name, arr_bits);
+
+				ret = array_type{this->get_type(std::string{previous}), arr_size}.unique_clone();
+				iter += close_pos;
 			}
 		}
 	}
