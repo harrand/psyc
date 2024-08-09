@@ -277,6 +277,20 @@ namespace lex
 			// don't break on a space if its immediately followed by const.
 			return false;
 		}
+		static std::size_t array_level = 0;
+		if(str.starts_with("["))
+		{
+			array_level++;
+			return false;
+		}
+		if(array_level > 0)
+		{
+			if(str.starts_with("]"))
+			{
+				array_level--;
+			}
+			return false;
+		}
 		return (!std::isalnum(str.front())
 				&& str.front() != '_'
 				&& str.front() != '&')

@@ -301,31 +301,24 @@ CHORD_END
 // source-begin function-decl
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(capped_function_decl))
-	SETINDEX(1);
 	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin meta-region
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(capped_meta_region))
-	SETINDEX(1);
-	auto reg = GETNODE(capped_meta_region);
 	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin meta-region
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(capped_variable_decl))
-	SETINDEX(1);
-	auto decl = GETNODE(capped_variable_decl);
 	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin struct
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(capped_struct_decl))
-	SETINDEX(1);
-	auto structd = GETNODE(capped_struct_decl);
 	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
@@ -334,7 +327,7 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(source_begin), NODE(if_statement))
 	SETINDEX(1);
-	auto ifst = GETNODE(if_statement);
+	auto ifst = GETNODE_CPY(if_statement);
 	if(!ifst.is_static)
 	{
 		return {.t = result::type::error, .errmsg = "non-static if-statements must be within a block, not in the global scope", .offset = 1};

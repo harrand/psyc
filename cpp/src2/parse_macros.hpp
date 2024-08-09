@@ -25,6 +25,7 @@
 #define SETINDEX(i) index = i
 // get the node at the current index, and increment the index. if the node type you specify does not match what you said it would be in the state, then the behaviour is undefined.
 #define GETNODE(x) std::move(std::get<syntax::x>(reduce.subtrees[reduce.idx + index++].payload))
+#define GETNODE_CPY(x) std::get<syntax::x>(reduce.subtrees[reduce.idx + index++].payload)
 // get the token at the current index, and increment the index. if the thing at the current index is not a token as per your state definition, then the behaviour is undefined. as you match against a specific token type already this may or may not be very useful.
 #define GETTOKEN() std::move(std::get<syntax::unparsed_token>(reduce.subtrees[reduce.idx + index++].payload).tok)
 // figure out whether the subtrees currently matching the provided state contains the lookahead token at the end (meaning the subtrees dont actually match, but will once you shift one more time). it may be useful to return shift-but-clear-lookahead in this case. otherwise, the next lookahead may not be a token you care about but will prevent the state from matching as it could be anything. this is unaffected by the current index as per SETINDEX
