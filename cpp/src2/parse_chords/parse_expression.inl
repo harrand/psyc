@@ -39,6 +39,15 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expression]]
+// reduces into an expression that is guaranteed to be capped. doesn't consume the comma
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(cbrackbrack))
+	auto expr = GETNODE(expression);
+	REDUCE_TO_ADVANCED(0, 1, capped_expression, expr);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // expression}
 // reduces into an expression that is guaranteed to be capped. doesn't consume the cbrace
 CHORD_BEGIN

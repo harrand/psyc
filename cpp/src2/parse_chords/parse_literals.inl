@@ -28,6 +28,13 @@ CHORD_BEGIN\
 CHORD_END\
  \
 CHORD_BEGIN\
+	STATE(NODE(ty), TOKEN(cbrackbrack))\
+	syntax::ty intlit = GETNODE(ty);\
+	REDUCE_TO_ADVANCED(0, 1, expression, syntax::expression::type::ty, intlit);\
+	return {.t = result::type::reduce_success};\
+CHORD_END\
+ \
+CHORD_BEGIN\
 	STATE(NODE(ty), TOKEN(cast))\
 	syntax::ty intlit = GETNODE(ty);\
 	REDUCE_TO_ADVANCED(0, 1, expression, syntax::expression::type::ty, intlit);\

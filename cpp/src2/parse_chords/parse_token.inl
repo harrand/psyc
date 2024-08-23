@@ -288,6 +288,18 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// annotated function-decl.
+CHORD_BEGIN
+	STATE(TOKEN(obrackbrack), NODE(expression_list), TOKEN(cbrackbrack), NODE(function_decl))
+	SETINDEX(1);
+	syntax::annotations anno{GETNODE(expression_list)};
+	SETINDEX(3);
+	auto fn = GETNODE(function_decl);
+	fn.annotations.exprs.insert(fn.annotations.exprs.end(), anno.exprs.begin(), anno.exprs.end());
+	REDUCE_TO(function_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // return cappedexpr
 // return a statement.
 CHORD_BEGIN

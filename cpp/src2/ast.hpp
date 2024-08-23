@@ -308,6 +308,25 @@ namespace syntax
 		}
 	};
 
+	struct annotations : public expression_list
+	{
+		annotations(std::vector<expression> exprs = {}): expression_list(exprs){}
+		annotations(const expression_list& elist): expression_list(elist){}
+
+		std::string to_string() const
+		{
+			std::string contents = "";
+			for(std::size_t i = 0; i < this->exprs.size(); i++)
+			{
+				contents += this->exprs[i].to_string();
+				if(i < (this->exprs.size() - 1))
+				{
+					contents += ", ";
+				}
+			}
+			return std::format("annotations({})", contents);
+		}
+	};
 
 	struct namespace_access : public nodecomn
 	{
@@ -395,13 +414,14 @@ namespace syntax
 		identifier func_name;
 		variable_decl_list params;
 		identifier return_type_name;
+		annotations annotations = {};
 		std::string struct_owner = "";
 		bool is_extern = false;
 		bool capped = false;
 		
 		std::string to_string() const
 		{
-			return std::format("function-decl({} :: {} -> {}{})", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			return std::format("function-decl({}{} :: {} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 		}
 	};
 
