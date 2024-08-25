@@ -148,6 +148,16 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// { capped_struct_decl
+// starts an unfinished block
+CHORD_BEGIN
+	STATE(TOKEN(obrace), NODE(capped_struct_decl))
+	SETINDEX(1);
+	auto structd = GETNODE(capped_struct_decl);
+	REDUCE_TO(unfinished_block, structd);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // ref expr
 // creates a ref expression
 CHORD_BEGIN
