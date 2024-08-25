@@ -315,6 +315,33 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// [[expr-list]] struct-decl
+// annotated struct-decl (multi expr)
+CHORD_BEGIN
+	STATE(TOKEN(obrackbrack), NODE(expression_list), TOKEN(cbrackbrack), NODE(capped_struct_decl))
+	SETINDEX(1);
+	syntax::annotations anno{GETNODE(expression_list)};
+	SETINDEX(3);
+	auto fn = GETNODE(capped_struct_decl);
+	fn.annotations.exprs.insert(fn.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
+	REDUCE_TO(capped_struct_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// [[expr]] struct-decl
+// annotated struct-decl (single expr).
+CHORD_BEGIN
+	STATE(TOKEN(obrackbrack), NODE(capped_expression), TOKEN(cbrackbrack), NODE(capped_struct_decl))
+	SETINDEX(1);
+	syntax::annotations anno;
+	anno.exprs.push_back({GETNODE(capped_expression)});
+	SETINDEX(3);
+	auto fn = GETNODE(capped_struct_decl);
+	fn.annotations.exprs.insert(fn.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
+	REDUCE_TO(capped_struct_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // return cappedexpr
 // return a statement.
 CHORD_BEGIN
