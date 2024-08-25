@@ -157,6 +157,19 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// expr.func-call
+// uniform function call syntax: x.f(a, b) ==> f(x, a, b)
+CHORD_BEGIN
+	STATE(NODE(expression), TOKEN(dot), NODE(function_call))
+
+	auto expr = GETNODE(expression);
+	SETINDEX(2);
+	auto call = GETNODE(function_call);
+	call.params.exprs.insert(call.params.exprs.begin(), expr);
+	REDUCE_TO(function_call, call);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // expr == expr
 // equality compare
 CHORD_BEGIN
