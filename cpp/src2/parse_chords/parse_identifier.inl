@@ -194,14 +194,3 @@ CHORD_BEGIN
 	REDUCE_TO(namespace_access, lhs, rhs);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
-// iden#iden
-// token concatenation
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(hash), NODE(identifier))
-	auto lhs = GETNODE(identifier);
-	SETINDEX(2);
-	auto rhs = GETNODE(identifier);
-	REDUCE_TO(identifier, lhs.iden + '#' + rhs.iden);
-	return {.t = result::type::reduce_success};
-CHORD_END
