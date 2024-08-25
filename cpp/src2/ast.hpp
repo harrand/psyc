@@ -203,7 +203,6 @@ namespace syntax
 			bool_literal,
 			null_literal,
 			parenthesised_expression,
-			macro_call,
 			function_call,
 			return_statement,
 			cast,
@@ -234,7 +233,6 @@ namespace syntax
 			"boollit",
 			"nulllit",
 			"parenthesised",
-			"macro",
 			"call",
 			"return",
 			"cast",
@@ -260,7 +258,7 @@ namespace syntax
 		template<typename T, typename U = T>
 		expression(type t, T expr, U extra, bool capped = false): t(t), expr(util::box{syntax::node{.payload = expr}}), extra(util::box{syntax::node{.payload = extra}}), capped(capped){}
 		template<typename T>
-		expression(type t, T expr): expression(t, expr, std::monostate{}, false){}
+		expression(type t, T expr): expression(t, expr, T{}, false){}
 
 		type t = type::_unknown;
 		boxed_node expr;
@@ -285,7 +283,7 @@ namespace syntax
 		template<typename T, typename U = T>
 		capped_expression(type t, T expr, U extra): expression(t, expr, extra, true){}
 		template<typename T>
-		capped_expression(type t, T expr): expression(t, expr, std::monostate{}, true){}
+		capped_expression(type t, T expr): expression(t, expr, T{}, true){}
 	};
 
 
@@ -375,7 +373,7 @@ namespace syntax
 
 		std::string to_string() const
 		{
-			return std::format("variable-decl({} : {}{})", this->var_name.iden, this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
+			return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
 		}
 	};
 
@@ -408,32 +406,6 @@ namespace syntax
 			return std::format("variable-decl-list({})", contents);
 		}
 	};
-
-	struct macro_decl : public nodecomn
-	{
-		macro_decl(identifier macro_name = {}, expression_list params = {}): macro_name(macro_name), params(params){}
-
-		identifier macro_name;
-		expression_list params;
-		bool capped = false;
-
-		std::string to_string() const
-		{
-			return std::format("macro-decl({} :: {})", this->macro_name.iden, this->params.to_string());
-		}
-	};
-
-	struct capped_macro_decl : public macro_decl
-	{
-		capped_macro_decl(const macro_decl& cpy): macro_decl(cpy)
-		{
-			macro_decl::capped = true;
-		}
-		capped_macro_decl(identifier macro_name = {}, expression_list params = {}): macro_decl(macro_name, params)
-		{
-			macro_decl::capped = true;
-		}
-	};
 	
 	struct function_decl : public nodecomn
 	{
@@ -449,7 +421,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("function-decl({}{} :: {} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->func_name.iden, this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			return std::format("function-decl({}{} :: {} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 		}
 	};
 
@@ -475,21 +447,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("function-call({}({}))", this->func_name.iden, this->params.to_string());
-		}
-	};
-
-	struct macro_call : public nodecomn
-	{
-		macro_call(identifier macro_name = {}, expression_list params = {}): macro_name(macro_name), params(params){}
-
-		identifier macro_name;
-		expression_list params;
-
-		
-		std::string to_string() const
-		{
-			return std::format("macro-call({}({}))", this->macro_name.iden, this->params.to_string());
+			return std::format("function-call({}({}))", this->func_name.to_string(), this->params.to_string());
 		}
 	};
 
@@ -519,7 +477,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("meta-region({} : {})", this->metaname.iden, type_names[static_cast<int>(this->t)]);
+			return std::format("meta-region({} : {})", this->metaname.to_string(), type_names[static_cast<int>(this->t)]);
 		}
 	};
 
@@ -664,11 +622,8 @@ namespace syntax
 			variable_decl,
 			capped_variable_decl,
 			variable_decl_list,
-			macro_decl,
-			capped_macro_decl,
 			function_decl,
 			capped_function_decl,
-			macro_call,
 			function_call,
 			meta_region,
 			capped_meta_region,
@@ -703,11 +658,8 @@ namespace syntax
 			"variable declaration",
 			"capped variable declaration",
 			"variable declaration list",
-			"macro declaration",
-			"capped macro declaration",
 			"function declaration",
 			"capped function declaration",
-			"macro call",
 			"function call",
 			"meta region",
 			"capped meta region",

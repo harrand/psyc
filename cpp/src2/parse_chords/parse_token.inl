@@ -315,82 +315,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// #iden :: (expr-list)
-// macro declaration (multiple arguments)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
-
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	SETINDEX(4);
-	auto exprs = GETNODE(expression_list);
-	REDUCE_TO(macro_decl, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// #iden :: (expr)
-// macro declaration (single argument)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(expression), TOKEN(cparen))
-
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	SETINDEX(4);
-	syntax::expression_list exprs;
-	exprs.exprs.push_back(GETNODE(expression));
-	REDUCE_TO(macro_decl, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// #iden :: ()
-// macro declaration (no arguments)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(colcol), TOKEN(oparen), TOKEN(cparen))
-
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	SETINDEX(4);
-	syntax::expression_list exprs;
-	REDUCE_TO(macro_decl, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// #iden(expr-list)
-// macro call (multiple arguments)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	SETINDEX(3);
-	auto exprs = GETNODE(expression_list);
-	REDUCE_TO(macro_call, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// #iden(expr)
-// macro call (single argument)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(oparen), NODE(expression), TOKEN(cparen))
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	SETINDEX(3);
-	syntax::expression_list exprs;
-	exprs.exprs.push_back(GETNODE(expression));
-	REDUCE_TO(macro_call, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// #iden()
-// macro call (no arguments)
-CHORD_BEGIN
-	STATE(TOKEN(hash), NODE(identifier), TOKEN(oparen), TOKEN(cparen))
-	SETINDEX(1);
-	auto name = GETNODE(identifier);
-	syntax::expression_list exprs;
-	REDUCE_TO(macro_call, name, exprs);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // return cappedexpr
 // return a statement.
 CHORD_BEGIN
@@ -399,12 +323,6 @@ CHORD_BEGIN
 	auto expr = GETNODE(capped_expression);
 	REDUCE_TO(capped_expression, syntax::expression::type::return_statement, expr, {});
 	return {.t = result::type::reduce_success};
-CHORD_END
-
-// source-begin macro-decl
-CHORD_BEGIN
-	STATE(TOKEN(source_begin), NODE(capped_macro_decl))
-	return {.t = result::type::send_to_output, .offset = 1};
 CHORD_END
 
 // source-begin function-decl

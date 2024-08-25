@@ -100,7 +100,6 @@ namespace parse
 		#include "parse_chords/parse_function_call.inl"
 		#include "parse_chords/parse_expression.inl"
 		#include "parse_chords/parse_expression_list.inl"
-		#include "parse_chords/parse_macro_decl.inl"
 		#include "parse_chords/parse_function_decl.inl"
 		#include "parse_chords/parse_variable_decl.inl"
 		#include "parse_chords/parse_variable_decl_list.inl"
