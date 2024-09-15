@@ -145,10 +145,15 @@ int main(int argc, char** argv)
 	// semal
 	timer::start();
 	type_system tsys;
+	semal::program prog;
 	for(const std::filesystem::path input_file : args.input_files)
 	{
 		const syntax::node& ast = parse.parsed_input_files[input_file];
-		semal::unit file = semal::analyse_file(ast, tsys);
+		semal::program subprogram = semal::analyse_file(ast, tsys);
+		for(const auto&[name, unit] : subprogram.module_units)
+		{
+			prog.module_units[name].merge(unit);
+		}
 	}
 	/*
 	semal::state semal;
