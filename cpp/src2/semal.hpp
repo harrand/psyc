@@ -24,6 +24,13 @@ namespace semal
 		visibility vis = visibility::local;
 	};
 
+	struct variable_scope
+	{
+		std::unordered_map<std::string, syntax::variable_decl> decls = {};
+		std::unordered_map<std::size_t, variable_scope> children = {};
+		void merge(const variable_scope& v);
+	};
+
 	enum class unit_type
 	{
 		source_file,
@@ -36,8 +43,11 @@ namespace semal
 		std::string name;
 		std::vector<struct_decl> structs = {};
 		std::vector<function_decl> functions = {};
+		variable_scope variables = {};
 
 		void merge(const unit& u);
+		const syntax::variable_decl* try_find_variable(syntax::node::path_view_t path, const std::string& varname) const;
+		void push_variable_decl(syntax::node::path_view_t path, syntax::variable_decl decl);
 	};
 
 	struct program

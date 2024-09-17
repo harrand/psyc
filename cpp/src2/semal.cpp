@@ -4,6 +4,19 @@
 
 namespace semal
 {
+	void variable_scope::merge(const variable_scope& v)
+	{
+		for(const auto& [child, decl] : v.decls)
+		{
+			diag::assert_that(!this->decls.contains(child), error_code::semal, "duplicate var decl probably");
+			this->decls[child] = decl;
+		}
+		for(const auto& [child, scope] : v.children)
+		{
+			this->children[child].merge(scope);
+		}
+	}
+
 	void unit::merge(const unit& u)
 	{
 		for(const auto& struct_ : u.structs)
@@ -14,6 +27,32 @@ namespace semal
 		{
 			this->functions.push_back(func_);
 		}
+		this->variables.merge(u.variables);
+	}
+
+	const syntax::variable_decl* unit::try_find_variable(syntax::node::path_view_t path, const std::string& varname) const
+	{
+		const auto* scope = &this->variables;
+		while(!scope->decls.contains(varname))
+		{
+			if(!scope->children.contains(path.front()))
+			{
+				return nullptr;
+			}
+			scope = &scope->children.at(path.front());
+			path = path.subspan(1);
+		}
+		return &scope->decls.at(varname);
+	}
+
+	void unit::push_variable_decl(syntax::node::path_view_t path, syntax::variable_decl decl)
+	{
+		auto* vars = &this->variables;
+		for(std::size_t i : path)
+		{
+			vars = &vars->children[i];
+		}
+		vars->decls[decl.var_name.iden] = decl;
 	}
 
 	std::unordered_map<std::size_t, void(*)(program&, syntax::node::path_view_t, const syntax::node&, const std::string&)> semal_table;
@@ -71,7 +110,11 @@ namespace semal
 	template<typename N>
 	std::string get_module_name_of(const N& n)
 	{
-		syntax::node module_name_node = get_annotation_value("module", n.annotations);
+		syntax::node module_name_node;
+		if constexpr(requires{n.annotations;})
+		{
+			module_name_node = get_annotation_value("module", n.annotations);
+		}
 		if(module_name_node.has_value())
 		{
 			auto rhs = NODE_AS(module_name_node, expression);
@@ -97,6 +140,7 @@ namespace semal
 	}
 
 	std::string current_module_scope = "";
+	std::string current_enclosing_function_name = "";
 	std::optional<syntax::variable_decl> auto_function_prefix = {};
 
 	template<typename N>
@@ -162,8 +206,21 @@ namespace semal
 				.node = node,
 				.vis = visibility::global
 			});
+			current_enclosing_function_name = node.func_name.iden;
+			// push all parameters as local variables.
+			for(const auto& param : node.params.decls)
+			{
+				syntax::node::path_t child_path = {path.begin(), path.end()};
+				child_path.push_back(0);
+				get_unit(prog, node, file).push_variable_decl(child_path, param);	
+			}
 
+			current_enclosing_function_name = "";
 			current_module_scope.clear();
+		SEMAL_END
+		SEMAL_CHORD(variable_decl)
+			// push variable decl to parent scope.
+			get_unit(prog, node, file).push_variable_decl(path.subspan(0, path.size() - 1), node);
 		SEMAL_END
 	}
 }
