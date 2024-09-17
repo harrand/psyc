@@ -685,8 +685,8 @@ namespace syntax
 		const node& evaluate_path(path_view_t path) const;
 		node& evaluate_parent(path_view_t path);
 		const node& evaluate_parent(path_view_t path) const;
-		void iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch = {});
-		void iterate(std::function<void(path_view_t, const node&)> callback, path_t impl_path_dont_touch = {}) const;
+		void iterate(std::function<void(path_view_t, node&)> callback, bool recursive = false, path_t impl_path_dont_touch = {});
+		void iterate(std::function<void(path_view_t, const node&)> callback, bool recursive = false, path_t impl_path_dont_touch = {}) const;
 		srcloc& loc();
 		const srcloc& loc() const;
 

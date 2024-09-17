@@ -96,14 +96,27 @@ namespace semal
 		return prog.local_file_units[file];
 	}
 
+	std::string current_module_scope = "";
+	std::optional<syntax::variable_decl> auto_function_prefix = {};
+
 	template<typename N>
 	unit& get_unit(program& prog, const N& node, const std::string& file)
 	{
+		// which unit should this node be a part of?
 		std::string module_name = get_module_name_of(node);
 		if(module_name.empty())
 		{
-			return ensure_local_file(prog, file);
+			// no annotation specifying module
+			if(current_module_scope.empty())
+			{
+				// no existing module in scope (e.g within a struct block). default to local file unit
+				return ensure_local_file(prog, file);
+			}
+			// in a module scope (e.g struct block), use that module's name.
+			return ensure_module(prog, current_module_scope);
 		}
+		// module has been specified. update the current module scope and return this module.
+		current_module_scope = module_name;
 		return ensure_module(prog, module_name);
 	}
 
@@ -118,13 +131,39 @@ namespace semal
 				.node = node,
 				.vis = visibility::global
 			});
+			auto_function_prefix = syntax::variable_decl
+			{
+				syntax::identifier{"this"},
+				syntax::identifier{node.struct_name.iden + "&"}
+			};
+			// do children under current module scope.
+			const auto& direct_child = node.children.front();
+			diag::assert_that(NODE_IS(*direct_child, block), error_code::semal, "ruh roh raggyu");
+
+			for(std::size_t i = 0; i < direct_child->children().size(); i++)
+			{
+				const auto& child = direct_child->children()[i];
+				syntax::node::path_t child_path = {path.begin(), path.end()};
+				child_path.push_back(0);
+				child_path.push_back(i);
+				analyse_node(prog, child_path, *child, file);
+			}
+			auto_function_prefix = {};
+			current_module_scope.clear();
 		SEMAL_END
 		SEMAL_CHORD(capped_function_decl)
+			// if function prefix was set, add that to the front of the parameters (this is to handle methods)
+			if(auto_function_prefix.has_value())
+			{
+				node.params.decls.insert(node.params.decls.begin(), auto_function_prefix.value());
+			}
 			get_unit(prog, node, file).functions.push_back
 			({
 				.node = node,
 				.vis = visibility::global
 			});
+
+			current_module_scope.clear();
 		SEMAL_END
 	}
 }

@@ -144,7 +144,7 @@ namespace syntax
 		return this->evaluate_path(path.last(path.size() - 1));
 	}
 
-	void node::iterate(std::function<void(path_view_t, node&)> callback, path_t impl_path_dont_touch)
+	void node::iterate(std::function<void(path_view_t, node&)> callback, bool recursive, path_t impl_path_dont_touch)
 	{
 		auto& children = this->children();
 		for(std::size_t i = 0; i < children.size(); i++)
@@ -152,11 +152,14 @@ namespace syntax
 			auto path_cpy = impl_path_dont_touch;
 			path_cpy.push_back(i);
 			callback(path_cpy, *children[i]);
-			children[i]->iterate(callback, path_cpy);
+			if(recursive)
+			{
+				children[i]->iterate(callback, recursive, path_cpy);
+			}
 		}
 	}
 
-	void node::iterate(std::function<void(path_view_t, const node&)> callback, path_t impl_path_dont_touch) const
+	void node::iterate(std::function<void(path_view_t, const node&)> callback, bool recursive, path_t impl_path_dont_touch) const
 	{
 		const auto& children = this->children();
 		for(std::size_t i = 0; i < children.size(); i++)
@@ -164,7 +167,10 @@ namespace syntax
 			auto path_cpy = impl_path_dont_touch;
 			path_cpy.push_back(i);
 			callback(path_cpy, *children[i]);
-			children[i]->iterate(callback, path_cpy);
+			if(recursive)
+			{
+				children[i]->iterate(callback, recursive, path_cpy);
+			}
 		}
 	}
 

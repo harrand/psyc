@@ -154,6 +154,7 @@ int main(int argc, char** argv)
 		{
 			prog.module_units[name].merge(unit);
 		}
+		prog.local_file_units[input_file].merge(subprogram.local_file_units[input_file]);
 	}
 	/*
 	semal::state semal;
