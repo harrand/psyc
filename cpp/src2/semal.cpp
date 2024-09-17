@@ -8,7 +8,10 @@ namespace semal
 	{
 		for(const auto& [child, decl] : v.decls)
 		{
-			diag::assert_that(!this->decls.contains(child), error_code::semal, "duplicate var decl probably");
+			if(this->decls.contains(child))
+			{
+				diag::assert_that(false, error_code::semal, "duplicate definition of variable \"{}\" in two different local files. definition 1 at {}, definition 2 at {}", decl.var_name.iden, decl.loc.to_string(), this->decls.at(child).loc.to_string());
+			}
 			this->decls[child] = decl;
 		}
 		for(const auto& [child, scope] : v.children)
@@ -51,6 +54,10 @@ namespace semal
 		for(std::size_t i : path)
 		{
 			vars = &vars->children[i];
+		}
+		if(vars->decls.contains(decl.var_name.iden))
+		{
+			diag::assert_that(false, error_code::semal, "duplicate definition of variable \"{}\". definition 1: {}. definition 2: {}", decl.var_name.iden, decl.loc.to_string(), vars->decls.at(decl.var_name.iden).loc.to_string());
 		}
 		vars->decls[decl.var_name.iden] = decl;
 	}
