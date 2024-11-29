@@ -4,7 +4,6 @@
 #include "timer.hpp"
 #include "diag.hpp"
 #include "type.hpp"
-#include "semal.hpp"
 #include "profile.hpp"
 #include <filesystem>
 #include <span>
@@ -89,7 +88,6 @@ int main(int argc, char** argv)
 	diag::note("{}", ty.ref()->get_qualified_name());
 
 	parse::populate_parse_table();
-	semal::populate_semal_table();
 
 	/*
 	build::info binfo;
@@ -144,6 +142,7 @@ int main(int argc, char** argv)
 
 	// semal
 	timer::start();
+	/*
 	type_system tsys;
 	semal::program prog;
 	for(const std::filesystem::path input_file : args.input_files)
@@ -156,19 +155,9 @@ int main(int argc, char** argv)
 		}
 		prog.local_file_units[input_file].merge(subprogram.local_file_units[input_file]);
 	}
-	/*
-	semal::state semal;
-	for(const std::filesystem::path input_file : args.input_files)
-	{
-		semal.program_decls.combine(semal::analyse_predecl(parse.parsed_input_files[input_file]));
-	}
-	for(const std::filesystem::path input_file : args.input_files)
-	{
-		semal.analysed_input_files[input_file] = semal::analyse_full(parse.parsed_input_files[input_file], semal.program_decls);
-	}
-	*/
 	t.semal = timer::elapsed_millis();
 	PROFZONE_END(semal);
+	*/
 
 	/*
 	// codegen
