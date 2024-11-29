@@ -6,17 +6,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// <>() -> iden
-// function declaration with no args nor constargs
-CHORD_BEGIN
-	STATE(TOKEN(oanglebrack), TOKEN(canglebrack), TOKEN(oparen), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-
-	SETINDEX(5);
-	syntax::identifier return_type_name = GETNODE(identifier);
-	REDUCE_TO(function_decl, syntax::variable_decl_list{}, syntax::variable_decl_list{}, return_type_name);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // () -> iden
 // function declaration with no args and constargs omitted
 CHORD_BEGIN
@@ -43,20 +32,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// <>(variable-decl-list) -> iden
-// function declaration with args but no constargs
-CHORD_BEGIN
-	STATE(TOKEN(oanglebrack), TOKEN(canglebrack), TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-
-	SETINDEX(3);
-	syntax::variable_decl_list params = GETNODE(variable_decl_list);
-	SETINDEX(6);
-	syntax::identifier return_type_name = GETNODE(identifier);
-
-	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // (variable-decl) -> iden
 // function declaration with one arg but constargs omitted
 CHORD_BEGIN
@@ -73,74 +48,56 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// <>function-decl
+// function declaration with explicitly no constargs
+CHORD_BEGIN
+	STATE(TOKEN(oanglebrack), TOKEN(canglebrack), NODE(function_decl))
+
+	SETINDEX(2);
+	auto fn = GETNODE(function_decl);
+	REDUCE_TO(function_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// <variable-decl>function-decl
+// function declaration with a single constarg
+CHORD_BEGIN
+	STATE(TOKEN(oanglebrack), NODE(capped_variable_decl), TOKEN(canglebrack), NODE(function_decl))
+
+	SETINDEX(1);
+	auto constarg = GETNODE(capped_variable_decl);
+	SETINDEX(3);
+	auto fn = GETNODE(function_decl);
+
+	fn.constparams.decls.push_back(constarg);
+
+	REDUCE_TO(function_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// <variable-decl-list>function-decl
+// function declaration with a single constarg
+CHORD_BEGIN
+	STATE(TOKEN(oanglebrack), NODE(variable_decl_list), TOKEN(canglebrack), NODE(function_decl))
+
+	SETINDEX(1);
+	auto constargs = GETNODE(variable_decl_list);
+	SETINDEX(3);
+	auto fn = GETNODE(function_decl);
+
+	fn.constparams = constargs;
+
+	REDUCE_TO(function_decl, fn);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+
+// == iden : build ==
 CHORD_BEGIN
 	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
 	SETINDEX(1);
 	auto iden = GETNODE(identifier);
 	REDUCE_TO(meta_region, iden, syntax::meta_region::type::build);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// &()->iden
-// identifier (function type name with no parameters)
-CHORD_BEGIN
-	STATE(TOKEN(ampersand), TOKEN(oparen), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-	SETINDEX(4);
-	auto retty = GETNODE(identifier);
-	REDUCE_TO(identifier, std::format("&()->{}", retty.iden));
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// &expr-parenthesised -> iden
-// identifier (function type name with a single parameter)
-CHORD_BEGIN
-	STATE(TOKEN(ampersand), NODE(expression), TOKEN(arrow), NODE(identifier))
-	auto start = GETTOKEN();
-	SETINDEX(1);
-	auto expr = GETNODE(expression);
-	SETINDEX(3);
-	auto retty = GETNODE(identifier);
-
-	if(expr.t != syntax::expression::type::parenthesised_expression)
-	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a {} expression", syntax::expression::type_names[static_cast<int>(expr.t)])};
-	}
-	auto exprparen = NODE_AS(expr.expr, expression);
-	if(exprparen.t != syntax::expression::type::identifier)
-	{
-		return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function type, discovered invalid typename as the only parameter. expected parenthesised expression (containing an identifier), instead got a parenthesised expression containing a {}", syntax::expression::type_names[static_cast<int>(exprparen.t)])};
-	}
-	auto expriden = NODE_AS(exprparen.expr, identifier);
-
-	REDUCE_TO(identifier, std::format("&({})->{}", expriden.iden, retty.iden));
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// &(expr_list)->iden
-// identifier (function type name with two or more parameters)
-CHORD_BEGIN
-	STATE(TOKEN(ampersand), TOKEN(oparen), NODE(expression_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-	auto start = GETTOKEN();
-	SETINDEX(2);
-	auto list = GETNODE(expression_list);
-	SETINDEX(5);
-	auto retty = GETNODE(identifier);
-	std::string param_list;
-	for(std::size_t i = 0; i < list.exprs.size(); i++)
-	{
-		const auto& expr = list.exprs[i];
-		if(expr.t != syntax::expression::type::identifier)
-		{
-			return {.t = result::type::error, .errmsg = std::format("when attempting to parse token(s) as a function-type, discovered invalid typename in list of parameters. expected param at id {} ({}) to be an identifier expression, but instead it is a {} expression", i, expr.to_string(), syntax::expression::type_names[static_cast<int>(expr.t)])};
-		}
-		auto param = NODE_AS(expr.expr, identifier);
-		param_list += param.iden;
-		if(i < (list.exprs.size() - 1))
-		{
-			param_list += ",";
-		}
-	}
-	REDUCE_TO(identifier, std::format("&({})->{}", param_list, retty.iden));
 	return {.t = result::type::reduce_success};
 CHORD_END
 

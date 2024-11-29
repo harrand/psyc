@@ -1,4 +1,4 @@
-// decl-list decl,
+// decl-list, decl
 // adds the decl to the list.
 CHORD_BEGIN
 	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(capped_variable_decl))
@@ -9,6 +9,8 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// decl-list, decl-list
+// combines two decl lists
 CHORD_BEGIN
 	STATE(NODE(variable_decl_list), TOKEN(comma), NODE(variable_decl_list))
 	auto list = GETNODE(variable_decl_list);

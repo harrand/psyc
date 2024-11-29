@@ -28,6 +28,24 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// decl)
+// notice cparen (cap but dont consume)
+CHORD_BEGIN
+	STATE(NODE(variable_decl), TOKEN(cparen))
+	auto decl = GETNODE(variable_decl);
+	REDUCE_TO_ADVANCED(0, 1, capped_variable_decl, decl);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// decl>
+// notice canglebrack (cap but dont consume)
+CHORD_BEGIN
+	STATE(NODE(variable_decl), TOKEN(canglebrack))
+	auto decl = GETNODE(variable_decl);
+	REDUCE_TO_ADVANCED(0, 1, capped_variable_decl, decl);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // consume semicol
 CHORD_BEGIN
 	STATE(NODE(variable_decl), TOKEN(semicol))
