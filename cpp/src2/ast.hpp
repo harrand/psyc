@@ -412,8 +412,9 @@ namespace syntax
 	
 	struct function_decl : public nodecomn
 	{
-		function_decl(variable_decl_list params = {}, identifier return_type_name = {}): params(params), return_type_name(return_type_name){}
+		function_decl(variable_decl_list constparams = {}, variable_decl_list params = {}, identifier return_type_name = {}): params(params), return_type_name(return_type_name){}
 
+		variable_decl_list constparams;
 		variable_decl_list params;
 		identifier return_type_name;
 		annotations annotations = {};
@@ -423,7 +424,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("function-decl({}{} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			return std::format("function-decl({}<{}>({}) -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->constparams.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 		}
 	};
 
@@ -433,7 +434,7 @@ namespace syntax
 		{
 			function_decl::capped = true;
 		}
-		capped_function_decl(variable_decl_list params = {}, identifier return_type_name = {}): function_decl(params, return_type_name)
+		capped_function_decl(variable_decl_list constparams = {}, variable_decl_list params = {}, identifier return_type_name = {}): function_decl(constparams, params, return_type_name)
 		{
 			function_decl::capped = true;
 		}

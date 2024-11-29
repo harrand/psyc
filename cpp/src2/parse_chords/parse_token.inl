@@ -6,20 +6,31 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// <>() -> iden
+// function declaration with no args nor constargs
+CHORD_BEGIN
+	STATE(TOKEN(oanglebrack), TOKEN(canglebrack), TOKEN(oparen), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	SETINDEX(5);
+	syntax::identifier return_type_name = GETNODE(identifier);
+	REDUCE_TO(function_decl, syntax::variable_decl_list{}, syntax::variable_decl_list{}, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // () -> iden
-// function declaration with no args
+// function declaration with no args and constargs omitted
 CHORD_BEGIN
 	STATE(TOKEN(oparen),TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
 	SETINDEX(3);
 	syntax::identifier return_type_name = GETNODE(identifier);
 
-	REDUCE_TO(function_decl, syntax::variable_decl_list{}, return_type_name);
+	REDUCE_TO(function_decl, syntax::variable_decl_list{}, syntax::variable_decl_list{}, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
 // (variable-decl-list) -> iden
-// function declaration
+// function declaration with args but constargs omitted
 CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
@@ -28,12 +39,26 @@ CHORD_BEGIN
 	SETINDEX(4);
 	syntax::identifier return_type_name = GETNODE(identifier);
 
-	REDUCE_TO(function_decl, params, return_type_name);
+	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// <>(variable-decl-list) -> iden
+// function declaration with args but no constargs
+CHORD_BEGIN
+	STATE(TOKEN(oanglebrack), TOKEN(canglebrack), TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	SETINDEX(3);
+	syntax::variable_decl_list params = GETNODE(variable_decl_list);
+	SETINDEX(6);
+	syntax::identifier return_type_name = GETNODE(identifier);
+
+	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
 // (variable-decl) -> iden
-// function declaration with one arg
+// function declaration with one arg but constargs omitted
 CHORD_BEGIN
 	STATE(TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
@@ -44,10 +69,9 @@ CHORD_BEGIN
 	std::vector<syntax::variable_decl> params;
 	params.push_back(param);
 
-	REDUCE_TO(function_decl, params, return_type_name);
+	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
-
 
 CHORD_BEGIN
 	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
