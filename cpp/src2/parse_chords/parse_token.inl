@@ -6,6 +6,49 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// () -> iden
+// function declaration with no args
+CHORD_BEGIN
+	STATE(TOKEN(oparen),TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	SETINDEX(3);
+	syntax::identifier return_type_name = GETNODE(identifier);
+
+	REDUCE_TO(function_decl, syntax::variable_decl_list{}, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// (variable-decl-list) -> iden
+// function declaration
+CHORD_BEGIN
+	STATE(TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	SETINDEX(1);
+	syntax::variable_decl_list params = GETNODE(variable_decl_list);
+	SETINDEX(4);
+	syntax::identifier return_type_name = GETNODE(identifier);
+
+	REDUCE_TO(function_decl, params, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// (variable-decl) -> iden
+// function declaration with one arg
+CHORD_BEGIN
+	STATE(TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+
+	SETINDEX(1);
+	syntax::variable_decl param = GETNODE(variable_decl);
+	SETINDEX(4);
+	syntax::identifier return_type_name = GETNODE(identifier);
+	std::vector<syntax::variable_decl> params;
+	params.push_back(param);
+
+	REDUCE_TO(function_decl, params, return_type_name);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+
 CHORD_BEGIN
 	STATE(TOKEN(eqeq), NODE(identifier), TOKEN(col), TOKEN(keyword_build), TOKEN(eqeq))
 	SETINDEX(1);
@@ -288,30 +331,30 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// [[expr-list]] function-decl
-// annotated function-decl (multiple exprs).
+// [[expr-list]] variable-decl
+// annotated variable-decl (multiple exprs).
 CHORD_BEGIN
-	STATE(TOKEN(obrackbrack), NODE(expression_list), TOKEN(cbrackbrack), NODE(function_decl))
+	STATE(TOKEN(obrackbrack), NODE(expression_list), TOKEN(cbrackbrack), NODE(capped_variable_decl))
 	SETINDEX(1);
 	syntax::annotations anno{GETNODE(expression_list)};
 	SETINDEX(3);
-	auto fn = GETNODE(function_decl);
+	auto fn = GETNODE(capped_variable_decl);
 	fn.annotations.exprs.insert(fn.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
-	REDUCE_TO(function_decl, fn);
+	REDUCE_TO(capped_variable_decl, fn);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// [[expr]] function-decl
-// annotated function-decl (single expr).
+// [[expr]] variable-decl
+// annotated variable-decl (single expr).
 CHORD_BEGIN
-	STATE(TOKEN(obrackbrack), NODE(capped_expression), TOKEN(cbrackbrack), NODE(function_decl))
+	STATE(TOKEN(obrackbrack), NODE(capped_expression), TOKEN(cbrackbrack), NODE(capped_variable_decl))
 	SETINDEX(1);
 	syntax::annotations anno;
 	anno.exprs.push_back({GETNODE(capped_expression)});
 	SETINDEX(3);
-	auto fn = GETNODE(function_decl);
-	fn.annotations.exprs.insert(fn.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
-	REDUCE_TO(function_decl, fn);
+	auto var = GETNODE(capped_variable_decl);
+	var.annotations.exprs.insert(var.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
+	REDUCE_TO(capped_variable_decl, var);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -322,9 +365,9 @@ CHORD_BEGIN
 	SETINDEX(1);
 	syntax::annotations anno{GETNODE(expression_list)};
 	SETINDEX(3);
-	auto fn = GETNODE(capped_struct_decl);
-	fn.annotations.exprs.insert(fn.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
-	REDUCE_TO(capped_struct_decl, fn);
+	auto var = GETNODE(capped_struct_decl);
+	var.annotations.exprs.insert(var.annotations.exprs.begin(), anno.exprs.begin(), anno.exprs.end());
+	REDUCE_TO(capped_struct_decl, var);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

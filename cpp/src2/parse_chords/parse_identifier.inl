@@ -22,52 +22,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-
-// iden :: (variable-decl-list) -> iden
-// function declaration
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(variable_decl_list), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-
-	syntax::identifier name = GETNODE(identifier);
-	SETINDEX(3);
-	syntax::variable_decl_list params = GETNODE(variable_decl_list);
-	SETINDEX(6);
-	syntax::identifier return_type_name = GETNODE(identifier);
-
-	REDUCE_TO(function_decl, name, params, return_type_name);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// iden :: () -> iden
-// function declaration with no args
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen),TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-
-	syntax::identifier name = GETNODE(identifier);
-	SETINDEX(5);
-	syntax::identifier return_type_name = GETNODE(identifier);
-
-	REDUCE_TO(function_decl, name, syntax::variable_decl_list{}, return_type_name);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
-// iden :: (variable-decl) -> iden
-// function declaration with one arg
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
-
-	syntax::identifier name = GETNODE(identifier);
-	SETINDEX(3);
-	syntax::variable_decl param = GETNODE(variable_decl);
-	SETINDEX(6);
-	syntax::identifier return_type_name = GETNODE(identifier);
-	std::vector<syntax::variable_decl> params;
-	params.push_back(param);
-
-	REDUCE_TO(function_decl, name, params, return_type_name);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // iden(expr-list)
 // function call (multiple arguments)
 CHORD_BEGIN

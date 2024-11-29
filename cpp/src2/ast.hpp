@@ -203,6 +203,7 @@ namespace syntax
 			bool_literal,
 			null_literal,
 			parenthesised_expression,
+			function_definition,
 			function_call,
 			return_statement,
 			cast,
@@ -233,6 +234,7 @@ namespace syntax
 			"boollit",
 			"nulllit",
 			"parenthesised",
+			"function definition",
 			"call",
 			"return",
 			"cast",
@@ -365,6 +367,7 @@ namespace syntax
 		identifier var_name;
 		identifier type_name;
 		expression expr;
+		annotations annotations = {};
 		bool capped;
 		mutable bool impl_should_add_to_current_scope = true;
 		mutable bool impl_is_defined_before_parent_block = false;
@@ -373,7 +376,7 @@ namespace syntax
 
 		std::string to_string() const
 		{
-			return std::format("variable-decl({} : {}{})", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
+			return std::format("variable-decl({}{} : {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
 		}
 	};
 
@@ -409,9 +412,8 @@ namespace syntax
 	
 	struct function_decl : public nodecomn
 	{
-		function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): func_name(func_name), params(params), return_type_name(return_type_name){}
+		function_decl(variable_decl_list params = {}, identifier return_type_name = {}): params(params), return_type_name(return_type_name){}
 
-		identifier func_name;
 		variable_decl_list params;
 		identifier return_type_name;
 		annotations annotations = {};
@@ -421,7 +423,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("function-decl({}{} :: {} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->func_name.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			return std::format("function-decl({}{} -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 		}
 	};
 
@@ -431,7 +433,7 @@ namespace syntax
 		{
 			function_decl::capped = true;
 		}
-		capped_function_decl(identifier func_name = {}, variable_decl_list params = {}, identifier return_type_name = {}): function_decl(func_name, params, return_type_name)
+		capped_function_decl(variable_decl_list params = {}, identifier return_type_name = {}): function_decl(params, return_type_name)
 		{
 			function_decl::capped = true;
 		}
