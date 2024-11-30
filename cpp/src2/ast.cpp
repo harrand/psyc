@@ -21,7 +21,7 @@ namespace syntax
 
 	std::string expression::to_string() const
 	{
-		return std::format("expr-{}({}{})", expression::type_names[static_cast<int>(this->t)], this->expr->to_string(), this->extra->has_value() ? std::format(", {}", this->extra->to_string()) : "");
+		return this->expr->to_string();
 	}
 
 	if_statement::if_statement(expression cond, block blk, bool is_static):

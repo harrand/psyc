@@ -85,7 +85,7 @@ namespace syntax
 
 		std::string to_string() const
 		{
-			return std::format("token({})", tok.lexeme);
+			return std::format("'{}'", tok.lexeme);
 		}
 		
 		const char* name() const
@@ -110,7 +110,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("integer-literal({})", this->val);
+			return std::format("{}", this->val);
 		}
 	};
 
@@ -122,7 +122,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("decimal-literal({})", this->val);
+			return std::format("{}", this->val);
 		}
 		const char* name() const
 		{
@@ -138,7 +138,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("char-literal('{}' (dec {})", this->val, static_cast<int>(this->val));
+			return std::format("'{}'", this->val, static_cast<int>(this->val));
 		}
 	};
 
@@ -162,7 +162,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("string-literal(\"{}\")", this->val);
+			return std::format("\"{}\"", this->val);
 		}
 	};
 
@@ -173,7 +173,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return "null-literal()";
+			return "null";
 		}
 	};
 
@@ -187,7 +187,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("identifier({})", this->iden);
+			return this->iden;
 		}
 	};
 
@@ -308,7 +308,7 @@ namespace syntax
 					contents += ", ";
 				}
 			}
-			return std::format("expr-list({})", contents);
+			return std::format("{}", contents);
 		}
 	};
 
@@ -328,7 +328,7 @@ namespace syntax
 					contents += ", ";
 				}
 			}
-			return std::format("annotations({})", contents);
+			return std::format("{}", contents);
 		}
 	};
 
@@ -374,11 +374,9 @@ namespace syntax
 		mutable bool impl_should_add_to_current_scope = true;
 		mutable bool impl_is_defined_before_parent_block = false;
 
-		
-
 		std::string to_string() const
 		{
-			return std::format("variable-decl({}{} : {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
+			return std::format("{}{} : {}{}", this->annotations.exprs.size() ? std::format("[[{}]] ", this->annotations.to_string()) : "", this->var_name.to_string(), this->type_name.to_string(), expr.is_null() ? "" : std::format(" := {}", expr.to_string()));
 		}
 	};
 
@@ -408,7 +406,7 @@ namespace syntax
 					contents += ", ";
 				}
 			}
-			return std::format("variable-decl-list({})", contents);
+			return std::format("{}", contents);
 		}
 	};
 	
@@ -426,7 +424,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("function-decl({}<{}>({}) -> {}{})", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->constparams.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
+			return std::format("func{}<{}>({}) -> {}{}", this->annotations.exprs.size() ? std::format(" [{}] ", this->annotations.to_string()) : "", this->constparams.to_string(), this->params.to_string(), this->return_type_name.to_string(), this->is_extern ? ":= extern" : "");
 		}
 	};
 
@@ -449,11 +447,10 @@ namespace syntax
 		identifier func_name;
 		expression_list constparams;
 		expression_list params;
-
 		
 		std::string to_string() const
 		{
-			return std::format("function-call({}<{}>({}))", this->func_name.to_string(), this->constparams.to_string(), this->params.to_string());
+			return std::format("{}<{}>({})", this->func_name.to_string(), this->constparams.to_string(), this->params.to_string());
 		}
 	};
 

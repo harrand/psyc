@@ -1,11 +1,52 @@
-// iden : iden
-// explicitly-typed variable declaration with no initialiser.
+// iden : iden<expr>
+// explicitly-typed variable declaration (of a type with constparams) with no initialiser
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(col), NODE(identifier))
+	STATE(NODE(identifier), TOKEN(col), NODE(identifier), TOKEN(oanglebrack), NODE(capped_expression), TOKEN(canglebrack))
 
 	syntax::identifier name = GETNODE(identifier);
 	SETINDEX(2);
-	syntax::identifier type_name = GETNODE(identifier);
+	syntax::identifier struct_name = GETNODE(identifier);
+	SETINDEX(4);
+	syntax::expression constparam = GETNODE(capped_expression);
+	
+	syntax::identifier type_name;
+	type_name.iden = std::format("{}<{}>", struct_name.iden, constparam.expr->to_string());
+	type_name.loc = constparam.loc;
+	REDUCE_TO(variable_decl, name, type_name, syntax::expression{});	
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden : iden<expr-list>
+// explicitly-typed variable declaration (of a type with constparams) with no initialiser
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(col), NODE(identifier), TOKEN(oanglebrack), NODE(expression_list), TOKEN(canglebrack))
+
+	syntax::identifier name = GETNODE(identifier);
+	SETINDEX(2);
+	syntax::identifier struct_name = GETNODE(identifier);
+	SETINDEX(4);
+	syntax::expression_list constparams = GETNODE(expression_list);
+
+	syntax::identifier type_name;
+	type_name.iden = std::format("{}<{}>", struct_name.iden, constparams.to_string());
+	type_name.loc = constparams.loc;
+	REDUCE_TO(variable_decl, name, type_name, syntax::expression{});	
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden : expr
+// explicitly-typed variable declaration with no initialiser.
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(col), NODE(capped_expression))
+
+	syntax::identifier name = GETNODE(identifier);
+	SETINDEX(2);
+	syntax::capped_expression expr = GETNODE(capped_expression);
+
+	syntax::identifier type_name;
+	type_name.loc = expr.loc;
+	type_name.iden = expr.expr->to_string();
+
 	REDUCE_TO(variable_decl, name, type_name, syntax::expression{});
 	return {.t = result::type::reduce_success};
 CHORD_END

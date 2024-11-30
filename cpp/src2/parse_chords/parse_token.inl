@@ -28,7 +28,7 @@ CHORD_BEGIN
 	SETINDEX(4);
 	syntax::identifier return_type_name = GETNODE(identifier);
 
-	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
+	REDUCE_TO(function_decl, syntax::variable_decl_list{}, params, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -44,7 +44,7 @@ CHORD_BEGIN
 	std::vector<syntax::variable_decl> params;
 	params.push_back(param);
 
-	REDUCE_TO(function_decl, params, syntax::variable_decl_list{}, return_type_name);
+	REDUCE_TO(function_decl, syntax::variable_decl_list{}, params, return_type_name);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
