@@ -142,16 +142,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// { alias
-// starts an unfinished block
-CHORD_BEGIN
-	STATE(TOKEN(obrace), NODE(alias))
-	SETINDEX(1);
-	auto al = GETNODE(alias);
-	REDUCE_TO(unfinished_block, al);
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // { if-statement
 // starts an unfinished block
 CHORD_BEGIN

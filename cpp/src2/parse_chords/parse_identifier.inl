@@ -22,8 +22,23 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// iden<expr-list>(expr-list)
+// function call (multiple arguments, multiple constparams)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oanglebrack), NODE(expression_list), TOKEN(canglebrack), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
+
+	syntax::identifier name = GETNODE(identifier);
+	SETINDEX(2);
+	syntax::expression_list constparams = GETNODE(expression_list);
+	SETINDEX(5);
+	syntax::expression_list params = GETNODE(expression_list);
+
+	REDUCE_TO(function_call, name, constparams, params);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // iden(expr-list)
-// function call (multiple arguments)
+// function call (multiple arguments, constparams omitted)
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(oparen), NODE(expression_list), TOKEN(cparen))
 
@@ -31,7 +46,7 @@ CHORD_BEGIN
 	SETINDEX(2);
 	syntax::expression_list params = GETNODE(expression_list);
 
-	REDUCE_TO(function_call, name, params);
+	REDUCE_TO(function_call, name, syntax::expression_list{}, params);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -45,7 +60,7 @@ CHORD_BEGIN
 	std::vector<syntax::expression> params = {};
 	params.push_back(GETNODE(expression));
 
-	REDUCE_TO(function_call, name, params);
+	REDUCE_TO(function_call, name, syntax::expression_list{}, params);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -56,27 +71,27 @@ CHORD_BEGIN
 
 	syntax::identifier name = GETNODE(identifier);
 
-	REDUCE_TO(function_call, name, syntax::expression_list{});
+	REDUCE_TO(function_call, name, syntax::expression_list{}, syntax::expression_list{});
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// iden :: namespace
-// namespace meta region
+// struct <variable-decl> block
+// create a struct with a single constparam
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_namespace))
-	syntax::identifier name = GETNODE(identifier);
-	REDUCE_TO(meta_region, name, syntax::meta_region::type::name_space);
-	return {.t = result::type::reduce_success};
-CHORD_END
+	STATE(TOKEN(keyword_struct), TOKEN(oanglebrack), NODE(capped_variable_decl), TOKEN(canglebrack), NODE(block))
 
-// iden :: alias := expr;
-// type alias
-CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_alias), TOKEN(col), TOKEN(eq), NODE(expression), TOKEN(semicol))
-	syntax::identifier name = GETNODE(identifier);
-	SETINDEX(5);
-	syntax::expression expr = GETNODE(expression);
-	REDUCE_TO(alias, name, expr);
+	SETINDEX(2);
+	syntax::variable_decl_list constparams;
+	constparams.decls.push_back(GETNODE(capped_variable_decl));
+
+	SETINDEX(4);
+	auto blk = GETNODE(block);
+
+	auto result_struct = syntax::capped_struct_decl{};
+	result_struct.children.push_back(syntax::node{.payload = blk});
+	result_struct.constparams = constparams;
+
+	REDUCE_TO(expression, syntax::expression::type::struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
@@ -104,35 +119,57 @@ CHORD_BEGIN
 CHORD_END
 
 // iden{}
-// struct initialiser (no initialisers)
+// struct initialiser (no initialisers, constinits omitted)
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), TOKEN(cbrace))
-	auto struct_name = GETNODE(identifier);
-	std::vector<syntax::designated_initialiser> inits = {};
-	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list(inits));
+	syntax::struct_initialiser structinit;
+	structinit.struct_name = GETNODE(identifier);
+
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden<desig-init>{}
+// struct initialiser (no initialisers, one constinit)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oanglebrack), NODE(designated_initialiser), TOKEN(canglebrack), TOKEN(obrace), TOKEN(cbrace))
+
+	syntax::struct_initialiser structinit;
+	structinit.struct_name = GETNODE(identifier);
+
+	SETINDEX(2);
+	structinit.constinits.inits.push_back(GETNODE(designated_initialiser));
+
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
 // iden{desig-init}
-// struct initialiser (single initialiser)
+// struct initialiser (single initialiser, constinits omitted)
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser), TOKEN(cbrace))
-	auto struct_name = GETNODE(identifier);
+
+	syntax::struct_initialiser structinit;
+	structinit.struct_name = GETNODE(identifier);
+
 	SETINDEX(2);
-	std::vector<syntax::designated_initialiser> inits = {};
-	inits.push_back(GETNODE(designated_initialiser));
-	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, syntax::designated_initialiser_list{inits});
+	structinit.inits.inits.push_back(GETNODE(designated_initialiser));
+
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
 // iden{desig-init-list}
-// struct initialiser (multiple initialisers)
+// struct initialiser (multiple initialisers, constinits omitted)
 CHORD_BEGIN
 	STATE(NODE(identifier), TOKEN(obrace), NODE(designated_initialiser_list), TOKEN(cbrace))
-	auto struct_name = GETNODE(identifier);
+
+	syntax::struct_initialiser structinit;
+	structinit.struct_name = GETNODE(identifier);
 	SETINDEX(2);
-	auto inits = GETNODE(designated_initialiser_list);
-	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, struct_name, inits);
+	structinit.inits = GETNODE(designated_initialiser_list);
+
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
 	return {.t = result::type::reduce_success};
 CHORD_END
 

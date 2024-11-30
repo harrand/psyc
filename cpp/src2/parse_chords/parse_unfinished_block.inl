@@ -34,15 +34,6 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// add an alias to the end of the unfinished block.
-CHORD_BEGIN
-	STATE(NODE(unfinished_block), NODE(alias))
-	auto blk = GETNODE(unfinished_block);
-	blk.extend(GETNODE(alias));
-	REDUCE_TO(unfinished_block, std::move(blk));
-	return {.t = result::type::reduce_success};
-CHORD_END
-
 // add an if-statement to the end of the unfinished block.
 CHORD_BEGIN
 	STATE(NODE(unfinished_block), NODE(if_statement))

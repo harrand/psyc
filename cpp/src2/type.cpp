@@ -7,7 +7,6 @@ constexpr static std::array<const char*, static_cast<int>(itype::hint::_count)> 
 	"primitive",
 	"struct",
 	"pointer",
-	"alias",
 	"function",
 	"ill-formed"
 };
@@ -48,11 +47,6 @@ bool itype::is_struct() const
 bool itype::is_function() const
 {
 	return this->h == hint::function_type;
-}
-
-bool itype::is_alias() const
-{
-	return this->h == hint::alias_type;
 }
 
 bool itype::is_primitive() const
@@ -293,25 +287,7 @@ typeconv itype::can_implicitly_convert_to(const itype& rhs) const
 		{
 			return typeconv::p2fn;
 		}
-		// if either types are weak alias types, then they can be explicitly converted to anything that its base type implicitly converts to
-		if(this->is_alias() || rhs.is_alias())
-		{
-			type_ptr base_lhs = this->unique_clone();
-			while(base_lhs->is_alias())
-			{
-				base_lhs = static_cast<alias_type*>(base_lhs.get())->original();
-			}
-			type_ptr base_rhs = rhs.unique_clone();
-			while(base_rhs->is_alias())
-			{
-				base_rhs = static_cast<alias_type*>(base_rhs.get())->original();
-			}
-			auto alias_typeconv = base_lhs->can_implicitly_convert_to(*base_rhs);
-			if(alias_typeconv != typeconv::cant)
-			{
-				return alias_typeconv;
-			}
-		}
+
 		type_ptr plain_this = this->discarded_qualifiers();
 		type_ptr plain_rhs = rhs.discarded_qualifiers();
 		if(plain_this->is_primitive() && *plain_this == primitive_type{primitive::i64} && rhs.is_pointer())
@@ -428,18 +404,6 @@ params(cpy.params.size())
 	}	
 }
 
-alias_type::alias_type(type_ptr alias, std::string alias_name): itype(alias_name, itype::hint::alias_type), alias(std::move(alias))
-{
-
-}
-
-alias_type::alias_type(const alias_type& cpy): alias_type(cpy.alias->unique_clone(), cpy.name){}
-
-type_ptr alias_type::original() const
-{
-	return this->alias->unique_clone();
-}
-
 struct_type::struct_type(std::string name, std::vector<data_member> members): itype(name, itype::hint::struct_type), members(std::move(members)){}
 
 struct_type::struct_type(const struct_type& cpy): itype(cpy), members()
@@ -534,13 +498,6 @@ type_system::struct_builder type_system::make_struct(std::string name)
 	// this is necessary incase the struct has a data member that points to the same type.
 	this->types[name] = incomplete_type(name).unique_clone();
 	return {.sys = *this, .struct_name = name};
-}
-
-type_ptr type_system::make_alias(std::string name, std::string typename_to_alias)
-{
-	type_ptr aliased = this->get_type(typename_to_alias);
-	this->types[name] = alias_type{aliased->unique_clone(), name}.unique_clone();
-	return aliased->unique_clone();
 }
 
 type_ptr type_system::get_type(std::string type_name) const

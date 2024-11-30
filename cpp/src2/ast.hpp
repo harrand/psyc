@@ -444,15 +444,16 @@ namespace syntax
 
 	struct function_call : public nodecomn
 	{
-		function_call(identifier func_name = {}, expression_list params = {}): func_name(func_name), params(params){}
+		function_call(identifier func_name = {}, expression_list constparams = {}, expression_list params = {}): func_name(func_name), params(params){}
 
 		identifier func_name;
+		expression_list constparams;
 		expression_list params;
 
 		
 		std::string to_string() const
 		{
-			return std::format("function-call({}({}))", this->func_name.to_string(), this->params.to_string());
+			return std::format("function-call({}<{}>({}))", this->func_name.to_string(), this->constparams.to_string(), this->params.to_string());
 		}
 	};
 
@@ -460,16 +461,12 @@ namespace syntax
 	{
 		enum class type
 		{
-			name_space,
-			static_if,
 			build,
 			_unknown,
 			_count
 		};
 		constexpr static std::array<const char*, int(type::_count)> type_names
 		{
-			"namespace",
-			"static_if",
 			"build",
 		};
 
@@ -498,20 +495,6 @@ namespace syntax
 		}
 	};
 
-	struct alias : public nodecomn
-	{
-		alias(identifier alias_name = {}, expression type_value_expr = {}): alias_name(alias_name), type_value_expr(type_value_expr){}
-
-		identifier alias_name;
-		expression type_value_expr;
-
-		
-		std::string to_string() const
-		{
-			return std::format("alias({} ::= {})", this->alias_name.iden, type_value_expr.to_string());
-		}
-	};
-
 	struct struct_decl : public nodecomn
 	{
 		struct_decl(variable_decl_list constparams = {}, bool capped = false): capped(capped){}
@@ -522,7 +505,7 @@ namespace syntax
 		
 		std::string to_string() const
 		{
-			return std::format("struct()");
+			return std::format("struct(<{}>)", constparams.to_string());
 		}
 
 		const char* name() const
@@ -574,6 +557,21 @@ namespace syntax
 				}
 			}
 			return std::format("desig-init-list({})", contents);
+		}
+	};
+
+	struct struct_initialiser : public nodecomn
+	{
+		struct_initialiser(identifier struct_name = {}, designated_initialiser_list constinits = {}, designated_initialiser_list inits = {}): 
+		struct_name(struct_name), constinits(constinits), inits(inits){}
+
+		identifier struct_name;
+		designated_initialiser_list constinits;
+		designated_initialiser_list inits;
+
+		std::string to_string() const
+		{
+			return std::format("struct-init({}<{}> {{{}}})", struct_name.iden, constinits.to_string(), inits.to_string());
 		}
 	};
 
@@ -632,11 +630,11 @@ namespace syntax
 			function_call,
 			meta_region,
 			capped_meta_region,
-			alias,
 			struct_decl,
 			capped_struct_decl,
 			designated_initialiser,
 			designated_initialiser_list,
+			struct_initialiser,
 			if_statement,
 			else_statement
 			>;
@@ -668,11 +666,11 @@ namespace syntax
 			"function call",
 			"meta region",
 			"capped meta region",
-			"alias",
 			"struct declaration",
 			"capped struct declaration",
 			"designated initialiser",
 			"designated initialiser list",
+			"struct initialiser",
 			"if statement",
 			"else statement"
 		};
