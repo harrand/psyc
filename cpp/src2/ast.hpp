@@ -562,11 +562,11 @@ namespace syntax
 
 	struct struct_initialiser : public nodecomn
 	{
-		struct_initialiser(identifier struct_name = {}, designated_initialiser_list constinits = {}, designated_initialiser_list inits = {}): 
+		struct_initialiser(identifier struct_name = {}, expression_list constinits = {}, designated_initialiser_list inits = {}): 
 		struct_name(struct_name), constinits(constinits), inits(inits){}
 
 		identifier struct_name;
-		designated_initialiser_list constinits;
+		expression_list constinits;
 		designated_initialiser_list inits;
 
 		std::string to_string() const

@@ -95,6 +95,25 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
+// struct <variable-decl-list> block
+// create a struct with a single constparam
+CHORD_BEGIN
+	STATE(TOKEN(keyword_struct), TOKEN(oanglebrack), NODE(variable_decl_list), TOKEN(canglebrack), NODE(block))
+
+	SETINDEX(2);
+	syntax::variable_decl_list constparams = GETNODE(variable_decl_list);
+
+	SETINDEX(4);
+	auto blk = GETNODE(block);
+
+	auto result_struct = syntax::capped_struct_decl{};
+	result_struct.children.push_back(syntax::node{.payload = blk});
+	result_struct.constparams = constparams;
+
+	REDUCE_TO(expression, syntax::expression::type::struct_decl, result_struct);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
 // struct block
 // create a struct but omitting constparams
 CHORD_BEGIN
@@ -129,16 +148,31 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// iden<desig-init>{}
+// iden<expr>{}
 // struct initialiser (no initialisers, one constinit)
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(oanglebrack), NODE(designated_initialiser), TOKEN(canglebrack), TOKEN(obrace), TOKEN(cbrace))
+	STATE(NODE(identifier), TOKEN(oanglebrack), NODE(capped_expression), TOKEN(canglebrack), TOKEN(obrace), TOKEN(cbrace))
 
 	syntax::struct_initialiser structinit;
 	structinit.struct_name = GETNODE(identifier);
 
 	SETINDEX(2);
-	structinit.constinits.inits.push_back(GETNODE(designated_initialiser));
+	structinit.constinits.exprs.push_back(GETNODE(capped_expression));
+
+	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// iden<expr-list>{}
+// struct initialiser (no initialisers, multiple constinits)
+CHORD_BEGIN
+	STATE(NODE(identifier), TOKEN(oanglebrack), NODE(expression_list), TOKEN(canglebrack), TOKEN(obrace), TOKEN(cbrace))
+
+	syntax::struct_initialiser structinit;
+	structinit.struct_name = GETNODE(identifier);
+
+	SETINDEX(2);
+	structinit.constinits = GETNODE(expression_list);
 
 	REDUCE_TO(expression, syntax::expression::type::struct_initialiser, structinit);
 	return {.t = result::type::reduce_success};
