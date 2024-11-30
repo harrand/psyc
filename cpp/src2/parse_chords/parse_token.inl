@@ -35,10 +35,10 @@ CHORD_END
 // (variable-decl) -> iden
 // function declaration with one arg but constargs omitted
 CHORD_BEGIN
-	STATE(TOKEN(oparen), NODE(variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
+	STATE(TOKEN(oparen), NODE(capped_variable_decl), TOKEN(cparen), TOKEN(arrow), NODE(identifier))
 
 	SETINDEX(1);
-	syntax::variable_decl param = GETNODE(variable_decl);
+	syntax::variable_decl param = GETNODE(capped_variable_decl);
 	SETINDEX(4);
 	syntax::identifier return_type_name = GETNODE(identifier);
 	std::vector<syntax::variable_decl> params;

@@ -220,6 +220,7 @@ namespace syntax
 			neqcompare,
 			dot_access,
 			namespace_access,
+			struct_decl,
 			struct_initialiser,
 			_unknown,
 			_count
@@ -251,6 +252,7 @@ namespace syntax
 			"\"!=\"",
 			"\".\"",
 			"\"::\"",
+			"structdecl",
 			"structinit",
 			"unknown"
 		};
@@ -512,16 +514,15 @@ namespace syntax
 
 	struct struct_decl : public nodecomn
 	{
-		struct_decl(identifier struct_name = {}, bool capped = false): struct_name(struct_name), capped(capped){}
+		struct_decl(variable_decl_list constparams = {}, bool capped = false): capped(capped){}
 
-		identifier struct_name;
+		variable_decl_list constparams;
 		annotations annotations = {};
 		bool capped = false;
-
 		
 		std::string to_string() const
 		{
-			return std::format("struct({})", this->struct_name.iden);
+			return std::format("struct()");
 		}
 
 		const char* name() const
@@ -532,7 +533,7 @@ namespace syntax
 
 	struct capped_struct_decl : public struct_decl
 	{
-		capped_struct_decl(identifier struct_name = {}): struct_decl(struct_name, true){}
+		capped_struct_decl(): struct_decl(variable_decl_list{}, true){}
 		capped_struct_decl(const struct_decl& cpy): struct_decl(cpy)
 		{
 			struct_decl::capped = true;

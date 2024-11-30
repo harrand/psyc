@@ -80,17 +80,26 @@ CHORD_BEGIN
 	return {.t = result::type::reduce_success};
 CHORD_END
 
-// iden :: struct block
-// create a named struct (no methods)
+// struct block
+// create a struct but omitting constparams
 CHORD_BEGIN
-	STATE(NODE(identifier), TOKEN(colcol), TOKEN(keyword_struct), NODE(block))
+	STATE(TOKEN(keyword_struct), NODE(block))
 
-	auto name = GETNODE(identifier);
-	SETINDEX(3);
+	SETINDEX(1);
 	auto blk = GETNODE(block);
-	auto result_struct = syntax::struct_decl{name, true};
+	auto result_struct = syntax::capped_struct_decl{};
 	result_struct.children.push_back(syntax::node{.payload = blk});
-	REDUCE_TO(capped_struct_decl, result_struct);
+	REDUCE_TO(expression, syntax::expression::type::struct_decl, result_struct);
+	return {.t = result::type::reduce_success};
+CHORD_END
+
+// struct {}
+// create an empty struct but omitting constparams
+CHORD_BEGIN
+	STATE(TOKEN(keyword_struct), TOKEN(obrace), TOKEN(cbrace))
+
+	auto result_struct = syntax::capped_struct_decl{};
+	REDUCE_TO(expression, syntax::expression::type::struct_decl, result_struct);
 	return {.t = result::type::reduce_success};
 CHORD_END
 
