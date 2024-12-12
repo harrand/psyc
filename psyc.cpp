@@ -7,6 +7,10 @@
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <cstdint>
+#include <cstddef>
+
+// internals
 
 void crash()
 {
@@ -20,9 +24,11 @@ void panic(const char* msg, std::source_location loc = std::source_location::cur
 	crash();
 }
 
-#define panic_ifnt(cond, msg) if(!cond){panic(msg);}
-
-// errors
+struct slice
+{
+	std::size_t offset = 0;
+	std::size_t length = 0;
+};
 
 struct srcloc
 {
@@ -31,7 +37,8 @@ struct srcloc
 	unsigned int column;
 };
 
-// format support
+#define panic_ifnt(cond, msg) if(!cond){panic(msg);}
+
 template <>
 struct std::formatter<srcloc> : std::formatter<std::string>
 {
@@ -53,6 +60,8 @@ struct std::formatter<std::filesystem::path, char> : std::formatter<std::string,
         return std::formatter<std::string, char>::format(path.string(), ctx);
     }
 };
+
+// user-facing errors
 
 enum class err
 {
@@ -152,6 +161,7 @@ FILE:
 #undef COMPILER_STAGE
 #define COMPILER_STAGE lex
 
+// uh read a file and slurp me all its bytes.
 std::string read_file(std::filesystem::path file)
 {
 	std::ifstream fstr(file);
@@ -179,27 +189,101 @@ constexpr std::uint32_t string_hash(std::string_view str)
 	return fnv1a_32(str);
 }
 
-
-struct slice
-{
-	std::size_t offset = 0;
-	std::size_t length = 0;
-};
-
 enum class token : std::uint32_t
 {
 	comment = string_hash("//"),
-	multicomment,
+	multicomment = string_hash("/*"),
 	iden,
 	numlit,
 	charlit,
 	strlit
 };
 
+// when im done lexing i will give the following info to the rest of the compiler
 struct lex_output
 {
+	// what am i lexing
+	const std::filesystem::path source_file;
 
+	// the one-true-copy of its source.
+	std::string source;
+	// list of tokens.
+	std::vector<token> tokens = {};
+	// lexemes corresponding to each token. slice represents a view into the source (raw bytes) of the file.
+	std::vector<slice> lexemes = {};
+	// location of each token within the source file.
+	std::vector<srcloc> locations = {};
 };
+
+// internal lexer state, not exposed to rest of compiler.
+struct lex_state
+{
+	std::string_view src;
+	std::size_t cursor = 0;
+	std::size_t line = 0;
+	std::size_t column = 0;
+
+	// move forward 'count' chars, make sure to keep line count sane. panic if we run out of space.
+	void advance(std::size_t count = 1)
+	{
+		panic_ifnt(this->cursor + count < src.size(), "advance ran over string capacity");
+		for(std::size_t i = 0; i < count; i++)
+		{
+			char next = src[++this->cursor];
+			if(next == '\n')
+			{
+				this->line++;
+				this->column = 0;
+			}
+			else
+			{
+				this->column++;
+			}
+		}
+	}
+
+	// simple internal helper. move forward n times where n is the length of the string.
+	void advance(const char* str)
+	{
+		this->advance(std::strlen(str));
+	}
+
+	// slower but useful. keeping moving forward until a predicate is satisfied for the first time.
+	// return the number of chars advanced. panic if predicate never returns true.
+	std::size_t advance_until(bool(*pred)(std::string_view))
+	{
+		std::string_view src_cpy = this->src;
+		std::size_t dst = 0;
+		// find how long we have to go until predicate first returns true
+		while(!pred(src_cpy))
+		{
+			dst++;
+			panic_ifnt(this->cursor + dst < src.size(), "advance_until(pred) ran out of source file before predicate returned true");
+			src_cpy.remove_prefix(1);
+		}
+
+		// advance that amount, and return that amount.
+		this->advance(dst);
+		return dst;
+	}
+};
+
+// lex api. "heres a file i know nothing about, give me all the tokens". panic if anything goes wrong.
+lex_output lex(std::filesystem::path file)
+{
+	lex_output ret{.source_file = file};
+	ret.source = read_file(file);
+	lex_state state{.src = ret.source};
+
+	while(state.cursor < state.src.size())
+	{
+		// note: dont pass just cstr to ctor as it will search for \0 every single time.
+		std::string_view front = {ret.source.data() + state.cursor, ret.source.size() - state.cursor};
+		// todo: try to match this to every known token, and store it in lex output and advance.
+	}
+
+	return ret;
+}
 
 //////////////////////////// PARSE -> AST ////////////////////////////
 #undef COMPILER_STAGE
@@ -241,5 +325,5 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
-	std::string build_file_src = read_file(args.build_file);
+	lex_output build_file_lex = lex(args.build_file);
 }
