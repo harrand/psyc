@@ -120,14 +120,18 @@ compile_args parse_args(std::span<const std::string_view> args)
 void print_help()
 {
 	constexpr auto help_string = R"(OVERVIEW: Psy Compiler
-USAGE: psyc OPTION... FILE...
+USAGE: psyc OPTION... FILE
 
 OPTION:
-	-v	display version info and help
+	<empty>
+	--help
+	-h			display version info and help
 
 FILE:
+	- Unlike other compilers, you specify only one file, instead of many.
+		- That one source file should act as a build system for your whole project.
 	- Can be an absolute path, or a path relative to the current working directory.
-	- Files must contain valid .psy source code.
+	- File must contain valid .psy source code.
 	- Recommended to end in .psy, but does not have to.
 	)";
 	std::print(help_string);
