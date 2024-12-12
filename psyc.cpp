@@ -9,6 +9,7 @@
 #include <sstream>
 #include <cstdint>
 #include <cstddef>
+#include <array>
 
 // internals
 
@@ -18,9 +19,9 @@ void crash()
 	std::exit(-1);
 }
 
-void panic(const char* msg, std::source_location loc = std::source_location::current(), std::stacktrace trace = std::stacktrace::current())
+void generic_panic(const char* msg, std::source_location loc, std::stacktrace trace, std::format_args&& args)
 {
-	std::print("\033[1;31minternal compiler error: {}\n\tat {}({}:{}) `{}`\nstacktrace:\n==========\n{}\n=========\033[0m", msg, loc.file_name(), loc.line(), loc.column(), loc.function_name(), std::to_string(trace));
+	std::print("\033[1;31minternal compiler error: {}\n\tat {}({}:{}) `{}`\nstacktrace:\n==========\n{}\n=========\033[0m", std::vformat(msg, args), loc.file_name(), loc.line(), loc.column(), loc.function_name(), std::to_string(trace));
 	crash();
 }
 
@@ -37,7 +38,8 @@ struct srcloc
 	unsigned int column;
 };
 
-#define panic_ifnt(cond, msg) if(!cond){panic(msg);}
+#define panic(msg, ...) generic_panic(msg, std::source_location::current(), std::stacktrace::current(), std::make_format_args(__VA_ARGS__))
+#define panic_ifnt(cond, msg, ...) if(!(cond)){panic(msg, __VA_ARGS__);}
 
 template <>
 struct std::formatter<srcloc> : std::formatter<std::string>
@@ -99,7 +101,7 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 }
 #define COMPILER_STAGE
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
-#define error_ifnt(cond, loc, msg, ...) if(!cond){error(loc, msg, __VA_ARGS__);}
+#define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 
 //////////////////////////// ARGPARSE ////////////////////////////
 #undef COMPILER_STAGE
@@ -168,7 +170,7 @@ std::string read_file(std::filesystem::path file)
 	error_ifnt(fstr.good(), {}, "failed to read file {}", file);
 
 	std::stringstream buffer;
-	buffer >> fstr.rdbuf();
+	buffer << fstr.rdbuf();
 	return buffer.str();
 }
 
@@ -189,16 +191,7 @@ constexpr std::uint32_t string_hash(std::string_view str)
 	return fnv1a_32(str);
 }
 
-enum class token : std::uint32_t
-{
-	comment = string_hash("//"),
-	multicomment = string_hash("/*"),
-	iden,
-	numlit,
-	charlit,
-	strlit
-};
-
+enum class token : std::uint32_t;
 // when im done lexing i will give the following info to the rest of the compiler
 struct lex_output
 {
@@ -220,16 +213,16 @@ struct lex_state
 {
 	std::string_view src;
 	std::size_t cursor = 0;
-	std::size_t line = 0;
-	std::size_t column = 0;
+	unsigned int line = 1;
+	unsigned int column = 1;
 
 	// move forward 'count' chars, make sure to keep line count sane. panic if we run out of space.
 	void advance(std::size_t count = 1)
 	{
-		panic_ifnt(this->cursor + count < src.size(), "advance ran over string capacity");
+		panic_ifnt(this->cursor + count <= src.size(), "advance ran over string capacity");
 		for(std::size_t i = 0; i < count; i++)
 		{
-			char next = src[++this->cursor];
+			char next = src[this->cursor++];
 			if(next == '\n')
 			{
 				this->line++;
@@ -252,14 +245,16 @@ struct lex_state
 	// return the number of chars advanced. panic if predicate never returns true.
 	std::size_t advance_until(bool(*pred)(std::string_view))
 	{
-		std::string_view src_cpy = this->src;
+		std::string_view current = this->src;
+		current.remove_prefix(this->cursor);
 		std::size_t dst = 0;
 		// find how long we have to go until predicate first returns true
-		while(!pred(src_cpy))
+		while(!pred(current))
 		{
 			dst++;
-			panic_ifnt(this->cursor + dst < src.size(), "advance_until(pred) ran out of source file before predicate returned true");
-			src_cpy.remove_prefix(1);
+			std::size_t capacity = src.size();
+			panic_ifnt(this->cursor + dst < capacity, "advance_until(pred) ran out of source file before predicate returned true");
+			current.remove_prefix(1);
 		}
 
 		// advance that amount, and return that amount.
@@ -267,6 +262,124 @@ struct lex_state
 		return dst;
 	}
 };
+
+// below is core tokenisation logic. dont skip over this text.
+// the enum class token represents all token types. for each token type, the token_traits array has a member that contains the logic for how to parse it and its side effects.
+//
+// so based upon some source code, how do we identify which token type it is?
+// most of the time, you can compare the front of the source code with some special set of characters
+// e.g comments always start with "//"
+// so token_traits[token::comment].front_identifier = "//" and the lexer api will automatically match it
+// if front_identifier == nullptr for a certain token type then it is assumed that the match logic is not trivial.
+//
+// there is where the tokenise_fn (fn) comes in. the tokenise function will take in the current point in the source code and return true if it matches.
+// note: even if you do set a front_identifier, the tokenise function's return value is ignored BUT the side-effect of it should properly deal with adding the token data.
+// however, there is a special "trivial" flag you can raise for a common case. if your token type is trivial (i.e no lexeme value, just match against the front identifier and dont do anything special) then set trivial to true.
+// if trivial is true, then the tokenise_fn is ignored completely and can be nullptr. it will just match and add the token with an empty lexeme (known in the codebase as trivial lexing)
+enum class token : std::uint32_t
+{
+	comment,
+	multicomment,
+	_count
+};
+using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
+struct tokeniser
+{
+	const char* front_identifier = nullptr;
+	tokenise_fn fn = nullptr;
+	bool trivial = false;
+};
+std::array<tokeniser, static_cast<int>(token::_count)> token_traits
+{
+	// comment 
+	tokeniser
+	{
+		.front_identifier = "//",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			// rest of the line is ignored.
+			std::size_t comment_begin = state.cursor;
+			std::size_t comment_length = state.advance_until([](std::string_view next){return next.starts_with("\n");});
+			out.tokens.push_back(token::comment);
+			out.lexemes.push_back({.offset = comment_begin, .length = comment_length});
+			return true;
+		}
+	},
+
+	// multicomment
+	tokeniser
+	{
+		.front_identifier = "/*",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			state.advance_until([](std::string_view next){return next.starts_with("*/");});
+			state.advance("*/");
+			return false;
+		}
+	}
+};
+
+// given a given token trait, try to tokenise the current bit of the source code
+// return true if the token matched and the output was updated
+// return false (and doesnt touch the output) if the current part of the source code is definitely not this token.
+bool try_tokenise(std::string_view front, token tok, lex_output& out, lex_state& state)
+{
+	const tokeniser& trait = token_traits[static_cast<int>(tok)];
+	if(trait.trivial)
+	{
+		// do trivial lexing
+		if(front.starts_with(trait.front_identifier))
+		{
+			state.advance(trait.front_identifier);
+			out.tokens.push_back(tok);
+			out.lexemes.push_back({.offset = state.cursor + 1, .length = std::strlen(trait.front_identifier)});
+			return true;
+		}
+	}
+	else
+	{
+		// ok not going to be that simple
+		// firstly we better have a trait function
+		if(trait.fn == nullptr)
+		{
+			const char* description = trait.front_identifier;
+			if(description == nullptr)
+			{
+				description = "<unknown token trait>";
+			}
+			panic("non-trivial token trait \"{}\" had a nullptr tokenise function, which is a lexer bug.", description);
+		}
+		// is there still a front identifier?
+		if(trait.front_identifier != nullptr)
+		{
+			if(front.starts_with(trait.front_identifier))
+			{
+				// ok, run the tokeniser function but ignore the result.
+				// assume the side-effects of the function have successfully written to the output. we're done.
+				trait.fn(front, state, out);
+				return true;
+			}
+			// otherwise move on and try the next token type.
+			return false;
+		}
+		else
+		{
+			// no front identifier, so we purely rely on the trait function.
+			return trait.fn(front, state, out);
+		}
+	}
+	return false;
+}
+
+std::size_t skip_over_whitespace(std::string_view front)
+{
+	if(std::isspace(front.front()))
+	{
+		return 1;
+	}
+	return false;
+}
+
 
 // lex api. "heres a file i know nothing about, give me all the tokens". panic if anything goes wrong.
 lex_output lex(std::filesystem::path file)
@@ -279,7 +392,39 @@ lex_output lex(std::filesystem::path file)
 	{
 		// note: dont pass just cstr to ctor as it will search for \0 every single time.
 		std::string_view front = {ret.source.data() + state.cursor, ret.source.size() - state.cursor};
+		// is this whitespace we just skip over?
+		auto whitespace = skip_over_whitespace(front);
+		if(whitespace > 0)
+		{
+			// go again.
+			state.advance(whitespace);
+			continue;
+		}
+
+		srcloc loc{.file = file, .line = state.line, .column = state.column + 1};
 		// todo: try to match this to every known token, and store it in lex output and advance.
+		bool found_a_token = false;
+		for(int i = 0; i < static_cast<int>(token::_count); i++)
+		{
+			if(try_tokenise(front, static_cast<token>(i), ret, state))
+			{
+				// ok we succesfully found a token. save the location of the token and then break out of the loop.
+				ret.locations.push_back(loc);
+				found_a_token = true;
+				break;
+			}
+		}
+		// none of the tokens worked.
+		// need to error out
+		// let's not use the whole source as the snippet, just a hardcoded limit
+		if(!found_a_token)
+		{
+			if(front.size() > 32)
+			{
+				front.remove_suffix(front.size() - 32);
+			}
+			error(loc, "invalid tokens {}: \"{}\"", loc, front);
+		}
 	}
 
 	return ret;
