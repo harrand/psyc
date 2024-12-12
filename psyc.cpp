@@ -5,6 +5,8 @@
 #include <span>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <sstream>
 
 void crash()
 {
@@ -29,6 +31,7 @@ struct srcloc
 	unsigned int column;
 };
 
+// format support
 template <>
 struct std::formatter<srcloc> : std::formatter<std::string>
 {
@@ -40,6 +43,15 @@ struct std::formatter<srcloc> : std::formatter<std::string>
 		}
 		return formatter<string>::format(std::format("at {}({}:{})", loc.file.string(), loc.line, loc.column), ctx);
 	}
+};
+
+// todo: remove this code when c++26 is used.
+template <>
+struct std::formatter<std::filesystem::path, char> : std::formatter<std::string, char> {
+    auto format(const std::filesystem::path& path, std::format_context& ctx) const
+	{
+        return std::formatter<std::string, char>::format(path.string(), ctx);
+    }
 };
 
 enum class err
@@ -139,6 +151,18 @@ FILE:
 
 #undef COMPILER_STAGE
 #define COMPILER_STAGE lex
+
+std::string read_file(std::filesystem::path file)
+{
+	std::ifstream fstr(file);
+	error_ifnt(fstr.good(), {}, "failed to read file {}. perhaps it was read-only?", file);
+
+	std::stringstream buffer;
+	buffer >> fstr.rdbuf();
+	return buffer.str();
+}
+
+
 // lexer
 
 #undef COMPILER_STAGE
