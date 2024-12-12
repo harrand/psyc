@@ -92,14 +92,14 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!cond){error(loc, msg, __VA_ARGS__);}
 
+//////////////////////////// ARGPARSE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE argparse
-// argument parsing
 
 struct compile_args
 {
 	bool should_print_help = false;
-	std::filesystem::path build_file;
+	std::filesystem::path build_file = {};
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -110,7 +110,7 @@ compile_args parse_args(std::span<const std::string_view> args)
 		const auto& arg = args[i];
 		auto argnext = [allowed = i < args.size() - 1, i, &args](){if(!allowed){error({}, "argument missing value");} return args[i + 1];};
 
-		if(arg == "-v")
+		if(arg == "-h" || arg == "--help")
 		{
 			ret.should_print_help = true;
 		}
@@ -121,10 +121,9 @@ compile_args parse_args(std::span<const std::string_view> args)
 		}
 	}
 
-	// if user provides no arguments im gonna assume they need some help.
-	if(args.empty())
+	if(!ret.should_print_help)
 	{
-		ret.should_print_help = true;
+	error_ifnt(!ret.build_file.empty(), {}, "no file specified");
 	}
 	return ret;
 }
@@ -149,42 +148,80 @@ FILE:
 	std::print(help_string);
 }
 
+//////////////////////////// LEXER -> TOKENS ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE lex
 
 std::string read_file(std::filesystem::path file)
 {
 	std::ifstream fstr(file);
-	error_ifnt(fstr.good(), {}, "failed to read file {}. perhaps it was read-only?", file);
+	error_ifnt(fstr.good(), {}, "failed to read file {}", file);
 
 	std::stringstream buffer;
 	buffer >> fstr.rdbuf();
 	return buffer.str();
 }
 
+// HASH IMPL
+constexpr std::uint32_t fnv1a_32(std::string_view str) noexcept {
+    constexpr std::uint32_t prime = 0x01000193; // 16777619
+    constexpr std::uint32_t offset_basis = 0x811C9DC5; // 2166136261
 
-// lexer
+    std::uint32_t hash = offset_basis;
+    for (char c : str) {
+        hash ^= static_cast<std::uint8_t>(c);
+        hash *= prime;
+    }
+    return hash;
+}
+constexpr std::uint32_t string_hash(std::string_view str)
+{
+	return fnv1a_32(str);
+}
 
+
+struct slice
+{
+	std::size_t offset = 0;
+	std::size_t length = 0;
+};
+
+enum class token : std::uint32_t
+{
+	comment = string_hash("//"),
+	multicomment,
+	iden,
+	numlit,
+	charlit,
+	strlit
+};
+
+struct lex_output
+{
+
+};
+
+//////////////////////////// PARSE -> AST ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE parse
-// parser
 
+//////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
-// semal
 
+//////////////////////////// META ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE meta
-// meta
 
+//////////////////////////// CODEGEN -> LLVM-IR ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE codegen
-// codegen llvm-IR
 
+//////////////////////////// ASSEMBLE -> OBJECTS ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE assemble
-// assemble llvm-IR -> objects
 
+//////////////////////////// LINK -> EXECUTABLE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE link
 // link objects -> executable
@@ -199,6 +236,10 @@ int main(int argc, char** argv)
 	{
 		print_help();
 	}
+	if(args.build_file == std::filesystem::path{})
+	{
+		return 0;
+	}
 
-	// todo: build args.build_file
+	std::string build_file_src = read_file(args.build_file);
 }
