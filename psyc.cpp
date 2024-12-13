@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <array>
+#include <charconv>
 
 // internals
 
@@ -280,6 +281,7 @@ enum class token : std::uint32_t
 {
 	comment,
 	multicomment,
+	integer_literal,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -312,8 +314,30 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.front_identifier = "/*",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
-			state.advance_until([](std::string_view next){return next.starts_with("*/");});
+			std::size_t comment_begin = state.cursor;
+			std::size_t comment_length = state.advance_until([](std::string_view next){return next.starts_with("*/");});
 			state.advance("*/");
+			out.tokens.push_back(token::multicomment);
+			out.lexemes.push_back({.offset = comment_begin, .length = comment_length});
+			return false;
+		}
+	},
+	// integer literal
+	tokeniser
+	{
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			std::int64_t val;
+			auto result = std::from_chars(front.data(), front.data() + front.size(), val);
+			if(result.ec == std::errc() && result.ptr != front.data())
+			{
+				std::size_t parse_count = result.ptr - front.data();
+				std::size_t cursor_before = state.cursor;
+				state.advance(parse_count);
+				out.tokens.push_back(token::integer_literal);
+				out.lexemes.push_back({.offset = cursor_before, .length = parse_count});
+				return true;
+			}
 			return false;
 		}
 	}
