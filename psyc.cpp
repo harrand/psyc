@@ -111,7 +111,7 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 struct compile_args
 {
 	bool should_print_help = false;
-	bool verbose = false;
+	bool verbose_lex = false;
 	std::filesystem::path build_file = {};
 };
 
@@ -127,12 +127,20 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.should_print_help = true;
 		}
-		else if(arg == "--verbose")
+		else if(arg == "--verbose-lex")
 		{
-			ret.verbose = true;
+			ret.verbose_lex = true;
+		}
+		else if(arg == "--verbose-all")
+		{
+			ret.verbose_lex = true;
 		}
 		else
 		{
+			if(arg.starts_with("-"))
+			{
+				error({}, "unknown option {}", arg);
+			}
 			ret.build_file = arg;
 			error_ifnt(std::filesystem::exists(ret.build_file), {}, "could not find build file {}", arg);
 		}
@@ -153,7 +161,10 @@ USAGE: psyc OPTION... FILE
 OPTION:
 	<empty>
 	--help
-	-h			display version info and help
+	-h				display version info and help
+
+	--verbose-all	output *all* compiler meta information (for debugging purposes)
+	--verbose-lex	output lexer meta information (print all tokens)
 
 FILE:
 	- Unlike other compilers, you specify only one file, instead of many.
@@ -210,8 +221,10 @@ struct lex_output
 	std::vector<token> tokens = {};
 	// lexemes corresponding to each token. slice represents a view into the source (raw bytes) of the file.
 	std::vector<slice> lexemes = {};
-	// location of each token within the source file.
-	std::vector<srcloc> locations = {};
+	// begin location of each token within the source file.
+	std::vector<srcloc> begin_locations = {};
+	// end location of each token within the source file.
+	std::vector<srcloc> end_locations = {};
 
 	void verbose_print();
 };
@@ -505,7 +518,8 @@ lex_output lex(std::filesystem::path file)
 			if(try_tokenise(front, static_cast<token>(i), ret, state))
 			{
 				// ok we succesfully found a token. save the location of the token and then break out of the loop.
-				ret.locations.push_back(loc);
+				ret.begin_locations.push_back(loc);
+				ret.end_locations.push_back({.file = file, .line = state.line, .column = state.column + 1});
 				found_a_token = true;
 				break;
 			}
@@ -515,9 +529,15 @@ lex_output lex(std::filesystem::path file)
 		// let's not use the whole source as the snippet, just a hardcoded limit
 		if(!found_a_token)
 		{
-			if(front.size() > 32)
+			int cutoff_length = 32;
+			int first_semicol_pos = front.find(';');
+			if(first_semicol_pos != std::string_view::npos)
 			{
-				front.remove_suffix(front.size() - 32);
+				cutoff_length = std::min(cutoff_length, first_semicol_pos - 1);
+			}
+			if(front.size() > cutoff_length)
+			{
+				front.remove_suffix(front.size() - cutoff_length);
 			}
 			error(loc, "invalid tokens {}: \"{}\"", loc, front);
 		}
@@ -535,9 +555,10 @@ void lex_output::verbose_print()
 
 		slice lex_slice = this->lexemes[i];
 		std::string_view lexeme {this->source.data() + lex_slice.offset, lex_slice.length};
-		srcloc loc = this->locations[i];
+		srcloc begin_loc = this->begin_locations[i];
+		srcloc end_loc = this->end_locations[i];
 
-		std::println("{} ({}) {}", token_traits[static_cast<int>(t)].name, lexeme, loc);
+		std::println("{} ({}) at {}({}:{} -> {}:{})", token_traits[static_cast<int>(t)].name, lexeme, begin_loc.file, begin_loc.line, begin_loc.column, end_loc.line, end_loc.column);
 	}
 }
 
@@ -582,7 +603,7 @@ int main(int argc, char** argv)
 	}
 
 	lex_output build_file_lex = lex(args.build_file);
-	if(args.verbose)
+	if(args.verbose_lex)
 	{
 		build_file_lex.verbose_print();
 	}
