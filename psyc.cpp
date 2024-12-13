@@ -311,16 +311,16 @@ enum class token : std::uint32_t
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
 struct tokeniser
 {
+	const char* name = "<untitled token>";
 	const char* front_identifier = nullptr;
 	tokenise_fn fn = nullptr;
 	bool trivial = false;
-	const char* name = "<untitled token";
 };
 std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 {
-	// comment 
 	tokeniser
 	{
+		.name = "comment",
 		.front_identifier = "//",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -331,12 +331,11 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return true;
 		},
-		.name = "comment"
 	},
 
-	// multicomment
 	tokeniser
 	{
+		.name = "multicomment",
 		.front_identifier = "/*",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -347,11 +346,11 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return false;
 		},
-		.name = "multicomment"
 	},
-	// integer literal
+
 	tokeniser
 	{
+		.name = "integer literal",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
 			std::int64_t val;
@@ -384,11 +383,11 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			}
 			return false;
 		},
-		.name = "integer literal"
 	},
-	// decimal literal
+
 	tokeniser
 	{
+		.name = "decimal literal",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
 			double val;
@@ -404,12 +403,11 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			}
 			return false;
 		},
-		.name = "decimal literal"
 	},
 
-	// string literal
 	tokeniser
 	{
+		.name = "string literal",
 		.front_identifier = "\"",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -425,12 +423,11 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			out.lexemes.push_back({.offset = string_begin, .length = string_length});
 			return false;
 		},
-		.name = "string literal"
 	},
 
-	// symbol
 	tokeniser
 	{
+		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
 			// symbol can start with a letter or _, but not a number
@@ -445,7 +442,6 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			}
 			return false;
 		},
-		.name = "symbol"
 	}
 };
 
