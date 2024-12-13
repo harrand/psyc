@@ -305,6 +305,7 @@ enum class token : std::uint32_t
 	integer_literal,
 	decimal_literal,
 	string_literal,
+	symbol,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -425,6 +426,26 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			return false;
 		},
 		.name = "string literal"
+	},
+
+	// symbol
+	tokeniser
+	{
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			// symbol can start with a letter or _, but not a number
+			if(std::isalpha(front.front()) || front.front() == '_')
+			{
+				// however after the first char a symbol can contain a number
+				std::size_t symbol_begin = state.cursor;
+				std::size_t symbol_length = state.advance_until([](std::string_view next){return !(std::isalnum(next.front()) || next.front() == '_');});
+				out.tokens.push_back(token::symbol);
+				out.lexemes.push_back({.offset = symbol_begin, .length = symbol_length});
+				return true;
+			}
+			return false;
+		},
+		.name = "symbol"
 	}
 };
 
