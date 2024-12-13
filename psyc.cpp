@@ -261,7 +261,7 @@ struct lex_state
 		{
 			dst++;
 			std::size_t capacity = src.size();
-			panic_ifnt(this->cursor + dst < capacity, "advance_until(pred) ran out of source file before predicate returned true");
+			panic_ifnt(this->cursor + dst <= capacity, "advance_until(pred) ran out of source file before predicate returned true");
 			current.remove_prefix(1);
 		}
 
@@ -291,6 +291,7 @@ enum class token : std::uint32_t
 	multicomment,
 	integer_literal,
 	decimal_literal,
+	string_literal,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -390,6 +391,27 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			return false;
 		},
 		.name = "decimal literal"
+	},
+
+	// string literal
+	tokeniser
+	{
+		.front_identifier = "\"",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			std::size_t string_begin = state.cursor + 1;
+			// careful - advance_until could easily get the same quote as the front, so we nudge the cursor forward once
+			state.advance(1);
+			std::size_t string_length = state.advance_until([](std::string_view next){return next.starts_with("\"");});
+			if(state.cursor < state.src.size())
+			{
+				state.advance(1);
+			}
+			out.tokens.push_back(token::string_literal);
+			out.lexemes.push_back({.offset = string_begin, .length = string_length});
+			return false;
+		},
+		.name = "string literal"
 	}
 };
 
