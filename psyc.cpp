@@ -304,8 +304,10 @@ enum class token : std::uint32_t
 	multicomment,
 	integer_literal,
 	decimal_literal,
+	char_literal,
 	string_literal,
 	symbol,
+	initialiser,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -407,6 +409,27 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "char literal",
+		.front_identifier = "\'",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			srcloc cur{.file = out.source_file, .line = static_cast<unsigned int>(state.line), .column = static_cast<unsigned int>(state.column)};
+			std::size_t char_begin = state.cursor + 1;
+			// careful - advance_until could easily get the same quote as the front, so we nudge the cursor forward once
+			state.advance(1);
+			std::size_t char_length = state.advance_until([](std::string_view next){return next.starts_with("\'");});
+			if(state.cursor < state.src.size())
+			{
+				state.advance(1);
+			}
+			out.tokens.push_back(token::char_literal);
+			out.lexemes.push_back({.offset = char_begin, .length = char_length});
+			return false;
+		},
+	},
+
+	tokeniser
+	{
 		.name = "string literal",
 		.front_identifier = "\"",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
@@ -442,6 +465,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			}
 			return false;
 		},
+	},
+
+	tokeniser
+	{
+		.name = "initialiser",
+		.front_identifier = ":=",
+		.trivial = true
 	}
 };
 
@@ -456,9 +486,10 @@ bool try_tokenise(std::string_view front, token tok, lex_output& out, lex_state&
 		// do trivial lexing
 		if(front.starts_with(trait.front_identifier))
 		{
+			std::size_t cursor_before = state.cursor;
 			state.advance(trait.front_identifier);
 			out.tokens.push_back(tok);
-			out.lexemes.push_back({.offset = state.cursor + 1, .length = std::strlen(trait.front_identifier)});
+			out.lexemes.push_back({.offset = cursor_before, .length = std::strlen(trait.front_identifier)});
 			return true;
 		}
 	}
