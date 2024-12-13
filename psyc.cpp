@@ -111,6 +111,7 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 struct compile_args
 {
 	bool should_print_help = false;
+	bool verbose = false;
 	std::filesystem::path build_file = {};
 };
 
@@ -125,6 +126,10 @@ compile_args parse_args(std::span<const std::string_view> args)
 		if(arg == "-h" || arg == "--help")
 		{
 			ret.should_print_help = true;
+		}
+		else if(arg == "--verbose")
+		{
+			ret.verbose = true;
 		}
 		else
 		{
@@ -207,6 +212,8 @@ struct lex_output
 	std::vector<slice> lexemes = {};
 	// location of each token within the source file.
 	std::vector<srcloc> locations = {};
+
+	void verbose_print();
 };
 
 // internal lexer state, not exposed to rest of compiler.
@@ -269,6 +276,7 @@ struct lex_state
 //
 // so based upon some source code, how do we identify which token type it is?
 // most of the time, you can compare the front of the source code with some special set of characters
+//
 // e.g comments always start with "//"
 // so token_traits[token::comment].front_identifier = "//" and the lexer api will automatically match it
 // if front_identifier == nullptr for a certain token type then it is assumed that the match logic is not trivial.
@@ -282,6 +290,7 @@ enum class token : std::uint32_t
 	comment,
 	multicomment,
 	integer_literal,
+	decimal_literal,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -290,6 +299,7 @@ struct tokeniser
 	const char* front_identifier = nullptr;
 	tokenise_fn fn = nullptr;
 	bool trivial = false;
+	const char* name = "<untitled token";
 };
 std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 {
@@ -300,12 +310,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
 			// rest of the line is ignored.
-			std::size_t comment_begin = state.cursor;
+			std::size_t comment_begin = state.cursor + std::strlen("//");
 			std::size_t comment_length = state.advance_until([](std::string_view next){return next.starts_with("\n");});
 			out.tokens.push_back(token::comment);
-			out.lexemes.push_back({.offset = comment_begin, .length = comment_length});
+			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return true;
-		}
+		},
+		.name = "comment"
 	},
 
 	// multicomment
@@ -314,13 +325,14 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.front_identifier = "/*",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
-			std::size_t comment_begin = state.cursor;
+			std::size_t comment_begin = state.cursor + std::strlen("/*");
 			std::size_t comment_length = state.advance_until([](std::string_view next){return next.starts_with("*/");});
 			state.advance("*/");
 			out.tokens.push_back(token::multicomment);
-			out.lexemes.push_back({.offset = comment_begin, .length = comment_length});
+			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return false;
-		}
+		},
+		.name = "multicomment"
 	},
 	// integer literal
 	tokeniser
@@ -328,18 +340,56 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
 			std::int64_t val;
-			auto result = std::from_chars(front.data(), front.data() + front.size(), val);
-			if(result.ec == std::errc() && result.ptr != front.data())
+			std::from_chars_result result;
+			if(front.starts_with("0b"))
 			{
+				// binary (base 2) literal
+				result = std::from_chars(front.data() + 2, front.data() + front.size(), val, 2);
+			}
+			else if(front.starts_with("0x"))
+			{
+				// hex (base 16) literal
+				result = std::from_chars(front.data() + 2, front.data() + front.size(), val, 16);
+			}
+			else
+			{
+				// base 10 integer literal
+				result = std::from_chars(front.data(), front.data() + front.size(), val, 10);
+			}
+			if(result.ec == std::errc() && result.ptr != front.data() && *result.ptr != '.')
+			{
+				// yes we successfully parsed some numbers.
 				std::size_t parse_count = result.ptr - front.data();
 				std::size_t cursor_before = state.cursor;
+
 				state.advance(parse_count);
 				out.tokens.push_back(token::integer_literal);
 				out.lexemes.push_back({.offset = cursor_before, .length = parse_count});
 				return true;
 			}
 			return false;
-		}
+		},
+		.name = "integer literal"
+	},
+	// decimal literal
+	tokeniser
+	{
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			double val;
+			auto result = std::from_chars(front.data(), front.data() + front.size(), val);
+			if(result.ec == std::errc() && result.ptr != front.data())
+			{
+				std::size_t parse_count = result.ptr - front.data();
+				std::size_t cursor_before = state.cursor;
+				state.advance(parse_count);
+				out.tokens.push_back(token::decimal_literal);
+				out.lexemes.push_back({.offset = cursor_before, .length = parse_count});
+				return true;
+			}
+			return false;
+		},
+		.name = "decimal literal"
 	}
 };
 
@@ -454,6 +504,21 @@ lex_output lex(std::filesystem::path file)
 	return ret;
 }
 
+void lex_output::verbose_print()
+{
+	// print all tokens.
+	for(std::size_t i = 0; i < tokens.size(); i++)
+	{
+		token t = this->tokens[i];
+
+		slice lex_slice = this->lexemes[i];
+		std::string_view lexeme {this->source.data() + lex_slice.offset, lex_slice.length};
+		srcloc loc = this->locations[i];
+
+		std::println("{} ({}) {}", token_traits[static_cast<int>(t)].name, lexeme, loc);
+	}
+}
+
 //////////////////////////// PARSE -> AST ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE parse
@@ -495,4 +560,8 @@ int main(int argc, char** argv)
 	}
 
 	lex_output build_file_lex = lex(args.build_file);
+	if(args.verbose)
+	{
+		build_file_lex.verbose_print();
+	}
 }
