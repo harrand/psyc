@@ -844,6 +844,19 @@ struct node
 			.hash_morph = static_cast<int>(tok)
 		};
 	}
+
+	static node wrap_imaginary_token(token tok)
+	{
+		// this node should never be put into an AST, but used as a way to create a node hash based upon an arbitrary token.
+		return node
+		{
+			.payload = ast_token
+			{
+				.tok = tok
+			},
+			.hash_morph = static_cast<int>(tok)
+		};
+	}
 };
 
 // whenever a chord function is invoked, it should return some kind of hint as to what happens next.
@@ -855,6 +868,8 @@ enum class parse_action
 	reduce,
 	// you should assume all subtrees from the far left of the parse stack to the end of this reduction function state are finished and should no longer be parsed further.
 	commit,
+	// the chord function has reported a parse error, and the parser state is no longer trustworthy.
+	error,
 };
 
 using chord_function = parse_action(*)(std::span<node> subtrees);
@@ -865,6 +880,37 @@ struct parse_table_entry
 	std::unordered_map<std::int64_t, parse_table_entry> children = {};
 };
 std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
+
+parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtrees)
+{
+	panic_ifnt(subtrees.size() > 0, "attempted to find empty from hashes of a set of subtrees, but the set of subtrees was empty.");
+	std::int64_t first_hash = subtrees.front().hash();
+	subtrees = subtrees.subspan<1>();
+	parse_table_entry& entry = parse_table[first_hash];
+	for(const node& n : subtrees)
+	{
+		entry = entry.children[n.hash()];
+	}
+	return entry;
+}
+
+void add_chord(std::span<const node> subtrees, chord_function fn)
+{
+	auto& entry = find_entry_from_hashed_subtrees(subtrees);
+	panic_ifnt(entry.chord_fn == nullptr, "redefinition of chord function");
+	entry.chord_fn = fn;
+}
+
+#define CHORD_BEGIN add_chord(
+#define CHORD_END );
+
+#define TOKEN(x) node::wrap_imaginary_token(token::x)
+#define NODE(x) node{.payload = x{}}
+#define FN [](std::span<node> nodes)
+#define STATE(...) [](){return std::array{__VA_ARGS__};}()
+void populate_chords();
+
+#define chord_error(msg, ...) error(nodes.front().begin_location, msg, __VA_ARGS__); return parse_action::error
 
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
@@ -891,6 +937,8 @@ std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
 
 int main(int argc, char** argv)
 {
+	populate_chords();
+
 	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	compile_args args = parse_args(cli_args);
 	if(args.should_print_help)
@@ -912,5 +960,53 @@ int main(int argc, char** argv)
 		node example = node::wrap_token(build_file_lex, 3);
 		example.children.push_back(node::wrap_token(build_file_lex, 4));
 		example.verbose_print(build_file_lex.source);
+
+		std::span<node> nodes{&example, 1};
+		parse_table_entry& entry = find_entry_from_hashed_subtrees(nodes);
+		panic_ifnt(entry.chord_fn != nullptr, "woopsey this chord function is somehow null");
+		entry.chord_fn(nodes);
 	}
+
+}
+
+
+//////////////////////////// PARSE CHORDS ////////////////////////////
+// we are back in parser land - this is where all the chord functions live. they sit here at the bottom because there is going to be *alot* of them.
+#undef COMPILER_STAGE
+#define COMPILER_STAGE parse
+// a chord is a single entry in the parse tree
+// so let's say we are in the middle of the parsing process.
+// - ours is a shift-reduce parser, meaning it somehow needs to know when to shift and when it can perform a reduction
+// - instead of checking the entire subtree state manually everytime, we convert the current parse state to a set of hashes
+// - we then use those hashes to find a chord function that tells the parser what to do in the case of that exact parse state
+// - all chord functions are hand-written, but to manually put them in the right place in the table would be too insane.
+// - so the macro hackery below will take the chord function and magically install it in the correct place in the parse table.
+//
+// CHORD_BEGIN (signifies the beginning of a chord)
+// STATE(...) is how you specify what exact parse state this particular chord is meant to handle
+// 		example: STATE(TOKEN(colon), TOKEN(eq)) means that the chord function handles the case that the source contains exactly ":="
+// 		note: this example is unrealistic, as := is actually its own token (token::initialiser). ctrl-f above.
+// directly after STATE(...), you should put FN and write your c++ code. you are now defining your chord function.
+//
+// how to write a chord function
+// =============================
+//
+// - you have a writable array of the nodes within the variable "nodes". you should consider it a std::span<node>
+// - you already know what type of nodes are in the array - as they will exactly match what you specified in STATE(...)
+// - if your state represents a valid reduction, you should do the reduction and return parse_action::reduce
+// - if your state represents a syntax error, you should call chord_error(msg, ...) directly in your function. no need to return anything in that case, the macro will handle it for you.
+// - if your state represents fully parsed source code, you should return parse_action::commit which will commit all the nodes to the final AST.
+//
+
+void populate_chords(){
+	
+CHORD_BEGIN
+	STATE(TOKEN(decimal_literal)), FN
+	{
+		chord_error("i found a decimal literal! bad!");
+	}
+CHORD_END
+
+
+// end of chords
 }
