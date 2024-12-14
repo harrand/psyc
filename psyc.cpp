@@ -12,6 +12,7 @@
 #include <array>
 #include <charconv>
 #include <variant>
+#include <unordered_map>
 
 // internals
 
@@ -747,9 +748,16 @@ void lex_output::verbose_print()
 #undef COMPILER_STAGE
 #define COMPILER_STAGE parse
 
+struct ast_token
+{
+	token tok;
+	std::string_view lexeme;
+};
+
 using node_payload = std::variant
 <
-	std::monostate
+	std::monostate,
+	ast_token
 >;
 template<typename T, std::size_t index_leave_blank = 0>
 consteval int payload_index()
@@ -774,17 +782,60 @@ struct node
 	std::vector<node> children = {};
 	// payload, data varies depending on what type of node we are.
 	node_payload payload = std::monostate{};
+	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
+	int hash_morph = 0;
 
 	std::int64_t hash() const
 	{
-		return std::hash<std::size_t>{}(this->payload.index());
+		return std::hash<std::size_t>{}(this->payload.index()) ^ std::hash<int>{}(this->hash_morph);
 	}
 
 	bool is_null() const
 	{
 		return payload.index() == payload_index<std::monostate>();
 	}
+
+	// when shifting (grabbing a token from the lexer, that is uh not an ast node so how do we add it to the parse stack?
+	// easy! use this to wrap it up and add this to the parse stack instead.
+	static node wrap_token(const lex_output& lex, std::size_t idx)
+	{
+		slice s = lex.lexemes[idx];
+		token tok = lex.tokens[idx];
+		return node
+		{
+			.begin_location = lex.begin_locations[idx],
+			.end_location = lex.end_locations[idx],
+			.children = {},
+			.payload = ast_token
+			{
+				.tok = tok,
+				.lexeme = {lex.source.data() + s.offset, s.length}
+			},
+			// remember, ast tokens of different types (e.g colon and comments) should return different hashes, or chords can't select a specific token type.
+			.hash_morph = static_cast<int>(tok)
+		};
+	}
 };
+
+// whenever a chord function is invoked, it should return some kind of hint as to what happens next.
+enum class parse_action
+{
+	// i couldn't make a decision, i need another token
+	shift,
+	// i have performed a reduction on the parse stack.
+	reduce,
+	// you should assume all subtrees from the far left of the parse stack to the end of this reduction function state are finished and should no longer be parsed further.
+	commit,
+};
+
+using chord_function = parse_action(*)(std::span<node> subtrees);
+
+struct parse_table_entry
+{
+	chord_function chord_fn = nullptr;
+	std::unordered_map<std::int64_t, parse_table_entry> children = {};
+};
+std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
 
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
