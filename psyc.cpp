@@ -243,6 +243,7 @@ struct lex_output
 	std::vector<srcloc> end_locations = {};
 
 	void verbose_print();
+	void strip_tokens_that_dont_affect_code();
 };
 
 // internal lexer state, not exposed to rest of compiler.
@@ -349,6 +350,7 @@ struct tokeniser
 	const char* front_identifier = nullptr;
 	tokenise_fn fn = nullptr;
 	bool trivial = false;
+	bool affects_code = true;
 };
 std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 {
@@ -365,6 +367,7 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return true;
 		},
+		.affects_code = false
 	},
 
 	tokeniser
@@ -380,6 +383,7 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			out.lexemes.push_back({.offset = comment_begin, .length = comment_length - 2});
 			return false;
 		},
+		.affects_code = false
 	},
 
 	tokeniser
@@ -739,6 +743,7 @@ lex_output lex(std::filesystem::path file)
 		}
 	}
 
+	ret.strip_tokens_that_dont_affect_code();
 	return ret;
 }
 
@@ -755,6 +760,25 @@ void lex_output::verbose_print()
 		srcloc end_loc = this->end_locations[i];
 
 		std::println("{} ({}) at {}({}:{} -> {}:{})", token_traits[static_cast<int>(t)].name, lexeme, begin_loc.file, begin_loc.line, begin_loc.column, end_loc.line, end_loc.column);
+	}
+}
+
+void lex_output::strip_tokens_that_dont_affect_code()
+{
+	for(std::size_t i = 0; i < tokens.size();)
+	{
+		tokeniser trait = token_traits[static_cast<int>(tokens[i])];
+		if(!trait.affects_code)
+		{
+			this->tokens.erase(this->tokens.begin() + i);
+			this->lexemes.erase(this->lexemes.begin() + i);
+			this->begin_locations.erase(this->begin_locations.begin() + i);
+			this->end_locations.erase(this->end_locations.begin() + i);
+		}
+		else
+		{
+			i++;
+		}
 	}
 }
 
