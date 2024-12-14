@@ -939,6 +939,24 @@ node parse(const lex_output& impl_in)
 			std::string_view snippet = quote_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
 			error(state.nodes.front().begin_location, "invalid syntax\n\t{} | {}", state.nodes.front().begin_location.line, snippet);
 		}
+		parse_action action = entry.chord_fn(state.nodes);
+		switch(action)
+		{
+			case parse_action::shift:
+				state.shift();	
+				break;
+			break;
+			case parse_action::reduce:
+				panic("action reduce nyi");
+				break;
+			break;
+			case parse_action::commit:
+				panic("action commit nyi");
+			break;
+			default:
+				panic("parse chord function returned unknown parse action");
+			break;
+		}
 	}
 
 	panic_ifnt(!state.final_ast.is_null(), "final ast is null");
