@@ -308,6 +308,22 @@ enum class token : std::uint32_t
 	string_literal,
 	symbol,
 	initialiser,
+	colon,
+	compare,
+	assign,
+	arrow,
+	oparen,
+	cparen,
+	obrace,
+	cbrace,
+	obrack,
+	cbrack,
+	oanglebrack,
+	canglebrack,
+	keyword_if,
+	keyword_while,
+	keyword_for,
+	keyword_return,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -472,7 +488,119 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.name = "initialiser",
 		.front_identifier = ":=",
 		.trivial = true
-	}
+	},
+
+	tokeniser
+	{
+		.name = "colon",
+		.front_identifier = ":",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "compare",
+		.front_identifier = "==",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "assign",
+		.front_identifier = "=",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "arrow",
+		.front_identifier = "->",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "oparen",
+		.front_identifier = "(",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "cparen",
+		.front_identifier = ")",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "obrace",
+		.front_identifier = "{",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "cbrace",
+		.front_identifier = "}",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "obrack",
+		.front_identifier = "[",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "cbrack",
+		.front_identifier = "]",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "oanglebrack",
+		.front_identifier = "<",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "canglebrack",
+		.front_identifier = ">",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "if keyword",
+		.front_identifier = "if",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "while keyword",
+		.front_identifier = "while",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "for keyword",
+		.front_identifier = "for",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "return keyword",
+		.front_identifier = "return",
+		.trivial = true
+	},
 };
 
 // given a given token trait, try to tokenise the current bit of the source code
