@@ -912,6 +912,39 @@ void populate_chords();
 
 #define chord_error(msg, ...) error(nodes.front().begin_location, msg, __VA_ARGS__); return parse_action::error
 
+struct parser_state
+{
+	const lex_output& in;
+	std::vector<node> nodes = {};
+	node final_ast = {};
+	std::size_t token_cursor = 0;
+
+	void shift()
+	{
+		nodes.push_back(node::wrap_token(this->in, this->token_cursor++));
+	}
+};
+
+node parse(const lex_output& impl_in)
+{
+	parser_state state{.in = impl_in};
+	// first thing we do is a single shift.
+	state.shift();
+
+	while(state.nodes.size())
+	{
+		parse_table_entry& entry = find_entry_from_hashed_subtrees(state.nodes);
+		if(entry.chord_fn == nullptr)
+		{
+			std::string_view snippet = quote_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+			error(state.nodes.front().begin_location, "invalid syntax\n\t{} | {}", state.nodes.front().begin_location.line, snippet);
+		}
+	}
+
+	panic_ifnt(!state.final_ast.is_null(), "final ast is null");
+	return state.final_ast;
+}
+
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
@@ -955,18 +988,11 @@ int main(int argc, char** argv)
 	{
 		build_file_lex.verbose_print();
 	}
+	node build_file_ast = parse(build_file_lex);
 	if(args.verbose_ast)
 	{
-		node example = node::wrap_token(build_file_lex, 3);
-		example.children.push_back(node::wrap_token(build_file_lex, 4));
-		example.verbose_print(build_file_lex.source);
-
-		std::span<node> nodes{&example, 1};
-		parse_table_entry& entry = find_entry_from_hashed_subtrees(nodes);
-		panic_ifnt(entry.chord_fn != nullptr, "woopsey this chord function is somehow null");
-		entry.chord_fn(nodes);
+		build_file_ast.verbose_print(build_file_lex.source);
 	}
-
 }
 
 
