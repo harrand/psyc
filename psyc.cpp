@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <array>
 #include <charconv>
+#include <variant>
 
 // internals
 
@@ -665,6 +666,10 @@ std::size_t skip_over_whitespace(std::string_view front)
 	return false;
 }
 
+std::int64_t token_hash(token t)
+{
+	return std::hash<int>{}(static_cast<int>(t));
+}
 
 // lex api. "heres a file i know nothing about, give me all the tokens". panic if anything goes wrong.
 lex_output lex(std::filesystem::path file)
@@ -741,6 +746,45 @@ void lex_output::verbose_print()
 //////////////////////////// PARSE -> AST ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE parse
+
+using node_payload = std::variant
+<
+	std::monostate
+>;
+template<typename T, std::size_t index_leave_blank = 0>
+consteval int payload_index()
+{
+	static_assert(index_leave_blank < std::variant_size_v<node_payload>, "unknown payload index type");
+	if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<std::variant_alternative_t<index_leave_blank, node_payload>>>)
+	{
+		return index_leave_blank;
+	}
+	else
+	{
+		return payload_index<T, index_leave_blank + 1>();
+	}
+}
+
+struct node
+{
+	// where does this node begin in the source code
+	srcloc begin_location = {};
+	// where does the node end in the source code
+	srcloc end_location = {};
+	std::vector<node> children = {};
+	// payload, data varies depending on what type of node we are.
+	node_payload payload = std::monostate{};
+
+	std::int64_t hash() const
+	{
+		return std::hash<std::size_t>{}(this->payload.index());
+	}
+
+	bool is_null() const
+	{
+		return payload.index() == payload_index<std::monostate>();
+	}
+};
 
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
