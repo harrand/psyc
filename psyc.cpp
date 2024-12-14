@@ -39,6 +39,7 @@ struct srcloc
 	std::filesystem::path file;
 	unsigned int line;
 	unsigned int column;
+	std::size_t cursor;
 };
 
 #define panic(msg, ...) generic_panic(msg, std::source_location::current(), std::stacktrace::current(), std::make_format_args(__VA_ARGS__))
@@ -65,6 +66,13 @@ struct std::formatter<std::filesystem::path, char> : std::formatter<std::string,
         return std::formatter<std::string, char>::format(path.string(), ctx);
     }
 };
+
+std::string_view quote_source(std::string_view source_code, srcloc begin_loc, srcloc end_loc)
+{
+	panic_ifnt(begin_loc.file == end_loc.file, "attempted to quote source where begin and end locations are in different files (begin {}, end {})", begin_loc, end_loc);
+	const char* begin_point = source_code.data() + begin_loc.cursor;
+	return {begin_point, end_loc.cursor - begin_loc.cursor};
+}
 
 // user-facing errors
 
@@ -114,6 +122,7 @@ struct compile_args
 {
 	bool should_print_help = false;
 	bool verbose_lex = false;
+	bool verbose_ast = false;
 	std::filesystem::path build_file = {};
 };
 
@@ -133,9 +142,14 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.verbose_lex = true;
 		}
+		else if(arg == "--verbose-ast")
+		{
+			ret.verbose_ast = true;
+		}
 		else if(arg == "--verbose-all")
 		{
 			ret.verbose_lex = true;
+			ret.verbose_ast = true;
 		}
 		else
 		{
@@ -692,7 +706,7 @@ lex_output lex(std::filesystem::path file)
 			continue;
 		}
 
-		srcloc loc{.file = file, .line = state.line, .column = state.column + 1};
+		srcloc loc{.file = file, .line = state.line, .column = state.column + 1, .cursor = state.cursor};
 		// todo: try to match this to every known token, and store it in lex output and advance.
 		bool found_a_token = false;
 		for(int i = 0; i < static_cast<int>(token::_count); i++)
@@ -701,7 +715,7 @@ lex_output lex(std::filesystem::path file)
 			{
 				// ok we succesfully found a token. save the location of the token and then break out of the loop.
 				ret.begin_locations.push_back(loc);
-				ret.end_locations.push_back({.file = file, .line = state.line, .column = state.column + 1});
+				ret.end_locations.push_back({.file = file, .line = state.line, .column = state.column + 1, .cursor = state.cursor});
 				found_a_token = true;
 				break;
 			}
@@ -759,6 +773,12 @@ using node_payload = std::variant
 	std::monostate,
 	ast_token
 >;
+std::array<const char*, std::variant_size_v<node_payload>> node_names
+{
+	"<error>",
+	"_unparsed_token",
+};
+
 template<typename T, std::size_t index_leave_blank = 0>
 consteval int payload_index()
 {
@@ -793,6 +813,15 @@ struct node
 	bool is_null() const
 	{
 		return payload.index() == payload_index<std::monostate>();
+	}
+
+	void verbose_print(std::string_view full_source, std::string prefix = "") const
+	{
+		std::println("{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
+		for(const auto& child : this->children)
+		{
+			child.verbose_print(full_source, prefix + "\t");
+		}
 	}
 
 	// when shifting (grabbing a token from the lexer, that is uh not an ast node so how do we add it to the parse stack?
@@ -877,5 +906,11 @@ int main(int argc, char** argv)
 	if(args.verbose_lex)
 	{
 		build_file_lex.verbose_print();
+	}
+	if(args.verbose_ast)
+	{
+		node example = node::wrap_token(build_file_lex, 3);
+		example.children.push_back(node::wrap_token(build_file_lex, 4));
+		example.verbose_print(build_file_lex.source);
 	}
 }
