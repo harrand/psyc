@@ -19,6 +19,7 @@
 
 void crash()
 {
+	std::printf("\033[1;31mcompilation aborted due to error\033[0m");
 	asm volatile("int3");
 	std::exit(-1);
 }
@@ -1147,12 +1148,14 @@ int main(int argc, char** argv)
 
 void populate_chords(){
 	
+/*
 CHORD_BEGIN
 	STATE(TOKEN(decimal_literal)), FN
 	{
 		chord_error("i found a decimal literal! bad!");
 	}
 CHORD_END
+*/
 
 
 // end of chords
