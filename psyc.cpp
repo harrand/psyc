@@ -182,8 +182,15 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 		crash();
 	}
 }
+
+void generic_warning(err ty, const char* msg, srcloc where, std::format_args&& args)
+{
+	std::print("\033[1;33m{} warning {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+}
+
 #define COMPILER_STAGE
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
+#define warning(loc, msg, ...) generic_warning(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
 #define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 
@@ -865,15 +872,19 @@ struct ast_token
 	std::string_view lexeme;
 };
 
+struct ast_translation_unit{};
+
 using node_payload = std::variant
 <
 	std::monostate,
-	ast_token
+	ast_token,
+	ast_translation_unit
 >;
 std::array<const char*, std::variant_size_v<node_payload>> node_names
 {
 	"<error>",
 	"_unparsed_token",
+	"translation_unit",
 };
 
 template<typename T, std::size_t index_leave_blank = 0>
@@ -963,8 +974,6 @@ enum class parse_action
 	shift,
 	// i have performed a reduction on the parse stack.
 	reduce,
-	// you should assume all subtrees from the far left of the parse stack to the end of this reduction function state are finished and should no longer be parsed further.
-	commit,
 	// the chord function has reported a parse error, and the parser state is no longer trustworthy.
 	error,
 };
@@ -1020,12 +1029,16 @@ struct parser_state
 {
 	const lex_output& in;
 	std::vector<node> nodes = {};
-	node final_ast = {};
 	std::size_t token_cursor = 0;
 
-	void shift()
+	bool shift()
 	{
+		if(this->token_cursor >= this->in.tokens.size())
+		{
+			return false;
+		}
 		nodes.push_back(node::wrap_token(this->in, this->token_cursor++));
+		return true;
 	}
 };
 
@@ -1054,9 +1067,6 @@ node parse(const lex_output& impl_in)
 				panic("action reduce nyi");
 				break;
 			break;
-			case parse_action::commit:
-				panic("action commit nyi");
-			break;
 			case parse_action::error:
 			{
 				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
@@ -1070,8 +1080,16 @@ node parse(const lex_output& impl_in)
 		}
 	}
 
-	panic_ifnt(!state.final_ast.is_null(), "final ast is null");
-	return state.final_ast;
+	auto sz = state.nodes.size();
+	if(sz == 0)
+	{
+		// empty program
+		warning({}, "{} generates an empty AST", state.in.source_file);
+		srcloc loc{.file = state.in.source_file, .line = 0, .column = 0, .cursor = 0};
+		return node{.begin_location = loc, .end_location = loc, .payload = ast_translation_unit{}};
+	}
+	panic_ifnt(sz == 1, "expected one final ast node, but there are {} nodes", sz);
+	return state.nodes.front();
 }
 
 //////////////////////////// SEMAL ////////////////////////////
@@ -1150,7 +1168,6 @@ int main(int argc, char** argv)
 // - you already know what type of nodes are in the array - as they will exactly match what you specified in STATE(...)
 // - if your state represents a valid reduction, you should do the reduction and return parse_action::reduce
 // - if your state represents a syntax error, you should call chord_error(msg, ...) directly in your function. no need to return anything in that case, the macro will handle it for you.
-// - if your state represents fully parsed source code, you should return parse_action::commit which will commit all the nodes to the final AST.
 //
 
 void populate_chords(){
