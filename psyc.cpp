@@ -13,6 +13,7 @@
 #include <charconv>
 #include <variant>
 #include <unordered_map>
+#include <ranges>
 
 // internals
 
@@ -70,8 +71,78 @@ struct std::formatter<std::filesystem::path, char> : std::formatter<std::string,
 std::string_view quote_source(std::string_view source_code, srcloc begin_loc, srcloc end_loc)
 {
 	panic_ifnt(begin_loc.file == end_loc.file, "attempted to quote source where begin and end locations are in different files (begin {}, end {})", begin_loc, end_loc);
+	return {source_code.data() + begin_loc.cursor, end_loc.cursor - begin_loc.cursor};
+	/*
 	const char* begin_point = source_code.data() + begin_loc.cursor;
-	return {begin_point, end_loc.cursor - begin_loc.cursor};
+	std::size_t len = end_loc.cursor - begin_loc.cursor;
+	if(whole_line)
+	{
+		std::string_view first_part{source_code.data(), begin_point};
+		auto closest_previous_newline = std::ranges::find(first_part | std::views::reverse, '\n');
+		//auto closest_previous_newline = std::ranges::find_if();
+		if(closest_previous_newline != first_part.rend())
+		{
+			// there is a newline beforehand. lets add the beginning part of the line.
+			begin_point = source_code.data() + std::distance(closest_previous_newline, first_part.rend());
+			len += (source_code.data() + begin_loc.cursor) - *&begin_point;
+		}
+	}
+	return {begin_point, len};
+	*/
+}
+
+std::string format_source(std::string_view source_code, srcloc begin_loc, srcloc end_loc)
+{
+	const char* begin_point = source_code.data() + begin_loc.cursor;
+	std::size_t len = end_loc.cursor - begin_loc.cursor;
+
+	std::string_view first_part{source_code.data(), begin_point};
+	auto closest_previous_newline = std::ranges::find(first_part | std::views::reverse, '\n');
+	std::size_t dst_from_prev_newline = 0;
+
+	// the begin location will start on some line. let's make sure we have that whole line.
+	if(closest_previous_newline != first_part.rend())
+	{
+		// there is a newline beforehand. lets add the beginning part of the line.
+		begin_point = source_code.data() + std::distance(closest_previous_newline, first_part.rend());
+		dst_from_prev_newline = (source_code.data() + begin_loc.cursor) - *&begin_point;
+		len += dst_from_prev_newline;
+	}
+
+	// same with the end location.
+	std::string_view next_part{source_code.data() + end_loc.cursor, source_code.data() + source_code.size() - 1};
+	auto next_newline = std::ranges::find(next_part, '\n');
+	if(next_newline != next_part.end())
+	{
+		std::size_t dst_to_next_newline = std::distance(next_part.begin(), next_newline);
+		len += dst_to_next_newline;
+	}
+
+	std::string_view whole_line{begin_point, len};
+	// split the source snippet into lines, return them in a formatted manner.
+	// also underline the target line and point to the exact start of the source.
+	std::size_t line = begin_loc.line;
+	std::stringstream s(std::string{whole_line});
+	std::string ret;
+	std::size_t i = 0;
+	for(std::string cur_line; std::getline(s, cur_line);)
+	{
+		std::size_t curlinenum = line + i++;
+		ret += std::format("\t{} | {}\n", curlinenum, cur_line);
+		if(i == 1)
+		{
+			// add an underline
+			std::size_t line_char_count = std::to_string(curlinenum).size();
+			std::string underline = "\t";
+			for(std::size_t j = 0; j < line_char_count + dst_from_prev_newline; j++)
+			{
+				underline += ' ';
+			}
+			underline += "   ^\n";
+			ret += underline;
+		}
+	}
+	return ret;
 }
 
 // user-facing errors
@@ -112,6 +183,7 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 }
 #define COMPILER_STAGE
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
+#define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 
 //////////////////////////// ARGPARSE ////////////////////////////
@@ -934,7 +1006,7 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 #define STATE(...) [](){return std::array{__VA_ARGS__};}()
 void populate_chords();
 
-#define chord_error(msg, ...) error(nodes.front().begin_location, msg, __VA_ARGS__); return parse_action::error
+#define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return parse_action::error
 
 struct parser_state
 {
@@ -960,8 +1032,8 @@ node parse(const lex_output& impl_in)
 		parse_table_entry& entry = find_entry_from_hashed_subtrees(state.nodes);
 		if(entry.chord_fn == nullptr)
 		{
-			std::string_view snippet = quote_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-			error(state.nodes.front().begin_location, "invalid syntax\n\t{} | {}", state.nodes.front().begin_location.line, snippet);
+			std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+			error(state.nodes.front().begin_location, "invalid syntax\n{}", formatted_src);
 		}
 		parse_action action = entry.chord_fn(state.nodes);
 		switch(action)
@@ -976,6 +1048,13 @@ node parse(const lex_output& impl_in)
 			break;
 			case parse_action::commit:
 				panic("action commit nyi");
+			break;
+			case parse_action::error:
+			{
+				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+				std::print("\n{}", formatted_src);
+				crash();
+			}
 			break;
 			default:
 				panic("parse chord function returned unknown parse action");
