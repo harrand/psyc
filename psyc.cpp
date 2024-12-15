@@ -968,8 +968,15 @@ enum class parse_action
 	// the chord function has reported a parse error, and the parser state is no longer trustworthy.
 	error,
 };
+struct chord_result
+{
+	parse_action action = parse_action::error;
+	slice nodes_to_remove = {};
+	std::size_t reduction_result_offset = 0;
+	node reduction_result = {};
+};
 
-using chord_function = parse_action(*)(std::span<node> subtrees);
+using chord_function = chord_result(*)(std::span<node> subtrees);
 
 struct parse_table_entry
 {
@@ -1003,11 +1010,11 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 
 #define TOKEN(x) node::wrap_imaginary_token(token::x)
 #define NODE(x) node{.payload = x{}}
-#define FN [](std::span<node> nodes)
+#define FN [](std::span<node> nodes)->chord_result
 #define STATE(...) [](){return std::array{__VA_ARGS__};}()
 void populate_chords();
 
-#define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return parse_action::error
+#define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return chord_result{.action = parse_action::error}
 
 struct parser_state
 {
@@ -1036,11 +1043,11 @@ node parse(const lex_output& impl_in)
 			std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
 			error(state.nodes.front().begin_location, "invalid syntax\n{}", formatted_src);
 		}
-		parse_action action = entry.chord_fn(state.nodes);
-		switch(action)
+		chord_result result = entry.chord_fn(state.nodes);
+		switch(result.action)
 		{
 			case parse_action::shift:
-				state.shift();	
+				state.shift();
 				break;
 			break;
 			case parse_action::reduce:
@@ -1148,14 +1155,12 @@ int main(int argc, char** argv)
 
 void populate_chords(){
 	
-/*
 CHORD_BEGIN
 	STATE(TOKEN(decimal_literal)), FN
 	{
 		chord_error("i found a decimal literal! bad!");
 	}
 CHORD_END
-*/
 
 
 // end of chords
