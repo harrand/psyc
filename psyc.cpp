@@ -73,23 +73,6 @@ std::string_view quote_source(std::string_view source_code, srcloc begin_loc, sr
 {
 	panic_ifnt(begin_loc.file == end_loc.file, "attempted to quote source where begin and end locations are in different files (begin {}, end {})", begin_loc, end_loc);
 	return {source_code.data() + begin_loc.cursor, end_loc.cursor - begin_loc.cursor};
-	/*
-	const char* begin_point = source_code.data() + begin_loc.cursor;
-	std::size_t len = end_loc.cursor - begin_loc.cursor;
-	if(whole_line)
-	{
-		std::string_view first_part{source_code.data(), begin_point};
-		auto closest_previous_newline = std::ranges::find(first_part | std::views::reverse, '\n');
-		//auto closest_previous_newline = std::ranges::find_if();
-		if(closest_previous_newline != first_part.rend())
-		{
-			// there is a newline beforehand. lets add the beginning part of the line.
-			begin_point = source_code.data() + std::distance(closest_previous_newline, first_part.rend());
-			len += (source_code.data() + begin_loc.cursor) - *&begin_point;
-		}
-	}
-	return {begin_point, len};
-	*/
 }
 
 std::string format_source(std::string_view source_code, srcloc begin_loc, srcloc end_loc)
@@ -154,6 +137,7 @@ enum class err
 	lex,
 	parse,
 	semal,
+	type,
 	meta,
 	codegen,
 	assemble,
@@ -166,6 +150,7 @@ const char* err_names[] =
 	"lex",
 	"parse",
 	"semantic analysis",
+	"type",
 	"meta program",
 	"code generation",
 	"assembly",
@@ -175,7 +160,7 @@ const char* err_names[] =
 
 void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std::format_args&& args)
 {
-	std::print("\033[1;31m{} error {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+	std::println("\033[1;31m{} error {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 	
 	if(should_crash)
 	{
@@ -185,7 +170,7 @@ void generic_error(err ty, const char* msg, srcloc where, bool should_crash, std
 
 void generic_warning(err ty, const char* msg, srcloc where, std::format_args&& args)
 {
-	std::print("\033[1;33m{} warning {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+	std::println("\033[1;33m{} warning {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 }
 
 #define COMPILER_STAGE
@@ -1070,7 +1055,7 @@ node parse(const lex_output& impl_in)
 			case parse_action::error:
 			{
 				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-				std::print("\n{}", formatted_src);
+				std::print("{}", formatted_src);
 				crash();
 			}
 			break;
@@ -1095,6 +1080,10 @@ node parse(const lex_output& impl_in)
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
+
+//////////////////////////// TYPE ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE type
 
 //////////////////////////// META ////////////////////////////
 #undef COMPILER_STAGE
