@@ -130,6 +130,44 @@ std::string format_source(std::string_view source_code, srcloc begin_loc, srcloc
 	return ret;
 }
 
+	std::string escape(std::string_view literal)
+	{
+		std::string ret;
+		static const std::unordered_map<std::string_view, char> escape_map = {
+			{"\\0", '\0'}, // Null terminator
+			{"\\a", '\a'}, // Bell (alert)
+			{"\\b", '\b'}, // Backspace
+			{"\\f", '\f'}, // Formfeed
+			{"\\n", '\n'}, // Newline (line feed)
+			{"\\r", '\r'}, // Carriage return
+			{"\\t", '\t'}, // Horizontal tab
+			{"\\v", '\v'}, // Vertical tab
+			{"\\\\", '\\'}, // Backslash
+			{"\\'", '\''}, // Single quote
+			{"\\\"", '\"'}, // Double quote
+			{"\\?", '\?'}  // Question mark
+		};
+		if(literal.size() == 1)
+		{
+			return std::string{literal};
+		}
+		for(std::size_t i = 0; i < literal.size(); i++)
+		{
+			std::string_view substr{literal.data() + i, 2};
+			auto iter = escape_map.find(substr);
+			if(iter != escape_map.end())
+			{
+				ret += iter->second;
+				i++;
+			}
+			else
+			{
+				ret += literal[i];
+			}
+		}
+		return ret;
+	}
+
 // user-facing errors
 
 enum class err
@@ -1403,24 +1441,60 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	STATE(NODE(ast_decl), TOKEN(initialiser), TOKEN(integer_literal)), FN
+	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
 		// decl := 0
 		// this is giving an initialiser to a declaration. e.g: x : i64 := 0
 		// it's still a decl.
 		// compile error if the decl already has an initialiser.
-		auto value = std::get<ast_token>(nodes[2].payload);
-		std::int64_t integer = std::stol(std::string{value.lexeme});
 		auto& decl_node = nodes[0];
 		auto& decl = std::get<ast_decl>(decl_node.payload);
 		if(decl.initialiser.has_value())
 		{
 			chord_error("declaration {} appears to have more than one initialiser.", decl.name);
 		}
-		decl.initialiser = ast_expr
+
+		auto value_node = nodes[2];
+		decl.initialiser = ast_expr{.expr_ = ast_literal_expr{}};
+
+		if(value_node.payload.index() == payload_index<ast_token>())
 		{
-			.expr_ = ast_literal_expr{.value = integer}
-		};
+			// if its some token then we assume its a literal value.
+			auto& literal = std::get<ast_literal_expr>(decl.initialiser->expr_);
+
+			auto value = std::get<ast_token>(value_node.payload);
+			// but which token means what literal value?
+			switch(value.tok)
+			{
+				case token::integer_literal:
+					literal.value = std::stol(std::string{value.lexeme});
+				break;
+				case token::decimal_literal:
+					literal.value = std::stod(std::string{value.lexeme});
+				break;
+				case token::char_literal:
+				{
+					std::string escaped_chars = escape(value.lexeme);
+					std::size_t chars_size = escaped_chars.size();
+					if(chars_size != 1)
+					{
+						error(value_node.begin_location, "char literals must contain only 1 character, \'{}\' contains {} characters", value.lexeme, chars_size);
+					}
+					literal.value = escaped_chars.front();
+				}
+				break;
+				case token::string_literal:
+					literal.value = escape(value.lexeme);
+				break;
+				default:
+					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);
+				break;
+			}
+		}
+		else
+		{
+
+		}
 		decl_node.end_location = nodes.back().end_location;
 		// decl is changed, remove the rest of the crap
 		return
@@ -1446,6 +1520,8 @@ CHORD_BEGIN
 		chord_error("i think we've reached the end");
 	}
 CHORD_END
+
+// wildcard chords begin
 
 CHORD_BEGIN
 	STATE(WILDCARD, TOKEN(end_of_file)), FN
