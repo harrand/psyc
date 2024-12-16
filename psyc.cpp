@@ -1196,7 +1196,10 @@ node parse(const lex_output& impl_in)
 	srcloc tu_end = impl_in.end_locations.back();
 	state.nodes = {node{.payload = ast_translation_unit{}, .begin_location = tu_begin, .end_location = tu_end}};
 
-	while(state.nodes.size())
+	// only exit the loop if:
+	// token cursor is at the end AND we have exactly 1 node
+	// therefore, keep doing the loop if token cursor is not at the end OR we dont have one node
+	while(state.token_cursor != state.in.tokens.size() || state.nodes.size() != 1)
 	{
 		foreach_entry_from_hashed_subtrees(state.nodes,
 		[&state](parse_table_entry& entry)
