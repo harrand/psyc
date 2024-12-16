@@ -1128,11 +1128,18 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 	}
 	foreach_entry_from_hashed_subtrees(subtrees, [fn, any_wildcards](parse_table_entry& entry)
 	{
-		if(!any_wildcards)
+		if(any_wildcards)
+		{
+			if(entry.chord_fn == nullptr)
+			{
+				entry.chord_fn = fn;
+			}
+		}
+		else
 		{
 			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function");
+			entry.chord_fn = fn;
 		}
-		entry.chord_fn = fn;
 	});
 }
 
@@ -1310,11 +1317,13 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	STATE(TOKEN(symbol), TOKEN(semicol)), FN
+	STATE(TOKEN(symbol), TOKEN(symbol)), FN
 	{
 		chord_error("whoasked;");
 	}
 CHORD_END
+
+// note: adding chords with wildcards will *NOT* replace any previously-defined chords. it will only do anything for chords that haven't yet been defined.
 	
 CHORD_BEGIN
 	STATE(TOKEN(symbol), WILDCARD), FN
