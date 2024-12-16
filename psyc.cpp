@@ -970,7 +970,7 @@ struct node
 		std::string extra = "";
 		if(this->payload.index() == payload_index<ast_token>())
 		{
-			extra = std::format("<{}>", std::get<ast_token>(this->payload).lexeme);
+			extra = std::format("<{}>", token_traits[static_cast<int>(std::get<ast_token>(this->payload).tok)].name);
 		}
 		std::println("{}{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], extra, this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
 		for(const auto& child : this->children)
@@ -1076,7 +1076,8 @@ struct chord_result
 	std::vector<node> reduction_result = {};
 };
 
-using chord_function = chord_result(*)(std::span<node> subtrees);
+struct parser_state;
+using chord_function = chord_result(*)(std::span<node> subtrees, parser_state& state);
 
 struct parse_table_entry
 {
@@ -1166,7 +1167,7 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 #define TOKEN(x) node::wrap_imaginary_token(token::x)
 #define NODE(x) node{.payload = x{}}
 #define WILDCARD node::wildcard()
-#define FN [](std::span<node> nodes)->chord_result
+#define FN [](std::span<node> nodes, parser_state& state)->chord_result
 #define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}()
 void populate_chords();
 
@@ -1217,7 +1218,7 @@ node parse(const lex_output& impl_in)
 			}
 			std::span<node> nodes = state.nodes;
 			// subspan<1> so it doesnt work on the translation unit initial node.
-			chord_result result = entry.chord_fn(nodes.subspan<1>());
+			chord_result result = entry.chord_fn(nodes.subspan<1>(), state);
 			switch(result.action)
 			{
 				case parse_action::shift:
@@ -1353,6 +1354,7 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+// declarations
 CHORD_BEGIN
 	STATE(TOKEN(symbol)), FN
 	{
@@ -1394,9 +1396,65 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(initialiser)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(initialiser), TOKEN(integer_literal)), FN
+	{
+		// decl := 0
+		// this is giving an initialiser to a declaration. e.g: x : i64 := 0
+		// it's still a decl.
+		// compile error if the decl already has an initialiser.
+		auto value = std::get<ast_token>(nodes[2].payload);
+		std::int64_t integer = std::stol(std::string{value.lexeme});
+		auto& decl_node = nodes[0];
+		auto& decl = std::get<ast_decl>(decl_node.payload);
+		if(decl.initialiser.has_value())
+		{
+			chord_error("declaration {} appears to have more than one initialiser.", decl.name);
+		}
+		decl.initialiser = ast_expr
+		{
+			.expr_ = ast_literal_expr{.value = integer}
+		};
+		decl_node.end_location = nodes.back().end_location;
+		// decl is changed, remove the rest of the crap
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(semicol)), FN
 	{
 		chord_error("detected local/global variable declaration");
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(end_of_file)), FN
+	{
+		// translation unit -> end of file
+		// this means the end.
+		chord_error("i think we've reached the end");
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(WILDCARD, TOKEN(end_of_file)), FN
+	{
+		auto wildcard_node = nodes.front();
+		const char* node_name = node_names[wildcard_node.payload.index()];
+		srcloc wildcard_loc = wildcard_node.begin_location;
+		std::string_view wildcard_src = quote_source(state.in.source, wildcard_node.begin_location, wildcard_node.end_location);
+		chord_error("unexpected end of file, was expecting more after the {} defined at {} (\"{}\")", node_name, wildcard_loc, wildcard_src);
 	}
 CHORD_END
 
