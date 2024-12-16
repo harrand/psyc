@@ -95,7 +95,7 @@ std::string format_source(std::string_view source_code, srcloc begin_loc, srcloc
 	}
 
 	// same with the end location.
-	std::string_view next_part{source_code.data() + end_loc.cursor, source_code.data() + source_code.size() - 1};
+	std::string_view next_part{source_code.data() + end_loc.cursor - 1, source_code.data() + source_code.size() - 1};
 	auto next_newline = std::ranges::find(next_part, '\n');
 	if(next_newline != next_part.end())
 	{
@@ -408,6 +408,7 @@ enum class token : std::uint32_t
 	keyword_while,
 	keyword_for,
 	keyword_return,
+	end_of_file,
 	_count
 };
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
@@ -695,6 +696,12 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.front_identifier = "return",
 		.trivial = true
 	},
+
+	tokeniser
+	{
+		.name = "eof",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool{return false;}
+	}
 };
 
 // given a given token trait, try to tokenise the current bit of the source code
@@ -818,6 +825,10 @@ lex_output lex(std::filesystem::path file)
 	}
 
 	ret.strip_tokens_that_dont_affect_code();
+	ret.tokens.push_back(token::end_of_file);
+	ret.lexemes.push_back({});
+	ret.begin_locations.push_back(ret.begin_locations.size() ? ret.begin_locations.front() : srcloc{});
+	ret.end_locations.push_back(ret.end_locations.size() ? ret.end_locations.back() : srcloc{});
 	return ret;
 }
 
@@ -896,7 +907,7 @@ struct ast_expr
 
 struct ast_decl
 {
-	std::string_view type_name;
+	std::string type_name;
 	std::string name;
 	std::optional<ast_expr> initialiser = std::nullopt;
 };
@@ -914,6 +925,8 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"<error>",
 	"_unparsed_token",
 	"translation_unit",
+	"expression",
+	"declaration"
 };
 
 template<typename T, std::size_t index_leave_blank = 0>
@@ -932,13 +945,13 @@ consteval int payload_index()
 
 struct node
 {
+	// payload, data varies depending on what type of node we are.
+	node_payload payload = std::monostate{};
+	std::vector<node> children = {};
 	// where does this node begin in the source code
 	srcloc begin_location = {};
 	// where does the node end in the source code
 	srcloc end_location = {};
-	std::vector<node> children = {};
-	// payload, data varies depending on what type of node we are.
-	node_payload payload = std::monostate{};
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
 
@@ -954,7 +967,12 @@ struct node
 
 	void verbose_print(std::string_view full_source, std::string prefix = "") const
 	{
-		std::println("{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
+		std::string extra = "";
+		if(this->payload.index() == payload_index<ast_token>())
+		{
+			extra = std::format("<{}>", std::get<ast_token>(this->payload).lexeme);
+		}
+		std::println("{}{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], extra, this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
 		for(const auto& child : this->children)
 		{
 			child.verbose_print(full_source, prefix + "\t");
@@ -969,14 +987,13 @@ struct node
 		token tok = lex.tokens[idx];
 		return node
 		{
-			.begin_location = lex.begin_locations[idx],
-			.end_location = lex.end_locations[idx],
-			.children = {},
 			.payload = ast_token
 			{
 				.tok = tok,
 				.lexeme = {lex.source.data() + s.offset, s.length}
 			},
+			.begin_location = lex.begin_locations[idx],
+			.end_location = lex.end_locations[idx],
 			// remember, ast tokens of different types (e.g colon and comments) should return different hashes, or chords can't select a specific token type.
 			.hash_morph = static_cast<int>(tok)
 		};
@@ -1056,7 +1073,7 @@ struct chord_result
 	parse_action action = parse_action::error;
 	slice nodes_to_remove = {};
 	std::size_t reduction_result_offset = 0;
-	node reduction_result = {};
+	std::vector<node> reduction_result = {};
 };
 
 using chord_function = chord_result(*)(std::span<node> subtrees);
@@ -1150,7 +1167,7 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 #define NODE(x) node{.payload = x{}}
 #define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes)->chord_result
-#define STATE(...) [](){return std::array{__VA_ARGS__};}()
+#define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}()
 void populate_chords();
 
 #define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return chord_result{.action = parse_action::error}
@@ -1175,8 +1192,9 @@ struct parser_state
 node parse(const lex_output& impl_in)
 {
 	parser_state state{.in = impl_in};
-	// first thing we do is a single shift.
-	state.shift();
+	srcloc tu_begin = impl_in.begin_locations.front();
+	srcloc tu_end = impl_in.end_locations.back();
+	state.nodes = {node{.payload = ast_translation_unit{}, .begin_location = tu_begin, .end_location = tu_end}};
 
 	while(state.nodes.size())
 	{
@@ -1186,9 +1204,17 @@ node parse(const lex_output& impl_in)
 			if(entry.chord_fn == nullptr)
 			{
 				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-				error(state.nodes.front().begin_location, "invalid syntax\n{}", formatted_src);
+				std::string ast_dump;
+				error_nonblocking(state.nodes.front().begin_location, "invalid syntax\n{}\n", formatted_src);
+				for(const node& n : state.nodes)
+				{
+					n.verbose_print(state.in.source);
+				}
+				crash();
 			}
-			chord_result result = entry.chord_fn(state.nodes);
+			std::span<node> nodes = state.nodes;
+			// subspan<1> so it doesnt work on the translation unit initial node.
+			chord_result result = entry.chord_fn(nodes.subspan<1>());
 			switch(result.action)
 			{
 				case parse_action::shift:
@@ -1196,8 +1222,22 @@ node parse(const lex_output& impl_in)
 					break;
 				break;
 				case parse_action::reduce:
-					panic("action reduce nyi");
+				{
+					slice rem = result.nodes_to_remove;
+					// remove everything according to the slice
+					const srcloc begin_loc = state.nodes[rem.offset + 1].begin_location;
+					const srcloc end_loc = state.nodes[rem.offset + rem.length].end_location;
+					// todo: deal with begin/end loc better, rright now we just set that for all of the results.
+					for(node& n : result.reduction_result)
+					{
+						n.begin_location = begin_loc;
+						n.end_location = end_loc;
+					}
+					state.nodes.erase(state.nodes.begin() + rem.offset + 1, state.nodes.begin() + rem.offset + 1 + rem.length);
+					// then add the result(s).
+					state.nodes.insert(state.nodes.begin() + result.reduction_result_offset + 1, result.reduction_result.begin(), result.reduction_result.end());
 					break;
+				}
 				break;
 				case parse_action::error:
 				{
@@ -1214,13 +1254,6 @@ node parse(const lex_output& impl_in)
 	}
 
 	auto sz = state.nodes.size();
-	if(sz == 0)
-	{
-		// empty program
-		warning({}, "{} generates an empty AST", state.in.source_file);
-		srcloc loc{.file = state.in.source_file, .line = 0, .column = 0, .cursor = 0};
-		return node{.begin_location = loc, .end_location = loc, .payload = ast_translation_unit{}};
-	}
 	panic_ifnt(sz == 1, "expected one final ast node, but there are {} nodes", sz);
 	return state.nodes.front();
 }
@@ -1309,6 +1342,14 @@ int main(int argc, char** argv)
 
 void populate_chords(){
 
+// just the translation unit
+CHORD_BEGIN
+	STATE(), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
 CHORD_BEGIN
 	STATE(TOKEN(symbol)), FN
 	{
@@ -1317,21 +1358,44 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	STATE(TOKEN(symbol), TOKEN(symbol)), FN
+	STATE(TOKEN(symbol), TOKEN(colon)), FN
 	{
-		chord_error("whoasked;");
+		return {.action = parse_action::shift};
 	}
 CHORD_END
 
-// note: adding chords with wildcards will *NOT* replace any previously-defined chords. it will only do anything for chords that haven't yet been defined.
-	
 CHORD_BEGIN
-	STATE(TOKEN(symbol), WILDCARD), FN
+	STATE(TOKEN(symbol), TOKEN(colon), TOKEN(symbol)), FN
 	{
-		chord_error("two symbols came bounding over...");
+		// x : y
+		// this is a declaration
+		ast_decl decl
+		{
+			.type_name = std::string{std::get<ast_token>(nodes[2].payload).lexeme},
+			.name = std::string{std::get<ast_token>(nodes[0].payload).lexeme}
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = decl}}
+		};
 	}
 CHORD_END
 
+CHORD_BEGIN
+	STATE(NODE(ast_decl)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(semicol)), FN
+	{
+		chord_error("detected local/global variable declaration");
+	}
+CHORD_END
 
 // end of chords
 }
