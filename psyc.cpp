@@ -1452,9 +1452,8 @@ CHORD_BEGIN
 	{
 		auto wildcard_node = nodes.front();
 		const char* node_name = node_names[wildcard_node.payload.index()];
-		srcloc wildcard_loc = wildcard_node.begin_location;
 		std::string_view wildcard_src = quote_source(state.in.source, wildcard_node.begin_location, wildcard_node.end_location);
-		chord_error("unexpected end of file, was expecting more after the {} defined at {} (\"{}\")", node_name, wildcard_loc, wildcard_src);
+		chord_error("unexpected end of file, was expecting more after {} (\"{}\")", node_name, wildcard_src);
 	}
 CHORD_END
 
