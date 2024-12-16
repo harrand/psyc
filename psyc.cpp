@@ -14,6 +14,7 @@
 #include <variant>
 #include <unordered_map>
 #include <ranges>
+#include <functional>
 
 // internals
 
@@ -389,6 +390,7 @@ enum class token : std::uint32_t
 	char_literal,
 	string_literal,
 	symbol,
+	semicol,
 	initialiser,
 	colon,
 	compare,
@@ -566,6 +568,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			}
 			return false;
 		},
+	},
+
+	tokeniser
+	{
+		.name = "semicol",
+		.front_identifier = ";",
+		.trivial = true
 	},
 
 	tokeniser
@@ -859,11 +868,46 @@ struct ast_token
 
 struct ast_translation_unit{};
 
+struct ast_literal_expr
+{
+	std::variant
+	<
+		std::int64_t, double, char, std::string
+	> value;
+	const char* type_name() const
+	{
+		return std::array<const char*, std::variant_size_v<decltype(value)>>
+		{
+			"integer literal",
+			"floating-point literal",
+			"char literal",
+			"string literal"
+		}[this->value.index()];
+	}
+};
+
+struct ast_expr
+{
+	std::variant
+	<
+		ast_literal_expr
+	> expr_;
+};
+
+struct ast_decl
+{
+	std::string_view type_name;
+	std::string name;
+	std::optional<ast_expr> initialiser = std::nullopt;
+};
+
 using node_payload = std::variant
 <
 	std::monostate,
 	ast_token,
-	ast_translation_unit
+	ast_translation_unit,
+	ast_expr,
+	ast_decl
 >;
 std::array<const char*, std::variant_size_v<node_payload>> node_names
 {
@@ -898,7 +942,7 @@ struct node
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
 
-	std::int64_t hash() const
+	constexpr std::int64_t hash() const
 	{
 		return std::hash<std::size_t>{}(this->payload.index()) ^ std::hash<int>{}(this->hash_morph);
 	}
@@ -938,6 +982,11 @@ struct node
 		};
 	}
 
+	static node wildcard()
+	{
+		return {};
+	}
+
 	static node wrap_imaginary_token(token tok)
 	{
 		// this node should never be put into an AST, but used as a way to create a node hash based upon an arbitrary token.
@@ -951,6 +1000,46 @@ struct node
 		};
 	}
 };
+
+std::int64_t wildcard_hash()
+{
+	return node::wildcard().hash();
+}
+
+template<std::size_t Begin, std::size_t End>
+constexpr void static_for(std::function<void(std::size_t)> function)
+{
+	if constexpr(Begin < End)
+	{
+		function(std::integral_constant<std::size_t, Begin>{});
+		static_for<Begin + 1, End>(function);
+	}
+}
+
+void iterate_all_hashes(std::function<void(std::int64_t)> function)
+{
+	// invoke function(hash) for every single possible hash of a token/node that exists. implementation of chord wildcards.
+	auto lambda = [&function]<int B, int E>(auto& lambda_ref)constexpr
+	{
+		using T = std::variant_alternative_t<B, node_payload>;
+		if constexpr(std::is_same_v<T, ast_token>)
+		{
+			for(int i = 0; i < static_cast<int>(token::_count); i++)
+			{
+				function(node::wrap_imaginary_token(static_cast<token>(i)).hash());
+			}
+		}
+		else
+		{
+			function(node{.payload = T{}}.hash());
+		}
+		if constexpr(B < E - 1)
+		{
+			lambda_ref.template operator()<B + 1, E>(lambda_ref);
+		}
+	};
+	lambda.template operator()<0, std::variant_size_v<node_payload>>(lambda);
+}
 
 // whenever a chord function is invoked, it should return some kind of hint as to what happens next.
 enum class parse_action
@@ -979,6 +1068,40 @@ struct parse_table_entry
 };
 std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
 
+using entry_fn = std::function<void(parse_table_entry&)>;
+void foreach_entry_from_hashed_subtrees(std::span<const node> subtrees, entry_fn fn, parse_table_entry* base = nullptr)
+{
+	if(base == nullptr)
+	{
+		panic_ifnt(subtrees.size() > 0, "attempted to find empty from hashes of a set of subtrees, but the set of subtrees was empty.");
+		std::int64_t first_hash = subtrees.front().hash();
+		panic_ifnt(first_hash != wildcard_hash(), "the first token/node in a chord state must *not* be a wildcard");
+		subtrees = subtrees.subspan<1>();
+		base = &parse_table[first_hash];
+	}
+	std::span<const node> subtree_cpy = subtrees;
+	for(const node& n : subtrees)
+	{
+		std::int64_t hash = n.hash();
+		if(hash == wildcard_hash())
+		{
+			// for *EVERY* possible hash, recurse.
+			iterate_all_hashes([subtree_cpy, &fn, base](std::int64_t hash)
+			{
+				auto& child = base->children[hash];	
+				foreach_entry_from_hashed_subtrees(subtree_cpy.subspan<1>(), fn, &child);
+			});
+			return;
+		}
+		else
+		{
+			base = &base->children[hash];
+		}
+		subtree_cpy = subtree_cpy.subspan<1>();
+	}
+	fn(*base);
+}
+/*
 parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtrees)
 {
 	panic_ifnt(subtrees.size() > 0, "attempted to find empty from hashes of a set of subtrees, but the set of subtrees was empty.");
@@ -991,12 +1114,26 @@ parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtree
 	}
 	return entry;
 }
+*/
 
 void add_chord(std::span<const node> subtrees, chord_function fn)
 {
-	auto& entry = find_entry_from_hashed_subtrees(subtrees);
-	panic_ifnt(entry.chord_fn == nullptr, "redefinition of chord function");
-	entry.chord_fn = fn;
+	bool any_wildcards = false;
+	for(const node& n : subtrees)
+	{
+		if(n.hash() == wildcard_hash())
+		{
+			any_wildcards = true;
+		}
+	}
+	foreach_entry_from_hashed_subtrees(subtrees, [fn, any_wildcards](parse_table_entry& entry)
+	{
+		if(!any_wildcards)
+		{
+			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function");
+		}
+		entry.chord_fn = fn;
+	});
 }
 
 #define CHORD_BEGIN add_chord(
@@ -1004,6 +1141,7 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 
 #define TOKEN(x) node::wrap_imaginary_token(token::x)
 #define NODE(x) node{.payload = x{}}
+#define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes)->chord_result
 #define STATE(...) [](){return std::array{__VA_ARGS__};}()
 void populate_chords();
@@ -1035,34 +1173,37 @@ node parse(const lex_output& impl_in)
 
 	while(state.nodes.size())
 	{
-		parse_table_entry& entry = find_entry_from_hashed_subtrees(state.nodes);
-		if(entry.chord_fn == nullptr)
+		foreach_entry_from_hashed_subtrees(state.nodes,
+		[&state](parse_table_entry& entry)
 		{
-			std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-			error(state.nodes.front().begin_location, "invalid syntax\n{}", formatted_src);
-		}
-		chord_result result = entry.chord_fn(state.nodes);
-		switch(result.action)
-		{
-			case parse_action::shift:
-				state.shift();
-				break;
-			break;
-			case parse_action::reduce:
-				panic("action reduce nyi");
-				break;
-			break;
-			case parse_action::error:
+			if(entry.chord_fn == nullptr)
 			{
 				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-				std::print("{}", formatted_src);
-				crash();
+				error(state.nodes.front().begin_location, "invalid syntax\n{}", formatted_src);
 			}
-			break;
-			default:
-				panic("parse chord function returned unknown parse action");
-			break;
-		}
+			chord_result result = entry.chord_fn(state.nodes);
+			switch(result.action)
+			{
+				case parse_action::shift:
+					state.shift();
+					break;
+				break;
+				case parse_action::reduce:
+					panic("action reduce nyi");
+					break;
+				break;
+				case parse_action::error:
+				{
+					std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+					std::print("{}", formatted_src);
+					crash();
+				}
+				break;
+				default:
+					panic("parse chord function returned unknown parse action");
+				break;
+			}
+		});
 	}
 
 	auto sz = state.nodes.size();
@@ -1160,11 +1301,25 @@ int main(int argc, char** argv)
 //
 
 void populate_chords(){
+
+CHORD_BEGIN
+	STATE(TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(symbol), TOKEN(semicol)), FN
+	{
+		chord_error("whoasked;");
+	}
+CHORD_END
 	
 CHORD_BEGIN
-	STATE(TOKEN(decimal_literal)), FN
+	STATE(TOKEN(symbol), WILDCARD), FN
 	{
-		chord_error("i found a decimal literal! bad!");
+		chord_error("two symbols came bounding over...");
 	}
 CHORD_END
 
