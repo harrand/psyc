@@ -950,13 +950,34 @@ struct ast_decl
 	std::optional<ast_expr> initialiser = std::nullopt;
 };
 
+struct ast_decl_stmt
+{
+	ast_decl decl;
+};
+
+struct ast_stmt
+{
+	std::variant
+	<
+		ast_decl_stmt
+	> stmt_;
+	const char* type_name() const
+	{
+		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
+		{
+			"declaration statement"
+		}[this->stmt_.index()];
+	}
+};
+
 using node_payload = std::variant
 <
 	std::monostate,
 	ast_token,
 	ast_translation_unit,
 	ast_expr,
-	ast_decl
+	ast_decl,
+	ast_stmt
 >;
 std::array<const char*, std::variant_size_v<node_payload>> node_names
 {
@@ -964,7 +985,8 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"_unparsed_token",
 	"translation_unit",
 	"expression",
-	"declaration"
+	"declaration",
+	"statement"
 };
 
 template<typename T, std::size_t index_leave_blank = 0>
@@ -1009,6 +1031,10 @@ struct node
 		if(this->payload.index() == payload_index<ast_token>())
 		{
 			extra = std::format("<{}>", token_traits[static_cast<int>(std::get<ast_token>(this->payload).tok)].name);
+		}
+		else if(this->payload.index() == payload_index<ast_stmt>())
+		{
+			extra = std::format("({})", std::get<ast_stmt>(this->payload).type_name());
 		}
 		std::println("{}{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], extra, this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
 		for(const auto& child : this->children)
@@ -1105,6 +1131,8 @@ enum class parse_action
 	reduce,
 	// the chord function has reported a parse error, and the parser state is no longer trustworthy.
 	error,
+	// the reduction results should be set as children of the final AST node. 
+	commit,
 };
 struct chord_result
 {
@@ -1245,9 +1273,9 @@ node parse(const lex_output& impl_in)
 		{
 			if(entry.chord_fn == nullptr)
 			{
-				std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+				std::string formatted_src = format_source(state.in.source, state.nodes[1].begin_location, state.nodes.back().end_location);
 				std::string ast_dump;
-				error_nonblocking(state.nodes.front().begin_location, "invalid syntax\n{}\n", formatted_src);
+				error_nonblocking(state.nodes[1].begin_location, "invalid syntax\n{}\n", formatted_src);
 				for(const node& n : state.nodes)
 				{
 					n.verbose_print(state.in.source);
@@ -1279,6 +1307,26 @@ node parse(const lex_output& impl_in)
 					// then add the result(s).
 					state.nodes.insert(state.nodes.begin() + result.reduction_result_offset + 1, result.reduction_result.begin(), result.reduction_result.end());
 					break;
+				}
+				break;
+				case parse_action::commit:
+				{
+					slice rem = result.nodes_to_remove;
+					// remove everything according to the slice
+					const srcloc begin_loc = state.nodes[rem.offset + 1].begin_location;
+					const srcloc end_loc = state.nodes[rem.offset + rem.length].end_location;
+					// todo: deal with begin/end loc better, rright now we just set that for all of the results.
+					for(node& n : result.reduction_result)
+					{
+						n.begin_location = begin_loc;
+						n.end_location = end_loc;
+					}
+					state.nodes.erase(state.nodes.begin() + rem.offset + 1, state.nodes.begin() + rem.offset + 1 + rem.length);
+					// then add the result(s).
+					for(const node& n : result.reduction_result)
+					{
+						state.nodes.front().children.push_back(n);
+					}
 				}
 				break;
 				case parse_action::error:
@@ -1508,7 +1556,32 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(semicol)), FN
 	{
-		chord_error("detected local/global variable declaration");
+		auto& decl_node = nodes[0];
+		auto decl = std::get<ast_decl>(decl_node.payload);
+		
+		decl_node.payload = ast_stmt
+		{
+			.stmt_ = ast_decl_stmt{.decl = decl}
+		};
+
+		decl_node.end_location = nodes.back().end_location;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_stmt)), FN
+	{
+		return
+		{
+			.action = parse_action::commit,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {nodes[0]}
+		};
 	}
 CHORD_END
 
