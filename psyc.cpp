@@ -955,17 +955,24 @@ struct ast_decl_stmt
 	ast_decl decl;
 };
 
+struct ast_expr_stmt
+{
+	ast_expr expr;
+};
+
 struct ast_stmt
 {
 	std::variant
 	<
-		ast_decl_stmt
+		ast_decl_stmt,
+		ast_expr_stmt
 	> stmt_;
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
 		{
-			"declaration statement"
+			"declaration statement",
+			"expression statement"
 		}[this->stmt_.index()];
 	}
 };
@@ -1441,12 +1448,6 @@ CHORD_BEGIN
 CHORD_END
 
 // declarations
-CHORD_BEGIN
-	STATE(TOKEN(symbol)), FN
-	{
-		return {.action = parse_action::shift};
-	}
-CHORD_END
 
 CHORD_BEGIN
 	STATE(TOKEN(symbol), TOKEN(colon)), FN
@@ -1574,8 +1575,44 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	STATE(NODE(ast_expr), TOKEN(semicol)), FN
+	{
+		auto& expr_node = nodes[0];
+		auto expr = std::get<ast_expr>(expr_node.payload);
+		
+		expr_node.payload = ast_stmt
+		{
+			.stmt_ = ast_expr_stmt{.expr = expr}
+		};
+
+		expr_node.end_location = nodes.back().end_location;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+		};
+		
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(NODE(ast_stmt)), FN
 	{
+		// statement is right at the beginning.
+		// it should become the latest child of the translation unit node.
 		return
 		{
 			.action = parse_action::commit,
@@ -1590,11 +1627,22 @@ CHORD_BEGIN
 	{
 		// translation unit -> end of file
 		// this means the end.
-		chord_error("i think we've reached the end");
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()}
+		};
 	}
 CHORD_END
 
 // wildcard chords begin
+
+CHORD_BEGIN
+	STATE(WILDCARD), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
 
 CHORD_BEGIN
 	STATE(WILDCARD, TOKEN(end_of_file)), FN
