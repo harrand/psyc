@@ -427,7 +427,6 @@ enum class token : std::uint32_t
 	decimal_literal,
 	char_literal,
 	string_literal,
-	symbol,
 	semicol,
 	initialiser,
 	colon,
@@ -446,6 +445,7 @@ enum class token : std::uint32_t
 	keyword_while,
 	keyword_for,
 	keyword_return,
+	symbol,
 	end_of_file,
 	_count
 };
@@ -592,25 +592,6 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
-		.name = "symbol",
-		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
-		{
-			// symbol can start with a letter or _, but not a number
-			if(std::isalpha(front.front()) || front.front() == '_')
-			{
-				// however after the first char a symbol can contain a number
-				std::size_t symbol_begin = state.cursor;
-				std::size_t symbol_length = state.advance_until([](std::string_view next){return !(std::isalnum(next.front()) || next.front() == '_');});
-				out.tokens.push_back(token::symbol);
-				out.lexemes.push_back({.offset = symbol_begin, .length = symbol_length});
-				return true;
-			}
-			return false;
-		},
-	},
-
-	tokeniser
-	{
 		.name = "semicol",
 		.front_identifier = ";",
 		.trivial = true
@@ -733,6 +714,25 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		.name = "return keyword",
 		.front_identifier = "return",
 		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "symbol",
+		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
+		{
+			// symbol can start with a letter or _, but not a number
+			if(std::isalpha(front.front()) || front.front() == '_')
+			{
+				// however after the first char a symbol can contain a number
+				std::size_t symbol_begin = state.cursor;
+				std::size_t symbol_length = state.advance_until([](std::string_view next){return !(std::isalnum(next.front()) || next.front() == '_');});
+				out.tokens.push_back(token::symbol);
+				out.lexemes.push_back({.offset = symbol_begin, .length = symbol_length});
+				return true;
+			}
+			return false;
+		},
 	},
 
 	tokeniser
