@@ -300,6 +300,8 @@ FILE:
 #undef COMPILER_STAGE
 #define COMPILER_STAGE lex
 
+#define deduced_type "auto"
+
 // uh read a file and slurp me all its bytes.
 std::string read_file(std::filesystem::path file)
 {
@@ -1470,6 +1472,24 @@ CHORD_BEGIN
 		{
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = decl}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(symbol), TOKEN(colon), TOKEN(initialiser)), FN
+	{
+		ast_decl decl
+		{
+			.type_name = deduced_type,
+			.name = std::string{std::get<ast_token>(nodes[0].payload).lexeme}
+		};
+		// keep the initialiser
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 			.reduction_result = {node{.payload = decl}}
 		};
 	}
