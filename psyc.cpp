@@ -432,6 +432,7 @@ enum class token : std::uint32_t
 	semicol,
 	initialiser,
 	colon,
+	comma,
 	compare,
 	assign,
 	arrow,
@@ -612,6 +613,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "colon",
 		.front_identifier = ":",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "comma",
+		.front_identifier = ",",
 		.trivial = true
 	},
 
@@ -998,6 +1006,7 @@ struct ast_stmt
 enum class partial_funcdef_stage
 {
 	defining_params,
+	awaiting_next_param,
 	awaiting_arrow,
 	awaiting_return_type,
 	awaiting_body
@@ -1718,6 +1727,42 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(comma)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::defining_params)
+		{
+			chord_error("unexpected ',' token while parsing function definition. you have already finished defining the params.");
+		}
+		def.stage = partial_funcdef_stage::awaiting_next_param;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), NODE(ast_decl)), FN
+	{
+		auto next_param = std::get<ast_decl>(nodes[1].payload);
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_next_param)
+		{
+			chord_error("unexpected decl named {} while parsing function definition. you have already finished defining the params, or have you forgotten a comma?", next_param.name);
+		}
+		def.params.push_back(next_param);
+		def.stage = partial_funcdef_stage::defining_params;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(arrow)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
@@ -1739,6 +1784,16 @@ CHORD_BEGIN
 	{
 		auto return_typename = std::string{std::get<ast_token>(nodes[1].payload).lexeme};
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage == partial_funcdef_stage::awaiting_next_param)
+		{
+			// so a comma preceded us. we're the start of a decl representing the next param, but havent figured that out yet
+			// recurse.
+			return
+			{
+				.action = parse_action::recurse,
+				.reduction_result_offset = 1
+			};
+		}
 		if(def.stage != partial_funcdef_stage::awaiting_return_type)
 		{
 			chord_error("unexpected '{}' token while parsing function definition. i wasnt ready for the return type yet", return_typename);
