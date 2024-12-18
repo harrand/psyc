@@ -447,6 +447,8 @@ enum class token : std::uint32_t
 	keyword_while,
 	keyword_for,
 	keyword_return,
+	keyword_func,
+	keyword_extern,
 	symbol,
 	end_of_file,
 	_count
@@ -720,6 +722,20 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "func keyword",
+		.front_identifier = "func",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "extern keyword",
+		.front_identifier = "extern",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -979,6 +995,28 @@ struct ast_stmt
 	}
 };
 
+enum class partial_funcdef_stage
+{
+	defining_params,
+	awaiting_arrow,
+	awaiting_return_type,
+	awaiting_body
+};
+
+struct ast_partial_funcdef
+{
+	std::vector<ast_decl> params = {};
+	std::string return_type;
+	partial_funcdef_stage stage = partial_funcdef_stage::defining_params;
+};
+
+struct ast_funcdef
+{
+	std::vector<ast_decl> params = {};
+	std::string return_type;
+	bool is_extern = false;
+};
+
 using node_payload = std::variant
 <
 	std::monostate,
@@ -986,7 +1024,9 @@ using node_payload = std::variant
 	ast_translation_unit,
 	ast_expr,
 	ast_decl,
-	ast_stmt
+	ast_stmt,
+	ast_partial_funcdef,
+	ast_funcdef
 >;
 std::array<const char*, std::variant_size_v<node_payload>> node_names
 {
@@ -995,7 +1035,9 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"translation_unit",
 	"expression",
 	"declaration",
-	"statement"
+	"statement",
+	"partial function definition",
+	"function definition"
 };
 
 template<typename T, std::size_t index_leave_blank = 0>
@@ -1259,6 +1301,7 @@ struct parser_state
 	std::vector<node> nodes = {};
 	std::size_t token_cursor = 0;
 	std::size_t recursive_offset = 0;
+	bool recursing = false;
 
 	bool shift()
 	{
@@ -1285,9 +1328,9 @@ node parse(const lex_output& impl_in)
 	{
 		std::span<const node> nodes_view = state.nodes;
 		foreach_entry_from_hashed_subtrees(nodes_view.subspan(state.recursive_offset),
-		[&state, initial_offset = state.recursive_offset](parse_table_entry& entry)
+		[&state, was_recursing = state.recursing](parse_table_entry& entry)
 		{
-			if(initial_offset != state.recursive_offset)
+			if(was_recursing != state.recursing)
 			{
 				// a previous call to this callback has triggered a recurse.
 				// stop what we're doing
@@ -1306,7 +1349,15 @@ node parse(const lex_output& impl_in)
 			}
 			std::span<node> nodes = state.nodes;
 			// subspan<1> so it doesnt work on the translation unit initial node.
-			chord_result result = entry.chord_fn(nodes.subspan(1 + state.recursive_offset), state);
+			if(state.recursing)
+			{
+				nodes = nodes.subspan(state.recursive_offset);
+			}
+			else
+			{
+				nodes = nodes.subspan<1>();
+			}
+			chord_result result = entry.chord_fn(nodes, state);
 			switch(result.action)
 			{
 				case parse_action::shift:
@@ -1317,22 +1368,36 @@ node parse(const lex_output& impl_in)
 				{
 					slice rem = result.nodes_to_remove;
 					// remove everything according to the slice
-					const srcloc begin_loc = state.nodes[rem.offset + 1].begin_location;
-					const srcloc end_loc = state.nodes[rem.offset + rem.length].end_location;
+					std::size_t begin_offset = rem.offset + 1;
+					if(state.recursing)
+					{
+						begin_offset = rem.offset + state.recursive_offset;
+					}
+					const srcloc begin_loc = state.nodes[begin_offset].begin_location;
+					std::size_t end_offset = rem.offset + rem.length;
+					const srcloc end_loc = state.nodes[end_offset].end_location;
 					// todo: deal with begin/end loc better, rright now we just set that for all of the results.
 					for(node& n : result.reduction_result)
 					{
 						n.begin_location = begin_loc;
 						n.end_location = end_loc;
 					}
-					state.nodes.erase(state.nodes.begin() + rem.offset + 1, state.nodes.begin() + rem.offset + 1 + rem.length);
+					state.nodes.erase(state.nodes.begin() + begin_offset, state.nodes.begin() + begin_offset + rem.length);
 					// then add the result(s).
-					state.nodes.insert(state.nodes.begin() + result.reduction_result_offset + 1, result.reduction_result.begin(), result.reduction_result.end());
+					state.nodes.insert(state.nodes.begin() + begin_offset, result.reduction_result.begin(), result.reduction_result.end());
+					state.recursive_offset = 0;
+					state.recursing = false;
 					break;
 				}
 				break;
 				case parse_action::recurse:
 					state.recursive_offset += result.reduction_result_offset;
+					state.recursing = true;
+					if(!was_recursing)
+					{
+						// additional offset of 1 as the chord included a secret translation unit node.
+						state.recursive_offset++;
+					}
 					return;
 				break;
 				case parse_action::commit:
@@ -1366,7 +1431,6 @@ node parse(const lex_output& impl_in)
 					panic("parse chord function returned unknown parse action");
 				break;
 			}
-			state.recursive_offset = 0;
 		});
 	}
 
@@ -1477,7 +1541,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	STATE(TOKEN(symbol), TOKEN(colon), TOKEN(symbol)), FN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon), TOKEN(symbol)), FN
 	{
 		// x : y
 		// this is a declaration
@@ -1496,7 +1560,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	STATE(TOKEN(symbol), TOKEN(colon), TOKEN(initialiser)), FN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon), TOKEN(initialiser)), FN
 	{
 		ast_decl decl
 		{
@@ -1509,6 +1573,24 @@ CHORD_BEGIN
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 			.reduction_result = {node{.payload = decl}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon), WILDCARD), FN
+	{
+		chord_error("syntax error, looks like a malformed declaration");
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(symbol), TOKEN(colon), WILDCARD), FN
+	{
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 0
 		};
 	}
 CHORD_END
@@ -1527,81 +1609,230 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+#define GIVE_DECL_INITIALISER_CODE \
+		auto& decl_node = nodes[0];\
+		auto& decl = std::get<ast_decl>(decl_node.payload);\
+		if(decl.initialiser.has_value())\
+		{\
+			chord_error("declaration {} appears to have more than one initialiser.", decl.name);\
+		}\
+\
+		auto value_node = nodes[2];\
+\
+		if(value_node.payload.index() == payload_index<ast_token>())\
+		{\
+			auto value = std::get<ast_token>(value_node.payload);\
+			if(value.tok == token::keyword_func)\
+			{\
+					return {.action = parse_action::recurse, .reduction_result_offset = 2};\
+			}\
+			decl.initialiser = ast_expr{.expr_ = ast_literal_expr{}};\
+			auto& literal = std::get<ast_literal_expr>(decl.initialiser->expr_);\
+\
+			switch(value.tok)\
+			{\
+				case token::integer_literal:\
+					literal.value = std::stol(std::string{value.lexeme});\
+				break;\
+				case token::decimal_literal:\
+					literal.value = std::stod(std::string{value.lexeme});\
+				break;\
+				case token::char_literal:\
+				{\
+					std::string escaped_chars = escape(value.lexeme);\
+					std::size_t chars_size = escaped_chars.size();\
+					if(chars_size != 1)\
+					{\
+						error(value_node.begin_location, "char literals must contain only 1 character, \'{}\' contains {} characters", value.lexeme, chars_size);\
+					}\
+					literal.value = escaped_chars.front();\
+				}\
+				break;\
+				case token::string_literal:\
+					literal.value = escape(value.lexeme);\
+				break;\
+				default:\
+					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);\
+				break;\
+			}\
+		}\
+		else\
+		{\
+\
+			if(value_node.payload.index() == payload_index<ast_partial_funcdef>())\
+			{\
+\
+				return {.action = parse_action::recurse, .reduction_result_offset = 2};\
+			}\
+		}\
+		decl_node.end_location = nodes.back().end_location;\
+		return\
+		{\
+			.action = parse_action::reduce,\
+			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}\
+		};
+
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
-		// decl := 0
-		// this is giving an initialiser to a declaration. e.g: x : i64 := 0
-		// it's still a decl.
-		// compile error if the decl already has an initialiser.
-		auto& decl_node = nodes[0];
-		auto& decl = std::get<ast_decl>(decl_node.payload);
-		if(decl.initialiser.has_value())
+		GIVE_DECL_INITIALISER_CODE
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD, WILDCARD), FN
+	{
+		GIVE_DECL_INITIALISER_CODE
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD, WILDCARD, WILDCARD), FN
+	{
+		GIVE_DECL_INITIALISER_CODE
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(cparen)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::defining_params)
 		{
-			chord_error("declaration {} appears to have more than one initialiser.", decl.name);
+			chord_error("unexpected ')' token while parsing function definition. you have already finished defining the params.");
 		}
-
-		auto value_node = nodes[2];
-		decl.initialiser = ast_expr{.expr_ = ast_literal_expr{}};
-
-		if(value_node.payload.index() == payload_index<ast_token>())
-		{
-			// if its some token then we assume its a literal value.
-			auto& literal = std::get<ast_literal_expr>(decl.initialiser->expr_);
-
-			auto value = std::get<ast_token>(value_node.payload);
-			// but which token means what literal value?
-			switch(value.tok)
-			{
-				case token::integer_literal:
-					literal.value = std::stol(std::string{value.lexeme});
-				break;
-				case token::decimal_literal:
-					literal.value = std::stod(std::string{value.lexeme});
-				break;
-				case token::char_literal:
-				{
-					std::string escaped_chars = escape(value.lexeme);
-					std::size_t chars_size = escaped_chars.size();
-					if(chars_size != 1)
-					{
-						error(value_node.begin_location, "char literals must contain only 1 character, \'{}\' contains {} characters", value.lexeme, chars_size);
-					}
-					literal.value = escaped_chars.front();
-				}
-				break;
-				case token::string_literal:
-					literal.value = escape(value.lexeme);
-				break;
-				case token::oparen:
-					// probably a function definition. will need to run more chords on the later symbols.
-					return {.action = parse_action::recurse, .reduction_result_offset = 3};
-				break;
-				default:
-					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);
-				break;
-			}
-		}
-		else
-		{
-
-		}
-		decl_node.end_location = nodes.back().end_location;
-		// decl is changed, remove the rest of the crap
+		def.stage = partial_funcdef_stage::awaiting_arrow;
 		return
 		{
 			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+			.nodes_to_remove = {.offset = 1, .length = 1},
 		};
 	}
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(oparen)), FN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(arrow)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_arrow)
+		{
+			chord_error("unexpected '->' token while parsing function definition. malformed function definition");
+		}
+		def.stage = partial_funcdef_stage::awaiting_return_type;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(symbol)), FN
+	{
+		auto return_typename = std::string{std::get<ast_token>(nodes[1].payload).lexeme};
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_return_type)
+		{
+			chord_error("unexpected '{}' token while parsing function definition. i wasnt ready for the return type yet", return_typename);
+		}
+		def.stage = partial_funcdef_stage::awaiting_body;
+		def.return_type = return_typename;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(initialiser)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_body)
+		{
+			chord_error("unexpected ':=' token while parsing function definition. this is presumably a typename, but i wasn't ready for the body yet (assuming you are trying to declare as extern)");
+		}
+		return {.action = parse_action::shift};
+	}
+
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(initialiser), TOKEN(keyword_extern)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_body)
+		{
+			chord_error("unexpected ':= extern' tokens while parsing function definition. this is presumably a typename, but i wasn't ready for the body yet (assuming you are trying to declare as extern)");
+		}
+		// aha, the function is extern
+		ast_funcdef complete_funcdef
+		{
+			.params = std::move(def.params),
+			.return_type = std::move(def.return_type),
+			.is_extern = true
+		};
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = complete_funcdef}}
+		};
+
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func)), FN
 	{
 		return {.action = parse_action::shift};
 	}
 CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oparen), TOKEN(symbol)), FN
+	{
+		// it should be the start of a decl (the first param)
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oparen), NODE(ast_decl)), FN
+	{
+		// we have the start of a function definition. finally.
+		ast_partial_funcdef func
+		{
+			.params = {std::get<ast_decl>(nodes[2].payload)},
+			.return_type = "???"
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = func}}
+		};
+	}
+CHORD_END
+
+	// todo: continue function parsing.
 
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(semicol)), FN
@@ -1687,7 +1918,28 @@ CHORD_END
 // wildcard chords begin
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), WILDCARD), FN
+	{
+		chord_error("invalid function definition syntax");
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(WILDCARD), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon)), FN
 	{
 		return {.action = parse_action::shift};
 	}
