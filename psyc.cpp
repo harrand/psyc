@@ -1138,6 +1138,8 @@ enum class parse_action
 	shift,
 	// i have performed a reduction on the parse stack.
 	reduce,
+	// i think you should attempt to reduce again, but offset the nodes by reduction_result_offset.
+	recurse,
 	// the chord function has reported a parse error, and the parser state is no longer trustworthy.
 	error,
 	// the reduction results should be set as children of the final AST node. 
@@ -1244,6 +1246,9 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 #define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes, parser_state& state)->chord_result
 #define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}()
+// the difference between STATE and LOOSE state is that STATE means your chord function will only target nodes/tokens right at the beginning of the parse state
+// LOOKAHEAD_STATE means it could be offsetted deep in the parse state.
+#define LOOKAHEAD_STATE(...) [](){return std::array{__VA_ARGS__};}()
 void populate_chords();
 
 #define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return chord_result{.action = parse_action::error}
@@ -1253,6 +1258,7 @@ struct parser_state
 	const lex_output& in;
 	std::vector<node> nodes = {};
 	std::size_t token_cursor = 0;
+	std::size_t recursive_offset = 0;
 
 	bool shift()
 	{
@@ -1277,9 +1283,16 @@ node parse(const lex_output& impl_in)
 	// therefore, keep doing the loop if token cursor is not at the end OR we dont have one node
 	while(state.token_cursor != state.in.tokens.size() || state.nodes.size() != 1)
 	{
-		foreach_entry_from_hashed_subtrees(state.nodes,
-		[&state](parse_table_entry& entry)
+		std::span<const node> nodes_view = state.nodes;
+		foreach_entry_from_hashed_subtrees(nodes_view.subspan(state.recursive_offset),
+		[&state, initial_offset = state.recursive_offset](parse_table_entry& entry)
 		{
+			if(initial_offset != state.recursive_offset)
+			{
+				// a previous call to this callback has triggered a recurse.
+				// stop what we're doing
+				return;
+			}
 			if(entry.chord_fn == nullptr)
 			{
 				std::string formatted_src = format_source(state.in.source, state.nodes[1].begin_location, state.nodes.back().end_location);
@@ -1293,7 +1306,7 @@ node parse(const lex_output& impl_in)
 			}
 			std::span<node> nodes = state.nodes;
 			// subspan<1> so it doesnt work on the translation unit initial node.
-			chord_result result = entry.chord_fn(nodes.subspan<1>(), state);
+			chord_result result = entry.chord_fn(nodes.subspan(1 + state.recursive_offset), state);
 			switch(result.action)
 			{
 				case parse_action::shift:
@@ -1317,6 +1330,10 @@ node parse(const lex_output& impl_in)
 					state.nodes.insert(state.nodes.begin() + result.reduction_result_offset + 1, result.reduction_result.begin(), result.reduction_result.end());
 					break;
 				}
+				break;
+				case parse_action::recurse:
+					state.recursive_offset += result.reduction_result_offset;
+					return;
 				break;
 				case parse_action::commit:
 				{
@@ -1349,6 +1366,7 @@ node parse(const lex_output& impl_in)
 					panic("parse chord function returned unknown parse action");
 				break;
 			}
+			state.recursive_offset = 0;
 		});
 	}
 
@@ -1555,6 +1573,10 @@ CHORD_BEGIN
 				case token::string_literal:
 					literal.value = escape(value.lexeme);
 				break;
+				case token::oparen:
+					// probably a function definition. will need to run more chords on the later symbols.
+					return {.action = parse_action::recurse, .reduction_result_offset = 3};
+				break;
 				default:
 					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);
 				break;
@@ -1571,6 +1593,13 @@ CHORD_BEGIN
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
 		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
 	}
 CHORD_END
 
