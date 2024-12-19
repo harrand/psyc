@@ -961,11 +961,21 @@ struct ast_literal_expr
 	}
 };
 
+struct ast_decl;
+
+struct ast_funcdef_expr
+{
+	std::vector<ast_decl> params = {};
+	std::string return_type;
+	bool is_extern = false;
+};
+
 struct ast_expr
 {
 	std::variant
 	<
-		ast_literal_expr
+		ast_literal_expr,
+		ast_funcdef_expr
 	> expr_;
 };
 
@@ -1021,9 +1031,7 @@ struct ast_partial_funcdef
 
 struct ast_funcdef
 {
-	std::vector<ast_decl> params = {};
-	std::string return_type;
-	bool is_extern = false;
+	ast_funcdef_expr func;
 };
 
 using node_payload = std::variant
@@ -1673,6 +1681,11 @@ CHORD_END
 \
 				return {.action = parse_action::recurse, .reduction_result_offset = 2};\
 			}\
+			else if(value_node.payload.index() == payload_index<ast_funcdef>())\
+			{\
+				auto funcdef = std::get<ast_funcdef>(value_node.payload);\
+				decl.initialiser = ast_expr{.expr_ = funcdef.func};\
+			}\
 		}\
 		decl_node.end_location = nodes.back().end_location;\
 		return\
@@ -1839,9 +1852,12 @@ CHORD_BEGIN
 		}
 		ast_funcdef complete_funcdef
 		{
-			.params = std::move(def.params),
-			.return_type = std::move(def.return_type),
-			.is_extern = false
+			.func = 
+			{
+				.params = std::move(def.params),
+				.return_type = std::move(def.return_type),
+				.is_extern = false
+			}
 		};
 		return
 		{
@@ -1863,9 +1879,12 @@ CHORD_BEGIN
 		// aha, the function is extern
 		ast_funcdef complete_funcdef
 		{
-			.params = std::move(def.params),
-			.return_type = std::move(def.return_type),
-			.is_extern = true
+			.func =
+			{
+				.params = std::move(def.params),
+				.return_type = std::move(def.return_type),
+				.is_extern = true
+			}
 		};
 
 		return
