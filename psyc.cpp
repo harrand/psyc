@@ -1218,12 +1218,13 @@ using chord_function = chord_result(*)(std::span<node> subtrees, parser_state& s
 struct parse_table_entry
 {
 	chord_function chord_fn = nullptr;
+	bool extensible = false;
 	std::unordered_map<std::int64_t, parse_table_entry> children = {};
 };
 std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
 
 using entry_fn = std::function<void(parse_table_entry&)>;
-void foreach_entry_from_hashed_subtrees(std::span<const node> subtrees, entry_fn fn, parse_table_entry* base = nullptr)
+void foreach_entry_from_hashed_subtrees(std::span<const node> subtrees, entry_fn fn, parse_table_entry* base = nullptr, bool skip_extensible = false)
 {
 	if(base == nullptr)
 	{
@@ -1237,13 +1238,17 @@ void foreach_entry_from_hashed_subtrees(std::span<const node> subtrees, entry_fn
 	for(const node& n : subtrees)
 	{
 		std::int64_t hash = n.hash();
+		if(!skip_extensible && base->extensible)
+		{
+			break;
+		}
 		if(hash == wildcard_hash())
 		{
 			// for *EVERY* possible hash, recurse.
-			iterate_all_hashes([subtree_cpy, &fn, base](std::int64_t hash)
+			iterate_all_hashes([subtree_cpy, &fn, base, skip_extensible](std::int64_t hash)
 			{
 				auto& child = base->children[hash];	
-				foreach_entry_from_hashed_subtrees(subtree_cpy.subspan<1>(), fn, &child);
+				foreach_entry_from_hashed_subtrees(subtree_cpy.subspan<1>(), fn, &child, skip_extensible);
 			});
 			return;
 		}
@@ -1270,7 +1275,7 @@ parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtree
 }
 */
 
-void add_chord(std::span<const node> subtrees, chord_function fn)
+void add_chord(std::span<const node> subtrees, chord_function fn, bool extensible = false)
 {
 	bool any_wildcards = false;
 	for(const node& n : subtrees)
@@ -1280,25 +1285,28 @@ void add_chord(std::span<const node> subtrees, chord_function fn)
 			any_wildcards = true;
 		}
 	}
-	foreach_entry_from_hashed_subtrees(subtrees, [fn, any_wildcards](parse_table_entry& entry)
+	foreach_entry_from_hashed_subtrees(subtrees, [fn, any_wildcards, extensible](parse_table_entry& entry)
 	{
 		if(any_wildcards)
 		{
 			if(entry.chord_fn == nullptr)
 			{
 				entry.chord_fn = fn;
+				entry.extensible = extensible;
 			}
 		}
 		else
 		{
 			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function");
 			entry.chord_fn = fn;
+			entry.extensible = extensible;
 		}
-	});
+	}, nullptr, true);
 }
 
 #define CHORD_BEGIN add_chord(
 #define CHORD_END );
+#define EXTENSIBLE , true
 
 #define TOKEN(x) node::wrap_imaginary_token(token::x)
 #define NODE(x) node{.payload = x{}}
@@ -1626,6 +1634,13 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(initialiser)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
 #define GIVE_DECL_INITIALISER_CODE \
 		auto& decl_node = nodes[0];\
 		auto& decl = std::get<ast_decl>(decl_node.payload);\
@@ -1697,22 +1712,17 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
-		GIVE_DECL_INITIALISER_CODE
+		return {.action = parse_action::recurse};
 	}
+	EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
-	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD, WILDCARD), FN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
 		GIVE_DECL_INITIALISER_CODE
 	}
-CHORD_END
-
-CHORD_BEGIN
-	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD, WILDCARD, WILDCARD), FN
-	{
-		GIVE_DECL_INITIALISER_CODE
-	}
+	EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -1983,6 +1993,13 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
 	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 0};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
+	{
 		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
 		return
 		{
@@ -2039,8 +2056,24 @@ CHORD_END
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), WILDCARD), FN
 	{
-		const auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
-		chord_error("invalid syntax when trying to parse implementation body of function");
+		// try to parse a block
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 2
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), WILDCARD, WILDCARD), FN
+	{
+		// try to parse a block
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 2
+		};
 	}
 CHORD_END
 
