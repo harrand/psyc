@@ -1822,6 +1822,37 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		// function decl with empty body
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::awaiting_body)
+		{
+			chord_error("unexpected '{' token(s) while parsing function definition. this is presumably a typename, but i wasn't ready for the body yet (assuming you are trying to define a function body)");
+		}
+		ast_funcdef complete_funcdef
+		{
+			.params = std::move(def.params),
+			.return_type = std::move(def.return_type),
+			.is_extern = false
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = complete_funcdef}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(initialiser), TOKEN(keyword_extern)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
@@ -1983,6 +2014,14 @@ CHORD_BEGIN
 	STATE(WILDCARD), FN
 	{
 		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), WILDCARD), FN
+	{
+		const auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		chord_error("invalid syntax when trying to parse implementation body of function");
 	}
 CHORD_END
 
