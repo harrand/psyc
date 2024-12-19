@@ -15,8 +15,21 @@
 #include <unordered_map>
 #include <ranges>
 #include <functional>
+#include <chrono>
 
 // internals
+
+std::chrono::time_point<std::chrono::system_clock> now;
+void timer_restart()
+{
+	now = std::chrono::system_clock::now();
+}
+
+std::uint64_t elapsed_time()
+{
+	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	return right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
 
 void crash()
 {
@@ -1502,6 +1515,8 @@ node parse(const lex_output& impl_in)
 
 int main(int argc, char** argv)
 {
+	std::uint64_t time_setup, time_lex, time_parse;
+	timer_restart();
 	populate_chords();
 
 	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
@@ -1515,16 +1530,28 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	time_setup = elapsed_time();
+	timer_restart();
+
 	lex_output build_file_lex = lex(args.build_file);
 	if(args.verbose_lex)
 	{
 		build_file_lex.verbose_print();
 	}
+
+	time_lex = elapsed_time();
+	timer_restart();
+
 	node build_file_ast = parse(build_file_lex);
 	if(args.verbose_ast)
 	{
 		build_file_ast.verbose_print(build_file_lex.source);
 	}
+
+	time_parse = elapsed_time();
+	timer_restart();
+
+	std::print("setup: {}\nlex:   {}\nparse: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, (time_setup + time_lex + time_parse) / 1000.0f);
 }
 
 
