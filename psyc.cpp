@@ -996,19 +996,28 @@ struct ast_expr_stmt
 	ast_expr expr;
 };
 
+struct ast_stmt;
+struct ast_blk_stmt
+{
+	std::vector<ast_stmt> blk = {};
+	bool capped = false;
+};
+
 struct ast_stmt
 {
 	std::variant
 	<
 		ast_decl_stmt,
-		ast_expr_stmt
+		ast_expr_stmt,
+		ast_blk_stmt
 	> stmt_;
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
 		{
 			"declaration statement",
-			"expression statement"
+			"expression statement",
+			"block statement"
 		}[this->stmt_.index()];
 	}
 };
@@ -1057,17 +1066,17 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"function definition"
 };
 
-template<typename T, std::size_t index_leave_blank = 0>
+template<typename T, typename V = node_payload, std::size_t index_leave_blank = 0>
 consteval int payload_index()
 {
-	static_assert(index_leave_blank < std::variant_size_v<node_payload>, "unknown payload index type");
-	if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<std::variant_alternative_t<index_leave_blank, node_payload>>>)
+	static_assert(index_leave_blank < std::variant_size_v<V>, "unknown payload index type");
+	if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<std::variant_alternative_t<index_leave_blank, V>>>)
 	{
 		return index_leave_blank;
 	}
 	else
 	{
-		return payload_index<T, index_leave_blank + 1>();
+		return payload_index<T, V, index_leave_blank + 1>();
 	}
 }
 
@@ -1879,6 +1888,72 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrace), NODE(ast_stmt)), FN
+	{
+		// this is the start of a block statement.
+		ast_blk_stmt blk;
+		blk.blk.push_back(std::get<ast_stmt>(nodes[1].payload));
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = blk}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), NODE(ast_stmt)), FN
+	{
+		auto& defnode = nodes[0];
+		const auto& def = std::get<ast_partial_funcdef>(defnode.payload);
+		const auto& stmt = std::get<ast_stmt>(nodes[1].payload);
+		if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
+		{
+			// this is a blk statement
+			// remember, we can only collapse this into a full function definition if the block statement is capped (i.e ended with a cbrace)
+			// if not, then we need to recurse.
+			auto blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(!blk.capped)
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 1};
+			}
+
+			ast_funcdef complete_funcdef
+			{
+				.func = 
+				{
+					.params = std::move(def.params),
+					.return_type = std::move(def.return_type),
+					.is_extern = false
+				}
+			};
+			defnode.payload = complete_funcdef;
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 1, .length = 1},
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("expected block statement, this is a {}", stmt_name);
+		}
+
+	}
+CHORD_END
+
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), NODE(ast_stmt), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+	EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(initialiser), TOKEN(keyword_extern)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
@@ -2030,6 +2105,71 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_stmt), TOKEN(cbrace)), FN
+	{
+		// cap off a block statement if its a block statement.
+		// no idea if it isnt a block statement.
+		auto& stmt = std::get<ast_stmt>(nodes[0].payload);
+		if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
+		{
+			auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(blk.capped)
+			{
+				chord_error("extraneous closing brace. already just capped off a block statement.");
+			}
+			blk.capped = true;
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 1, .length = 1}
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("unexpected {}, expected block statement only.", stmt_name);
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_stmt), NODE(ast_stmt)), FN
+	{
+		// append to a block statement
+		// no idea if it isnt a block statement.
+		auto& stmt = std::get<ast_stmt>(nodes[0].payload);
+		if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
+		{
+			auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			blk.blk.push_back(std::get<ast_stmt>(nodes[1].payload));
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 1, .length = 1}
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("syntax error concerning two statements together. i've only really thought about this when the lhs is a block statement, but this time its a {}", stmt_name);
+		}
+		
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_stmt), WILDCARD), FN
+	{
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 1
+		};
+	}
+	EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	STATE(TOKEN(end_of_file)), FN
 	{
 		// translation unit -> end of file
@@ -2059,6 +2199,18 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), NODE(ast_stmt)), FN
+	{
+		// try to parse a block
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 1
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), WILDCARD), FN
 	{
 		// try to parse a block
@@ -2068,18 +2220,7 @@ CHORD_BEGIN
 			.reduction_result_offset = 2
 		};
 	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(obrace), WILDCARD, WILDCARD), FN
-	{
-		// try to parse a block
-		return
-		{
-			.action = parse_action::recurse,
-			.reduction_result_offset = 2
-		};
-	}
+	EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -2091,6 +2232,13 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_decl)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_stmt)), FN
 	{
 		return {.action = parse_action::shift};
 	}
