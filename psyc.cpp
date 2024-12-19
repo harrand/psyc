@@ -1947,10 +1947,15 @@ CHORD_BEGIN
 	}
 CHORD_END
 
-	// todo: continue function parsing.
-
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(semicol)), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(semicol)), FN
 	{
 		auto& decl_node = nodes[0];
 		auto decl = std::get<ast_decl>(decl_node.payload);
@@ -2079,6 +2084,13 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl)), FN
 	{
 		return {.action = parse_action::shift};
 	}
