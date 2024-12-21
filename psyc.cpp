@@ -952,9 +952,14 @@ struct ast_token
 {
 	token tok;
 	std::string_view lexeme;
+
+	std::string value_tostring() const
+	{
+		return std::string{lexeme};
+	}
 };
 
-struct ast_translation_unit{};
+struct ast_translation_unit{std::string value_tostring(){return "";}};
 
 struct ast_literal_expr
 {
@@ -972,6 +977,16 @@ struct ast_literal_expr
 			"string literal"
 		}[this->value.index()];
 	}
+
+	std::string value_tostring() const
+	{
+		std::string ret;
+		std::visit([&ret](auto&& arg)
+				{
+					ret = std::format("{}", arg);
+				}, this->value);
+		return ret;
+	}
 };
 
 struct ast_decl;
@@ -981,6 +996,15 @@ struct ast_funcdef_expr
 	std::vector<ast_decl> params = {};
 	std::string return_type;
 	bool is_extern = false;
+
+	std::string value_tostring() const
+	{
+		if(this->is_extern)
+		{
+			return "extern func";
+		}
+		return "func";
+	}
 };
 
 struct ast_expr
@@ -990,6 +1014,16 @@ struct ast_expr
 		ast_literal_expr,
 		ast_funcdef_expr
 	> expr_;
+
+	std::string value_tostring() const
+	{
+		std::string ret;
+		std::visit([&ret](auto&& arg)
+				{
+					ret = arg.value_tostring();
+				}, this->expr_);
+		return ret;
+	}
 };
 
 struct ast_decl
@@ -997,16 +1031,35 @@ struct ast_decl
 	std::string type_name;
 	std::string name;
 	std::optional<ast_expr> initialiser = std::nullopt;
+
+	std::string value_tostring() const
+	{
+		if(this->initialiser.has_value())
+		{
+			return this->initialiser->value_tostring();
+		}
+		return "";
+	}
 };
 
 struct ast_decl_stmt
 {
 	ast_decl decl;
+
+	std::string value_tostring()
+	{
+		return this->decl.value_tostring();
+	}
 };
 
 struct ast_expr_stmt
 {
 	ast_expr expr;
+
+	std::string value_tostring()
+	{
+		return this->expr.value_tostring();
+	}
 };
 
 struct ast_stmt;
@@ -1014,6 +1067,8 @@ struct ast_blk_stmt
 {
 	std::vector<ast_stmt> blk = {};
 	bool capped = false;
+
+	std::string value_tostring(){return "";}
 };
 
 struct ast_stmt
@@ -1033,6 +1088,16 @@ struct ast_stmt
 			"block statement"
 		}[this->stmt_.index()];
 	}
+	std::string value_tostring() const
+	{
+		std::string ret;
+		std::visit([&ret](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+					ret = const_cast<T&>(arg).value_tostring();
+				}, this->stmt_);
+		return ret;
+	}
 };
 
 enum class partial_funcdef_stage
@@ -1049,11 +1114,18 @@ struct ast_partial_funcdef
 	std::vector<ast_decl> params = {};
 	std::string return_type;
 	partial_funcdef_stage stage = partial_funcdef_stage::defining_params;
+
+	std::string value_tostring() const{return "";}
 };
 
 struct ast_funcdef
 {
 	ast_funcdef_expr func;
+
+	std::string value_tostring() const
+	{
+		return func.value_tostring();
+	}
 };
 
 using node_payload = std::variant
@@ -1126,10 +1198,31 @@ struct node
 		{
 			extra = std::format("({})", std::get<ast_stmt>(this->payload).type_name());
 		}
-		std::println("{}{}{} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], extra, this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
+		std::string value_as_string;
+		std::visit([&value_as_string](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+					if constexpr(!std::is_same_v<T, std::monostate>)
+					{
+						value_as_string = const_cast<T&>(arg).value_tostring();
+					}
+				}, this->payload);
+		std::println("{}{}{} {} [{}, {}] - [{}, {}]", prefix, node_names[this->payload.index()], extra, value_as_string, this->begin_location.line, this->begin_location.column, this->end_location.line, this->end_location.column);
 		for(const auto& child : this->children)
 		{
 			child.verbose_print(full_source, prefix + "\t");
+		}
+		if(this->payload.index() == payload_index<ast_stmt>())
+		{
+			const auto& stmt = std::get<ast_stmt>(this->payload);
+			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+			{
+				// is a block statement, print out its contents as if they were children.
+				for(const auto& child : std::get<ast_blk_stmt>(stmt.stmt_).blk)
+				{
+					std::println("{} {}", prefix + "\t", child.value_tostring());
+				}
+			}
 		}
 	}
 
