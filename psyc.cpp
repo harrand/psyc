@@ -1832,6 +1832,7 @@ CHORD_END
 			}\
 		}\
 		decl_node.end_location = nodes.back().end_location;\
+		decl_node.children = value_node.children;\
 		return\
 		{\
 			.action = parse_action::reduce,\
@@ -2049,6 +2050,7 @@ CHORD_BEGIN
 				}
 			};
 			defnode.payload = complete_funcdef;
+			defnode.children = {nodes[1]};
 			return
 			{
 				.action = parse_action::reduce,
