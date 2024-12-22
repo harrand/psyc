@@ -1030,13 +1030,24 @@ struct ast_callfunc_expr
 	std::string value_tostring() const;
 };
 
+struct ast_symbol_expr
+{
+	std::string symbol;
+
+	std::string value_tostring() const
+	{
+		return "symbol";
+	}
+};
+
 struct ast_expr
 {
 	std::variant
 	<
 		ast_literal_expr,
 		ast_funcdef_expr,
-		ast_callfunc_expr
+		ast_callfunc_expr,
+		ast_symbol_expr
 	> expr_;
 
 	std::string value_tostring() const
@@ -1178,6 +1189,7 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"_unparsed_token",
 	"translation_unit",
 	"expression",
+	"partial function call",
 	"declaration",
 	"statement",
 	"partial function definition",
@@ -1791,75 +1803,6 @@ CHORD_BEGIN
 	}
 CHORD_END
 
-#define GIVE_DECL_INITIALISER_CODE \
-		auto& decl_node = nodes[0];\
-		auto& decl = std::get<ast_decl>(decl_node.payload);\
-		if(decl.initialiser.has_value())\
-		{\
-			chord_error("declaration {} appears to have more than one initialiser.", decl.name);\
-		}\
-\
-		auto value_node = nodes[2];\
-\
-		if(value_node.payload.index() == payload_index<ast_token>())\
-		{\
-			auto value = std::get<ast_token>(value_node.payload);\
-			if(value.tok == token::keyword_func)\
-			{\
-					return {.action = parse_action::recurse, .reduction_result_offset = 2};\
-			}\
-			decl.initialiser = ast_expr{.expr_ = ast_literal_expr{}};\
-			auto& literal = std::get<ast_literal_expr>(decl.initialiser->expr_);\
-\
-			switch(value.tok)\
-			{\
-				case token::integer_literal:\
-					literal.value = std::stol(std::string{value.lexeme});\
-				break;\
-				case token::decimal_literal:\
-					literal.value = std::stod(std::string{value.lexeme});\
-				break;\
-				case token::char_literal:\
-				{\
-					std::string escaped_chars = escape(value.lexeme);\
-					std::size_t chars_size = escaped_chars.size();\
-					if(chars_size != 1)\
-					{\
-						error(value_node.begin_location, "char literals must contain only 1 character, \'{}\' contains {} characters", value.lexeme, chars_size);\
-					}\
-					literal.value = escaped_chars.front();\
-				}\
-				break;\
-				case token::string_literal:\
-					literal.value = escape(value.lexeme);\
-				break;\
-				default:\
-					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);\
-				break;\
-			}\
-		}\
-		else\
-		{\
-\
-			if(value_node.payload.index() == payload_index<ast_partial_funcdef>())\
-			{\
-\
-				return {.action = parse_action::recurse, .reduction_result_offset = 2};\
-			}\
-			else if(value_node.payload.index() == payload_index<ast_funcdef>())\
-			{\
-				auto funcdef = std::get<ast_funcdef>(value_node.payload);\
-				decl.initialiser = ast_expr{.expr_ = funcdef.func};\
-			}\
-		}\
-		decl_node.end_location = nodes.back().end_location;\
-		decl_node.children = value_node.children;\
-		return\
-		{\
-			.action = parse_action::reduce,\
-			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}\
-		};
-
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
@@ -1871,7 +1814,85 @@ CHORD_END
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
 	{
-		GIVE_DECL_INITIALISER_CODE
+		auto& decl_node = nodes[0];
+		auto& decl = std::get<ast_decl>(decl_node.payload);
+		if(decl.initialiser.has_value())
+		{
+			chord_error("declaration {} appears to have more than one initialiser.", decl.name);
+		}
+
+		auto value_node = nodes[2];
+
+		if(value_node.payload.index() == payload_index<ast_token>())
+		{
+			auto value = std::get<ast_token>(value_node.payload);
+			if(value.tok == token::keyword_func || value.tok == token::symbol)
+			{
+					return {.action = parse_action::recurse, .reduction_result_offset = 2};
+			}
+			decl.initialiser = ast_expr{.expr_ = ast_literal_expr{}};
+			auto& literal = std::get<ast_literal_expr>(decl.initialiser->expr_);
+
+			switch(value.tok)
+			{
+				case token::integer_literal:
+					literal.value = std::stol(std::string{value.lexeme});
+				break;
+				case token::decimal_literal:
+					literal.value = std::stod(std::string{value.lexeme});
+				break;
+				case token::char_literal:
+				{
+					std::string escaped_chars = escape(value.lexeme);
+					std::size_t chars_size = escaped_chars.size();
+					if(chars_size != 1)
+					{
+						error(value_node.begin_location, "char literals must contain only 1 character, '{}' contains {} characters", value.lexeme, chars_size);
+					}
+					literal.value = escaped_chars.front();
+				}
+				break;
+				case token::string_literal:
+					literal.value = escape(value.lexeme);
+				break;
+				default:
+					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);
+				break;
+			}
+		}
+		else
+		{
+
+			if(value_node.payload.index() == payload_index<ast_partial_funcdef>())
+			{
+
+				return {.action = parse_action::recurse, .reduction_result_offset = 2};
+			}
+			else if(value_node.payload.index() == payload_index<ast_funcdef>())
+			{
+				auto funcdef = std::get<ast_funcdef>(value_node.payload);
+				decl.initialiser = ast_expr{.expr_ = funcdef.func};
+			}
+			else if(value_node.payload.index() == payload_index<ast_expr>())
+			{
+				decl.initialiser = std::get<ast_expr>(value_node.payload);
+			}
+			else if(value_node.payload.index() == payload_index<ast_partial_callfunc>())
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 2};
+			}
+			else
+			{
+				chord_error("not sure how to handle a {} as a decl initialiser", node_names[value_node.payload.index()]);
+			}
+		}
+		decl_node.end_location = nodes.back().end_location;
+		decl_node.children = value_node.children;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+		};
 	}
 	EXTENSIBLE
 CHORD_END
@@ -2326,6 +2347,14 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), WILDCARD), FN
+	{
+		return{.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc)), FN
 	{
 		return {.action = parse_action::shift};
@@ -2459,14 +2488,14 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal)), FN
+	LOOKAHEAD_STATE(NODE(ast_expr)), FN
 	{
 		return {.action = parse_action::shift};
 	}
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr)), FN
+	LOOKAHEAD_STATE(TOKEN(integer_literal)), FN
 	{
 		return {.action = parse_action::shift};
 	}
@@ -2514,6 +2543,52 @@ CHORD_BEGIN
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(symbol), TOKEN(semicol)), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(semicol)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(cparen)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(comma)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
 		};
 	}
 CHORD_END
