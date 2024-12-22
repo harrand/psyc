@@ -993,6 +993,7 @@ struct ast_decl;
 
 struct ast_funcdef_expr
 {
+	std::vector<ast_decl> static_params = {};
 	std::vector<ast_decl> params = {};
 	std::string return_type;
 	bool is_extern = false;
@@ -1101,6 +1102,8 @@ struct ast_stmt
 
 enum class partial_funcdef_stage
 {
+	defining_static_params,
+	awaiting_next_static_param,
 	defining_params,
 	awaiting_next_param,
 	awaiting_arrow,
@@ -1110,6 +1113,7 @@ enum class partial_funcdef_stage
 
 struct ast_partial_funcdef
 {
+	std::vector<ast_decl> static_params = {};
 	std::vector<ast_decl> params = {};
 	std::string return_type;
 	partial_funcdef_stage stage = partial_funcdef_stage::defining_params;
@@ -1850,6 +1854,46 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(oparen)), FN
+	{
+		// this chord only occurs when a partial funcdef has been created with static params initially.
+		// this chord wont be invoked if there are no static params, as instead it will be "keyword_func oparen"
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(oparen), TOKEN(symbol)), FN
+	{
+		// this chord only occurs when a partial funcdef has been created with static params initially.
+		// this chord wont be invoked if there are no static params, as instead it will be "keyword_func oparen"
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(oparen), NODE(ast_decl)), FN
+	{
+		// this chord only occurs when a partial funcdef has been created with static params initially.
+		// this chord wont be invoked if there are no static params, as instead it will be "keyword_func oparen"
+		auto& func = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(func.stage == partial_funcdef_stage::defining_params)
+		{
+			func.params.push_back(std::get<ast_decl>(nodes[2].payload));
+		}
+		else
+		{
+			chord_error("syntax error while parsing function definition - expecting to be defining params");
+		}
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(cparen)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
@@ -1867,14 +1911,38 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(canglebrack)), FN
+	{
+		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(def.stage != partial_funcdef_stage::defining_static_params)
+		{
+			chord_error("unexpected '>' token while parsing function definition. you have already finished defining the static params.");
+		}
+		def.stage = partial_funcdef_stage::defining_params;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1},
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(comma)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
-		if(def.stage != partial_funcdef_stage::defining_params)
+		if(def.stage == partial_funcdef_stage::defining_params)
 		{
-			chord_error("unexpected ',' token while parsing function definition. you have already finished defining the params.");
+			def.stage = partial_funcdef_stage::awaiting_next_param;
 		}
-		def.stage = partial_funcdef_stage::awaiting_next_param;
+		else if(def.stage == partial_funcdef_stage::defining_static_params)
+		{
+			def.stage = partial_funcdef_stage::awaiting_next_static_param;
+		}
+		else
+		{
+			chord_error("unexpected ',' token while parsing function definition. you have already finished defining the params/static params.");
+		}
 		return
 		{
 			.action = parse_action::reduce,
@@ -1888,12 +1956,20 @@ CHORD_BEGIN
 	{
 		auto next_param = std::get<ast_decl>(nodes[1].payload);
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
-		if(def.stage != partial_funcdef_stage::awaiting_next_param)
+		if(def.stage == partial_funcdef_stage::awaiting_next_param)
 		{
-			chord_error("unexpected decl named {} while parsing function definition. you have already finished defining the params, or have you forgotten a comma?", next_param.name);
+			def.params.push_back(next_param);
+			def.stage = partial_funcdef_stage::defining_params;
 		}
-		def.params.push_back(next_param);
-		def.stage = partial_funcdef_stage::defining_params;
+		else if(def.stage == partial_funcdef_stage::awaiting_next_static_param)
+		{
+			def.static_params.push_back(next_param);
+			def.stage = partial_funcdef_stage::defining_static_params;
+		}
+		else
+		{
+			chord_error("unexpected decl named {} while parsing function definition. you have already finished defining the params/static params, or have you forgotten a comma?", next_param.name);
+		}
 		return
 		{
 			.action = parse_action::reduce,
@@ -1924,7 +2000,7 @@ CHORD_BEGIN
 	{
 		auto return_typename = std::string{std::get<ast_token>(nodes[1].payload).lexeme};
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
-		if(def.stage == partial_funcdef_stage::awaiting_next_param)
+		if(def.stage == partial_funcdef_stage::awaiting_next_param || def.stage == partial_funcdef_stage::awaiting_next_static_param)
 		{
 			// so a comma preceded us. we're the start of a decl representing the next param, but havent figured that out yet
 			// recurse.
@@ -1981,6 +2057,7 @@ CHORD_BEGIN
 		{
 			.func = 
 			{
+				.static_params = std::move(def.static_params),
 				.params = std::move(def.params),
 				.return_type = std::move(def.return_type),
 				.is_extern = false
@@ -2031,6 +2108,7 @@ CHORD_BEGIN
 			{
 				.func = 
 				{
+					.static_params = std::move(def.static_params),
 					.params = std::move(def.params),
 					.return_type = std::move(def.return_type),
 					.is_extern = false
@@ -2106,7 +2184,22 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oparen), TOKEN(symbol)), FN
+	{
+		// it should be the start of a decl (the first param)
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack), TOKEN(symbol)), FN
 	{
 		// it should be the start of a decl (the first param)
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
@@ -2121,6 +2214,26 @@ CHORD_BEGIN
 		{
 			.params = {std::get<ast_decl>(nodes[2].payload)},
 			.return_type = "???"
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = func}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack), NODE(ast_decl)), FN
+	{
+		// we have the start of a function definition. finally.
+		ast_partial_funcdef func
+		{
+			.static_params = {std::get<ast_decl>(nodes[2].payload)},
+			.params = {},
+			.return_type = "???",
+			.stage = partial_funcdef_stage::defining_static_params
 		};
 		return
 		{
