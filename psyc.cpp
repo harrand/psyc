@@ -1082,9 +1082,9 @@ struct ast_stmt
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
 		{
-			"declaration statement",
-			"expression statement",
-			"block statement"
+			"declaration",
+			"expression",
+			"block"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -2047,7 +2047,7 @@ CHORD_BEGIN
 		else
 		{
 			const char* stmt_name = stmt.type_name();
-			chord_error("expected block statement, this is a {}", stmt_name);
+			chord_error("expected block statement, this is a {} statement", stmt_name);
 		}
 
 	}
@@ -2238,7 +2238,7 @@ CHORD_BEGIN
 		else
 		{
 			const char* stmt_name = stmt.type_name();
-			chord_error("unexpected {}, expected block statement only.", stmt_name);
+			chord_error("unexpected {} statement, expected block statement only.", stmt_name);
 		}
 	}
 CHORD_END
@@ -2263,7 +2263,7 @@ CHORD_BEGIN
 		else
 		{
 			const char* stmt_name = stmt.type_name();
-			chord_error("syntax error concerning two statements together. i've only really thought about this when the lhs is a block statement, but this time its a {}", stmt_name);
+			chord_error("syntax error concerning two statements together. i've only really thought about this when the lhs is a block statement, but this time its a {} statement", stmt_name);
 		}
 		
 	}
