@@ -1038,7 +1038,7 @@ struct ast_decl
 		{
 			return this->initialiser->value_tostring();
 		}
-		return "";
+		return "<no initialiser>";
 	}
 };
 
@@ -1065,7 +1065,6 @@ struct ast_expr_stmt
 struct ast_stmt;
 struct ast_blk_stmt
 {
-	std::vector<ast_stmt> blk = {};
 	bool capped = false;
 
 	std::string value_tostring(){return "";}
@@ -1211,18 +1210,6 @@ struct node
 		for(const auto& child : this->children)
 		{
 			child.verbose_print(full_source, prefix + "\t");
-		}
-		if(this->payload.index() == payload_index<ast_stmt>())
-		{
-			const auto& stmt = std::get<ast_stmt>(this->payload);
-			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
-			{
-				// is a block statement, print out its contents as if they were children.
-				for(const auto& child : std::get<ast_blk_stmt>(stmt.stmt_).blk)
-				{
-					std::println("{} {}", prefix + "\t", child.value_tostring());
-				}
-			}
 		}
 	}
 
@@ -2012,13 +1999,13 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(obrace), NODE(ast_stmt)), FN
 	{
 		// this is the start of a block statement.
-		ast_blk_stmt blk;
-		blk.blk.push_back(std::get<ast_stmt>(nodes[1].payload));
+		node ret = {.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}};
+		ret.children.push_back(nodes[1]);
 		return
 		{
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
-			.reduction_result = {node{.payload = ast_stmt{.stmt_ = blk}}}
+			.reduction_result = {ret}
 		};
 	}
 CHORD_END
@@ -2231,7 +2218,8 @@ CHORD_BEGIN
 	{
 		// cap off a block statement if its a block statement.
 		// no idea if it isnt a block statement.
-		auto& stmt = std::get<ast_stmt>(nodes[0].payload);
+		auto& stmt_node = nodes[0];
+		auto& stmt = std::get<ast_stmt>(stmt_node.payload);
 		if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
 		{
 			auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
@@ -2240,6 +2228,7 @@ CHORD_BEGIN
 				chord_error("extraneous closing brace. already just capped off a block statement.");
 			}
 			blk.capped = true;
+			stmt_node.end_location = nodes[1].end_location;
 			return
 			{
 				.action = parse_action::reduce,
@@ -2259,11 +2248,12 @@ CHORD_BEGIN
 	{
 		// append to a block statement
 		// no idea if it isnt a block statement.
-		auto& stmt = std::get<ast_stmt>(nodes[0].payload);
+		auto& stmt_node = nodes[0];
+		auto& stmt = std::get<ast_stmt>(stmt_node.payload);
 		if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
 		{
 			auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
-			blk.blk.push_back(std::get<ast_stmt>(nodes[1].payload));
+			stmt_node.children.push_back(nodes[1]);
 			return
 			{
 				.action = parse_action::reduce,
