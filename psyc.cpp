@@ -1008,12 +1008,35 @@ struct ast_funcdef_expr
 	}
 };
 
+struct ast_expr;
+
+struct ast_partial_callfunc
+{
+	std::string function_name;
+	std::vector<ast_expr> params = {};
+	bool awaiting_next_param = false;
+
+	std::string value_tostring() const
+	{
+		return "partial call";
+	}
+};
+
+struct ast_callfunc_expr
+{
+	std::string function_name;
+	std::vector<ast_expr> params = {};
+
+	std::string value_tostring() const;
+};
+
 struct ast_expr
 {
 	std::variant
 	<
 		ast_literal_expr,
-		ast_funcdef_expr
+		ast_funcdef_expr,
+		ast_callfunc_expr
 	> expr_;
 
 	std::string value_tostring() const
@@ -1026,6 +1049,12 @@ struct ast_expr
 		return ret;
 	}
 };
+
+
+std::string ast_callfunc_expr::value_tostring() const
+{
+	return std::format("call<{}>", params.size());
+}
 
 struct ast_decl
 {
@@ -1137,6 +1166,7 @@ using node_payload = std::variant
 	ast_token,
 	ast_translation_unit,
 	ast_expr,
+	ast_partial_callfunc,
 	ast_decl,
 	ast_stmt,
 	ast_partial_funcdef,
@@ -2252,6 +2282,132 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), TOKEN(cparen)), FN
+	{
+		// this is just a call with no params
+		ast_callfunc_expr call
+		{
+			.function_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
+			.params = {}
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = call}, .end_location = nodes.back().end_location}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		// this is a call with at least one param
+		ast_partial_callfunc call
+		{
+			.function_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
+			.params = {std::get<ast_expr>(nodes[2].payload)}
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = call, .end_location = nodes.back().end_location}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(comma)), FN
+	{
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		if(call.awaiting_next_param)
+		{
+			// i was expecting a param
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got ,");
+		}
+		call.awaiting_next_param = true;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), NODE(ast_expr)), FN
+	{
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		if(!call.awaiting_next_param)
+		{
+			chord_error("syntax error while evaluating function call. unexpected expression which is presumably meant to be a parameter. did you forget a preceding comma?");
+		}
+		call.params.push_back(std::get<ast_expr>(nodes[1].payload));
+		call.awaiting_next_param = false;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cparen)), FN
+	{
+		auto& call_node = nodes[0];
+		auto& call = std::get<ast_partial_callfunc>(call_node.payload);
+		if(call.awaiting_next_param)
+		{
+			// i was expecting a param
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got ,");
+		}
+		ast_callfunc_expr complete_call
+		{
+			.function_name = call.function_name,
+			.params = call.params
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = complete_call}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(semicol)), FN
 	{
 		auto& decl_node = nodes[0];
@@ -2274,6 +2430,16 @@ CHORD_END
 CHORD_BEGIN
 	STATE(NODE(ast_expr), TOKEN(semicol)), FN
 	{
+		return
+		{
+			.action = parse_action::recurse
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(semicol)), FN
+	{
 		auto& expr_node = nodes[0];
 		auto expr = std::get<ast_expr>(expr_node.payload);
 		
@@ -2293,6 +2459,20 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 0};
@@ -2301,6 +2481,32 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cparen)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(comma)), FN
 	{
 		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
 		return
