@@ -1132,13 +1132,22 @@ struct ast_blk_stmt
 	std::string value_tostring(){return "";}
 };
 
+struct ast_metaregion_stmt
+{
+	std::string name;
+	bool capped = false;
+
+	std::string value_tostring(){return std::format("{} meta-region", this->name);}
+};
+
 struct ast_stmt
 {
 	std::variant
 	<
 		ast_decl_stmt,
 		ast_expr_stmt,
-		ast_blk_stmt
+		ast_blk_stmt,
+		ast_metaregion_stmt
 	> stmt_;
 	const char* type_name() const
 	{
@@ -1146,7 +1155,8 @@ struct ast_stmt
 		{
 			"declaration",
 			"expression",
-			"block"
+			"block",
+			"metaregion"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -2734,13 +2744,29 @@ CHORD_BEGIN
 	{
 		// statement is right at the beginning.
 		// it should become the latest child of the translation unit node.
+		const auto& stmt = std::get<ast_stmt>(nodes[0].payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			if(!std::get<ast_blk_stmt>(stmt.stmt_).capped)
+			{
+				return {.action = parse_action::recurse};
+			}
+		}
+		else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
+		{
+			if(!std::get<ast_metaregion_stmt>(stmt.stmt_).capped)
+			{
+				return {.action = parse_action::recurse};
+			}
+		}
 		return
 		{
 			.action = parse_action::commit,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.nodes_to_remove = {.offset = 0, .length = 1},
 			.reduction_result = {nodes[0]}
 		};
 	}
+	EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -2773,6 +2799,14 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_stmt), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+CHORD_END
+
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_stmt), NODE(ast_stmt)), FN
 	{
@@ -2790,6 +2824,29 @@ CHORD_BEGIN
 				.nodes_to_remove = {.offset = 1, .length = 1}
 			};
 		}
+		else if(payload_index<ast_metaregion_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
+		{
+			// rhs stmt should be a block statement.
+			auto& rhs_node = nodes[1];
+			auto& rhs_stmt = std::get<ast_stmt>(rhs_node.payload);
+			auto& lhs_metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
+			if(payload_index<ast_blk_stmt, decltype(std::declval<ast_stmt>().stmt_)>() != rhs_stmt.stmt_.index())
+			{
+				const char* stmt_name = rhs_stmt.type_name();
+				chord_error("a metaregion stmt is followed by another statement. that rhs statement should always be a block statement, but instead you have provided a {}", stmt_name);
+			}
+			const auto& rhs_blk = std::get<ast_blk_stmt>(rhs_stmt.stmt_);
+			if(rhs_blk.capped)
+			{
+				auto sz = stmt_node.children.size();
+				panic_ifnt(stmt_node.children.empty(), "did not expect metaregion to have children already. it had {} children", sz);
+				stmt_node.children = {rhs_node};
+				lhs_metaregion.capped = true;
+				stmt_node.end_location = rhs_node.end_location;
+				return {.action = parse_action::reduce, .nodes_to_remove = {.offset = 1, .length = 1}};
+			}
+			return {.action = parse_action::recurse, .reduction_result_offset = 1};
+		}
 		else
 		{
 			const char* stmt_name = stmt.type_name();
@@ -2797,6 +2854,7 @@ CHORD_BEGIN
 		}
 		
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -2951,6 +3009,43 @@ CHORD_BEGIN
 		const char* node_name = node_names[wildcard_node.payload.index()];
 		std::string_view wildcard_src = quote_source(state.in.source, wildcard_node.begin_location, wildcard_node.end_location);
 		chord_error("unexpected end of file, was expecting more after {} (\"{}\")", node_name, wildcard_src);
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(compare), TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(compare), TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(compare), TOKEN(symbol), TOKEN(compare)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(compare), TOKEN(symbol), TOKEN(compare), TOKEN(obrace)), FN
+	{
+		std::string_view name = std::get<ast_token>(nodes[1].payload).lexeme;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {
+				node{.payload = ast_stmt{.stmt_ = ast_metaregion_stmt{.name = std::string{name}}}},
+				node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}}
+			}
+		};
 	}
 CHORD_END
 
