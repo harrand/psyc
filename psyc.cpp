@@ -1599,7 +1599,7 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 			state.chord_invocation_count++;
 			if(verbose_parse)
 			{
-				std::print("{}\n\t=> ", entry.description);
+				std::print("{}{}\n\t=> ", entry.description, entry.extensible ? ", ..." : "");
 			}
 			switch(result.action)
 			{
