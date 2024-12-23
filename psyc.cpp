@@ -446,6 +446,7 @@ enum class token : std::uint32_t
 	initialiser,
 	colon,
 	comma,
+	dot,
 	compare,
 	assign,
 	arrow,
@@ -633,6 +634,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "comma",
 		.front_identifier = ",",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "dot",
+		.front_identifier = ".",
 		.trivial = true
 	},
 
@@ -1049,6 +1057,16 @@ struct ast_expr
 		ast_callfunc_expr,
 		ast_symbol_expr
 	> expr_;
+
+	const char* type_name() const
+	{
+		return std::array<const char*, std::variant_size_v<decltype(expr_)>>
+		{
+			"literal",
+			"callfunc",
+			"symbol"
+		}[this->expr_.index()];
+	}
 
 	std::string value_tostring() const
 	{
@@ -2755,6 +2773,50 @@ CHORD_BEGIN
 	{
 		return {.action = parse_action::shift};
 	}
+CHORD_END
+
+// uniform function call syntax
+// foo.bar(1, 2)
+// is equivalent too
+// bar(foo, 1, 2)
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot), NODE(ast_expr)), FN
+	{
+		std::string_view symbol = std::get<ast_token>(nodes[0].payload).lexeme;
+		auto& expr_node = nodes[2];
+		auto& expr = std::get<ast_expr>(expr_node.payload);
+		if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
+		{
+			// ufcs
+			auto& call = std::get<ast_callfunc_expr>(expr.expr_);
+			call.params.insert(call.params.begin(), ast_expr{.expr_ = ast_symbol_expr{.symbol = std::string{symbol}}});
+		}
+		else
+		{
+			const char* expr_type = expr.type_name();
+			chord_error("unexpected expression type \"symbol.expr\". expected expr to be a callfunc expression, but instead it is a {}", expr_type);
+		}
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 2}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
