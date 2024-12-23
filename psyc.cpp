@@ -1021,7 +1021,9 @@ struct ast_expr;
 struct ast_partial_callfunc
 {
 	std::string function_name;
+	std::vector<ast_expr> static_params = {};
 	std::vector<ast_expr> params = {};
+	bool on_static_params = false;
 	bool awaiting_next_param = false;
 
 	std::string value_tostring() const
@@ -1033,6 +1035,7 @@ struct ast_partial_callfunc
 struct ast_callfunc_expr
 {
 	std::string function_name;
+	std::vector<ast_expr> static_params = {};
 	std::vector<ast_expr> params = {};
 
 	std::string value_tostring() const;
@@ -2328,13 +2331,21 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), TOKEN(cparen)), FN
 	{
 		// this is just a call with no params
 		ast_callfunc_expr call
 		{
 			.function_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
-			.params = {}
+			.static_params = {},
+			.params = {},
 		};
 		return
 		{
@@ -2352,7 +2363,8 @@ CHORD_BEGIN
 		ast_partial_callfunc call
 		{
 			.function_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
-			.params = {std::get<ast_expr>(nodes[2].payload)}
+			.params = {std::get<ast_expr>(nodes[2].payload)},
+			.on_static_params = false
 		};
 		return
 		{
@@ -2366,6 +2378,34 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oparen), WILDCARD), FN
+	{
+		return{.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack), NODE(ast_expr)), FN
+	{
+		// this is a call with at least one static param
+		ast_partial_callfunc call
+		{
+			.function_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
+			.static_params = {std::get<ast_expr>(nodes[2].payload)},
+			.on_static_params = true
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = call, .end_location = nodes.back().end_location}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack), WILDCARD), FN
 	{
 		return{.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
@@ -2405,7 +2445,14 @@ CHORD_BEGIN
 		{
 			chord_error("syntax error while evaluating function call. unexpected expression which is presumably meant to be a parameter. did you forget a preceding comma?");
 		}
-		call.params.push_back(std::get<ast_expr>(nodes[1].payload));
+		if(call.on_static_params)
+		{
+			call.static_params.push_back(std::get<ast_expr>(nodes[1].payload));
+		}
+		else
+		{
+			call.params.push_back(std::get<ast_expr>(nodes[1].payload));
+		}
 		call.awaiting_next_param = false;
 		return
 		{
@@ -2417,10 +2464,30 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(oparen)), FN
+	{
+		// we've most likely only hit this path coz we just parsed the beginning of a function call with static params.
+		// we just remove the oparen and continue on as if we had already specified a first param (push-back will save us)
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		call.on_static_params = false;
+		call.awaiting_next_param = true;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cparen)), FN
 	{
 		auto& call_node = nodes[0];
 		auto& call = std::get<ast_partial_callfunc>(call_node.payload);
+		if(call.on_static_params)
+		{
+			chord_error("syntax error while evaluating function call. did not expect a ) yet because i thought you were still providing static params. did you forget a >?");
+		}
 		if(call.awaiting_next_param)
 		{
 			// i was expecting a param
@@ -2429,6 +2496,7 @@ CHORD_BEGIN
 		ast_callfunc_expr complete_call
 		{
 			.function_name = call.function_name,
+			.static_params = call.static_params,
 			.params = call.params
 		};
 		return
@@ -2441,10 +2509,34 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(canglebrack)), FN
+	{
+		auto& call_node = nodes[0];
+		auto& call = std::get<ast_partial_callfunc>(call_node.payload);
+		if(!call.on_static_params)
+		{
+			chord_error("syntax error while evaluating function call. did not expect a > yet because i didn't think you were providing static params at this point.");
+		}
+		if(call.awaiting_next_param)
+		{
+			// i was expecting a param
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got ,");
+		}
+		call.on_static_params = false;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 1};
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -2553,6 +2645,19 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(canglebrack)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(comma)), FN
 	{
 		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
@@ -2587,6 +2692,19 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(cparen)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(canglebrack)), FN
 	{
 		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
 		return
@@ -2763,6 +2881,13 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_stmt)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen)), FN
 	{
 		return {.action = parse_action::shift};
 	}
