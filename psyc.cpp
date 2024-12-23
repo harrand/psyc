@@ -17,6 +17,8 @@
 #include <functional>
 #include <chrono>
 
+#define STRINGIFY(...) #__VA_ARGS__
+
 // internals
 
 std::chrono::time_point<std::chrono::system_clock> now;
@@ -240,6 +242,7 @@ struct compile_args
 	bool should_print_help = false;
 	bool verbose_lex = false;
 	bool verbose_ast = false;
+	bool verbose_parse = false;
 	std::filesystem::path build_file = {};
 };
 
@@ -263,10 +266,15 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.verbose_ast = true;
 		}
+		else if(arg == "--verbose-parse")
+		{
+			ret.verbose_parse = true;
+		}
 		else if(arg == "--verbose-all")
 		{
 			ret.verbose_lex = true;
 			ret.verbose_ast = true;
+			ret.verbose_parse = true;
 		}
 		else
 		{
@@ -1414,6 +1422,7 @@ using chord_function = chord_result(*)(std::span<node> subtrees, parser_state& s
 struct parse_table_entry
 {
 	chord_function chord_fn = nullptr;
+	const char* description = "";
 	bool extensible = false;
 	std::unordered_map<std::int64_t, parse_table_entry> children = {};
 };
@@ -1471,7 +1480,7 @@ parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtree
 }
 */
 
-void add_chord(std::span<const node> subtrees, chord_function fn, bool extensible = false)
+void add_chord(std::span<const node> subtrees, const char* description, chord_function fn, bool extensible = false)
 {
 	bool any_wildcards = false;
 	for(const node& n : subtrees)
@@ -1481,13 +1490,14 @@ void add_chord(std::span<const node> subtrees, chord_function fn, bool extensibl
 			any_wildcards = true;
 		}
 	}
-	foreach_entry_from_hashed_subtrees(subtrees, [fn, any_wildcards, extensible](parse_table_entry& entry)
+	foreach_entry_from_hashed_subtrees(subtrees, [fn, description, any_wildcards, extensible](parse_table_entry& entry)
 	{
 		if(any_wildcards)
 		{
 			if(entry.chord_fn == nullptr)
 			{
 				entry.chord_fn = fn;
+				entry.description = description;
 				entry.extensible = extensible;
 			}
 		}
@@ -1495,6 +1505,7 @@ void add_chord(std::span<const node> subtrees, chord_function fn, bool extensibl
 		{
 			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function");
 			entry.chord_fn = fn;
+			entry.description = description;
 			entry.extensible = extensible;
 		}
 	}, nullptr, true);
@@ -1508,10 +1519,10 @@ void add_chord(std::span<const node> subtrees, chord_function fn, bool extensibl
 #define NODE(x) node{.payload = x{}}
 #define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes, parser_state& state)->chord_result
-#define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}()
+#define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}(), "translation_unit, " STRINGIFY(__VA_ARGS__)
 // the difference between STATE and LOOSE state is that STATE means your chord function will only target nodes/tokens right at the beginning of the parse state
 // LOOKAHEAD_STATE means it could be offsetted deep in the parse state.
-#define LOOKAHEAD_STATE(...) [](){return std::array{__VA_ARGS__};}()
+#define LOOKAHEAD_STATE(...) [](){return std::array{__VA_ARGS__};}(), STRINGIFY(__VA_ARGS__)
 void populate_chords();
 
 #define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return chord_result{.action = parse_action::error}
@@ -1524,6 +1535,12 @@ struct parser_state
 	std::size_t recursive_offset = 0;
 	bool recursing = false;
 
+	std::size_t chord_invocation_count = 0;
+	std::size_t shift_count = 0;
+	std::size_t reduce_count = 0;
+	std::size_t recurse_count = 0;
+	std::size_t commit_count = 0;
+
 	bool shift()
 	{
 		if(this->token_cursor >= this->in.tokens.size())
@@ -1535,7 +1552,7 @@ struct parser_state
 	}
 };
 
-node parse(const lex_output& impl_in)
+node parse(const lex_output& impl_in, bool verbose_parse)
 {
 	parser_state state{.in = impl_in};
 	srcloc tu_begin = impl_in.begin_locations.front();
@@ -1549,7 +1566,7 @@ node parse(const lex_output& impl_in)
 	{
 		std::span<const node> nodes_view = state.nodes;
 		foreach_entry_from_hashed_subtrees(nodes_view.subspan(state.recursive_offset),
-		[&state, was_recursing = state.recursing](parse_table_entry& entry)
+		[&state, was_recursing = state.recursing, verbose_parse](parse_table_entry& entry)
 		{
 			if(was_recursing != state.recursing)
 			{
@@ -1579,10 +1596,20 @@ node parse(const lex_output& impl_in)
 				nodes = nodes.subspan<1>();
 			}
 			chord_result result = entry.chord_fn(nodes, state);
+			state.chord_invocation_count++;
+			if(verbose_parse)
+			{
+				std::print("{}\n\t=> ", entry.description);
+			}
 			switch(result.action)
 			{
 				case parse_action::shift:
 					state.shift();
+					if(verbose_parse)
+					{
+						std::println("shift");
+					}
+					state.shift_count++;
 					break;
 				break;
 				case parse_action::reduce:
@@ -1608,6 +1635,11 @@ node parse(const lex_output& impl_in)
 					state.nodes.insert(state.nodes.begin() + begin_offset, result.reduction_result.begin(), result.reduction_result.end());
 					state.recursive_offset = 0;
 					state.recursing = false;
+					if(verbose_parse)
+					{
+						std::println("reduce");
+					}
+					state.reduce_count++;
 					break;
 				}
 				break;
@@ -1619,6 +1651,11 @@ node parse(const lex_output& impl_in)
 						// additional offset of 1 as the chord included a secret translation unit node.
 						state.recursive_offset++;
 					}
+					if(verbose_parse)
+					{
+						std::println("recurse({})", result.reduction_result_offset);
+					}
+					state.recurse_count++;
 					return;
 				break;
 				case parse_action::commit:
@@ -1639,12 +1676,17 @@ node parse(const lex_output& impl_in)
 					{
 						state.nodes.front().children.push_back(n);
 					}
+					if(verbose_parse)
+					{
+						std::println("commit");
+					}
+					state.commit_count++;
 				}
 				break;
 				case parse_action::error:
 				{
 					std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
-					std::print("{}", formatted_src);
+					std::print("{}\n{}\n", formatted_src, verbose_parse ? entry.description : "");
 					crash();
 				}
 				break;
@@ -1657,6 +1699,18 @@ node parse(const lex_output& impl_in)
 
 	auto sz = state.nodes.size();
 	panic_ifnt(sz == 1, "expected one final ast node, but there are {} nodes", sz);
+
+	if(verbose_parse)
+	{
+		constexpr auto verbose_parse_print = R"(+======
+	chords = {}
+	shifts = {}
+	reductions = {}
+	recursions = {}
+	commits = {}
++======)";
+		std::println(verbose_parse_print, state.chord_invocation_count, state.shift_count, state.reduce_count, state.recurse_count, state.commit_count);
+	}
 	return state.nodes.front();
 }
 
@@ -1716,7 +1770,7 @@ int main(int argc, char** argv)
 	time_lex = elapsed_time();
 	timer_restart();
 
-	node build_file_ast = parse(build_file_lex);
+	node build_file_ast = parse(build_file_lex, args.verbose_parse);
 	if(args.verbose_ast)
 	{
 		build_file_ast.verbose_print(build_file_lex.source);
