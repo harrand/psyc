@@ -1149,6 +1149,16 @@ struct ast_expr_stmt
 	}
 };
 
+struct ast_return_stmt
+{
+	std::optional<ast_expr> retval;
+
+	std::string value_tostring()
+	{
+		return std::format("return {}", retval.has_value() ? retval->value_tostring() : "");
+	}
+};
+
 struct ast_stmt;
 struct ast_blk_stmt
 {
@@ -1171,6 +1181,7 @@ struct ast_stmt
 	<
 		ast_decl_stmt,
 		ast_expr_stmt,
+		ast_return_stmt,
 		ast_blk_stmt,
 		ast_metaregion_stmt
 	> stmt_;
@@ -1180,6 +1191,7 @@ struct ast_stmt
 		{
 			"declaration",
 			"expression",
+			"return",
 			"block",
 			"metaregion"
 		}[this->stmt_.index()];
@@ -2956,6 +2968,7 @@ CHORD_BEGIN
 		{
 			const char* stmt_name = stmt.type_name();
 			chord_error("unexpected {} statement, expected block statement only.", stmt_name);
+			// do nothing
 		}
 	}
 CHORD_END
@@ -3180,6 +3193,72 @@ CHORD_BEGIN
 		std::string_view wildcard_src = quote_source(state.in.source, wildcard_node.begin_location, wildcard_node.end_location);
 		chord_error("unexpected end of file, was expecting more after {} (\"{}\")", node_name, wildcard_src);
 	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_return)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_return), NODE(ast_stmt)), FN
+	{
+		// return expects an expression
+		// but due to an ambiguous grammar we should also steal a statement if it is an expression statement.
+		// if it's not then we're probably an error.
+		const auto& stmt = std::get<ast_stmt>(nodes[1].payload);
+		if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
+		{
+			// steal the expression and use that instead.
+			const auto& retval = std::get<ast_expr_stmt>(stmt.stmt_).expr;
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_return_stmt{.retval = retval}}}}
+			};
+		}
+		else
+		{
+			const char* stmt_type = stmt.type_name();
+			chord_error("return is followed by a statement instead of an expression. this is acceptable if the statement is an expression statement, but instead you have provided a {}", stmt_type);
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_return), NODE(ast_expr), TOKEN(semicol)), FN
+	{
+		const auto& retval = std::get<ast_expr>(nodes[1].payload);
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_return_stmt{.retval = retval}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_return), TOKEN(semicol)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_return_stmt{}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_return), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
