@@ -464,6 +464,7 @@ enum class token : std::uint32_t
 	keyword_return,
 	keyword_func,
 	keyword_extern,
+	keyword_struct,
 	symbol,
 	end_of_file,
 	_count
@@ -765,6 +766,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "struct keyword",
+		.front_identifier = "struct",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -1051,6 +1059,14 @@ struct ast_symbol_expr
 	}
 };
 
+struct ast_structdef_expr
+{
+	std::string value_tostring() const
+	{
+		return "structdef";
+	}
+};
+
 struct ast_expr
 {
 	std::variant
@@ -1058,7 +1074,8 @@ struct ast_expr
 		ast_literal_expr,
 		ast_funcdef_expr,
 		ast_callfunc_expr,
-		ast_symbol_expr
+		ast_symbol_expr,
+		ast_structdef_expr
 	> expr_;
 
 	const char* type_name() const
@@ -1857,7 +1874,7 @@ CHORD_BEGIN
 		if(value_node.payload.index() == payload_index<ast_token>())
 		{
 			auto value = std::get<ast_token>(value_node.payload);
-			if(value.tok == token::keyword_func || value.tok == token::symbol)
+			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct)
 			{
 					return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
@@ -1896,7 +1913,6 @@ CHORD_BEGIN
 
 			if(value_node.payload.index() == payload_index<ast_partial_funcdef>())
 			{
-
 				return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
 			else if(value_node.payload.index() == payload_index<ast_funcdef>())
@@ -2281,6 +2297,26 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oparen), TOKEN(cparen)), FN
+	{
+		// decl with no parameters
+		ast_partial_funcdef func
+		{
+			.static_params = {},
+			.params = {},
+			.return_type = "???",
+			.stage = partial_funcdef_stage::awaiting_arrow
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = func}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack), TOKEN(symbol)), FN
 	{
 		// it should be the start of a decl (the first param)
@@ -2324,6 +2360,65 @@ CHORD_BEGIN
 			.reduction_result = {node{.payload = func}}
 		};
 	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct), NODE(ast_stmt)), FN
+	{
+		auto& stmt_node = nodes[1];
+		auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(blk.capped)
+			{
+				return
+				{
+					.action = parse_action::reduce,
+					.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+					.reduction_result = {node{.payload = ast_expr{.expr_ = ast_structdef_expr{}}, .children = {stmt_node}}}
+				};
+			}
+			else
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 1};
+			}
+		}
+		else
+		{
+			const char* stmt_type = stmt.type_name();
+			chord_error("struct keyword is followed by a statement. i only expect block statements to follow this keyword, but instead you've provided me with a {}", stmt_type);
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct), WILDCARD), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct), WILDCARD, WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -2770,6 +2865,18 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_stmt), TOKEN(cbrace)), FN
 	{
 		// cap off a block statement if its a block statement.
@@ -2883,6 +2990,15 @@ CHORD_BEGIN
 CHORD_END
 
 // wildcard chords begin
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_func), WILDCARD), FN
