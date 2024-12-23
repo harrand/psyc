@@ -3347,11 +3347,50 @@ CHORD_END
 // end of chords
 }
 
+std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
+
+void compile_file(std::filesystem::path file, const compile_args& args)
+{
+	timer_restart();
+	lex_output tokens = lex(file);
+	if(args.verbose_lex)
+	{
+		tokens.verbose_print();
+	}
+
+	time_lex += elapsed_time();
+	timer_restart();
+
+	node ast = parse(tokens, args.verbose_parse);
+	if(args.verbose_ast)
+	{
+		ast.verbose_print(tokens.source);
+	}
+
+	time_parse += elapsed_time();
+	timer_restart();
+	auto now_cpy = now;
+
+	build_info build = run_buildmeta(ast);
+	for(std::filesystem::path path : build.added_source_files)
+	{
+		compile_file(path, args);
+	}
+
+	timer_restart();
+	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	time_semal += right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now_cpy.time_since_epoch()).count();
+
+	// todo: codegen
+
+	time_codegen = elapsed_time();
+	timer_restart();
+}
+
 // entry point
 
 int main(int argc, char** argv)
 {
-	std::uint64_t time_setup, time_lex, time_parse, time_semal;
 	timer_restart();
 	populate_chords();
 
@@ -3369,29 +3408,8 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	lex_output build_file_lex = lex(args.build_file);
-	if(args.verbose_lex)
-	{
-		build_file_lex.verbose_print();
-	}
+	compile_file(args.build_file, args);
 
-	time_lex = elapsed_time();
-	timer_restart();
-
-	node build_file_ast = parse(build_file_lex, args.verbose_parse);
-	if(args.verbose_ast)
-	{
-		build_file_ast.verbose_print(build_file_lex.source);
-	}
-
-	time_parse = elapsed_time();
-	timer_restart();
-
-	build_info build = run_buildmeta(build_file_ast);
-
-	time_semal = elapsed_time();
-	timer_restart();
-
-	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, (time_setup + time_lex + time_parse + time_semal) / 1000.0f);
+	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
