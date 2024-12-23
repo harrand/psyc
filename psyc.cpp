@@ -1075,6 +1075,13 @@ struct ast_structdef_expr
 	}
 };
 
+struct ast_unop_expr
+{
+	token op;
+
+};
+
+
 struct ast_expr
 {
 	std::variant
@@ -1730,6 +1737,88 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
 
+struct build_info
+{
+	std::vector<std::filesystem::path> added_source_files = {};
+};
+
+const node* try_get_block_child(const node& n)
+{
+	if(n.children.size() == 1)
+	{
+		const auto& first_child = n.children.front();
+		if(first_child.payload.index() == payload_index<ast_stmt>())
+		{
+			const auto& stmt = std::get<ast_stmt>(first_child.payload);
+			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+			{
+				// yes the first child is a block statement
+				return &first_child;
+			}
+		}
+	}
+	return nullptr;
+}
+
+node* try_get_block_child(node& n)
+{
+	if(n.children.size() == 1)
+	{
+		auto& first_child = n.children.front();
+		if(first_child.payload.index() == payload_index<ast_stmt>())
+		{
+			const auto& stmt = std::get<ast_stmt>(first_child.payload);
+			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+			{
+				// yes the first child is a block statement
+				return &first_child;
+			}
+		}
+	}
+	return nullptr;
+}
+
+std::span<const node> get_metaregion_statements(std::string_view meta_name, const node& tu)
+{
+	for(const node& child : tu.children)
+	{
+		if(child.payload.index() == payload_index<ast_stmt>())
+		{
+			const auto& stmt = std::get<ast_stmt>(child.payload);
+			if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
+			{
+				const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
+				const node* maybe_blk_child = try_get_block_child(child);
+				if(maybe_blk_child != nullptr)
+				{
+					bool all_children_are_stmt = std::all_of(maybe_blk_child->children.begin(), maybe_blk_child->children.end(),
+						[](const node& n)->bool
+						{
+							return n.payload.index() == payload_index<ast_stmt>();
+						});
+					panic_ifnt(all_children_are_stmt, "block inside meta region is somehow not filled with statements");
+					return maybe_blk_child->children;
+				}
+			}
+		}
+	};
+	return {};
+}
+
+build_info run_buildmeta(const node& ast)
+{
+	auto build_meta_region = get_metaregion_statements("build", ast);
+	if(build_meta_region.empty())
+	{
+		warning({}, "build meta region was empty");
+	}
+	for(const node& n : build_meta_region)
+	{
+		const auto& stmt = std::get<ast_stmt>(n.payload);
+	}
+	return {};
+}
+
 //////////////////////////// TYPE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE type
@@ -1750,49 +1839,6 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 #undef COMPILER_STAGE
 #define COMPILER_STAGE link
 // link objects -> executable
-
-// entry point
-
-int main(int argc, char** argv)
-{
-	std::uint64_t time_setup, time_lex, time_parse;
-	timer_restart();
-	populate_chords();
-
-	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
-	compile_args args = parse_args(cli_args);
-	if(args.should_print_help)
-	{
-		print_help();
-	}
-	if(args.build_file == std::filesystem::path{})
-	{
-		return 0;
-	}
-
-	time_setup = elapsed_time();
-	timer_restart();
-
-	lex_output build_file_lex = lex(args.build_file);
-	if(args.verbose_lex)
-	{
-		build_file_lex.verbose_print();
-	}
-
-	time_lex = elapsed_time();
-	timer_restart();
-
-	node build_file_ast = parse(build_file_lex, args.verbose_parse);
-	if(args.verbose_ast)
-	{
-		build_file_ast.verbose_print(build_file_lex.source);
-	}
-
-	time_parse = elapsed_time();
-	timer_restart();
-
-	std::print("setup: {}\nlex:   {}\nparse: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, (time_setup + time_lex + time_parse) / 1000.0f);
-}
 
 
 //////////////////////////// PARSE CHORDS ////////////////////////////
@@ -3300,3 +3346,52 @@ CHORD_END
 
 // end of chords
 }
+
+// entry point
+
+int main(int argc, char** argv)
+{
+	std::uint64_t time_setup, time_lex, time_parse, time_semal;
+	timer_restart();
+	populate_chords();
+
+	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
+	compile_args args = parse_args(cli_args);
+	if(args.should_print_help)
+	{
+		print_help();
+	}
+	if(args.build_file == std::filesystem::path{})
+	{
+		return 0;
+	}
+
+	time_setup = elapsed_time();
+	timer_restart();
+
+	lex_output build_file_lex = lex(args.build_file);
+	if(args.verbose_lex)
+	{
+		build_file_lex.verbose_print();
+	}
+
+	time_lex = elapsed_time();
+	timer_restart();
+
+	node build_file_ast = parse(build_file_lex, args.verbose_parse);
+	if(args.verbose_ast)
+	{
+		build_file_ast.verbose_print(build_file_lex.source);
+	}
+
+	time_parse = elapsed_time();
+	timer_restart();
+
+	build_info build = run_buildmeta(build_file_ast);
+
+	time_semal = elapsed_time();
+	timer_restart();
+
+	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, (time_setup + time_lex + time_parse + time_semal) / 1000.0f);
+}
+
