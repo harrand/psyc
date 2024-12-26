@@ -2319,6 +2319,27 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, 
 	{
 
 	}
+	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
+	{
+		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
+		auto ty = expr_get_type(expr.expr, types, loc);
+		error_ifnt(ty.has_value(), loc, "expr does not yield a type");
+		error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+	}
+	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
+	{
+		auto& ret = std::get<ast_return_stmt>(stmt.stmt_);
+		if(ret.retval.has_value())
+		{
+			auto ty = expr_get_type(ret.retval.value(), types, loc);
+			error_ifnt(ty.has_value(), loc, "expr does not yield a type");
+			error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+		}
+		else
+		{
+			return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
+		}
+	}
 	else
 	{
 		const char* stmt_name = stmt.type_name();
