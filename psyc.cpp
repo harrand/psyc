@@ -3572,6 +3572,19 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cast)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(TOKEN(symbol), TOKEN(semicol)), FN
 	{
 		return {.action = parse_action::recurse};
@@ -4109,6 +4122,35 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(fslash), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(cast), NODE(ast_expr)), FN
+	{
+		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
+		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
+				{
+					.lhs = lhs_expr,
+					.type = biop_type::cast,
+					.rhs = rhs_expr
+				}}}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(cast), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
