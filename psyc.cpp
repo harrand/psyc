@@ -420,7 +420,7 @@ struct prim_ty
 
 	std::string name() const
 	{
-		return "struct";
+		return type_names[static_cast<int>(p)];
 	}
 	bool operator==(const prim_ty& rhs) const = default;
 };
@@ -605,8 +605,62 @@ struct type_system_t
 
 	type_t parse(std::string_view type_name) const
 	{
-		warning({}, "typename parsing is NYI");
-		return type_t::badtype();
+		if(type_name.contains('&'))
+		{
+			warning({}, "support for pointer type parsing is unimplemented. {} is a pointer type", type_name);
+		}
+		// Find the last qualifier by working backwards
+		size_t last_space = type_name.find_last_of(' ');
+		std::string_view base_type = type_name;
+
+		typequal ret = typequal_none;
+		while (last_space != std::string::npos)
+		{
+			std::string_view potential_qualifier = type_name.substr(last_space + 1);
+			if(potential_qualifier == "mut")
+			{
+				ret = ret | typequal_mut;
+			}
+			else if(potential_qualifier == "weak")
+			{
+				ret = ret | typequal_weak;
+			}
+			else if(potential_qualifier == "static")
+			{
+				ret = ret | typequal_static;
+			}
+			else
+			{
+				break;
+			}
+			// Truncate the qualifier from the base type
+			base_type = type_name.substr(0, last_space);
+			last_space = base_type.find_last_of(' ');
+		}
+
+		// we have base_type which should have all the qualifiers removed.
+		// let's actually try to match it.
+		type_t base_t = type_t::badtype();
+		base_t.qual = ret;
+		// perhaps its a primitive type?
+		for(const auto& [name, prim] : this->primitives)
+		{
+			if(name == base_type)
+			{
+				base_t.payload = prim;
+				break;
+			}
+		}
+		for(const auto& [name, structval] : this->structs)
+		{
+			if(name == base_type)
+			{
+				base_t.payload = structval;
+				break;
+			}
+		}
+		// or one of our structs?
+		return base_t;
 	}
 
 	type_system_t coalesce(const type_system_t& other) const
@@ -2188,6 +2242,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t types)
 		});
 
 		ty.return_ty = types.parse(def.return_type);
+		return type_t{.payload = ty, .qual = typequal_static};
 	}
 	else
 	{
@@ -2221,15 +2276,10 @@ void type_check(node& ast, type_system_t existing_types = create_basic_type_syst
 		if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 		{
 			auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-			if(decl.type_name == deduced_type)
-			{
-				// let's solidify the type now.
-				error_ifnt(decl.initialiser.has_value(), ast.begin_location, "cannot deduce the type of decl {} as it does not have an initialiser", decl.name);
-				auto ty = expr_get_type(decl.initialiser.value(), existing_types);
-				error_ifnt(ty.has_value(), ast.begin_location, "initialiser of decl {} does not yield a type", decl.name);
-				error_ifnt(!ty.value().is_badtype(), ast.begin_location, "initialiser of decl {} yielded an invalid type", decl.name);
-				decl.type_name = ty.value().name();
-			}
+			auto ty = decl_get_type(decl, existing_types);
+			error_ifnt(ty.has_value(), ast.begin_location, "decl {} does not yield a type", decl.name);
+			error_ifnt(!ty.value().is_badtype(), ast.begin_location, "decl {} yielded an invalid type", decl.name);
+			decl.type_name = ty.value().name();
 		}
 	}
 	else
