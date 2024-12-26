@@ -577,6 +577,7 @@ struct type_system_t
 	std::unordered_map<std::string, struct_ty> structs = {};
 	std::unordered_map<std::string, fn_ty> functions = {};
 	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
+	std::unordered_map<std::string, type_t> variables = {};
 
 	ptr_ty create_pointer_ty(type_t pointee)
 	{
@@ -2275,6 +2276,19 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t& types, 
 			error(loc, "undefined function \"{}\"", call.function_name);
 		}
 	}
+	else if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+	{
+		const auto& symbol_expr = std::get<ast_symbol_expr>(expr.expr_);
+		auto iter = types.variables.find(symbol_expr.symbol);
+		if(iter != types.variables.end())
+		{
+			return iter->second;
+		}
+		else
+		{
+			error(loc, "undefined variable \"{}\"", symbol_expr.symbol);
+		}
+	}
 	else
 	{
 		const char* expr_name = expr.type_name();
@@ -2313,6 +2327,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, 
 		auto ty = decl_get_type(decl, types, loc);
 		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
 		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
+		types.variables[decl.name] = ty.value();
 		return ty.value();
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
