@@ -590,35 +590,6 @@ struct semal_state
 		return {.underlying_ty = {pointee}};
 	}
 
-	bool knows_of(const type_t& ty)
-	{
-		if(ty.is_badtype())
-		{
-			return false;
-		}
-		else if(ty.is_prim())
-		{
-			// all type systems know about the primitives.
-			return true;
-		}
-		else if(ty.is_struct())
-		{
-			for(const auto& [name, val] : this->structs)
-			{
-				if(val == std::get<struct_ty>(ty.payload))
-				{
-					return true;
-				}
-			}
-		}
-		else if(ty.is_ptr())
-		{
-			return this->knows_of(*std::get<ptr_ty>(ty.payload).underlying_ty);
-		}
-		panic("dodgy type detected. dont know how to check if it exists in a type system.");
-		return false;
-	}
-
 	type_t parse(std::string_view type_name) const
 	{
 		if(type_name.contains('&'))
@@ -1194,7 +1165,14 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			{
 				// however after the first char a symbol can contain a number
 				std::size_t symbol_begin = state.cursor;
-				std::size_t symbol_length = state.advance_until([](std::string_view next){return !(std::isalnum(next.front()) || next.front() == '_');});
+				std::size_t symbol_length = state.advance_until([](std::string_view next)
+				{
+					return !(std::isalnum(next.front()) || next.front() == '_' || next.front() == '&'
+								|| next.starts_with(" mut")
+								|| next.starts_with(" weak")
+								|| next.starts_with(" static")
+								);
+				});
 				out.tokens.push_back(token::symbol);
 				out.lexemes.push_back({.offset = symbol_begin, .length = symbol_length});
 				return true;
