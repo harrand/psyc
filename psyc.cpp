@@ -684,6 +684,15 @@ struct type_system_t
 		{
 			ret.structs[name] = structval;
 		}
+
+		for(const auto& [name, fn] : other.functions)
+		{
+			ret.functions.emplace(name, fn);
+		}
+		for(const auto& [name, node] : other.function_locations)
+		{
+			ret.function_locations[name] = node;
+		}
 		return ret;
 	}
 };
@@ -1674,7 +1683,7 @@ struct node
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
 	// types defined at the level of this node.
-	type_system_t types = create_empty_type_system();
+	mutable type_system_t types = create_empty_type_system();
 
 	constexpr std::int64_t hash() const
 	{
@@ -2318,24 +2327,25 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, 
 	return std::nullopt;
 }
 
-void type_check(const node& ast, type_system_t existing_types = create_basic_type_system())
+void type_check(const node& ast, type_system_t& types)
 {
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
 	{}
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto ty = stmt_get_type(stmt, existing_types, ast.begin_location);
+		auto ty = stmt_get_type(stmt, types, ast.begin_location);
 	}
 	else
 	{
 		const char* node_name = node_names[ast.payload.index()];
 		panic("dont know how to typecheck a {}", node_name);
 	}
+	ast.types = ast.types.coalesce(types);
 
 	for(auto& child : ast.children)
 	{
-		type_check(child, existing_types.coalesce(ast.types));
+		type_check(child, ast.types);
 	}
 }
 
@@ -3898,7 +3908,8 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	}
 
 	// actual semal
-	type_check(ast);
+	type_system_t types = create_basic_type_system();
+	type_check(ast, types);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
