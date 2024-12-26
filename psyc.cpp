@@ -393,6 +393,9 @@ struct prim_ty
 		u32,
 		u16,
 		u8,
+		
+		f64,
+		f32,
 
 		v0,
 		_count
@@ -407,6 +410,10 @@ struct prim_ty
 		"u32",
 		"u16",
 		"u8",
+
+		"f64",
+		"f32",
+
 		"v0"
 	};
 	type p;
@@ -437,6 +444,15 @@ struct ptr_ty
 	bool operator==(const ptr_ty& rhs) const = default;
 };
 
+struct fn_ty
+{
+	std::vector<type_t> static_params;
+	std::vector<type_t> params;
+	box<type_t> return_ty;
+	std::string name() const;
+	bool operator==(const fn_ty& rhs) const = default;
+};
+
 enum typequal : int
 {
 	typequal_none = 0b0000,
@@ -462,7 +478,8 @@ struct type_t
 		std::monostate,
 		prim_ty,
 		struct_ty,
-		ptr_ty
+		ptr_ty,
+		fn_ty
 	>;
 	payload_t payload;
 	typequal qual = typequal_none;
@@ -517,6 +534,36 @@ std::string ptr_ty::name() const
 	return std::format("{}&", this->underlying_ty->name());
 }
 
+std::string fn_ty::name() const
+{
+	std::string sparams_str = "";
+	if(this->static_params.size())
+	{
+		sparams_str = "<";
+		for(std::size_t i = 0; i < this->static_params.size(); i++)
+		{
+			const auto& param_ty = this->static_params[i];
+			sparams_str += param_ty.name();
+			if(i < (this->static_params.size() - 1))
+			{
+				sparams_str += ", ";
+			}
+		}
+		sparams_str += ">";
+	}
+	std::string params_str = "";
+	for(std::size_t i = 0; i < this->params.size(); i++)
+	{
+		const auto& param_ty = this->params[i];
+		params_str += param_ty.name();
+		if(i < (this->params.size() - 1))
+		{
+			params_str += ", ";
+		}
+	}
+	return std::format("func{}({}) -> {}", sparams_str, params_str, this->return_ty->name());
+}
+
 struct type_system_t
 {
 	std::unordered_map<std::string, prim_ty> primitives = {};
@@ -554,6 +601,12 @@ struct type_system_t
 		}
 		panic("dodgy type detected. dont know how to check if it exists in a type system.");
 		return false;
+	}
+
+	type_t parse(std::string_view type_name) const
+	{
+		warning({}, "typename parsing is NYI");
+		return type_t::badtype();
 	}
 
 	type_system_t coalesce(const type_system_t& other) const
@@ -1371,8 +1424,10 @@ struct ast_expr
 		return std::array<const char*, std::variant_size_v<decltype(expr_)>>
 		{
 			"literal",
+			"funcdef",
 			"callfunc",
-			"symbol"
+			"symbol",
+			"structdef"
 		}[this->expr_.index()];
 	}
 
@@ -2080,8 +2135,79 @@ build_info run_buildmeta(const node& ast)
 	return {};
 }
 
+std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t types);
+
 std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t types)
 {
+	type_t ret;
+	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
+	{
+		const auto& lit = std::get<ast_literal_expr>(expr.expr_);
+		ret.qual = typequal_static;
+		if(lit.value.index() == payload_index<std::int64_t, decltype(lit.value)>())
+		{
+			ret.payload = prim_ty{.p = prim_ty::type::s64};
+		}
+		else if(lit.value.index() == payload_index<double, decltype(lit.value)>())
+		{
+			ret.payload = prim_ty{.p = prim_ty::type::f64};
+		}
+		else if(lit.value.index() == payload_index<char, decltype(lit.value)>())
+		{
+			ret.payload = prim_ty{.p = prim_ty::type::u64};
+		}
+		else if(lit.value.index() == payload_index<std::string, decltype(lit.value)>())
+		{
+			ret.qual = typequal_none;
+			ret.payload = prim_ty{.p = prim_ty::type::u64};
+			return type_t{.payload = types.create_pointer_ty(ret), .qual = typequal_static};
+		}
+		else
+		{
+			panic("dont know how to typecheck this specific literal expression");
+		}
+		return ret;
+	}
+	else if(expr.expr_.index() == payload_index<ast_funcdef_expr, decltype(expr.expr_)>())
+	{
+		const auto& def = std::get<ast_funcdef_expr>(expr.expr_);
+
+		fn_ty ty{.return_ty = type_t::badtype()};
+		ty.static_params.resize(def.static_params.size());
+		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
+		[&types](const ast_decl& decl)
+		{
+			return decl_get_type(decl, types).value();
+		});
+
+		ty.params.resize(def.params.size());
+		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
+		[&types](const ast_decl& decl)
+		{
+			return decl_get_type(decl, types).value();
+		});
+
+		ty.return_ty = types.parse(def.return_type);
+	}
+	else
+	{
+		const char* expr_name = expr.type_name();
+		panic("dont know how to typecheck a {} expression", expr_name);
+	}
+	return std::nullopt;
+}
+
+std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t types)
+{
+	if(decl.type_name == deduced_type)
+	{
+		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
+		return expr_get_type(decl.initialiser.value(), types);
+	}
+	else
+	{
+		return types.parse(decl.type_name);
+	}
 	return std::nullopt;
 }
 
