@@ -571,7 +571,7 @@ std::string fn_ty::name() const
 
 struct ast_funcdef_expr;
 
-struct type_system_t
+struct semal_state
 {
 	std::unordered_map<std::string, prim_ty> primitives = {};
 	std::unordered_map<std::string, struct_ty> structs = {};
@@ -673,9 +673,9 @@ struct type_system_t
 		return base_t;
 	}
 
-	type_system_t coalesce(const type_system_t& other) const
+	semal_state coalesce(const semal_state& other) const
 	{
-		type_system_t ret = *this;
+		semal_state ret = *this;
 		for(const auto& [name, prim] : other.primitives)
 		{
 			ret.primitives[name] = prim;
@@ -698,9 +698,9 @@ struct type_system_t
 	}
 };
 
-type_system_t create_basic_type_system()
+semal_state create_basic_type_system()
 {
-	type_system_t ret;
+	semal_state ret;
 
 	for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
 	{
@@ -711,7 +711,7 @@ type_system_t create_basic_type_system()
 	return ret;
 }
 
-type_system_t create_empty_type_system()
+semal_state create_empty_type_system()
 {
 	return {};
 }
@@ -1684,7 +1684,7 @@ struct node
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
 	// types defined at the level of this node.
-	mutable type_system_t types = create_empty_type_system();
+	mutable semal_state types = create_empty_type_system();
 
 	constexpr std::int64_t hash() const
 	{
@@ -2126,11 +2126,6 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
 
-struct build_info
-{
-	std::vector<std::filesystem::path> added_source_files = {};
-};
-
 const node* try_get_block_child(const node& n)
 {
 	if(n.children.size() == 1)
@@ -2167,50 +2162,9 @@ node* try_get_block_child(node& n)
 	return nullptr;
 }
 
-std::span<const node> get_metaregion_statements(std::string_view meta_name, const node& tu)
-{
-	for(const node& child : tu.children)
-	{
-		if(child.payload.index() == payload_index<ast_stmt, node_payload>())
-		{
-			const auto& stmt = std::get<ast_stmt>(child.payload);
-			if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
-			{
-				const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
-				const node* maybe_blk_child = try_get_block_child(child);
-				if(maybe_blk_child != nullptr)
-				{
-					bool all_children_are_stmt = std::all_of(maybe_blk_child->children.begin(), maybe_blk_child->children.end(),
-						[](const node& n)->bool
-						{
-							return n.payload.index() == payload_index<ast_stmt, node_payload>();
-						});
-					panic_ifnt(all_children_are_stmt, "block inside meta region is somehow not filled with statements");
-					return maybe_blk_child->children;
-				}
-			}
-		}
-	};
-	return {};
-}
+std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc);
 
-build_info run_buildmeta(const node& ast)
-{
-	auto build_meta_region = get_metaregion_statements("build", ast);
-	if(build_meta_region.empty())
-	{
-		warning({}, "build meta region was empty");
-	}
-	for(const node& n : build_meta_region)
-	{
-		const auto& stmt = std::get<ast_stmt>(n.payload);
-	}
-	return {};
-}
-
-std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t& types, srcloc loc);
-
-std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t& types, srcloc loc)
+std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc)
 {
 	type_t ret;
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
@@ -2269,7 +2223,15 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t& types, 
 		auto iter = types.functions.find(call.function_name);	
 		if(iter != types.functions.end())
 		{
-			return type_t{.payload = iter->second, .qual = typequal_static};
+			fn_ty fn = iter->second;
+			// make sure the call matches the fn
+			auto call_sparams = call.static_params.size();
+			auto fn_sparams = fn.static_params.size();
+			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
+			auto call_params = call.params.size();
+			auto fn_params = fn.params.size();
+			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
+			return type_t{.payload = fn, .qual = typequal_static};
 		}
 		else
 		{
@@ -2289,6 +2251,11 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t& types, 
 			error(loc, "undefined variable \"{}\"", symbol_expr.symbol);
 		}
 	}
+	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
+	{
+		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
+		return type_t{.payload = struct_ty{}};
+	}
 	else
 	{
 		const char* expr_name = expr.type_name();
@@ -2297,18 +2264,28 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t& types, 
 	return std::nullopt;
 }
 
-std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t& types, srcloc loc)
+std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc)
 {
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
 		auto ty = expr_get_type(decl.initialiser.value(), types, loc);
-		bool expr_is_funcdef = decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
-		if(ty.has_value() && ty.value().is_fn() && expr_is_funcdef)
+		const bool expr_is_funcdef = decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
+		const bool expr_is_structdef = decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
+		if(ty.has_value())
 		{
-			// declaration initialiser is a function type.
-			types.functions.emplace(decl.name, std::get<fn_ty>(ty.value().payload));
-			types.function_locations[decl.name] = &std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
+			if(ty.value().is_fn() && expr_is_funcdef)
+			{
+				// declaration initialiser is a function type.
+				types.functions.emplace(decl.name, std::get<fn_ty>(ty.value().payload));
+				types.function_locations[decl.name] = &std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
+			}
+			else if(ty.value().is_struct() && expr_is_structdef)
+			{
+				auto& structdef = std::get<struct_ty>(ty.value().payload);
+				// we expect this to be an empty struct because we dont have access to its members until we see its children.
+				types.structs.emplace(decl.name, structdef);
+			}
 		}
 		return ty;
 	}
@@ -2319,7 +2296,7 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t& types, 
 	return std::nullopt;
 }
 
-std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, srcloc loc)
+std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
@@ -2355,6 +2332,11 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, 
 			return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
 		}
 	}
+	else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
+	{
+		const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
+		warning(loc, "detected \"{}\" metaregion but support is NYI", metaregion.name);
+	}
 	else
 	{
 		const char* stmt_name = stmt.type_name();
@@ -2363,7 +2345,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t& types, 
 	return std::nullopt;
 }
 
-void type_check(const node& ast, type_system_t& types)
+void semal(const node& ast, semal_state& types)
 {
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
 	{}
@@ -2381,7 +2363,7 @@ void type_check(const node& ast, type_system_t& types)
 
 	for(auto& child : ast.children)
 	{
-		type_check(child, ast.types);
+		semal(child, ast.types);
 	}
 }
 
@@ -3937,15 +3919,8 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	timer_restart();
 	auto now_cpy = now;
 
-	build_info build = run_buildmeta(ast);
-	for(std::filesystem::path path : build.added_source_files)
-	{
-		compile_file(path, args);
-	}
-
-	// actual semal
-	type_system_t types = create_basic_type_system();
-	type_check(ast, types);
+	semal_state types = create_basic_type_system();
+	semal(ast, types);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
