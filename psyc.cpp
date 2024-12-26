@@ -2244,6 +2244,11 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t types)
 		ty.return_ty = types.parse(def.return_type);
 		return type_t{.payload = ty, .qual = typequal_static};
 	}
+	else if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
+	{
+		const auto& call = std::get<ast_callfunc_expr>(expr.expr_);
+		error({}, "undefined function \"{}\"", call.function_name);
+	}
 	else
 	{
 		const char* expr_name = expr.type_name();
@@ -2266,21 +2271,36 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, type_system_t types)
 	return std::nullopt;
 }
 
-void type_check(node& ast, type_system_t existing_types = create_basic_type_system())
+std::optional<type_t> stmt_get_type(const ast_stmt& stmt, type_system_t types, srcloc loc)
+{
+	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
+	{
+		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
+		auto ty = decl_get_type(decl, types);
+		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
+		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
+		return ty.value();
+	}
+	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+	{
+
+	}
+	else
+	{
+		const char* stmt_name = stmt.type_name();
+		error(loc, "dont know how to typecheck a {} statement", stmt_name);
+	}
+	return std::nullopt;
+}
+
+void type_check(const node& ast, type_system_t existing_types = create_basic_type_system())
 {
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
 	{}
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
-		{
-			auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-			auto ty = decl_get_type(decl, existing_types);
-			error_ifnt(ty.has_value(), ast.begin_location, "decl {} does not yield a type", decl.name);
-			error_ifnt(!ty.value().is_badtype(), ast.begin_location, "decl {} yielded an invalid type", decl.name);
-			decl.type_name = ty.value().name();
-		}
+		auto ty = stmt_get_type(stmt, existing_types, ast.begin_location);
 	}
 	else
 	{
