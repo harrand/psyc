@@ -521,6 +521,20 @@ struct type_t
 			}
 			
 		}, this->payload);
+		if(this->qual & typequal_mut)
+		{
+			ret += get_typequal_name(typequal_mut);
+		}
+
+		if(this->qual & typequal_weak)
+		{
+			ret += get_typequal_name(typequal_weak);
+		}
+
+		if(this->qual & typequal_static)
+		{
+			ret += get_typequal_name(typequal_static);
+		}
 		return ret;
 	}
 
@@ -620,7 +634,7 @@ struct semal_state
 		typequal ret = typequal_none;
 		while (last_space != std::string::npos)
 		{
-			std::string_view potential_qualifier = type_name.substr(last_space + 1);
+			std::string_view potential_qualifier = base_type.substr(last_space + 1);
 			if(potential_qualifier == "mut")
 			{
 				ret = ret | typequal_mut;
@@ -2321,6 +2335,43 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
 		return type_t{.payload = struct_ty{}};
+	}
+	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
+	{
+		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
+		switch(biop.type)
+		{
+			// all operators aside from cast (@) act the same
+			// the type of the expression is equal to the lhs
+			// for the cast, rhs *must* be a symbol expression and represent a typename.
+			case biop_type::plus:
+				[[fallthrough]];
+			case biop_type::minus:
+				[[fallthrough]];
+			case biop_type::mul:
+				[[fallthrough]];
+			case biop_type::div:
+				return expr_get_type(*biop.lhs, types, loc);
+			break;
+			case biop_type::cast:
+			{
+				const auto& rhs_expr = *biop.rhs;
+				if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
+				{
+					const char* expr_name = rhs_expr.type_name();
+					error(loc, "rhs of cast expression *must* be a symbol representing a typename. instead you have provided a {} expression", expr_name);
+				}
+				else
+				{
+					const auto& symbol_expr = std::get<ast_symbol_expr>(rhs_expr.expr_);
+					return types.parse(symbol_expr.symbol);
+				}
+			}
+			break;
+			default:
+				panic("unhandled biop type in semal");
+			break;
+		}
 	}
 	else
 	{
