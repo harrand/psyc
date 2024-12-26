@@ -381,6 +381,41 @@ FILE:
 #undef COMPILER_STAGE
 #define COMPILER_STAGE type
 
+enum typequal : int
+{
+	typequal_none = 0b0000,
+	typequal_mut = 0b0001,
+	typequal_weak = 0b0010,
+	typequal_static = 0b0100
+};
+
+constexpr typequal operator|(typequal lhs, typequal rhs)
+{
+	return static_cast<typequal>(static_cast<int>(lhs) | static_cast<int>(rhs));
+}
+
+constexpr bool operator&(typequal lhs, typequal& rhs)
+{
+	return static_cast<int>(lhs) & static_cast<int>(rhs);
+}
+constexpr const char* typequal_names[] =
+{
+	"",
+	" mut",
+	" weak",
+	" static"
+};
+const char* get_typequal_name(typequal t)
+{
+	std::size_t i = 1;
+	auto tval = static_cast<int>(t);
+	while(tval >>= 1)
+	{
+		i++;
+	}
+	return typequal_names[i];
+}
+
 struct prim_ty
 {
 	enum class type
@@ -452,24 +487,6 @@ struct fn_ty
 	std::string name() const;
 	bool operator==(const fn_ty& rhs) const = default;
 };
-
-enum typequal : int
-{
-	typequal_none = 0b0000,
-	typequal_mut = 0b0001,
-	typequal_weak = 0b0010,
-	typequal_static = 0b0100
-};
-
-constexpr typequal operator|(typequal lhs, typequal rhs)
-{
-	return static_cast<typequal>(static_cast<int>(lhs) | static_cast<int>(rhs));
-}
-
-constexpr bool operator&(typequal lhs, typequal& rhs)
-{
-	return static_cast<int>(lhs) & static_cast<int>(rhs);
-}
 
 struct type_t
 {
@@ -1168,9 +1185,9 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 				std::size_t symbol_length = state.advance_until([](std::string_view next)
 				{
 					return !(std::isalnum(next.front()) || next.front() == '_' || next.front() == '&'
-								|| next.starts_with(" mut")
-								|| next.starts_with(" weak")
-								|| next.starts_with(" static")
+								|| next.starts_with(get_typequal_name(typequal_mut))
+								|| next.starts_with(get_typequal_name(typequal_weak))
+								|| next.starts_with(get_typequal_name(typequal_static))
 								);
 				});
 				out.tokens.push_back(token::symbol);
