@@ -437,6 +437,24 @@ struct ptr_ty
 	bool operator==(const ptr_ty& rhs) const = default;
 };
 
+enum typequal : int
+{
+	typequal_none = 0b0000,
+	typequal_mut = 0b0001,
+	typequal_weak = 0b0010,
+	typequal_static = 0b0100
+};
+
+constexpr typequal operator|(typequal lhs, typequal rhs)
+{
+	return static_cast<typequal>(static_cast<int>(lhs) | static_cast<int>(rhs));
+}
+
+constexpr bool operator&(typequal lhs, typequal& rhs)
+{
+	return static_cast<int>(lhs) & static_cast<int>(rhs);
+}
+
 struct type_t
 {
 	using payload_t = std::variant
@@ -447,6 +465,7 @@ struct type_t
 		ptr_ty
 	>;
 	payload_t payload;
+	typequal qual = typequal_none;
 	std::string name() const
 	{
 		std::string ret;
@@ -536,9 +555,24 @@ struct type_system_t
 		panic("dodgy type detected. dont know how to check if it exists in a type system.");
 		return false;
 	}
+
+	type_system_t coalesce(const type_system_t& other) const
+	{
+		type_system_t ret = *this;
+		for(const auto& [name, prim] : other.primitives)
+		{
+			ret.primitives[name] = prim;
+		}
+
+		for(const auto& [name, structval] : other.structs)
+		{
+			ret.structs[name] = structval;
+		}
+		return ret;
+	}
 };
 
-type_system_t create_type_system()
+type_system_t create_basic_type_system()
 {
 	type_system_t ret;
 
@@ -549,6 +583,11 @@ type_system_t create_type_system()
 		ret.primitives[name] = {.p = primty};
 	}
 	return ret;
+}
+
+type_system_t create_empty_type_system()
+{
+	return {};
 }
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -1516,6 +1555,8 @@ struct node
 	srcloc end_location = {};
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
+	// types defined at the level of this node.
+	type_system_t types = create_empty_type_system();
 
 	constexpr std::int64_t hash() const
 	{
@@ -2037,6 +2078,44 @@ build_info run_buildmeta(const node& ast)
 		const auto& stmt = std::get<ast_stmt>(n.payload);
 	}
 	return {};
+}
+
+std::optional<type_t> expr_get_type(const ast_expr& expr, type_system_t types)
+{
+	return std::nullopt;
+}
+
+void type_check(node& ast, type_system_t existing_types = create_basic_type_system())
+{
+	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
+	{}
+	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
+	{
+		auto& stmt = std::get<ast_stmt>(ast.payload);
+		if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
+		{
+			auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
+			if(decl.type_name == deduced_type)
+			{
+				// let's solidify the type now.
+				error_ifnt(decl.initialiser.has_value(), ast.begin_location, "cannot deduce the type of decl {} as it does not have an initialiser", decl.name);
+				auto ty = expr_get_type(decl.initialiser.value(), existing_types);
+				error_ifnt(ty.has_value(), ast.begin_location, "initialiser of decl {} does not yield a type", decl.name);
+				error_ifnt(!ty.value().is_badtype(), ast.begin_location, "initialiser of decl {} yielded an invalid type", decl.name);
+				decl.type_name = ty.value().name();
+			}
+		}
+	}
+	else
+	{
+		const char* node_name = node_names[ast.payload.index()];
+		panic("dont know how to typecheck a {}", node_name);
+	}
+
+	for(auto& child : ast.children)
+	{
+		type_check(child, existing_types.coalesce(ast.types));
+	}
 }
 
 //////////////////////////// TYPE ////////////////////////////
@@ -3596,6 +3675,9 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	{
 		compile_file(path, args);
 	}
+
+	// actual semal
+	type_check(ast);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
