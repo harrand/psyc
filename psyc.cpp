@@ -857,6 +857,11 @@ enum class token : std::uint32_t
 	cbrace,
 	obrack,
 	cbrack,
+	plus,
+	dash,
+	asterisk,
+	fslash,
+	cast,
 	oanglebrack,
 	canglebrack,
 	keyword_if,
@@ -1106,6 +1111,41 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "cbrack",
 		.front_identifier = "]",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "plus",
+		.front_identifier = "+",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "dash",
+		.front_identifier = "-",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "asterisk",
+		.front_identifier = "*",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "fslash",
+		.front_identifier = "/",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "cast",
+		.front_identifier = "@",
 		.trivial = true
 	},
 
@@ -1475,12 +1515,35 @@ struct ast_structdef_expr
 	}
 };
 
-struct ast_unop_expr
+enum class biop_type
 {
-	token op;
-
+	plus,
+	minus,
+	mul,
+	div,
+	cast,
+	_count
 };
 
+struct ast_biop_expr
+{
+	box<ast_expr> lhs;
+	biop_type type;
+	box<ast_expr> rhs;
+
+	std::string value_tostring() const
+	{
+		return std::format("{} biop",
+		std::array<const char*, static_cast<int>(biop_type::_count)>
+		{
+			"plus",
+			"minus",
+			"multiply",
+			"divide",
+			"cast"
+		}[static_cast<int>(this->type)]);
+	}
+};
 
 struct ast_expr
 {
@@ -1490,7 +1553,8 @@ struct ast_expr
 		ast_funcdef_expr,
 		ast_callfunc_expr,
 		ast_symbol_expr,
-		ast_structdef_expr
+		ast_structdef_expr,
+		ast_biop_expr
 	> expr_;
 
 	const char* type_name() const
@@ -1501,7 +1565,8 @@ struct ast_expr
 			"funcdef",
 			"callfunc",
 			"symbol",
-			"structdef"
+			"structdef",
+			"biop",
 		}[this->expr_.index()];
 	}
 
@@ -3455,6 +3520,19 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(plus)), FN
+	{
+		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	STATE(TOKEN(symbol), TOKEN(semicol)), FN
 	{
 		return {.action = parse_action::recurse};
@@ -3870,6 +3948,42 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_return), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(plus), NODE(ast_expr)), FN
+	{
+		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
+		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
+				{
+					.lhs = lhs_expr,
+					.type = biop_type::plus,
+					.rhs = rhs_expr
+				}}}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(plus), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
 EXTENSIBLE
 CHORD_END
