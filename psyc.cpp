@@ -2266,34 +2266,44 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 
 std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc)
 {
+	std::optional<type_t> ty = std::nullopt;
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		auto ty = expr_get_type(decl.initialiser.value(), types, loc);
-		const bool expr_is_funcdef = decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
-		const bool expr_is_structdef = decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
-		if(ty.has_value())
-		{
-			if(ty.value().is_fn() && expr_is_funcdef)
-			{
-				// declaration initialiser is a function type.
-				types.functions.emplace(decl.name, std::get<fn_ty>(ty.value().payload));
-				types.function_locations[decl.name] = &std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
-			}
-			else if(ty.value().is_struct() && expr_is_structdef)
-			{
-				auto& structdef = std::get<struct_ty>(ty.value().payload);
-				// we expect this to be an empty struct because we dont have access to its members until we see its children.
-				types.structs.emplace(decl.name, structdef);
-			}
-		}
-		return ty;
+		ty = expr_get_type(decl.initialiser.value(), types, loc);
 	}
 	else
 	{
-		return types.parse(decl.type_name);
+		ty = types.parse(decl.type_name);
 	}
-	return std::nullopt;
+
+	const bool expr_is_funcdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
+	const bool expr_is_structdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
+	if(ty.has_value())
+	{
+		if(ty.value().is_fn() && expr_is_funcdef)
+		{
+			// declaration initialiser is a function type.
+			auto [_, actually_emplaced] = types.functions.emplace(decl.name, std::get<fn_ty>(ty.value().payload));
+			if(!actually_emplaced)
+			{
+				error(loc, "duplicate definition of function \"{}\"", decl.name);
+			}
+			const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
+			types.function_locations[decl.name] = &def;
+		}
+		else if(ty.value().is_struct() && expr_is_structdef)
+		{
+			auto& structdef = std::get<struct_ty>(ty.value().payload);
+			// we expect this to be an empty struct because we dont have access to its members until we see its children.
+			auto [_, actually_emplaced] = types.structs.emplace(decl.name, structdef);
+			if(!actually_emplaced)
+			{
+				error(loc, "duplicate definition of struct \"{}\"", decl.name);
+			}
+		}
+	}
+	return ty;
 }
 
 std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc)
@@ -2304,7 +2314,11 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		auto ty = decl_get_type(decl, types, loc);
 		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
 		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
-		types.variables[decl.name] = ty.value();
+		auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
+		if(!actually_emplaced)
+		{
+			error(loc, "duplicate definition of variable \"{}\"", decl.name);
+		}
 		return ty.value();
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
