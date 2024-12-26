@@ -483,6 +483,12 @@ struct type_t
 	>;
 	payload_t payload;
 	typequal qual = typequal_none;
+
+	static type_t create_void_type()
+	{
+		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
+	}
+
 	std::string name() const
 	{
 		std::string ret;
@@ -2181,12 +2187,12 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		}
 		else if(lit.value.index() == payload_index<char, decltype(lit.value)>())
 		{
-			ret.payload = prim_ty{.p = prim_ty::type::u64};
+			ret.payload = prim_ty{.p = prim_ty::type::u8};
 		}
 		else if(lit.value.index() == payload_index<std::string, decltype(lit.value)>())
 		{
 			ret.qual = typequal_none;
-			ret.payload = prim_ty{.p = prim_ty::type::u64};
+			ret.payload = prim_ty{.p = prim_ty::type::u8};
 			return type_t{.payload = types.create_pointer_ty(ret), .qual = typequal_static};
 		}
 		else
@@ -2231,7 +2237,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			auto call_params = call.params.size();
 			auto fn_params = fn.params.size();
 			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
-			return type_t{.payload = fn, .qual = typequal_static};
+			return *fn.return_ty;
 		}
 		else
 		{
@@ -2331,6 +2337,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		auto ty = expr_get_type(expr.expr, types, loc);
 		error_ifnt(ty.has_value(), loc, "expr does not yield a type");
 		error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+		return ty;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
 	{
@@ -2340,16 +2347,18 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 			auto ty = expr_get_type(ret.retval.value(), types, loc);
 			error_ifnt(ty.has_value(), loc, "expr does not yield a type");
 			error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+			return ty;
 		}
 		else
 		{
-			return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
+			return type_t::create_void_type();
 		}
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
 	{
 		const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
 		warning(loc, "detected \"{}\" metaregion but support is NYI", metaregion.name);
+		return type_t::create_void_type();
 	}
 	else
 	{
@@ -2367,6 +2376,7 @@ void semal(const node& ast, semal_state& types)
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
 		auto ty = stmt_get_type(stmt, types, ast.begin_location);
+		std::println("{}", ty.value_or(type_t::badtype()).name());
 	}
 	else
 	{
