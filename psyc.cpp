@@ -19,7 +19,67 @@
 
 #define STRINGIFY(...) #__VA_ARGS__
 
-// internals
+template <typename T>
+class box
+{
+	// Wrapper over unique_ptr.
+	std::unique_ptr<T> _impl;
+
+public:
+	// Automatic construction from a `T`, not a `T*`.
+	box(T &&obj) : _impl(new T(std::move(obj))) {}
+	box(const T &obj) : _impl(new T(obj)) {}
+
+	// Copy constructor copies `T`.
+	box(const box &other) : box(*other._impl) {}
+	box &operator=(const box &other)
+	{
+		*_impl = *other._impl;
+		return *this;
+	}
+
+	// unique_ptr destroys `T` for us.
+	~box() = default;
+
+	explicit operator T() const
+	{
+		return *this->_impl;
+	}
+
+	// Access propagates constness.
+	T &operator*() { return *_impl; }
+	const T &operator*() const { return *_impl; }
+
+	T *operator->() { return _impl.get(); }
+	const T *operator->() const { return _impl.get(); }
+
+	bool operator==(const box<T>& rhs) const
+	{
+		if(this->_impl != nullptr && rhs._impl != nullptr)
+		{
+			return *this->_impl == *rhs._impl;
+		}
+		return this->_impl.get() == rhs._impl.get();
+	}
+};
+
+template<typename T>
+box(T) -> box<T>;
+
+template<typename T, typename V, std::size_t index_leave_blank = 0>
+consteval int payload_index()
+{
+	static_assert(index_leave_blank < std::variant_size_v<V>, "unknown payload index type");
+	if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<std::variant_alternative_t<index_leave_blank, V>>>)
+	{
+		return index_leave_blank;
+	}
+	else
+	{
+		return payload_index<T, V, index_leave_blank + 1>();
+	}
+}
+
 
 std::chrono::time_point<std::chrono::system_clock> now;
 void timer_restart()
@@ -315,6 +375,180 @@ FILE:
 	- Recommended to end in .psy, but does not have to.
 	)";
 	std::print(help_string);
+}
+
+//////////////////////////// TYPE ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE type
+
+struct prim_ty
+{
+	enum class type
+	{
+		s64,
+		s32,
+		s16,
+		s8,
+		u64,
+		u32,
+		u16,
+		u8,
+
+		v0,
+		_count
+	};
+	static constexpr std::array<const char*, static_cast<int>(type::_count)> type_names =
+	{
+		"s64",
+		"s32",
+		"s16",
+		"s8",
+		"u64",
+		"u32",
+		"u16",
+		"u8",
+		"v0"
+	};
+	type p;
+
+	std::string name() const
+	{
+		return "struct";
+	}
+	bool operator==(const prim_ty& rhs) const = default;
+};
+
+struct type_t;
+
+struct struct_ty
+{
+	std::vector<type_t> members = {};
+	std::string name() const
+	{
+		return "struct";
+	}
+	bool operator==(const struct_ty& rhs) const = default;
+};
+
+struct ptr_ty
+{
+	box<type_t> underlying_ty;
+	std::string name() const;
+	bool operator==(const ptr_ty& rhs) const = default;
+};
+
+struct type_t
+{
+	using payload_t = std::variant
+	<
+		std::monostate,
+		prim_ty,
+		struct_ty,
+		ptr_ty
+	>;
+	payload_t payload;
+	std::string name() const
+	{
+		std::string ret;
+		std::visit([&ret](auto&& arg)
+		{
+			if constexpr(std::is_same_v<std::decay_t<decltype(arg)>, std::monostate>)
+			{
+				ret = "<bad type>";
+			}
+			else
+			{
+				ret = arg.name();	
+			}
+			
+		}, this->payload);
+		return ret;
+	}
+
+	static type_t badtype()
+	{
+		return {.payload = std::monostate{}};
+	}
+
+	bool is_badtype() const
+	{
+		return this->payload.index() == payload_index<std::monostate, decltype(this->payload)>();
+	}
+
+	bool is_prim() const
+	{
+		return this->payload.index() == payload_index<prim_ty, decltype(this->payload)>();
+	}
+
+	bool is_struct() const
+	{
+		return this->payload.index() == payload_index<struct_ty, decltype(this->payload)>();
+	}
+
+	bool is_ptr() const
+	{
+		return this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>();
+	}
+
+	bool operator==(const type_t& rhs) const = default;
+};
+
+std::string ptr_ty::name() const
+{
+	return std::format("{}&", this->underlying_ty->name());
+}
+
+struct type_system_t
+{
+	std::unordered_map<std::string, prim_ty> primitives = {};
+	std::unordered_map<std::string, struct_ty> structs = {};
+
+	ptr_ty create_pointer_ty(type_t pointee)
+	{
+		return {.underlying_ty = {pointee}};
+	}
+
+	bool knows_of(const type_t& ty)
+	{
+		if(ty.is_badtype())
+		{
+			return false;
+		}
+		else if(ty.is_prim())
+		{
+			// all type systems know about the primitives.
+			return true;
+		}
+		else if(ty.is_struct())
+		{
+			for(const auto& [name, val] : this->structs)
+			{
+				if(val == std::get<struct_ty>(ty.payload))
+				{
+					return true;
+				}
+			}
+		}
+		else if(ty.is_ptr())
+		{
+			return this->knows_of(*std::get<ptr_ty>(ty.payload).underlying_ty);
+		}
+		panic("dodgy type detected. dont know how to check if it exists in a type system.");
+		return false;
+	}
+};
+
+type_system_t create_type_system()
+{
+	type_system_t ret;
+
+	for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
+	{
+		auto primty = static_cast<prim_ty::type>(i);
+		const char* name = prim_ty::type_names[i];
+		ret.primitives[name] = {.p = primty};
+	}
+	return ret;
 }
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -1271,20 +1505,6 @@ std::array<const char*, std::variant_size_v<node_payload>> node_names
 	"function definition"
 };
 
-template<typename T, typename V = node_payload, std::size_t index_leave_blank = 0>
-consteval int payload_index()
-{
-	static_assert(index_leave_blank < std::variant_size_v<V>, "unknown payload index type");
-	if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<std::variant_alternative_t<index_leave_blank, V>>>)
-	{
-		return index_leave_blank;
-	}
-	else
-	{
-		return payload_index<T, V, index_leave_blank + 1>();
-	}
-}
-
 struct node
 {
 	// payload, data varies depending on what type of node we are.
@@ -1304,17 +1524,17 @@ struct node
 
 	bool is_null() const
 	{
-		return payload.index() == payload_index<std::monostate>();
+		return payload.index() == payload_index<std::monostate, node_payload>();
 	}
 
 	void verbose_print(std::string_view full_source, std::string prefix = "") const
 	{
 		std::string extra = "";
-		if(this->payload.index() == payload_index<ast_token>())
+		if(this->payload.index() == payload_index<ast_token, node_payload>())
 		{
 			extra = std::format("<{}>", token_traits[static_cast<int>(std::get<ast_token>(this->payload).tok)].name);
 		}
-		else if(this->payload.index() == payload_index<ast_stmt>())
+		else if(this->payload.index() == payload_index<ast_stmt, node_payload>())
 		{
 			extra = std::format("({})", std::get<ast_stmt>(this->payload).type_name());
 		}
@@ -1747,7 +1967,7 @@ const node* try_get_block_child(const node& n)
 	if(n.children.size() == 1)
 	{
 		const auto& first_child = n.children.front();
-		if(first_child.payload.index() == payload_index<ast_stmt>())
+		if(first_child.payload.index() == payload_index<ast_stmt, node_payload>())
 		{
 			const auto& stmt = std::get<ast_stmt>(first_child.payload);
 			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
@@ -1765,7 +1985,7 @@ node* try_get_block_child(node& n)
 	if(n.children.size() == 1)
 	{
 		auto& first_child = n.children.front();
-		if(first_child.payload.index() == payload_index<ast_stmt>())
+		if(first_child.payload.index() == payload_index<ast_stmt, node_payload>())
 		{
 			const auto& stmt = std::get<ast_stmt>(first_child.payload);
 			if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
@@ -1782,7 +2002,7 @@ std::span<const node> get_metaregion_statements(std::string_view meta_name, cons
 {
 	for(const node& child : tu.children)
 	{
-		if(child.payload.index() == payload_index<ast_stmt>())
+		if(child.payload.index() == payload_index<ast_stmt, node_payload>())
 		{
 			const auto& stmt = std::get<ast_stmt>(child.payload);
 			if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
@@ -1794,7 +2014,7 @@ std::span<const node> get_metaregion_statements(std::string_view meta_name, cons
 					bool all_children_are_stmt = std::all_of(maybe_blk_child->children.begin(), maybe_blk_child->children.end(),
 						[](const node& n)->bool
 						{
-							return n.payload.index() == payload_index<ast_stmt>();
+							return n.payload.index() == payload_index<ast_stmt, node_payload>();
 						});
 					panic_ifnt(all_children_are_stmt, "block inside meta region is somehow not filled with statements");
 					return maybe_blk_child->children;
@@ -1983,7 +2203,7 @@ CHORD_BEGIN
 
 		auto value_node = nodes[2];
 
-		if(value_node.payload.index() == payload_index<ast_token>())
+		if(value_node.payload.index() == payload_index<ast_token, node_payload>())
 		{
 			auto value = std::get<ast_token>(value_node.payload);
 			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct)
@@ -2023,20 +2243,20 @@ CHORD_BEGIN
 		else
 		{
 
-			if(value_node.payload.index() == payload_index<ast_partial_funcdef>())
+			if(value_node.payload.index() == payload_index<ast_partial_funcdef, node_payload>())
 			{
 				return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
-			else if(value_node.payload.index() == payload_index<ast_funcdef>())
+			else if(value_node.payload.index() == payload_index<ast_funcdef, node_payload>())
 			{
 				auto funcdef = std::get<ast_funcdef>(value_node.payload);
 				decl.initialiser = ast_expr{.expr_ = funcdef.func};
 			}
-			else if(value_node.payload.index() == payload_index<ast_expr>())
+			else if(value_node.payload.index() == payload_index<ast_expr, node_payload>())
 			{
 				decl.initialiser = std::get<ast_expr>(value_node.payload);
 			}
-			else if(value_node.payload.index() == payload_index<ast_partial_callfunc>())
+			else if(value_node.payload.index() == payload_index<ast_partial_callfunc, node_payload>())
 			{
 				return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
