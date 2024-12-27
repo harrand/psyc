@@ -1848,7 +1848,7 @@ std::int64_t wildcard_hash()
 }
 
 template<std::size_t Begin, std::size_t End>
-constexpr void static_for(std::function<void(std::size_t)> function)
+void static_for(std::function<void(std::size_t)> function)
 {
 	if constexpr(Begin < End)
 	{
