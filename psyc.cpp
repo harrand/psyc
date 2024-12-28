@@ -2287,6 +2287,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			return decl_get_type(decl, types, loc).value();
 		});
 
+		error_ifnt(ty.static_params.empty(), loc, "static params are NYI");
+
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
 		[&types, &loc](const ast_decl& decl)
@@ -2295,6 +2297,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		});
 
 		ty.return_ty = types.parse(def.return_type);
+		error_ifnt(!ty.return_ty->is_badtype(), loc, "unknown return type \"{}\" of function", def.return_type);
 		return type_t{.payload = ty, .qual = typequal_static};
 	}
 	else if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
@@ -2761,6 +2764,28 @@ CHORD_BEGIN
 		// this chord only occurs when a partial funcdef has been created with static params initially.
 		// this chord wont be invoked if there are no static params, as instead it will be "keyword_func oparen"
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(oparen), TOKEN(cparen)), FN
+	{
+		// this chord only occurs when a partial funcdef has been created with static params initially.
+		// this chord wont be invoked if there are no static params, as instead it will be "keyword_func oparen"
+		auto& func = std::get<ast_partial_funcdef>(nodes[0].payload);
+		if(func.stage == partial_funcdef_stage::defining_params)
+		{
+		}
+		else
+		{
+			chord_error("syntax error while parsing function definition - expecting to be defining params");
+		}
+		func.stage = partial_funcdef_stage::awaiting_arrow;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2},
+		};
 	}
 CHORD_END
 
