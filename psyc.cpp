@@ -956,6 +956,7 @@ enum class token : std::uint32_t
 	end_of_file,
 	_count
 };
+
 using tokenise_fn = bool(*)(std::string_view, lex_state&, lex_output&);
 struct tokeniser
 {
@@ -2058,7 +2059,7 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 		}
 		else
 		{
-			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function");
+			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function {}", entry.description);
 			entry.chord_fn = fn;
 			entry.description = description;
 			entry.extensible = extensible;
@@ -2074,6 +2075,7 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 #define NODE(x) node{.payload = x{}}
 #define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes, parser_state& state)->chord_result
+#define FAKEFN(name) chord_result name(std::span<node> nodes, parser_state& state)
 #define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}(), "translation_unit, " STRINGIFY(__VA_ARGS__)
 // the difference between STATE and LOOSE state is that STATE means your chord function will only target nodes/tokens right at the beginning of the parse state
 // LOOKAHEAD_STATE means it could be offsetted deep in the parse state.
@@ -2635,6 +2637,91 @@ void semal(const node& ast, semal_state& types)
 // we are back in parser land - this is where all the chord functions live. they sit here at the bottom because there is going to be *alot* of them.
 #undef COMPILER_STAGE
 #define COMPILER_STAGE parse
+
+// chord function shared code
+
+// how do i turn a particular token into an expr?
+#define EXPRIFY_T(x) EXPRIFY_##x(nodes, state)
+FAKEFN(EXPRIFY_integer_literal)
+{
+	std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+	};
+}
+
+#define DEFINE_EXPRIFICATION_CHORDS(x) \
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::shift};\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		STATE(TOKEN(x), TOKEN(semicol)), FN\
+		{\
+			return {.action = parse_action::recurse};\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(semicol)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cparen)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(canglebrack)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(comma)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(plus)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dash)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(asterisk)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(fslash)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cast)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	CHORD_END
+
+
 // a chord is a single entry in the parse tree
 // so let's say we are in the middle of the parsing process.
 // - ours is a shift-reduce parser, meaning it somehow needs to know when to shift and when it can perform a reduction
@@ -2657,7 +2744,6 @@ void semal(const node& ast, semal_state& types)
 // - if your state represents a valid reduction, you should do the reduction and return parse_action::reduce
 // - if your state represents a syntax error, you should call chord_error(msg, ...) directly in your function. no need to return anything in that case, the macro will handle it for you.
 //
-
 void populate_chords(){
 
 // just the translation unit
@@ -3704,6 +3790,9 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+DEFINE_EXPRIFICATION_CHORDS(integer_literal)
+
+/*
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal)), FN
 	{
@@ -3714,126 +3803,73 @@ CHORD_END
 CHORD_BEGIN
 	STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
 	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 0};
+		return {.action = parse_action::recurse};
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cparen)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(canglebrack)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(comma)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(plus)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(dash)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(asterisk)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(fslash)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cast)), FN
 	{
-		std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
-		};
+		return EXPRIFY_T(integer_literal);
 	}
 CHORD_END
+*/
 
 CHORD_BEGIN
 	STATE(TOKEN(symbol), TOKEN(semicol)), FN
