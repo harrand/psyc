@@ -506,6 +506,56 @@ struct type_t
 		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
 	}
 
+	bool is_convertible_to(const type_t& rhs) const
+	{
+		if(this->payload.index() == rhs.payload.index())
+		{
+			// pointers are always convertible to other pointers
+			if(this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>())
+			{
+				return true;
+			}
+			else if(this->payload.index() == payload_index<prim_ty, decltype(this->payload)>())
+			{
+				// prims are only convertible to other prims if one of them is weak or they are the same prim.
+				const auto& lhs_prim = std::get<prim_ty>(this->payload);
+				const auto& rhs_prim = std::get<prim_ty>(rhs.payload);
+				return (lhs_prim == rhs_prim) || ((this->qual & typequal_weak) || (rhs.qual & typequal_weak));
+			}
+			else
+			{
+				// structs and functions are never convertible unless they are exactly the same.
+				return *this == rhs;
+			}
+		}
+		else
+		{
+			// functions (if weak) can be converted to v0& and vice-versa. no other pointer type.
+			if(this->payload.index() == payload_index<fn_ty, decltype(this->payload)>() && rhs.payload.index() == payload_index<ptr_ty, decltype(rhs.payload)>())
+			{
+				// conv fn to ptr
+				const auto& rhs_ptr = std::get<ptr_ty>(rhs.payload);
+				if(rhs_ptr.underlying_ty->is_void())
+				{
+					return this->qual & typequal_weak;
+				}
+			} // other way around:
+			else if(this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>() && rhs.payload.index() == payload_index<fn_ty, decltype(rhs.payload)>())
+			{
+				// conv fn to ptr
+				const auto& lhs_ptr = std::get<ptr_ty>(this->payload);
+				if(lhs_ptr.underlying_ty->is_void())
+				{
+					return rhs.qual & typequal_weak;
+				}
+			}
+		}
+		std::string lhs_name = this->name();
+		std::string rhs_name = rhs.name();
+		panic("dont know if {} can be converted to {}", lhs_name, rhs_name);
+		return false;
+	}
+
 	std::string name() const
 	{
 		std::string ret;
@@ -546,6 +596,11 @@ struct type_t
 	bool is_badtype() const
 	{
 		return this->payload.index() == payload_index<std::monostate, decltype(this->payload)>();
+	}
+
+	bool is_void() const
+	{
+		return this->is_prim() && std::get<prim_ty>(this->payload).p == prim_ty::type::v0;
 	}
 
 	bool is_prim() const
@@ -1598,7 +1653,7 @@ struct ast_expr
 
 std::string ast_callfunc_expr::value_tostring() const
 {
-	return std::format("call<{}>", params.size());
+	return std::format("call<{}, {}>", static_params.size(), params.size());
 }
 
 struct ast_decl
@@ -2282,18 +2337,22 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		fn_ty ty{.return_ty = type_t::badtype()};
 		ty.static_params.resize(def.static_params.size());
 		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
-		[&types, &loc](const ast_decl& decl)
+		[&types, &loc, &def](const ast_decl& decl)
 		{
-			return decl_get_type(decl, types, loc).value();
+			const auto ty = decl_get_type(decl, types, loc);
+			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
+			return ty.value();
 		});
 
-		error_ifnt(ty.static_params.empty(), loc, "static params are NYI");
+		panic_ifnt(ty.static_params.empty(), "static params are NYI. found {}", loc);
 
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
 		[&types, &loc](const ast_decl& decl)
 		{
-			return decl_get_type(decl, types, loc).value();
+			const auto ty = decl_get_type(decl, types, loc);
+			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
+			return ty.value();
 		});
 
 		ty.return_ty = types.parse(def.return_type);
@@ -2311,9 +2370,26 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			auto call_sparams = call.static_params.size();
 			auto fn_sparams = fn.static_params.size();
 			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
+			for(std::size_t i = 0; i < call_sparams; i++)
+			{
+				auto call_param_ty = expr_get_type(call.static_params[i], types, loc);
+				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as static parameter {} in call to function {}", i, call.function_name);
+				const std::string call_expr_tyname = call_param_ty.value().name();
+				const std::string fn_param_tyname = fn.static_params[i].name();
+				error_ifnt(call_param_ty.value().is_convertible_to(fn.static_params[i]), loc, "static param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
+			}
 			auto call_params = call.params.size();
 			auto fn_params = fn.params.size();
 			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
+			for(std::size_t i = 0; i < call_params; i++)
+			{
+				auto call_param_ty = expr_get_type(call.params[i], types, loc);
+				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as static parameter {} in call to function {}", i, call.function_name);
+				const std::string call_expr_tyname = call_param_ty.value().name();
+				const std::string fn_param_tyname = fn.params[i].name();
+				error_ifnt(call_param_ty.value().is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
+			}
+
 			return *fn.return_ty;
 		}
 		else
@@ -3395,7 +3471,7 @@ CHORD_BEGIN
 		// we just remove the oparen and continue on as if we had already specified a first param (push-back will save us)
 		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
 		call.on_static_params = false;
-		call.awaiting_next_param = true;
+		call.awaiting_next_param = false;
 		return
 		{
 			.action = parse_action::reduce,
@@ -3416,7 +3492,7 @@ CHORD_BEGIN
 		if(call.awaiting_next_param)
 		{
 			// i was expecting a param
-			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got ,");
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got )");
 		}
 		ast_callfunc_expr complete_call
 		{
@@ -3454,6 +3530,65 @@ CHORD_BEGIN
 			.nodes_to_remove = {.offset = 1, .length = 1}
 		};
 	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast)), FN
+	{
+		// yes need to do the same with all biop types
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast), NODE(ast_expr)), FN
+	{
+		// yes need to do the same with all biop types
+		
+		// so we expect to see this directly after a param, i.e we are expecting a comma
+		// i.e not awaiting next param (coz comma or cparen)
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		const auto& cast_to = std::get<ast_expr>(nodes[2].payload);
+		ast_expr* last_expr;
+		if(call.on_static_params)
+		{
+			if(call.static_params.empty())
+			{
+				std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;
+				chord_error("unexpected token {} detected before any static params. move or remove this token.", tok);
+			}
+			last_expr = &call.static_params.back();
+		}
+		else
+		{
+			if(call.params.empty())
+			{
+				std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;
+				chord_error("unexpected token {} detected before any params. move or remove this token.", tok);
+			}
+			last_expr = &call.params.back();
+		}
+		*last_expr = ast_expr{.expr_ = ast_biop_expr{.lhs = *last_expr, .type = biop_type::cast, .rhs = cast_to}};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast), WILDCARD), FN
+	{
+		// yes need to do the same with all biop types
+		return
+		{
+			.action = parse_action::recurse,
+			.reduction_result_offset = 2
+		};
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -3708,6 +3843,71 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(comma)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(plus)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dash)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(asterisk)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(fslash)), FN
+	{
+		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(cast)), FN
 	{
 		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
 		return
@@ -4202,6 +4402,36 @@ CHORD_BEGIN
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
 EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(cast)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(cast), TOKEN(symbol)), FN
+	{
+		auto& decl = std::get<ast_decl>(nodes[0].payload);
+		if(!decl.initialiser.has_value())
+		{
+			chord_error("detected cast expression following a decl without an initialiser. you cannot use a cast expression when setting the typename.");
+		}
+		// e.g myvar ::= 5@s32
+		// we already have myvar ::= 5
+		// suddenly s32 appears, we actually need to amend the decl initialiser to be a cast expression.
+		// (probably the same for every single biop :( )
+		ast_expr initialiser_expr = decl.initialiser.value();
+		std::string symbol{std::get<ast_token>(nodes[2].payload).lexeme};
+		decl.initialiser = ast_expr{.expr_ = ast_biop_expr{.lhs = initialiser_expr, .type = biop_type::cast, .rhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2}
+		};
+	}
 CHORD_END
 
 CHORD_BEGIN
