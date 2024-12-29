@@ -2940,6 +2940,16 @@ FAKEFN(EXPRIFY_symbol)
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
 	};
 }
+FAKEFN(EXPRIFY_string_literal)
+{
+	std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = symbol}}}}
+	};
+}
 
 #define DEFINE_EXPRIFICATION_CHORDS(x) \
 	CHORD_BEGIN\
@@ -4080,6 +4090,7 @@ CHORD_END
 
 DEFINE_EXPRIFICATION_CHORDS(integer_literal)
 DEFINE_EXPRIFICATION_CHORDS(decimal_literal)
+DEFINE_EXPRIFICATION_CHORDS(string_literal)
 DEFINE_EXPRIFICATION_CHORDS(symbol)
 
 CHORD_BEGIN
