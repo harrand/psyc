@@ -2654,7 +2654,7 @@ FAKEFN(EXPRIFY_integer_literal)
 }
 FAKEFN(EXPRIFY_decimal_literal)
 {
-	std::int64_t value = std::stod(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+	double value = std::stod(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
 	return
 	{
 		.action = parse_action::reduce,
