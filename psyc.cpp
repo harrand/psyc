@@ -538,6 +538,20 @@ struct type_t
 			{
 				return true;
 			}
+			// so this is a bit more complicated
+			else if(this->payload.index() == payload_index<meta_ty, decltype(this->payload)>())
+			{
+				const auto& lhs_ty = std::get<meta_ty>(this->payload);
+				const auto& rhs_ty = std::get<meta_ty>(rhs.payload);
+
+				// if either of them have badtype as concrete, then it is a template type and the conversion is okay.
+				if(lhs_ty.concrete->is_badtype() || rhs_ty.concrete->is_badtype())
+				{
+					return true;
+				}
+				// otherwise, types dont convert.
+				return false;
+			}
 			else if(this->payload.index() == payload_index<prim_ty, decltype(this->payload)>())
 			{
 				// prims are only convertible to other prims if one of them is weak or they are the same prim.
@@ -575,6 +589,11 @@ struct type_t
 			else if(this->payload.index() == payload_index<fn_ty, decltype(this->payload)>())
 			{
 				// lhs is fn, rhs is not a ptr nor fn. definitely cant convert.
+				return false;
+			}
+			// if either of them are a type and the other is not also a type, then cant convert
+			else if(this->payload.index() == payload_index<meta_ty, decltype(this->payload)>() || rhs.payload.index() == payload_index<meta_ty, decltype(rhs.payload)>())
+			{
 				return false;
 			}
 		}
@@ -2363,6 +2382,7 @@ struct semal_context
 		std::string name;
 	};
 	std::vector<entry> entries = {};
+	std::unordered_map<std::string, type_t> variables_to_exist_in_next_scope = {};
 
 	const entry* try_get_parent_function() const
 	{
@@ -2436,10 +2456,9 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		{
 			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
+			ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
 			return ty.value();
 		});
-
-		panic_ifnt(ty.static_params.empty(), "static params are NYI. found {}", loc);
 
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
@@ -2447,6 +2466,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		{
 			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
+			error_ifnt(!ty.value().is_type(), loc, "detected \"type\" passed as runtime parameter to function {}. type parameters are only valid as static parameters (within a pair of <>s)", decl.name);
+			ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
 			return ty.value();
 		});
 
@@ -2472,6 +2493,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				const std::string call_expr_tyname = call_param_ty.value().name();
 				const std::string fn_param_tyname = fn.static_params[i].name();
 				error_ifnt(call_param_ty.value().is_convertible_to(fn.static_params[i]), loc, "static param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
+				// todo: generate new concrete function signatures based on these
+				warning(loc, "static params are not yet implemented");
 			}
 			auto call_params = call.params.size();
 			auto fn_params = fn.params.size();
@@ -2594,8 +2617,11 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 		{
 			// user has specifically typed "type" as the type of a variable
 			// that has no concrete type information, so we're still going to take the deduction code path
-			error_ifnt(decl.initialiser.has_value(), {}, "decl {} with typename \"type\" must have an initialiser", decl.name);
-			ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+			// if there is no initialiser, then its basically a c++ template.
+			if(decl.initialiser.has_value())
+			{
+				ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+			}
 		}
 		if(!ty.has_value() || ty.value().is_badtype())
 		{
@@ -2603,12 +2629,7 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			auto iter = types.variables.find(decl.type_name);
 			if(iter != types.variables.end())
 			{
-				type_t possible_metaty = iter->second;
-				if(possible_metaty.is_type())
-				{
-					// get the concrete type now.
-					ty = *std::get<meta_ty>(possible_metaty.payload).concrete;
-				}
+				ty = iter->second;
 			}
 		}
 	}
@@ -2674,7 +2695,10 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 	{
-
+		for(const auto& [name , ty] : ctx.variables_to_exist_in_next_scope)
+		{
+			types.variables.emplace(name, ty);
+		}
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
@@ -3763,7 +3787,7 @@ CHORD_BEGIN
 		// we just remove the oparen and continue on as if we had already specified a first param (push-back will save us)
 		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
 		call.on_static_params = false;
-		call.awaiting_next_param = false;
+		call.awaiting_next_param = true;
 		return
 		{
 			.action = parse_action::reduce,
