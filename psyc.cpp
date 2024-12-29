@@ -2652,6 +2652,26 @@ FAKEFN(EXPRIFY_integer_literal)
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
 	};
 }
+FAKEFN(EXPRIFY_decimal_literal)
+{
+	std::int64_t value = std::stod(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+	};
+}
+FAKEFN(EXPRIFY_symbol)
+{
+	std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
+	};
+}
 
 #define DEFINE_EXPRIFICATION_CHORDS(x) \
 	CHORD_BEGIN\
@@ -3791,209 +3811,8 @@ CHORD_BEGIN
 CHORD_END
 
 DEFINE_EXPRIFICATION_CHORDS(integer_literal)
-
-/*
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal)), FN
-	{
-		return {.action = parse_action::shift};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
-	{
-		return {.action = parse_action::recurse};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(semicol)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cparen)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(canglebrack)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(comma)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(plus)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(dash)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(asterisk)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(fslash)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(integer_literal), TOKEN(cast)), FN
-	{
-		return EXPRIFY_T(integer_literal);
-	}
-CHORD_END
-*/
-
-CHORD_BEGIN
-	STATE(TOKEN(symbol), TOKEN(semicol)), FN
-	{
-		return {.action = parse_action::recurse};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(semicol)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(cparen)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(canglebrack)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(comma)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(plus)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dash)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(asterisk)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(fslash)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(cast)), FN
-	{
-		std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}}
-		};
-	}
-CHORD_END
+DEFINE_EXPRIFICATION_CHORDS(decimal_literal)
+DEFINE_EXPRIFICATION_CHORDS(symbol)
 
 CHORD_BEGIN
 	STATE(NODE(ast_stmt)), FN
@@ -4199,13 +4018,6 @@ CHORD_BEGIN
 		};
 	}
 	EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol)), FN
-	{
-		return {.action = parse_action::shift};
-	}
 CHORD_END
 
 CHORD_BEGIN
