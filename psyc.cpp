@@ -488,6 +488,16 @@ struct fn_ty
 	bool operator==(const fn_ty& rhs) const = default;
 };
 
+struct meta_ty
+{
+	box<type_t> concrete;
+	bool operator==(const meta_ty& rhs) const = default;
+
+	std::string name() const;
+};
+
+#define meta_type "type"
+
 struct type_t
 {
 	using payload_t = std::variant
@@ -496,7 +506,8 @@ struct type_t
 		prim_ty,
 		struct_ty,
 		ptr_ty,
-		fn_ty
+		fn_ty,
+		meta_ty
 	>;
 	payload_t payload;
 	typequal qual = typequal_none;
@@ -504,6 +515,11 @@ struct type_t
 	static type_t create_void_type()
 	{
 		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
+	}
+
+	static type_t create_meta_type(type_t ty = type_t::badtype())
+	{
+		return type_t{.payload = meta_ty{.concrete = ty}};
 	}
 
 	type_t add_weak()
@@ -615,6 +631,11 @@ struct type_t
 		return this->is_prim() && std::get<prim_ty>(this->payload).p == prim_ty::type::v0;
 	}
 
+	bool is_type() const
+	{
+		return this->payload.index() == payload_index<meta_ty, decltype(this->payload)>();
+	}
+
 	bool is_prim() const
 	{
 		return this->payload.index() == payload_index<prim_ty, decltype(this->payload)>();
@@ -673,6 +694,15 @@ std::string fn_ty::name() const
 	return std::format("func{}({}) -> {}", sparams_str, params_str, this->return_ty->name());
 }
 
+std::string meta_ty::name() const
+{
+	if(this->concrete->is_badtype())
+	{
+		return meta_type;
+	}
+	return std::format(meta_type" (aka {})", this->concrete->name());
+}
+
 struct ast_funcdef_expr;
 
 struct semal_state
@@ -690,6 +720,10 @@ struct semal_state
 
 	type_t parse(std::string_view type_name) const
 	{
+		if(type_name == meta_type)
+		{
+			return type_t::create_meta_type();
+		}
 		if(type_name.contains('&'))
 		{
 			warning({}, "support for pointer type parsing is unimplemented. {} is a pointer type", type_name);
@@ -768,6 +802,10 @@ struct semal_state
 		for(const auto& [name, node] : other.function_locations)
 		{
 			ret.function_locations[name] = node;
+		}
+		for(const auto& [name, ty] : other.variables)
+		{
+			ret.variables[name] = ty;
 		}
 		return ret;
 	}
@@ -2472,14 +2510,23 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			}
 			else
 			{
-				error(loc, "undefined variable or function \"{}\"", symbol_expr.symbol);
+				// perhaps they're specifically referring to a typename?
+				type_t type_name = types.parse(symbol_expr.symbol);
+				if(!type_name.is_badtype())
+				{
+					return type_t::create_meta_type(type_name);
+				}
+				else
+				{
+					error(loc, "undefined variable, type or function \"{}\"", symbol_expr.symbol);
+				}
 			}
 		}
 	}
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return type_t{.payload = struct_ty{}};
+		return type_t::create_meta_type(type_t{.payload = struct_ty{}});
 	}
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
@@ -2543,6 +2590,27 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 	else
 	{
 		ty = types.parse(decl.type_name);
+		if(ty.has_value() && ty.value().is_type())
+		{
+			// user has specifically typed "type" as the type of a variable
+			// that has no concrete type information, so we're still going to take the deduction code path
+			error_ifnt(decl.initialiser.has_value(), {}, "decl {} with typename \"type\" must have an initialiser", decl.name);
+			ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+		}
+		if(!ty.has_value() || ty.value().is_badtype())
+		{
+			// could be referring to a variable (so long as that variable is a meta type)
+			auto iter = types.variables.find(decl.type_name);
+			if(iter != types.variables.end())
+			{
+				type_t possible_metaty = iter->second;
+				if(possible_metaty.is_type())
+				{
+					// get the concrete type now.
+					ty = *std::get<meta_ty>(possible_metaty.payload).concrete;
+				}
+			}
+		}
 	}
 
 	const bool expr_is_funcdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
@@ -2561,9 +2629,9 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			types.function_locations[decl.name] = &def;
 			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
 		}
-		else if(ty.value().is_struct() && expr_is_structdef)
+		else if(ty.value().is_type() && expr_is_structdef)
 		{
-			auto& structdef = std::get<struct_ty>(ty.value().payload);
+			auto& structdef = std::get<struct_ty>(std::get<meta_ty>(ty.value().payload).concrete->payload);
 			// we expect this to be an empty struct because we dont have access to its members until we see its children.
 			auto [_, actually_emplaced] = types.structs.emplace(decl.name, structdef);
 			if(!actually_emplaced)
@@ -2584,10 +2652,23 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		auto ty = decl_get_type(decl, types, loc, ctx);
 		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
 		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
-		auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
-		if(!actually_emplaced)
+
+		auto* maybe_parent_struct = ctx.try_get_parent_struct();
+		auto* maybe_parent_fn = ctx.try_get_parent_function();
+		if(maybe_parent_struct != nullptr && maybe_parent_fn == nullptr)
 		{
-			error(loc, "duplicate definition of variable \"{}\"", decl.name);
+			// we're in a struct and not a function - we are a data member.
+			auto& structdef = types.structs.at(maybe_parent_struct->name);
+			structdef.members.push_back(ty.value());
+		}
+		else
+		{
+			// we're not in a struct so this isnt a data member, just a variable.
+			auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
+			if(!actually_emplaced)
+			{
+				error(loc, "duplicate definition of variable \"{}\"", decl.name);
+			}
 		}
 		return ty.value();
 	}
@@ -3260,7 +3341,7 @@ CHORD_BEGIN
 		{
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
-			.reduction_result = {node{.payload = complete_funcdef}}
+			.reduction_result = {node{.payload = complete_funcdef, .children = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}}}}}
 		};
 	}
 CHORD_END
