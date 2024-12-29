@@ -2311,9 +2311,52 @@ node* try_get_block_child(node& n)
 	return nullptr;
 }
 
-std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc);
+struct semal_context
+{
+	enum class type
+	{
+		in_function,
+		in_struct,
+		undefined
+	};
+	struct entry
+	{
+		type t;
+		std::string name;
+	};
+	std::vector<entry> entries = {};
 
-std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc)
+	const entry* try_get_parent_function() const
+	{
+		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
+				[](const entry& e)->bool
+				{
+					return e.t == semal_context::type::in_function;
+				});
+		if(iter != this->entries.rend())
+		{
+			return &*iter;
+		}
+		return nullptr;
+	}
+	const entry* try_get_parent_struct() const
+	{
+		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
+				[](const entry& e)->bool
+				{
+					return e.t == semal_context::type::in_struct;
+				});
+		if(iter != this->entries.rend())
+		{
+			return &*iter;
+		}
+		return nullptr;
+	}
+};
+
+std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
+
+std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	type_t ret;
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
@@ -2351,9 +2394,9 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		fn_ty ty{.return_ty = type_t::badtype()};
 		ty.static_params.resize(def.static_params.size());
 		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
-		[&types, &loc, &def](const ast_decl& decl)
+		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
-			const auto ty = decl_get_type(decl, types, loc);
+			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
 			return ty.value();
 		});
@@ -2362,9 +2405,9 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
-		[&types, &loc](const ast_decl& decl)
+		[&types, &loc, &ctx](const ast_decl& decl)
 		{
-			const auto ty = decl_get_type(decl, types, loc);
+			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
 			return ty.value();
 		});
@@ -2386,7 +2429,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
 			for(std::size_t i = 0; i < call_sparams; i++)
 			{
-				auto call_param_ty = expr_get_type(call.static_params[i], types, loc);
+				auto call_param_ty = expr_get_type(call.static_params[i], types, loc, ctx);
 				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as static parameter {} in call to function {}", i, call.function_name);
 				const std::string call_expr_tyname = call_param_ty.value().name();
 				const std::string fn_param_tyname = fn.static_params[i].name();
@@ -2397,8 +2440,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
 			for(std::size_t i = 0; i < call_params; i++)
 			{
-				auto call_param_ty = expr_get_type(call.params[i], types, loc);
-				asm volatile("" : : "m"(call_param_ty) : "memory");
+				auto call_param_ty = expr_get_type(call.params[i], types, loc, ctx);
 				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as parameter {} in call to function {}", i, call.function_name);
 				const std::string call_expr_tyname = call_param_ty.value().name();
 				const std::string fn_param_tyname = fn.params[i].name();
@@ -2442,7 +2484,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
-		auto lhs_ty = expr_get_type(*biop.lhs, types, loc);
+		auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -2490,13 +2532,13 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	return std::nullopt;
 }
 
-std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc)
+std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	std::optional<type_t> ty = std::nullopt;
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ty = expr_get_type(decl.initialiser.value(), types, loc);
+		ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
 	}
 	else
 	{
@@ -2517,6 +2559,7 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			}
 			const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
 			types.function_locations[decl.name] = &def;
+			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
 		}
 		else if(ty.value().is_struct() && expr_is_structdef)
 		{
@@ -2527,17 +2570,18 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			{
 				error(loc, "duplicate definition of struct \"{}\"", decl.name);
 			}
+			ctx.entries.push_back({.t = semal_context::type::in_struct, .name = decl.name});
 		}
 	}
 	return ty;
 }
 
-std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc)
+std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto ty = decl_get_type(decl, types, loc);
+		auto ty = decl_get_type(decl, types, loc, ctx);
 		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
 		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
 		auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
@@ -2554,23 +2598,34 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto ty = expr_get_type(expr.expr, types, loc);
+		auto ty = expr_get_type(expr.expr, types, loc, ctx);
 		error_ifnt(ty.has_value(), loc, "expr does not yield a type");
 		error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
 		return ty;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
 	{
+		const auto* parent_func = ctx.try_get_parent_function();
+		error_ifnt(parent_func != nullptr, loc, "return statement is invalid because we are not in a function implementation.");
+		const fn_ty& func = types.functions.at(parent_func->name);
+
 		auto& ret = std::get<ast_return_stmt>(stmt.stmt_);
 		if(ret.retval.has_value())
 		{
-			auto ty = expr_get_type(ret.retval.value(), types, loc);
+			auto ty = expr_get_type(ret.retval.value(), types, loc, ctx);
 			error_ifnt(ty.has_value(), loc, "expr does not yield a type");
 			error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+
+			std::string retval_tyname = ty.value().name();
+			std::string fn_return_tyname = func.return_ty->name();
+			error_ifnt(!func.return_ty->is_void(), loc, "return value is incorrect because the parent function \"{}\" returns v0", parent_func->name);
+			error_ifnt(ty.value().is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
 			return ty;
 		}
 		else
 		{
+			const auto return_tyname = func.return_ty->name();
+			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
 			return type_t::create_void_type();
 		}
 	}
@@ -2588,15 +2643,21 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	return std::nullopt;
 }
 
-void semal(const node& ast, semal_state& types)
+void semal(const node& ast, semal_state& types, semal_context& ctx)
 {
+	bool pop_context = false;
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
 	{}
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto ty = stmt_get_type(stmt, types, ast.begin_location);
+		auto ty = stmt_get_type(stmt, types, ast.begin_location, ctx);
 		std::println("{}", ty.value_or(type_t::badtype()).name());
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			// is a block statement, after all children we should pop context.
+			pop_context = true;
+		}
 	}
 	else
 	{
@@ -2607,7 +2668,11 @@ void semal(const node& ast, semal_state& types)
 
 	for(auto& child : ast.children)
 	{
-		semal(child, ast.types);
+		semal(child, ast.types, ctx);
+	}
+	if(pop_context)
+	{
+		ctx.entries.pop_back();
 	}
 }
 
@@ -4416,7 +4481,8 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	auto now_cpy = now;
 
 	semal_state types = create_basic_type_system();
-	semal(ast, types);
+	semal_context ctx = {};
+	semal(ast, types, ctx);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
