@@ -2554,18 +2554,24 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		{
 			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
-			ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+			if(!def.is_extern)
+			{
+				ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+			}
 			return ty.value();
 		});
 
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
-		[&types, &loc, &ctx](const ast_decl& decl)
+		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
 			const auto ty = decl_get_type(decl, types, loc, ctx);
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
 			error_ifnt(!ty.value().is_type(), loc, "detected \"type\" passed as runtime parameter to function {}. type parameters are only valid as static parameters (within a pair of <>s)", decl.name);
-			ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+			if(!def.is_extern)
+			{
+				ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+			}
 			return ty.value();
 		});
 
@@ -2783,10 +2789,14 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		else
 		{
 			// we're not in a struct so this isnt a data member, just a variable.
-			auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
-			if(!actually_emplaced)
+			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
+			if(!ty.value().is_fn() && !ty.value().is_struct() && !ty.value().is_type())
 			{
-				error(loc, "duplicate definition of variable \"{}\"", decl.name);
+				auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
+				if(!actually_emplaced)
+				{
+					error(loc, "duplicate definition of variable \"{}\"", decl.name);
+				}
 			}
 		}
 		return ty.value();
@@ -2797,6 +2807,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		{
 			types.variables.emplace(name, ty);
 		}
+		ctx.variables_to_exist_in_next_scope.clear();
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
