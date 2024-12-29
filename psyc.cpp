@@ -732,73 +732,171 @@ struct semal_state
 	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
 	std::unordered_map<std::string, type_t> variables = {};
 
-	ptr_ty create_pointer_ty(type_t pointee)
+	ptr_ty create_pointer_ty(type_t pointee) const
 	{
 		return {.underlying_ty = {pointee}};
 	}
 
 	type_t parse(std::string_view type_name) const
 	{
-		if(type_name == meta_type)
+		if (type_name == meta_type)
 		{
 			return type_t::create_meta_type();
 		}
-		if(type_name.contains('&'))
-		{
-			warning({}, "support for pointer type parsing is unimplemented. {} is a pointer type", type_name);
-		}
-		// Find the last qualifier by working backwards
-		size_t last_space = type_name.find_last_of(' ');
-		std::string_view base_type = type_name;
 
-		typequal ret = typequal_none;
-		while (last_space != std::string::npos)
+		// typenames can get very complicated so this isnt trivial at all.
+
+		// Initialize the type to be parsed
+		type_t current_type = type_t::badtype();
+		
+		std::string_view tyname = type_name;
+		while(!tyname.empty())
 		{
-			std::string_view potential_qualifier = base_type.substr(last_space + 1);
-			if(potential_qualifier == "mut")
+			// skip whitespace
+			if(std::isspace(tyname.front()))
 			{
-				ret = ret | typequal_mut;
+				tyname.remove_prefix(1);
+				continue;
 			}
-			else if(potential_qualifier == "weak")
+			if(tyname.front() == '&')
 			{
-				ret = ret | typequal_weak;
+				error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
+				current_type = type_t{.payload = this->create_pointer_ty(current_type)};
+				tyname.remove_prefix(1);
+				continue;
 			}
-			else if(potential_qualifier == "static")
+			std::size_t till_next_thing = 0;
+			for(std::size_t i = 0; i < tyname.size(); i++)
 			{
-				ret = ret | typequal_static;
+				if(!std::isalnum(tyname[i]))
+				{
+					break;
+				}
+				till_next_thing++;
+			}
+			std::string_view word = (till_next_thing == tyname.size()) ? tyname : tyname.substr(0, till_next_thing);
+			if(word == "mut")
+			{
+				current_type.qual = current_type.qual | typequal_mut;
+			}
+			else if(word == "static")
+			{
+				current_type.qual = current_type.qual | typequal_static;
+			}
+			else if(word == "weak")
+			{
+				current_type.qual = current_type.qual | typequal_weak;
 			}
 			else
 			{
-				break;
+				// im gonna assume this is the base type now then.
+				for (const auto& [name, prim] : this->primitives)
+				{
+					if (name == word)
+					{
+						current_type.payload = prim;
+						break;
+					}
+				}
+
+				// Or with structs
+				for (const auto& [name, structval] : this->structs)
+				{
+					if (name == word)
+					{
+						current_type.payload = structval;
+						break;
+					}
+				}
+
+				if(current_type.payload.index() == payload_index<std::monostate, type_t::payload_t>())
+				{
+					// bad base type. couldn't figure out what it is.
+					return type_t::badtype();
+				}
 			}
-			// Truncate the qualifier from the base type
-			base_type = type_name.substr(0, last_space);
-			last_space = base_type.find_last_of(' ');
+
+			// Truncate the parsed word
+			tyname = (till_next_thing == tyname.size()) ? std::string_view() : tyname.substr(till_next_thing);
+		}
+		return current_type;
+
+		/*
+		while(!tyname.empty())
+		{
+			// remove trailing whitespace.
+			while(!tyname.empty() && std::isspace(tyname.back()))
+			{
+				tyname.remove_suffix(1);
+			}
+
+			// check for pointerness.
+			if(!tyname.empty() && tyname.back() == '&')
+			{
+				current_type = type_t{.payload = this->create_pointer_ty(current_type)};
+				base_ty = &current_type;
+				// point base_ty back to the thing.
+				while(base_ty->payload.index() == payload_index<ptr_ty, type_t::payload_t>())
+				{
+					base_ty = &*std::get<ptr_ty>(base_ty->payload).underlying_ty;
+				}
+				// remember, current_payload needs to point to the underlying type so we can patch in the base type once we figur eout what it is.
+				tyname.remove_suffix(1);
+				continue;
+			}
+
+			// find the last word
+			// it's either a qualifier or base type.
+			std::size_t last_space = tyname.find_last_of(' ');
+			std::string_view word = (last_space == std::string::npos) ? tyname : tyname.substr(last_space + 1);
+			if(word == "mut")
+			{
+				current_type.qual = current_type.qual | typequal_mut;
+			}
+			else if(word == "static")
+			{
+				current_type.qual = current_type.qual | typequal_static;
+			}
+			else if(word == "weak")
+			{
+				current_type.qual = current_type.qual | typequal_weak;
+			}
+			else
+			{
+				// well it must be a base type then.
+				// Match base type with primitives
+				for (const auto& [name, prim] : this->primitives)
+				{
+					if (name == word)
+					{
+						base_ty->payload = prim;
+						break;
+					}
+				}
+
+				// Or with structs
+				for (const auto& [name, structval] : this->structs)
+				{
+					if (name == word)
+					{
+						base_ty->payload = structval;
+						break;
+					}
+				}
+
+				if(base_ty->payload.index() == payload_index<std::monostate, type_t::payload_t>())
+				{
+					// bad base type. couldn't figure out what it is.
+					return type_t::badtype();
+				}
+			}
+
+			// Truncate the parsed word
+			tyname = (last_space == std::string::npos) ? std::string_view() : tyname.substr(0, last_space);
 		}
 
-		// we have base_type which should have all the qualifiers removed.
-		// let's actually try to match it.
-		type_t base_t = type_t::badtype();
-		base_t.qual = ret;
-		// perhaps its a primitive type?
-		for(const auto& [name, prim] : this->primitives)
-		{
-			if(name == base_type)
-			{
-				base_t.payload = prim;
-				break;
-			}
-		}
-		for(const auto& [name, structval] : this->structs)
-		{
-			if(name == base_type)
-			{
-				base_t.payload = structval;
-				break;
-			}
-		}
-		// or one of our structs?
-		return base_t;
+		return current_type;
+		*/
 	}
 
 	semal_state coalesce(const semal_state& other) const
