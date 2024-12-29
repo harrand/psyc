@@ -106,7 +106,7 @@ void generic_panic(const char* msg, std::source_location loc, std::stacktrace tr
 	crash();
 }
 
-struct slice
+struct slice	
 {
 	std::size_t offset = 0;
 	std::size_t length = 0;
@@ -506,6 +506,13 @@ struct type_t
 		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
 	}
 
+	type_t add_weak()
+	{
+		type_t cpy = *this;
+		cpy.qual = cpy.qual | typequal_weak;
+		return cpy;
+	}
+
 	bool is_convertible_to(const type_t& rhs) const
 	{
 		if(this->payload.index() == rhs.payload.index())
@@ -548,6 +555,11 @@ struct type_t
 				{
 					return rhs.qual & typequal_weak;
 				}
+			}
+			else if(this->payload.index() == payload_index<fn_ty, decltype(this->payload)>())
+			{
+				// lhs is fn, rhs is not a ptr nor fn. definitely cant convert.
+				return false;
 			}
 		}
 		std::string lhs_name = this->name();
@@ -2384,7 +2396,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			for(std::size_t i = 0; i < call_params; i++)
 			{
 				auto call_param_ty = expr_get_type(call.params[i], types, loc);
-				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as static parameter {} in call to function {}", i, call.function_name);
+				asm volatile("" : : "m"(call_param_ty) : "memory");
+				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as parameter {} in call to function {}", i, call.function_name);
 				const std::string call_expr_tyname = call_param_ty.value().name();
 				const std::string fn_param_tyname = fn.params[i].name();
 				error_ifnt(call_param_ty.value().is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
@@ -2407,7 +2420,16 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		}
 		else
 		{
-			error(loc, "undefined variable \"{}\"", symbol_expr.symbol);
+			auto func_iter = types.functions.find(symbol_expr.symbol);
+			if(func_iter != types.functions.end())
+			{
+				// they are referring to a function name as a variable. that's perfectly fine.
+				return type_t{.payload = func_iter->second};
+			}
+			else
+			{
+				error(loc, "undefined variable or function \"{}\"", symbol_expr.symbol);
+			}
 		}
 	}
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
@@ -2418,6 +2440,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
+		auto lhs_ty = expr_get_type(*biop.lhs, types, loc);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -2430,10 +2453,11 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			case biop_type::mul:
 				[[fallthrough]];
 			case biop_type::div:
-				return expr_get_type(*biop.lhs, types, loc);
+				return lhs_ty;
 			break;
 			case biop_type::cast:
 			{
+				error_ifnt(lhs_ty.has_value() && !lhs_ty.value().is_badtype(), loc, "lhs of cast expression did not yield a valid type");
 				const auto& rhs_expr = *biop.rhs;
 				if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
 				{
@@ -2443,7 +2467,11 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				else
 				{
 					const auto& symbol_expr = std::get<ast_symbol_expr>(rhs_expr.expr_);
-					return types.parse(symbol_expr.symbol);
+					type_t casted_to_ty = types.parse(symbol_expr.symbol);
+					std::string casted_from_tyname = lhs_ty.value().name();
+					std::string casted_to_tyname = casted_to_ty.name();
+					error_ifnt(lhs_ty.value().add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
+					return casted_to_ty;
 				}
 			}
 			break;
@@ -2812,7 +2840,7 @@ CHORD_BEGIN
 		return
 		{
 			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = nodes.size() - 1}
+			.nodes_to_remove = {.offset = 1, .length = 2}
 		};
 	}
 	EXTENSIBLE
