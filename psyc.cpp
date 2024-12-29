@@ -3301,6 +3301,18 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_struct), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_structdef_expr{}}, .children = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{.capped = true}}}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_struct), NODE(ast_stmt)), FN
 	{
 		auto& stmt_node = nodes[1];
