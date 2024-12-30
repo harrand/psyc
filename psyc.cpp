@@ -1848,7 +1848,7 @@ struct ast_unop_expr
 
 	std::string value_tostring() const
 	{
-		return std::format("{} biop",
+		return std::format("{} unop",
 		std::array<const char*, static_cast<int>(unop_type::_count)>
 		{
 			"minus",
@@ -2738,6 +2738,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
 		auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
+		auto rhs_ty = expr_get_type(*biop.rhs, types, loc, ctx);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -2750,6 +2751,9 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			case biop_type::mul:
 				[[fallthrough]];
 			case biop_type::div:
+				error_ifnt(lhs_ty.has_value(), loc, "lhs type is wrong");
+				error_ifnt(rhs_ty.has_value(), loc, "rhs type is wrong");
+				error_ifnt(lhs_ty->is_convertible_to(rhs_ty.value()), loc, "binary operator is invalid because the left and right expression types are not convertible.");
 				return lhs_ty;
 			break;
 			case biop_type::cast:
@@ -3074,6 +3078,13 @@ std::unordered_set<token> unop_tokens{};
 
 #define DEFINE_EXPRIFICATION_CHORDS(x) \
 	CHORD_BEGIN\
+		STATE(TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::recurse};\
+		}\
+		EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x)), FN\
 		{\
 			return {.action = parse_action::shift};\
@@ -3142,6 +3153,13 @@ std::unordered_set<token> unop_tokens{};
 
 #define DEFINE_UNOPIFICATION_CHORDS(x, unop_ty) \
 	unop_tokens.insert(token::x);\
+	CHORD_BEGIN\
+		STATE(TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::recurse};\
+		}\
+		EXTENSIBLE\
+	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x)), FN\
 		{\
@@ -3223,6 +3241,13 @@ std::unordered_set<token> unop_tokens{};
 			};\
 		}\
 	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		STATE(NODE(ast_expr), TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::recurse};\
+		}\
+		EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), NODE(ast_expr)), FN\
