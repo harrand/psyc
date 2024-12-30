@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <ranges>
 #include <functional>
+#include <unordered_set>
 #include <chrono>
 
 #define STRINGIFY(...) #__VA_ARGS__
@@ -1140,6 +1141,8 @@ enum class token : std::uint32_t
 	keyword_func,
 	keyword_extern,
 	keyword_struct,
+	keyword_ref,
+	keyword_deref,
 	symbol,
 	end_of_file,
 	_count
@@ -1484,6 +1487,20 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "ref keyword",
+		.front_identifier = "ref",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "deref keyword",
+		.front_identifier = "deref",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -1815,6 +1832,33 @@ struct ast_biop_expr
 	}
 };
 
+enum class unop_type
+{
+	minus,
+	invert,
+	ref,
+	deref,
+	_count
+};
+
+struct ast_unop_expr
+{
+	unop_type type;
+	box<ast_expr> rhs;
+
+	std::string value_tostring() const
+	{
+		return std::format("{} biop",
+		std::array<const char*, static_cast<int>(unop_type::_count)>
+		{
+			"minus",
+			"invert",
+			"ref",
+			"deref"
+		}[static_cast<int>(this->type)]);
+	}
+};
+
 struct ast_expr
 {
 	std::variant
@@ -1824,7 +1868,8 @@ struct ast_expr
 		ast_callfunc_expr,
 		ast_symbol_expr,
 		ast_structdef_expr,
-		ast_biop_expr
+		ast_biop_expr,
+		ast_unop_expr
 	> expr_;
 
 	const char* type_name() const
@@ -1837,6 +1882,7 @@ struct ast_expr
 			"symbol",
 			"structdef",
 			"biop",
+			"unop"
 		}[this->expr_.index()];
 	}
 
@@ -2731,6 +2777,35 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			break;
 		}
 	}
+	else if(expr.expr_.index() == payload_index<ast_unop_expr, decltype(expr.expr_)>())
+	{
+		const auto& unop = std::get<ast_unop_expr>(expr.expr_);
+		auto rhs_ty = expr_get_type(*unop.rhs, types, loc, ctx);
+		std::string op_name = unop.value_tostring();
+		error_ifnt(rhs_ty.has_value() && !rhs_ty.value().is_badtype(), loc, "rhs of unary operator {} yielded an invalid type", op_name);
+		std::string tyname = rhs_ty->name();
+		switch(unop.type)
+		{
+			// all operators aside from cast (@) act the same
+			// the type of the expression is equal to the lhs
+			// for the cast, rhs *must* be a symbol expression and represent a typename.
+			case unop_type::minus:
+			[[fallthrough]];
+			case unop_type::invert:
+				return rhs_ty;
+			break;
+			case unop_type::ref:
+				return type_t{.payload = types.create_pointer_ty(rhs_ty.value())};
+			break;
+			case unop_type::deref:
+				error_ifnt(rhs_ty->is_ptr(), loc, "cannot deref non-pointer-type \"{}\"", tyname);
+				return *std::get<ptr_ty>(rhs_ty->payload).underlying_ty;
+			break;
+			default:
+				panic("unhandled unop type in semal");
+			break;
+		}
+	}
 	else
 	{
 		const char* expr_name = expr.type_name();
@@ -2995,6 +3070,8 @@ FAKEFN(EXPRIFY_string_literal)
 	};
 }
 
+std::unordered_set<token> unop_tokens{};
+
 #define DEFINE_EXPRIFICATION_CHORDS(x) \
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x)), FN\
@@ -3061,6 +3138,39 @@ FAKEFN(EXPRIFY_string_literal)
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	CHORD_END
+
+#define DEFINE_UNOPIFICATION_CHORDS(x, unop_ty) \
+	unop_tokens.insert(token::x);\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::shift};\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), NODE(ast_expr)), FN\
+		{\
+			const auto& expr = std::get<ast_expr>(nodes[1].payload);\
+			return\
+			{\
+				.action = parse_action::reduce,\
+				.nodes_to_remove = {.offset = 0, .length = 2},\
+				.reduction_result = {node{.payload = ast_expr{.expr_ = ast_unop_expr\
+					{\
+						.type = unop_type::unop_ty,\
+						.rhs = expr\
+					}}}}\
+			};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), WILDCARD), FN\
+		{\
+			return {.action = parse_action::recurse, .reduction_result_offset = 1};\
+		}\
+	EXTENSIBLE\
 	CHORD_END
 
 #define DEFINE_BIOPIFICATION_CHORDS(x, biop_ty) \
@@ -3338,7 +3448,7 @@ CHORD_BEGIN
 		if(value_node.payload.index() == payload_index<ast_token, node_payload>())
 		{
 			auto value = std::get<ast_token>(value_node.payload);
-			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct)
+			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct || unop_tokens.contains(value.tok))
 			{
 					return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
@@ -4133,6 +4243,10 @@ CHORD_BEGIN
 		};
 	}
 CHORD_END
+
+DEFINE_UNOPIFICATION_CHORDS(dash, minus)
+DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
+DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
 
 DEFINE_BIOPIFICATION_CHORDS(cast, cast)
 DEFINE_BIOPIFICATION_CHORDS(plus, plus)
