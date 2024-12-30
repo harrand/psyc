@@ -591,6 +591,39 @@ struct type_t
 				// lhs is fn, rhs is not a ptr nor fn. definitely cant convert.
 				return false;
 			}
+			else if(this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>())
+			{
+				if(std::get<ptr_ty>(this->payload).underlying_ty->is_void())
+				{
+					// this is v0&
+					// u64 weak is convertible to.
+					if(rhs.payload.index() == payload_index<prim_ty, decltype(rhs.payload)>())
+					{
+						auto prim = std::get<prim_ty>(rhs.payload);
+						if(prim.p == prim_ty::type::u64 && rhs.qual & typequal_weak)
+						{
+							return true;
+						}
+					}
+				}
+			} // other way around
+			else if(this->payload.index() == payload_index<prim_ty, decltype(this->payload)>())
+			{
+				auto prim = std::get<prim_ty>(this->payload);
+				if(prim.p == prim_ty::type::u64 && this->qual & typequal_weak)
+				{
+					// this is u64 weak
+					// we can convert to v0&
+					if(rhs.payload.index() == payload_index<ptr_ty, decltype(rhs.payload)>())
+					{
+						auto ptr = std::get<ptr_ty>(rhs.payload);
+						if(ptr.underlying_ty->is_void())
+						{
+							return true;
+						}
+					}
+				}
+			}
 			// if either of them are a type and the other is not also a type, then cant convert
 			else if(this->payload.index() == payload_index<meta_ty, decltype(this->payload)>() || rhs.payload.index() == payload_index<meta_ty, decltype(rhs.payload)>())
 			{
