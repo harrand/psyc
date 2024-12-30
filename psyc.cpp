@@ -476,6 +476,7 @@ struct struct_ty
 struct enum_ty
 {
 	box<type_t> underlying_ty;
+	std::vector<std::string> entries = {};
 	std::string name() const
 	{
 		return "enum";
@@ -991,6 +992,36 @@ struct semal_state
 			ret.variables[name] = ty;
 		}
 		return ret;
+	}
+
+	void feed_forward(semal_state& other)
+	{
+		// specifically bring back enums. only enums.
+		// enums are given members in their own block which needs to be fed-back to its parent
+		// structs probably need to do this too.
+		for(const auto& [name, structval] : this->structs)
+		{
+			if(!other.structs.contains(name))
+			{
+				other.structs.emplace(name, structval);
+			}
+			else
+			{
+				other.structs.at(name) = structval;
+			}
+		}
+
+		for(const auto& [name, enumval] : this->enums)
+		{
+			if(!other.enums.contains(name))
+			{
+				other.enums.emplace(name, enumval);
+			}
+			else
+			{
+				other.enums.at(name) = enumval;
+			}
+		}
 	}
 };
 
@@ -1842,6 +1873,17 @@ struct ast_symbol_expr
 	}
 };
 
+struct ast_field_expr
+{
+	box<ast_expr> lhs;
+	std::string rhs;
+
+	std::string value_tostring() const
+	{
+		return "field";
+	}
+};
+
 struct ast_structdef_expr
 {
 	std::string value_tostring() const
@@ -1928,6 +1970,7 @@ struct ast_expr
 		ast_funcdef_expr,
 		ast_callfunc_expr,
 		ast_symbol_expr,
+		ast_field_expr,
 		ast_structdef_expr,
 		ast_enumdef_expr,
 		ast_biop_expr,
@@ -1942,6 +1985,7 @@ struct ast_expr
 			"funcdef",
 			"callfunc",
 			"symbol",
+			"field",
 			"structdef",
 			"enumdef",
 			"biop",
@@ -2817,6 +2861,35 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			}
 		}
 	}
+	else if(expr.expr_.index() == payload_index<ast_field_expr, decltype(expr.expr_)>())
+	{
+		const auto& field_expr = std::get<ast_field_expr>(expr.expr_);
+		// i expect lhs to be a symbol expression as structs arent fully implemented yet
+		// once you get around to doing this, get the type of the lhs expression and ensure its a struct type.
+		// you should be able to get the struct name from that, and then compute rhs symbol expression as the member name.
+		
+		// for now tho, the code assumes enum access
+		if(field_expr.lhs->expr_.index() == payload_index<ast_symbol_expr, decltype(field_expr.lhs->expr_)>())
+		{
+			std::string lhs_symbol = std::get<ast_symbol_expr>(field_expr.lhs->expr_).symbol;
+			auto iter = types.enums.find(lhs_symbol);
+			if(iter == types.enums.end())
+			{
+				error(loc, "unknown enum \"{}\"", lhs_symbol);
+			}
+			const enum_ty& ty = iter->second;
+
+			if(!std::ranges::contains(ty.entries, field_expr.rhs))
+			{
+				error(loc, "enum {} has no entry \"{}\"", lhs_symbol, field_expr.rhs);
+			}
+			return type_t{.payload = ty};
+		}
+		else
+		{
+			panic("dont know how to handle field expression where lhs is not a symbol expr.");
+		}
+	}
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
@@ -3093,19 +3166,9 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 			error(loc, "unexpected designator. designators are currently only allowed within an enum definition, which is not where we are.");
 		}
 
-		const auto& enumdef = types.enums.at(maybe_enum_parent->name);
-		// ok so how to we expose this everywhere?
-		// we could just emplace a new variable that is a static underlying type with the given value
-		// however, that would only define it in this scope (within the enum def), making it inaccessible to literally everywhere else.
-		// not ideal.
-		// infact the code below hits that exact issue
+		auto& enumdef = types.enums.at(maybe_enum_parent->name);
+		enumdef.entries.push_back(desig.name);
 		type_t ret = *enumdef.underlying_ty;
-		auto [_, actually_emplaced] = types.variables.emplace(desig.name, ret);
-		if(!actually_emplaced)
-		{
-			error(loc, "duplicate definition of variable \"{}\"", desig.name);
-		}
-		warning(loc, "enum designators are not yet visible to other code");
 		return ret;
 	}
 	else
@@ -3172,6 +3235,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 	for(auto& child : ast.children)
 	{
 		semal(child, ast.types, ctx);
+		ast.types.feed_forward(types);
 	}
 	if(pop_context)
 	{
@@ -3275,6 +3339,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(semicol)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dot)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -3727,6 +3798,63 @@ CHORD_BEGIN
 		};
 	}
 	EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot)), FN
+	{
+		const auto& decl = std::get<ast_decl>(nodes[0].payload);
+		if(!decl.initialiser.has_value())
+		{
+			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
+		}
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot), NODE(ast_expr)), FN
+	{
+		auto& decl = std::get<ast_decl>(nodes[0].payload);
+		if(!decl.initialiser.has_value())
+		{
+			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
+		}
+		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
+		if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
+		{
+			const char* expr_name = rhs_expr.type_name();
+			chord_error("rhs of field access within a decl initialiser is expected to always be a symbol expression, but you have provided a {}", expr_name);
+		}
+
+		decl.initialiser.value() = ast_expr
+		{
+			.expr_ = ast_field_expr
+			{
+				.lhs = decl.initialiser.value(),
+				.rhs = std::get<ast_symbol_expr>(rhs_expr.expr_).symbol
+			}
+		};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot), WILDCARD), FN
+	{
+		auto& decl = std::get<ast_decl>(nodes[0].payload);
+		if(!decl.initialiser.has_value())
+		{
+			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
+		}
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};		
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -4495,6 +4623,81 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot)), FN
+	{
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		if(call.awaiting_next_param)
+		{
+			// i was expecting a param
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got .");
+		}
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot), NODE(ast_expr)), FN
+	{
+		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
+		if(call.awaiting_next_param)
+		{
+			// i was expecting a param
+			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got .");
+		}
+		ast_expr* last_expr = nullptr;
+		if(call.on_static_params)
+		{
+			if(call.static_params.empty())
+			{
+				chord_error("detected an attempt at a field access within a function call static param. you must precede the dot with an expression representing the lhs of the field access.");
+			}
+			last_expr = &call.static_params.back();
+		}
+		else
+		{
+			if(call.params.empty())
+			{
+				chord_error("detected an attempt at a field access within a function call param. you must precede the dot with an expression representing the lhs of the field access.");
+			}
+			last_expr = &call.params.back();
+		}
+
+		panic_ifnt(last_expr != nullptr, "big bad");
+
+		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
+		if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
+		{
+			const char* expr_name = rhs_expr.type_name();
+			chord_error("rhs of field access within a function call parameter is expected to always be a symbol expression, but you have provided a {}", expr_name);
+		}
+
+		*last_expr = ast_expr
+		{
+			.expr_ = ast_field_expr
+			{
+				.lhs = *last_expr,
+				.rhs = std::get<ast_symbol_expr>(rhs_expr.expr_).symbol
+			}
+		};
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 1, .length = 2}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), NODE(ast_expr)), FN
 	{
 		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
@@ -4994,21 +5197,29 @@ CHORD_BEGIN
 	EXTENSIBLE
 CHORD_END
 
+// compositing field expressions at the end of declarations.
+
 // uniform function call syntax
 // foo.bar(1, 2)
 // is equivalent too
 // bar(foo, 1, 2)
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot)), FN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot)), FN
 	{
 		return {.action = parse_action::shift};
 	}
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot), NODE(ast_expr)), FN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), NODE(ast_expr)), FN
 	{
-		std::string_view symbol = std::get<ast_token>(nodes[0].payload).lexeme;
+		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
+		if(lhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(lhs_expr.expr_)>())
+		{
+			const char* expr_name = lhs_expr.type_name();
+			chord_error("lhs of expr.expr is always expected to be a symbol expr (for now). you have supplied a {} expression", expr_name);
+		}
+		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
 		auto& expr_node = nodes[2];
 		auto& expr = std::get<ast_expr>(expr_node.payload);
 		if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
@@ -5016,22 +5227,44 @@ CHORD_BEGIN
 			// ufcs
 			auto& call = std::get<ast_callfunc_expr>(expr.expr_);
 			call.params.insert(call.params.begin(), ast_expr{.expr_ = ast_symbol_expr{.symbol = std::string{symbol}}});
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 2}
+			};
+		}
+		else if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+		{
+			std::string rhs = std::get<ast_symbol_expr>(expr.expr_).symbol;
+			// ok rhs of the dot is not a call to a function
+			// that means it must be a field expr
+			// which requires a symbol expression.
+
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 3},
+				.reduction_result = {node{.payload = ast_expr
+				{
+					.expr_ = ast_field_expr
+					{
+						.lhs = lhs_expr,
+						.rhs = rhs
+					}
+				}}}
+			};
 		}
 		else
 		{
-			const char* expr_type = expr.type_name();
-			chord_error("unexpected expression type \"symbol.expr\". expected expr to be a callfunc expression, but instead it is a {}", expr_type);
+			const char* expr_name = expr.type_name();
+			chord_error("in a expr.expr reduction, did not expect rhs expr to be a {}, expected either a function call expression (UFCS), or a symbol expression (forming a field expression)", expr_name);
 		}
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 2}
-		};
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(dot), WILDCARD), FN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
