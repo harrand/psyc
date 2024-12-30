@@ -3030,6 +3030,132 @@ FAKEFN(EXPRIFY_string_literal)
 		}\
 	CHORD_END
 
+#define DEFINE_BIOPIFICATION_CHORDS(x, biop_ty) \
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::shift};\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(x), NODE(ast_expr)), FN\
+		{\
+			auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);\
+			const auto& cast_to = std::get<ast_expr>(nodes[2].payload);\
+			ast_expr* last_expr;\
+			if(call.on_static_params)\
+			{\
+				if(call.static_params.empty())\
+				{\
+					std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;\
+					chord_error("unexpected token {} detected before any static params. move or remove this token.", tok);\
+				}\
+				last_expr = &call.static_params.back();\
+			}\
+			else\
+			{\
+				if(call.params.empty())\
+				{\
+					std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;\
+					chord_error("unexpected token {} detected before any params. move or remove this token.", tok);\
+				}\
+				last_expr = &call.params.back();\
+			}\
+			*last_expr = ast_expr{.expr_ = ast_biop_expr{.lhs = *last_expr, .type = biop_type::biop_ty, .rhs = cast_to}};\
+			return\
+			{\
+				.action = parse_action::reduce,\
+				.nodes_to_remove = {.offset = 1, .length = 2}\
+			};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(x), WILDCARD), FN\
+		{\
+			return\
+			{\
+				.action = parse_action::recurse,\
+				.reduction_result_offset = 2\
+			};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), NODE(ast_expr)), FN\
+		{\
+			const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);\
+			const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);\
+			return\
+			{\
+				.action = parse_action::reduce,\
+				.nodes_to_remove = {.offset = 0, .length = 3},\
+				.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr\
+					{\
+						.lhs = lhs_expr,\
+						.type = biop_type::biop_ty,\
+						.rhs = rhs_expr\
+					}}}}\
+			};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), WILDCARD), FN\
+		{\
+			return {.action = parse_action::recurse, .reduction_result_offset = 2};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), WILDCARD), FN\
+		{\
+			return {.action = parse_action::recurse, .reduction_result_offset = 2};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		STATE(NODE(ast_decl), TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::recurse};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(x)), FN\
+		{\
+			return {.action = parse_action::shift};\
+		}\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(x), NODE(ast_expr)), FN\
+		{\
+			auto& decl = std::get<ast_decl>(nodes[0].payload);\
+			if(!decl.initialiser.has_value())\
+			{\
+				chord_error("ksdfkjdshkfjh");\
+			}\
+			decl.initialiser.value() = ast_expr{.expr_ = ast_biop_expr\
+			{\
+				.lhs = decl.initialiser.value(),\
+				.type = biop_type::biop_ty,\
+				.rhs = std::get<ast_expr>(nodes[2].payload)\
+			}};\
+			return\
+			{\
+				.action = parse_action::reduce,\
+				.nodes_to_remove = {.offset = 1, .length = 2}\
+			};\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(x), WILDCARD), FN\
+		{\
+			return {.action = parse_action::recurse, .reduction_result_offset = 2};\
+		}\
+	EXTENSIBLE\
+	CHORD_END
 
 // a chord is a single entry in the parse tree
 // so let's say we are in the middle of the parsing process.
@@ -3146,6 +3272,14 @@ CHORD_BEGIN
 	{
 		return {.action = parse_action::shift};
 	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), TOKEN(initialiser), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+	EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -3967,64 +4101,11 @@ CHORD_BEGIN
 	}
 CHORD_END
 
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast)), FN
-	{
-		// yes need to do the same with all biop types
-		return {.action = parse_action::shift};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast), NODE(ast_expr)), FN
-	{
-		// yes need to do the same with all biop types
-		
-		// so we expect to see this directly after a param, i.e we are expecting a comma
-		// i.e not awaiting next param (coz comma or cparen)
-		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
-		const auto& cast_to = std::get<ast_expr>(nodes[2].payload);
-		ast_expr* last_expr;
-		if(call.on_static_params)
-		{
-			if(call.static_params.empty())
-			{
-				std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;
-				chord_error("unexpected token {} detected before any static params. move or remove this token.", tok);
-			}
-			last_expr = &call.static_params.back();
-		}
-		else
-		{
-			if(call.params.empty())
-			{
-				std::string_view tok = std::get<ast_token>(nodes[1].payload).lexeme;
-				chord_error("unexpected token {} detected before any params. move or remove this token.", tok);
-			}
-			last_expr = &call.params.back();
-		}
-		*last_expr = ast_expr{.expr_ = ast_biop_expr{.lhs = *last_expr, .type = biop_type::cast, .rhs = cast_to}};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = 2}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cast), WILDCARD), FN
-	{
-		// yes need to do the same with all biop types
-		return
-		{
-			.action = parse_action::recurse,
-			.reduction_result_offset = 2
-		};
-	}
-EXTENSIBLE
-CHORD_END
+DEFINE_BIOPIFICATION_CHORDS(cast, cast)
+DEFINE_BIOPIFICATION_CHORDS(plus, plus)
+DEFINE_BIOPIFICATION_CHORDS(dash, minus)
+DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
+DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
@@ -4463,182 +4544,6 @@ CHORD_BEGIN
 	{
 		return {.action = parse_action::shift};
 	}
-CHORD_END
-
-// binary operations
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(plus), NODE(ast_expr)), FN
-	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 3},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
-				{
-					.lhs = lhs_expr,
-					.type = biop_type::plus,
-					.rhs = rhs_expr
-				}}}}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(plus), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dash), NODE(ast_expr)), FN
-	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 3},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
-				{
-					.lhs = lhs_expr,
-					.type = biop_type::minus,
-					.rhs = rhs_expr
-				}}}}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dash), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(asterisk), NODE(ast_expr)), FN
-	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 3},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
-				{
-					.lhs = lhs_expr,
-					.type = biop_type::mul,
-					.rhs = rhs_expr
-				}}}}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(asterisk), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(fslash), NODE(ast_expr)), FN
-	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 3},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
-				{
-					.lhs = lhs_expr,
-					.type = biop_type::div,
-					.rhs = rhs_expr
-				}}}}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(fslash), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(cast)), FN
-	{
-		return {.action = parse_action::shift};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(cast), TOKEN(symbol)), FN
-	{
-		auto& decl = std::get<ast_decl>(nodes[0].payload);
-		if(!decl.initialiser.has_value())
-		{
-			chord_error("detected cast expression following a decl without an initialiser. you cannot use a cast expression when setting the typename.");
-		}
-		// e.g myvar ::= 5@s32
-		// we already have myvar ::= 5
-		// suddenly s32 appears, we actually need to amend the decl initialiser to be a cast expression.
-		// (probably the same for every single biop :( )
-		ast_expr initialiser_expr = decl.initialiser.value();
-		std::string symbol{std::get<ast_token>(nodes[2].payload).lexeme};
-		decl.initialiser = ast_expr{.expr_ = ast_biop_expr{.lhs = initialiser_expr, .type = biop_type::cast, .rhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = symbol}}}};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = 2}
-		};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(cast), NODE(ast_expr)), FN
-	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 3},
-			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_biop_expr
-				{
-					.lhs = lhs_expr,
-					.type = biop_type::cast,
-					.rhs = rhs_expr
-				}}}}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(cast), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
