@@ -2413,6 +2413,7 @@ parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtree
 }
 */
 
+std::size_t total_number_of_chords = 0;
 void add_chord(std::span<const node> subtrees, const char* description, chord_function fn, bool extensible = false)
 {
 	bool any_wildcards = false;
@@ -2425,6 +2426,7 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 	}
 	foreach_entry_from_hashed_subtrees(subtrees, [fn, description, any_wildcards, extensible](parse_table_entry& entry)
 	{
+		total_number_of_chords++;
 		if(any_wildcards)
 		{
 			if(entry.chord_fn == nullptr)
@@ -2637,13 +2639,14 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 	if(verbose_parse)
 	{
 		constexpr auto verbose_parse_print = R"(+======
+	parse table size = {}
 	chords = {}
 	shifts = {}
 	reductions = {}
 	recursions = {}
 	commits = {}
 +======)";
-		std::println(verbose_parse_print, state.chord_invocation_count, state.shift_count, state.reduce_count, state.recurse_count, state.commit_count);
+		std::println(verbose_parse_print, total_number_of_chords, state.chord_invocation_count, state.shift_count, state.reduce_count, state.recurse_count, state.commit_count);
 	}
 	return state.nodes.front();
 }
