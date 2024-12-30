@@ -473,6 +473,16 @@ struct struct_ty
 	bool operator==(const struct_ty& rhs) const = default;
 };
 
+struct enum_ty
+{
+	box<type_t> underlying_ty;
+	std::string name() const
+	{
+		return "enum";
+	}
+	bool operator==(const enum_ty& rhs) const = default;
+};
+
 struct ptr_ty
 {
 	box<type_t> underlying_ty;
@@ -506,6 +516,7 @@ struct type_t
 		std::monostate,
 		prim_ty,
 		struct_ty,
+		enum_ty,
 		ptr_ty,
 		fn_ty,
 		meta_ty
@@ -699,6 +710,11 @@ struct type_t
 		return this->payload.index() == payload_index<struct_ty, decltype(this->payload)>();
 	}
 
+	bool is_enum() const
+	{
+		return this->payload.index() == payload_index<enum_ty, decltype(this->payload)>();
+	}
+
 	bool is_ptr() const
 	{
 		return this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>();
@@ -762,6 +778,7 @@ struct semal_state
 {
 	std::unordered_map<std::string, prim_ty> primitives = {};
 	std::unordered_map<std::string, struct_ty> structs = {};
+	std::unordered_map<std::string, enum_ty> enums = {};
 	std::unordered_map<std::string, fn_ty> functions = {};
 	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
 	std::unordered_map<std::string, type_t> variables = {};
@@ -839,6 +856,16 @@ struct semal_state
 					if (name == word)
 					{
 						current_type.payload = structval;
+						break;
+					}
+				}
+
+				// Or with enums
+				for (const auto& [name, enumval] : this->enums)
+				{
+					if (name == word)
+					{
+						current_type.payload = enumval;
 						break;
 					}
 				}
@@ -944,6 +971,11 @@ struct semal_state
 		for(const auto& [name, structval] : other.structs)
 		{
 			ret.structs[name] = structval;
+		}
+
+		for(const auto& [name, enumval] : other.enums)
+		{
+			ret.enums.emplace(name, enumval);
 		}
 
 		for(const auto& [name, fn] : other.functions)
@@ -1141,6 +1173,7 @@ enum class token : std::uint32_t
 	keyword_func,
 	keyword_extern,
 	keyword_struct,
+	keyword_enum,
 	keyword_ref,
 	keyword_deref,
 	keyword_defer,
@@ -1488,6 +1521,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "enum keyword",
+		.front_identifier = "enum",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "ref keyword",
 		.front_identifier = "ref",
 		.trivial = true
@@ -1810,6 +1850,19 @@ struct ast_structdef_expr
 	}
 };
 
+struct ast_enumdef_expr
+{
+	std::string underlying_type = "";
+	std::string value_tostring() const
+	{
+		if(this->underlying_type.empty())
+		{
+			return "enum";
+		}
+		return std::format("enum({})", this->underlying_type);
+	}
+};
+
 enum class biop_type
 {
 	plus,
@@ -1876,6 +1929,7 @@ struct ast_expr
 		ast_callfunc_expr,
 		ast_symbol_expr,
 		ast_structdef_expr,
+		ast_enumdef_expr,
 		ast_biop_expr,
 		ast_unop_expr
 	> expr_;
@@ -1889,6 +1943,7 @@ struct ast_expr
 			"callfunc",
 			"symbol",
 			"structdef",
+			"enumdef",
 			"biop",
 			"unop"
 		}[this->expr_.index()];
@@ -2560,6 +2615,7 @@ struct semal_context
 	{
 		in_function,
 		in_struct,
+		in_enum,
 		undefined
 	};
 	struct entry
@@ -2589,6 +2645,19 @@ struct semal_context
 				[](const entry& e)->bool
 				{
 					return e.t == semal_context::type::in_struct;
+				});
+		if(iter != this->entries.rend())
+		{
+			return &*iter;
+		}
+		return nullptr;
+	}
+	const entry* try_get_parent_enum() const
+	{
+		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
+				[](const entry& e)->bool
+				{
+					return e.t == semal_context::type::in_enum;
 				});
 		if(iter != this->entries.rend())
 		{
@@ -2743,6 +2812,17 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
 		return type_t::create_meta_type(type_t{.payload = struct_ty{}});
 	}
+	else if(expr.expr_.index() == payload_index<ast_enumdef_expr, decltype(expr.expr_)>())
+	{
+		const auto& enumdef = std::get<ast_enumdef_expr>(expr.expr_);
+		type_t underlying_ty = type_t{.payload = prim_ty{.p = prim_ty::type::s64}};
+		if(!enumdef.underlying_type.empty())
+		{
+			underlying_ty = types.parse(enumdef.underlying_type);
+		}
+		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
+		return type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}});
+	}
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
@@ -2873,6 +2953,7 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 
 	const bool expr_is_funcdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
 	const bool expr_is_structdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
+	const bool expr_is_enumdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_enumdef_expr, decltype(decl.initialiser.value().expr_)>();
 	if(ty.has_value())
 	{
 		if(ty.value().is_fn() && expr_is_funcdef)
@@ -2897,6 +2978,16 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 				error(loc, "duplicate definition of struct \"{}\"", decl.name);
 			}
 			ctx.entries.push_back({.t = semal_context::type::in_struct, .name = decl.name});
+		}
+		else if(ty.value().is_type() && expr_is_enumdef)
+		{
+			auto& enumdef = std::get<enum_ty>(std::get<meta_ty>(ty.value().payload).concrete->payload);
+			auto [_, actually_emplaced] = types.enums.emplace(decl.name, enumdef);
+			if(!actually_emplaced)
+			{
+				error(loc, "duplicate definition of enum \"{}\"", decl.name);
+			}
+			ctx.entries.push_back({.t = semal_context::type::in_enum, .name = decl.name});
 		}
 	}
 	return ty;
@@ -3533,7 +3624,7 @@ CHORD_BEGIN
 		if(value_node.payload.index() == payload_index<ast_token, node_payload>())
 		{
 			auto value = std::get<ast_token>(value_node.payload);
-			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct || unop_tokens.contains(value.tok))
+			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct || value.tok == token::keyword_enum || unop_tokens.contains(value.tok))
 			{
 					return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
@@ -4108,6 +4199,77 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_struct), WILDCARD, WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_enumdef_expr{}}, .children = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{.capped = true}}}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum), NODE(ast_stmt)), FN
+	{
+		auto& stmt_node = nodes[1];
+		auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(blk.capped)
+			{
+				return
+				{
+					.action = parse_action::reduce,
+					.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+					.reduction_result = {node{.payload = ast_expr{.expr_ = ast_enumdef_expr{}}, .children = {stmt_node}}}
+				};
+			}
+			else
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 1};
+			}
+		}
+		else
+		{
+			const char* stmt_type = stmt.type_name();
+			chord_error("enum keyword is followed by a statement. i only expect block statements to follow this keyword, but instead you've provided me with a {}", stmt_type);
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum), WILDCARD), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_enum), WILDCARD, WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 1};
 	}
