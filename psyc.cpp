@@ -3001,6 +3001,22 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 	}
 	ast.types = ast.types.coalesce(types);
 
+	// check if any children are return statements
+	auto maybe_return_stmt = std::find_if(ast.children.begin(), ast.children.end(),
+			[](const node& child)->bool
+			{
+				if(child.payload.index() == payload_index<ast_stmt, node_payload>())
+				{
+					const auto& stmt = std::get<ast_stmt>(child.payload);
+					return stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>();
+				}
+				return false;
+			});
+	if(maybe_return_stmt != ast.children.end())
+	{
+		// if there is a return stmt, it better be the last child.
+		error_ifnt(std::next(maybe_return_stmt) == ast.children.end(), maybe_return_stmt->begin_location, "return statement must be the last statement within a block. this one is not.");
+	}
 	// do an initial pass over the children
 	// if any of it are statements that are deferred, send it to the end of the list of children.
 	for(auto iter = ast.children.begin(); iter != ast.children.end(); iter++)
@@ -3010,10 +3026,11 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 			if(std::get<ast_stmt>(iter->payload).deferred)
 			{
 				// note: this will probably cause issues in the case that the last child is a return stmt. as the return stmt should always be the last stmt in a blk.
-				std::rotate(iter, iter + 1, ast.children.end());
+				std::rotate(iter, iter + 1, maybe_return_stmt);
 			}
 		}
 	}
+	// ok SORRY. actually semal the children now.
 	for(auto& child : ast.children)
 	{
 		semal(child, ast.types, ctx);
