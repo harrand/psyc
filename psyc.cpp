@@ -3101,54 +3101,63 @@ std::unordered_set<token> unop_tokens{};
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cparen)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(canglebrack)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(comma)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(plus)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dash)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(asterisk)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(fslash)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cast)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
+	EXTENSIBLE\
 	CHORD_END
 
 #define DEFINE_UNOPIFICATION_CHORDS(x, unop_ty) \
@@ -4523,7 +4532,6 @@ CHORD_BEGIN
 EXTENSIBLE
 CHORD_END
 
-
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_func), WILDCARD), FN
 	{
@@ -4589,6 +4597,51 @@ CHORD_BEGIN
 	{
 		return {.action = parse_action::shift};
 	}
+CHORD_END
+
+// parenthesised expressions (should allow you to avoid operator precedence issues)
+CHORD_BEGIN
+	STATE(TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+	EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen), NODE(ast_expr), TOKEN(cparen)), FN
+	{
+		const auto& expr_node = nodes[1];
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {expr_node}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+	EXTENSIBLE
 CHORD_END
 
 // uniform function call syntax
