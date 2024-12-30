@@ -551,6 +551,18 @@ struct type_t
 			{
 				return true;
 			}
+			else if(this->payload.index() == payload_index<enum_ty, decltype(this->payload)>())
+			{
+				// enums are never convertible unless either is weak. if either is weak, then its convertible if the underlying types are convertible.
+				if(this->qual & typequal_weak || rhs.qual & typequal_weak)
+				{
+					return std::get<enum_ty>(this->payload).underlying_ty->is_convertible_to(*std::get<enum_ty>(rhs.payload).underlying_ty);
+				}
+				else
+				{
+					return false;
+				}
+			}
 			// so this is a bit more complicated
 			else if(this->payload.index() == payload_index<meta_ty, decltype(this->payload)>())
 			{
@@ -580,8 +592,21 @@ struct type_t
 		}
 		else
 		{
+			// enums can be converted to their underlying type if either is weak. otherwise it can never convert.
+			if(this->payload.index() == payload_index<enum_ty, decltype(this->payload)>())
+			{
+				const auto& enum_t = std::get<enum_ty>(this->payload);
+				if(this->qual & typequal_weak || rhs.qual & typequal_weak)
+				{
+					return enum_t.underlying_ty->is_convertible_to(rhs);
+				}
+				else
+				{
+					return false;
+				}
+			}
 			// functions (if weak) can be converted to v0& and vice-versa. no other pointer type.
-			if(this->payload.index() == payload_index<fn_ty, decltype(this->payload)>() && rhs.payload.index() == payload_index<ptr_ty, decltype(rhs.payload)>())
+			else if(this->payload.index() == payload_index<fn_ty, decltype(this->payload)>() && rhs.payload.index() == payload_index<ptr_ty, decltype(rhs.payload)>())
 			{
 				// conv fn to ptr
 				const auto& rhs_ptr = std::get<ptr_ty>(rhs.payload);
