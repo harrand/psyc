@@ -3169,6 +3169,14 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		auto& enumdef = types.enums.at(maybe_enum_parent->name);
 		enumdef.entries.push_back(desig.name);
 		type_t ret = *enumdef.underlying_ty;
+
+		// make sure the initialiser of the designator actually matches the type.
+		auto desig_init_ty = expr_get_type(desig.initialiser, types, loc, ctx);
+		error_ifnt(desig_init_ty.has_value() && !desig_init_ty.value().is_badtype(), loc, "initialiser expression of designator yielded an invalid type.");
+		std::string desig_init_tyname = desig_init_ty->name();
+		std::string enum_tyname = enumdef.name();
+		std::string enum_underlying_tyname = ret.name();
+		error_ifnt(desig_init_ty->is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
 		return ret;
 	}
 	else
