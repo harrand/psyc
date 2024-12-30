@@ -2028,6 +2028,14 @@ struct ast_metaregion_stmt
 	std::string value_tostring(){return std::format("{} meta-region", this->name);}
 };
 
+struct ast_designator_stmt
+{
+	std::string name;
+	ast_expr initialiser;
+
+	std::string value_tostring(){return "designator";}
+};
+
 struct ast_stmt
 {
 	std::variant
@@ -2036,7 +2044,8 @@ struct ast_stmt
 		ast_expr_stmt,
 		ast_return_stmt,
 		ast_blk_stmt,
-		ast_metaregion_stmt
+		ast_metaregion_stmt,
+		ast_designator_stmt
 	> stmt_;
 	bool deferred = false;
 	const char* type_name() const
@@ -2047,7 +2056,8 @@ struct ast_stmt
 			"expression",
 			"return",
 			"block",
-			"metaregion"
+			"metaregion",
+			"designator"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -3073,6 +3083,31 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		warning(loc, "detected \"{}\" metaregion but support is NYI", metaregion.name);
 		return type_t::create_void_type();
 	}
+	else if(stmt.stmt_.index() == payload_index<ast_designator_stmt, decltype(stmt.stmt_)>())
+	{
+		const auto* maybe_enum_parent = ctx.try_get_parent_enum();
+		const auto& desig = std::get<ast_designator_stmt>(stmt.stmt_);
+
+		if(maybe_enum_parent == nullptr)
+		{
+			error(loc, "unexpected designator. designators are currently only allowed within an enum definition, which is not where we are.");
+		}
+
+		const auto& enumdef = types.enums.at(maybe_enum_parent->name);
+		// ok so how to we expose this everywhere?
+		// we could just emplace a new variable that is a static underlying type with the given value
+		// however, that would only define it in this scope (within the enum def), making it inaccessible to literally everywhere else.
+		// not ideal.
+		// infact the code below hits that exact issue
+		type_t ret = *enumdef.underlying_ty;
+		auto [_, actually_emplaced] = types.variables.emplace(desig.name, ret);
+		if(!actually_emplaced)
+		{
+			error(loc, "duplicate definition of variable \"{}\"", desig.name);
+		}
+		warning(loc, "enum designators are not yet visible to other code");
+		return ret;
+	}
 	else
 	{
 		const char* stmt_name = stmt.type_name();
@@ -3955,6 +3990,7 @@ CHORD_BEGIN
 			.reduction_result = {ret}
 		};
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -4275,6 +4311,67 @@ CHORD_BEGIN
 	}
 EXTENSIBLE
 CHORD_END
+
+// designators
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), NODE(ast_expr), TOKEN(semicol)), FN
+	{
+		const auto& expr_node = nodes[3];
+		std::string name{std::get<ast_token>(nodes[1].payload).lexeme};
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 4},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_designator_stmt{.name = name, .initialiser = std::get<ast_expr>(expr_node.payload)}}}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 3};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 3};
+	}
+CHORD_END
+
+//
 
 CHORD_BEGIN
 	STATE(NODE(ast_decl), TOKEN(semicol)), FN
