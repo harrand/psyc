@@ -2808,7 +2808,19 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				return rhs_ty;
 			break;
 			case unop_type::ref:
+			{
+				// in theory you could ref literally anything
+				// however if you ref something like a literal then you are almost 100% wrong
+				// let's error out on it.
+				if(unop.rhs->expr_.index() == payload_index<ast_literal_expr, decltype(unop.rhs->expr_)>()
+				|| unop.rhs->expr_.index() == payload_index<ast_funcdef_expr, decltype(unop.rhs->expr_)>()
+				)
+				{
+					const char* expr_name = unop.rhs->type_name();
+					error(loc, "attempt to ref a {} expression, which is incorrect.", expr_name);
+				}
 				return type_t{.payload = types.create_pointer_ty(rhs_ty.value())};
+			}
 			break;
 			case unop_type::deref:
 				error_ifnt(rhs_ty->is_ptr(), loc, "cannot deref non-pointer-type \"{}\"", tyname);
