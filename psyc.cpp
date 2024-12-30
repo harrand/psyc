@@ -1143,6 +1143,7 @@ enum class token : std::uint32_t
 	keyword_struct,
 	keyword_ref,
 	keyword_deref,
+	keyword_defer,
 	symbol,
 	end_of_file,
 	_count
@@ -1496,6 +1497,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "deref keyword",
 		.front_identifier = "deref",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "defer keyword",
+		.front_identifier = "defer",
 		.trivial = true
 	},
 
@@ -1975,6 +1983,7 @@ struct ast_stmt
 		ast_blk_stmt,
 		ast_metaregion_stmt
 	> stmt_;
+	bool deferred = false;
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
@@ -2969,7 +2978,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	return std::nullopt;
 }
 
-void semal(const node& ast, semal_state& types, semal_context& ctx)
+void semal(node& ast, semal_state& types, semal_context& ctx)
 {
 	bool pop_context = false;
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
@@ -2992,6 +3001,19 @@ void semal(const node& ast, semal_state& types, semal_context& ctx)
 	}
 	ast.types = ast.types.coalesce(types);
 
+	// do an initial pass over the children
+	// if any of it are statements that are deferred, send it to the end of the list of children.
+	for(auto iter = ast.children.begin(); iter != ast.children.end(); iter++)
+	{
+		if(iter->payload.index() == payload_index<ast_stmt, node_payload>())
+		{
+			if(std::get<ast_stmt>(iter->payload).deferred)
+			{
+				// note: this will probably cause issues in the case that the last child is a return stmt. as the return stmt should always be the last stmt in a blk.
+				std::rotate(iter, iter + 1, ast.children.end());
+			}
+		}
+	}
 	for(auto& child : ast.children)
 	{
 		semal(child, ast.types, ctx);
@@ -4365,6 +4387,46 @@ DEFINE_EXPRIFICATION_CHORDS(integer_literal)
 DEFINE_EXPRIFICATION_CHORDS(decimal_literal)
 DEFINE_EXPRIFICATION_CHORDS(string_literal)
 DEFINE_EXPRIFICATION_CHORDS(symbol)
+
+CHORD_BEGIN
+	STATE(TOKEN(keyword_defer)), FN
+	{
+		chord_error("you can only defer a statement that is in a block. this looks like a top-level statement");
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_defer)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_defer), NODE(ast_stmt)), FN
+	{
+		auto& stmt = std::get<ast_stmt>(nodes[1].payload);
+		if(stmt.deferred)
+		{
+			chord_error("attempt to defer statement that is already deferred.");
+		}
+		stmt.deferred = true;
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_defer), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
 
 CHORD_BEGIN
 	STATE(NODE(ast_stmt)), FN
