@@ -1898,17 +1898,6 @@ struct ast_symbol_expr
 	}
 };
 
-struct ast_field_expr
-{
-	box<ast_expr> lhs;
-	std::string rhs;
-
-	std::string value_tostring() const
-	{
-		return "field";
-	}
-};
-
 struct ast_structdef_expr
 {
 	std::string value_tostring() const
@@ -1937,6 +1926,7 @@ enum class biop_type
 	mul,
 	div,
 	cast,
+	field,
 	_count
 };
 
@@ -1955,7 +1945,8 @@ struct ast_biop_expr
 			"minus",
 			"multiply",
 			"divide",
-			"cast"
+			"cast",
+			"field"
 		}[static_cast<int>(this->type)]);
 	}
 };
@@ -1995,7 +1986,6 @@ struct ast_expr
 		ast_funcdef_expr,
 		ast_callfunc_expr,
 		ast_symbol_expr,
-		ast_field_expr,
 		ast_structdef_expr,
 		ast_enumdef_expr,
 		ast_biop_expr,
@@ -2010,7 +2000,6 @@ struct ast_expr
 			"funcdef",
 			"callfunc",
 			"symbol",
-			"field",
 			"structdef",
 			"enumdef",
 			"biop",
@@ -2352,11 +2341,16 @@ struct chord_result
 struct parser_state;
 using chord_function = chord_result(*)(std::span<node> subtrees, parser_state& state);
 
+struct chord_extra_info
+{
+	bool extensible = false;
+	bool overrideable = false;
+};
 struct parse_table_entry
 {
 	chord_function chord_fn = nullptr;
 	const char* description = "";
-	bool extensible = false;
+	chord_extra_info extra;
 	std::unordered_map<std::int64_t, parse_table_entry> children = {};
 };
 std::unordered_map<std::int64_t, parse_table_entry> parse_table = {};
@@ -2376,7 +2370,7 @@ void foreach_entry_from_hashed_subtrees(std::span<const node> subtrees, entry_fn
 	for(const node& n : subtrees)
 	{
 		std::int64_t hash = n.hash();
-		if(!skip_extensible && base->extensible)
+		if(!skip_extensible && base->extra.extensible)
 		{
 			break;
 		}
@@ -2414,7 +2408,7 @@ parse_table_entry& find_entry_from_hashed_subtrees(std::span<const node> subtree
 */
 
 std::size_t total_number_of_chords = 0;
-void add_chord(std::span<const node> subtrees, const char* description, chord_function fn, bool extensible = false)
+void add_chord(std::span<const node> subtrees, const char* description, chord_function fn, chord_extra_info extra = {})
 {
 	bool any_wildcards = false;
 	for(const node& n : subtrees)
@@ -2424,7 +2418,7 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 			any_wildcards = true;
 		}
 	}
-	foreach_entry_from_hashed_subtrees(subtrees, [fn, description, any_wildcards, extensible](parse_table_entry& entry)
+	foreach_entry_from_hashed_subtrees(subtrees, [fn, description, any_wildcards, extra](parse_table_entry& entry)
 	{
 		total_number_of_chords++;
 		if(any_wildcards)
@@ -2433,22 +2427,24 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 			{
 				entry.chord_fn = fn;
 				entry.description = description;
-				entry.extensible = extensible;
+				entry.extra = extra;
 			}
 		}
 		else
 		{
-			panic_ifnt(entry.chord_fn == nullptr || entry.chord_fn == fn, "redefinition of chord function {}", entry.description);
+			panic_ifnt(entry.extra.overrideable || (entry.chord_fn == nullptr || entry.chord_fn == fn), "redefinition of chord function {}", entry.description);
 			entry.chord_fn = fn;
 			entry.description = description;
-			entry.extensible = extensible;
+			entry.extra = extra;
 		}
 	}, nullptr, true);
 }
 
 #define CHORD_BEGIN add_chord(
 #define CHORD_END );
-#define EXTENSIBLE , true
+#define EXTENSIBLE , {.extensible = true}
+#define OVERRIDEABLE , {.overrideable = true}
+#define EXTENSIBLE_AND_OVERRIDEABLE , {.extensible = true, .overrideable = true}
 
 #define TOKEN(x) node::wrap_imaginary_token(token::x)
 #define NODE(x) node{.payload = x{}}
@@ -2544,7 +2540,7 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 			state.chord_invocation_count++;
 			if(verbose_parse)
 			{
-				std::print("{}{}\n\t=> ", entry.description, entry.extensible ? ", ..." : "");
+				std::print("{}{}\n\t=> ", entry.description, entry.extra.extensible ? ", ..." : "");
 			}
 			switch(result.action)
 			{
@@ -2903,35 +2899,6 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			}
 		}
 	}
-	else if(expr.expr_.index() == payload_index<ast_field_expr, decltype(expr.expr_)>())
-	{
-		const auto& field_expr = std::get<ast_field_expr>(expr.expr_);
-		// i expect lhs to be a symbol expression as structs arent fully implemented yet
-		// once you get around to doing this, get the type of the lhs expression and ensure its a struct type.
-		// you should be able to get the struct name from that, and then compute rhs symbol expression as the member name.
-		
-		// for now tho, the code assumes enum access
-		if(field_expr.lhs->expr_.index() == payload_index<ast_symbol_expr, decltype(field_expr.lhs->expr_)>())
-		{
-			std::string lhs_symbol = std::get<ast_symbol_expr>(field_expr.lhs->expr_).symbol;
-			auto iter = types.enums.find(lhs_symbol);
-			if(iter == types.enums.end())
-			{
-				error(loc, "unknown enum \"{}\"", lhs_symbol);
-			}
-			const enum_ty& ty = iter->second;
-
-			if(!std::ranges::contains(ty.entries, field_expr.rhs))
-			{
-				error(loc, "enum {} has no entry \"{}\"", lhs_symbol, field_expr.rhs);
-			}
-			return type_t{.payload = ty};
-		}
-		else
-		{
-			panic("dont know how to handle field expression where lhs is not a symbol expr.");
-		}
-	}
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
@@ -2952,7 +2919,6 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
 		auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
-		auto rhs_ty = expr_get_type(*biop.rhs, types, loc, ctx);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -2965,10 +2931,13 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			case biop_type::mul:
 				[[fallthrough]];
 			case biop_type::div:
+			{
+				auto rhs_ty = expr_get_type(*biop.rhs, types, loc, ctx);
 				error_ifnt(lhs_ty.has_value(), loc, "lhs type is wrong");
 				error_ifnt(rhs_ty.has_value(), loc, "rhs type is wrong");
 				error_ifnt(lhs_ty->is_convertible_to(rhs_ty.value()), loc, "binary operator is invalid because the left and right expression types are not convertible.");
 				return lhs_ty;
+			}
 			break;
 			case biop_type::cast:
 			{
@@ -2987,6 +2956,40 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 					std::string casted_to_tyname = casted_to_ty.name();
 					error_ifnt(lhs_ty.value().add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
 					return casted_to_ty;
+				}
+			}
+			break;
+			case biop_type::field:
+			{
+				error_ifnt(lhs_ty.has_value() && !lhs_ty.value().is_badtype(), loc, "lhs of cast expression did not yield a valid type");
+				std::string rhs_symbol;
+				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
+				{
+					rhs_symbol = std::get<ast_symbol_expr>(biop.rhs->expr_).symbol;
+				}
+				else
+				{
+					panic("dont know how to handle biop field expression where rhs is not a symbol expr.");
+				}
+				if(biop.lhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.lhs->expr_)>())
+				{
+					std::string lhs_symbol = std::get<ast_symbol_expr>(biop.lhs->expr_).symbol;
+					auto iter = types.enums.find(lhs_symbol);
+					if(iter == types.enums.end())
+					{
+						error(loc, "unknown enum \"{}\"", lhs_symbol);
+					}
+					const enum_ty& ty = iter->second;
+
+					if(!std::ranges::contains(ty.entries, rhs_symbol))
+					{
+						error(loc, "enum {} has no entry \"{}\"", lhs_symbol, rhs_symbol);
+					}
+					return type_t{.payload = ty};
+				}
+				else
+				{
+					panic("dont know how to handle biop field expression where lhs is not a symbol expr.");
 				}
 			}
 			break;
@@ -3573,7 +3576,7 @@ std::unordered_set<token> unop_tokens{};
 					}}}}\
 			};\
 		}\
-	EXTENSIBLE\
+	EXTENSIBLE_AND_OVERRIDEABLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), WILDCARD), FN\
@@ -3848,63 +3851,6 @@ CHORD_BEGIN
 		};
 	}
 	EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot)), FN
-	{
-		const auto& decl = std::get<ast_decl>(nodes[0].payload);
-		if(!decl.initialiser.has_value())
-		{
-			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
-		}
-		return {.action = parse_action::shift};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot), NODE(ast_expr)), FN
-	{
-		auto& decl = std::get<ast_decl>(nodes[0].payload);
-		if(!decl.initialiser.has_value())
-		{
-			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
-		}
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-		if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
-		{
-			const char* expr_name = rhs_expr.type_name();
-			chord_error("rhs of field access within a decl initialiser is expected to always be a symbol expression, but you have provided a {}", expr_name);
-		}
-
-		decl.initialiser.value() = ast_expr
-		{
-			.expr_ = ast_field_expr
-			{
-				.lhs = decl.initialiser.value(),
-				.rhs = std::get<ast_symbol_expr>(rhs_expr.expr_).symbol
-			}
-		};
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = 2}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_decl), TOKEN(dot), WILDCARD), FN
-	{
-		auto& decl = std::get<ast_decl>(nodes[0].payload);
-		if(!decl.initialiser.has_value())
-		{
-			chord_error("decl followed immediately by a dot implies the initialiser expression is a field expression, however there is no initialiser expression at all by the time of the dot -- syntax error.");
-		}
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};		
-	}
-EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -4673,81 +4619,6 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot)), FN
-	{
-		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
-		if(call.awaiting_next_param)
-		{
-			// i was expecting a param
-			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got .");
-		}
-		return {.action = parse_action::shift};
-	}
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot), NODE(ast_expr)), FN
-	{
-		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
-		if(call.awaiting_next_param)
-		{
-			// i was expecting a param
-			chord_error("syntax error while evaluating function call. expected an expression representing a parameter, got .");
-		}
-		ast_expr* last_expr = nullptr;
-		if(call.on_static_params)
-		{
-			if(call.static_params.empty())
-			{
-				chord_error("detected an attempt at a field access within a function call static param. you must precede the dot with an expression representing the lhs of the field access.");
-			}
-			last_expr = &call.static_params.back();
-		}
-		else
-		{
-			if(call.params.empty())
-			{
-				chord_error("detected an attempt at a field access within a function call param. you must precede the dot with an expression representing the lhs of the field access.");
-			}
-			last_expr = &call.params.back();
-		}
-
-		panic_ifnt(last_expr != nullptr, "big bad");
-
-		const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);
-		if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
-		{
-			const char* expr_name = rhs_expr.type_name();
-			chord_error("rhs of field access within a function call parameter is expected to always be a symbol expression, but you have provided a {}", expr_name);
-		}
-
-		*last_expr = ast_expr
-		{
-			.expr_ = ast_field_expr
-			{
-				.lhs = *last_expr,
-				.rhs = std::get<ast_symbol_expr>(rhs_expr.expr_).symbol
-			}
-		};
-
-		return
-		{
-			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 1, .length = 2}
-		};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(dot), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 2};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), NODE(ast_expr)), FN
 	{
 		auto& call = std::get<ast_partial_callfunc>(nodes[0].payload);
@@ -4850,6 +4721,7 @@ DEFINE_BIOPIFICATION_CHORDS(plus, plus)
 DEFINE_BIOPIFICATION_CHORDS(dash, minus)
 DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
 DEFINE_BIOPIFICATION_CHORDS(fslash, div)
+DEFINE_BIOPIFICATION_CHORDS(dot, field)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
@@ -5296,10 +5168,11 @@ CHORD_BEGIN
 				.nodes_to_remove = {.offset = 0, .length = 3},
 				.reduction_result = {node{.payload = ast_expr
 				{
-					.expr_ = ast_field_expr
+					.expr_ = ast_biop_expr
 					{
-						.lhs = lhs_expr,
-						.rhs = rhs
+							.lhs = lhs_expr,
+							.type = biop_type::field,
+							.rhs = expr
 					}
 				}}}
 			};
