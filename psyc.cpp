@@ -5457,7 +5457,8 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	for(const auto& [newfile, loc] : types.added_source_files)
 	{
 		error_ifnt(newfile != file, loc, "source file {} adds itself {}", file, loc);
-		error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", newfile, loc);
+		auto filename = newfile.filename();
+		error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", filename, loc);
 		compile_file(newfile, args);
 	}
 
