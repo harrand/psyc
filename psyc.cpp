@@ -2512,12 +2512,21 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 			}
 			if(entry.chord_fn == nullptr)
 			{
-				std::string formatted_src = format_source(state.in.source, state.nodes[1].begin_location, state.nodes.back().end_location);
-				std::string ast_dump;
-				error_nonblocking(state.nodes[1].begin_location, "invalid syntax\n{}\n", formatted_src);
-				for(const node& n : state.nodes)
+				std::size_t begin_idx = state.recursive_offset;
+				if(!state.recursing)
 				{
-					n.verbose_print(state.in.source);
+					begin_idx = 1;
+				}
+
+				std::string formatted_src = format_source(state.in.source, state.nodes[begin_idx].begin_location, state.nodes.back().end_location);
+				std::string ast_dump;
+				error_nonblocking(state.nodes[begin_idx].begin_location, "invalid syntax\n{}\n", formatted_src);
+				if(verbose_parse)
+				{
+					for(const node& n : state.nodes)
+					{
+						n.verbose_print(state.in.source);
+					}
 				}
 				crash();
 			}
@@ -2621,7 +2630,12 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 				break;
 				case parse_action::error:
 				{
-					std::string formatted_src = format_source(state.in.source, state.nodes.front().begin_location, state.nodes.back().end_location);
+					std::size_t begin_idx = state.recursive_offset;
+					if(!state.recursing)
+					{
+						begin_idx = 1;
+					}
+					std::string formatted_src = format_source(state.in.source, state.nodes[begin_idx].begin_location, state.nodes.back().end_location);
 					std::print("{}\n{}\n", formatted_src, verbose_parse ? entry.description : "");
 					crash();
 				}
@@ -5424,6 +5438,13 @@ CHORD_BEGIN
 				node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}}
 			}
 		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(NODE(ast_decl), WILDCARD), FN
+	{
+		chord_error("unexpected token(s) directly following a decl, did you forget a semicolon?");
 	}
 CHORD_END
 
