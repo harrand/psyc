@@ -2738,6 +2738,31 @@ node* try_get_block_child(node& n)
 	return nullptr;
 }
 
+node* try_find_build_metaregion(node& ast)
+{
+	if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
+	{
+		const auto& stmt = std::get<ast_stmt>(ast.payload);
+		if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
+			if(metaregion.name == "build")
+			{
+				return &ast;
+			}
+		}
+	}
+	for(auto& child : ast.children)
+	{
+		node* maybe_region = try_find_build_metaregion(child);
+		if(maybe_region != nullptr)
+		{
+			return maybe_region;
+		}
+	}
+	return nullptr;
+}
+
 std::filesystem::path get_compiler_path()
 {
 	std::string ret;
@@ -5429,7 +5454,7 @@ CHORD_END
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
-void compile_file(std::filesystem::path file, const compile_args& args)
+void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types = nullptr)
 {
 	timer_restart();
 	lex_output tokens = lex(file);
@@ -5451,16 +5476,26 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	timer_restart();
 	auto now_cpy = now;
 
-	semal_state types = create_basic_type_system();
-	semal_context ctx = {};
-	semal(ast, types, ctx);
-	for(const auto& [newfile, loc] : types.added_source_files)
+	semal_state new_types = create_basic_type_system();
+	if(types == nullptr)
 	{
-		error_ifnt(newfile != file, loc, "source file {} adds itself {}", file, loc);
-		auto filename = newfile.filename();
-		error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", filename, loc);
-		compile_file(newfile, args);
+		types = &new_types;
 	}
+	semal_context ctx = {};
+	node* build = try_find_build_metaregion(ast);
+	if(build != nullptr)
+	{
+		auto temp_state = create_basic_type_system();
+		semal(*build, temp_state, ctx);
+		for(const auto& [newfile, loc] : temp_state.added_source_files)
+		{
+			error_ifnt(newfile != file, loc, "source file {} adds itself {}", file, loc);
+			auto filename = newfile.filename();
+			error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", filename, loc);
+			compile_file(newfile, args, types);
+		}
+	}
+	semal(ast, *types, ctx);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
