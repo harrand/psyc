@@ -17,6 +17,11 @@
 #include <functional>
 #include <unordered_set>
 #include <chrono>
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 #define STRINGIFY(...) #__VA_ARGS__
 
@@ -1109,7 +1114,12 @@ std::string read_file(std::filesystem::path file)
 
 	std::stringstream buffer;
 	buffer << fstr.rdbuf();
-	return buffer.str();
+	auto ret = buffer.str();
+	if(ret.empty())
+	{
+		warning({}, "source file {} is empty", file);
+	}
+	return ret;
 }
 
 // HASH IMPL
@@ -2728,12 +2738,30 @@ node* try_get_block_child(node& n)
 	return nullptr;
 }
 
+std::filesystem::path get_compiler_path()
+{
+	std::string ret;
+	ret.resize(1024);
+	#ifdef _WIN32
+	DWORD len = GetModuleFileNameA(nullptr, ret.data(), ret.size());
+	ret.resize(len);
+	return ret;
+	#else
+	return std::filesystem::canonical("/proc/self/exe");
+	#endif
+}
+
 void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
 {
 	if(call.function_name == "add_source_file")
 	{
 		const ast_expr& path_expr = call.params.front();
 		std::filesystem::path path{std::get<std::string>(std::get<ast_literal_expr>(path_expr.expr_).value)};
+		if(!std::filesystem::exists(path))
+		{
+			// assume its a standard library source file.
+			path = get_compiler_path().parent_path() / path;
+		}
 		state.added_source_files.emplace(path, loc);
 	}
 	else
