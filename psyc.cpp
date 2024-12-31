@@ -254,6 +254,7 @@ enum class err
 	semal,
 	type,
 	meta,
+	build_system,
 	codegen,
 	assemble,
 	link,
@@ -267,6 +268,7 @@ const char* err_names[] =
 	"semantic analysis",
 	"type",
 	"meta program",
+	"build system",
 	"code generation",
 	"assembly",
 	"linker",
@@ -809,6 +811,8 @@ struct semal_state
 	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
 	std::unordered_map<std::string, type_t> variables = {};
 
+	std::unordered_map<std::filesystem::path, srcloc> added_source_files = {};
+
 	ptr_ty create_pointer_ty(type_t pointee) const
 	{
 		return {.underlying_ty = {pointee}};
@@ -1036,6 +1040,11 @@ struct semal_state
 			}
 		}
 
+		for(const auto& [file, loc] : this->added_source_files)
+		{
+			other.added_source_files.emplace(file, loc);
+		}
+
 		for(const auto& [name, enumval] : this->enums)
 		{
 			if(!other.enums.contains(name))
@@ -1060,6 +1069,24 @@ semal_state create_basic_type_system()
 		const char* name = prim_ty::type_names[i];
 		ret.primitives[name] = {.p = primty};
 	}
+	return ret;
+}
+
+semal_state create_build_metaregion_context()
+{
+	semal_state ret;
+	ret.functions.emplace("add_source_file", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload =ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("add_source_file", nullptr);
 	return ret;
 }
 
@@ -2701,6 +2728,21 @@ node* try_get_block_child(node& n)
 	return nullptr;
 }
 
+void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
+{
+	if(call.function_name == "add_source_file")
+	{
+		const ast_expr& path_expr = call.params.front();
+		std::filesystem::path path{std::get<std::string>(std::get<ast_literal_expr>(path_expr.expr_).value)};
+		state.added_source_files.emplace(path, loc);
+	}
+	else
+	{
+		panic("{}, detected call to a function i know about, but i cant find its implementation. its location is nullptr implying that its a builtin function, but i dont recognise \"{}\" as a valid builtin", loc, call.function_name);
+	}
+}
+
+
 struct semal_context
 {
 	enum class type
@@ -2708,6 +2750,7 @@ struct semal_context
 		in_function,
 		in_struct,
 		in_enum,
+		in_metaregion,
 		undefined
 	};
 	struct entry
@@ -2750,6 +2793,19 @@ struct semal_context
 				[](const entry& e)->bool
 				{
 					return e.t == semal_context::type::in_enum;
+				});
+		if(iter != this->entries.rend())
+		{
+			return &*iter;
+		}
+		return nullptr;
+	}
+	const entry* try_get_parent_metaregion() const
+	{
+		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
+				[](const entry& e)->bool
+				{
+					return e.t == semal_context::type::in_metaregion;
 				});
 		if(iter != this->entries.rend())
 		{
@@ -2861,6 +2917,11 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				error_ifnt(call_param_ty.value().is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
 			}
 
+			auto* fnloc = types.function_locations.at(call.function_name);
+			if(fnloc == nullptr)
+			{
+				call_builtin_function(call, types, loc);
+			}
 			return *fn.return_ty;
 		}
 		else
@@ -3155,6 +3216,17 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 	{
+		const auto* maybe_parent_metaregion = ctx.try_get_parent_metaregion();
+		if(maybe_parent_metaregion != nullptr && maybe_parent_metaregion->name == "build")
+		{
+			// this block constitutes a build metaregion
+			//error(loc, "block within build metaregion detected");
+			types = types.coalesce(create_build_metaregion_context());
+		}
+		else if(maybe_parent_metaregion != nullptr)
+		{
+			error(loc, "unknown metaregion name \"{}\". did you mean \"build\"", maybe_parent_metaregion->name);
+		}
 		for(const auto& [name , ty] : ctx.variables_to_exist_in_next_scope)
 		{
 			types.variables.emplace(name, ty);
@@ -3198,7 +3270,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
 	{
 		const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
-		warning(loc, "detected \"{}\" metaregion but support is NYI", metaregion.name);
+		ctx.entries.push_back({.t = semal_context::type::in_metaregion, .name = metaregion.name});
 		return type_t::create_void_type();
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_designator_stmt, decltype(stmt.stmt_)>())
@@ -5323,6 +5395,9 @@ CHORD_END
 
 // end of chords
 }
+//////////////////////////// BUILD SYSTEM ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE build_system
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
@@ -5351,6 +5426,12 @@ void compile_file(std::filesystem::path file, const compile_args& args)
 	semal_state types = create_basic_type_system();
 	semal_context ctx = {};
 	semal(ast, types, ctx);
+	for(const auto& [newfile, loc] : types.added_source_files)
+	{
+		error_ifnt(newfile != file, loc, "source file {} adds itself {}", file, loc);
+		error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", newfile, loc);
+		compile_file(newfile, args);
+	}
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
