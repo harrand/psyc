@@ -1045,6 +1045,14 @@ struct semal_state
 			}
 		}
 
+		/*
+		for(const auto& [name, funcval] : this->functions)
+		{
+			other.functions.emplace(name, funcval);
+			other.function_locations.emplace(name, this->function_locations.at(name));
+		}
+		*/
+
 		for(const auto& [file, loc] : this->added_source_files)
 		{
 			other.added_source_files.emplace(file, loc);
@@ -3359,9 +3367,12 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 
 void semal(node& ast, semal_state& types, semal_context& ctx)
 {
+	bool is_tu = false;
 	bool pop_context = false;
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
-	{}
+	{
+		is_tu = true;
+	}
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
@@ -3413,7 +3424,14 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 	for(auto& child : ast.children)
 	{
 		semal(child, ast.types, ctx);
-		ast.types.feed_forward(types);
+		if(is_tu)
+		{
+			types = types.coalesce(ast.types);
+		}
+		else
+		{
+			ast.types.feed_forward(types);
+		}
 	}
 	if(pop_context)
 	{
