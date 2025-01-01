@@ -4763,18 +4763,11 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), NODE(ast_expr), WILDCARD), FN
-	{
-		return {.action = parse_action::recurse, .reduction_result_offset = 3};
-	}
-EXTENSIBLE
-CHORD_END
-
-CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 3};
 	}
+EXTENSIBLE
 CHORD_END
 
 //
