@@ -436,6 +436,8 @@ struct prim_ty
 		u32,
 		u16,
 		u8,
+
+		boolean,
 		
 		f64,
 		f32,
@@ -453,6 +455,8 @@ struct prim_ty
 		"u32",
 		"u16",
 		"u8",
+
+		"bool",
 
 		"f64",
 		"f32",
@@ -1278,6 +1282,8 @@ enum class token : std::uint32_t
 	keyword_ref,
 	keyword_deref,
 	keyword_defer,
+	keyword_true,
+	keyword_false,
 	symbol,
 	end_of_file,
 	_count
@@ -1650,6 +1656,20 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "true keyword",
+		.front_identifier = "true",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "false keyword",
+		.front_identifier = "false",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -1865,7 +1885,7 @@ struct ast_literal_expr
 {
 	std::variant
 	<
-		std::int64_t, double, char, std::string
+		std::int64_t, double, char, std::string, bool
 	> value;
 	const char* type_name() const
 	{
@@ -1874,7 +1894,8 @@ struct ast_literal_expr
 			"integer literal",
 			"floating-point literal",
 			"char literal",
-			"string literal"
+			"string literal",
+			"boolean literal"
 		}[this->value.index()];
 	}
 
@@ -2916,6 +2937,10 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			ret.payload = prim_ty{.p = prim_ty::type::u8};
 			return type_t{.payload = types.create_pointer_ty(ret), .qual = typequal_static};
 		}
+		else if(lit.value.index() == payload_index<bool, decltype(lit.value)>())
+		{
+			ret.payload = prim_ty{.p = prim_ty::type::boolean};
+		}
 		else
 		{
 			panic("dont know how to typecheck this specific literal expression");
@@ -3557,6 +3582,24 @@ FAKEFN(EXPRIFY_string_literal)
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = symbol}}}}
 	};
 }
+FAKEFN(EXPRIFY_keyword_true)
+{
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = true}}}}
+	};
+}
+FAKEFN(EXPRIFY_keyword_false)
+{
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = false}}}}
+	};
+}
 
 std::unordered_set<token> unop_tokens{};
 
@@ -4001,6 +4044,12 @@ CHORD_BEGIN
 				break;
 				case token::string_literal:
 					literal.value = escape(value.lexeme);
+				break;
+				case token::keyword_true:
+					literal.value = true;
+				break;
+				case token::keyword_false:
+					literal.value = false;
 				break;
 				default:
 					chord_error("a {} is not a valid initialiser for a declaration", token_traits[static_cast<int>(value.tok)].name);
@@ -5075,6 +5124,8 @@ DEFINE_EXPRIFICATION_CHORDS(integer_literal)
 DEFINE_EXPRIFICATION_CHORDS(decimal_literal)
 DEFINE_EXPRIFICATION_CHORDS(string_literal)
 DEFINE_EXPRIFICATION_CHORDS(symbol)
+DEFINE_EXPRIFICATION_CHORDS(keyword_true)
+DEFINE_EXPRIFICATION_CHORDS(keyword_false)
 
 CHORD_BEGIN
 	STATE(TOKEN(keyword_defer)), FN
