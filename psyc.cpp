@@ -472,7 +472,7 @@ struct type_t;
 
 struct struct_ty
 {
-	std::vector<type_t> members = {};
+	std::unordered_map<std::string, box<type_t>> members = {};
 	std::string name() const
 	{
 		return "struct";
@@ -2023,6 +2023,25 @@ struct ast_unop_expr
 	}
 };
 
+struct ast_designator_stmt
+{
+	std::string name;
+	box<ast_expr> initialiser;
+
+	std::string value_tostring(){return "designator";}
+};
+
+struct ast_blkinit_expr
+{
+	std::string type_name;
+	std::vector<ast_designator_stmt> initialisers;
+
+	std::string value_tostring() const
+	{
+		return "blockinit";
+	}
+};
+
 struct ast_expr
 {
 	std::variant
@@ -2034,7 +2053,8 @@ struct ast_expr
 		ast_structdef_expr,
 		ast_enumdef_expr,
 		ast_biop_expr,
-		ast_unop_expr
+		ast_unop_expr,
+		ast_blkinit_expr
 	> expr_;
 
 	const char* type_name() const
@@ -2048,7 +2068,8 @@ struct ast_expr
 			"structdef",
 			"enumdef",
 			"biop",
-			"unop"
+			"unop",
+			"blockinit"
 		}[this->expr_.index()];
 	}
 
@@ -2129,14 +2150,6 @@ struct ast_metaregion_stmt
 	bool capped = false;
 
 	std::string value_tostring(){return std::format("{} meta-region", this->name);}
-};
-
-struct ast_designator_stmt
-{
-	std::string name;
-	ast_expr initialiser;
-
-	std::string value_tostring(){return "designator";}
 };
 
 struct ast_stmt
@@ -3161,6 +3174,33 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			break;
 		}
 	}
+	else if(expr.expr_.index() == payload_index<ast_blkinit_expr, decltype(expr.expr_)>())
+	{
+		const auto& blkinit = std::get<ast_blkinit_expr>(expr.expr_);
+		type_t ret = types.parse(blkinit.type_name);
+		if(!ret.is_struct())
+		{
+			error(loc, "block initialiser was of non-struct-type \"{}\". block initialisers can only be used to initialise structs for now.", blkinit.type_name);
+		}
+		auto ty = std::get<struct_ty>(ret.payload);
+		for(const auto& init : blkinit.initialisers)
+		{
+			const ast_expr& value = *init.initialiser;
+
+			auto iter = ty.members.find(init.name);
+			if(iter == ty.members.end())
+			{
+				error(loc, "struct \"{}\" has no member named \"{}\"", blkinit.type_name, init.name);
+			}
+			auto init_expr_ty = expr_get_type(value, types, loc, ctx);
+			error_ifnt(init_expr_ty.has_value() && !init_expr_ty->is_badtype(), loc, "initialiser of member \"{]\" was of invalid type", init.name);
+			const bool convertible = iter->second->is_convertible_to(init_expr_ty.value());
+			std::string member_typename = iter->second->name();
+			std::string expr_typename = init_expr_ty->name();
+			error_ifnt(convertible, loc, "member \"{}\" is of type \"{}\". the initialiser value you have passed is of type \"{}\" which is not convertible to the aforementioned member type.", init.name, member_typename, expr_typename);
+		}
+		return ret;
+	}
 	else
 	{
 		const char* expr_name = expr.type_name();
@@ -3258,7 +3298,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		{
 			// we're in a struct and not a function - we are a data member.
 			auto& structdef = types.structs.at(maybe_parent_struct->name);
-			structdef.members.push_back(ty.value());
+			structdef.members.emplace(decl.name, ty.value());
 		}
 		else
 		{
@@ -3349,7 +3389,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		type_t ret = *enumdef.underlying_ty;
 
 		// make sure the initialiser of the designator actually matches the type.
-		auto desig_init_ty = expr_get_type(desig.initialiser, types, loc, ctx);
+		auto desig_init_ty = expr_get_type(*desig.initialiser, types, loc, ctx);
 		error_ifnt(desig_init_ty.has_value() && !desig_init_ty.value().is_badtype(), loc, "initialiser expression of designator yielded an invalid type.");
 		std::string desig_init_tyname = desig_init_ty->name();
 		std::string enum_tyname = enumdef.name();
@@ -4579,6 +4619,98 @@ CHORD_BEGIN
 EXTENSIBLE
 CHORD_END
 
+// block initialisers
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		// empty block initialiser
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = ast_expr{.expr_ = ast_blkinit_expr
+				{
+					.type_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme},
+					.initialisers = {}
+				}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrace), TOKEN(dot)), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), NODE(ast_stmt)), FN
+	{
+		const auto& stmt_node = nodes[1];
+		const auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(!blk.capped)
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 1};
+			}
+			ast_blkinit_expr init{.type_name = std::string{std::get<ast_token>(nodes[0].payload).lexeme}};
+			// go through the block, get all of the designator statements and fill a block initialiser with it.
+			for(const node& child : stmt_node.children)
+			{
+				if(child.payload.index() == payload_index<ast_stmt, node_payload>())
+				{
+					const auto& child_stmt = std::get<ast_stmt>(child.payload);
+					if(child_stmt.stmt_.index() == payload_index<ast_designator_stmt, decltype(child_stmt.stmt_)>())
+					{
+						init.initialisers.push_back(std::get<ast_designator_stmt>(child_stmt.stmt_));
+					}
+					else
+					{
+						chord_error("");
+					}
+				}
+				else
+				{
+					chord_error("");
+				}
+
+			}
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 2},
+				.reduction_result = {node{.payload = ast_expr{.expr_ = init}}}
+			};
+			
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("unexpected {} statement following \"symbol{\". expected a block statement (to form a block initialiser) only.", stmt_name);
+		}
+	}
+EXTENSIBLE
+CHORD_END
+
 // designators
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(dot)), FN
@@ -4616,7 +4748,7 @@ CHORD_BEGIN
 		return
 		{
 			.action = parse_action::reduce,
-			.nodes_to_remove = {.offset = 0, .length = 4},
+			.nodes_to_remove = {.offset = 0, .length = 5},
 			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_designator_stmt{.name = name, .initialiser = std::get<ast_expr>(expr_node.payload)}}}}
 		};
 	}
@@ -5047,6 +5179,12 @@ CHORD_BEGIN
 				.action = parse_action::reduce,
 				.nodes_to_remove = {.offset = 1, .length = 1}
 			};
+		}
+		else if(payload_index<ast_designator_stmt, decltype(std::declval<ast_stmt>().stmt_)>() == stmt.stmt_.index())
+		{
+			// we kinda expect designator statements to pop up here continually until it hits the block close brace.
+			// in which case we should just recurse.
+			return {.action = parse_action::recurse, .reduction_result_offset = 1};
 		}
 		else
 		{
