@@ -596,20 +596,17 @@ struct type_t
 					{
 						return true;
 					}
-
 					// bool can be converted to any number.
-					if(lhs_prim.p == prim_ty::type::boolean && rhs_prim.is_numeric())
+					else if(lhs_prim.p == prim_ty::type::boolean && rhs_prim.is_numeric())
 					{
 						return true;
 					}
-
 					// v0 cannot convert to any other prim.
-					if(lhs_prim.p == prim_ty::type::v0)
+					else if(lhs_prim.p == prim_ty::type::v0)
 					{
 						return false;
 					}
 				}
-				return false;
 			}
 		}
 		else if(lhs_is(struct_ty))
@@ -3342,7 +3339,10 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			}
 			const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
 			types.function_locations[decl.name] = &def;
-			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
+			if(!def.is_extern)
+			{
+				ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
+			}
 		}
 		else if(ty.value().is_type() && expr_is_structdef)
 		{
