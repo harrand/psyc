@@ -607,6 +607,10 @@ struct type_t
 						return false;
 					}
 				}
+				else
+				{
+					return false;
+				}
 			}
 		}
 		else if(lhs_is(struct_ty))
@@ -2224,6 +2228,13 @@ struct ast_metaregion_stmt
 	std::string value_tostring(){return std::format("{} meta-region", this->name);}
 };
 
+struct ast_if_stmt
+{
+	ast_expr condition;
+
+	std::string value_tostring(){return "if-statement";}
+};
+
 struct ast_stmt
 {
 	std::variant
@@ -2233,7 +2244,8 @@ struct ast_stmt
 		ast_return_stmt,
 		ast_blk_stmt,
 		ast_metaregion_stmt,
-		ast_designator_stmt
+		ast_designator_stmt,
+		ast_if_stmt
 	> stmt_;
 	bool deferred = false;
 	const char* type_name() const
@@ -2245,7 +2257,8 @@ struct ast_stmt
 			"return",
 			"block",
 			"metaregion",
-			"designator"
+			"designator",
+			"if"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -2897,6 +2910,7 @@ struct semal_context
 		in_struct,
 		in_enum,
 		in_metaregion,
+		in_other_statement,
 		undefined
 	};
 	struct entry
@@ -3483,6 +3497,15 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		error_ifnt(desig_init_ty->is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
 		return ret;
 	}
+	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
+	{
+		const auto& if_stmt = std::get<ast_if_stmt>(stmt.stmt_);
+		auto cond_ty = expr_get_type(if_stmt.condition, types, loc, ctx);
+		error_ifnt(cond_ty.has_value() && !cond_ty->is_badtype(), loc, "condition of if-statement is of invalid type");
+		std::string cond_tyname = cond_ty->name();
+		error_ifnt(cond_ty->is_convertible_to(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}}), loc, "condition of if-statement is of type \"{}\", which is not convertible to \"bool\"", cond_tyname);
+		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
+	}
 	else
 	{
 		const char* stmt_name = stmt.type_name();
@@ -3641,7 +3664,7 @@ FAKEFN(EXPRIFY_keyword_true)
 	return
 	{
 		.action = parse_action::reduce,
-		.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = true}}}}
 	};
 }
@@ -3650,7 +3673,7 @@ FAKEFN(EXPRIFY_keyword_false)
 	return
 	{
 		.action = parse_action::reduce,
-		.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = false}}}}
 	};
 }
@@ -5705,6 +5728,105 @@ CHORD_BEGIN
 	{
 		chord_error("unexpected token(s) directly following a decl, did you forget a semicolon?");
 	}
+CHORD_END
+
+// if statements
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), NODE(ast_stmt)), FN
+	{
+		const auto& expr_node = nodes[2];
+		const auto& expr = std::get<ast_expr>(expr_node.payload);
+		const auto& stmt_node = nodes[4];
+		const auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(!blk.capped)
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 4};
+			}
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 5},
+				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
+					{
+						.condition = std::get<ast_expr>(nodes[2].payload)
+					}}, .children = {stmt_node}}}
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("{} statement detected directly after an if-statement. you should provide a block statement instead.");
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 6},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
+				{
+					.condition = std::get<ast_expr>(nodes[2].payload)
+				}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
 CHORD_END
 
 // end of chords
