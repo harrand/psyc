@@ -465,6 +465,21 @@ struct prim_ty
 	};
 	type p;
 
+	bool is_numeric() const
+	{
+		return
+			this->p == type::s64 ||
+			this->p == type::s32 ||
+			this->p == type::s8  ||
+			this->p == type::u64 ||
+			this->p == type::u32 ||
+			this->p == type::u16 ||
+			this->p == type::u8  ||
+			
+			this->p == type::f64 ||
+			this->p == type::f32;
+	}
+
 	std::string name() const
 	{
 		return type_names[static_cast<int>(p)];
@@ -553,8 +568,12 @@ struct type_t
 		return cpy;
 	}
 
-	bool is_convertible_to(const type_t& rhs) const
+	bool is_convertible_to(const type_t& rhs, bool second_attempt = false) const
 	{
+		std::string lhs_name = this->name();
+		std::string rhs_name = rhs.name();
+		const bool either_is_weak = (this->qual & typequal_weak) || (rhs.qual & typequal_weak);
+		/*
 		if(this->payload.index() == rhs.payload.index())
 		{
 			// pointers are always convertible to other pointers
@@ -681,6 +700,171 @@ struct type_t
 		}
 		std::string lhs_name = this->name();
 		std::string rhs_name = rhs.name();
+		panic("dont know if {} can be converted to {}", lhs_name, rhs_name);
+		return false;
+		*/
+		#define lhs_is(x) this->payload.index() == payload_index<x, payload_t>()
+		#define rhs_is(x) rhs.payload.index() == payload_index<x, payload_t>()
+		if(lhs_is(prim_ty))
+		{
+			if(rhs_is(prim_ty))
+			{
+				const auto& lhs_prim = std::get<prim_ty>(this->payload);
+				const auto& rhs_prim = std::get<prim_ty>(rhs.payload);
+
+				// if the prims are exactly the same, yes
+				if(lhs_prim.p == rhs_prim.p)
+				{
+					return true;
+				}
+
+				if(either_is_weak)
+				{
+					// different prims might convert if at least one is weak..
+					// all numeric prims can be converted
+					if(lhs_prim.is_numeric() && rhs_prim.is_numeric())
+					{
+						return true;
+					}
+
+					// bool can be converted to any number.
+					if(lhs_prim.p == prim_ty::type::boolean && rhs_prim.is_numeric())
+					{
+						return true;
+					}
+
+					// v0 cannot convert to any other prim.
+					if(lhs_prim.p == prim_ty::type::v0)
+					{
+						return false;
+					}
+				}
+				return false;
+			}
+		}
+		else if(lhs_is(struct_ty))
+		{
+			if(rhs_is(struct_ty))
+			{
+				const auto& lhs_struct = std::get<struct_ty>(this->payload);
+				const auto& rhs_struct = std::get<struct_ty>(rhs.payload);
+				// structs cannot convert to other structs.
+				return lhs_struct == rhs_struct;
+			}
+			else
+			{
+				// structs cannot convert to any form of non structs.
+				return false;
+			}
+		}
+		else if(lhs_is(enum_ty))
+		{
+			if(rhs_is(enum_ty))
+			{
+				// enums are never convertible unless either is weak. if either is weak, then its convertible if the underlying types are convertible.
+				if(this->qual & typequal_weak || rhs.qual & typequal_weak)
+				{
+					return std::get<enum_ty>(this->payload).underlying_ty->is_convertible_to(*std::get<enum_ty>(rhs.payload).underlying_ty);
+				}
+				else
+				{
+					return false;
+				}
+			}
+			else
+			{
+				// enums dont convert to any non-enums
+				// except its underlying type (if weak)
+				if(either_is_weak)
+				{
+					return std::get<enum_ty>(this->payload).underlying_ty->is_convertible_to(rhs);
+				}
+			}
+		}
+		else if(lhs_is(meta_ty))
+		{
+			if(rhs_is(meta_ty))
+			{
+				const auto& lhs_ty = std::get<meta_ty>(this->payload);
+				const auto& rhs_ty = std::get<meta_ty>(rhs.payload);
+
+				// if either of them have badtype as concrete, then it is a template type and the conversion is okay.
+				if(lhs_ty.concrete->is_badtype() || rhs_ty.concrete->is_badtype())
+				{
+					return true;
+				}
+				// otherwise, types dont convert unless they are the same.
+				return lhs_ty == rhs_ty;
+			}
+			else
+			{
+				// meta types dont convert to non-meta-types
+				return false;
+			}
+		}
+		else if(lhs_is(ptr_ty))
+		{
+			if(rhs_is(ptr_ty))
+			{
+				const auto& lhs_ptr = std::get<ptr_ty>(this->payload);
+				const auto& rhs_ptr = std::get<ptr_ty>(rhs.payload);
+
+				// pointers always convert to one-another if they are the same or one of them is weak.
+				// many of these conversions will be unsafe unless care is taken, like C.
+				return lhs_ptr == rhs_ptr || either_is_weak;
+			}
+			else
+			{
+				// the only non-ptr type that can convert to a ptr is a u64 (if either are weak).
+				if(either_is_weak)
+				{
+					if(rhs_is(prim_ty))
+					{
+						return std::get<prim_ty>(rhs.payload).p == prim_ty::type::u64;
+					}
+					else
+					{
+						return false;
+					}
+				}
+			}
+		}
+		else if(lhs_is(fn_ty))
+		{
+			if(rhs_is(fn_ty))
+			{
+				// can functions convert to other functions?
+				// only if the signatures exactly match.
+				const auto& lhs_fn = std::get<fn_ty>(this->payload);
+				const auto& rhs_fn = std::get<fn_ty>(rhs.payload);
+				return lhs_fn == rhs_fn;
+			}
+			else
+			{
+				// function types cannot convert to non-function types.
+				// with one exception: v0& this is how you get the address of a function.
+				if(rhs_is(ptr_ty))
+				{
+					const auto& rhs_ptr_ty = std::get<ptr_ty>(rhs.payload);
+					const auto& rhs_pointee = *rhs_ptr_ty.underlying_ty;
+					if(rhs_pointee.payload.index() == payload_index<prim_ty, payload_t>())
+					{
+						return std::get<prim_ty>(rhs_pointee.payload).p == prim_ty::type::v0;
+					}
+				}
+				return false;
+			}
+		}
+		else
+		{
+			panic("unhandled check if two similar types can be converted (\"{}\" and \"{}\"). did you add a new type payload?", lhs_name, rhs_name);
+		}
+		// different type of types.
+		// if we're not on the second attempt, try the other way around.
+		if(!second_attempt)
+		{
+			return rhs.is_convertible_to(*this, true);
+		}
 		panic("dont know if {} can be converted to {}", lhs_name, rhs_name);
 		return false;
 	}
