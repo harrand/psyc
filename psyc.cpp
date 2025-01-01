@@ -3097,6 +3097,12 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			case biop_type::field:
 			{
 				error_ifnt(lhs_ty.has_value() && !lhs_ty.value().is_badtype(), loc, "lhs of cast expression did not yield a valid type");
+				if(lhs_ty->is_type())
+				{
+					const auto& meta = std::get<meta_ty>(lhs_ty->payload);
+					type_t concrete = *meta.concrete;
+					lhs_ty = concrete;
+				}
 				std::string rhs_symbol;
 				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
 				{
@@ -3106,25 +3112,26 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				{
 					panic("dont know how to handle biop field expression where rhs is not a symbol expr.");
 				}
-				if(biop.lhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.lhs->expr_)>())
+				if(lhs_ty->is_struct())
 				{
-					std::string lhs_symbol = std::get<ast_symbol_expr>(biop.lhs->expr_).symbol;
-					auto iter = types.enums.find(lhs_symbol);
-					if(iter == types.enums.end())
+					const auto& ty = std::get<struct_ty>(lhs_ty->payload);
+					// which member is it?
+					auto iter = ty.members.find(rhs_symbol);
+					if(iter == ty.members.end())
 					{
-						error(loc, "unknown enum \"{}\"", lhs_symbol);
+						error(loc, "variable \"{}\" of struct type does not have a member named \"{}\"", rhs_symbol);
 					}
-					const enum_ty& ty = iter->second;
-
+					const type_t& member_ty = *iter->second;
+					return member_ty;
+				}
+				else if(lhs_ty->is_enum())
+				{
+					const auto& ty = std::get<enum_ty>(lhs_ty->payload);
 					if(!std::ranges::contains(ty.entries, rhs_symbol))
 					{
-						error(loc, "enum {} has no entry \"{}\"", lhs_symbol, rhs_symbol);
+						error(loc, "enum has no entry \"{}\"", rhs_symbol);
 					}
 					return type_t{.payload = ty};
-				}
-				else
-				{
-					panic("dont know how to handle biop field expression where lhs is not a symbol expr.");
 				}
 			}
 			break;
@@ -3304,7 +3311,7 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		{
 			// we're not in a struct so this isnt a data member, just a variable.
 			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
-			if(!ty.value().is_fn() && !ty.value().is_struct() && !ty.value().is_type())
+			if(!ty.value().is_fn() && !ty.value().is_type())
 			{
 				auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
 				if(!actually_emplaced)
