@@ -25,6 +25,12 @@
 
 #define STRINGIFY(...) #__VA_ARGS__
 
+// some psy source code that is *always* compiled before any file. its API is available to everything.
+// so uh try not to make it code that compiles slow as fuck thanks
+constexpr char preload_src[] = R"psy(
+null ::= 0@u64@v0&;
+)psy"; 
+
 template <typename T>
 class box
 {
@@ -1824,10 +1830,10 @@ std::int64_t token_hash(token t)
 }
 
 // lex api. "heres a file i know nothing about, give me all the tokens". panic if anything goes wrong.
-lex_output lex(std::filesystem::path file)
+lex_output lex_from_data(std::filesystem::path file, std::string source)
 {
 	lex_output ret{.source_file = file};
-	ret.source = read_file(file);
+	ret.source = source;
 	lex_state state{.src = ret.source};
 
 	while(state.cursor < state.src.size())
@@ -1882,6 +1888,11 @@ lex_output lex(std::filesystem::path file)
 	ret.begin_locations.push_back(ret.begin_locations.size() ? ret.begin_locations.front() : srcloc{});
 	ret.end_locations.push_back(ret.end_locations.size() ? ret.end_locations.back() : srcloc{});
 	return ret;
+}
+
+lex_output lex(std::filesystem::path file)
+{
+	return lex_from_data(file, read_file(file));
 }
 
 void lex_output::verbose_print()
@@ -5837,10 +5848,12 @@ CHORD_END
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
-void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types = nullptr)
+void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types = nullptr, bool include_preload = true);
+
+void compile_source(std::filesystem::path file, std::string source, const compile_args& args, semal_state* types)
 {
 	timer_restart();
-	lex_output tokens = lex(file);
+	lex_output tokens = lex_from_data(file, source);
 	if(args.verbose_lex)
 	{
 		tokens.verbose_print();
@@ -5859,11 +5872,6 @@ void compile_file(std::filesystem::path file, const compile_args& args, semal_st
 	timer_restart();
 	auto now_cpy = now;
 
-	semal_state new_types = create_basic_type_system();
-	if(types == nullptr)
-	{
-		types = &new_types;
-	}
 	semal_context ctx = {};
 	node* build = try_find_build_metaregion(ast);
 	if(build != nullptr)
@@ -5875,7 +5883,7 @@ void compile_file(std::filesystem::path file, const compile_args& args, semal_st
 			error_ifnt(newfile != file, loc, "source file {} adds itself {}", file, loc);
 			auto filename = newfile.filename();
 			error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", filename, loc);
-			compile_file(newfile, args, types);
+			compile_file(newfile, args, types, false);
 		}
 	}
 	semal(ast, *types, ctx);
@@ -5888,6 +5896,20 @@ void compile_file(std::filesystem::path file, const compile_args& args, semal_st
 
 	time_codegen = elapsed_time();
 	timer_restart();
+}
+
+void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types, bool include_preload)
+{
+	semal_state new_types = create_basic_type_system();
+	if(types == nullptr)
+	{
+		types = &new_types;
+	}
+	if(include_preload)
+	{
+		compile_source("preload.psy", preload_src, args, types);
+	}
+	compile_source(file, read_file(file), args, types);
 }
 
 // entry point
