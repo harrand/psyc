@@ -25,11 +25,7 @@
 
 #define STRINGIFY(...) #__VA_ARGS__
 
-// some psy source code that is *always* compiled before any file. its API is available to everything.
-// so uh try not to make it code that compiles slow as fuck thanks
-constexpr char preload_src[] = R"psy(
-null ::= 0@u64@v0&;
-)psy"; 
+std::string get_preload_source();
 
 template <typename T>
 class box
@@ -3531,6 +3527,10 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		error_ifnt(cond_ty.has_value() && !cond_ty->is_badtype(), loc, "condition of if-statement is of invalid type");
 		std::string cond_tyname = cond_ty->name();
 		error_ifnt(cond_ty->is_convertible_to(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}}), loc, "condition of if-statement is of type \"{}\", which is not convertible to \"bool\"", cond_tyname);
+		if(if_stmt.is_static)
+		{
+			error_ifnt(cond_ty->qual & typequal_static, loc, "condition of a static-if-statement must be static, \"{}\" is not static", cond_tyname);
+		}
 		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
 	else
@@ -5821,9 +5821,10 @@ CHORD_BEGIN
 		else
 		{
 			const char* stmt_name = stmt.type_name();
-			chord_error("{} statement detected directly after an if-statement. you should provide a block statement instead.");
+			chord_error("{} statement detected directly after a static-if-statement. you should provide a block statement instead.");
 		}
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -5846,6 +5847,14 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
 EXTENSIBLE
 CHORD_END
@@ -5925,6 +5934,7 @@ CHORD_BEGIN
 			chord_error("{} statement detected directly after an if-statement. you should provide a block statement instead.");
 		}
 	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
@@ -5947,6 +5957,14 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
 EXTENSIBLE
 CHORD_END
@@ -6026,7 +6044,7 @@ void compile_file(std::filesystem::path file, const compile_args& args, semal_st
 	}
 	if(include_preload)
 	{
-		compile_source("preload.psy", preload_src, args, types);
+		compile_source("preload.psy", get_preload_source(), args, types);
 	}
 	compile_source(file, read_file(file), args, types);
 }
@@ -6057,3 +6075,28 @@ int main(int argc, char** argv)
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
+std::string get_preload_source()
+{
+
+	// some psy source code that is *always* compiled before any file. its API is available to everything.
+	// so uh try not to make it code that compiles slow as fuck thanks
+	static constexpr char preload_src[] = R"psy(
+	null ::= 0@u64@v0&;
+
+	is_windows : bool static := {};
+	is_linux : bool static := {};
+	)psy"; 
+#ifdef _WIN32
+	constexpr bool windows = true;
+	constexpr bool linux = false;
+#else
+	constexpr bool windows = false;
+#ifdef __linux__
+	constexpr bool linux = true;
+#else
+	constexpr bool linux = false;
+#endif
+#endif
+	return std::format(preload_src, windows, linux);
+
+}
