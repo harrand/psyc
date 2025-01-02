@@ -984,83 +984,6 @@ struct semal_state
 			tyname = (till_next_thing == tyname.size()) ? std::string_view() : tyname.substr(till_next_thing);
 		}
 		return current_type;
-
-		/*
-		while(!tyname.empty())
-		{
-			// remove trailing whitespace.
-			while(!tyname.empty() && std::isspace(tyname.back()))
-			{
-				tyname.remove_suffix(1);
-			}
-
-			// check for pointerness.
-			if(!tyname.empty() && tyname.back() == '&')
-			{
-				current_type = type_t{.payload = this->create_pointer_ty(current_type)};
-				base_ty = &current_type;
-				// point base_ty back to the thing.
-				while(base_ty->payload.index() == payload_index<ptr_ty, type_t::payload_t>())
-				{
-					base_ty = &*std::get<ptr_ty>(base_ty->payload).underlying_ty;
-				}
-				// remember, current_payload needs to point to the underlying type so we can patch in the base type once we figur eout what it is.
-				tyname.remove_suffix(1);
-				continue;
-			}
-
-			// find the last word
-			// it's either a qualifier or base type.
-			std::size_t last_space = tyname.find_last_of(' ');
-			std::string_view word = (last_space == std::string::npos) ? tyname : tyname.substr(last_space + 1);
-			if(word == "mut")
-			{
-				current_type.qual = current_type.qual | typequal_mut;
-			}
-			else if(word == "static")
-			{
-				current_type.qual = current_type.qual | typequal_static;
-			}
-			else if(word == "weak")
-			{
-				current_type.qual = current_type.qual | typequal_weak;
-			}
-			else
-			{
-				// well it must be a base type then.
-				// Match base type with primitives
-				for (const auto& [name, prim] : this->primitives)
-				{
-					if (name == word)
-					{
-						base_ty->payload = prim;
-						break;
-					}
-				}
-
-				// Or with structs
-				for (const auto& [name, structval] : this->structs)
-				{
-					if (name == word)
-					{
-						base_ty->payload = structval;
-						break;
-					}
-				}
-
-				if(base_ty->payload.index() == payload_index<std::monostate, type_t::payload_t>())
-				{
-					// bad base type. couldn't figure out what it is.
-					return type_t::badtype();
-				}
-			}
-
-			// Truncate the parsed word
-			tyname = (last_space == std::string::npos) ? std::string_view() : tyname.substr(0, last_space);
-		}
-
-		return current_type;
-		*/
 	}
 
 	semal_state coalesce(const semal_state& other) const
@@ -2835,6 +2758,16 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
 
+sval wrap_type(type_t t)
+{
+	if(t.qual & typequal_static)
+	{
+		auto name = t.name();
+		error({}, "attempt to wrap around static type \"{}\" without static value", name);
+	}
+	return {.ty = t};
+}
+
 const node* try_get_block_child(const node& n)
 {
 	if(n.children.size() == 1)
@@ -3010,34 +2943,39 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
 	{
 		const auto& lit = std::get<ast_literal_expr>(expr.expr_);
+		sval value
+		{
+			.val = lit.value,
+		};
+
 		ret.qual = typequal_static;
 		if(lit.value.index() == payload_index<std::int64_t, decltype(lit.value)>())
 		{
-			ret.payload = prim_ty{.p = prim_ty::type::s64};
+			value.ty.payload = prim_ty{.p = prim_ty::type::s64};
 		}
 		else if(lit.value.index() == payload_index<double, decltype(lit.value)>())
 		{
-			ret.payload = prim_ty{.p = prim_ty::type::f64};
+			value.ty.payload = prim_ty{.p = prim_ty::type::f64};
 		}
 		else if(lit.value.index() == payload_index<char, decltype(lit.value)>())
 		{
-			ret.payload = prim_ty{.p = prim_ty::type::u8};
+			value.ty.payload = prim_ty{.p = prim_ty::type::u8};
 		}
 		else if(lit.value.index() == payload_index<std::string, decltype(lit.value)>())
 		{
-			ret.qual = typequal_none;
-			ret.payload = prim_ty{.p = prim_ty::type::u8};
-			return type_t{.payload = types.create_pointer_ty(ret), .qual = typequal_static};
+			value.ty.qual = typequal_none;
+			value.ty.payload = prim_ty{.p = prim_ty::type::u8};
+			value.ty = type_t{.payload = types.create_pointer_ty(value.ty), .qual = typequal_static};
 		}
 		else if(lit.value.index() == payload_index<bool, decltype(lit.value)>())
 		{
-			ret.payload = prim_ty{.p = prim_ty::type::boolean};
+			value.ty.payload = prim_ty{.p = prim_ty::type::boolean};
 		}
 		else
 		{
 			panic("dont know how to typecheck this specific literal expression");
 		}
-		return ret;
+		return value.ty;
 	}
 	else if(expr.expr_.index() == payload_index<ast_funcdef_expr, decltype(expr.expr_)>())
 	{
