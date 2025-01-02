@@ -867,6 +867,13 @@ std::string meta_ty::name() const
 }
 
 struct ast_funcdef_expr;
+using literal_val = std::variant<std::int64_t, double, char, std::string, bool>;
+
+struct sval
+{
+	std::variant<std::monostate, literal_val, std::unordered_map<std::string, sval>> val = std::monostate{};
+	type_t ty;
+};
 
 struct semal_state
 {
@@ -1953,10 +1960,7 @@ struct ast_translation_unit{std::string value_tostring(){return "";}};
 
 struct ast_literal_expr
 {
-	std::variant
-	<
-		std::int64_t, double, char, std::string, bool
-	> value;
+	literal_val value;
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(value)>>
