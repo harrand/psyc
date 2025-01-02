@@ -3207,12 +3207,13 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			break;
 			case biop_type::field:
 			{
-				error_ifnt(lhs_ty.has_value() && !lhs_ty.value().is_badtype(), loc, "lhs of cast expression did not yield a valid type");
-				if(lhs_ty->is_type())
+				error_ifnt(lhs.has_value(), loc, "lhs of cast was invalid");
+				error_ifnt(!lhs->ty.is_badtype(), loc, "lhs of cast expression did not yield a valid type");
+				if(lhs->ty.is_type())
 				{
-					const auto& meta = std::get<meta_ty>(lhs_ty->payload);
+					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
 					type_t concrete = *meta.concrete;
-					lhs_ty = concrete;
+					lhs = wrap_type(concrete);
 				}
 				std::string rhs_symbol;
 				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
@@ -3223,9 +3224,9 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 				{
 					panic("dont know how to handle biop field expression where rhs is not a symbol expr.");
 				}
-				if(lhs_ty->is_struct())
+				if(lhs->ty.is_struct())
 				{
-					const auto& ty = std::get<struct_ty>(lhs_ty->payload);
+					const auto& ty = std::get<struct_ty>(lhs->ty.payload);
 					// which member is it?
 					auto iter = ty.members.find(rhs_symbol);
 					if(iter == ty.members.end())
@@ -3233,16 +3234,16 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 						error(loc, "variable \"{}\" of struct type does not have a member named \"{}\"", rhs_symbol);
 					}
 					const type_t& member_ty = *iter->second;
-					return member_ty;
+					return wrap_type(member_ty);
 				}
-				else if(lhs_ty->is_enum())
+				else if(lhs->ty.is_enum())
 				{
-					const auto& ty = std::get<enum_ty>(lhs_ty->payload);
+					const auto& ty = std::get<enum_ty>(lhs->ty.payload);
 					if(!std::ranges::contains(ty.entries, rhs_symbol))
 					{
 						error(loc, "enum has no entry \"{}\"", rhs_symbol);
 					}
-					return type_t{.payload = ty};
+					return wrap_type(type_t{.payload = ty});
 				}
 			}
 			break;
@@ -3254,10 +3255,11 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	else if(expr.expr_.index() == payload_index<ast_unop_expr, decltype(expr.expr_)>())
 	{
 		const auto& unop = std::get<ast_unop_expr>(expr.expr_);
-		auto rhs_ty = expr_get_type(*unop.rhs, types, loc, ctx);
+		auto rhs = expr_get_type(*unop.rhs, types, loc, ctx);
 		std::string op_name = unop.value_tostring();
-		error_ifnt(rhs_ty.has_value() && !rhs_ty.value().is_badtype(), loc, "rhs of unary operator {} yielded an invalid type", op_name);
-		std::string tyname = rhs_ty->name();
+		error_ifnt(rhs.has_value(), loc, "rhs of unary operator was invalid");
+		error_ifnt(!rhs->ty.is_badtype(), loc, "rhs of unary operator had invalid type");
+		std::string tyname = rhs->ty.name();
 		switch(unop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -3266,7 +3268,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			case unop_type::minus:
 			[[fallthrough]];
 			case unop_type::invert:
-				return rhs_ty;
+				return wrap_type(rhs->ty);
 			break;
 			case unop_type::ref:
 			{
@@ -3280,12 +3282,12 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 					const char* expr_name = unop.rhs->type_name();
 					error(loc, "attempt to ref a {} expression, which is incorrect.", expr_name);
 				}
-				return type_t{.payload = types.create_pointer_ty(rhs_ty.value())};
+				return wrap_type(type_t{.payload = types.create_pointer_ty(rhs->ty)});
 			}
 			break;
 			case unop_type::deref:
-				error_ifnt(rhs_ty->is_ptr(), loc, "cannot deref non-pointer-type \"{}\"", tyname);
-				return *std::get<ptr_ty>(rhs_ty->payload).underlying_ty;
+				error_ifnt(rhs->ty.is_ptr(), loc, "cannot deref non-pointer-type \"{}\"", tyname);
+				return wrap_type(*std::get<ptr_ty>(rhs->ty.payload).underlying_ty);
 			break;
 			default:
 				panic("unhandled unop type in semal");
@@ -3301,6 +3303,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			error(loc, "block initialiser was of non-struct-type \"{}\". block initialisers can only be used to initialise structs for now.", blkinit.type_name);
 		}
 		auto ty = std::get<struct_ty>(ret.payload);
+		std::unordered_map<std::string, sval> static_value;
 		for(const auto& init : blkinit.initialisers)
 		{
 			const ast_expr& value = *init.initialiser;
@@ -3310,14 +3313,18 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			{
 				error(loc, "struct \"{}\" has no member named \"{}\"", blkinit.type_name, init.name);
 			}
-			auto init_expr_ty = expr_get_type(value, types, loc, ctx);
-			error_ifnt(init_expr_ty.has_value() && !init_expr_ty->is_badtype(), loc, "initialiser of member \"{]\" was of invalid type", init.name);
-			const bool convertible = iter->second->is_convertible_to(init_expr_ty.value());
+			auto init_expr = expr_get_type(value, types, loc, ctx);
+			error_ifnt(init_expr.has_value(), loc, "initialiser of member \"{}\" was invalid", init.name);
+			static_value[init.name] = init_expr.value();
+			error_ifnt(!init_expr->ty.is_badtype(), loc, "initialiser of member \"{}\" was of invalid type", init.name);
+			const bool convertible = iter->second->is_convertible_to(init_expr->ty);
 			std::string member_typename = iter->second->name();
-			std::string expr_typename = init_expr_ty->name();
+			std::string expr_typename = init_expr->ty.name();
 			error_ifnt(convertible, loc, "member \"{}\" is of type \"{}\". the initialiser value you have passed is of type \"{}\" which is not convertible to the aforementioned member type.", init.name, member_typename, expr_typename);
 		}
-		return ret;
+		sval val = wrap_type(ret);
+		val.val = static_value;
+		return val;
 	}
 	else
 	{
@@ -3327,35 +3334,38 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	return std::nullopt;
 }
 
-std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
 {
-	std::optional<type_t> ty = std::nullopt;
+	std::optional<sval> ret;
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+		ret = expr_get_type(decl.initialiser.value(), types, loc, ctx);
 	}
 	else
 	{
-		ty = types.parse(decl.type_name);
-		if(ty.has_value() && ty.value().is_type())
+		ret = wrap_type(types.parse(decl.type_name));
+		if(ret.has_value() && ret->ty.is_type())
 		{
 			// user has specifically typed "type" as the type of a variable
 			// that has no concrete type information, so we're still going to take the deduction code path
 			// if there is no initialiser, then its basically a c++ template.
 			if(decl.initialiser.has_value())
 			{
-				ty = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+				auto init_sval = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+				error_ifnt(init_sval.has_value(), loc, "initialiser of decl {} is invalid", decl.name);
+				std::string init_tyname = init_sval->ty.name();
+				std::string decl_tyname = ret->ty.name();
+				error_ifnt(init_sval->ty.is_convertible_to(ret->ty), loc, "initialiser of decl {} was of type \"{}\", which is not convertible to \"{}\"", decl.name, init_tyname, decl_tyname);
 			}
 		}
-		if(!ty.has_value() || ty.value().is_badtype())
+		if(ret->ty.is_badtype())
 		{
 			// could be referring to a variable (so long as that variable is a meta type)
 			auto iter = types.variables.find(decl.type_name);
 			if(iter != types.variables.end())
 			{
-				sval val = iter->second;
-				ty = val.ty;
+				return iter->second;
 			}
 		}
 	}
@@ -3363,46 +3373,43 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 	const bool expr_is_funcdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
 	const bool expr_is_structdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
 	const bool expr_is_enumdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_enumdef_expr, decltype(decl.initialiser.value().expr_)>();
-	if(ty.has_value())
+	if(ret->ty.is_fn() && expr_is_funcdef)
 	{
-		if(ty.value().is_fn() && expr_is_funcdef)
+		// declaration initialiser is a function type.
+		auto [_, actually_emplaced] = types.functions.emplace(decl.name, std::get<fn_ty>(ret->ty.payload));
+		if(!actually_emplaced)
 		{
-			// declaration initialiser is a function type.
-			auto [_, actually_emplaced] = types.functions.emplace(decl.name, std::get<fn_ty>(ty.value().payload));
-			if(!actually_emplaced)
-			{
-				error(loc, "duplicate definition of function \"{}\"", decl.name);
-			}
-			const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
-			types.function_locations[decl.name] = &def;
-			if(!def.is_extern)
-			{
-				ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
-			}
+			error(loc, "duplicate definition of function \"{}\"", decl.name);
 		}
-		else if(ty.value().is_type() && expr_is_structdef)
+		const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
+		types.function_locations[decl.name] = &def;
+		if(!def.is_extern)
 		{
-			auto& structdef = std::get<struct_ty>(std::get<meta_ty>(ty.value().payload).concrete->payload);
-			// we expect this to be an empty struct because we dont have access to its members until we see its children.
-			auto [_, actually_emplaced] = types.structs.emplace(decl.name, structdef);
-			if(!actually_emplaced)
-			{
-				error(loc, "duplicate definition of struct \"{}\"", decl.name);
-			}
-			ctx.entries.push_back({.t = semal_context::type::in_struct, .name = decl.name});
-		}
-		else if(ty.value().is_type() && expr_is_enumdef)
-		{
-			auto& enumdef = std::get<enum_ty>(std::get<meta_ty>(ty.value().payload).concrete->payload);
-			auto [_, actually_emplaced] = types.enums.emplace(decl.name, enumdef);
-			if(!actually_emplaced)
-			{
-				error(loc, "duplicate definition of enum \"{}\"", decl.name);
-			}
-			ctx.entries.push_back({.t = semal_context::type::in_enum, .name = decl.name});
+			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
 		}
 	}
-	return ty;
+	else if(ret->ty.is_type() && expr_is_structdef)
+	{
+		auto& structdef = std::get<struct_ty>(std::get<meta_ty>(ret->ty.payload).concrete->payload);
+		// we expect this to be an empty struct because we dont have access to its members until we see its children.
+		auto [_, actually_emplaced] = types.structs.emplace(decl.name, structdef);
+		if(!actually_emplaced)
+		{
+			error(loc, "duplicate definition of struct \"{}\"", decl.name);
+		}
+		ctx.entries.push_back({.t = semal_context::type::in_struct, .name = decl.name});
+	}
+	else if(ret->ty.is_type() && expr_is_enumdef)
+	{
+		auto& enumdef = std::get<enum_ty>(std::get<meta_ty>(ret->ty.payload).concrete->payload);
+		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enumdef);
+		if(!actually_emplaced)
+		{
+			error(loc, "duplicate definition of enum \"{}\"", decl.name);
+		}
+		ctx.entries.push_back({.t = semal_context::type::in_enum, .name = decl.name});
+	}
+	return ret;
 }
 
 std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
