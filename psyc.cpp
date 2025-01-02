@@ -2828,25 +2828,7 @@ std::filesystem::path get_compiler_path()
 	#endif
 }
 
-void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
-{
-	if(call.function_name == "add_source_file")
-	{
-		const ast_expr& path_expr = call.params.front();
-		std::filesystem::path path{std::get<std::string>(std::get<ast_literal_expr>(path_expr.expr_).value)};
-		if(!std::filesystem::exists(path))
-		{
-			// assume its a standard library source file.
-			path = get_compiler_path().parent_path() / path;
-		}
-		state.added_source_files.emplace(path, loc);
-	}
-	else
-	{
-		panic("{}, detected call to a function i know about, but i cant find its implementation. its location is nullptr implying that its a builtin function, but i dont recognise \"{}\" as a valid builtin", loc, call.function_name);
-	}
-}
-
+void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc);
 
 struct semal_context
 {
@@ -3544,7 +3526,7 @@ std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcl
 	return std::nullopt;
 }
 
-void semal(node& ast, semal_state& types, semal_context& ctx)
+void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false)
 {
 	bool is_tu = false;
 	bool pop_context = false;
@@ -3561,6 +3543,13 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 		{
 			// is a block statement, after all children we should pop context.
 			pop_context = true;
+		}
+		else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
+		{
+			if(ignore_metaregions)
+			{
+				return;
+			}
 		}
 	}
 	else
@@ -3602,7 +3591,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 	// ok SORRY. actually semal the children now.
 	for(auto& child : ast.children)
 	{
-		semal(child, ast.types, ctx);
+		semal(child, ast.types, ctx, ignore_metaregions);
 		if(is_tu)
 		{
 			types = types.coalesce(ast.types);
@@ -6026,7 +6015,7 @@ void compile_source(std::filesystem::path file, std::string source, const compil
 			compile_file(newfile, args, types, false);
 		}
 	}
-	semal(ast, *types, ctx);
+	semal(ast, *types, ctx, true);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -6077,6 +6066,29 @@ int main(int argc, char** argv)
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
+
+void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
+{
+	semal_context empty;
+	semal_state cpy = state;
+	if(call.function_name == "add_source_file")
+	{
+		const ast_expr& path_expr = call.params.front();
+		auto path_exprval = expr_get_type(path_expr, cpy, loc, empty);
+		std::filesystem::path path{std::get<std::string>(std::get<literal_val>(path_exprval->val))};
+		if(!std::filesystem::exists(path))
+		{
+			// assume its a standard library source file.
+			path = get_compiler_path().parent_path() / path;
+		}
+		state.added_source_files.emplace(path, loc);
+	}
+	else
+	{
+		panic("{}, detected call to a function i know about, but i cant find its implementation. its location is nullptr implying that its a builtin function, but i dont recognise \"{}\" as a valid builtin", loc, call.function_name);
+	}
+}
+
 
 std::string get_preload_source()
 {
