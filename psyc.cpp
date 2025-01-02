@@ -882,7 +882,7 @@ struct semal_state
 	std::unordered_map<std::string, enum_ty> enums = {};
 	std::unordered_map<std::string, fn_ty> functions = {};
 	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
-	std::unordered_map<std::string, type_t> variables = {};
+	std::unordered_map<std::string, sval> variables = {};
 
 	std::unordered_map<std::filesystem::path, srcloc> added_source_files = {};
 
@@ -2879,7 +2879,7 @@ struct semal_context
 		std::string name;
 	};
 	std::vector<entry> entries = {};
-	std::unordered_map<std::string, type_t> variables_to_exist_in_next_scope = {};
+	std::unordered_map<std::string, sval> variables_to_exist_in_next_scope = {};
 
 	const entry* try_get_parent_function() const
 	{
@@ -2990,7 +2990,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
 			if(!def.is_extern)
 			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+				ctx.variables_to_exist_in_next_scope[decl.name] = wrap_type(ty.value());
 			}
 			return ty.value();
 		});
@@ -3004,7 +3004,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(!ty.value().is_type(), loc, "detected \"type\" passed as runtime parameter to function {}. type parameters are only valid as static parameters (within a pair of <>s)", decl.name);
 			if(!def.is_extern)
 			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = ty.value();
+				ctx.variables_to_exist_in_next_scope[decl.name] = wrap_type(ty.value());
 			}
 			return ty.value();
 		});
@@ -3064,7 +3064,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		auto iter = types.variables.find(symbol_expr.symbol);
 		if(iter != types.variables.end())
 		{
-			return iter->second;
+			sval var = iter->second;
+			return var.ty;
 		}
 		else
 		{
@@ -3072,7 +3073,10 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			if(func_iter != types.functions.end())
 			{
 				// they are referring to a function name as a variable. that's perfectly fine.
-				return type_t{.payload = func_iter->second};
+				sval val = wrap_type(type_t{.payload = func_iter->second});
+				// "value" is secretly a string literal even though the ty is a function
+				val.val = symbol_expr.symbol;
+				return val.ty;
 			}
 			else
 			{
@@ -3080,7 +3084,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				type_t type_name = types.parse(symbol_expr.symbol);
 				if(!type_name.is_badtype())
 				{
-					return type_t::create_meta_type(type_name);
+					sval val = wrap_type(type_t::create_meta_type(type_name));
+					return val.ty;
 				}
 				else
 				{
@@ -3092,7 +3097,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return type_t::create_meta_type(type_t{.payload = struct_ty{}});
+		sval val = wrap_type(type_t::create_meta_type(type_t{.payload = struct_ty{}}));
+		return val.ty;
 	}
 	else if(expr.expr_.index() == payload_index<ast_enumdef_expr, decltype(expr.expr_)>())
 	{
@@ -3103,7 +3109,8 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			underlying_ty = types.parse(enumdef.underlying_type);
 		}
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}});
+		sval val = wrap_type(type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}}));
+		return val.ty;
 	}
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
@@ -3298,7 +3305,8 @@ std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, sr
 			auto iter = types.variables.find(decl.type_name);
 			if(iter != types.variables.end())
 			{
-				ty = iter->second;
+				sval val = iter->second;
+				ty = val.ty;
 			}
 		}
 	}
@@ -3371,7 +3379,8 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
 			if(!ty.value().is_fn() && !ty.value().is_type())
 			{
-				auto [_, actually_emplaced] = types.variables.emplace(decl.name, ty.value());
+				sval replace_me_with_above_scope = wrap_type(ty.value());
+				auto [_, actually_emplaced] = types.variables.emplace(decl.name, replace_me_with_above_scope);
 				if(!actually_emplaced)
 				{
 					error(loc, "duplicate definition of variable \"{}\"", decl.name);
