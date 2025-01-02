@@ -1051,7 +1051,32 @@ struct semal_state
 
 semal_state create_empty_type_system()
 {
-	return {};
+	semal_state ret = {};
+	ret.functions.emplace("_error", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("_error", nullptr);
+	ret.functions.emplace("_warning", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("_warning", nullptr);
+	return ret;
 }
 
 semal_state create_basic_type_system()
@@ -2848,6 +2873,7 @@ struct semal_context
 	};
 	std::vector<entry> entries = {};
 	std::unordered_map<std::string, sval> variables_to_exist_in_next_scope = {};
+	bool skip_next_block = false;
 
 	const entry* try_get_parent_function() const
 	{
@@ -3316,7 +3342,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	else
 	{
 		ret = sval{.ty = types.parse(decl.type_name)};
-		if(ret.has_value() && ret->ty.is_type())
+		if(ret.has_value())
 		{
 			// user has specifically typed "type" as the type of a variable
 			// that has no concrete type information, so we're still going to take the deduction code path
@@ -3328,6 +3354,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 				std::string init_tyname = init_sval->ty.name();
 				std::string decl_tyname = ret->ty.name();
 				error_ifnt(init_sval->ty.is_convertible_to(ret->ty), loc, "initialiser of decl {} was of type \"{}\", which is not convertible to \"{}\"", decl.name, init_tyname, decl_tyname);
+				ret.value() = init_sval.value();
 			}
 		}
 		if(ret->ty.is_badtype())
@@ -3515,6 +3542,12 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		if(if_stmt.is_static)
 		{
 			error_ifnt(cond->ty.qual & typequal_static, loc, "condition of a static-if-statement must be static, \"{}\" is not static", cond_tyname);
+			const bool should_execute = std::get<bool>(std::get<literal_val>(cond->val));
+			if(!should_execute)
+			{
+				ctx.skip_next_block = true;
+			}
+
 		}
 		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
@@ -3530,6 +3563,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 {
 	bool is_tu = false;
 	bool pop_context = false;
+	bool should_ignore_children = false;
 	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
 	{
 		is_tu = true;
@@ -3543,6 +3577,11 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 		{
 			// is a block statement, after all children we should pop context.
 			pop_context = true;
+			if(ctx.skip_next_block)
+			{
+				should_ignore_children = true;
+				ctx.skip_next_block = false;
+			}
 		}
 		else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
 		{
@@ -3588,17 +3627,20 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 			}
 		}
 	}
-	// ok SORRY. actually semal the children now.
-	for(auto& child : ast.children)
+	if(!should_ignore_children)
 	{
-		semal(child, ast.types, ctx, ignore_metaregions);
-		if(is_tu)
+		// ok SORRY. actually semal the children now.
+		for(auto& child : ast.children)
 		{
-			types = types.coalesce(ast.types);
-		}
-		else
-		{
-			ast.types.feed_forward(types);
+			semal(child, ast.types, ctx, ignore_metaregions);
+			if(is_tu)
+			{
+				types = types.coalesce(ast.types);
+			}
+			else
+			{
+				ast.types.feed_forward(types);
+			}
 		}
 	}
 	if(pop_context)
@@ -6082,6 +6124,32 @@ void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 			path = get_compiler_path().parent_path() / path;
 		}
 		state.added_source_files.emplace(path, loc);
+	}
+	else if(call.function_name == "_error")
+	{
+		const ast_expr& msg_expr = call.params.front();
+		auto exprval = semal_expr(msg_expr, cpy, loc, empty);
+		auto msg = std::get<std::string>(std::get<literal_val>(exprval->val));
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		error(loc, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+	}
+	else if(call.function_name == "_warning")
+	{
+		const ast_expr& msg_expr = call.params.front();
+		auto exprval = semal_expr(msg_expr, cpy, loc, empty);
+		auto msg = std::get<std::string>(std::get<literal_val>(exprval->val));
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		warning(loc, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
 	}
 	else
 	{
