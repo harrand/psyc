@@ -2935,11 +2935,10 @@ struct semal_context
 	}
 };
 
-std::optional<type_t> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
+std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
 
-std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
 {
-	type_t ret;
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
 	{
 		const auto& lit = std::get<ast_literal_expr>(expr.expr_);
@@ -2948,7 +2947,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			.val = lit.value,
 		};
 
-		ret.qual = typequal_static;
+		value.ty.qual = typequal_static;
 		if(lit.value.index() == payload_index<std::int64_t, decltype(lit.value)>())
 		{
 			value.ty.payload = prim_ty{.p = prim_ty::type::s64};
@@ -2975,7 +2974,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		{
 			panic("dont know how to typecheck this specific literal expression");
 		}
-		return value.ty;
+		return value;
 	}
 	else if(expr.expr_.index() == payload_index<ast_funcdef_expr, decltype(expr.expr_)>())
 	{
@@ -2986,32 +2985,35 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
 		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
-			const auto ty = decl_get_type(decl, types, loc, ctx);
-			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
+			auto sparam = decl_get_type(decl, types, loc, ctx);
+			error_ifnt(sparam.has_value(), loc, "failed to semal static parameter {} of function", decl.name);
+
+			error_ifnt(!sparam->ty.is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
 			if(!def.is_extern)
 			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = wrap_type(ty.value());
+				ctx.variables_to_exist_in_next_scope[decl.name] = sparam.value();
 			}
-			return ty.value();
+			return sparam->ty;
 		});
 
 		ty.params.resize(def.params.size());
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
 		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
-			const auto ty = decl_get_type(decl, types, loc, ctx);
-			error_ifnt(ty.has_value() && !ty.value().is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
-			error_ifnt(!ty.value().is_type(), loc, "detected \"type\" passed as runtime parameter to function {}. type parameters are only valid as static parameters (within a pair of <>s)", decl.name);
+			auto param = decl_get_type(decl, types, loc, ctx);
+			error_ifnt(param.has_value(), loc, "failed to semal parameter {} of function", decl.name);
+
+			error_ifnt(!param->ty.is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
 			if(!def.is_extern)
 			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = wrap_type(ty.value());
+				ctx.variables_to_exist_in_next_scope[decl.name] = param.value();
 			}
-			return ty.value();
+			return param->ty;
 		});
 
 		ty.return_ty = types.parse(def.return_type);
 		error_ifnt(!ty.return_ty->is_badtype(), loc, "unknown return type \"{}\" of function", def.return_type);
-		return type_t{.payload = ty, .qual = typequal_static};
+		return wrap_type(type_t{.payload = ty, .qual = typequal_static});
 	}
 	else if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
 	{
@@ -3026,11 +3028,12 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
 			for(std::size_t i = 0; i < call_sparams; i++)
 			{
-				auto call_param_ty = expr_get_type(call.static_params[i], types, loc, ctx);
-				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as static parameter {} in call to function {}", i, call.function_name);
-				const std::string call_expr_tyname = call_param_ty.value().name();
+				//auto call_param_ty = expr_get_type(call.static_params[i], types, loc, ctx);
+				auto call_param = expr_get_type(call.static_params[i], types, loc, ctx);
+				error_ifnt(call_param.has_value(), loc, "failed to semal static argument {} in call to function {}", i, call.function_name);
+				const std::string call_expr_tyname = call_param->ty.name();
 				const std::string fn_param_tyname = fn.static_params[i].name();
-				error_ifnt(call_param_ty.value().is_convertible_to(fn.static_params[i]), loc, "static param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
+				error_ifnt(call_param->ty.is_convertible_to(fn.static_params[i]), loc, "static param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
 				// todo: generate new concrete function signatures based on these
 				warning(loc, "static params are not yet implemented");
 			}
@@ -3039,11 +3042,12 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
 			for(std::size_t i = 0; i < call_params; i++)
 			{
-				auto call_param_ty = expr_get_type(call.params[i], types, loc, ctx);
-				error_ifnt(call_param_ty.has_value() && !call_param_ty.value().is_badtype(), loc, "expression of unknown type provided as parameter {} in call to function {}", i, call.function_name);
-				const std::string call_expr_tyname = call_param_ty.value().name();
+				auto call_param = expr_get_type(call.params[i], types, loc, ctx);
+				//auto call_param_ty = expr_get_type(call.params[i], types, loc, ctx);
+				error_ifnt(call_param.has_value(), loc, "failed to semal argument {} in call to function {}", i, call.function_name);
+				const std::string call_expr_tyname = call_param->ty.name();
 				const std::string fn_param_tyname = fn.params[i].name();
-				error_ifnt(call_param_ty.value().is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
+				error_ifnt(call_param->ty.is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
 			}
 
 			auto* fnloc = types.function_locations.at(call.function_name);
@@ -3051,7 +3055,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			{
 				call_builtin_function(call, types, loc);
 			}
-			return *fn.return_ty;
+			return wrap_type(*fn.return_ty);
 		}
 		else
 		{
@@ -3064,8 +3068,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 		auto iter = types.variables.find(symbol_expr.symbol);
 		if(iter != types.variables.end())
 		{
-			sval var = iter->second;
-			return var.ty;
+			return iter->second;
 		}
 		else
 		{
@@ -3076,7 +3079,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				sval val = wrap_type(type_t{.payload = func_iter->second});
 				// "value" is secretly a string literal even though the ty is a function
 				val.val = symbol_expr.symbol;
-				return val.ty;
+				return val;
 			}
 			else
 			{
@@ -3084,8 +3087,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				type_t type_name = types.parse(symbol_expr.symbol);
 				if(!type_name.is_badtype())
 				{
-					sval val = wrap_type(type_t::create_meta_type(type_name));
-					return val.ty;
+					return wrap_type(type_t::create_meta_type(type_name));
 				}
 				else
 				{
@@ -3097,8 +3099,7 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		sval val = wrap_type(type_t::create_meta_type(type_t{.payload = struct_ty{}}));
-		return val.ty;
+		return wrap_type(type_t::create_meta_type(type_t{.payload = struct_ty{}}));
 	}
 	else if(expr.expr_.index() == payload_index<ast_enumdef_expr, decltype(expr.expr_)>())
 	{
@@ -3109,13 +3110,13 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 			underlying_ty = types.parse(enumdef.underlying_type);
 		}
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		sval val = wrap_type(type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}}));
-		return val.ty;
+		return wrap_type(type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}}));
 	}
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
-		auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
+		auto lhs = expr_get_type(*biop.lhs, types, loc, ctx);
+		//auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -3129,16 +3130,56 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				[[fallthrough]];
 			case biop_type::div:
 			{
-				auto rhs_ty = expr_get_type(*biop.rhs, types, loc, ctx);
-				error_ifnt(lhs_ty.has_value(), loc, "lhs type is wrong");
-				error_ifnt(rhs_ty.has_value(), loc, "rhs type is wrong");
-				error_ifnt(lhs_ty->is_convertible_to(rhs_ty.value()), loc, "binary operator is invalid because the left and right expression types are not convertible.");
-				return lhs_ty;
+				auto rhs = expr_get_type(*biop.rhs, types, loc, ctx);
+				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
+				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
+				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
+				double rhs_val = 0.0;
+				if(rhs->ty.is_prim() && rhs->val.index() != payload_index<std::monostate, decltype(rhs->val)>())
+				{
+					// rhs has a static value.
+					// we assume its numeric.
+					// double will store double and int64 so lets stick with double.
+					if(payload_index<literal_val, decltype(rhs->val)>())
+					{
+						auto& rhs_svalue = std::get<literal_val>(rhs->val);
+						if(rhs_svalue.index() == payload_index<double, decltype(rhs_svalue)>())
+						{
+							rhs_val += std::get<double>(rhs_svalue);
+						}
+						else if(rhs_svalue.index() == payload_index<std::int64_t, decltype(rhs_svalue)>())
+						{
+							rhs_val += std::get<std::int64_t>(rhs_svalue);
+						}
+						else
+						{
+							panic("did not expecting non-double non-int64 rhs literal value. did they pass a bool/char to a arithmetic biop {}?", loc);
+						}
+					}
+					else
+					{
+						panic("really expected a literal value for a primitive rhs");
+					}
+				}
+				if(lhs->ty.is_prim())
+				{
+					auto& static_value = std::get<literal_val>(lhs->val);
+					if(static_value.index() == payload_index<std::int64_t, literal_val>())
+					{
+						std::get<std::int64_t>(static_value) += rhs_val;
+					}
+				}
+				else
+				{
+					std::string lhs_tyname = lhs->ty.name();
+					error(loc, "arithmetic binary operators are only valid on numeric types, you have tried to use it on a \"{}\" which is invalid", lhs_tyname);
+				}
+				return lhs;
 			}
 			break;
 			case biop_type::cast:
 			{
-				error_ifnt(lhs_ty.has_value() && !lhs_ty.value().is_badtype(), loc, "lhs of cast expression did not yield a valid type");
+				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
 				const auto& rhs_expr = *biop.rhs;
 				if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
 				{
@@ -3149,10 +3190,18 @@ std::optional<type_t> expr_get_type(const ast_expr& expr, semal_state& types, sr
 				{
 					const auto& symbol_expr = std::get<ast_symbol_expr>(rhs_expr.expr_);
 					type_t casted_to_ty = types.parse(symbol_expr.symbol);
-					std::string casted_from_tyname = lhs_ty.value().name();
+					std::string casted_from_tyname = lhs->ty.name();
 					std::string casted_to_tyname = casted_to_ty.name();
-					error_ifnt(lhs_ty.value().add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
-					return casted_to_ty;
+					error_ifnt(lhs->ty.add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
+					// let's try to do the cast if the static value exists.
+					sval ret = wrap_type(casted_to_ty);
+					ret.val = lhs->val;
+					if(ret.val.index() == payload_index<literal_val, decltype(ret.val)>())
+					{
+						const auto& lit = std::get<literal_val>(ret.val);
+						// todo: magic static value conversion logic.
+					}
+					return ret;
 				}
 			}
 			break;
