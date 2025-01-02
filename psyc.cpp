@@ -530,7 +530,7 @@ struct fn_ty
 
 struct meta_ty
 {
-	box<type_t> concrete;
+	std::string underlying_typename;
 	bool operator==(const meta_ty& rhs) const = default;
 
 	std::string name() const;
@@ -556,11 +556,6 @@ struct type_t
 	static type_t create_void_type()
 	{
 		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
-	}
-
-	static type_t create_meta_type(type_t ty = type_t::badtype())
-	{
-		return type_t{.payload = meta_ty{.concrete = ty}};
 	}
 
 	type_t add_weak()
@@ -662,7 +657,7 @@ struct type_t
 				const auto& rhs_ty = std::get<meta_ty>(rhs.payload);
 
 				// if either of them have badtype as concrete, then it is a template type and the conversion is okay.
-				if(lhs_ty.concrete->is_badtype() || rhs_ty.concrete->is_badtype())
+				if(lhs_ty.underlying_typename == type_t::badtype().name() || rhs_ty.underlying_typename == type_t::badtype().name())
 				{
 					return true;
 				}
@@ -859,11 +854,7 @@ std::string fn_ty::name() const
 
 std::string meta_ty::name() const
 {
-	if(this->concrete->is_badtype())
-	{
-		return meta_type;
-	}
-	return std::format(meta_type" (aka {})", this->concrete->name());
+	return std::format(meta_type" aka {}", this->underlying_typename);
 }
 
 struct ast_funcdef_expr;
@@ -893,11 +884,6 @@ struct semal_state
 
 	type_t parse(std::string_view type_name) const
 	{
-		if (type_name == meta_type)
-		{
-			return type_t::create_meta_type();
-		}
-
 		// typenames can get very complicated so this isnt trivial at all.
 
 		// Initialize the type to be parsed
@@ -2935,6 +2921,9 @@ struct semal_context
 	}
 };
 
+constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
+constexpr const char unnamed_enum_ty[] = "_unnamed_struct";
+
 std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
 
 std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
@@ -3013,7 +3002,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 
 		ty.return_ty = types.parse(def.return_type);
 		error_ifnt(!ty.return_ty->is_badtype(), loc, "unknown return type \"{}\" of function", def.return_type);
-		return wrap_type(type_t{.payload = ty, .qual = typequal_static});
+		return wrap_type(type_t{.payload = ty});
 	}
 	else if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
 	{
@@ -3087,7 +3076,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 				type_t type_name = types.parse(symbol_expr.symbol);
 				if(!type_name.is_badtype())
 				{
-					return wrap_type(type_t::create_meta_type(type_name));
+					return wrap_type(type_t{.payload = meta_ty{.underlying_typename = symbol_expr.symbol}});
 				}
 				else
 				{
@@ -3099,7 +3088,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
 	{
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return wrap_type(type_t::create_meta_type(type_t{.payload = struct_ty{}}));
+		return wrap_type(type_t{.payload = meta_ty{.underlying_typename = unnamed_struct_ty}});
 	}
 	else if(expr.expr_.index() == payload_index<ast_enumdef_expr, decltype(expr.expr_)>())
 	{
@@ -3110,7 +3099,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			underlying_ty = types.parse(enumdef.underlying_type);
 		}
 		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return wrap_type(type_t::create_meta_type(type_t{.payload = enum_ty{.underlying_ty = underlying_ty}}));
+		return wrap_type(type_t{.payload = meta_ty{.underlying_typename = unnamed_enum_ty}});
 	}
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
@@ -3143,11 +3132,11 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 					if(payload_index<literal_val, decltype(rhs->val)>())
 					{
 						auto& rhs_svalue = std::get<literal_val>(rhs->val);
-						if(rhs_svalue.index() == payload_index<double, decltype(rhs_svalue)>())
+						if(rhs_svalue.index() == payload_index<double, literal_val>())
 						{
 							rhs_val += std::get<double>(rhs_svalue);
 						}
-						else if(rhs_svalue.index() == payload_index<std::int64_t, decltype(rhs_svalue)>())
+						else if(rhs_svalue.index() == payload_index<std::int64_t, literal_val>())
 						{
 							rhs_val += std::get<std::int64_t>(rhs_svalue);
 						}
@@ -3212,7 +3201,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 				if(lhs->ty.is_type())
 				{
 					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
-					type_t concrete = *meta.concrete;
+					type_t concrete = types.parse(meta.underlying_typename);
 					lhs = wrap_type(concrete);
 				}
 				std::string rhs_symbol;
@@ -3344,7 +3333,7 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 	}
 	else
 	{
-		ret = wrap_type(types.parse(decl.type_name));
+		ret = sval{.ty = types.parse(decl.type_name)};
 		if(ret.has_value() && ret->ty.is_type())
 		{
 			// user has specifically typed "type" as the type of a variable
@@ -3390,9 +3379,7 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 	}
 	else if(ret->ty.is_type() && expr_is_structdef)
 	{
-		auto& structdef = std::get<struct_ty>(std::get<meta_ty>(ret->ty.payload).concrete->payload);
-		// we expect this to be an empty struct because we dont have access to its members until we see its children.
-		auto [_, actually_emplaced] = types.structs.emplace(decl.name, structdef);
+		auto [_, actually_emplaced] = types.structs.emplace(decl.name, struct_ty{});
 		if(!actually_emplaced)
 		{
 			error(loc, "duplicate definition of struct \"{}\"", decl.name);
@@ -3401,8 +3388,7 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 	}
 	else if(ret->ty.is_type() && expr_is_enumdef)
 	{
-		auto& enumdef = std::get<enum_ty>(std::get<meta_ty>(ret->ty.payload).concrete->payload);
-		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enumdef);
+		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t{.payload = prim_ty{.p = prim_ty::type::s64}}});
 		if(!actually_emplaced)
 		{
 			error(loc, "duplicate definition of enum \"{}\"", decl.name);
@@ -3412,14 +3398,23 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 	return ret;
 }
 
-std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto ty = decl_get_type(decl, types, loc, ctx);
-		error_ifnt(ty.has_value(), loc, "decl {} does not yield a type", decl.name);
-		error_ifnt(!ty.value().is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
+		auto declval = decl_get_type(decl, types, loc, ctx);
+		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
+		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
+
+		if(declval->ty.is_type())
+		{
+			auto& metaty = std::get<meta_ty>(declval->ty.payload);
+			if(metaty.underlying_typename == unnamed_struct_ty || metaty.underlying_typename == unnamed_enum_ty)
+			{
+				metaty.underlying_typename = decl.name;
+			}
+		}
 
 		auto* maybe_parent_struct = ctx.try_get_parent_struct();
 		auto* maybe_parent_fn = ctx.try_get_parent_function();
@@ -3427,23 +3422,22 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		{
 			// we're in a struct and not a function - we are a data member.
 			auto& structdef = types.structs.at(maybe_parent_struct->name);
-			structdef.members.emplace(decl.name, ty.value());
+			structdef.members.emplace(decl.name, declval->ty);
 		}
 		else
 		{
 			// we're not in a struct so this isnt a data member, just a variable.
 			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
-			if(!ty.value().is_fn() && !ty.value().is_type())
+			if(!declval->ty.is_fn())
 			{
-				sval replace_me_with_above_scope = wrap_type(ty.value());
-				auto [_, actually_emplaced] = types.variables.emplace(decl.name, replace_me_with_above_scope);
+				auto [_, actually_emplaced] = types.variables.emplace(decl.name, declval.value());
 				if(!actually_emplaced)
 				{
 					error(loc, "duplicate definition of variable \"{}\"", decl.name);
 				}
 			}
 		}
-		return ty.value();
+		return declval;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 	{
@@ -3467,10 +3461,10 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto ty = expr_get_type(expr.expr, types, loc, ctx);
-		error_ifnt(ty.has_value(), loc, "expr does not yield a type");
-		error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
-		return ty;
+		auto exprval = expr_get_type(expr.expr, types, loc, ctx);
+		error_ifnt(exprval.has_value(), loc, "expr was invalid");
+		error_ifnt(!exprval->ty.is_badtype(), loc, "expr yielded an invalid type");
+		return exprval;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
 	{
@@ -3481,28 +3475,28 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		auto& ret = std::get<ast_return_stmt>(stmt.stmt_);
 		if(ret.retval.has_value())
 		{
-			auto ty = expr_get_type(ret.retval.value(), types, loc, ctx);
-			error_ifnt(ty.has_value(), loc, "expr does not yield a type");
-			error_ifnt(!ty.value().is_badtype(), loc, "expr yielded an invalid type");
+			auto retval = expr_get_type(ret.retval.value(), types, loc, ctx);
+			error_ifnt(retval.has_value(), loc, "return value expression was invalid");
+			error_ifnt(!retval->ty.is_badtype(), loc, "return value expression yielded an invalid type");
 
-			std::string retval_tyname = ty.value().name();
+			std::string retval_tyname = retval->ty.name();
 			std::string fn_return_tyname = func.return_ty->name();
 			error_ifnt(!func.return_ty->is_void(), loc, "return value is incorrect because the parent function \"{}\" returns v0", parent_func->name);
-			error_ifnt(ty.value().is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
-			return ty;
+			error_ifnt(retval->ty.is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
+			return retval;
 		}
 		else
 		{
 			const auto return_tyname = func.return_ty->name();
 			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
-			return type_t::create_void_type();
+			return wrap_type(type_t::create_void_type());
 		}
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
 	{
 		const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
 		ctx.entries.push_back({.t = semal_context::type::in_metaregion, .name = metaregion.name});
-		return type_t::create_void_type();
+		return wrap_type(type_t::create_void_type());
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_designator_stmt, decltype(stmt.stmt_)>())
 	{
@@ -3519,24 +3513,26 @@ std::optional<type_t> stmt_get_type(const ast_stmt& stmt, semal_state& types, sr
 		type_t ret = *enumdef.underlying_ty;
 
 		// make sure the initialiser of the designator actually matches the type.
-		auto desig_init_ty = expr_get_type(*desig.initialiser, types, loc, ctx);
-		error_ifnt(desig_init_ty.has_value() && !desig_init_ty.value().is_badtype(), loc, "initialiser expression of designator yielded an invalid type.");
-		std::string desig_init_tyname = desig_init_ty->name();
+		auto desig_init_expr = expr_get_type(*desig.initialiser, types, loc, ctx);
+		error_ifnt(desig_init_expr.has_value(), loc, "designator initialiser expression was invalid");
+		error_ifnt(!desig_init_expr->ty.is_badtype(), loc, "designator initialiser expression was of invalid type");
+		std::string desig_init_tyname = desig_init_expr->ty.name();
 		std::string enum_tyname = enumdef.name();
 		std::string enum_underlying_tyname = ret.name();
-		error_ifnt(desig_init_ty->is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
-		return ret;
+		error_ifnt(desig_init_expr->ty.is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
+		return desig_init_expr;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
 	{
 		const auto& if_stmt = std::get<ast_if_stmt>(stmt.stmt_);
-		auto cond_ty = expr_get_type(if_stmt.condition, types, loc, ctx);
-		error_ifnt(cond_ty.has_value() && !cond_ty->is_badtype(), loc, "condition of if-statement is of invalid type");
-		std::string cond_tyname = cond_ty->name();
-		error_ifnt(cond_ty->is_convertible_to(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}}), loc, "condition of if-statement is of type \"{}\", which is not convertible to \"bool\"", cond_tyname);
+		auto cond = expr_get_type(if_stmt.condition, types, loc, ctx);
+		error_ifnt(cond.has_value(), loc, "if-statement condition was invalid");
+		error_ifnt(!cond->ty.is_badtype(), loc, "if-statement condition was of invalid type");
+		std::string cond_tyname = cond->ty.name();
+		error_ifnt(cond->ty.is_convertible_to(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}}), loc, "condition of if-statement is of type \"{}\", which is not convertible to \"bool\"", cond_tyname);
 		if(if_stmt.is_static)
 		{
-			error_ifnt(cond_ty->qual & typequal_static, loc, "condition of a static-if-statement must be static, \"{}\" is not static", cond_tyname);
+			error_ifnt(cond->ty.qual & typequal_static, loc, "condition of a static-if-statement must be static, \"{}\" is not static", cond_tyname);
 		}
 		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
@@ -3559,8 +3555,8 @@ void semal(node& ast, semal_state& types, semal_context& ctx)
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto ty = stmt_get_type(stmt, types, ast.begin_location, ctx);
-		std::println("{}", ty.value_or(type_t::badtype()).name());
+		auto stmtval = stmt_get_type(stmt, types, ast.begin_location, ctx);
+		std::println("{}", stmtval.value_or(sval{}).ty.name());
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
 			// is a block statement, after all children we should pop context.
