@@ -1332,6 +1332,7 @@ enum class token : std::uint32_t
 	cast,
 	oanglebrack,
 	canglebrack,
+	keyword_static_if,
 	keyword_if,
 	keyword_while,
 	keyword_for,
@@ -1635,6 +1636,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "canglebrack",
 		.front_identifier = ">",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "static if keyword",
+		.front_identifier = "if static",
 		.trivial = true
 	},
 
@@ -2242,8 +2250,16 @@ struct ast_metaregion_stmt
 struct ast_if_stmt
 {
 	ast_expr condition;
+	bool is_static;
 
-	std::string value_tostring(){return "if-statement";}
+	std::string value_tostring()
+	{
+		if(this->is_static)
+		{
+			return "static-if-statement";
+		}
+		return "if-statement";
+	}
 };
 
 struct ast_stmt
@@ -5741,6 +5757,107 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+// static if statements
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), NODE(ast_stmt)), FN
+	{
+		const auto& expr_node = nodes[2];
+		const auto& expr = std::get<ast_expr>(expr_node.payload);
+		const auto& stmt_node = nodes[4];
+		const auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(!blk.capped)
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 4};
+			}
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 5},
+				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
+					{
+						.condition = std::get<ast_expr>(nodes[2].payload),
+						.is_static = true
+					}}, .children = {stmt_node}}}
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("{} statement detected directly after an if-statement. you should provide a block statement instead.");
+		}
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 6},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
+				{
+					.condition = std::get<ast_expr>(nodes[2].payload),
+					.is_static = true
+				}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_static_if), TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
 // if statements
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_if)), FN
@@ -5797,7 +5914,8 @@ CHORD_BEGIN
 				.nodes_to_remove = {.offset = 0, .length = 5},
 				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
 					{
-						.condition = std::get<ast_expr>(nodes[2].payload)
+						.condition = std::get<ast_expr>(nodes[2].payload),
+						.is_static = false
 					}}, .children = {stmt_node}}}
 			};
 		}
@@ -5818,7 +5936,8 @@ CHORD_BEGIN
 			.nodes_to_remove = {.offset = 0, .length = 6},
 			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_if_stmt
 				{
-					.condition = std::get<ast_expr>(nodes[2].payload)
+					.condition = std::get<ast_expr>(nodes[2].payload),
+					.is_static = false
 				}}}}
 		};
 	}
