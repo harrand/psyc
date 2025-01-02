@@ -1049,9 +1049,14 @@ struct semal_state
 	}
 };
 
+semal_state create_empty_type_system()
+{
+	return {};
+}
+
 semal_state create_basic_type_system()
 {
-	semal_state ret;
+	semal_state ret = create_empty_type_system();
 
 	for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
 	{
@@ -1078,11 +1083,6 @@ semal_state create_build_metaregion_context()
 			});
 	ret.function_locations.emplace("add_source_file", nullptr);
 	return ret;
-}
-
-semal_state create_empty_type_system()
-{
-	return {};
 }
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -2906,9 +2906,9 @@ struct semal_context
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_struct";
 
-std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
 
-std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
 	{
@@ -2956,7 +2956,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
 		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
-			auto sparam = decl_get_type(decl, types, loc, ctx);
+			auto sparam = semal_decl(decl, types, loc, ctx);
 			error_ifnt(sparam.has_value(), loc, "failed to semal static parameter {} of function", decl.name);
 
 			error_ifnt(!sparam->ty.is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
@@ -2971,7 +2971,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
 		[&types, &loc, &def, &ctx](const ast_decl& decl)
 		{
-			auto param = decl_get_type(decl, types, loc, ctx);
+			auto param = semal_decl(decl, types, loc, ctx);
 			error_ifnt(param.has_value(), loc, "failed to semal parameter {} of function", decl.name);
 
 			error_ifnt(!param->ty.is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
@@ -2999,8 +2999,8 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
 			for(std::size_t i = 0; i < call_sparams; i++)
 			{
-				//auto call_param_ty = expr_get_type(call.static_params[i], types, loc, ctx);
-				auto call_param = expr_get_type(call.static_params[i], types, loc, ctx);
+				//auto call_param_ty = semal_expr(call.static_params[i], types, loc, ctx);
+				auto call_param = semal_expr(call.static_params[i], types, loc, ctx);
 				error_ifnt(call_param.has_value(), loc, "failed to semal static argument {} in call to function {}", i, call.function_name);
 				const std::string call_expr_tyname = call_param->ty.name();
 				const std::string fn_param_tyname = fn.static_params[i].name();
@@ -3013,8 +3013,8 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
 			for(std::size_t i = 0; i < call_params; i++)
 			{
-				auto call_param = expr_get_type(call.params[i], types, loc, ctx);
-				//auto call_param_ty = expr_get_type(call.params[i], types, loc, ctx);
+				auto call_param = semal_expr(call.params[i], types, loc, ctx);
+				//auto call_param_ty = semal_expr(call.params[i], types, loc, ctx);
 				error_ifnt(call_param.has_value(), loc, "failed to semal argument {} in call to function {}", i, call.function_name);
 				const std::string call_expr_tyname = call_param->ty.name();
 				const std::string fn_param_tyname = fn.params[i].name();
@@ -3086,8 +3086,8 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
 	{
 		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
-		auto lhs = expr_get_type(*biop.lhs, types, loc, ctx);
-		//auto lhs_ty = expr_get_type(*biop.lhs, types, loc, ctx);
+		auto lhs = semal_expr(*biop.lhs, types, loc, ctx);
+		//auto lhs_ty = semal_expr(*biop.lhs, types, loc, ctx);
 		switch(biop.type)
 		{
 			// all operators aside from cast (@) act the same
@@ -3101,7 +3101,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 				[[fallthrough]];
 			case biop_type::div:
 			{
-				auto rhs = expr_get_type(*biop.rhs, types, loc, ctx);
+				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
 				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
 				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
 				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
@@ -3226,7 +3226,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	else if(expr.expr_.index() == payload_index<ast_unop_expr, decltype(expr.expr_)>())
 	{
 		const auto& unop = std::get<ast_unop_expr>(expr.expr_);
-		auto rhs = expr_get_type(*unop.rhs, types, loc, ctx);
+		auto rhs = semal_expr(*unop.rhs, types, loc, ctx);
 		std::string op_name = unop.value_tostring();
 		error_ifnt(rhs.has_value(), loc, "rhs of unary operator was invalid");
 		error_ifnt(!rhs->ty.is_badtype(), loc, "rhs of unary operator had invalid type");
@@ -3284,7 +3284,7 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 			{
 				error(loc, "struct \"{}\" has no member named \"{}\"", blkinit.type_name, init.name);
 			}
-			auto init_expr = expr_get_type(value, types, loc, ctx);
+			auto init_expr = semal_expr(value, types, loc, ctx);
 			error_ifnt(init_expr.has_value(), loc, "initialiser of member \"{}\" was invalid", init.name);
 			static_value[init.name] = init_expr.value();
 			error_ifnt(!init_expr->ty.is_badtype(), loc, "initialiser of member \"{}\" was of invalid type", init.name);
@@ -3305,13 +3305,13 @@ std::optional<sval> expr_get_type(const ast_expr& expr, semal_state& types, srcl
 	return std::nullopt;
 }
 
-std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	std::optional<sval> ret;
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ret = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+		ret = semal_expr(decl.initialiser.value(), types, loc, ctx);
 	}
 	else
 	{
@@ -3323,7 +3323,7 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 			// if there is no initialiser, then its basically a c++ template.
 			if(decl.initialiser.has_value())
 			{
-				auto init_sval = expr_get_type(decl.initialiser.value(), types, loc, ctx);
+				auto init_sval = semal_expr(decl.initialiser.value(), types, loc, ctx);
 				error_ifnt(init_sval.has_value(), loc, "initialiser of decl {} is invalid", decl.name);
 				std::string init_tyname = init_sval->ty.name();
 				std::string decl_tyname = ret->ty.name();
@@ -3380,12 +3380,12 @@ std::optional<sval> decl_get_type(const ast_decl& decl, semal_state& types, srcl
 	return ret;
 }
 
-std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto declval = decl_get_type(decl, types, loc, ctx);
+		auto declval = semal_decl(decl, types, loc, ctx);
 		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
 		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
 
@@ -3443,7 +3443,7 @@ std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcl
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto exprval = expr_get_type(expr.expr, types, loc, ctx);
+		auto exprval = semal_expr(expr.expr, types, loc, ctx);
 		error_ifnt(exprval.has_value(), loc, "expr was invalid");
 		error_ifnt(!exprval->ty.is_badtype(), loc, "expr yielded an invalid type");
 		return exprval;
@@ -3457,7 +3457,7 @@ std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcl
 		auto& ret = std::get<ast_return_stmt>(stmt.stmt_);
 		if(ret.retval.has_value())
 		{
-			auto retval = expr_get_type(ret.retval.value(), types, loc, ctx);
+			auto retval = semal_expr(ret.retval.value(), types, loc, ctx);
 			error_ifnt(retval.has_value(), loc, "return value expression was invalid");
 			error_ifnt(!retval->ty.is_badtype(), loc, "return value expression yielded an invalid type");
 
@@ -3495,7 +3495,7 @@ std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcl
 		type_t ret = *enumdef.underlying_ty;
 
 		// make sure the initialiser of the designator actually matches the type.
-		auto desig_init_expr = expr_get_type(*desig.initialiser, types, loc, ctx);
+		auto desig_init_expr = semal_expr(*desig.initialiser, types, loc, ctx);
 		error_ifnt(desig_init_expr.has_value(), loc, "designator initialiser expression was invalid");
 		error_ifnt(!desig_init_expr->ty.is_badtype(), loc, "designator initialiser expression was of invalid type");
 		std::string desig_init_tyname = desig_init_expr->ty.name();
@@ -3507,7 +3507,7 @@ std::optional<sval> stmt_get_type(const ast_stmt& stmt, semal_state& types, srcl
 	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
 	{
 		const auto& if_stmt = std::get<ast_if_stmt>(stmt.stmt_);
-		auto cond = expr_get_type(if_stmt.condition, types, loc, ctx);
+		auto cond = semal_expr(if_stmt.condition, types, loc, ctx);
 		error_ifnt(cond.has_value(), loc, "if-statement condition was invalid");
 		error_ifnt(!cond->ty.is_badtype(), loc, "if-statement condition was of invalid type");
 		std::string cond_tyname = cond->ty.name();
@@ -3537,7 +3537,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto stmtval = stmt_get_type(stmt, types, ast.begin_location, ctx);
+		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx);
 		std::println("{}", stmtval.value_or(sval{}).ty.name());
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
@@ -6074,7 +6074,7 @@ void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 	if(call.function_name == "add_source_file")
 	{
 		const ast_expr& path_expr = call.params.front();
-		auto path_exprval = expr_get_type(path_expr, cpy, loc, empty);
+		auto path_exprval = semal_expr(path_expr, cpy, loc, empty);
 		std::filesystem::path path{std::get<std::string>(std::get<literal_val>(path_exprval->val))};
 		if(!std::filesystem::exists(path))
 		{
