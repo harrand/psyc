@@ -321,6 +321,7 @@ struct compile_args
 	bool verbose_parse = false;
 	std::filesystem::path build_file = {};
 	std::filesystem::path output_dir = {};
+	std::vector<std::filesystem::path> link_libraries = {};
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -891,6 +892,7 @@ struct semal_state
 	std::unordered_map<std::string, sval> variables = {};
 
 	std::unordered_map<std::filesystem::path, srcloc> added_source_files = {};
+	std::unordered_map<std::filesystem::path, srcloc> added_link_libraries = {};
 
 	ptr_ty create_pointer_ty(type_t pointee) const
 	{
@@ -1050,6 +1052,11 @@ struct semal_state
 			other.added_source_files.emplace(file, loc);
 		}
 
+		for(const auto& [file, loc] : this->added_link_libraries)
+		{
+			other.added_link_libraries.emplace(file, loc);
+		}
+
 		for(const auto& [name, enumval] : this->enums)
 		{
 			if(!other.enums.contains(name))
@@ -1162,6 +1169,18 @@ semal_state create_build_metaregion_context()
 				.return_ty = type_t::create_void_type()
 			});
 	ret.function_locations.emplace("add_source_file", nullptr);
+	ret.functions.emplace("add_link_library", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload =ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("add_link_library", nullptr);
 	return ret;
 }
 
@@ -6081,9 +6100,9 @@ CHORD_END
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
-void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types = nullptr, bool include_preload = true);
+void compile_file(std::filesystem::path file, compile_args& args, semal_state* types = nullptr, bool include_preload = true);
 
-void compile_source(std::filesystem::path file, std::string source, const compile_args& args, semal_state* types)
+void compile_source(std::filesystem::path file, std::string source, compile_args& args, semal_state* types)
 {
 	timer_restart();
 	lex_output tokens = lex_from_data(file, source);
@@ -6118,6 +6137,12 @@ void compile_source(std::filesystem::path file, std::string source, const compil
 			error_ifnt(std::filesystem::exists(newfile), {}, "could not find source file \"{}\" added {}", filename, loc);
 			compile_file(newfile, args, types, false);
 		}
+		for(const auto& [libpath, loc] : temp_state.added_link_libraries)
+		{
+			auto filename = libpath.filename();
+			error_ifnt(std::filesystem::exists(libpath), {}, "could not find link library \"{}\" added {}", filename, loc);
+			args.link_libraries.push_back(libpath);
+		}
 	}
 	semal(ast, *types, ctx, true);
 
@@ -6131,7 +6156,7 @@ void compile_source(std::filesystem::path file, std::string source, const compil
 	timer_restart();
 }
 
-void compile_file(std::filesystem::path file, const compile_args& args, semal_state* types, bool include_preload)
+void compile_file(std::filesystem::path file, compile_args& args, semal_state* types, bool include_preload)
 {
 	semal_state new_types = create_basic_type_system();
 	if(types == nullptr)
@@ -6188,6 +6213,18 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 			path = get_compiler_path().parent_path() / path;
 		}
 		state.added_source_files.emplace(path, loc);
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "add_link_library")
+	{
+		const ast_expr& path_expr = call.params.front();
+		auto path_exprval = semal_expr(path_expr, cpy, loc, empty);
+		std::filesystem::path path{std::get<std::string>(std::get<literal_val>(path_exprval->val))};
+		if(!std::filesystem::exists(path))
+		{
+			path = "C:/Windows/System32/" / path;
+		}
+		state.added_link_libraries.emplace(path, loc);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "_error")
