@@ -1271,6 +1271,7 @@ enum class token : std::uint32_t
 	canglebrack,
 	keyword_static_if,
 	keyword_if,
+	keyword_else,
 	keyword_while,
 	keyword_for,
 	keyword_return,
@@ -1587,6 +1588,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "if keyword",
 		.front_identifier = "if",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "else keyword",
+		.front_identifier = "else",
 		.trivial = true
 	},
 
@@ -3572,7 +3580,6 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
 		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx);
-		std::println("{}", stmtval.value_or(sval{}).ty.name());
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
 			// is a block statement, after all children we should pop context.
