@@ -320,6 +320,7 @@ struct compile_args
 	bool verbose_ast = false;
 	bool verbose_parse = false;
 	std::filesystem::path build_file = {};
+	std::filesystem::path output_dir = {};
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -328,7 +329,7 @@ compile_args parse_args(std::span<const std::string_view> args)
 	for(std::size_t i = 0; i < args.size(); i++)
 	{
 		const auto& arg = args[i];
-		auto argnext = [allowed = i < args.size() - 1, i, &args](){if(!allowed){error({}, "argument missing value");} return args[i + 1];};
+		auto argnext = [allowed = i < args.size() - 1, &i, &args](){if(!allowed){error({}, "argument missing value");} return args[++i];};
 
 		if(arg == "-h" || arg == "--help")
 		{
@@ -352,6 +353,10 @@ compile_args parse_args(std::span<const std::string_view> args)
 			ret.verbose_ast = true;
 			ret.verbose_parse = true;
 		}
+		else if(arg == "-o")
+		{
+			ret.output_dir = argnext();
+		}
 		else
 		{
 			if(arg.starts_with("-"))
@@ -366,6 +371,10 @@ compile_args parse_args(std::span<const std::string_view> args)
 	if(!ret.should_print_help)
 	{
 	error_ifnt(!ret.build_file.empty(), {}, "no file specified");
+	}
+	if(ret.output_dir.empty())
+	{
+		ret.output_dir = std::filesystem::current_path() / "build/";
 	}
 	return ret;
 }
@@ -1106,6 +1115,22 @@ semal_state create_empty_type_system()
 				.return_ty = type_t{.payload = ret.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
 			});
 	ret.function_locations.emplace("_env", nullptr);
+	ret.functions.emplace("_cstrcat", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})},
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t{.payload = ret.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
+			});
+	ret.function_locations.emplace("_cstrcat", nullptr);
 	return ret;
 }
 
@@ -6084,7 +6109,7 @@ void compile_source(std::filesystem::path file, std::string source, const compil
 	node* build = try_find_build_metaregion(ast);
 	if(build != nullptr)
 	{
-		auto temp_state = create_basic_type_system();
+		auto temp_state = *types;
 		semal(*build, temp_state, ctx);
 		for(const auto& [newfile, loc] : temp_state.added_source_files)
 		{
@@ -6224,6 +6249,21 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 			.ty = type_t{.payload = state.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
 		};
 	}
+	else if(call.function_name == "_cstrcat")
+	{
+		const ast_expr& lhs_expr = call.params[0];
+		auto lhsval = semal_expr(lhs_expr, cpy, loc, empty);
+		auto lhs = std::get<std::string>(std::get<literal_val>(lhsval->val));
+
+		const ast_expr& rhs_expr = call.params[1];
+		auto rhsval = semal_expr(rhs_expr, cpy, loc, empty);
+		auto rhs = std::get<std::string>(std::get<literal_val>(rhsval->val));
+		return
+		{
+			.val = literal_val{lhs + rhs},
+			.ty = type_t{.payload = state.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
+		};
+	}
 	else
 	{
 		panic("{}, detected call to a function i know about, but i cant find its implementation. its location is nullptr implying that its a builtin function, but i dont recognise \"{}\" as a valid builtin", loc, call.function_name);
@@ -6242,6 +6282,8 @@ std::string get_preload_source()
 
 	is_windows : bool static := {};
 	is_linux : bool static := {};
+	_psyc ::= "{}";
+	_cwd ::= "{}";
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
@@ -6254,6 +6296,10 @@ std::string get_preload_source()
 	constexpr bool linux = false;
 #endif
 #endif
-	return std::format(preload_src, windows, linux);
+	std::string cwd_path = std::filesystem::current_path().string();
+	std::replace(cwd_path.begin(), cwd_path.end(), '\\', '/');
+	std::string psyc_path = get_compiler_path().string();
+	std::replace(psyc_path.begin(), psyc_path.end(), '\\', '/');
+	return std::format(preload_src, windows, linux, psyc_path, cwd_path);
 
 }
