@@ -297,9 +297,15 @@ void generic_warning(err ty, const char* msg, srcloc where, std::format_args&& a
 	std::println("\033[1;33m{} warning {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 }
 
+void generic_message(err ty, const char* msg, srcloc where, std::format_args&& args)
+{
+	std::println("\033[1;34m{} message {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+}
+
 #define COMPILER_STAGE
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
 #define warning(loc, msg, ...) generic_warning(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
+#define message(loc, msg, ...) generic_message(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
 #define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 
@@ -1076,6 +1082,30 @@ semal_state create_empty_type_system()
 				.return_ty = type_t::create_void_type()
 			});
 	ret.function_locations.emplace("_warning", nullptr);
+	ret.functions.emplace("_msg", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("_msg", nullptr);
+	ret.functions.emplace("_env", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload = ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t{.payload = ret.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
+			});
+	ret.function_locations.emplace("_env", nullptr);
 	return ret;
 }
 
@@ -2861,7 +2891,7 @@ std::filesystem::path get_compiler_path()
 	#endif
 }
 
-void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc);
+sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc);
 
 struct semal_context
 {
@@ -3058,7 +3088,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			auto* fnloc = types.function_locations.at(call.function_name);
 			if(fnloc == nullptr)
 			{
-				call_builtin_function(call, types, loc);
+				return call_builtin_function(call, types, loc);
 			}
 			return wrap_type(*fn.return_ty);
 		}
@@ -6116,8 +6146,10 @@ int main(int argc, char** argv)
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
-void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
+sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
 {
+	sval ret;
+
 	semal_context empty;
 	semal_state cpy = state;
 	if(call.function_name == "add_source_file")
@@ -6131,6 +6163,7 @@ void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 			path = get_compiler_path().parent_path() / path;
 		}
 		state.added_source_files.emplace(path, loc);
+		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "_error")
 	{
@@ -6144,6 +6177,7 @@ void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		#undef COMPILER_STAGE
 		#define COMPILER_STAGE OLD_COMPILER_STAGE
 		#undef OLD_COMPILER_STAGE
+		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "_warning")
 	{
@@ -6157,10 +6191,43 @@ void call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		#undef COMPILER_STAGE
 		#define COMPILER_STAGE OLD_COMPILER_STAGE
 		#undef OLD_COMPILER_STAGE
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "_msg")
+	{
+		const ast_expr& msg_expr = call.params.front();
+		auto exprval = semal_expr(msg_expr, cpy, loc, empty);
+		auto msg = std::get<std::string>(std::get<literal_val>(exprval->val));
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		message(loc, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "_env")
+	{
+		const ast_expr& msg_expr = call.params.front();
+		auto exprval = semal_expr(msg_expr, cpy, loc, empty);
+		auto varname = std::get<std::string>(std::get<literal_val>(exprval->val));
+		const char* envval = getenv(varname.c_str());
+		std::string envstr = "";
+		if(envval != nullptr)
+		{
+			envstr = envval;
+		}
+		return
+		{
+			.val = literal_val{envstr},
+			.ty = type_t{.payload = state.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
+		};
 	}
 	else
 	{
 		panic("{}, detected call to a function i know about, but i cant find its implementation. its location is nullptr implying that its a builtin function, but i dont recognise \"{}\" as a valid builtin", loc, call.function_name);
+		return {};
 	}
 }
 
