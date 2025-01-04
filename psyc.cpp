@@ -880,6 +880,13 @@ struct sval
 {
 	std::variant<std::monostate, literal_val, std::unordered_map<std::string, sval>> val = std::monostate{};
 	type_t ty;
+
+	bool operator==(const sval& rhs) const = default;
+
+	bool has_val() const
+	{
+		return this->val.index() != payload_index<std::monostate, decltype(val)>();
+	}
 };
 
 struct semal_state
@@ -2083,6 +2090,7 @@ enum class biop_type
 	div,
 	cast,
 	field,
+	compare_eq,
 	_count
 };
 
@@ -2102,7 +2110,8 @@ struct ast_biop_expr
 			"multiply",
 			"divide",
 			"cast",
-			"field"
+			"field",
+			"compare_eq"
 		}[static_cast<int>(this->type)]);
 	}
 };
@@ -3326,6 +3335,23 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				}
 			}
 			break;
+			case biop_type::compare_eq:
+			{
+				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
+				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
+				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
+				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
+
+				sval ret = wrap_type(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}});
+				if(rhs->has_val() && lhs->has_val())
+				{
+					const bool eq = (rhs->val == lhs->val);
+					ret.ty.qual = ret.ty.qual | typequal_static;
+					ret.val = eq;
+				}
+				return ret;
+			}
+			break;
 			default:
 				panic("unhandled biop type in semal");
 			break;
@@ -3851,6 +3877,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dot)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(compare)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -5265,6 +5298,7 @@ DEFINE_BIOPIFICATION_CHORDS(dash, minus)
 DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
 DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
+DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
