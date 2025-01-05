@@ -313,6 +313,13 @@ void generic_message(err ty, const char* msg, srcloc where, std::format_args&& a
 #undef COMPILER_STAGE
 #define COMPILER_STAGE argparse
 
+enum class target
+{
+	executable,
+	library,
+	object
+};
+
 struct compile_args
 {
 	bool should_print_help = false;
@@ -322,6 +329,8 @@ struct compile_args
 	std::filesystem::path build_file = {};
 	std::filesystem::path output_dir = {};
 	std::vector<std::filesystem::path> link_libraries = {};
+	std::string output_name = "out";
+	target output_type = target::object;
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -908,6 +917,8 @@ struct semal_state
 	std::unordered_map<std::filesystem::path, srcloc> added_source_files = {};
 	std::unordered_map<std::filesystem::path, srcloc> added_link_libraries = {};
 
+	compile_args* args = nullptr;
+
 	ptr_ty create_pointer_ty(type_t pointee) const
 	{
 		return {.underlying_ty = {pointee}};
@@ -1032,6 +1043,10 @@ struct semal_state
 		for(const auto& [name, ty] : other.variables)
 		{
 			ret.variables[name] = ty;
+		}
+		if(other.args != nullptr)
+		{
+			ret.args = other.args;
 		}
 		return ret;
 	}
@@ -1183,6 +1198,42 @@ semal_state create_build_metaregion_context()
 				.return_ty = type_t::create_void_type()
 			});
 	ret.function_locations.emplace("add_source_file", nullptr);
+	ret.functions.emplace("set_executable", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload =ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("set_executable", nullptr);
+	ret.functions.emplace("set_library", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload =ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("set_library", nullptr);
+	ret.functions.emplace("set_object", fn_ty
+			{
+				.params =
+				{
+					type_t{.payload =ret.create_pointer_ty(type_t
+					{
+						.payload = prim_ty{.p = prim_ty::type::u8}
+					})}
+				},
+				.return_ty = type_t::create_void_type()
+			});
+	ret.function_locations.emplace("set_object", nullptr);
 	ret.functions.emplace("add_link_library", fn_ty
 			{
 				.params =
@@ -6241,6 +6292,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 void compile_file(std::filesystem::path file, compile_args& args, semal_state* types, bool include_preload)
 {
 	semal_state new_types = create_basic_type_system();
+	new_types.args = &args;
 	if(types == nullptr)
 	{
 		types = &new_types;
@@ -6273,7 +6325,9 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	compile_file(args.build_file, args);
+	semal_state sem = create_basic_type_system();
+	sem.args = &args;
+	compile_file(args.build_file, args, &sem);
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
@@ -6295,6 +6349,33 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 			path = get_compiler_path().parent_path() / path;
 		}
 		state.added_source_files.emplace(path, loc);
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "set_executable")
+	{
+		const ast_expr& name_expr = call.params.front();
+		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
+		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
+		state.args->output_type = target::executable;
+		state.args->output_name = exe_name;
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "set_library")
+	{
+		const ast_expr& name_expr = call.params.front();
+		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
+		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
+		state.args->output_type = target::library;
+		state.args->output_name = exe_name;
+		return wrap_type(type_t::create_void_type());
+	}
+	else if(call.function_name == "set_object")
+	{
+		const ast_expr& name_expr = call.params.front();
+		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
+		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
+		state.args->output_type = target::object;
+		state.args->output_name = exe_name;
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "add_link_library")
