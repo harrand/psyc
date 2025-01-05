@@ -652,7 +652,10 @@ struct type_t
 				}
 				else
 				{
-					return false;
+					const auto& lhs_enum = std::get<enum_ty>(this->payload);
+					const auto& rhs_enum = std::get<enum_ty>(rhs.payload);
+					// enums cannot convert to other enums.
+					return lhs_enum == rhs_enum;
 				}
 			}
 			else
@@ -662,6 +665,10 @@ struct type_t
 				if(either_is_weak)
 				{
 					return std::get<enum_ty>(this->payload).underlying_ty->is_convertible_to(rhs);
+				}
+				else
+				{
+					return false;
 				}
 			}
 		}
@@ -932,7 +939,7 @@ struct semal_state
 			std::size_t till_next_thing = 0;
 			for(std::size_t i = 0; i < tyname.size(); i++)
 			{
-				if(!std::isalnum(tyname[i]))
+				if(!(std::isalnum(tyname[i]) || tyname[i] == '_'))
 				{
 					break;
 				}
@@ -2091,6 +2098,7 @@ enum class biop_type
 	cast,
 	field,
 	compare_eq,
+	assign,
 	_count
 };
 
@@ -2111,7 +2119,8 @@ struct ast_biop_expr
 			"divide",
 			"cast",
 			"field",
-			"compare_eq"
+			"compare_eq",
+			"assign"
 		}[static_cast<int>(this->type)]);
 	}
 };
@@ -3352,6 +3361,15 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				return ret;
 			}
 			break;
+			case biop_type::assign:
+			{
+				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
+				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
+				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
+				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
+				return lhs;
+			}
+			break;
 			default:
 				panic("unhandled biop type in semal");
 			break;
@@ -3534,8 +3552,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		}
 
 		auto* maybe_parent_struct = ctx.try_get_parent_struct();
-		auto* maybe_parent_fn = ctx.try_get_parent_function();
-		if(maybe_parent_struct != nullptr && maybe_parent_fn == nullptr)
+		if(maybe_parent_struct != nullptr)
 		{
 			// we're in a struct and not a function - we are a data member.
 			auto& structdef = types.structs.at(maybe_parent_struct->name);
@@ -3890,6 +3907,13 @@ std::unordered_set<token> unop_tokens{};
 	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(assign)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cparen)), FN\
 		{\
 			return EXPRIFY_T(x);\
@@ -4047,8 +4071,23 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), NODE(ast_expr)), FN\
 		{\
-			const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);\
+			auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);\
 			const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);\
+			if(lhs_expr.expr_.index() == payload_index<ast_biop_expr, decltype(lhs_expr.expr_)>())\
+			{\
+				/*appending biop to an assignment expression (i.e x = 5@s32) means x = (5@s32) */\
+				auto& lhs_biop_expr = std::get<ast_biop_expr>(lhs_expr.expr_);\
+				if(lhs_biop_expr.type == biop_type::assign)\
+				{\
+					auto& actual_rhs_expr = *lhs_biop_expr.rhs;\
+					actual_rhs_expr = ast_expr{.expr_ = ast_biop_expr\
+						{\
+							.lhs = actual_rhs_expr,\
+							.type = biop_type::biop_ty,\
+							.rhs = rhs_expr\
+						}};\
+				}\
+			}\
 			return\
 			{\
 				.action = parse_action::reduce,\
@@ -5064,6 +5103,14 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 3};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(dot), TOKEN(symbol), TOKEN(initialiser), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 3};
@@ -5299,6 +5346,7 @@ DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
 DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
 DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
+DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
@@ -6349,7 +6397,7 @@ std::string get_preload_source()
 	// some psy source code that is *always* compiled before any file. its API is available to everything.
 	// so uh try not to make it code that compiles slow as fuck thanks
 	static constexpr char preload_src[] = R"psy(
-	null ::= 0@u64@v0&;
+	null ::= 0@u64@v0& weak;
 
 	is_windows : bool static := {};
 	is_linux : bool static := {};
