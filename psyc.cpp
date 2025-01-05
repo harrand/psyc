@@ -905,6 +905,20 @@ struct sval
 	}
 };
 
+std::ofstream codegen;
+
+void init_codegen(const compile_args& args)
+{
+	std::filesystem::path full_path = args.output_dir / args.output_name;
+	// we're doing an llvm file first.
+	full_path += ".ll";
+	if(!std::filesystem::exists(args.output_dir))
+	{
+		std::filesystem::create_directory(args.output_dir);
+	}
+	codegen.open(full_path);
+}
+
 struct semal_state
 {
 	std::unordered_map<std::string, prim_ty> primitives = {};
@@ -6358,6 +6372,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::executable;
 		state.args->output_name = exe_name;
+		init_codegen(*state.args);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_library")
@@ -6367,6 +6382,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::library;
 		state.args->output_name = exe_name;
+		init_codegen(*state.args);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_object")
@@ -6376,6 +6392,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::object;
 		state.args->output_name = exe_name;
+		init_codegen(*state.args);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "add_link_library")
