@@ -990,9 +990,38 @@ struct sval
 	}
 };
 
-std::ofstream codegen;
+struct codegen_t
+{
+	std::ofstream file;
+	std::uint64_t* timer = nullptr;
+	bool initialised = false;
+	int num = 0;
 
-void init_codegen(const compile_args& args)
+	void open(std::filesystem::path path)
+	{
+		this->file.open(path);
+	}
+
+	void operator()(std::string str)
+	{
+		if(!initialised) return;
+		auto now2 = std::chrono::system_clock::now();
+		panic_ifnt(this->timer != nullptr, "attempt to codegen without init_codegen pointing us to a valid time number.");
+
+		this->file << str;
+
+		auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		this->timer += right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now2.time_since_epoch()).count();
+	}
+
+	int getnum()
+	{
+		return num++;
+	}
+} codegen;
+//std::ofstream codegen;
+
+void init_codegen(const compile_args& args, std::uint64_t& codegen_time)
 {
 	std::filesystem::path full_path = args.output_dir / args.output_name;
 	// we're doing an llvm file first.
@@ -1002,6 +1031,8 @@ void init_codegen(const compile_args& args)
 		std::filesystem::create_directory(args.output_dir);
 	}
 	codegen.open(full_path);
+	codegen.timer = &codegen_time;
+	codegen.initialised = true;
 }
 
 struct semal_state
@@ -3193,7 +3224,7 @@ constexpr const char unnamed_enum_ty[] = "_unnamed_struct";
 
 std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen = false);
 
-std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen = false)
 {
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
 	{
@@ -3229,6 +3260,11 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		else
 		{
 			panic("dont know how to typecheck this specific literal expression");
+		}
+		if(do_codegen)
+		{
+			// TODO: codegen: you cant just do this for a string literal sadly.
+			codegen(std::format("{} {}", value.ty.llvm_typename(), value.value_tostring()));
 		}
 		return value;
 	}
@@ -3310,6 +3346,15 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			if(fnloc == nullptr)
 			{
 				return call_builtin_function(call, types, loc);
+			}
+			if(do_codegen)
+			{
+				codegen(std::format("call {} @{}(", fn.return_ty->llvm_typename(), call.function_name));
+				for(std::size_t i = 0; i < call_params; i++)
+				{
+					semal_expr(call.params[i], types, loc, ctx, true);
+				}
+				codegen(")");
 			}
 			return wrap_type(*fn.return_ty);
 		}
@@ -3450,12 +3495,17 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					std::string casted_to_tyname = casted_to_ty.name();
 					error_ifnt(lhs->ty.add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
 					// let's try to do the cast if the static value exists.
-					sval ret = wrap_type(casted_to_ty);
-					ret.val = lhs->val;
+					sval ret = lhs.value();
+					ret.ty = casted_to_ty;
 					if(ret.val.index() == payload_index<literal_val, decltype(ret.val)>())
 					{
 						const auto& lit = std::get<literal_val>(ret.val);
 						// todo: magic static value conversion logic.
+					}
+
+					if(do_codegen)
+					{
+						semal_expr(*biop.lhs, types, loc, ctx, true);
 					}
 					return ret;
 				}
@@ -3622,7 +3672,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ret = semal_expr(decl.initialiser.value(), types, loc, ctx);
+		ret = semal_expr(decl.initialiser.value(), types, loc, ctx, false);
 	}
 	else
 	{
@@ -3685,12 +3735,12 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 				}
 			}
 			
-			codegen << std::format("{} {} @{}({})", def.is_extern ? "declare" : "define", fnty.return_ty->llvm_typename(), decl.name, params_str);
+			codegen(std::format("{} {} @{}({})", def.is_extern ? "declare" : "define", fnty.return_ty->llvm_typename(), decl.name, params_str));
 			if(!def.is_extern)
 			{
-				codegen << "\n{\nentry:";
+				codegen("\n{\nentry:");
 			}
-			codegen << '\n';
+			codegen("\n");
 		}
 	}
 	else if(ret->ty.is_type() && expr_is_structdef)
@@ -3700,7 +3750,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 		// decare struct in codegen
 		if(do_codegen)
 		{
-			codegen << std::format("%{} = type {{", decl.name);
+			codegen(std::format("%{} = type {{", decl.name));
 		}
 
 		if(!actually_emplaced)
@@ -3751,9 +3801,9 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			{
 				if(!first_member)
 				{
-					codegen << ", ";
+					codegen(", ");
 				}
-				codegen << declval->ty.llvm_typename();
+				codegen(declval->ty.llvm_typename());
 			}
 		}
 		else
@@ -3766,6 +3816,29 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				if(!actually_emplaced)
 				{
 					error(loc, "duplicate definition of variable \"{}\"", decl.name);
+				}
+				if(!declval->ty.is_type() && do_codegen)
+				{
+//  store i32 5, ptr %2, align 4
+//  %5 = call i32 @get_foo()
+//  store i32 %5, ptr %4, align 4
+					codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
+					if(decl.initialiser.has_value())
+					{
+						if(declval->ty.qual & typequal_static)
+						{
+							// set initialiser inline coz the value is constexpr
+							codegen(std::format("store {} {}, ptr %{}\n", declval->ty.llvm_typename(), declval->value_tostring(), decl.name));
+						}
+						else
+						{
+							// runtime value initialiser. create a temporary and store that
+							auto num = codegen.getnum();
+							codegen(std::format("%{} = ", num));
+							semal_expr(decl.initialiser.value(), types, loc, ctx, true);
+							codegen("\n");
+						}
+					}
 				}
 			}
 		}
@@ -3793,9 +3866,13 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto exprval = semal_expr(expr.expr, types, loc, ctx);
+		auto exprval = semal_expr(expr.expr, types, loc, ctx, do_codegen);
 		error_ifnt(exprval.has_value(), loc, "expr was invalid");
 		error_ifnt(!exprval->ty.is_badtype(), loc, "expr yielded an invalid type");
+		if(do_codegen)
+		{
+			codegen("\n");
+		}
 		return exprval;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
@@ -3815,12 +3892,24 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			std::string fn_return_tyname = func.return_ty->name();
 			error_ifnt(!func.return_ty->is_void(), loc, "return value is incorrect because the parent function \"{}\" returns v0", parent_func->name);
 			error_ifnt(retval->ty.is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
+
+			if(do_codegen)
+			{
+				auto num = codegen.getnum();
+				codegen(std::format("%{} = ", num));
+				semal_expr(ret.retval.value(), types, loc, ctx, true);
+				codegen(std::format("\nret {} %{}", retval->ty.llvm_typename(), num));
+			}
 			return retval;
 		}
 		else
 		{
 			const auto return_tyname = func.return_ty->name();
 			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
+			if(do_codegen)
+			{
+				codegen("ret void");
+			}
 			return wrap_type(type_t::create_void_type());
 		}
 	}
@@ -3856,7 +3945,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 
 		if(do_codegen)
 		{
-			codegen << std::format("@{}_{} = global constant {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring());
+			codegen(std::format("@{}_{} = global constant {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring()));
 		}
 
 		return desig_init_expr;
@@ -3977,7 +4066,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 		ctx.entries.pop_back();
 		if(do_codegen && ctx.most_recent_entry_type() == semal_context::type::in_function)
 		{
-			codegen << '}';
+			codegen("}");
 		}
 	}
 }
@@ -6537,7 +6626,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::executable;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args);
+		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_library")
@@ -6547,7 +6636,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::library;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args);
+		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_object")
@@ -6557,7 +6646,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::object;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args);
+		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "add_link_library")
