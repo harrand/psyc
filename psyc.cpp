@@ -496,10 +496,10 @@ struct prim_ty
 		"i32",
 		"i16",
 		"i8",
-		"u64",
-		"u32",
-		"u16",
-		"u8",
+		"i64",
+		"i32",
+		"i16",
+		"i8",
 
 		"i8",
 
@@ -3659,7 +3659,9 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	if(ret->ty.is_fn() && expr_is_funcdef)
 	{
 		// declaration initialiser is a function type.
-		auto [_, actually_emplaced] = types.functions.emplace(decl.name, std::get<fn_ty>(ret->ty.payload));
+		const auto& ty = ret->ty;
+		const fn_ty fnty = std::get<fn_ty>(ret->ty.payload);
+		auto [_, actually_emplaced] = types.functions.emplace(decl.name, fnty);
 		if(!actually_emplaced)
 		{
 			error(loc, "duplicate definition of function \"{}\"", decl.name);
@@ -3669,6 +3671,26 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 		if(!def.is_extern)
 		{
 			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
+		}
+
+		if(do_codegen)
+		{
+			std::string params_str;
+			for(std::size_t i = 0; i < fnty.params.size(); i++)
+			{
+				params_str += fnty.params[i].llvm_typename();
+				if(i < (fnty.params.size() - 1))
+				{
+					params_str += ", ";
+				}
+			}
+			
+			codegen << std::format("{} {} @{}({})", def.is_extern ? "declare" : "define", fnty.return_ty->llvm_typename(), decl.name, params_str);
+			if(!def.is_extern)
+			{
+				codegen << "\n{\nentry:";
+			}
+			codegen << '\n';
 		}
 	}
 	else if(ret->ty.is_type() && expr_is_structdef)
@@ -3834,7 +3856,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 
 		if(do_codegen)
 		{
-			codegen << std::format("@{}_{} = global {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring());
+			codegen << std::format("@{}_{} = global constant {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring());
 		}
 
 		return desig_init_expr;
@@ -3993,22 +4015,43 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 #define EXPRIFY_T(x) EXPRIFY_##x(nodes, state)
 FAKEFN(EXPRIFY_integer_literal)
 {
-	std::int64_t value = std::stol(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+	auto front = std::get<ast_token>(nodes[0].payload).lexeme;
+	std::int64_t val;
+	std::from_chars_result result;
+	if(front.starts_with("0b"))
+	{
+		// binary (base 2) literal
+		result = std::from_chars(front.data() + 2, front.data() + front.size(), val, 2);
+	}
+	else if(front.starts_with("0x"))
+	{
+		// hex (base 16) literal
+		result = std::from_chars(front.data() + 2, front.data() + front.size(), val, 16);
+	}
+	else
+	{
+		// base 10 integer literal
+		result = std::from_chars(front.data(), front.data() + front.size(), val, 10);
+	}
+	panic_ifnt(result.ec == std::errc() && result.ptr != front.data(), "malformed integer literal");
 	return
 	{
 		.action = parse_action::reduce,
 		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = val}}}}
 	};
 }
 FAKEFN(EXPRIFY_decimal_literal)
 {
-	double value = std::stod(std::string{std::get<ast_token>(nodes[0].payload).lexeme});
+	auto front = std::get<ast_token>(nodes[0].payload).lexeme;
+	double val;
+	auto result = std::from_chars(front.data(), front.data() + front.size(), val);
+	panic_ifnt(result.ec == std::errc() && result.ptr != front.data(), "malformed decimal literal");
 	return
 	{
 		.action = parse_action::reduce,
 		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
-		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = value}}}}
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = val}}}}
 	};
 }
 FAKEFN(EXPRIFY_symbol)
