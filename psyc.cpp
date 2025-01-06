@@ -490,6 +490,24 @@ struct prim_ty
 
 		"v0"
 	};
+	static constexpr std::array<const char*, static_cast<int>(type::_count)> llvm_type_names =
+	{
+		"i64",
+		"i32",
+		"i16",
+		"i8",
+		"u64",
+		"u32",
+		"u16",
+		"u8",
+
+		"i8",
+
+		"f64",
+		"f32",
+
+		"void"
+	};
 	type p;
 
 	bool is_numeric() const
@@ -511,6 +529,10 @@ struct prim_ty
 	{
 		return type_names[static_cast<int>(p)];
 	}
+	std::string llvm_typename() const
+	{
+		return llvm_type_names[static_cast<int>(p)];
+	}
 	bool operator==(const prim_ty& rhs) const = default;
 };
 
@@ -523,6 +545,7 @@ struct struct_ty
 	{
 		return "struct";
 	}
+	std::string llvm_typename() const {return "_STRUCT_ERROR_";}
 	bool operator==(const struct_ty& rhs) const = default;
 };
 
@@ -534,6 +557,7 @@ struct enum_ty
 	{
 		return "enum";
 	}
+	std::string llvm_typename() const;
 	bool operator==(const enum_ty& rhs) const = default;
 };
 
@@ -541,6 +565,10 @@ struct ptr_ty
 {
 	box<type_t> underlying_ty;
 	std::string name() const;
+	std::string llvm_typename() const
+	{
+		return "ptr";	
+	}
 	bool operator==(const ptr_ty& rhs) const = default;
 };
 
@@ -550,6 +578,10 @@ struct fn_ty
 	std::vector<type_t> params;
 	box<type_t> return_ty;
 	std::string name() const;
+	std::string llvm_typename() const
+	{
+		return "_FN_ERROR_";
+	}
 	bool operator==(const fn_ty& rhs) const = default;
 };
 
@@ -559,6 +591,10 @@ struct meta_ty
 	bool operator==(const meta_ty& rhs) const = default;
 
 	std::string name() const;
+	std::string llvm_typename() const
+	{
+		return "_META_ERROR_";
+	}
 };
 
 #define meta_type "type"
@@ -769,6 +805,24 @@ struct type_t
 		return false;
 	}
 
+	std::string llvm_typename() const
+	{
+		std::string ret;
+		std::visit([&ret](auto&& arg)
+		{
+			if constexpr(std::is_same_v<std::decay_t<decltype(arg)>, std::monostate>)
+			{
+				ret = "<bad type>";
+			}
+			else
+			{
+				ret = arg.llvm_typename();	
+			}
+			
+		}, this->payload);
+		return ret;
+	}
+
 	std::string name() const
 	{
 		std::string ret;
@@ -854,6 +908,11 @@ std::string ptr_ty::name() const
 	return std::format("{}&", this->underlying_ty->name());
 }
 
+std::string enum_ty::llvm_typename() const
+{
+	return underlying_ty->llvm_typename();
+}
+
 std::string fn_ty::name() const
 {
 	std::string sparams_str = "";
@@ -902,6 +961,32 @@ struct sval
 	bool has_val() const
 	{
 		return this->val.index() != payload_index<std::monostate, decltype(val)>();
+	}
+
+	std::string value_tostring() const
+	{
+		std::string ret;
+		if(this->val.index() == payload_index<literal_val, decltype(val)>())
+		{
+			std::visit([&ret](auto&& arg)
+			{
+				using T = std::decay_t<decltype(arg)>;
+				if constexpr(std::is_same_v<T, std::string>)
+				{
+					ret = arg;
+				}
+				else
+				{
+					ret = std::to_string(arg);
+				}
+			}, std::get<literal_val>(this->val));
+		}
+		else
+		{
+			auto name = this->ty.name();
+			panic("value_tostring for type {} is NYI", name);
+		}
+		return ret;
 	}
 };
 
@@ -3092,12 +3177,21 @@ struct semal_context
 		}
 		return nullptr;
 	}
+
+	type most_recent_entry_type() const
+	{
+		if(this->entries.empty())
+		{
+			return type::undefined;
+		}
+		return this->entries.back().t;
+	}
 };
 
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_struct";
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen = false);
 
 std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
 {
@@ -3522,7 +3616,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 	return std::nullopt;
 }
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen)
 {
 	std::optional<sval> ret;
 	if(decl.type_name == deduced_type)
@@ -3580,6 +3674,13 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	else if(ret->ty.is_type() && expr_is_structdef)
 	{
 		auto [_, actually_emplaced] = types.structs.emplace(decl.name, struct_ty{});
+
+		// decare struct in codegen
+		if(do_codegen)
+		{
+			codegen << std::format("%{} = type {{", decl.name);
+		}
+
 		if(!actually_emplaced)
 		{
 			error(loc, "duplicate definition of struct \"{}\"", decl.name);
@@ -3588,7 +3689,8 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	}
 	else if(ret->ty.is_type() && expr_is_enumdef)
 	{
-		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t{.payload = prim_ty{.p = prim_ty::type::s64}}});
+		type_t underlying_ty{.payload = prim_ty{.p = prim_ty::type::s64}};
+		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enum_ty{.underlying_ty = underlying_ty});
 		if(!actually_emplaced)
 		{
 			error(loc, "duplicate definition of enum \"{}\"", decl.name);
@@ -3598,12 +3700,13 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	return ret;
 }
 
-std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
+std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
+		auto* maybe_parent_struct = ctx.try_get_parent_struct();
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto declval = semal_decl(decl, types, loc, ctx);
+		auto declval = semal_decl(decl, types, loc, ctx, do_codegen);
 		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
 		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
 
@@ -3615,13 +3718,21 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				metaty.underlying_typename = decl.name;
 			}
 		}
-
-		auto* maybe_parent_struct = ctx.try_get_parent_struct();
 		if(maybe_parent_struct != nullptr)
 		{
 			// we're in a struct and not a function - we are a data member.
 			auto& structdef = types.structs.at(maybe_parent_struct->name);
+			const bool first_member = structdef.members.empty();
 			structdef.members.emplace(decl.name, declval->ty);
+
+			if(do_codegen)
+			{
+				if(!first_member)
+				{
+					codegen << ", ";
+				}
+				codegen << declval->ty.llvm_typename();
+			}
 		}
 		else
 		{
@@ -3708,6 +3819,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		}
 
 		auto& enumdef = types.enums.at(maybe_enum_parent->name);
+
 		enumdef.entries.push_back(desig.name);
 		type_t ret = *enumdef.underlying_ty;
 
@@ -3719,6 +3831,12 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		std::string enum_tyname = enumdef.name();
 		std::string enum_underlying_tyname = ret.name();
 		error_ifnt(desig_init_expr->ty.is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
+
+		if(do_codegen)
+		{
+			codegen << std::format("@{}_{} = global {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring());
+		}
+
 		return desig_init_expr;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
@@ -3749,7 +3867,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 	return std::nullopt;
 }
 
-void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false)
+void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false, bool do_codegen = false)
 {
 	bool is_tu = false;
 	bool pop_context = false;
@@ -3761,7 +3879,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx);
+		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx, do_codegen);
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
 			// is a block statement, after all children we should pop context.
@@ -3821,7 +3939,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 		// ok SORRY. actually semal the children now.
 		for(auto& child : ast.children)
 		{
-			semal(child, ast.types, ctx, ignore_metaregions);
+			semal(child, ast.types, ctx, ignore_metaregions, do_codegen);
 			if(is_tu)
 			{
 				types = types.coalesce(ast.types);
@@ -3835,6 +3953,10 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	if(pop_context)
 	{
 		ctx.entries.pop_back();
+		if(do_codegen && ctx.most_recent_entry_type() == semal_context::type::in_function)
+		{
+			codegen << '}';
+		}
 	}
 }
 
@@ -6291,7 +6413,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 			args.link_libraries.push_back(libpath);
 		}
 	}
-	semal(ast, *types, ctx, true);
+	semal(ast, *types, ctx, true, true);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
