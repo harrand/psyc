@@ -3898,6 +3898,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 			for(std::size_t i = 0; i < fnty.params.size(); i++)
 			{
 				params_str += fnty.params[i].llvm_typename();
+				params_str += std::format(" %{}", def.params[i].name);
 				if(i < (fnty.params.size() - 1))
 				{
 					params_str += ", ";
