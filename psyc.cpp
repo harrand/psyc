@@ -996,6 +996,7 @@ struct codegen_t
 	std::ofstream file;
 	std::uint64_t* timer = nullptr;
 	bool initialised = false;
+	std::string scratch = "";
 	int num = 0;
 
 	void open(std::filesystem::path path)
@@ -3514,6 +3515,8 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 
 					if(do_codegen)
 					{
+						// BUG; this still codegens lhs with its uncasted type!!!
+						warning(loc, "there is a codegen bug with cast expressions - lhs is codegen'd as its uncasted type.");
 						semal_expr(*biop.lhs, types, loc, ctx, true);
 					}
 					return ret;
@@ -3665,6 +3668,22 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		}
 		sval val = wrap_type(ret);
 		val.val = static_value;
+
+		if(do_codegen)
+		{
+			for(const auto& init : blkinit.initialisers)
+			{
+				const ast_expr& value = *init.initialiser;
+				auto iter = ty.members.find(init.name);
+				auto field_id = std::distance(ty.members.begin(), iter);
+				auto num = codegen.getnum();
+				codegen(std::format("%{}field{} = getelementptr {}, ptr %{}, i32 0, i32 {}\n", num, field_id, ty.llvm_typename(), codegen.scratch, field_id));
+				auto init_expr = semal_expr(value, types, loc, ctx);
+				codegen(std::format("store {}, ", init_expr->ty.llvm_typename()));
+				semal_expr(value, types, loc, ctx, true);
+				codegen(std::format(", ptr %{}field{}\n\n", num, field_id));
+			}
+		}
 		return val;
 	}
 	else
@@ -3831,7 +3850,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 					codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
 					if(decl.initialiser.has_value())
 					{
-						if(declval->ty.qual & typequal_static)
+						if(declval->ty.qual & typequal_static && !declval->ty.is_struct())
 						{
 							// set initialiser inline coz the value is constexpr
 							codegen(std::format("store {} {}, ptr %{}\n", declval->ty.llvm_typename(), declval->value_tostring(), decl.name));
@@ -3840,12 +3859,23 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 						{
 							// runtime value initialiser. create a temporary and store that
 							auto num = codegen.getnum();
-							codegen(std::format("%{} = ", num));
+							if(!declval->ty.is_struct())
+							{
+								codegen(std::format("%{} = ", num));
+							}
+							else
+							{
+								codegen.scratch = decl.name;
+							}
 							semal_expr(decl.initialiser.value(), types, loc, ctx, true);
 							codegen("\n");
-							codegen(std::format("store {} %{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
+							if(!declval->ty.is_struct())
+							{
+								codegen(std::format("store {} %{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
+							}
 						}
 					}
+					codegen.scratch = "";
 				}
 			}
 		}
