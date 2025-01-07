@@ -541,11 +541,12 @@ struct type_t;
 struct struct_ty
 {
 	std::unordered_map<std::string, box<type_t>> members = {};
+	std::string maybe_name = "_STRUCT_ERROR";
 	std::string name() const
 	{
 		return "struct";
 	}
-	std::string llvm_typename() const {return "_STRUCT_ERROR_";}
+	std::string llvm_typename() const {return std::format("%{}", maybe_name);}
 	bool operator==(const struct_ty& rhs) const = default;
 };
 
@@ -3353,6 +3354,10 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				for(std::size_t i = 0; i < call_params; i++)
 				{
 					semal_expr(call.params[i], types, loc, ctx, true);
+					if(i < (call_params - 1))
+					{
+						codegen(", ");
+					}
 				}
 				codegen(")");
 			}
@@ -3745,7 +3750,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	}
 	else if(ret->ty.is_type() && expr_is_structdef)
 	{
-		auto [_, actually_emplaced] = types.structs.emplace(decl.name, struct_ty{});
+		auto [_, actually_emplaced] = types.structs.emplace(decl.name, struct_ty{.maybe_name = decl.name});
 
 		// decare struct in codegen
 		if(do_codegen)
@@ -3819,9 +3824,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				}
 				if(!declval->ty.is_type() && do_codegen)
 				{
-//  store i32 5, ptr %2, align 4
-//  %5 = call i32 @get_foo()
-//  store i32 %5, ptr %4, align 4
 					codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
 					if(decl.initialiser.has_value())
 					{
@@ -3898,7 +3900,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				auto num = codegen.getnum();
 				codegen(std::format("%{} = ", num));
 				semal_expr(ret.retval.value(), types, loc, ctx, true);
-				codegen(std::format("\nret {} %{}", retval->ty.llvm_typename(), num));
+				codegen(std::format("\nret {} %{}\n", retval->ty.llvm_typename(), num));
 			}
 			return retval;
 		}
@@ -3908,7 +3910,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
 			if(do_codegen)
 			{
-				codegen("ret void");
+				codegen("ret void\n");
 			}
 			return wrap_type(type_t::create_void_type());
 		}
@@ -4063,11 +4065,11 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	}
 	if(pop_context)
 	{
-		ctx.entries.pop_back();
-		if(do_codegen && ctx.most_recent_entry_type() == semal_context::type::in_function)
+		if(do_codegen && (ctx.most_recent_entry_type() == semal_context::type::in_function || ctx.most_recent_entry_type() == semal_context::type::in_struct))
 		{
-			codegen("}");
+			codegen("}\n");
 		}
+		ctx.entries.pop_back();
 	}
 }
 
