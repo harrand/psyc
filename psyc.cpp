@@ -525,6 +525,64 @@ struct prim_ty
 			this->p == type::f32;
 	}
 
+	bool is_integral() const
+	{
+		return
+			this->p == type::s64 ||
+			this->p == type::s32 ||
+			this->p == type::s8  ||
+			this->p == type::u64 ||
+			this->p == type::u32 ||
+			this->p == type::u16 ||
+			this->p == type::u8;
+	}
+
+	bool is_signed_integral() const
+	{
+		return this->is_integral() && 
+			this->p == type::s64 ||
+			this->p == type::s32 ||
+			this->p == type::s8;
+	}
+
+	bool is_unsigned_integral() const
+	{
+		return this->is_integral() && 
+			this->p == type::u64 ||
+			this->p == type::u32 ||
+			this->p == type::u8;
+	}
+
+	std::size_t integral_size() const
+	{
+		switch(this->p)
+		{
+			case type::u64:
+			[[fallthrough]];
+			case type::s64:
+				return 64;
+			break;
+			case type::u32:
+			[[fallthrough]];
+			case type::s32:
+				return 32;
+			break;
+			case type::u16:
+			[[fallthrough]];
+			case type::s16:
+				return 16;
+			break;
+			case type::u8:
+			[[fallthrough]];
+			case type::s8:
+				return 8;
+			break;
+			default:
+				return 0;
+			break;
+		}
+	}
+
 	std::string name() const
 	{
 		return type_names[static_cast<int>(p)];
@@ -993,7 +1051,18 @@ struct sval
 
 struct codegen_t
 {
+	codegen_t() = default;
+	~codegen_t()
+	{
+		for(const auto& line : this->file_lines)
+		{
+			file << line << "\n";
+		}
+	}
+	std::vector<std::string> file_lines = {""};
+	std::size_t target_line = 0;
 	std::ofstream file;
+	std::size_t beginning_of_this_line_cursor = 0;
 	std::uint64_t* timer = nullptr;
 	bool initialised = false;
 	std::string scratch = "";
@@ -1004,16 +1073,48 @@ struct codegen_t
 		this->file.open(path);
 	}
 
-	void operator()(std::string str)
+	void previous_line()
 	{
-		if(!initialised) return;
+		if(target_line > 0)
+		{
+			target_line--;
+		}
+	}
+
+	void next_line()
+	{
+		panic_ifnt(target_line < (this->file_lines.size() - 1), "there is no next line to go to");
+		target_line++;
+	}
+
+	void bottom_line()
+	{
+		target_line = this->file_lines.size() - 1;
+	}
+
+	std::size_t operator()(std::string str)
+	{
+		if(!initialised) return 0;
 		auto now2 = std::chrono::system_clock::now();
 		panic_ifnt(this->timer != nullptr, "attempt to codegen without init_codegen pointing us to a valid time number.");
 
-		this->file << str;
+		auto iter = this->file_lines.begin() + target_line;
+		for(char c : str)
+		{
+			if(c == '\n')
+			{
+				iter = this->file_lines.insert(iter + 1, "");
+				target_line++;
+			}
+			else
+			{
+				*iter += c;
+			}
+		}
 
 		auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		this->timer += right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now2.time_since_epoch()).count();
+		return str.size();
 	}
 
 	int getnum()
@@ -3515,9 +3616,49 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 
 					if(do_codegen)
 					{
-						// BUG; this still codegens lhs with its uncasted type!!!
-						warning(loc, "there is a codegen bug with cast expressions - lhs is codegen'd as its uncasted type.");
+						// we're in llvm land now, so we need to mainly flatten pointers
+						type_t lhs_ty = lhs->ty;
+						if(lhs_ty.is_ptr())
+						{
+							lhs_ty = type_t{.payload = prim_ty{.p = prim_ty::type::u64}};
+						}
+						if(lhs_ty.is_enum())
+						{
+							lhs_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
+						}
+						type_t rhs_ty = casted_to_ty;
+						if(rhs_ty.is_ptr())
+						{
+							rhs_ty = type_t{.payload = prim_ty{.p = prim_ty::type::u64}};
+						}
+						if(rhs_ty.is_enum())
+						{
+							auto underlying_ty = *std::get<enum_ty>(rhs_ty.payload).underlying_ty;
+							rhs_ty = underlying_ty;
+						}
+						std::string conversion_type = "";
+
+						auto lhs_prim = std::get<prim_ty>(lhs_ty.payload);
+						auto rhs_prim = std::get<prim_ty>(rhs_ty.payload);
+
+						if(lhs_prim.integral_size() < rhs_prim.integral_size())
+						{
+							// signed = sext, unsigned = zext
+							conversion_type = lhs_prim.is_signed_integral() ? "sext" : "zext";
+						}
+						else if(lhs_prim.integral_size() > rhs_prim.integral_size())
+						{
+							conversion_type = "trunc";
+						}
+
+						auto num = codegen.getnum();
+						codegen.previous_line();
+						codegen(std::format("\n%cast{} = {} ", num, conversion_type));
 						semal_expr(*biop.lhs, types, loc, ctx, true);
+						codegen(std::format(" to {}\n", rhs_ty.llvm_typename()));
+						codegen.bottom_line();
+						codegen(std::format("%cast{}", num));
+						//warning(loc, "there is a codegen bug with cast expressions - lhs is codegen'd as its uncasted type.");
 					}
 					return ret;
 				}
@@ -3679,7 +3820,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				auto num = codegen.getnum();
 				codegen(std::format("%{}field{} = getelementptr {}, ptr %{}, i32 0, i32 {}\n", num, field_id, ty.llvm_typename(), codegen.scratch, field_id));
 				auto init_expr = semal_expr(value, types, loc, ctx);
-				codegen(std::format("store {}, ", init_expr->ty.llvm_typename()));
+				codegen(std::format("store {} ", init_expr->ty.llvm_typename()));
 				semal_expr(value, types, loc, ctx, true);
 				codegen(std::format(", ptr %{}field{}\n\n", num, field_id));
 			}
