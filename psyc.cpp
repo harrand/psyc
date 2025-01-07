@@ -3843,6 +3843,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 							codegen(std::format("%{} = ", num));
 							semal_expr(decl.initialiser.value(), types, loc, ctx, true);
 							codegen("\n");
+							codegen(std::format("store {} %{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
 						}
 					}
 				}
