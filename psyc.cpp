@@ -3374,6 +3374,10 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		auto iter = types.variables.find(symbol_expr.symbol);
 		if(iter != types.variables.end())
 		{
+			if(do_codegen)
+			{
+				codegen(std::format("%{}", symbol_expr.symbol));
+			}
 			return iter->second;
 		}
 		else
