@@ -3499,7 +3499,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				{
 					codegen.previous_line();
 					auto num = codegen.getnum();
-					codegen(std::format("\n%tmp{} = load {}, ptr %{}", num, iter->second.ty.llvm_typename(), symbol_expr.symbol));
+					codegen(std::format("\n%tmp{} = load {}, ptr {}{}", num, iter->second.ty.llvm_typename(), iter->second.is_global ? "@" : "%", symbol_expr.symbol));
 					codegen.next_line();
 					codegen(std::format("%tmp{}", num));
 				}
@@ -3701,10 +3701,12 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			{
 				error_ifnt(lhs.has_value(), loc, "lhs of cast was invalid");
 				error_ifnt(!lhs->ty.is_badtype(), loc, "lhs of cast expression did not yield a valid type");
+				std::string top_level_typename = "";
 				if(lhs->ty.is_type())
 				{
 					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
 					type_t concrete = types.parse(meta.underlying_typename);
+					top_level_typename = meta.underlying_typename;
 					lhs = wrap_type(concrete);
 				}
 				std::string rhs_symbol;
@@ -3734,6 +3736,16 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					if(!std::ranges::contains(ty.entries, rhs_symbol))
 					{
 						error(loc, "enum has no entry \"{}\"", rhs_symbol);
+					}
+
+					if(do_codegen)
+					{
+						//codegen(std::format("load {}, ptr @{}_{}\n", ty.underlying_ty->llvm_typename(), top_level_typename, rhs_symbol));
+						codegen.previous_line();
+						auto num = codegen.getnum();
+						codegen(std::format("\n%tmp{} = load {}, ptr @{}_{}\n", num, ty.underlying_ty->llvm_typename(), top_level_typename, rhs_symbol));
+						codegen.next_line();
+						codegen(std::format("%tmp{}", num));
 					}
 					return wrap_type(type_t{.payload = ty});
 				}
@@ -4039,7 +4051,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 					error(loc, "duplicate definition of variable \"{}\"", decl.name);
 				}
 				iter->second.is_global = ctx.entries.empty();
-				iter->second.needs_load = !ctx.entries.empty();
+				iter->second.needs_load = true;
 				if(!declval->ty.is_type() && do_codegen)
 				{
 					if(ctx.entries.empty())
@@ -4062,6 +4074,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 					{
 						codegen.bottom_line();
 						codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
+						auto num = codegen.getnum();
 						if(decl.initialiser.has_value())
 						{
 							if(declval->ty.qual & typequal_static && !declval->ty.is_struct())
@@ -4072,7 +4085,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 							else
 							{
 								// runtime value initialiser. create a temporary and store that
-								auto num = codegen.getnum();
 								if(!declval->ty.is_struct())
 								{
 									codegen(std::format("%tmp{} = ", num));
