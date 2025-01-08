@@ -3850,11 +3850,11 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				auto iter = ty.members.find(init.name);
 				auto field_id = std::distance(ty.members.begin(), iter);
 				auto num = codegen.getnum();
-				codegen(std::format("%{}field{} = getelementptr {}, ptr %{}, i32 0, i32 {}\n", num, field_id, ty.llvm_typename(), codegen.scratch, field_id));
+				codegen(std::format("%field{}{} = getelementptr inbounds {}, ptr %{}, i32 0, i32 {}\n", num, field_id, ty.llvm_typename(), codegen.scratch, field_id));
 				auto init_expr = semal_expr(value, types, loc, ctx);
 				codegen(std::format("store {} ", init_expr->ty.llvm_typename()));
 				semal_expr(value, types, loc, ctx, true);
-				codegen(std::format(", ptr %{}field{}\n\n", num, field_id));
+				codegen(std::format(", ptr %field{}{}\n\n", num, field_id));
 			}
 		}
 		return val;
@@ -4038,9 +4038,18 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 					if(ctx.entries.empty())
 					{
 						// we are a global
-						codegen(std::format("\n@{} = {} {} ", decl.name, declval->ty.qual & typequal_mut ? "global" : "constant", declval->ty.llvm_typename()));
-						semal_expr(decl.initialiser.value(), types, loc, ctx, true);
-						codegen("\n");
+						if(!(declval->ty.qual & typequal_mut) && declval->ty.is_ptr() && std::get<ptr_ty>(declval->ty.payload).underlying_ty->is_prim() && std::get<prim_ty>(std::get<ptr_ty>(declval->ty.payload).underlying_ty->payload).p == prim_ty::type::u8)
+						{
+							std::string litval = std::get<std::string>(std::get<literal_val>(declval->val));
+							codegen(std::format("\n@{}_data = private constant [{} x i8] c\"{}\\00\"\n", decl.name, litval.size() + 1, litval));
+							codegen(std::format("@{} = private constant ptr @{}_data\n", decl.name, decl.name));
+						}
+						else
+						{
+							codegen(std::format("\n@{} = {} {} ", decl.name, declval->ty.qual & typequal_mut ? "global" : "constant", declval->ty.llvm_typename()));
+							semal_expr(decl.initialiser.value(), types, loc, ctx, true);
+							codegen("\n");
+						}
 					}
 					else
 					{
