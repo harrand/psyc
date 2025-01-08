@@ -1014,6 +1014,8 @@ struct sval
 {
 	std::variant<std::monostate, literal_val, std::unordered_map<std::string, sval>> val = std::monostate{};
 	type_t ty;
+	bool needs_load = true;
+	bool is_global = false;
 
 	bool operator==(const sval& rhs) const = default;
 
@@ -3374,7 +3376,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		if(do_codegen)
 		{
 			// TODO: codegen: you cant just do this for a string literal sadly.
-			codegen(std::format("{} {}", value.ty.llvm_typename(), value.value_tostring()));
+			codegen(std::format("{}", value.value_tostring()));
 		}
 		return value;
 	}
@@ -3394,6 +3396,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			if(!def.is_extern)
 			{
 				ctx.variables_to_exist_in_next_scope[decl.name] = sparam.value();
+				ctx.variables_to_exist_in_next_scope.at(decl.name).needs_load = false;
 			}
 			return sparam->ty;
 		});
@@ -3409,6 +3412,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			if(!def.is_extern)
 			{
 				ctx.variables_to_exist_in_next_scope[decl.name] = param.value();
+				ctx.variables_to_exist_in_next_scope.at(decl.name).needs_load = false;
 			}
 			return param->ty;
 		});
@@ -3487,11 +3491,18 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		{
 			if(do_codegen)
 			{
-				codegen.previous_line();
-				auto num = codegen.getnum();
-				codegen(std::format("\n%{} = load {}, %{}", num, iter->second.ty.llvm_typename(), symbol_expr.symbol));
-				codegen.next_line();
-				codegen(std::format("%{}", num));
+				if(!iter->second.needs_load)
+				{
+					codegen(std::format("{}{}", iter->second.is_global ? "@" : "%", symbol_expr.symbol));
+				}
+				else
+				{
+					codegen.previous_line();
+					auto num = codegen.getnum();
+					codegen(std::format("\n%{} = load {}, ptr %{}", num, iter->second.ty.llvm_typename(), symbol_expr.symbol));
+					codegen.next_line();
+					codegen(std::format("%{}", num));
+				}
 			}
 			return iter->second;
 		}
@@ -3633,14 +3644,15 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						type_t lhs_ty = lhs->ty;
 						if(lhs_ty.qual & typequal_static)
 						{
-							codegen(std::format("{} {}", lhs_ty.llvm_typename(), lhs->value_tostring()));
+							std::string strval = lhs->value_tostring();
+							if(casted_to_ty.is_ptr() && strval == "0")
+							{
+								strval = "null";
+							}
+							codegen(std::format("{}", strval));
 						}
 						else
 						{
-							if(lhs_ty.is_ptr())
-							{
-								lhs_ty = type_t{.payload = prim_ty{.p = prim_ty::type::u64}};
-							}
 							if(lhs_ty.is_enum())
 							{
 								lhs_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
@@ -3967,10 +3979,11 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 	{
 		auto* maybe_parent_struct = ctx.try_get_parent_struct();
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto declval = semal_decl(decl, types, loc, ctx, false);
+		auto declval = semal_decl(decl, types, loc, ctx, do_codegen);
 		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
 		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
 
+		bool should_codegen = false;
 		if(declval->ty.is_type())
 		{
 			auto& metaty = std::get<meta_ty>(declval->ty.payload);
@@ -3980,6 +3993,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				metaty.underlying_typename = decl.name;
 				if(is_struct)
 				{
+					should_codegen = true;
 					// decare struct in codegen
 					if(do_codegen)
 					{
@@ -4012,22 +4026,25 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
 			if(!declval->ty.is_fn())
 			{
-				auto [_, actually_emplaced] = types.variables.emplace(decl.name, declval.value());
+				auto [iter, actually_emplaced] = types.variables.emplace(decl.name, declval.value());
 				if(!actually_emplaced)
 				{
 					error(loc, "duplicate definition of variable \"{}\"", decl.name);
 				}
+				iter->second.is_global = ctx.entries.empty();
+				iter->second.needs_load = !ctx.entries.empty();
 				if(!declval->ty.is_type() && do_codegen)
 				{
 					if(ctx.entries.empty())
 					{
 						// we are a global
-						codegen(std::format("\n@{} = {} ", decl.name, declval->ty.qual & typequal_mut ? "global" : "constant"));
+						codegen(std::format("\n@{} = {} {} ", decl.name, declval->ty.qual & typequal_mut ? "global" : "constant", declval->ty.llvm_typename()));
 						semal_expr(decl.initialiser.value(), types, loc, ctx, true);
 						codegen("\n");
 					}
 					else
 					{
+						codegen.bottom_line();
 						codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
 						if(decl.initialiser.has_value())
 						{
