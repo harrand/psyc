@@ -3499,9 +3499,9 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				{
 					codegen.previous_line();
 					auto num = codegen.getnum();
-					codegen(std::format("\n%{} = load {}, ptr %{}", num, iter->second.ty.llvm_typename(), symbol_expr.symbol));
+					codegen(std::format("\n%tmp{} = load {}, ptr %{}", num, iter->second.ty.llvm_typename(), symbol_expr.symbol));
 					codegen.next_line();
-					codegen(std::format("%{}", num));
+					codegen(std::format("%tmp{}", num));
 				}
 			}
 			return iter->second;
@@ -3655,7 +3655,8 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						{
 							if(lhs_ty.is_enum())
 							{
-								lhs_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
+								auto underlying_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
+								lhs_ty = underlying_ty;
 							}
 							type_t rhs_ty = casted_to_ty;
 							if(rhs_ty.is_ptr())
@@ -3684,7 +3685,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 
 							auto num = codegen.getnum();
 							codegen.previous_line();
-							codegen(std::format("\n%cast{} = {} ", num, conversion_type));
+							codegen(std::format("\n%cast{} = {} {}", num, conversion_type, lhs_ty.llvm_typename()));
 							semal_expr(*biop.lhs, types, loc, ctx, true);
 							codegen(std::format(" to {}\n", rhs_ty.llvm_typename()));
 							codegen.bottom_line();
@@ -3798,6 +3799,12 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				{
 					const char* expr_name = unop.rhs->type_name();
 					error(loc, "attempt to ref a {} expression, which is incorrect.", expr_name);
+				}
+				if(do_codegen)
+				{
+					// in the IR, alloca is already a pointer to it. so you literally just get the symbol expression as a register name
+					std::string_view name = std::get<ast_symbol_expr>(unop.rhs->expr_).symbol;
+					codegen(std::format("%{}", name));
 				}
 				return wrap_type(type_t{.payload = types.create_pointer_ty(rhs->ty)});
 			}
@@ -4068,7 +4075,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 								auto num = codegen.getnum();
 								if(!declval->ty.is_struct())
 								{
-									codegen(std::format("%{} = ", num));
+									codegen(std::format("%tmp{} = ", num));
 								}
 								else
 								{
@@ -4078,7 +4085,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 								codegen("\n");
 								if(!declval->ty.is_struct())
 								{
-									codegen(std::format("store {} %{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
+									codegen(std::format("store {} %tmp{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
 								}
 							}
 						}
@@ -4140,10 +4147,21 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 
 			if(do_codegen)
 			{
-				auto num = codegen.getnum();
-				codegen(std::format("%{} = ", num));
-				semal_expr(ret.retval.value(), types, loc, ctx, true);
-				codegen(std::format("\nret {} %{}\n", retval->ty.llvm_typename(), num));
+				if(ret.retval->expr_.index() == payload_index<ast_symbol_expr, decltype(ret.retval->expr_)>())
+				{
+					auto num = codegen.getnum();
+					codegen(std::format("\nret {} ", retval->ty.llvm_typename()));
+					semal_expr(ret.retval.value(), types, loc, ctx, true);
+					codegen("\n");
+				}
+				else
+				{
+					auto num = codegen.getnum();
+					codegen(std::format("%tmp{} = ", num));
+					semal_expr(ret.retval.value(), types, loc, ctx, true);
+					codegen(std::format("\nret {} %tmp{}\n", retval->ty.llvm_typename(), num));
+				}
+
 			}
 			return retval;
 		}
