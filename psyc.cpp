@@ -2399,6 +2399,7 @@ struct ast_biop_expr
 	box<ast_expr> lhs;
 	biop_type type;
 	box<ast_expr> rhs;
+	bool lhs_is_ptr = false;
 
 	std::string value_tostring() const
 	{
@@ -3707,7 +3708,30 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
 					type_t concrete = types.parse(meta.underlying_typename);
 					top_level_typename = meta.underlying_typename;
+					if(biop.lhs_is_ptr)
+					{
+						// can't do typename->xyz
+						error(loc, "expected lhs of -> field expression to not be typename \"{}\", but instead a variable name", top_level_typename);
+					}
 					lhs = wrap_type(concrete);
+				}
+				else if(lhs->ty.is_ptr())
+				{
+					if(!biop.lhs_is_ptr)
+					{
+						auto lhs_tyname = lhs->ty.name();
+						error(loc, "unexpected pointer value \"{}\" as lhs of . field expression. did you mean to use ->?", lhs_tyname);
+					}
+					// let's insert a fake deref in there.
+					ast_expr deref_expr
+					{
+						.expr_ = ast_unop_expr
+						{
+							.type = unop_type::deref,
+							.rhs = *biop.lhs
+						}
+					};
+					lhs = semal_expr(deref_expr, types, loc, ctx);
 				}
 				std::string rhs_symbol;
 				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
@@ -3748,6 +3772,12 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						codegen(std::format("%tmp{}", num));
 					}
 					return wrap_type(type_t{.payload = ty});
+				}
+				else
+				{
+					auto lhs_tyname = lhs->ty.name();
+					error(loc, "woof woof i dont know how to process lhs type {} in biop expr", lhs_tyname);
+					return {};
 				}
 			}
 			break;
@@ -4246,9 +4276,12 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			}
 
 		}
-		if(do_codegen)
+		else
 		{
-			warning(loc, "codegen for if-statements is NYI");
+			if(do_codegen)
+			{
+				warning(loc, "codegen for if-statements is NYI");
+			}
 		}
 		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
@@ -4510,6 +4543,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dot)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(arrow)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -4933,7 +4973,7 @@ CHORD_BEGIN
 			switch(value.tok)
 			{
 				case token::integer_literal:
-					literal.value = std::stol(std::string{value.lexeme});
+					literal.value = std::stoll(std::string{value.lexeme});
 				break;
 				case token::decimal_literal:
 					literal.value = std::stod(std::string{value.lexeme});
@@ -6382,6 +6422,13 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(arrow)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), NODE(ast_expr)), FN
 	{
 		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
@@ -6436,7 +6483,55 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(arrow), NODE(ast_expr)), FN
+	{
+		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
+		if(lhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(lhs_expr.expr_)>())
+		{
+			const char* expr_name = lhs_expr.type_name();
+			chord_error("lhs of expr.expr is always expected to be a symbol expr (for now). you have supplied a {} expression", expr_name);
+		}
+		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
+		auto& expr_node = nodes[2];
+		auto& expr = std::get<ast_expr>(expr_node.payload);
+		if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+		{
+			std::string rhs = std::get<ast_symbol_expr>(expr.expr_).symbol;
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 3},
+				.reduction_result = {node{.payload = ast_expr
+				{
+					.expr_ = ast_biop_expr
+					{
+							.lhs = lhs_expr,
+							.type = biop_type::field,
+							.rhs = expr,
+							.lhs_is_ptr = true
+					}
+				}}}
+			};
+		}
+		else
+		{
+			const char* expr_name = expr.type_name();
+			chord_error("in a expr->expr reduction, did not expect rhs expr to be a {}, expected either a function call expression (UFCS), or a symbol expression (forming a field expression)", expr_name);
+		}
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(arrow), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
