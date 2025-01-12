@@ -2389,6 +2389,7 @@ enum class biop_type
 	div,
 	cast,
 	field,
+	ptr_field,
 	compare_eq,
 	assign,
 	_count
@@ -2399,7 +2400,6 @@ struct ast_biop_expr
 	box<ast_expr> lhs;
 	biop_type type;
 	box<ast_expr> rhs;
-	bool lhs_is_ptr = false;
 
 	std::string value_tostring() const
 	{
@@ -3600,10 +3600,13 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				}
 				if(lhs->ty.is_prim())
 				{
-					auto& static_value = std::get<literal_val>(lhs->val);
-					if(static_value.index() == payload_index<std::int64_t, literal_val>())
+					if (lhs->ty.qual & typequal_static)
 					{
-						std::get<std::int64_t>(static_value) += rhs_val;
+						auto& static_value = std::get<literal_val>(lhs->val);
+						if (static_value.index() == payload_index<std::int64_t, literal_val>())
+						{
+							std::get<std::int64_t>(static_value) += rhs_val;
+						}
 					}
 				}
 				else
@@ -3659,6 +3662,10 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 								auto underlying_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
 								lhs_ty = underlying_ty;
 							}
+							if(lhs_ty.is_ptr())
+							{
+								lhs_ty = type_t{ .payload = prim_ty{.p = prim_ty::type::u64} };
+							}
 							type_t rhs_ty = casted_to_ty;
 							if(rhs_ty.is_ptr())
 							{
@@ -3698,6 +3705,33 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 				}
 			}
 			break;
+			case biop_type::ptr_field:
+			{
+				if(!lhs->ty.is_ptr())
+				{
+					auto lhs_tyname = lhs->ty.name();
+					error(loc, "expected lhs of -> field expression to be a pointer type, you have provided a \"{}\"", lhs_tyname);
+				}
+				ast_expr deref_expr
+				{
+					.expr_ = ast_unop_expr
+					{
+						.type = unop_type::deref,
+						.rhs = *biop.lhs
+					}
+				};
+				ast_expr field_expr
+				{
+					.expr_ = ast_biop_expr
+					{
+						.lhs = deref_expr,
+						.type = biop_type::field,
+						.rhs = *biop.rhs
+					}
+				};
+				return semal_expr(field_expr, types, loc, ctx);
+			}
+			break;
 			case biop_type::field:
 			{
 				error_ifnt(lhs.has_value(), loc, "lhs of cast was invalid");
@@ -3708,19 +3742,20 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
 					type_t concrete = types.parse(meta.underlying_typename);
 					top_level_typename = meta.underlying_typename;
+					/*
 					if(biop.lhs_is_ptr)
 					{
 						// can't do typename->xyz
 						error(loc, "expected lhs of -> field expression to not be typename \"{}\", but instead a variable name", top_level_typename);
 					}
+					*/
 					lhs = wrap_type(concrete);
 				}
 				else if(lhs->ty.is_ptr())
 				{
-					if(!biop.lhs_is_ptr)
-					{
-						auto lhs_tyname = lhs->ty.name();
-						error(loc, "unexpected pointer value \"{}\" as lhs of . field expression. did you mean to use ->?", lhs_tyname);
+					auto lhs_tyname = lhs->ty.name();
+					error(loc, "unexpected pointer value \"{}\" as lhs of . field expression. did you mean to use ->?", lhs_tyname);
+					/*
 					}
 					// let's insert a fake deref in there.
 					ast_expr deref_expr
@@ -3732,6 +3767,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						}
 					};
 					lhs = semal_expr(deref_expr, types, loc, ctx);
+					*/
 				}
 				std::string rhs_symbol;
 				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
@@ -3749,7 +3785,7 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					auto iter = ty.members.find(rhs_symbol);
 					if(iter == ty.members.end())
 					{
-						error(loc, "variable \"{}\" of struct type does not have a member named \"{}\"", rhs_symbol);
+						error(loc, "variable \"{}\" of struct type does not have a member named \"{}\"", top_level_typename, rhs_symbol);
 					}
 					const type_t& member_ty = *iter->second;
 					return wrap_type(member_ty);
@@ -4963,7 +4999,7 @@ CHORD_BEGIN
 		if(value_node.payload.index() == payload_index<ast_token, node_payload>())
 		{
 			auto value = std::get<ast_token>(value_node.payload);
-			if(value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct || value.tok == token::keyword_enum || unop_tokens.contains(value.tok))
+			if(value.tok == token::oparen || value.tok == token::keyword_func || value.tok == token::symbol || value.tok == token::keyword_struct || value.tok == token::keyword_enum || unop_tokens.contains(value.tok))
 			{
 					return {.action = parse_action::recurse, .reduction_result_offset = 2};
 			}
@@ -6001,6 +6037,7 @@ DEFINE_BIOPIFICATION_CHORDS(dash, minus)
 DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
 DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
+DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
 DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
 DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 
@@ -6506,9 +6543,8 @@ CHORD_BEGIN
 					.expr_ = ast_biop_expr
 					{
 							.lhs = lhs_expr,
-							.type = biop_type::field,
+							.type = biop_type::ptr_field,
 							.rhs = expr,
-							.lhs_is_ptr = true
 					}
 				}}}
 			};
