@@ -3939,7 +3939,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 				std::string init_tyname = init_sval->ty.name();
 				std::string decl_tyname = ret->ty.name();
 				error_ifnt(init_sval->ty.is_convertible_to(ret->ty), loc, "initialiser of decl {} was of type \"{}\", which is not convertible to \"{}\"", decl.name, init_tyname, decl_tyname);
-				ret.value() = init_sval.value();
+				ret->val = init_sval->val;
 			}
 		}
 		if(ret->ty.is_badtype())
@@ -3948,7 +3948,7 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 			auto iter = types.variables.find(decl.type_name);
 			if(iter != types.variables.end())
 			{
-				return iter->second;
+				ret->val = iter->second.val;
 			}
 		}
 	}
