@@ -17,6 +17,7 @@
 #include <functional>
 #include <unordered_set>
 #include <chrono>
+#include <deque>
 #ifdef _WIN32
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -73,6 +74,33 @@ public:
 
 template<typename T>
 box(T) -> box<T>;
+
+struct string_hash
+{
+    using is_transparent = void;
+    [[nodiscard]] size_t operator()(const char *txt) const
+	{
+        return std::hash<std::string_view>{}(txt);
+    }
+    [[nodiscard]] size_t operator()(std::string_view txt) const
+	{
+        return std::hash<std::string_view>{}(txt);
+    }
+    [[nodiscard]] size_t operator()(const std::string &txt) const
+	{
+        return std::hash<std::string>{}(txt);
+    }
+    [[nodiscard]] size_t operator()(const std::filesystem::path &txt) const
+	{
+        return std::hash<std::filesystem::path>{}(txt);
+    }
+};
+
+template<typename T>
+using string_map = std::unordered_map<std::string, T, string_hash, std::equal_to<>>;
+
+template<typename T>
+using path_map = std::unordered_map<std::filesystem::path, T, string_hash, std::equal_to<>>;
 
 template<typename T, typename V, std::size_t index_leave_blank = 0>
 consteval int payload_index()
@@ -628,6 +656,7 @@ struct ptr_ty
 	{
 		return "ptr";	
 	}
+	static ptr_ty ref(const type_t& t);
 	bool operator==(const ptr_ty& rhs) const = default;
 };
 
@@ -673,9 +702,20 @@ struct type_t
 	payload_t payload;
 	typequal qual = typequal_none;
 
+	static type_t create_primitive_type(prim_ty::type p)
+	{
+		return type_t{.payload = prim_ty{.p = p}};
+	}
+
 	static type_t create_void_type()
 	{
-		return type_t{.payload = prim_ty{.p = prim_ty::type::v0}};
+		return create_primitive_type(prim_ty::type::v0);
+	}
+
+
+	static type_t create_pointer_type(const type_t& pointee)
+	{
+		return type_t{.payload = ptr_ty{.underlying_ty = pointee}};
 	}
 
 	type_t add_weak()
@@ -967,6 +1007,11 @@ std::string ptr_ty::name() const
 	return std::format("{}&", this->underlying_ty->name());
 }
 
+/*static*/ptr_ty ptr_ty::ref(const type_t& t)
+{
+	return {.underlying_ty = {t}};
+}
+
 std::string enum_ty::llvm_typename() const
 {
 	return underlying_ty->llvm_typename();
@@ -1051,24 +1096,27 @@ struct sval
 	}
 };
 
-struct semal_state
+enum class scope_type
 {
-	std::unordered_map<std::string, prim_ty> primitives = {};
-	std::unordered_map<std::string, struct_ty> structs = {};
-	std::unordered_map<std::string, enum_ty> enums = {};
-	std::unordered_map<std::string, fn_ty> functions = {};
-	std::unordered_map<std::string, const ast_funcdef_expr*> function_locations = {};
-	std::unordered_map<std::string, sval> variables = {};
+	block,
+	metaregion,
+	_undefined
+};
 
-	std::unordered_map<std::filesystem::path, srcloc> added_source_files = {};
-	std::unordered_map<std::filesystem::path, srcloc> added_link_libraries = {};
+constexpr const char* scope_type_names[] =
+{
+	"block",
+	"metaregion",
+	"<UNDEFINED SCOPE TYPE>"
+};
 
-	compile_args* args = nullptr;
-
-	ptr_ty create_pointer_ty(type_t pointee) const
-	{
-		return {.underlying_ty = {pointee}};
-	}
+struct semal_state2
+{
+	string_map<struct_ty> structs = {};
+	string_map<enum_ty> enums = {};
+	string_map<fn_ty> functions;
+	string_map<const ast_funcdef_expr*> function_locations = {};
+	string_map<sval> variables = {};
 
 	type_t parse(std::string_view type_name) const
 	{
@@ -1089,7 +1137,7 @@ struct semal_state
 			if(tyname.front() == '&')
 			{
 				error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
-				current_type = type_t{.payload = this->create_pointer_ty(current_type)};
+				current_type = type_t{ptr_ty::ref(current_type)};
 				tyname.remove_prefix(1);
 				continue;
 			}
@@ -1118,12 +1166,13 @@ struct semal_state
 			else
 			{
 				// im gonna assume this is the base type now then.
-				for (const auto& [name, prim] : this->primitives)
+				for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
 				{
-					if (name == word)
+					auto primty = static_cast<prim_ty::type>(i);
+					const char* name = prim_ty::type_names[i];
+					if(name == word)
 					{
-						current_type.payload = prim;
-						break;
+						current_type.payload = prim_ty{.p = primty};
 					}
 				}
 
@@ -1159,241 +1208,110 @@ struct semal_state
 		}
 		return current_type;
 	}
-
-	semal_state coalesce(const semal_state& other) const
-	{
-		semal_state ret = *this;
-		for(const auto& [name, prim] : other.primitives)
-		{
-			ret.primitives[name] = prim;
-		}
-
-		for(const auto& [name, structval] : other.structs)
-		{
-			ret.structs[name] = structval;
-		}
-
-		for(const auto& [name, enumval] : other.enums)
-		{
-			ret.enums.emplace(name, enumval);
-		}
-
-		for(const auto& [name, fn] : other.functions)
-		{
-			ret.functions.emplace(name, fn);
-		}
-		for(const auto& [name, node] : other.function_locations)
-		{
-			ret.function_locations[name] = node;
-		}
-		for(const auto& [name, ty] : other.variables)
-		{
-			ret.variables[name] = ty;
-		}
-		if(other.args != nullptr)
-		{
-			ret.args = other.args;
-		}
-		return ret;
-	}
-
-	void feed_forward(semal_state& other)
-	{
-		// specifically bring back enums. only enums.
-		// enums are given members in their own block which needs to be fed-back to its parent
-		// structs probably need to do this too.
-		for(const auto& [name, structval] : this->structs)
-		{
-			if(!other.structs.contains(name))
-			{
-				other.structs.emplace(name, structval);
-			}
-			else
-			{
-				other.structs.at(name) = structval;
-			}
-		}
-
-		/*
-		for(const auto& [name, funcval] : this->functions)
-		{
-			other.functions.emplace(name, funcval);
-			other.function_locations.emplace(name, this->function_locations.at(name));
-		}
-		*/
-
-		for(const auto& [file, loc] : this->added_source_files)
-		{
-			other.added_source_files.emplace(file, loc);
-		}
-
-		for(const auto& [file, loc] : this->added_link_libraries)
-		{
-			other.added_link_libraries.emplace(file, loc);
-		}
-
-		for(const auto& [name, enumval] : this->enums)
-		{
-			if(!other.enums.contains(name))
-			{
-				other.enums.emplace(name, enumval);
-			}
-			else
-			{
-				other.enums.at(name) = enumval;
-			}
-		}
-	}
 };
 
-semal_state create_empty_type_system()
+struct semal_local_state
 {
-	semal_state ret = {};
-	ret.functions.emplace("__error", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("__error", nullptr);
-	ret.functions.emplace("__warning", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("__warning", nullptr);
-	ret.functions.emplace("__msg", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("__msg", nullptr);
-	ret.functions.emplace("__env", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t{.payload = ret.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
-			});
-	ret.function_locations.emplace("__env", nullptr);
-	ret.functions.emplace("_cstrcat", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})},
-					type_t{.payload = ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t{.payload = ret.create_pointer_ty(type_t{.payload = prim_ty{.p = prim_ty::type::u8}})}
-			});
-	ret.function_locations.emplace("_cstrcat", nullptr);
-	return ret;
-}
+	scope_type scope = scope_type::_undefined;
+	semal_state2 state;
+	semal_local_state* parent = nullptr;
+};
 
-semal_state create_basic_type_system()
+struct semal_global_state
 {
-	semal_state ret = create_empty_type_system();
+	semal_state2 state;
+	path_map<srcloc> added_source_files = {};
+	path_map<srcloc> added_link_libraries = {};
+	std::deque<semal_local_state> locals = {};
+};
 
-	for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
+semal_global_state global;
+
+semal_local_state create_metaregion_state()
+{
+	using enum prim_ty::type;
+	const type_t string_view_ty = type_t::create_pointer_type(type_t::create_primitive_type(u8));
+	auto ret = semal_local_state
 	{
-		auto primty = static_cast<prim_ty::type>(i);
-		const char* name = prim_ty::type_names[i];
-		ret.primitives[name] = {.p = primty};
+		.scope = scope_type::metaregion,
+		.state =
+		{
+			.functions =
+			{
+				{"add_source_file", fn_ty{
+					.params =
+					{
+						string_view_ty
+					},
+					.return_ty = type_t::create_void_type()
+				}},
+				{"add_link_library", fn_ty{
+					.params =
+					{
+						string_view_ty
+					},
+					.return_ty = type_t::create_void_type()
+				}},
+				{"set_executable", fn_ty{
+					.params =
+					{
+						string_view_ty
+					},
+					.return_ty = type_t::create_void_type()
+				}},
+				{"set_library", fn_ty{
+					.params =
+					{
+						string_view_ty
+					},
+					.return_ty = type_t::create_void_type()
+				}},
+				{"set_object", fn_ty{
+					.params =
+					{
+						string_view_ty
+					},
+					.return_ty = type_t::create_void_type()
+				}},
+			}
+		},
+	};
+
+	for(const auto& [name, _] : ret.state.functions)
+	{
+		ret.state.function_locations[name] = nullptr;
 	}
 	return ret;
 }
 
-semal_state create_build_metaregion_context()
+struct semal_result
 {
-	semal_state ret;
-	ret.functions.emplace("add_source_file", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload =ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("add_source_file", nullptr);
-	ret.functions.emplace("set_executable", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload =ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("set_executable", nullptr);
-	ret.functions.emplace("set_library", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload =ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("set_library", nullptr);
-	ret.functions.emplace("set_object", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload =ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("set_object", nullptr);
-	ret.functions.emplace("add_link_library", fn_ty
-			{
-				.params =
-				{
-					type_t{.payload =ret.create_pointer_ty(type_t
-					{
-						.payload = prim_ty{.p = prim_ty::type::u8}
-					})}
-				},
-				.return_ty = type_t::create_void_type()
-			});
-	ret.function_locations.emplace("add_link_library", nullptr);
-	return ret;
-}
+	static semal_result null()
+	{
+		return {.t = type::unknown};
+	}
+
+	template<typename... T>
+	static semal_result err(std::format_string<T...> fmt, T&&... args)
+	{
+		return
+		{
+			.t = type::err,
+			.label = std::format(fmt, std::forward<T>(args)...)
+		};
+	}
+
+	enum class type
+	{
+		variable_decl,
+		function_decl,
+		struct_decl,
+		enum_decl,
+		err,
+		unknown
+	} t;
+	std::string label;
+};
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
 #undef COMPILER_STAGE
@@ -2600,7 +2518,7 @@ struct node
 	// variable that xor's with the resultant hash. useful if you want nodes of the same payload type to still vary in their hash.
 	int hash_morph = 0;
 	// types defined at the level of this node.
-	mutable semal_state types = create_empty_type_system();
+	mutable std::optional<sval> val = std::nullopt;
 
 	constexpr std::int64_t hash() const
 	{
@@ -3151,6 +3069,7 @@ std::filesystem::path get_compiler_path()
 	#endif
 }
 
+/*
 sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc);
 
 struct semal_context
@@ -3236,831 +3155,77 @@ struct semal_context
 		return this->entries.back().t;
 	}
 };
+*/
 
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_enum";
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
+#define IS_A(variant, type) variant.index() == payload_index<type, std::decay_t<decltype(variant)>>()
+#define AS_A(variant, type) std::get<type>(variant)
 
-std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
+void handle_defer(std::span<node> children)
 {
-	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
+	for(auto iter = children.begin(); iter != children.end(); iter++)
 	{
-		const auto& lit = std::get<ast_literal_expr>(expr.expr_);
-		sval value
+		const auto& p = iter->payload;
+		if(IS_A(p, ast_stmt))
 		{
-			.val = lit.value,
-		};
-
-		value.ty.qual = typequal_static;
-		if(lit.value.index() == payload_index<std::int64_t, decltype(lit.value)>())
-		{
-			value.ty.payload = prim_ty{.p = prim_ty::type::s64};
-		}
-		else if(lit.value.index() == payload_index<double, decltype(lit.value)>())
-		{
-			value.ty.payload = prim_ty{.p = prim_ty::type::f64};
-		}
-		else if(lit.value.index() == payload_index<char, decltype(lit.value)>())
-		{
-			value.ty.payload = prim_ty{.p = prim_ty::type::u8};
-		}
-		else if(lit.value.index() == payload_index<std::string, decltype(lit.value)>())
-		{
-			value.ty.qual = typequal_none;
-			value.ty.payload = prim_ty{.p = prim_ty::type::u8};
-			value.ty = type_t{.payload = types.create_pointer_ty(value.ty), .qual = typequal_static};
-		}
-		else if(lit.value.index() == payload_index<bool, decltype(lit.value)>())
-		{
-			value.ty.payload = prim_ty{.p = prim_ty::type::boolean};
-		}
-		else
-		{
-			panic("dont know how to typecheck this specific literal expression");
-		}
-		return value;
-	}
-	else if(expr.expr_.index() == payload_index<ast_funcdef_expr, decltype(expr.expr_)>())
-	{
-		const auto& def = std::get<ast_funcdef_expr>(expr.expr_);
-
-		fn_ty ty{.return_ty = type_t::badtype()};
-		ty.static_params.resize(def.static_params.size());
-		std::transform(def.static_params.begin(), def.static_params.end(), ty.static_params.begin(),
-		[&types, &loc, &def, &ctx](const ast_decl& decl)
-		{
-			auto sparam = semal_decl(decl, types, loc, ctx);
-			error_ifnt(sparam.has_value(), loc, "failed to semal static parameter {} of function", decl.name);
-
-			error_ifnt(!sparam->ty.is_badtype(), loc, "unknown type of static parameter {} of function", decl.name);
-			if(!def.is_extern)
+			if(AS_A(p, ast_stmt).deferred)
 			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = sparam.value();
-				ctx.variables_to_exist_in_next_scope.at(decl.name).needs_load = false;
-			}
-			return sparam->ty;
-		});
-
-		ty.params.resize(def.params.size());
-		std::transform(def.params.begin(), def.params.end(), ty.params.begin(),
-		[&types, &loc, &def, &ctx](const ast_decl& decl)
-		{
-			auto param = semal_decl(decl, types, loc, ctx);
-			error_ifnt(param.has_value(), loc, "failed to semal parameter {} of function", decl.name);
-
-			error_ifnt(!param->ty.is_badtype(), loc, "unknown type of parameter {} of function", decl.name);
-			if(!def.is_extern)
-			{
-				ctx.variables_to_exist_in_next_scope[decl.name] = param.value();
-				ctx.variables_to_exist_in_next_scope.at(decl.name).needs_load = false;
-			}
-			return param->ty;
-		});
-
-		ty.return_ty = types.parse(def.return_type);
-		error_ifnt(!ty.return_ty->is_badtype(), loc, "unknown return type \"{}\" of function", def.return_type);
-		return wrap_type(type_t{.payload = ty});
-	}
-	else if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
-	{
-		const auto& call = std::get<ast_callfunc_expr>(expr.expr_);
-		auto iter = types.functions.find(call.function_name);	
-		if(iter != types.functions.end())
-		{
-			fn_ty fn = iter->second;
-			// make sure the call matches the fn
-			auto call_sparams = call.static_params.size();
-			auto fn_sparams = fn.static_params.size();
-			error_ifnt(call_sparams == fn_sparams, loc, "function {} called with {} static parameters when it expects {}", call.function_name, call_sparams, fn_sparams);
-			for(std::size_t i = 0; i < call_sparams; i++)
-			{
-				//auto call_param_ty = semal_expr(call.static_params[i], types, loc, ctx);
-				auto call_param = semal_expr(call.static_params[i], types, loc, ctx);
-				error_ifnt(call_param.has_value(), loc, "failed to semal static argument {} in call to function {}", i, call.function_name);
-				const std::string call_expr_tyname = call_param->ty.name();
-				const std::string fn_param_tyname = fn.static_params[i].name();
-				error_ifnt(call_param->ty.is_convertible_to(fn.static_params[i]), loc, "static param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
-				// todo: generate new concrete function signatures based on these
-				warning(loc, "static params are not yet implemented");
-			}
-			auto call_params = call.params.size();
-			auto fn_params = fn.params.size();
-			error_ifnt(call_params == fn_params, loc, "function {} called with {} arguments when it expects {}", call.function_name, call_params, fn_params);
-			for(std::size_t i = 0; i < call_params; i++)
-			{
-				auto call_param = semal_expr(call.params[i], types, loc, ctx);
-				//auto call_param_ty = semal_expr(call.params[i], types, loc, ctx);
-				error_ifnt(call_param.has_value(), loc, "failed to semal argument {} in call to function {}", i, call.function_name);
-				const std::string call_expr_tyname = call_param->ty.name();
-				const std::string fn_param_tyname = fn.params[i].name();
-				error_ifnt(call_param->ty.is_convertible_to(fn.params[i]), loc, "param {} of function {} expects type \"{}\". your \"{}\" is not convertible.", i, call.function_name, fn_param_tyname, call_expr_tyname);
-			}
-
-			auto* fnloc = types.function_locations.at(call.function_name);
-			if(fnloc == nullptr)
-			{
-				return call_builtin_function(call, types, loc);
-			}
-			return wrap_type(*fn.return_ty);
-		}
-		else
-		{
-			error(loc, "undefined function \"{}\"", call.function_name);
-		}
-	}
-	else if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
-	{
-		const auto& symbol_expr = std::get<ast_symbol_expr>(expr.expr_);
-		auto iter = types.variables.find(symbol_expr.symbol);
-		if(iter != types.variables.end())
-		{
-			return iter->second;
-		}
-		else
-		{
-			auto func_iter = types.functions.find(symbol_expr.symbol);
-			if(func_iter != types.functions.end())
-			{
-				// they are referring to a function name as a variable. that's perfectly fine.
-				sval val = wrap_type(type_t{.payload = func_iter->second});
-				// "value" is secretly a string literal even though the ty is a function
-				val.val = symbol_expr.symbol;
-				return val;
-			}
-			else
-			{
-				// perhaps they're specifically referring to a typename?
-				type_t type_name = types.parse(symbol_expr.symbol);
-				if(!type_name.is_badtype())
-				{
-					return wrap_type(type_t{.payload = meta_ty{.underlying_typename = symbol_expr.symbol}});
-				}
-				else
-				{
-					error(loc, "undefined variable, type or function \"{}\"", symbol_expr.symbol);
-				}
+				std::rotate(iter, iter + 1, children.end());
 			}
 		}
 	}
-	else if(expr.expr_.index() == payload_index<ast_structdef_expr, decltype(expr.expr_)>())
-	{
-		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return wrap_type(type_t{.payload = meta_ty{.underlying_typename = unnamed_struct_ty}});
-	}
-	else if(expr.expr_.index() == payload_index<ast_enumdef_expr, decltype(expr.expr_)>())
-	{
-		const auto& enumdef = std::get<ast_enumdef_expr>(expr.expr_);
-		type_t underlying_ty = type_t{.payload = prim_ty{.p = prim_ty::type::s64}};
-		if(!enumdef.underlying_type.empty())
-		{
-			underlying_ty = types.parse(enumdef.underlying_type);
-		}
-		// we dont handle this here, as it's only valid to declare a structdef if its within a decl.
-		return wrap_type(type_t{.payload = meta_ty{.underlying_typename = unnamed_enum_ty}});
-	}
-	else if(expr.expr_.index() == payload_index<ast_biop_expr, decltype(expr.expr_)>())
-	{
-		const auto& biop = std::get<ast_biop_expr>(expr.expr_);
-		auto lhs = semal_expr(*biop.lhs, types, loc, ctx);
-		//auto lhs_ty = semal_expr(*biop.lhs, types, loc, ctx);
-		switch(biop.type)
-		{
-			// all operators aside from cast (@) act the same
-			// the type of the expression is equal to the lhs
-			// for the cast, rhs *must* be a symbol expression and represent a typename.
-			case biop_type::plus:
-				[[fallthrough]];
-			case biop_type::minus:
-				[[fallthrough]];
-			case biop_type::mul:
-				[[fallthrough]];
-			case biop_type::div:
-			{
-				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
-				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
-				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
-				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
-				double rhs_val = 0.0;
-				if(rhs->ty.is_prim() && rhs->val.index() != payload_index<std::monostate, decltype(rhs->val)>())
-				{
-					// rhs has a static value.
-					// we assume its numeric.
-					// double will store double and int64 so lets stick with double.
-					if(payload_index<literal_val, decltype(rhs->val)>())
-					{
-						auto& rhs_svalue = std::get<literal_val>(rhs->val);
-						if(rhs_svalue.index() == payload_index<double, literal_val>())
-						{
-							rhs_val += std::get<double>(rhs_svalue);
-						}
-						else if(rhs_svalue.index() == payload_index<std::int64_t, literal_val>())
-						{
-							rhs_val += std::get<std::int64_t>(rhs_svalue);
-						}
-						else
-						{
-							panic("did not expecting non-double non-int64 rhs literal value. did they pass a bool/char to a arithmetic biop {}?", loc);
-						}
-					}
-					else
-					{
-						panic("really expected a literal value for a primitive rhs");
-					}
-				}
-				if(lhs->ty.is_prim())
-				{
-					if (lhs->ty.qual & typequal_static)
-					{
-						auto& static_value = std::get<literal_val>(lhs->val);
-						if (static_value.index() == payload_index<std::int64_t, literal_val>())
-						{
-							std::get<std::int64_t>(static_value) += rhs_val;
-						}
-					}
-				}
-				else
-				{
-					std::string lhs_tyname = lhs->ty.name();
-					error(loc, "arithmetic binary operators are only valid on numeric types, you have tried to use it on a \"{}\" which is invalid", lhs_tyname);
-				}
-				return lhs;
-			}
-			break;
-			case biop_type::cast:
-			{
-				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
-				const auto& rhs_expr = *biop.rhs;
-				if(rhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(rhs_expr.expr_)>())
-				{
-					const char* expr_name = rhs_expr.type_name();
-					error(loc, "rhs of cast expression *must* be a symbol representing a typename. instead you have provided a {} expression", expr_name);
-				}
-				else
-				{
-					const auto& symbol_expr = std::get<ast_symbol_expr>(rhs_expr.expr_);
-					type_t casted_to_ty = types.parse(symbol_expr.symbol);
-					std::string casted_from_tyname = lhs->ty.name();
-					std::string casted_to_tyname = casted_to_ty.name();
-					error_ifnt(lhs->ty.add_weak().is_convertible_to(casted_to_ty), loc, "cannot explicitly convert {} to {}", casted_from_tyname, casted_to_tyname);
-					// let's try to do the cast if the static value exists.
-					sval ret = lhs.value();
-					ret.ty = casted_to_ty;
-					if(ret.val.index() == payload_index<literal_val, decltype(ret.val)>())
-					{
-						const auto& lit = std::get<literal_val>(ret.val);
-						// todo: magic static value conversion logic.
-					}
-
-					return ret;
-				}
-			}
-			break;
-			case biop_type::ptr_field:
-			{
-				if(!lhs->ty.is_ptr())
-				{
-					auto lhs_tyname = lhs->ty.name();
-					error(loc, "expected lhs of -> field expression to be a pointer type, you have provided a \"{}\"", lhs_tyname);
-				}
-				ast_expr deref_expr
-				{
-					.expr_ = ast_unop_expr
-					{
-						.type = unop_type::deref,
-						.rhs = *biop.lhs
-					}
-				};
-				ast_expr field_expr
-				{
-					.expr_ = ast_biop_expr
-					{
-						.lhs = deref_expr,
-						.type = biop_type::field,
-						.rhs = *biop.rhs
-					}
-				};
-				return semal_expr(field_expr, types, loc, ctx);
-			}
-			break;
-			case biop_type::field:
-			{
-				error_ifnt(lhs.has_value(), loc, "lhs of cast was invalid");
-				error_ifnt(!lhs->ty.is_badtype(), loc, "lhs of cast expression did not yield a valid type");
-				std::string top_level_typename = "";
-				if(lhs->ty.is_type())
-				{
-					const auto& meta = std::get<meta_ty>(lhs->ty.payload);
-					type_t concrete = types.parse(meta.underlying_typename);
-					top_level_typename = meta.underlying_typename;
-					/*
-					if(biop.lhs_is_ptr)
-					{
-						// can't do typename->xyz
-						error(loc, "expected lhs of -> field expression to not be typename \"{}\", but instead a variable name", top_level_typename);
-					}
-					*/
-					lhs = wrap_type(concrete);
-				}
-				else if(lhs->ty.is_ptr())
-				{
-					auto lhs_tyname = lhs->ty.name();
-					error(loc, "unexpected pointer value \"{}\" as lhs of . field expression. did you mean to use ->?", lhs_tyname);
-					/*
-					}
-					// let's insert a fake deref in there.
-					ast_expr deref_expr
-					{
-						.expr_ = ast_unop_expr
-						{
-							.type = unop_type::deref,
-							.rhs = *biop.lhs
-						}
-					};
-					lhs = semal_expr(deref_expr, types, loc, ctx);
-					*/
-				}
-				std::string rhs_symbol;
-				if(biop.rhs->expr_.index() == payload_index<ast_symbol_expr, decltype(biop.rhs->expr_)>())
-				{
-					rhs_symbol = std::get<ast_symbol_expr>(biop.rhs->expr_).symbol;
-				}
-				else
-				{
-					panic("dont know how to handle biop field expression where rhs is not a symbol expr.");
-				}
-				if(lhs->ty.is_struct())
-				{
-					const auto& ty = std::get<struct_ty>(lhs->ty.payload);
-					// which member is it?
-					auto iter = ty.members.find(rhs_symbol);
-					if(iter == ty.members.end())
-					{
-						error(loc, "variable \"{}\" of struct type does not have a member named \"{}\"", top_level_typename, rhs_symbol);
-					}
-					const type_t& member_ty = *iter->second;
-					return wrap_type(member_ty);
-				}
-				else if(lhs->ty.is_enum())
-				{
-					const auto& ty = std::get<enum_ty>(lhs->ty.payload);
-					if(!std::ranges::contains(ty.entries, rhs_symbol))
-					{
-						error(loc, "enum has no entry \"{}\"", rhs_symbol);
-					}
-
-					return wrap_type(type_t{.payload = ty});
-				}
-				else
-				{
-					auto lhs_tyname = lhs->ty.name();
-					error(loc, "woof woof i dont know how to process lhs type {} in biop expr", lhs_tyname);
-					return {};
-				}
-			}
-			break;
-			case biop_type::compare_eq:
-			{
-				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
-				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
-				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
-				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
-
-				sval ret = wrap_type(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}});
-				if(rhs->has_val() && lhs->has_val())
-				{
-					const bool eq = (rhs->val == lhs->val);
-					ret.ty.qual = ret.ty.qual | typequal_static;
-					ret.val = eq;
-				}
-				return ret;
-			}
-			break;
-			case biop_type::assign:
-			{
-				auto rhs = semal_expr(*biop.rhs, types, loc, ctx);
-				error_ifnt(rhs.has_value(), loc, "rhs of biop is invalid");
-				error_ifnt(lhs.has_value(), loc, "lhs of biop is invalid");
-				error_ifnt(lhs->ty.is_convertible_to(rhs->ty), loc, "binary operator is invalid because the left and right expression types are not convertible.");
-				return lhs;
-			}
-			break;
-			default:
-				panic("unhandled biop type in semal");
-			break;
-		}
-	}
-	else if(expr.expr_.index() == payload_index<ast_unop_expr, decltype(expr.expr_)>())
-	{
-		const auto& unop = std::get<ast_unop_expr>(expr.expr_);
-		auto rhs = semal_expr(*unop.rhs, types, loc, ctx);
-		std::string op_name = unop.value_tostring();
-		error_ifnt(rhs.has_value(), loc, "rhs of unary operator was invalid");
-		error_ifnt(!rhs->ty.is_badtype(), loc, "rhs of unary operator had invalid type");
-		std::string tyname = rhs->ty.name();
-		switch(unop.type)
-		{
-			// all operators aside from cast (@) act the same
-			// the type of the expression is equal to the lhs
-			// for the cast, rhs *must* be a symbol expression and represent a typename.
-			case unop_type::minus:
-			[[fallthrough]];
-			case unop_type::invert:
-				return wrap_type(rhs->ty);
-			break;
-			case unop_type::ref:
-			{
-				// in theory you could ref literally anything
-				// however if you ref something like a literal then you are almost 100% wrong
-				// let's error out on it.
-				if(unop.rhs->expr_.index() == payload_index<ast_literal_expr, decltype(unop.rhs->expr_)>()
-				|| unop.rhs->expr_.index() == payload_index<ast_funcdef_expr, decltype(unop.rhs->expr_)>()
-				)
-				{
-					const char* expr_name = unop.rhs->type_name();
-					error(loc, "attempt to ref a {} expression, which is incorrect.", expr_name);
-				}
-				return wrap_type(type_t{.payload = types.create_pointer_ty(rhs->ty)});
-			}
-			break;
-			case unop_type::deref:
-				error_ifnt(rhs->ty.is_ptr(), loc, "cannot deref non-pointer-type \"{}\"", tyname);
-				return wrap_type(*std::get<ptr_ty>(rhs->ty.payload).underlying_ty);
-			break;
-			default:
-				panic("unhandled unop type in semal");
-			break;
-		}
-	}
-	else if(expr.expr_.index() == payload_index<ast_blkinit_expr, decltype(expr.expr_)>())
-	{
-		const auto& blkinit = std::get<ast_blkinit_expr>(expr.expr_);
-		type_t ret = types.parse(blkinit.type_name);
-		if(!ret.is_struct())
-		{
-			error(loc, "block initialiser was of non-struct-type \"{}\". block initialisers can only be used to initialise structs for now.", blkinit.type_name);
-		}
-		auto ty = std::get<struct_ty>(ret.payload);
-		std::unordered_map<std::string, sval> static_value;
-		for(const auto& init : blkinit.initialisers)
-		{
-			const ast_expr& value = *init.initialiser;
-
-			auto iter = ty.members.find(init.name);
-			if(iter == ty.members.end())
-			{
-				error(loc, "struct \"{}\" has no member named \"{}\"", blkinit.type_name, init.name);
-			}
-			auto init_expr = semal_expr(value, types, loc, ctx);
-			error_ifnt(init_expr.has_value(), loc, "initialiser of member \"{}\" was invalid", init.name);
-			static_value[init.name] = init_expr.value();
-			error_ifnt(!init_expr->ty.is_badtype(), loc, "initialiser of member \"{}\" was of invalid type", init.name);
-			const bool convertible = iter->second->is_convertible_to(init_expr->ty);
-			std::string member_typename = iter->second->name();
-			std::string expr_typename = init_expr->ty.name();
-			error_ifnt(convertible, loc, "member \"{}\" is of type \"{}\". the initialiser value you have passed is of type \"{}\" which is not convertible to the aforementioned member type.", init.name, member_typename, expr_typename);
-		}
-		sval val = wrap_type(ret);
-		val.val = static_value;
-
-		return val;
-	}
-	else
-	{
-		const char* expr_name = expr.type_name();
-		panic("dont know how to typecheck a {} expression", expr_name);
-	}
-	return std::nullopt;
 }
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
+void verify_semal_result(const semal_result& result, const node& n, std::string_view source)
 {
-	std::optional<sval> ret;
-	if(decl.type_name == deduced_type)
+	if(result.t == semal_result::type::err)
 	{
-		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ret = semal_expr(decl.initialiser.value(), types, loc, ctx);
+		std::string quote = format_source(source, n.begin_location, n.end_location);
+		error(n.begin_location, "invalid code\n{}\n{}", result.label, quote);
 	}
-	else
-	{
-		ret = sval{.ty = types.parse(decl.type_name)};
-		if(ret.has_value())
-		{
-			// user has specifically typed "type" as the type of a variable
-			// that has no concrete type information, so we're still going to take the deduction code path
-			// if there is no initialiser, then its basically a c++ template.
-			if(decl.initialiser.has_value())
-			{
-				auto init_sval = semal_expr(decl.initialiser.value(), types, loc, ctx);
-				error_ifnt(init_sval.has_value(), loc, "initialiser of decl {} is invalid", decl.name);
-				std::string init_tyname = init_sval->ty.name();
-				std::string decl_tyname = ret->ty.name();
-				error_ifnt(init_sval->ty.is_convertible_to(ret->ty), loc, "initialiser of decl {} was of type \"{}\", which is not convertible to \"{}\"", decl.name, init_tyname, decl_tyname);
-				ret->val = init_sval->val;
-			}
-		}
-		if(ret->ty.is_badtype())
-		{
-			// could be referring to a variable (so long as that variable is a meta type)
-			auto iter = types.variables.find(decl.type_name);
-			if(iter != types.variables.end())
-			{
-				ret->val = iter->second.val;
-			}
-		}
-	}
-
-	const bool expr_is_funcdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_funcdef_expr, decltype(decl.initialiser.value().expr_)>();
-	const bool expr_is_structdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_structdef_expr, decltype(decl.initialiser.value().expr_)>();
-	const bool expr_is_enumdef = decl.initialiser.has_value() && decl.initialiser.value().expr_.index() == payload_index<ast_enumdef_expr, decltype(decl.initialiser.value().expr_)>();
-	if(ret->ty.is_fn() && expr_is_funcdef)
-	{
-		// declaration initialiser is a function type.
-		const auto& ty = ret->ty;
-		const fn_ty fnty = std::get<fn_ty>(ret->ty.payload);
-		auto [_, actually_emplaced] = types.functions.emplace(decl.name, fnty);
-		if(!actually_emplaced)
-		{
-			error(loc, "duplicate definition of function \"{}\"", decl.name);
-		}
-		const auto& def = std::get<ast_funcdef_expr>(decl.initialiser.value().expr_);
-		types.function_locations[decl.name] = &def;
-		if(!def.is_extern)
-		{
-			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
-		}
-
-	}
-	else if(ret->ty.is_type() && expr_is_structdef)
-	{
-		auto [_, actually_emplaced] = types.structs.emplace(decl.name, struct_ty{.maybe_name = decl.name});
-
-		if(!actually_emplaced)
-		{
-			error(loc, "duplicate definition of struct \"{}\"", decl.name);
-		}
-		ctx.entries.push_back({.t = semal_context::type::in_struct, .name = decl.name});
-	}
-	else if(ret->ty.is_type() && expr_is_enumdef)
-	{
-		type_t underlying_ty{.payload = prim_ty{.p = prim_ty::type::s64}};
-		auto [_, actually_emplaced] = types.enums.emplace(decl.name, enum_ty{.underlying_ty = underlying_ty});
-		if(!actually_emplaced)
-		{
-			error(loc, "duplicate definition of enum \"{}\"", decl.name);
-		}
-		ctx.entries.push_back({.t = semal_context::type::in_enum, .name = decl.name});
-	}
-	return ret;
 }
 
-std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
+semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state* local = nullptr)
 {
-	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
+	if(0)
 	{
-		auto* maybe_parent_struct = ctx.try_get_parent_struct();
-		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto declval = semal_decl(decl, types, loc, ctx);
-		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
-		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
-
-		if(declval->ty.is_type())
-		{
-			auto& metaty = std::get<meta_ty>(declval->ty.payload);
-			if(metaty.underlying_typename == unnamed_struct_ty || metaty.underlying_typename == unnamed_enum_ty)
-			{
-				const bool is_struct = metaty.underlying_typename == unnamed_struct_ty;
-				metaty.underlying_typename = decl.name;
-			}
-		}
-		if(maybe_parent_struct != nullptr)
-		{
-			// we're in a struct and not a function - we are a data member.
-			auto& structdef = types.structs.at(maybe_parent_struct->name);
-			const bool first_member = structdef.members.empty();
-			structdef.members.emplace(decl.name, declval->ty);
-		}
-		else
-		{
-			// we're not in a struct so this isnt a data member, just a variable.
-			// but if we're a function or struct type then we aren't a variable (dont worry, we've been registered elsewhere).
-			if(!declval->ty.is_fn())
-			{
-				auto [iter, actually_emplaced] = types.variables.emplace(decl.name, declval.value());
-				if(!actually_emplaced)
-				{
-					error(loc, "duplicate definition of variable \"{}\"", decl.name);
-				}
-				iter->second.is_global = ctx.entries.empty();
-				iter->second.needs_load = true;
-			}
-		}
-		return declval;
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
-	{
-		const auto* maybe_parent_metaregion = ctx.try_get_parent_metaregion();
-		if(maybe_parent_metaregion != nullptr && maybe_parent_metaregion->name == "build")
-		{
-			// this block constitutes a build metaregion
-			//error(loc, "block within build metaregion detected");
-			types = types.coalesce(create_build_metaregion_context());
-		}
-		else if(maybe_parent_metaregion != nullptr)
-		{
-			error(loc, "unknown metaregion name \"{}\". did you mean \"build\"", maybe_parent_metaregion->name);
-		}
-		for(const auto& [name , ty] : ctx.variables_to_exist_in_next_scope)
-		{
-			types.variables.emplace(name, ty);
-		}
-		ctx.variables_to_exist_in_next_scope.clear();
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
-	{
-		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto exprval = semal_expr(expr.expr, types, loc, ctx);
-		error_ifnt(exprval.has_value(), loc, "expr was invalid");
-		error_ifnt(!exprval->ty.is_badtype(), loc, "expr yielded an invalid type");
-		return exprval;
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
-	{
-		const auto* parent_func = ctx.try_get_parent_function();
-		error_ifnt(parent_func != nullptr, loc, "return statement is invalid because we are not in a function implementation.");
-		const fn_ty& func = types.functions.at(parent_func->name);
-
-		auto& ret = std::get<ast_return_stmt>(stmt.stmt_);
-		if(ret.retval.has_value())
-		{
-			auto retval = semal_expr(ret.retval.value(), types, loc, ctx);
-			error_ifnt(retval.has_value(), loc, "return value expression was invalid");
-			error_ifnt(!retval->ty.is_badtype(), loc, "return value expression yielded an invalid type");
-
-			std::string retval_tyname = retval->ty.name();
-			std::string fn_return_tyname = func.return_ty->name();
-			error_ifnt(!func.return_ty->is_void(), loc, "return value is incorrect because the parent function \"{}\" returns v0", parent_func->name);
-			error_ifnt(retval->ty.is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
-
-			return retval;
-		}
-		else
-		{
-			const auto return_tyname = func.return_ty->name();
-			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
-			return wrap_type(type_t::create_void_type());
-		}
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
-	{
-		const auto& metaregion = std::get<ast_metaregion_stmt>(stmt.stmt_);
-		ctx.entries.push_back({.t = semal_context::type::in_metaregion, .name = metaregion.name});
-		return wrap_type(type_t::create_void_type());
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_designator_stmt, decltype(stmt.stmt_)>())
-	{
-		const auto* maybe_enum_parent = ctx.try_get_parent_enum();
-		const auto& desig = std::get<ast_designator_stmt>(stmt.stmt_);
-
-		if(maybe_enum_parent == nullptr)
-		{
-			error(loc, "unexpected designator. designators are currently only allowed within an enum definition, which is not where we are.");
-		}
-
-		auto& enumdef = types.enums.at(maybe_enum_parent->name);
-
-		enumdef.entries.push_back(desig.name);
-		type_t ret = *enumdef.underlying_ty;
-
-		// make sure the initialiser of the designator actually matches the type.
-		auto desig_init_expr = semal_expr(*desig.initialiser, types, loc, ctx);
-		error_ifnt(desig_init_expr.has_value(), loc, "designator initialiser expression was invalid");
-		error_ifnt(!desig_init_expr->ty.is_badtype(), loc, "designator initialiser expression was of invalid type");
-		std::string desig_init_tyname = desig_init_expr->ty.name();
-		std::string enum_tyname = enumdef.name();
-		std::string enum_underlying_tyname = ret.name();
-		error_ifnt(desig_init_expr->ty.is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
-		return desig_init_expr;
-	}
-	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
-	{
-		const auto& if_stmt = std::get<ast_if_stmt>(stmt.stmt_);
-		auto cond = semal_expr(if_stmt.condition, types, loc, ctx);
-		error_ifnt(cond.has_value(), loc, "if-statement condition was invalid");
-		error_ifnt(!cond->ty.is_badtype(), loc, "if-statement condition was of invalid type");
-		std::string cond_tyname = cond->ty.name();
-		error_ifnt(cond->ty.is_convertible_to(type_t{.payload = prim_ty{.p = prim_ty::type::boolean}}), loc, "condition of if-statement is of type \"{}\", which is not convertible to \"bool\"", cond_tyname);
-		if(if_stmt.is_static)
-		{
-			error_ifnt(cond->ty.qual & typequal_static, loc, "condition of a static-if-statement must be static, \"{}\" is not static", cond_tyname);
-			const bool should_execute = std::get<bool>(std::get<literal_val>(cond->val));
-			if(!should_execute)
-			{
-				ctx.skip_next_block = true;
-			}
-
-		}
-		else
-		{
-		}
-		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
 	else
 	{
-		const char* stmt_name = stmt.type_name();
-		error(loc, "dont know how to typecheck a {} statement", stmt_name);
+		return semal_result::err("dont know how to semal_stmt a \"{}\"", stmt.type_name());
 	}
-	return std::nullopt;
 }
 
-void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false)
+semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr)
 {
-	bool is_tu = false;
-	bool pop_context = false;
-	bool should_ignore_children = false;
-	bool blk_last_stmt_is_return = false;
-	if(ast.payload.index() == payload_index<ast_translation_unit, node_payload>())
+	semal_local_state& local = global.locals.emplace_back();
+	local.parent = parent;
+
+	// rearrange deferred statements now so we can just go through them all in-order.
+	handle_defer(n.children);
+	semal_result res = semal_result::null();
+
+	if(IS_A(n.payload, ast_translation_unit))
 	{
-		is_tu = true;
 	}
-	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
+	else if(IS_A(n.payload, ast_stmt))
 	{
-		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx);
-		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
-		{
-			// is a block statement, after all children we should pop context.
-			pop_context = true;
-			if(ctx.skip_next_block)
-			{
-				should_ignore_children = true;
-				ctx.skip_next_block = false;
-			}
-		}
-		else if(stmt.stmt_.index() == payload_index<ast_metaregion_stmt, decltype(stmt.stmt_)>())
-		{
-			if(ignore_metaregions)
-			{
-				return;
-			}
-		}
+		res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, &local);
 	}
 	else
 	{
-		const char* node_name = node_names[ast.payload.index()];
-		panic("dont know how to typecheck a {}", node_name);
+		res = semal_result::err("dont know how to semal ast node \"{}\"", node_names[n.payload.index()]);
 	}
-	ast.types = ast.types.coalesce(types);
+	verify_semal_result(res, n, source);
 
-	// check if any children are return statements
-	auto maybe_return_stmt = std::find_if(ast.children.begin(), ast.children.end(),
-			[](const node& child)->bool
-			{
-				if(child.payload.index() == payload_index<ast_stmt, node_payload>())
-				{
-					const auto& stmt = std::get<ast_stmt>(child.payload);
-					return stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>();
-				}
-				return false;
-			});
-	if(maybe_return_stmt != ast.children.end())
+	std::vector<semal_result> children_results(n.children.size());
+	for(std::size_t i = 0; i < n.children.size(); i++)
 	{
-		// if there is a return stmt, it better be the last child.
-		error_ifnt(std::next(maybe_return_stmt) == ast.children.end(), maybe_return_stmt->begin_location, "return statement must be the last statement within a block. this one is not.");
+		children_results[i] = semal(n.children[i], source, &local);
 	}
-	// do an initial pass over the children
-	// if any of it are statements that are deferred, send it to the end of the list of children.
-	for(auto iter = ast.children.begin(); iter != ast.children.end(); iter++)
-	{
-		if(iter->payload.index() == payload_index<ast_stmt, node_payload>())
-		{
-			if(std::get<ast_stmt>(iter->payload).deferred)
-			{
-				// note: this will probably cause issues in the case that the last child is a return stmt. as the return stmt should always be the last stmt in a blk.
-				std::rotate(iter, iter + 1, maybe_return_stmt);
-			}
-		}
-	}
-	if(!should_ignore_children)
-	{
-		// ok SORRY. actually semal the children now.
-		for(auto& child : ast.children)
-		{
-			semal(child, ast.types, ctx, ignore_metaregions);
-			if(is_tu)
-			{
-				types = types.coalesce(ast.types);
-			}
-			else
-			{
-				ast.types.feed_forward(types);
-			}
-		}
-	}
-	if(pop_context)
-	{
-		ctx.entries.pop_back();
-	}
+	return res;
 }
 
 //////////////////////////// TYPE ////////////////////////////
@@ -6555,9 +5720,7 @@ CHORD_END
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
-void compile_file(std::filesystem::path file, compile_args& args, semal_state* types = nullptr, bool include_preload = true);
-
-void compile_source(std::filesystem::path file, std::string source, compile_args& args, semal_state* types)
+void compile_source(std::filesystem::path file, std::string source, compile_args& args)
 {
 	timer_restart();
 	lex_output tokens = lex_from_data(file, source);
@@ -6579,10 +5742,10 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	timer_restart();
 	auto now_cpy = now;
 
-	semal_context ctx = {};
 	node* build = try_find_build_metaregion(ast);
 	if(build != nullptr)
 	{
+		/*
 		auto temp_state = *types;
 		semal(*build, temp_state, ctx);
 		for(const auto& [newfile, loc] : temp_state.added_source_files)
@@ -6598,8 +5761,10 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 			error_ifnt(std::filesystem::exists(libpath), {}, "could not find link library \"{}\" added {}", filename, loc);
 			args.link_libraries.push_back(libpath);
 		}
+		*/
 	}
-	semal(ast, *types, ctx, true);
+	//semal(ast, *types, ctx, true);
+	semal(ast, source);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -6611,19 +5776,15 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	timer_restart();
 }
 
-void compile_file(std::filesystem::path file, compile_args& args, semal_state* types, bool include_preload)
+void compile_file(std::filesystem::path file, compile_args& args)
 {
-	semal_state new_types = create_basic_type_system();
-	new_types.args = &args;
-	if(types == nullptr)
-	{
-		types = &new_types;
-	}
+	/*
 	if(include_preload)
 	{
-		compile_source("preload.psy", get_preload_source(), args, types);
+		compile_source("preload.psy", get_preload_source(), args);
 	}
-	compile_source(file, read_file(file), args, types);
+	*/
+	compile_source(file, read_file(file), args);
 }
 
 // entry point
@@ -6647,13 +5808,12 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	semal_state sem = create_basic_type_system();
-	sem.args = &args;
-	compile_file(args.build_file, args, &sem);
+	compile_file(args.build_file, args);
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
+/*
 sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
 {
 	sval ret;
@@ -6792,7 +5952,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		return {};
 	}
 }
-
+*/
 
 std::string get_preload_source()
 {
