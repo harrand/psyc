@@ -1051,101 +1051,6 @@ struct sval
 	}
 };
 
-struct codegen_t
-{
-	codegen_t() = default;
-	~codegen_t()
-	{
-		for(const auto& line : this->file_lines)
-		{
-			file << line << "\n";
-		}
-	}
-	std::vector<std::string> file_lines = {""};
-	std::size_t target_line = 0;
-	std::ofstream file;
-	std::size_t beginning_of_this_line_cursor = 0;
-	std::uint64_t* timer = nullptr;
-	bool initialised = false;
-	std::string scratch = "";
-	int num = 0;
-
-	void open(std::filesystem::path path)
-	{
-		this->file.open(path);
-	}
-
-	void previous_line()
-	{
-		if(target_line > 0)
-		{
-			target_line--;
-		}
-	}
-
-	void next_line()
-	{
-		panic_ifnt(target_line < (this->file_lines.size() - 1), "there is no next line to go to");
-		target_line++;
-	}
-
-	void top_line()
-	{
-		target_line = 0;
-	}
-
-	void bottom_line()
-	{
-		target_line = this->file_lines.size() - 1;
-	}
-
-	std::size_t operator()(std::string str)
-	{
-		auto now2 = std::chrono::system_clock::now();
-
-		auto iter = this->file_lines.begin() + target_line;
-		for(char c : str)
-		{
-			if(c == '\n')
-			{
-				iter = this->file_lines.insert(iter + 1, "");
-				target_line++;
-			}
-			else
-			{
-				*iter += c;
-			}
-		}
-
-		auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-		if(this->timer != nullptr)
-		{
-			this->timer += right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now2.time_since_epoch()).count();
-		}
-		return str.size();
-	}
-
-	int getnum()
-	{
-		return num++;
-	}
-} codegen;
-//std::ofstream codegen;
-
-void init_codegen(const compile_args& args, std::uint64_t& codegen_time)
-{
-	std::filesystem::path full_path = args.output_dir / args.output_name;
-	// we're doing an llvm file first.
-	full_path += ".ll";
-	if(!std::filesystem::exists(args.output_dir))
-	{
-		std::filesystem::create_directory(args.output_dir);
-	}
-	codegen.open(full_path);
-	codegen.timer = &codegen_time;
-	codegen.initialised = true;
-}
-
 struct semal_state
 {
 	std::unordered_map<std::string, prim_ty> primitives = {};
@@ -3335,9 +3240,9 @@ struct semal_context
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_enum";
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen = false);
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx);
 
-std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen = false)
+std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(expr.expr_.index() == payload_index<ast_literal_expr, decltype(expr.expr_)>())
 	{
@@ -3373,11 +3278,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		else
 		{
 			panic("dont know how to typecheck this specific literal expression");
-		}
-		if(do_codegen)
-		{
-			// TODO: codegen: you cant just do this for a string literal sadly.
-			codegen(std::format("{}", value.value_tostring()));
 		}
 		return value;
 	}
@@ -3462,21 +3362,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 			{
 				return call_builtin_function(call, types, loc);
 			}
-			if(do_codegen)
-			{
-				codegen(std::format("call {} @{}(", fn.return_ty->llvm_typename(), call.function_name));
-				for(std::size_t i = 0; i < call_params; i++)
-				{
-					auto ty = semal_expr(call.params[i], types, loc, ctx);
-					codegen(std::format("{} ", ty->ty.llvm_typename()));
-					semal_expr(call.params[i], types, loc, ctx, true);
-					if(i < (call_params - 1))
-					{
-						codegen(", ");
-					}
-				}
-				codegen(")");
-			}
 			return wrap_type(*fn.return_ty);
 		}
 		else
@@ -3490,21 +3375,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		auto iter = types.variables.find(symbol_expr.symbol);
 		if(iter != types.variables.end())
 		{
-			if(do_codegen)
-			{
-				if(!iter->second.needs_load)
-				{
-					codegen(std::format("{}{}", iter->second.is_global ? "@" : "%", symbol_expr.symbol));
-				}
-				else
-				{
-					codegen.previous_line();
-					auto num = codegen.getnum();
-					codegen(std::format("\n%tmp{} = load {}, ptr {}{}", num, iter->second.ty.llvm_typename(), iter->second.is_global ? "@" : "%", symbol_expr.symbol));
-					codegen.next_line();
-					codegen(std::format("%tmp{}", num));
-				}
-			}
 			return iter->second;
 		}
 		else
@@ -3642,65 +3512,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						// todo: magic static value conversion logic.
 					}
 
-					if(do_codegen)
-					{
-						// we're in llvm land now, so we need to mainly flatten pointers
-						type_t lhs_ty = lhs->ty;
-						if(lhs_ty.qual & typequal_static)
-						{
-							std::string strval = lhs->value_tostring();
-							if(casted_to_ty.is_ptr() && strval == "0")
-							{
-								strval = "null";
-							}
-							codegen(std::format("{}", strval));
-						}
-						else
-						{
-							if(lhs_ty.is_enum())
-							{
-								auto underlying_ty = *std::get<enum_ty>(lhs_ty.payload).underlying_ty;
-								lhs_ty = underlying_ty;
-							}
-							if(lhs_ty.is_ptr())
-							{
-								lhs_ty = type_t{ .payload = prim_ty{.p = prim_ty::type::u64} };
-							}
-							type_t rhs_ty = casted_to_ty;
-							if(rhs_ty.is_ptr())
-							{
-								rhs_ty = type_t{.payload = prim_ty{.p = prim_ty::type::u64}};
-							}
-							if(rhs_ty.is_enum())
-							{
-								auto underlying_ty = *std::get<enum_ty>(rhs_ty.payload).underlying_ty;
-								rhs_ty = underlying_ty;
-							}
-							std::string conversion_type = "";
-
-							auto lhs_prim = std::get<prim_ty>(lhs_ty.payload);
-							auto rhs_prim = std::get<prim_ty>(rhs_ty.payload);
-
-							if(lhs_prim.integral_size() < rhs_prim.integral_size())
-							{
-								// signed = sext, unsigned = zext
-								conversion_type = lhs_prim.is_signed_integral() ? "sext" : "zext";
-							}
-							else if(lhs_prim.integral_size() > rhs_prim.integral_size())
-							{
-								conversion_type = "trunc";
-							}
-
-							auto num = codegen.getnum();
-							codegen.previous_line();
-							codegen(std::format("\n%cast{} = {} {}", num, conversion_type, lhs_ty.llvm_typename()));
-							semal_expr(*biop.lhs, types, loc, ctx, true);
-							codegen(std::format(" to {}\n", rhs_ty.llvm_typename()));
-							codegen.bottom_line();
-							codegen(std::format("%cast{}", num));
-							//warning(loc, "there is a codegen bug with cast expressions - lhs is codegen'd as its uncasted type.");
-						}
-					}
 					return ret;
 				}
 			}
@@ -3798,15 +3609,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 						error(loc, "enum has no entry \"{}\"", rhs_symbol);
 					}
 
-					if(do_codegen)
-					{
-						//codegen(std::format("load {}, ptr @{}_{}\n", ty.underlying_ty->llvm_typename(), top_level_typename, rhs_symbol));
-						codegen.previous_line();
-						auto num = codegen.getnum();
-						codegen(std::format("\n%tmp{} = load {}, ptr @{}_{}\n", num, ty.underlying_ty->llvm_typename(), top_level_typename, rhs_symbol));
-						codegen.next_line();
-						codegen(std::format("%tmp{}", num));
-					}
 					return wrap_type(type_t{.payload = ty});
 				}
 				else
@@ -3878,12 +3680,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 					const char* expr_name = unop.rhs->type_name();
 					error(loc, "attempt to ref a {} expression, which is incorrect.", expr_name);
 				}
-				if(do_codegen)
-				{
-					// in the IR, alloca is already a pointer to it. so you literally just get the symbol expression as a register name
-					std::string_view name = std::get<ast_symbol_expr>(unop.rhs->expr_).symbol;
-					codegen(std::format("%{}", name));
-				}
 				return wrap_type(type_t{.payload = types.create_pointer_ty(rhs->ty)});
 			}
 			break;
@@ -3927,21 +3723,6 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 		sval val = wrap_type(ret);
 		val.val = static_value;
 
-		if(do_codegen)
-		{
-			for(const auto& init : blkinit.initialisers)
-			{
-				const ast_expr& value = *init.initialiser;
-				auto iter = ty.members.find(init.name);
-				auto field_id = std::distance(ty.members.begin(), iter);
-				auto num = codegen.getnum();
-				codegen(std::format("%field{}{} = getelementptr inbounds {}, ptr %{}, i32 0, i32 {}\n", num, field_id, ty.llvm_typename(), codegen.scratch, field_id));
-				auto init_expr = semal_expr(value, types, loc, ctx);
-				codegen(std::format("store {} ", init_expr->ty.llvm_typename()));
-				semal_expr(value, types, loc, ctx, true);
-				codegen(std::format(", ptr %field{}{}\n\n", num, field_id));
-			}
-		}
 		return val;
 	}
 	else
@@ -3952,13 +3733,13 @@ std::optional<sval> semal_expr(const ast_expr& expr, semal_state& types, srcloc 
 	return std::nullopt;
 }
 
-std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen)
+std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	std::optional<sval> ret;
 	if(decl.type_name == deduced_type)
 	{
 		error_ifnt(decl.initialiser.has_value(), {}, "decl {} with deduced type must have an initialiser", decl.name);
-		ret = semal_expr(decl.initialiser.value(), types, loc, ctx, false);
+		ret = semal_expr(decl.initialiser.value(), types, loc, ctx);
 	}
 	else
 	{
@@ -4009,31 +3790,6 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 			ctx.entries.push_back({.t = semal_context::type::in_function, .name = decl.name});
 		}
 
-		if(do_codegen)
-		{
-			std::string params_str;
-			for(std::size_t i = 0; i < fnty.params.size(); i++)
-			{
-				params_str += fnty.params[i].llvm_typename();
-				params_str += std::format(" %{}", def.params[i].name);
-				if(i < (fnty.params.size() - 1))
-				{
-					params_str += ", ";
-				}
-			}
-			
-			if(def.is_extern)
-			{
-				// put it above our code.
-				codegen.top_line();
-			}
-			codegen(std::format("\n{} {} @{}({})", def.is_extern ? "declare" : "define", fnty.return_ty->llvm_typename(), decl.name, params_str));
-			if(!def.is_extern)
-			{
-				codegen("\n{\nentry:\n");
-			}
-			codegen.bottom_line();
-		}
 	}
 	else if(ret->ty.is_type() && expr_is_structdef)
 	{
@@ -4058,17 +3814,16 @@ std::optional<sval> semal_decl(const ast_decl& decl, semal_state& types, srcloc 
 	return ret;
 }
 
-std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx, bool do_codegen)
+std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc loc, semal_context& ctx)
 {
 	if(stmt.stmt_.index() == payload_index<ast_decl_stmt, decltype(stmt.stmt_)>())
 	{
 		auto* maybe_parent_struct = ctx.try_get_parent_struct();
 		auto& decl = std::get<ast_decl_stmt>(stmt.stmt_).decl;
-		auto declval = semal_decl(decl, types, loc, ctx, do_codegen);
+		auto declval = semal_decl(decl, types, loc, ctx);
 		error_ifnt(declval.has_value(), loc, "decl {} was invalid", decl.name);
 		error_ifnt(!declval->ty.is_badtype(), loc, "decl {} yielded an invalid type", decl.name);
 
-		bool should_codegen = false;
 		if(declval->ty.is_type())
 		{
 			auto& metaty = std::get<meta_ty>(declval->ty.payload);
@@ -4076,17 +3831,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			{
 				const bool is_struct = metaty.underlying_typename == unnamed_struct_ty;
 				metaty.underlying_typename = decl.name;
-				if(is_struct)
-				{
-					should_codegen = true;
-					// decare struct in codegen
-					if(do_codegen)
-					{
-						codegen.top_line();
-						codegen(std::format("\n%{} = type {{", decl.name));
-					}
-
-				}
 			}
 		}
 		if(maybe_parent_struct != nullptr)
@@ -4095,15 +3839,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			auto& structdef = types.structs.at(maybe_parent_struct->name);
 			const bool first_member = structdef.members.empty();
 			structdef.members.emplace(decl.name, declval->ty);
-
-			if(do_codegen)
-			{
-				if(!first_member)
-				{
-					codegen(", ");
-				}
-				codegen(declval->ty.llvm_typename());
-			}
 		}
 		else
 		{
@@ -4118,58 +3853,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 				}
 				iter->second.is_global = ctx.entries.empty();
 				iter->second.needs_load = true;
-				if(!declval->ty.is_type() && do_codegen)
-				{
-					if(ctx.entries.empty())
-					{
-						// we are a global
-						if(!(declval->ty.qual & typequal_mut) && declval->ty.is_ptr() && std::get<ptr_ty>(declval->ty.payload).underlying_ty->is_prim() && std::get<prim_ty>(std::get<ptr_ty>(declval->ty.payload).underlying_ty->payload).p == prim_ty::type::u8)
-						{
-							std::string litval = std::get<std::string>(std::get<literal_val>(declval->val));
-							codegen(std::format("\n@{}_data = private constant [{} x i8] c\"{}\\00\"\n", decl.name, litval.size() + 1, litval));
-							codegen(std::format("@{} = private constant ptr @{}_data\n", decl.name, decl.name));
-						}
-						else
-						{
-							codegen(std::format("\n@{} = {} {} ", decl.name, declval->ty.qual & typequal_mut ? "global" : "constant", declval->ty.llvm_typename()));
-							semal_expr(decl.initialiser.value(), types, loc, ctx, true);
-							codegen("\n");
-						}
-					}
-					else
-					{
-						codegen.bottom_line();
-						codegen(std::format("%{} = alloca {}\n", decl.name, declval->ty.llvm_typename()));
-						auto num = codegen.getnum();
-						if(decl.initialiser.has_value())
-						{
-							if(declval->ty.qual & typequal_static && !declval->ty.is_struct())
-							{
-								// set initialiser inline coz the value is constexpr
-								codegen(std::format("store {} {}, ptr %{}\n", declval->ty.llvm_typename(), declval->value_tostring(), decl.name));
-							}
-							else
-							{
-								// runtime value initialiser. create a temporary and store that
-								if(!declval->ty.is_struct())
-								{
-									codegen(std::format("%tmp{} = ", num));
-								}
-								else
-								{
-									codegen.scratch = decl.name;
-								}
-								semal_expr(decl.initialiser.value(), types, loc, ctx, true);
-								codegen("\n");
-								if(!declval->ty.is_struct())
-								{
-									codegen(std::format("store {} %tmp{}, ptr %{}\n", declval->ty.llvm_typename(), num, decl.name));
-								}
-							}
-						}
-						codegen.scratch = "";
-					}
-				}
 			}
 		}
 		return declval;
@@ -4196,13 +3879,9 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 	else if(stmt.stmt_.index() == payload_index<ast_expr_stmt, decltype(stmt.stmt_)>())
 	{
 		auto& expr = std::get<ast_expr_stmt>(stmt.stmt_);
-		auto exprval = semal_expr(expr.expr, types, loc, ctx, do_codegen);
+		auto exprval = semal_expr(expr.expr, types, loc, ctx);
 		error_ifnt(exprval.has_value(), loc, "expr was invalid");
 		error_ifnt(!exprval->ty.is_badtype(), loc, "expr yielded an invalid type");
-		if(do_codegen)
-		{
-			codegen("\n");
-		}
 		return exprval;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_return_stmt, decltype(stmt.stmt_)>())
@@ -4223,34 +3902,12 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 			error_ifnt(!func.return_ty->is_void(), loc, "return value is incorrect because the parent function \"{}\" returns v0", parent_func->name);
 			error_ifnt(retval->ty.is_convertible_to(*func.return_ty), loc, "return expression of type {} is not convertible to the parent function \"{}\"'s return type of {}", retval_tyname, parent_func->name, fn_return_tyname);
 
-			if(do_codegen)
-			{
-				if(ret.retval->expr_.index() == payload_index<ast_symbol_expr, decltype(ret.retval->expr_)>())
-				{
-					auto num = codegen.getnum();
-					codegen(std::format("\nret {} ", retval->ty.llvm_typename()));
-					semal_expr(ret.retval.value(), types, loc, ctx, true);
-					codegen("\n");
-				}
-				else
-				{
-					auto num = codegen.getnum();
-					codegen(std::format("%tmp{} = ", num));
-					semal_expr(ret.retval.value(), types, loc, ctx, true);
-					codegen(std::format("\nret {} %tmp{}\n", retval->ty.llvm_typename(), num));
-				}
-
-			}
 			return retval;
 		}
 		else
 		{
 			const auto return_tyname = func.return_ty->name();
 			error_ifnt(func.return_ty->is_void(), loc, "detected empty return expression, which is only valid in a function that returns v0. the parent function (named \"{}\") returns a {}", parent_func->name, return_tyname);
-			if(do_codegen)
-			{
-				codegen("ret void\n");
-			}
 			return wrap_type(type_t::create_void_type());
 		}
 	}
@@ -4283,15 +3940,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		std::string enum_tyname = enumdef.name();
 		std::string enum_underlying_tyname = ret.name();
 		error_ifnt(desig_init_expr->ty.is_convertible_to(ret), loc, "initialiser expression of designator is of type {}, which is not convertible to {} (underlying type: {})", desig_init_tyname, enum_tyname, enum_underlying_tyname);
-
-		if(do_codegen)
-		{
-			auto l = codegen.target_line;
-			codegen.top_line();
-			codegen(std::format("\n@{}_{} = constant {} {}\n", maybe_enum_parent->name, desig.name, ret.llvm_typename(), desig_init_expr->value_tostring()));
-			codegen.target_line = l;
-		}
-
 		return desig_init_expr;
 	}
 	else if(stmt.stmt_.index() == payload_index<ast_if_stmt, decltype(stmt.stmt_)>())
@@ -4314,10 +3962,6 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 		}
 		else
 		{
-			if(do_codegen)
-			{
-				warning(loc, "codegen for if-statements is NYI");
-			}
 		}
 		ctx.entries.push_back({.t = semal_context::type::in_other_statement});
 	}
@@ -4329,7 +3973,7 @@ std::optional<sval> semal_stmt(const ast_stmt& stmt, semal_state& types, srcloc 
 	return std::nullopt;
 }
 
-void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false, bool do_codegen = false)
+void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metaregions = false)
 {
 	bool is_tu = false;
 	bool pop_context = false;
@@ -4342,7 +3986,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	else if(ast.payload.index() == payload_index<ast_stmt, node_payload>())
 	{
 		auto& stmt = std::get<ast_stmt>(ast.payload);
-		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx, do_codegen);
+		auto stmtval = semal_stmt(stmt, types, ast.begin_location, ctx);
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
 			// is a block statement, after all children we should pop context.
@@ -4402,7 +4046,7 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 		// ok SORRY. actually semal the children now.
 		for(auto& child : ast.children)
 		{
-			semal(child, ast.types, ctx, ignore_metaregions, do_codegen);
+			semal(child, ast.types, ctx, ignore_metaregions);
 			if(is_tu)
 			{
 				types = types.coalesce(ast.types);
@@ -4415,24 +4059,6 @@ void semal(node& ast, semal_state& types, semal_context& ctx, bool ignore_metare
 	}
 	if(pop_context)
 	{
-		if(do_codegen && (ctx.most_recent_entry_type() == semal_context::type::in_function || ctx.most_recent_entry_type() == semal_context::type::in_struct))
-		{
-			if(ctx.most_recent_entry_type() == semal_context::type::in_function)
-			{
-				auto func_name = ctx.entries.back().name;
-				const fn_ty& func = types.functions.at(func_name);
-				if(func.return_ty->is_void())
-				{
-					// if a function returns void, the last statement in the block *better* be a return statement.
-					codegen("ret void\n");
-				}
-			}
-			codegen("}\n");
-			if(ctx.most_recent_entry_type() == semal_context::type::in_struct)
-			{
-				codegen.bottom_line();
-			}
-		}
 		ctx.entries.pop_back();
 	}
 }
@@ -6973,7 +6599,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 			args.link_libraries.push_back(libpath);
 		}
 	}
-	semal(ast, *types, ctx, true, true);
+	semal(ast, *types, ctx, true);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -7054,7 +6680,6 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::executable;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_library")
@@ -7064,7 +6689,6 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::library;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "set_object")
@@ -7074,7 +6698,6 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		auto exe_name = std::get<std::string>(std::get<literal_val>(name_exprval->val));
 		state.args->output_type = target::object;
 		state.args->output_name = exe_name;
-		init_codegen(*state.args, time_codegen);
 		return wrap_type(type_t::create_void_type());
 	}
 	else if(call.function_name == "add_link_library")
