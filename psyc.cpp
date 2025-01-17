@@ -1118,7 +1118,7 @@ struct semal_state2
 	string_map<const ast_funcdef_expr*> function_locations = {};
 	string_map<sval> variables = {};
 
-	type_t parse(std::string_view type_name) const
+	type_t parse_type(std::string_view type_name) const
 	{
 		// typenames can get very complicated so this isnt trivial at all.
 
@@ -3187,10 +3187,45 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
-semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state* local = nullptr)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state* local)
 {
-	if(0)
+	panic_ifnt(local != nullptr, "waaahh");
+	// i will need to parse types, give me access to the type system.
+	// if we are in a local scope then use it from there
+
+	type_t ty = type_t::badtype();
+	if(decl.type_name == deduced_type)
 	{
+		// need to deduce the type based on the expression.
+	}
+	else
+	{
+		// user has told us the type.
+		ty = local->state.parse_type(decl.type_name);
+	}
+	if(ty.qual & typequal_static)
+	{
+		if(decl.initialiser.has_value())
+		{
+		}
+		else
+		{
+			return semal_result::err("decl \"{}\" is of static type \"{}\" but no initialiser. static variables cannot be left uninitialised.", decl.name, ty.name());
+		}
+	}
+	return semal_result::err("semal decl NYI");
+}
+
+semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state* local)
+{
+	return semal_decl(decl_stmt.decl, n, source, local);
+}
+
+semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state* local)
+{
+	if(IS_A(stmt.stmt_, ast_decl_stmt))
+	{
+		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local);
 	}
 	else
 	{
