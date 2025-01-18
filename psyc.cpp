@@ -1100,6 +1100,7 @@ enum class scope_type
 {
 	block,
 	metaregion,
+	translation_unit,
 	_undefined
 };
 
@@ -3268,12 +3269,12 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 
 semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
 {
-	return semal_result::err("semal_structdef_expr is NYI");
+	return {.t = semal_result::type::struct_decl, .val = {.ty = {.payload = meta_ty{}}}};
 }
 
 semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
 {
-	return semal_result::err("semal_enumdef_expr is NYI");
+	return {.t = semal_result::type::enum_decl, .val = {.ty = {.payload = meta_ty{}}}};
 }
 
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state& local)
@@ -3342,14 +3343,15 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	// if we are in a local scope then use it from there
 
 	sval val = wrap_type(type_t::badtype());
+	semal_result init_result;
 	if(decl.initialiser.has_value())
 	{
-		semal_result init = semal_expr(decl.initialiser.value(), n, source, local);
-		if(init.is_err())
+		init_result = semal_expr(decl.initialiser.value(), n, source, local);
+		if(init_result.is_err())
 		{
-			return init;
+			return init_result;
 		}
-		val = init.val;
+		val = init_result.val;
 	}
 	if(decl.type_name != deduced_type)
 	{
@@ -3380,12 +3382,42 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	};
 	if(val.ty.is_fn())
 	{
+		panic_ifnt(init_result.t == semal_result::type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		// we are declaring a function!
 		ret.t = semal_result::type::function_decl;
 	}
 	else if(val.ty.is_type())
 	{
-		panic("what do i doo i havent thought through a decl that's a type.");
+		using enum semal_result::type;
+		panic_ifnt(init_result.t == struct_decl || init_result.t == enum_decl, "noticed decl \"{}\" {} with initialiser being a struct or enum, but the expression did not correctly register itself as a struct/enum decl.", decl.name, n.begin_location);
+		if(!decl.initialiser.has_value())
+		{
+			auto meta = AS_A(val.ty.payload, meta_ty);
+			return semal_result::err("detected lack of initialiser/explicit typing when defining a struct/enum. this is not how you declare a {}. remove the explicit typename (i.e no \" : {}\") and defer it instead via ::=", meta.underlying_typename, decl.type_name);
+		}
+		switch(init_result.t)
+		{
+			case semal_result::type::struct_decl:
+				ret.t = struct_decl;
+				local.state.structs.emplace(decl.name, struct_ty{});
+				if(local.scope == scope_type::translation_unit)
+				{
+					global.state.structs.emplace(decl.name, struct_ty{});
+				}
+			break;
+			case semal_result::type::enum_decl:
+				ret.t = enum_decl;
+				// todo: custom underlying type for enums. will probably need to semal_enumdef_expr better beforehand.
+				local.state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				if(local.scope == scope_type::translation_unit)
+				{
+					global.state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				}
+			break;
+			default:
+				std::unreachable();
+			break;
+		}
 		// ret.t = semal_result::type::struct_decl or enum_decl?
 		// not sure if i need to do anything else here. your call, future harry.
 	}
@@ -3407,6 +3439,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	{
 		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local);
 	}
+	// todo: if ast_blk_stmt set local.scope to be block. same with metaregion.
 	else
 	{
 		return semal_result::err("dont know how to semal_stmt a \"{}\"", stmt.type_name());
@@ -3415,8 +3448,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 
 semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr)
 {
-	semal_local_state& local = global.locals.emplace_back();
-	local.parent = parent;
+	semal_local_state* local = parent;
 
 	// rearrange deferred statements now so we can just go through them all in-order.
 	handle_defer(n.children);
@@ -3424,21 +3456,29 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 
 	if(IS_A(n.payload, ast_translation_unit))
 	{
-	}
-	else if(IS_A(n.payload, ast_stmt))
-	{
-		res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, local);
+		panic_ifnt(parent == nullptr, "why is parent semal_local_state of TU not null???");
+		local = &global.locals.emplace_back();
+		local->scope = scope_type::translation_unit;
+		local->parent = parent;
 	}
 	else
 	{
-		res = semal_result::err("dont know how to semal ast node \"{}\"", node_names[n.payload.index()]);
+		panic_ifnt(parent != nullptr, "why is parent semi_local_state null when i am not a translation unit AST node???");
+		if(IS_A(n.payload, ast_stmt))
+		{
+			res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, *local);
+		}
+		else
+		{
+			res = semal_result::err("dont know how to semal ast node \"{}\"", node_names[n.payload.index()]);
+		}
 	}
 	verify_semal_result(res, n, source);
 
 	std::vector<semal_result> children_results(n.children.size());
 	for(std::size_t i = 0; i < n.children.size(); i++)
 	{
-		children_results[i] = semal(n.children[i], source, &local);
+		children_results[i] = semal(n.children[i], source, local);
 	}
 	return res;
 }
