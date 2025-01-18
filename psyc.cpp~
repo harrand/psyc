@@ -3230,17 +3230,11 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	if(decl.type_name == deduced_type)
 	{
 		// need to deduce the type based on the expression.
-		return semal_result::err("deducing decl type based on initialiser is NYI");
 	}
 	else
 	{
 		// user has told us the type.
-		auto [parse_ty, only_found_in_global] = local.parse_type_global_fallback(decl.type_name);
-		if(parse_ty.is_badtype() || only_found_in_global)
-		{
-			return semal_result::err("decl \"{}\"'s explicit type \"{}\" was unknown{}", decl.name, decl.type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
-		}
-		ty = parse_ty;
+		ty = local.state.parse_type(decl.type_name);
 	}
 	if(ty.qual & typequal_static)
 	{
