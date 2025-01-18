@@ -1211,9 +1211,49 @@ struct semal_state2
 	}
 };
 
+enum class semal_type
+{
+	variable_decl,
+	function_decl,
+	struct_decl,
+	enum_decl,
+	err,
+	misc,
+	unknown
+} t;
+
+struct semal_result
+{
+	static semal_result null()
+	{
+		return {.t = semal_type::unknown};
+	}
+
+	template<typename... T>
+	static semal_result err(std::format_string<T...> fmt, T&&... args)
+	{
+		return
+		{
+			.t = semal_type::err,
+			.label = std::format(fmt, std::forward<T>(args)...)
+		};
+	}
+	
+	bool is_err() const
+	{
+		return this->t == semal_type::err;
+	}
+
+	semal_type t;
+	std::string label;
+	sval val = sval{};
+};
+
+
 struct semal_local_state
 {
 	scope_type scope = scope_type::_undefined;
+	std::deque<semal_result> unfinished_types = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
 
@@ -1318,42 +1358,6 @@ semal_local_state create_metaregion_state()
 	}
 	return ret;
 }
-
-struct semal_result
-{
-	static semal_result null()
-	{
-		return {.t = type::unknown};
-	}
-
-	template<typename... T>
-	static semal_result err(std::format_string<T...> fmt, T&&... args)
-	{
-		return
-		{
-			.t = type::err,
-			.label = std::format(fmt, std::forward<T>(args)...)
-		};
-	}
-	
-	bool is_err() const
-	{
-		return this->t == type::err;
-	}
-
-	enum class type
-	{
-		variable_decl,
-		function_decl,
-		struct_decl,
-		enum_decl,
-		err,
-		misc,
-		unknown
-	} t;
-	std::string label;
-	sval val = sval{};
-};
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
 #undef COMPILER_STAGE
@@ -3235,64 +3239,68 @@ void handle_defer(std::span<node> children)
 
 void verify_semal_result(const semal_result& result, const node& n, std::string_view source)
 {
-	if(result.t == semal_result::type::err)
+	if(result.t == semal_type::err)
 	{
 		std::string quote = format_source(source, n.begin_location, n.end_location);
 		error(n.begin_location, "invalid code\n{}\n{}", result.label, quote);
 	}
 }
 
-semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return
 	{
-		.t = semal_result::type::misc,
+		.t = semal_type::misc,
 		.label = "literal",
 		.val = {.val = expr.value, .ty = expr.get_type()}
 	};
 }
 
-semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_funcdef_expr is NYI");
 }
 
-semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_callfunc_expr is NYI");
 }
 
-semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_symbol_expr is NYI");
 }
 
-semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return {.t = semal_result::type::struct_decl, .val = {.ty = {.payload = meta_ty{}}}};
+	semal_result ret = {.t = semal_type::struct_decl, .val = {.ty = {.payload = meta_ty{}}}};
+	local->unfinished_types.push_back(ret);
+	return ret;
 }
 
-semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return {.t = semal_result::type::enum_decl, .val = {.ty = {.payload = meta_ty{}}}};
+	semal_result ret = {.t = semal_type::enum_decl, .val = {.ty = {.payload = meta_ty{}}}};
+	local->unfinished_types.push_back(ret);
+	return ret;
 }
 
-semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_biop_expr is NYI");
 }
 
-semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_unop_expr is NYI");
 }
 
-semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("semal_blkinit_expr is NYI");
 }
 
-semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	if(IS_A(expr.expr_, ast_literal_expr))
 	{
@@ -3337,7 +3345,7 @@ semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, 
 	return semal_result::err("unreachable code hit within semal_expr (is one of the cases not returning as it should?)");
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local)
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
@@ -3369,6 +3377,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 				return semal_result::err("decl \"{}\" was defined with explicit type \"{}\", but the initialiser expression type \"{}\" is not implicitly convertible", decl.name, decl.type_name, val.ty.name());
 			}
 		}
+		val.ty = parse_ty;
 	}
 	if(val.ty.qual & typequal_static && !decl.initialiser.has_value())
 	{
@@ -3382,22 +3391,23 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	};
 	if(val.ty.is_fn())
 	{
-		panic_ifnt(init_result.t == semal_result::type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
+		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		// we are declaring a function!
-		ret.t = semal_result::type::function_decl;
+		ret.t = semal_type::function_decl;
 	}
 	else if(val.ty.is_type())
 	{
-		using enum semal_result::type;
+		using enum semal_type;
 		panic_ifnt(init_result.t == struct_decl || init_result.t == enum_decl, "noticed decl \"{}\" {} with initialiser being a struct or enum, but the expression did not correctly register itself as a struct/enum decl.", decl.name, n.begin_location);
 		if(!decl.initialiser.has_value())
 		{
 			auto meta = AS_A(val.ty.payload, meta_ty);
 			return semal_result::err("detected lack of initialiser/explicit typing when defining a struct/enum. this is not how you declare a {}. remove the explicit typename (i.e no \" : {}\") and defer it instead via ::=", meta.underlying_typename, decl.type_name);
 		}
+		local->unfinished_types.back().label = decl.name;
 		switch(init_result.t)
 		{
-			case semal_result::type::struct_decl:
+			case semal_type::struct_decl:
 				ret.t = struct_decl;
 				local->state.structs.emplace(decl.name, struct_ty{});
 				if(local->scope == scope_type::translation_unit)
@@ -3405,7 +3415,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					global.state.structs.emplace(decl.name, struct_ty{});
 				}
 			break;
-			case semal_result::type::enum_decl:
+			case semal_type::enum_decl:
 				ret.t = enum_decl;
 				// todo: custom underlying type for enums. will probably need to semal_enumdef_expr better beforehand.
 				local->state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
@@ -3423,22 +3433,22 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	}
 	else
 	{
-		ret.t = semal_result::type::variable_decl;
+		ret.t = semal_type::variable_decl;
 	}
 	return ret;
 }
 
-semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_decl(decl_stmt.decl, n, source, local);
 }
 
-semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_expr(expr_stmt.expr, n, source, local);
 }
 
-semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	if(return_stmt.retval.has_value())
 	{
@@ -3450,7 +3460,34 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 	}
 }
 
-semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, node& n, std::string_view source, semal_local_state*& local)
+{
+	return semal_result::err("metaregion NYI");
+}
+
+semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local)
+{
+	error_ifnt(local->parent != nullptr, n.begin_location, "designator statement did not have a preceding local context. you should only provide a designator statement in a block-initialiser or an enum-definition.");
+	semal_local_state& parent = *local->parent;
+	error_ifnt(parent.unfinished_types.size(), n.begin_location, "designator statement's parent local state did not have any unfinished types. is this a blkinit that i haven't covered yet?");
+	const semal_result& parent_result = parent.unfinished_types.front();
+	switch(parent_result.t)
+	{
+		case semal_type::enum_decl:
+		{
+			enum_ty& ty = parent.state.enums.at(parent_result.label);
+			ty.entries.push_back(designator_stmt.name);
+			volatile int x = 5;
+		}
+		break;
+		default:
+			return semal_result::err("unexpected designator statement. designator statements are expect to proceed blocks defining an enum, or a block-initialiser (the latter is NYI!)");
+		break;
+	}
+	return semal_result::null();
+}
+
+semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	semal_local_state* parent = local;
 	local = &global.locals.emplace_back();
@@ -3459,7 +3496,7 @@ semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_v
 	return semal_result::null();
 }
 
-semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state* local)
+semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	if(IS_A(stmt.stmt_, ast_decl_stmt))
 	{
@@ -3476,6 +3513,14 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	else if(IS_A(stmt.stmt_, ast_blk_stmt))
 	{
 		return semal_blk_stmt(AS_A(stmt.stmt_, ast_blk_stmt), n, source, local);
+	}
+	else if(IS_A(stmt.stmt_, ast_metaregion_stmt))
+	{
+		return semal_metaregion_stmt(AS_A(stmt.stmt_, ast_metaregion_stmt), n, source, local);
+	}
+	else if(IS_A(stmt.stmt_, ast_designator_stmt))
+	{
+		return semal_designator_stmt(AS_A(stmt.stmt_, ast_designator_stmt), n, source, local);
 	}
 	else
 	{
