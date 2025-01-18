@@ -3227,9 +3227,94 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
+semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_literal_expr is NYI");
+}
+
+semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_funcdef_expr is NYI");
+}
+
+semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_callfunc_expr is NYI");
+}
+
+semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_symbol_expr is NYI");
+}
+
+semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_structdef_expr is NYI");
+}
+
+semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_enumdef_expr is NYI");
+}
+
+semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_biop_expr is NYI");
+}
+
+semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_unop_expr is NYI");
+}
+
+semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_blkinit_expr is NYI");
+}
+
 semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state& local)
 {
-	return semal_result::err("semal_expr is NYI");
+	if(IS_A(expr.expr_, ast_literal_expr))
+	{
+		return semal_literal_expr(AS_A(expr.expr_, ast_literal_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_funcdef_expr))
+	{
+		return semal_funcdef_expr(AS_A(expr.expr_, ast_funcdef_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_callfunc_expr))
+	{
+		return semal_callfunc_expr(AS_A(expr.expr_, ast_callfunc_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_symbol_expr))
+	{
+		return semal_symbol_expr(AS_A(expr.expr_, ast_symbol_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_structdef_expr))
+	{
+		return semal_structdef_expr(AS_A(expr.expr_, ast_structdef_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_enumdef_expr))
+	{
+		return semal_enumdef_expr(AS_A(expr.expr_, ast_enumdef_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_biop_expr))
+	{
+		return semal_biop_expr(AS_A(expr.expr_, ast_biop_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_unop_expr))
+	{
+		return semal_unop_expr(AS_A(expr.expr_, ast_unop_expr), n, source, local);
+	}
+	else if(IS_A(expr.expr_, ast_blkinit_expr))
+	{
+		return semal_blkinit_expr(AS_A(expr.expr_, ast_blkinit_expr), n, source, local);
+	}
+	else
+	{
+		return semal_result::err("dont know how to semal_expr a \"{}\"", expr.type_name());
+	}
+	return semal_result::err("unreachable code hit within semal_expr (is one of the cases not returning as it should?)");
 }
 
 semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state& local)
