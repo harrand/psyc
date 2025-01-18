@@ -1347,6 +1347,7 @@ struct semal_result
 		struct_decl,
 		enum_decl,
 		err,
+		misc,
 		unknown
 	} t;
 	std::string label;
@@ -2156,6 +2157,19 @@ struct ast_literal_expr
 			"string literal",
 			"boolean literal"
 		}[this->value.index()];
+	}
+
+	type_t get_type() const
+	{
+		using enum prim_ty::type;
+		return std::array<type_t, std::variant_size_v<decltype(value)>>
+		{
+			type_t::create_primitive_type(s64),
+			type_t::create_primitive_type(f64),
+			type_t::create_primitive_type(u8),
+			type_t::create_pointer_type(type_t::create_primitive_type(u8)),
+			type_t::create_primitive_type(boolean)
+		}[value.index()];
 	}
 
 	std::string value_tostring() const
@@ -3229,7 +3243,12 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 
 semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state& local)
 {
-	return semal_result::err("semal_literal_expr is NYI");
+	return
+	{
+		.t = semal_result::type::misc,
+		.label = "literal",
+		.val = {.val = expr.value, .ty = expr.get_type()}
+	};
 }
 
 semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
