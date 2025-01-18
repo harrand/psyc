@@ -3242,7 +3242,7 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
-semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return
 	{
@@ -3252,47 +3252,47 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 	};
 }
 
-semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_funcdef_expr is NYI");
 }
 
-semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_callfunc_expr is NYI");
 }
 
-semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_symbol_expr is NYI");
 }
 
-semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return {.t = semal_result::type::struct_decl, .val = {.ty = {.payload = meta_ty{}}}};
 }
 
-semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return {.t = semal_result::type::enum_decl, .val = {.ty = {.payload = meta_ty{}}}};
 }
 
-semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_biop_expr is NYI");
 }
 
-semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_unop_expr is NYI");
 }
 
-semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_result::err("semal_blkinit_expr is NYI");
 }
 
-semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state* local)
 {
 	if(IS_A(expr.expr_, ast_literal_expr))
 	{
@@ -3337,7 +3337,7 @@ semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, 
 	return semal_result::err("unreachable code hit within semal_expr (is one of the cases not returning as it should?)");
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state* local)
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
@@ -3356,7 +3356,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	if(decl.type_name != deduced_type)
 	{
 		// user has told us the type.
-		auto [parse_ty, only_found_in_global] = local.parse_type_global_fallback(decl.type_name);
+		auto [parse_ty, only_found_in_global] = local->parse_type_global_fallback(decl.type_name);
 		if(parse_ty.is_badtype() || only_found_in_global)
 		{
 			return semal_result::err("decl \"{}\"'s explicit type \"{}\" was unknown{}", decl.name, decl.type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
@@ -3399,8 +3399,8 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			case semal_result::type::struct_decl:
 				ret.t = struct_decl;
-				local.state.structs.emplace(decl.name, struct_ty{});
-				if(local.scope == scope_type::translation_unit)
+				local->state.structs.emplace(decl.name, struct_ty{});
+				if(local->scope == scope_type::translation_unit)
 				{
 					global.state.structs.emplace(decl.name, struct_ty{});
 				}
@@ -3408,8 +3408,8 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			case semal_result::type::enum_decl:
 				ret.t = enum_decl;
 				// todo: custom underlying type for enums. will probably need to semal_enumdef_expr better beforehand.
-				local.state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
-				if(local.scope == scope_type::translation_unit)
+				local->state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				if(local->scope == scope_type::translation_unit)
 				{
 					global.state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
 				}
@@ -3428,18 +3428,55 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	return ret;
 }
 
-semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state* local)
 {
 	return semal_decl(decl_stmt.decl, n, source, local);
 }
 
-semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state& local)
+semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state* local)
+{
+	return semal_expr(expr_stmt.expr, n, source, local);
+}
+
+semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state* local)
+{
+	if(return_stmt.retval.has_value())
+	{
+		return semal_expr(return_stmt.retval.value(), n, source, local);
+	}
+	else
+	{
+		return {.label = "return"};
+	}
+}
+
+semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state* local)
+{
+	semal_local_state* parent = local;
+	local = &global.locals.emplace_back();
+	local->scope = scope_type::block;
+	local->parent = parent;
+	return semal_result::null();
+}
+
+semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state* local)
 {
 	if(IS_A(stmt.stmt_, ast_decl_stmt))
 	{
 		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local);
 	}
-	// todo: if ast_blk_stmt set local.scope to be block. same with metaregion.
+	else if(IS_A(stmt.stmt_, ast_expr_stmt))
+	{
+		return semal_expr_stmt(AS_A(stmt.stmt_, ast_expr_stmt), n, source, local);
+	}
+	else if(IS_A(stmt.stmt_, ast_return_stmt))
+	{
+		return semal_return_stmt(AS_A(stmt.stmt_, ast_return_stmt), n, source, local);
+	}
+	else if(IS_A(stmt.stmt_, ast_blk_stmt))
+	{
+		return semal_blk_stmt(AS_A(stmt.stmt_, ast_blk_stmt), n, source, local);
+	}
 	else
 	{
 		return semal_result::err("dont know how to semal_stmt a \"{}\"", stmt.type_name());
@@ -3466,7 +3503,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 		panic_ifnt(parent != nullptr, "why is parent semi_local_state null when i am not a translation unit AST node???");
 		if(IS_A(n.payload, ast_stmt))
 		{
-			res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, *local);
+			res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, local);
 		}
 		else
 		{
