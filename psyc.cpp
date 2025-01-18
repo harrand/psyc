@@ -1334,6 +1334,11 @@ struct semal_result
 			.label = std::format(fmt, std::forward<T>(args)...)
 		};
 	}
+	
+	bool is_err() const
+	{
+		return this->t == type::err;
+	}
 
 	enum class type
 	{
@@ -1345,6 +1350,7 @@ struct semal_result
 		unknown
 	} t;
 	std::string label;
+	sval val = sval{};
 };
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -3221,18 +3227,27 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state& local)
+{
+	return semal_result::err("semal_expr is NYI");
+}
+
 semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state& local)
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
 
-	type_t ty = type_t::badtype();
-	if(decl.type_name == deduced_type)
+	sval val = wrap_type(type_t::badtype());
+	if(decl.initialiser.has_value())
 	{
-		// need to deduce the type based on the expression.
-		return semal_result::err("deducing decl type based on initialiser is NYI");
+		semal_result init = semal_expr(decl.initialiser.value(), n, source, local);
+		if(init.is_err())
+		{
+			return init;
+		}
+		val = init.val;
 	}
-	else
+	if(decl.type_name != deduced_type)
 	{
 		// user has told us the type.
 		auto [parse_ty, only_found_in_global] = local.parse_type_global_fallback(decl.type_name);
@@ -3240,19 +3255,41 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			return semal_result::err("decl \"{}\"'s explicit type \"{}\" was unknown{}", decl.name, decl.type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
 		}
-		ty = parse_ty;
-	}
-	if(ty.qual & typequal_static)
-	{
 		if(decl.initialiser.has_value())
 		{
-		}
-		else
-		{
-			return semal_result::err("decl \"{}\" is of static type \"{}\" but no initialiser. static variables cannot be left uninitialised.", decl.name, ty.name());
+			// make sure its convertible to the initialiser expression if it exists.
+			if(!parse_ty.is_convertible_to(val.ty))
+			{
+				return semal_result::err("decl \"{}\" was defined with explicit type \"{}\", but the initialiser expression type \"{}\" is not implicitly convertible", decl.name, decl.type_name, val.ty.name());
+			}
 		}
 	}
-	return semal_result::err("semal decl NYI");
+	if(val.ty.qual & typequal_static && !decl.initialiser.has_value())
+	{
+		return semal_result::err("decl \"{}\" is of static type \"{}\" but no initialiser. static variables cannot be left uninitialised.", decl.name, val.ty.name());
+	}
+	panic_ifnt(!val.ty.is_badtype(), "did not expect semal_decl to return a bad type.");
+	semal_result ret
+	{
+		.label = decl.name,
+		.val = val,
+	};
+	if(val.ty.is_fn())
+	{
+		// we are declaring a function!
+		ret.t = semal_result::type::function_decl;
+	}
+	else if(val.ty.is_type())
+	{
+		panic("what do i doo i havent thought through a decl that's a type.");
+		// ret.t = semal_result::type::struct_decl or enum_decl?
+		// not sure if i need to do anything else here. your call, future harry.
+	}
+	else
+	{
+		ret.t = semal_result::type::variable_decl;
+	}
+	return ret;
 }
 
 semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state& local)
