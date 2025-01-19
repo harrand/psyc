@@ -3803,6 +3803,23 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 	{
 		children_results[i] = semal(n.children[i], source, local);
 	}
+
+	// special logic for block statements AFTER its done its children (pop context)
+	// this is the only thing that does logic after it ends, so im just plodding it here ugly-like just this once.
+	if(IS_A(n.payload, ast_stmt))
+	{
+		const auto& stmt = AS_A(n.payload, ast_stmt);
+		if(IS_A(stmt.stmt_, ast_blk_stmt))
+		{
+			// do: pop context
+			if(parent->unfinished_types.size())
+			{
+				semal_result last = parent->unfinished_types.back();
+				panic_ifnt(last.t == semal_type::struct_decl || last.t == semal_type::enum_decl, "when popping context (closing of block {}), last unfinished type was detected, but it was neither an enum nor struct. those are the only things i can think of that should be ever unfinshed (excl. block initialisers which are NYI)", n.end_location);
+				parent->unfinished_types.pop_back();
+			}
+		}
+	}
 	return res;
 }
 
