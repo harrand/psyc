@@ -3833,6 +3833,18 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
 		local->declare_function(decl.name, ty);
+		// if its not extern then we expect an unfinished_type with no label.
+		// if there is one, let's update its name as it will be unlabeled (the funcdef_expr doesnt know its own name)
+		if(local->unfinished_types.size())
+		{
+			auto& last = local->unfinished_types.back();
+			if(last.t == semal_type::function_decl)
+			{
+				panic_ifnt(last.label.empty(), "did not expect a non-empty label for an unfinished type produced what i expect to be a funcdef_expr. i want to fill in its name. please dont give it a name or change me.");
+				// note: nothing relies on this, i am just doing this to improve debuggability (which function is this unfinished type representing???)
+				last.label = decl.name;	
+			}
+		}
 	}
 	else if(val.ty.is_type())
 	{
