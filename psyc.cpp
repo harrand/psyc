@@ -1115,8 +1115,7 @@ struct semal_state2
 {
 	string_map<struct_ty> structs = {};
 	string_map<enum_ty> enums = {};
-	string_map<fn_ty> functions;
-	string_map<const ast_funcdef_expr*> function_locations = {};
+	string_map<fn_ty> functions = {};
 	string_map<sval> variables = {};
 
 	type_t parse_type(std::string_view type_name) const
@@ -1351,11 +1350,6 @@ semal_local_state create_metaregion_state()
 			}
 		},
 	};
-
-	for(const auto& [name, _] : ret.state.functions)
-	{
-		ret.state.function_locations[name] = nullptr;
-	}
 	return ret;
 }
 
@@ -3256,9 +3250,23 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 	};
 }
 
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local);
 semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("semal_funcdef_expr is NYI");
+	// todo: foreach static param, generate a semal_result, push it, and the caller decl will somehow deal with all of them.
+	// for now, static params are ignored and we only generate one unfinished function.
+	fn_ty ty
+	{
+		.return_ty = local->parse_type(expr.return_type)
+	};
+	for(const ast_decl& param : expr.params)
+	{
+		semal_result param_result = semal_decl(param, n, source, local);
+		ty.params.push_back(param_result.val.ty);
+	}
+	semal_result ret = {.t = semal_type::function_decl, .val = {.ty = {.payload = ty}}};
+	local->unfinished_types.push_back(ret);	
+	return ret;
 }
 
 semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local)
@@ -3394,6 +3402,12 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		// we are declaring a function!
 		ret.t = semal_type::function_decl;
+		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
+		local->state.functions.emplace(decl.name, ty);
+		if(local->scope == scope_type::translation_unit)
+		{
+			global.state.functions.emplace(decl.name, ty);
+		}
 	}
 	else if(val.ty.is_type())
 	{
