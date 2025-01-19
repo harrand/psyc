@@ -1117,13 +1117,9 @@ constexpr const char* scope_type_names[] =
 struct semal_state2
 {
 	string_map<struct_ty> structs = {};
-	using struct_iter = decltype(structs)::iterator;
 	string_map<enum_ty> enums = {};
-	using enum_iter = decltype(enums)::iterator;
 	string_map<fn_ty> functions = {};
-	using function_iter = decltype(functions)::iterator;
 	string_map<sval> variables = {};
-	using variable_iter = decltype(variables)::iterator;
 
 	type_t parse_type(std::string_view type_name) const
 	{
@@ -1255,8 +1251,6 @@ struct semal_result
 	sval val = sval{};
 };
 
-template<typename T>
-using pair_of = std::pair<T, T>;
 
 struct semal_local_state
 {
@@ -1281,18 +1275,6 @@ struct semal_local_state
 	}
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
-
-	void declare_function(std::string function_name, fn_ty ty);
-	void declare_variable(std::string variable_name, sval val);
-	void declare_enum(std::string enum_name, enum_ty ty);
-	void declare_struct(std::string struct_name, struct_ty ty);
-
-	pair_of<semal_state2::function_iter> find_function(std::string_view function_name);
-	pair_of<semal_state2::variable_iter> find_variable(std::string_view variable_name);
-	pair_of<semal_state2::enum_iter> find_enum(std::string_view enum_name);
-	pair_of<semal_state2::struct_iter> find_struct(std::string_view struct_name);
-
-	bool enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/);
 };
 
 struct semal_global_state
@@ -1309,92 +1291,6 @@ struct semal_global_state
 };
 
 semal_global_state global;
-
-
-void semal_local_state::declare_function(std::string function_name, fn_ty ty)
-{
-	this->state.functions.emplace(function_name, ty);
-	if(this->scope == scope_type::translation_unit)
-	{
-		// declare it globally too.
-		global.state.functions.emplace(function_name, ty);
-	}
-}
-
-void semal_local_state::declare_variable(std::string variable_name, sval val)
-{
-	this->state.variables.emplace(variable_name, val);
-	if(this->scope == scope_type::translation_unit)
-	{
-		// declare it globally too.
-		global.state.variables.emplace(variable_name, val);
-	}
-}
-
-void semal_local_state::declare_enum(std::string enum_name, enum_ty ty)
-{
-	this->state.enums.emplace(enum_name, ty);
-	if(this->scope == scope_type::translation_unit)
-	{
-		// declare it globally too.
-		global.state.enums.emplace(enum_name, ty);
-	}
-}
-
-void semal_local_state::declare_struct(std::string struct_name, struct_ty ty)
-{
-	this->state.structs.emplace(struct_name, ty);
-	if(this->scope == scope_type::translation_unit)
-	{
-		// declare it globally too.
-		global.state.structs.emplace(struct_name, ty);
-	}
-}
-
-pair_of<semal_state2::function_iter> semal_local_state::find_function(std::string_view function_name)
-{
-	auto iter = this->state.functions.find(function_name);
-	auto global_iter = global.state.functions.find(function_name);
-	return {iter, global_iter};
-}
-
-pair_of<semal_state2::variable_iter> semal_local_state::find_variable(std::string_view variable_name)
-{
-	auto iter = this->state.variables.find(variable_name);
-	auto global_iter = global.state.variables.find(variable_name);
-	return {iter, global_iter};
-}
-
-pair_of<semal_state2::enum_iter> semal_local_state::find_enum(std::string_view enum_name)
-{
-	auto iter = this->state.enums.find(enum_name);
-	auto global_iter = global.state.enums.find(enum_name);
-	return {iter, global_iter};
-}
-
-pair_of<semal_state2::struct_iter> semal_local_state::find_struct(std::string_view struct_name)
-{
-	auto iter = this->state.structs.find(struct_name);
-	auto global_iter = global.state.structs.find(struct_name);
-	return {iter, global_iter};
-}
-
-bool semal_local_state::enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/)
-{
-	bool did_a_write = false;
-	auto [local_iter, global_iter] = this->find_enum(enum_name);
-	if(local_iter != this->state.enums.end())
-	{
-		did_a_write = true;
-		local_iter->second.entries.push_back(entry_name);
-	}
-	if(global_iter != global.state.enums.end())
-	{
-		did_a_write = true;
-		global_iter->second.entries.push_back(entry_name);
-	}
-	return did_a_write;
-}
 
 std::pair<type_t, bool> semal_local_state::parse_type_global_fallback(std::string_view type_name) const
 {
@@ -3378,8 +3274,6 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	return ret;
 }
 
-semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local);
-
 semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	fn_ty callee = {.return_ty = type_t::badtype()};
@@ -3408,22 +3302,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	std::span<const type_t> expected_params = callee.params;
 	if(actual_params.size() != expected_params.size())
 	{
-		return semal_result::err("function \033[1;34m{} : {}\033[0m called with {} params when it expects {}", expr.function_name, callee.name(), actual_params.size(), expected_params.size());
-	}
-	for(std::size_t i = 0; i < actual_params.size(); i++)
-	{
-		const ast_expr& actual = actual_params[i];
-		semal_result actual_result = semal_expr(actual, n, source, local);
-		if(actual_result.is_err())
-		{
-			return actual_result;
-		}
-		const type_t& actual_ty = actual_result.val.ty;
-		const type_t& expected_ty = expected_params[i];
-		if(!actual_ty.is_convertible_to(expected_ty))
-		{
-			return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, expr.function_name, actual_ty.name(), expected_ty.name());
-		}
+		return semal_result::err("function \"{}\" \033[1;34m{}\033[0m called with {} params when it expects {}", expr.function_name, callee.name(), actual_params.size(), expected_params.size());
 	}
 	return
 	{
@@ -3433,35 +3312,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 
 semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	std::string_view symbol = expr.symbol;
-	// so this could be alot of things.
-	// option 1: a local variable.
-	auto local_iter = local->state.variables.find(symbol);
-	if(local_iter != local->state.variables.end())
-	{
-		// excellent!
-		return
-		{
-			.t = semal_type::misc,
-			.label = std::string{symbol},
-			.val = local_iter->second
-		};
-	}
-	else if(auto global_iter = global.state.variables.find(symbol); global_iter != global.state.variables.end())
-	{
-		// woop!
-		return
-		{
-			.t = semal_type::misc,
-			.label = std::string{symbol},
-			.val = global_iter->second
-		};
-	}
-	else
-	{
-		// i give up.
-		return semal_result::err("unknown symbol \"{}\"", symbol);
-	}
+	return semal_result::err("semal_symbol_expr is NYI");
 }
 
 semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
@@ -3478,6 +3329,7 @@ semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::stri
 	return ret;
 }
 
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local);
 semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	// x@y
@@ -3644,7 +3496,11 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		// we are declaring a function!
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
-		local->declare_function(decl.name, ty);
+		local->state.functions.emplace(decl.name, ty);
+		if(local->scope == scope_type::translation_unit)
+		{
+			global.state.functions.emplace(decl.name, ty);
+		}
 	}
 	else if(val.ty.is_type())
 	{
@@ -3660,11 +3516,20 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			case semal_type::struct_decl:
 				ret.t = struct_decl;
-				local->declare_struct(decl.name, struct_ty{});
+				local->state.structs.emplace(decl.name, struct_ty{});
+				if(local->scope == scope_type::translation_unit)
+				{
+					global.state.structs.emplace(decl.name, struct_ty{});
+				}
 			break;
 			case semal_type::enum_decl:
 				ret.t = enum_decl;
-				local->declare_enum(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				// todo: custom underlying type for enums. will probably need to semal_enumdef_expr better beforehand.
+				local->state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				if(local->scope == scope_type::translation_unit)
+				{
+					global.state.enums.emplace(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				}
 			break;
 			default:
 				std::unreachable();
@@ -3676,7 +3541,6 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	else
 	{
 		ret.t = semal_type::variable_decl;
-		local->declare_variable(decl.name, ret.val);
 	}
 	return ret;
 }
@@ -3718,7 +3582,9 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	{
 		case semal_type::enum_decl:
 		{
-			parent.enum_add_entry(parent_result.label, designator_stmt.name);
+			enum_ty& ty = parent.state.enums.at(parent_result.label);
+			ty.entries.push_back(designator_stmt.name);
+			volatile int x = 5;
 		}
 		break;
 		default:
@@ -6386,7 +6252,6 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
