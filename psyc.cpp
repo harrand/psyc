@@ -727,6 +727,11 @@ struct type_t
 
 	bool is_convertible_to(const type_t& rhs, bool second_attempt = false) const
 	{
+		if(!(this->qual & typequal_static) && (rhs.qual & typequal_static))
+		{
+			// you cannot add static-ness via a cast.
+			return false;
+		}
 		std::string lhs_name = this->name();
 		std::string rhs_name = rhs.name();
 		const bool either_is_weak = (this->qual & typequal_weak) || (rhs.qual & typequal_weak);
@@ -1059,8 +1064,6 @@ struct sval
 {
 	std::variant<std::monostate, literal_val, std::unordered_map<std::string, sval>> val = std::monostate{};
 	type_t ty;
-	bool needs_load = true;
-	bool is_global = false;
 
 	bool operator==(const sval& rhs) const = default;
 
@@ -2161,7 +2164,7 @@ struct ast_literal_expr
 	type_t get_type() const
 	{
 		using enum prim_ty::type;
-		return std::array<type_t, std::variant_size_v<decltype(value)>>
+		type_t ret = std::array<type_t, std::variant_size_v<decltype(value)>>
 		{
 			type_t::create_primitive_type(s64),
 			type_t::create_primitive_type(f64),
@@ -2169,6 +2172,8 @@ struct ast_literal_expr
 			type_t::create_pointer_type(type_t::create_primitive_type(u8)),
 			type_t::create_primitive_type(boolean)
 		}[value.index()];
+		ret.qual = ret.qual | typequal_static;
+		return ret;
 	}
 
 	std::string value_tostring() const
@@ -3213,7 +3218,7 @@ struct semal_context
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_enum";
 
-#define IS_A(variant, type) variant.index() == payload_index<type, std::decay_t<decltype(variant)>>()
+#define IS_A(variant, type) ((variant).index() == payload_index<type, std::decay_t<decltype((variant))>>())
 #define AS_A(variant, type) std::get<type>(variant)
 
 void handle_defer(std::span<node> children)
@@ -3293,9 +3298,66 @@ semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::stri
 	return ret;
 }
 
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local);
+semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	// x@y
+	// x is always going to be some kind of expression.
+	// y MUST be a symbol expression.
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	if(IS_A(expr.rhs->expr_, ast_symbol_expr))
+	{
+		std::string_view symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
+		type_t casted_to = local->parse_type(symbol);
+		if(casted_to.is_badtype())
+		{
+			return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
+		}
+		type_t cast_from = lhs_result.val.ty;
+		if(cast_from.add_weak().is_convertible_to(casted_to))
+		{
+			// cool
+			lhs_result.val.ty = casted_to;
+			return lhs_result;
+		}
+		else
+		{
+			return semal_result::err("invalid cast as \"{}\" cannot be explicitly converted to \"{}\"", cast_from.name(), casted_to.name());
+		}
+	}
+	else
+	{
+		return semal_result::err("rhs of cast expression was a \"{} expression\" whereas a \"symbol expression\" was expected.", expr.rhs->type_name());
+	}
+}
+
+semal_result semal_cast_arith_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	return semal_result::err("math is hard :(((");
+}
+
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("semal_biop_expr is NYI");
+	using enum biop_type;
+	switch(expr.type)
+	{
+		case cast:
+			return semal_cast_biop_expr(expr, n, source, local);
+		break;
+		case plus:
+		[[fallthrough]];
+		case minus:
+		[[fallthrough]];
+		case mul:
+		[[fallthrough]];
+		case div:
+			return semal_cast_arith_expr(expr, n, source, local);
+		break;
+		default:
+			panic("unknown biop type detected {}", n.begin_location);
+		break;
+	}
+	std::unreachable();
 }
 
 semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
