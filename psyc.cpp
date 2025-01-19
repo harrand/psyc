@@ -3637,9 +3637,62 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 	std::unreachable();
 }
 
+semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	return semal_result::err("minus your mum");
+}
+
+semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	return semal_result::err("whats an inversion?");
+}
+
+semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
+	// todo: do not allow ref on an rvalue
+	expr_result.label = std::format("ref {}", expr_result.label);
+	expr_result.val.val = std::monostate{};
+	expr_result.val.ty = type_t::create_pointer_type(expr_result.val.ty);
+	return expr_result;
+}
+
+semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
+	expr_result.label = std::format("deref {}", expr_result.label);
+	expr_result.val.val = std::monostate{};
+	auto& ty = expr_result.val.ty;
+	if(!ty.is_ptr())
+	{
+		return semal_result::err("cannot deref non-pointer-type \"{}\"", ty.name());
+	}
+	ty = *AS_A(ty.payload, ptr_ty).underlying_ty;
+	return expr_result;
+}
+
 semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("semal_unop_expr is NYI");
+	using enum unop_type;
+	switch(expr.type)
+	{
+		case minus:
+			return semal_minus_unop_expr(expr, n, source, local);
+		break;
+		case invert:
+			return semal_invert_unop_expr(expr, n, source, local);
+		break;
+		case ref:
+			return semal_ref_unop_expr(expr, n, source, local);
+		break;
+		case deref:
+			return semal_deref_unop_expr(expr, n, source, local);
+		break;
+		default:
+			panic("unknown unop type detected {}", n.begin_location);
+		break;
+	}
+	std::unreachable();
 }
 
 semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local);
