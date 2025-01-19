@@ -1117,13 +1117,13 @@ constexpr const char* scope_type_names[] =
 struct semal_state2
 {
 	string_map<struct_ty> structs = {};
-	using struct_iter = decltype(structs)::iterator;
+	using struct_value = decltype(structs)::mapped_type;
 	string_map<enum_ty> enums = {};
-	using enum_iter = decltype(enums)::iterator;
+	using enum_value = decltype(enums)::mapped_type;
 	string_map<fn_ty> functions = {};
-	using function_iter = decltype(functions)::iterator;
+	using function_value = decltype(functions)::mapped_type;
 	string_map<sval> variables = {};
-	using variable_iter = decltype(variables)::iterator;
+	using variable_value = decltype(variables)::mapped_type;
 
 	type_t parse_type(std::string_view type_name) const
 	{
@@ -1287,12 +1287,13 @@ struct semal_local_state
 	void declare_enum(std::string enum_name, enum_ty ty);
 	void declare_struct(std::string struct_name, struct_ty ty);
 
-	pair_of<semal_state2::function_iter> find_function(std::string_view function_name);
-	pair_of<semal_state2::variable_iter> find_variable(std::string_view variable_name);
-	pair_of<semal_state2::enum_iter> find_enum(std::string_view enum_name);
-	pair_of<semal_state2::struct_iter> find_struct(std::string_view struct_name);
+	pair_of<semal_state2::function_value*> find_function(std::string_view function_name);
+	pair_of<semal_state2::variable_value*> find_variable(std::string_view variable_name);
+	pair_of<semal_state2::enum_value*> find_enum(std::string_view enum_name);
+	pair_of<semal_state2::struct_value*> find_struct(std::string_view struct_name);
 
 	bool enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/);
+	bool struct_add_member(std::string struct_name, std::string member_name, type_t member_ty);
 };
 
 struct semal_global_state
@@ -1351,47 +1352,132 @@ void semal_local_state::declare_struct(std::string struct_name, struct_ty ty)
 	}
 }
 
-pair_of<semal_state2::function_iter> semal_local_state::find_function(std::string_view function_name)
+pair_of<semal_state2::function_value*> semal_local_state::find_function(std::string_view function_name)
 {
-	auto iter = this->state.functions.find(function_name);
+	semal_local_state* loc = this;
+	semal_state2::function_value* local_ret = nullptr;
+	auto iter = loc->state.functions.find(function_name);
+	while(iter == loc->state.functions.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.functions.find(function_name);
+	}
+	if(iter != loc->state.functions.end())
+	{
+		local_ret = &iter->second;
+	}
 	auto global_iter = global.state.functions.find(function_name);
-	return {iter, global_iter};
+
+	semal_state2::function_value* global_ret = nullptr;
+	if(global_iter != global.state.functions.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
 }
 
-pair_of<semal_state2::variable_iter> semal_local_state::find_variable(std::string_view variable_name)
+pair_of<semal_state2::variable_value*> semal_local_state::find_variable(std::string_view variable_name)
 {
-	auto iter = this->state.variables.find(variable_name);
+	semal_local_state* loc = this;
+	semal_state2::variable_value* local_ret = nullptr;
+	auto iter = loc->state.variables.find(variable_name);
+	while(iter == loc->state.variables.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.variables.find(variable_name);
+	}
+	if(iter != loc->state.variables.end())
+	{
+		local_ret = &iter->second;
+	}
 	auto global_iter = global.state.variables.find(variable_name);
-	return {iter, global_iter};
+
+	semal_state2::variable_value* global_ret = nullptr;
+	if(global_iter != global.state.variables.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
 }
 
-pair_of<semal_state2::enum_iter> semal_local_state::find_enum(std::string_view enum_name)
+pair_of<semal_state2::enum_value*> semal_local_state::find_enum(std::string_view enum_name)
 {
-	auto iter = this->state.enums.find(enum_name);
+	semal_local_state* loc = this;
+	semal_state2::enum_value* local_ret = nullptr;
+	auto iter = loc->state.enums.find(enum_name);
+	while(iter == loc->state.enums.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.enums.find(enum_name);
+	}
+	if(iter != loc->state.enums.end())
+	{
+		local_ret = &iter->second;
+	}
 	auto global_iter = global.state.enums.find(enum_name);
-	return {iter, global_iter};
+
+	semal_state2::enum_value* global_ret = nullptr;
+	if(global_iter != global.state.enums.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
 }
 
-pair_of<semal_state2::struct_iter> semal_local_state::find_struct(std::string_view struct_name)
+pair_of<semal_state2::struct_value*> semal_local_state::find_struct(std::string_view struct_name)
 {
-	auto iter = this->state.structs.find(struct_name);
+	semal_local_state* loc = this;
+	semal_state2::struct_value* local_ret = nullptr;
+	auto iter = loc->state.structs.find(struct_name);
+	while(iter == loc->state.structs.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.structs.find(struct_name);
+	}
+	if(iter != loc->state.structs.end())
+	{
+		local_ret = &iter->second;
+	}
 	auto global_iter = global.state.structs.find(struct_name);
-	return {iter, global_iter};
+
+	semal_state2::struct_value* global_ret = nullptr;
+	if(global_iter != global.state.structs.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
 }
 
 bool semal_local_state::enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/)
 {
 	bool did_a_write = false;
 	auto [local_iter, global_iter] = this->find_enum(enum_name);
-	if(local_iter != this->state.enums.end())
+	if(local_iter != nullptr)
 	{
 		did_a_write = true;
-		local_iter->second.entries.push_back(entry_name);
+		local_iter->entries.push_back(entry_name);
 	}
-	if(global_iter != global.state.enums.end())
+	if(global_iter != nullptr)
 	{
 		did_a_write = true;
-		global_iter->second.entries.push_back(entry_name);
+		global_iter->entries.push_back(entry_name);
+	}
+	return did_a_write;
+}
+
+bool semal_local_state::struct_add_member(std::string struct_name, std::string member_name, type_t member_ty)
+{
+	bool did_a_write = false;
+	auto [local_iter, global_iter] = this->find_struct(struct_name);
+	if(local_iter != nullptr)
+	{
+		did_a_write = true;
+		local_iter->members.emplace(member_name, member_ty);
+	}
+	if(global_iter != nullptr)
+	{
+		did_a_write = true;
+		global_iter->members.emplace(member_name, member_ty);
 	}
 	return did_a_write;
 }
@@ -3368,13 +3454,19 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	{
 		.return_ty = local->parse_type(expr.return_type)
 	};
+	// if we go ahead and do the decls for these params, they have no obvious way of knowing that they are function params
+	// they will just be local variables in the parent scope which is wrong.
+	// to fix this, we will push a temporary unfinished function, and then pop it when the params are declared.
+	local->unfinished_types.push_back({.t = semal_type::function_decl});	
+
 	for(const ast_decl& param : expr.params)
 	{
 		semal_result param_result = semal_decl(param, n, source, local);
 		ty.params.push_back(param_result.val.ty);
 	}
 	semal_result ret = {.t = semal_type::function_decl, .val = {.ty = {.payload = ty}}};
-	local->unfinished_types.push_back(ret);	
+	// update the last unfinished type, otherwise it wont have the params when it registers the function in local/global scopes.
+	local->unfinished_types.back() = ret;
 	return ret;
 }
 
@@ -3676,7 +3768,45 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	else
 	{
 		ret.t = semal_type::variable_decl;
-		local->declare_variable(decl.name, ret.val);
+		const bool has_parent = local->parent != nullptr;
+		const bool could_be_struct_member = has_parent && local->parent->unfinished_types.size();
+		std::string maybe_struct_parent = "";
+		bool is_function_param = false;
+		if(could_be_struct_member)
+		{
+			const auto& last_unfinished = local->parent->unfinished_types.back();
+			if(last_unfinished.t == semal_type::struct_decl)
+			{
+				maybe_struct_parent = last_unfinished.label;
+			}
+		}
+		else if(local->unfinished_types.size())
+		{
+			// could be that we're a parameter of a function currently being defined.
+			const auto& last_unfinished = local->unfinished_types.back();
+			if(last_unfinished.t == semal_type::function_decl)
+			{
+				is_function_param = true;
+			}
+		}
+		if(maybe_struct_parent.size())
+		{
+			bool added = local->struct_add_member(maybe_struct_parent, decl.name, ret.val.ty);
+			if(!added) [[unlikely]]
+			{
+				panic("attempted to add member \"{}\" to non-existent struct \"{}\" {}. the logic of this code path implies the struct *must* exist. please submit a bug report.", decl.name, maybe_struct_parent, n.begin_location);
+			}
+		}
+		else if(is_function_param)
+		{
+			// dont need to do anything here. you would think "why not add us as a param?"
+			// well, at this point, we are called by semal_funcdef_expr which doesnt know its own name
+			// so we let it deal with that, and just make sure we dont register this as a local variable here.
+		}
+		else
+		{
+			local->declare_variable(decl.name, ret.val);
+		}
 	}
 	return ret;
 }
