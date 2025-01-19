@@ -1062,7 +1062,8 @@ using literal_val = std::variant<std::int64_t, double, char, std::string, bool>;
 
 struct sval
 {
-	std::variant<std::monostate, literal_val, std::unordered_map<std::string, sval>> val = std::monostate{};
+	using struct_val = std::unordered_map<std::string, sval>;
+	std::variant<std::monostate, literal_val, struct_val> val = std::monostate{};
 	type_t ty;
 
 	bool operator==(const sval& rhs) const = default;
@@ -3655,18 +3656,23 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 		return semal_result::err("blkinit expression of type \"{}\" encountered, which is not a struct type. you can only blkinit struct types.", expr.type_name);
 	}
 	sval empty_structinit = wrap_type(ty);
-	empty_structinit.val = std::unordered_map<std::string, sval>{};
+	sval::struct_val table = {};
 	semal_result blk{.t = semal_type::blkinit, .label = expr.type_name, .val = empty_structinit};
 	local->unfinished_types.push_back(blk);
 	// codegen will need to do a bunch of work here to actually create the structinit.
 	for(const ast_designator_stmt& desig : expr.initialisers)
 	{
 		semal_result desig_result = semal_designator_stmt(desig, n, source, local);
+		if(desig_result.val.has_val())
+		{
+			table[desig.name] = desig_result.val;
+		}
 		if(desig_result.is_err())
 		{
 			return desig_result;
 		}
 	}
+	empty_structinit.val = table;
 	local->unfinished_types.pop_back();
 	return blk;
 }
