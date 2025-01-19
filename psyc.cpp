@@ -1264,6 +1264,7 @@ struct semal_local_state
 {
 	scope_type scope = scope_type::_undefined;
 	std::deque<semal_result> unfinished_types = {};
+	string_map<sval> pending_variables = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
 
@@ -3464,6 +3465,12 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	for(const ast_decl& param : expr.params)
 	{
 		semal_result param_result = semal_decl(param, n, source, local);
+		// so we need this decl to be visible in the *next* scope (if its not extern)
+		// to do this, we use "pending types"
+		if(!expr.is_extern)
+		{
+			local->pending_variables.emplace(param.name, param_result.val);
+		}
 		ty.params.push_back(param_result.val.ty);
 	}
 	semal_result ret = {.t = semal_type::function_decl, .val = {.ty = {.payload = ty}}};
@@ -3981,6 +3988,14 @@ semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_v
 	local = &global.locals.emplace_back();
 	local->scope = scope_type::block;
 	local->parent = parent;
+	// parent might have "pending variables"
+	// this happens for stuff like function parameters which need to be put into a block after they appear
+	// just define them as variables right now and clear the pendings (they only get handled once even if multiple children).
+	for(const auto& [name, val] : parent->pending_variables)
+	{
+		local->declare_variable(name, val);
+	}
+	parent->pending_variables.clear();
 	return semal_result::null();
 }
 
