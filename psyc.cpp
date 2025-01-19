@@ -4077,7 +4077,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 			if(parent->unfinished_types.size())
 			{
 				semal_result last = parent->unfinished_types.back();
-				panic_ifnt(last.t == semal_type::struct_decl || last.t == semal_type::enum_decl, "when popping context (closing of block {}), last unfinished type was detected, but it was neither an enum nor struct. those are the only things i can think of that should be ever unfinshed (excl. block initialisers which are NYI)", n.end_location);
+				panic_ifnt(last.t == semal_type::function_decl || last.t == semal_type::struct_decl || last.t == semal_type::enum_decl, "when popping context (closing of block {}), last unfinished type was detected, but it was neither a non-extern function, enum nor struct", n.end_location);
 				parent->unfinished_types.pop_back();
 			}
 		}
