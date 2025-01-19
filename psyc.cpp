@@ -626,7 +626,7 @@ struct type_t;
 
 struct struct_ty
 {
-	std::unordered_map<std::string, box<type_t>> members = {};
+	string_map<box<type_t>> members = {};
 	std::string maybe_name = "_STRUCT_ERROR";
 	std::string name() const
 	{
@@ -1223,6 +1223,7 @@ enum class semal_type
 	function_decl,
 	struct_decl,
 	enum_decl,
+	blkinit,
 	err,
 	misc,
 	unknown
@@ -3467,6 +3468,11 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	semal_result ret = {.t = semal_type::function_decl, .val = {.ty = {.payload = ty}}};
 	// update the last unfinished type, otherwise it wont have the params when it registers the function in local/global scopes.
 	local->unfinished_types.back() = ret;
+	// if the function is extern then we're not expecting a block - remove the unfinished type now.
+	if(expr.is_extern)
+	{
+		local->unfinished_types.pop_back();
+	}
 	return ret;
 }
 
@@ -3478,21 +3484,20 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	// if you get around to static params and are emitting specific implementations, now is probably the time to do it.
 	// use expr.function_name to create fake semal_decls of the implementation type(s) and re-use the functions here instead of searching for them.
 
-	auto local_iter = local->state.functions.find(expr.function_name);
-	if(local_iter == local->state.functions.end())
+	auto [local_iter, global_iter] = local->find_function(expr.function_name);
+	if(local_iter != nullptr)
 	{
-		// not defined locally. is it within the global state (i.e defined in another source file we added in the build)?
-		auto global_iter = global.state.functions.find(expr.function_name);
-		if(global_iter == global.state.functions.end())
-		{
-			// ok this thing doesnt exist.
-			return semal_result::err("unknown function \"{}\"", expr.function_name);
-		}
-		callee = global_iter->second;
+		callee = *local_iter;
+	}
+	// you are allowed to call functions defined in other source files, so check the global iter too.
+	else if(global_iter != nullptr)
+	{
+		callee = *global_iter;
 	}
 	else
 	{
-		callee = local_iter->second;
+		// ok this thing doesnt exist.
+		return semal_result::err("unknown function \"{}\"", expr.function_name);
 	}
 	// ok we have a function to call.
 	// result is just whatever the return type is.
@@ -3636,9 +3641,34 @@ semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_vie
 	return semal_result::err("semal_unop_expr is NYI");
 }
 
+semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local);
+
 semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("semal_blkinit_expr is NYI");
+	type_t ty = local->parse_type(expr.type_name);
+	if(ty.is_badtype())
+	{
+		return semal_result::err("unknown type of blkinit expression \"{}\"", expr.type_name);
+	}
+	if(!ty.is_struct())
+	{
+		return semal_result::err("blkinit expression of type \"{}\" encountered, which is not a struct type. you can only blkinit struct types.", expr.type_name);
+	}
+	sval empty_structinit = wrap_type(ty);
+	empty_structinit.val = std::unordered_map<std::string, sval>{};
+	semal_result blk{.t = semal_type::blkinit, .label = expr.type_name, .val = empty_structinit};
+	local->unfinished_types.push_back(blk);
+	// codegen will need to do a bunch of work here to actually create the structinit.
+	for(const ast_designator_stmt& desig : expr.initialisers)
+	{
+		semal_result desig_result = semal_designator_stmt(desig, n, source, local);
+		if(desig_result.is_err())
+		{
+			return desig_result;
+		}
+	}
+	local->unfinished_types.pop_back();
+	return blk;
 }
 
 semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local)
@@ -3840,6 +3870,35 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 
 semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
+	std::string_view desig_name = designator_stmt.name;
+	const ast_expr& desig_expr = *designator_stmt.initialiser;
+	// so a designator has a different meaning depending on its context
+	if(local->unfinished_types.size() && local->unfinished_types.back().t == semal_type::blkinit)
+	{
+		const auto& data = local->unfinished_types.back();
+		// option A: a designator is a part of a block-initialiser (struct). in which case we should search for an unfinished blkinit in *this* local scope
+		std::string_view struct_tyname = data.label;
+		type_t ty = local->parse_type(struct_tyname);
+		panic_ifnt(ty.is_struct(), "waaaoh blkinit for non-struct type even though i checked it earlier");
+		const string_map<box<type_t>>& members = AS_A(ty.payload, struct_ty).members;
+		// let's make sure the member exists.
+		auto iter = members.find(designator_stmt.name);
+		if(iter == members.end())
+		{
+			return semal_result::err("struct \"{}\" has no member named \"{}\"", struct_tyname, desig_name);
+		}
+		// type-check the member.
+		type_t expected_ty = *iter->second;
+		semal_result actual_result = semal_expr(desig_expr, n, source, local);
+		if(!actual_result.val.ty.is_convertible_to(expected_ty))
+		{
+			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
+		}
+		// todo: codegen needs to do a conversion here if the types are convertible but dont exactly match.
+		actual_result.val.ty = expected_ty;
+		return actual_result;
+	}
+	// option B: a designator is part of an enum definition. in which case we should  search for an unfinite enum_decl in the *parent* of this local scope.
 	error_ifnt(local->parent != nullptr, n.begin_location, "designator statement did not have a preceding local context. you should only provide a designator statement in a block-initialiser or an enum-definition.");
 	semal_local_state& parent = *local->parent;
 	error_ifnt(parent.unfinished_types.size(), n.begin_location, "designator statement's parent local state did not have any unfinished types. is this a blkinit that i haven't covered yet?");
@@ -3847,12 +3906,11 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	switch(parent_result.t)
 	{
 		case semal_type::enum_decl:
-		{
 			parent.enum_add_entry(parent_result.label, designator_stmt.name);
-		}
 		break;
 		default:
-			return semal_result::err("unexpected designator statement. designator statements are expect to proceed blocks defining an enum, or a block-initialiser (the latter is NYI!)");
+			// option C: code is wrong.
+			return semal_result::err("invalid designator statement. expected to be within either an enum definition or a block-initialiser. this appears to be in neither.");
 		break;
 	}
 	return semal_result::null();
