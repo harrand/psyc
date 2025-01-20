@@ -3541,25 +3541,23 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	std::string_view symbol = expr.symbol;
 	// so this could be alot of things.
 	// option 1: a local variable.
-	auto local_iter = local->state.variables.find(symbol);
-	if(local_iter != local->state.variables.end())
+	const auto [local_iter, global_iter] = local->find_variable(symbol);
+	if(local_iter != nullptr)
 	{
-		// excellent!
 		return
 		{
 			.t = semal_type::misc,
 			.label = std::string{symbol},
-			.val = local_iter->second
+			.val = *local_iter
 		};
 	}
-	else if(auto global_iter = global.state.variables.find(symbol); global_iter != global.state.variables.end())
+	else if(global_iter != nullptr)
 	{
-		// woop!
 		return
 		{
 			.t = semal_type::misc,
 			.label = std::string{symbol},
-			.val = global_iter->second
+			.val = *global_iter
 		};
 	}
 	else
@@ -3994,6 +3992,31 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	return semal_result::null();
 }
 
+semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local)
+{
+	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local);
+	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
+	const type_t& actual_cond_ty = cond_result.val.ty;
+	if(if_stmt.is_static)
+	{
+		expected_cond_ty.qual = typequal_static;
+	}
+	if(!actual_cond_ty.is_convertible_to(expected_cond_ty))
+	{
+		return semal_result::err("if-statement condition is of invalid type \"{}\" as it is not convertible to a \"\"", actual_cond_ty.name(), expected_cond_ty.name());
+	}
+	if(if_stmt.is_static)
+	{
+		// clear out all child nodes if the condition is false.
+		bool cond = AS_A(AS_A(cond_result.val.val, literal_val), bool);
+		if(!cond)
+		{
+			n.children.clear();
+		}
+	}
+	return semal_result::null();
+}
+
 semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
 	semal_local_state* parent = local;
@@ -4036,6 +4059,10 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	else if(IS_A(stmt.stmt_, ast_designator_stmt))
 	{
 		return semal_designator_stmt(AS_A(stmt.stmt_, ast_designator_stmt), n, source, local);
+	}
+	else if(IS_A(stmt.stmt_, ast_if_stmt))
+	{
+		return semal_if_stmt(AS_A(stmt.stmt_, ast_if_stmt), n, source, local);
 	}
 	else
 	{
