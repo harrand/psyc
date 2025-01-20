@@ -3613,9 +3613,14 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 	}
 }
 
-semal_result semal_cast_arith_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	return semal_result::err("math is hard :(((");
+}
+
+semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	return semal_result::err("fieldin' deez nuts");
 }
 
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
@@ -3633,7 +3638,10 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case mul:
 		[[fallthrough]];
 		case div:
-			return semal_cast_arith_expr(expr, n, source, local);
+			return semal_arith_biop_expr(expr, n, source, local);
+		break;
+		case field:
+			return semal_field_biop_expr(expr, n, source, local);
 		break;
 		default:
 			panic("unknown biop type detected {}", n.begin_location);
