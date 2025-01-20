@@ -3620,7 +3620,82 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 
 semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("fieldin' deez nuts");
+	// two possible cases:
+	// a.) some_struct_val.member (struct access)
+	// b.) biop_type.cast (enum entry lvalue)
+	// how do we know which one it is?
+	// could try treating lhs as an expression (a). if it fails then (b). *but* gotta be careful if code is erroneous.
+	// alternate method: if the expr is a symbol expression then treat the symbol as a direct typename. if the typename exists then (b) else (a)
+	// 		but: alternative could absolutely have a lhs symbol expression. so we'd have to rely on typename parsing failure
+	// they both arent bulletproof, but i think initial method is more ideal.
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	if(!lhs_result.is_err())
+	{
+		// lhs is a valid expression, assume it's a struct access.
+		type_t ty = lhs_result.val.ty;
+		if(!ty.is_struct())
+		{
+			return semal_result::err("lhs of field expression was itself a valid expression, which makes me think this field expression is a struct access. however, the lhs is of type \"{}\", which is not a struct. therefore the code is wrong.", ty.name());
+		}
+		auto strty = AS_A(ty.payload, struct_ty);
+		// absolutely *must* treat b as a symbol.
+		if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
+		{
+			// todo: unless it is a function call via UFCS
+			return semal_result::err("struct-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
+		}
+		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
+		auto iter = strty.members.find(rhs_symbol);
+		if(iter == strty.members.end())
+		{
+			return semal_result::err("struct-access field expression is invalid. struct \"{}\" has no member named \"{}\"", ty.name(), rhs_symbol);
+		}
+		return
+		{
+			.t = semal_type::misc,
+			.label = std::format("{}::{}", ty.name(), rhs_symbol),
+			.val = wrap_type(*iter->second)
+		};
+	}
+	else
+	{
+		// we assume its an enum value.
+		if(!IS_A(expr.lhs->expr_, ast_symbol_expr))
+		{
+			return semal_result::err("lhs of field expression was not a valid expression nor was it a symbol expression - the field expression is therefore invalid.");
+		}
+		std::string_view lhs_symbol = AS_A(expr.lhs->expr_, ast_symbol_expr).symbol;
+		type_t ty = local->parse_type(lhs_symbol);
+		if(ty.is_badtype())
+		{
+			return semal_result::err("lhs of field expression was a symbol expression \"{}\" but it did not yield a valid type", lhs_symbol);
+		}
+		if(!ty.is_enum())
+		{
+			return semal_result::err("lhs symbol expression \"{}\" within field expression is not an enum type. if you intended a struct-access, then the lhs is not a valid expression representing a struct either.", lhs_symbol);
+		}
+		auto enty = AS_A(ty.payload, enum_ty);
+
+		// get the rhs.
+		if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
+		{
+			// todo: unless it is a function call via UFCS
+			return semal_result::err("enum-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
+		}
+		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
+		auto iter = std::find(enty.entries.begin(), enty.entries.end(), rhs_symbol);
+		if(iter == enty.entries.end())
+		{
+			return semal_result::err("enum-access field expressionis invalid. enum \"{}\" has no entry named \"{}\"", lhs_symbol, rhs_symbol);
+		}
+		return
+		{
+			.t = semal_type::misc,
+			.label = std::format("{}.{}", lhs_symbol, rhs_symbol),
+			.val = wrap_type(ty)
+		};
+	}
+	std::unreachable();
 }
 
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
