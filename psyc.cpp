@@ -1268,7 +1268,7 @@ struct semal_local_state
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
 
-	type_t parse_type(std::string_view type_name) const
+	type_t parse_type_no_global(std::string_view type_name) const
 	{
 		type_t local_parse = state.parse_type(type_name);
 		if(local_parse.is_badtype())
@@ -1279,8 +1279,12 @@ struct semal_local_state
 				local_parse = this->parent->parse_type(type_name);
 			}
 		}
-
 		return local_parse;
+	}
+
+	type_t parse_type(std::string_view type_name) const
+	{
+		return std::get<0>(this->parse_type_global_fallback(type_name));
 	}
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
@@ -1488,7 +1492,7 @@ bool semal_local_state::struct_add_member(std::string struct_name, std::string m
 std::pair<type_t, bool> semal_local_state::parse_type_global_fallback(std::string_view type_name) const
 {
 	bool need_global = false;
-	type_t parse = this->parse_type(type_name);
+	type_t parse = this->parse_type_no_global(type_name);
 	if(parse.is_badtype())
 	{
 		need_global = true;
