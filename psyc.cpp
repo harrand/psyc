@@ -3964,22 +3964,12 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		const bool has_parent = local->parent != nullptr;
 		const bool could_be_struct_member = has_parent && local->parent->unfinished_types.size();
 		std::string maybe_struct_parent = "";
-		bool is_function_param = false;
 		if(could_be_struct_member)
 		{
 			const auto& last_unfinished = local->parent->unfinished_types.back();
 			if(last_unfinished.t == semal_type::struct_decl)
 			{
 				maybe_struct_parent = last_unfinished.label;
-			}
-		}
-		else if(local->unfinished_types.size())
-		{
-			// could be that we're a parameter of a function currently being defined.
-			const auto& last_unfinished = local->unfinished_types.back();
-			if(last_unfinished.t == semal_type::function_decl)
-			{
-				is_function_param = true;
 			}
 		}
 		if(maybe_struct_parent.size())
@@ -3990,11 +3980,16 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 				panic("attempted to add member \"{}\" to non-existent struct \"{}\" {}. the logic of this code path implies the struct *must* exist. please submit a bug report.", decl.name, maybe_struct_parent, n.begin_location);
 			}
 		}
-		else if(is_function_param)
+		else if(local->unfinished_types.size())
 		{
-			// dont need to do anything here. you would think "why not add us as a param?"
-			// well, at this point, we are called by semal_funcdef_expr which doesnt know its own name
-			// so we let it deal with that, and just make sure we dont register this as a local variable here.
+			// could be that we're a parameter of a function currently being defined.
+			const auto& last_unfinished = local->unfinished_types.back();
+			if (last_unfinished.t == semal_type::function_decl)
+			{
+				// dont need to do anything here. you would think "why not add us as a param?"
+				// well, at this point, we are called by semal_funcdef_expr which doesnt know its own name
+				// so we let it deal with that, and just make sure we dont register this as a local variable here.
+			}
 		}
 		else
 		{
