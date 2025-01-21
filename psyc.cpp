@@ -3604,6 +3604,10 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
 	const type_t& lhs_ty = lhs_result.val.ty;
 	if(!lhs_ty.is_prim())
 	{
@@ -3615,6 +3619,10 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		return semal_result::err("lhs of arithmetic operation is not a numeric type, but a \"{}\"", lhs_ty.name());
 	}
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local);
+	if(rhs_result.is_err())
+	{
+		return rhs_result;
+	}
 	const type_t& rhs_ty = rhs_result.val.ty;
 	if(!rhs_ty.is_prim())
 	{
@@ -3741,11 +3749,14 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		{
 			return semal_result::err("struct-access field expression is invalid. struct \"{}\" has no member named \"{}\"", ty.name(), rhs_symbol);
 		}
+		// remember the struct member will inherit the qualifiers of the struct value.
+		type_t member_ty = *iter->second;
+		member_ty.qual = ty.qual;
 		return
 		{
 			.t = semal_type::misc,
 			.label = std::format("{}::{}", ty.name(), rhs_symbol),
-			.val = wrap_type(*iter->second)
+			.val = wrap_type(member_ty)
 		};
 	}
 	else
@@ -3789,6 +3800,27 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	std::unreachable();
 }
 
+semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+{
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	const type_t& lhs_ty = lhs_result.val.ty;
+	if(!(lhs_ty.qual & typequal_mut))
+	{
+		return semal_result::err("attempt to assign to non-mut type \"{}\"", lhs_ty.name());
+	}
+
+	semal_result rhs_result = semal_expr(*expr.lhs, n, source, local);
+	const type_t& rhs_ty = rhs_result.val.ty;
+
+	if(!rhs_ty.is_convertible_to(lhs_ty))
+	{
+		return semal_result::err("assignment is invalid because rhs type \"{}\" cannot be converted to lhs type \"{}\"", rhs_ty.name(), lhs_ty.name());
+	}
+
+	lhs_result.val = rhs_result.val;
+	return lhs_result;
+}
+
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	using enum biop_type;
@@ -3808,6 +3840,9 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		break;
 		case field:
 			return semal_field_biop_expr(expr, n, source, local);
+		break;
+		case assign:
+			return semal_assign_biop_expr(expr, n, source, local);
 		break;
 		case ptr_field:
 		{
