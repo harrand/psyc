@@ -1252,6 +1252,11 @@ struct semal_result
 		return this->t == semal_type::err;
 	}
 
+	bool is_null() const
+	{
+		return this->t == semal_type::unknown;
+	}
+
 	semal_type t;
 	std::string label;
 	sval val = sval{};
@@ -1513,35 +1518,35 @@ semal_local_state create_metaregion_state()
 		{
 			.functions =
 			{
-				{"add_source_file", fn_ty{
+				{"__add_source_file", fn_ty{
 					.params =
 					{
 						string_view_ty
 					},
 					.return_ty = type_t::create_void_type()
 				}},
-				{"add_link_library", fn_ty{
+				{"__add_link_library", fn_ty{
 					.params =
 					{
 						string_view_ty
 					},
 					.return_ty = type_t::create_void_type()
 				}},
-				{"set_executable", fn_ty{
+				{"__set_executable", fn_ty{
 					.params =
 					{
 						string_view_ty
 					},
 					.return_ty = type_t::create_void_type()
 				}},
-				{"set_library", fn_ty{
+				{"__set_library", fn_ty{
 					.params =
 					{
 						string_view_ty
 					},
 					.return_ty = type_t::create_void_type()
 				}},
-				{"set_object", fn_ty{
+				{"__set_object", fn_ty{
 					.params =
 					{
 						string_view_ty
@@ -3491,11 +3496,18 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 
 semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local);
 
+semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local);
+
 semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	fn_ty callee = {.return_ty = type_t::badtype()};
 	// if you get around to static params and are emitting specific implementations, now is probably the time to do it.
 	// use expr.function_name to create fake semal_decls of the implementation type(s) and re-use the functions here instead of searching for them.
+	semal_result builtin_result = semal_call_builtin(expr, n, source, local);
+	if(!builtin_result.is_null())
+	{
+		return builtin_result;
+	}
 
 	auto [local_iter, global_iter] = local->find_function(expr.function_name);
 	if(local_iter != nullptr)
@@ -4043,11 +4055,11 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		},
 		.return_ty = string_literal
 	};
-	local->pending_functions.emplace("add_link_library", stringparam_noret);
-	local->pending_functions.emplace("add_source", stringparam_noret);
-	local->pending_functions.emplace("set_executable", stringparam_noret);
-	local->pending_functions.emplace("set_library", stringparam_noret);
-	local->pending_functions.emplace("set_object", stringparam_noret);
+	local->pending_functions.emplace("__add_link_library", stringparam_noret);
+	local->pending_functions.emplace("__add_source", stringparam_noret);
+	local->pending_functions.emplace("__set_executable", stringparam_noret);
+	local->pending_functions.emplace("__set_library", stringparam_noret);
+	local->pending_functions.emplace("__set_object", stringparam_noret);
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
 	local->pending_functions.emplace("__warn", stringparam_noret);
@@ -6835,6 +6847,21 @@ int main(int argc, char** argv)
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
+semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local)
+{
+	auto get_as_string = [&n, &source, &local](const ast_expr& expr) -> std::string
+	{
+		semal_result result = semal_expr(expr, n, source, local);
+		return std::get<std::string>(std::get<literal_val>(result.val.val));
+	};
+	if(call.function_name == "__add_link_library")
+	{
+		std::filesystem::path path = get_as_string(call.params.front());
+		global.added_link_libraries.emplace(path, n.begin_location);
+	}
+	return semal_result::null();
+}
+
 /*
 sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc)
 {
@@ -6842,7 +6869,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 
 	semal_context empty;
 	semal_state cpy = state;
-	if(call.function_name == "add_source_file")
+	if(call.function_name == "__add_source_file")
 	{
 		const ast_expr& path_expr = call.params.front();
 		auto path_exprval = semal_expr(path_expr, cpy, loc, empty);
@@ -6855,7 +6882,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		state.added_source_files.emplace(path, loc);
 		return wrap_type(type_t::create_void_type());
 	}
-	else if(call.function_name == "set_executable")
+	else if(call.function_name == "__set_executable")
 	{
 		const ast_expr& name_expr = call.params.front();
 		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
@@ -6864,7 +6891,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		state.args->output_name = exe_name;
 		return wrap_type(type_t::create_void_type());
 	}
-	else if(call.function_name == "set_library")
+	else if(call.function_name == "__set_library")
 	{
 		const ast_expr& name_expr = call.params.front();
 		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
@@ -6873,7 +6900,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		state.args->output_name = exe_name;
 		return wrap_type(type_t::create_void_type());
 	}
-	else if(call.function_name == "set_object")
+	else if(call.function_name == "__set_object")
 	{
 		const ast_expr& name_expr = call.params.front();
 		auto name_exprval = semal_expr(name_expr, cpy, loc, empty);
@@ -6882,7 +6909,7 @@ sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, sr
 		state.args->output_name = exe_name;
 		return wrap_type(type_t::create_void_type());
 	}
-	else if(call.function_name == "add_link_library")
+	else if(call.function_name == "__add_link_library")
 	{
 		const ast_expr& path_expr = call.params.front();
 		auto path_exprval = semal_expr(path_expr, cpy, loc, empty);
