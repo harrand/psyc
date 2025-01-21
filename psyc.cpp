@@ -581,6 +581,27 @@ struct prim_ty
 			this->p == type::u8;
 	}
 
+	bool is_floating_point() const
+	{
+		return this->is_numeric() && !this->is_integral();
+	}
+
+	std::size_t floating_point_size() const
+	{
+		switch(this->p)
+		{
+			case type::f64:
+				return 64;
+			break;
+			case type::f32:
+				return 32;
+			break;
+			default:
+				return 0;
+			break;
+		}
+	}
+
 	std::size_t integral_size() const
 	{
 		switch(this->p)
@@ -3582,7 +3603,110 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 
 semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("math is hard :(((");
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	const type_t& lhs_ty = lhs_result.val.ty;
+	if(!lhs_ty.is_prim())
+	{
+		return semal_result::err("lhs of arithmetic operation is not a primitive type, but a \"{}\"", lhs_ty.name());
+	}
+	auto lhs_prim = AS_A(lhs_ty.payload, prim_ty);
+	if(!lhs_prim.is_numeric())
+	{
+		return semal_result::err("lhs of arithmetic operation is not a numeric type, but a \"{}\"", lhs_ty.name());
+	}
+	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local);
+	const type_t& rhs_ty = rhs_result.val.ty;
+	if(!rhs_ty.is_prim())
+	{
+		return semal_result::err("rhs of arithmetic operation is not a primitive type, but a \"{}\"", rhs_ty.name());
+	}
+	auto rhs_prim = AS_A(rhs_ty.payload, prim_ty);
+	if(!rhs_prim.is_numeric())
+	{
+		return semal_result::err("rhs of arithmetic operation is not a numeric type, but a \"{}\"", rhs_ty.name());
+	}
+
+	// ensure they are comparable.
+	if(!lhs_ty.is_convertible_to(rhs_ty))
+	{
+		return semal_result::err("operands \"{}\" and \"{}\" of arithmetic operation are not convertible.", lhs_ty.name(), rhs_ty.name());
+	}
+	// if either are floating point, use that.
+	// prefer bigger types too.
+	prim_ty result_prim = lhs_prim;
+	auto lhs_size = std::max(lhs_prim.integral_size(), lhs_prim.floating_point_size());
+	auto rhs_size = std::max(rhs_prim.integral_size(), rhs_prim.floating_point_size());
+	if(!lhs_prim.is_floating_point() && rhs_prim.is_floating_point())
+	{
+		result_prim = rhs_prim;
+	}
+	else if(rhs_size > lhs_size)
+	{
+		result_prim = rhs_prim;
+	}
+
+	sval result_val{.ty = type_t{.payload = result_prim}};
+	if(lhs_ty.qual & typequal_static && rhs_ty.qual & typequal_static)
+	{
+		result_val.ty.qual = result_val.ty.qual | typequal_static;
+		double lhs_val;
+		if(lhs_prim.is_floating_point())
+		{
+			lhs_val = std::get<double>(std::get<literal_val>(lhs_result.val.val));
+		}
+		else
+		{
+			lhs_val = std::get<std::int64_t>(std::get<literal_val>(lhs_result.val.val));
+		}
+		double rhs_val;
+		if(rhs_prim.is_floating_point())
+		{
+			rhs_val = std::get<double>(std::get<literal_val>(rhs_result.val.val));
+		}
+		else
+		{
+			rhs_val = std::get<std::int64_t>(std::get<literal_val>(rhs_result.val.val));
+		}
+
+		double retval;
+		using enum biop_type;
+		switch(expr.type)
+		{
+			case plus:
+				retval = lhs_val + rhs_val;
+			break;
+			case minus:
+				retval = lhs_val - rhs_val;
+			break;
+			case mul:
+				retval = lhs_val * rhs_val;
+			break;
+			case div:
+				if(rhs_val == 0.0f)
+				{
+					return semal_result::err("divide by zero detected at compile time!");
+				}
+				retval = lhs_val / rhs_val;
+			break;
+			default:
+				panic("aaah what arithmetic biop type is this???");
+			break;
+		}
+
+		if(result_prim.is_floating_point())
+		{
+			result_val.val = literal_val{static_cast<double>(retval)};
+		}
+		else
+		{
+			result_val.val = literal_val{static_cast<std::int64_t>(retval)};
+		}
+	}
+	return semal_result
+	{
+		.t = semal_type::misc,
+		.val = result_val
+	};
 }
 
 semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
