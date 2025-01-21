@@ -1265,6 +1265,7 @@ struct semal_local_state
 	scope_type scope = scope_type::_undefined;
 	std::deque<semal_result> unfinished_types = {};
 	string_map<sval> pending_variables = {};
+	string_map<fn_ty> pending_functions = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
 
@@ -4023,7 +4024,35 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 
 semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("metaregion NYI");
+	// time to define some functions.
+	type_t string_literal = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8));
+	fn_ty stringparam_noret
+	{
+		.params = 
+		{
+			string_literal
+		},
+		.return_ty = type_t::create_void_type()
+	};
+	fn_ty strcat_fn
+	{
+		.params = 
+		{
+			string_literal,
+			string_literal
+		},
+		.return_ty = string_literal
+	};
+	local->pending_functions.emplace("add_link_library", stringparam_noret);
+	local->pending_functions.emplace("add_source", stringparam_noret);
+	local->pending_functions.emplace("set_executable", stringparam_noret);
+	local->pending_functions.emplace("set_library", stringparam_noret);
+	local->pending_functions.emplace("set_object", stringparam_noret);
+	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
+	local->pending_functions.emplace("__msg", stringparam_noret);
+	local->pending_functions.emplace("__warn", stringparam_noret);
+	local->pending_functions.emplace("_cstrcat", strcat_fn);
+	return semal_result::null();
 }
 
 semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local)
@@ -4113,6 +4142,11 @@ semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_v
 		local->declare_variable(name, val);
 	}
 	parent->pending_variables.clear();
+	for(const auto& [name, val] : parent->pending_functions)
+	{
+		local->declare_function(name, val);
+	}
+	parent->pending_functions.clear();
 	return semal_result::null();
 }
 
@@ -4136,7 +4170,8 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	}
 	else if(IS_A(stmt.stmt_, ast_metaregion_stmt))
 	{
-		return semal_metaregion_stmt(AS_A(stmt.stmt_, ast_metaregion_stmt), n, source, local);
+		n.children.clear();
+		return semal_result::null();
 	}
 	else if(IS_A(stmt.stmt_, ast_designator_stmt))
 	{
@@ -6723,6 +6758,14 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	node* build = try_find_build_metaregion(ast);
 	if(build != nullptr)
 	{
+		semal_local_state local;
+		semal_local_state* ptr = &local;
+		semal_result metaregion_result = semal_metaregion_stmt(AS_A(AS_A(build->payload, ast_stmt).stmt_, ast_metaregion_stmt), *build, source, ptr);
+		verify_semal_result(metaregion_result, *build, source);
+		for(node& child : build->children)
+		{
+			semal_result child_result = semal(child, source, ptr);
+		}
 		/*
 		auto temp_state = *types;
 		semal(*build, temp_state, ctx);
