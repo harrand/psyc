@@ -1315,6 +1315,8 @@ struct semal_global_state
 	path_map<srcloc> added_source_files = {};
 	path_map<srcloc> added_link_libraries = {};
 	std::deque<semal_local_state> locals = {};
+	std::unordered_set<std::filesystem::path> compiled_source_files = {};
+	std::unordered_set<std::filesystem::path> registered_link_libraries = {};
 
 	type_t parse_type(std::string_view type_name) const
 	{
@@ -1505,58 +1507,6 @@ std::pair<type_t, bool> semal_local_state::parse_type_global_fallback(std::strin
 		parse = global.parse_type(type_name);
 	}
 	return {parse, need_global};
-}
-
-semal_local_state create_metaregion_state()
-{
-	using enum prim_ty::type;
-	const type_t string_view_ty = type_t::create_pointer_type(type_t::create_primitive_type(u8));
-	auto ret = semal_local_state
-	{
-		.scope = scope_type::metaregion,
-		.state =
-		{
-			.functions =
-			{
-				{"__add_source_file", fn_ty{
-					.params =
-					{
-						string_view_ty
-					},
-					.return_ty = type_t::create_void_type()
-				}},
-				{"__add_link_library", fn_ty{
-					.params =
-					{
-						string_view_ty
-					},
-					.return_ty = type_t::create_void_type()
-				}},
-				{"__set_executable", fn_ty{
-					.params =
-					{
-						string_view_ty
-					},
-					.return_ty = type_t::create_void_type()
-				}},
-				{"__set_library", fn_ty{
-					.params =
-					{
-						string_view_ty
-					},
-					.return_ty = type_t::create_void_type()
-				}},
-				{"__set_object", fn_ty{
-					.params =
-					{
-						string_view_ty
-					},
-					.return_ty = type_t::create_void_type()
-				}},
-			}
-		},
-	};
-	return ret;
 }
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -3735,6 +3685,19 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case field:
 			return semal_field_biop_expr(expr, n, source, local);
 		break;
+		case ptr_field:
+		{
+//semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+			ast_unop_expr deref
+			{
+				.type = unop_type::deref,
+				.rhs = expr.lhs
+			};
+			ast_biop_expr deref_expr = expr;
+			deref_expr.lhs = ast_expr{.expr_ = deref};
+			return semal_field_biop_expr(deref_expr, n, source, local);
+		}
+		break;
 		default:
 			panic("unknown biop type detected {}", n.begin_location);
 		break;
@@ -3772,7 +3735,8 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	{
 		return semal_result::err("cannot deref non-pointer-type \"{}\"", ty.name());
 	}
-	ty = *AS_A(ty.payload, ptr_ty).underlying_ty;
+	ptr_ty cpy = AS_A(ty.payload, ptr_ty);
+	ty = *cpy.underlying_ty;
 	return expr_result;
 }
 
@@ -4056,7 +4020,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		.return_ty = string_literal
 	};
 	local->pending_functions.emplace("__add_link_library", stringparam_noret);
-	local->pending_functions.emplace("__add_source", stringparam_noret);
+	local->pending_functions.emplace("__add_source_file", stringparam_noret);
 	local->pending_functions.emplace("__set_executable", stringparam_noret);
 	local->pending_functions.emplace("__set_library", stringparam_noret);
 	local->pending_functions.emplace("__set_object", stringparam_noret);
@@ -6745,6 +6709,7 @@ CHORD_END
 
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
+void compile_file(std::filesystem::path file, compile_args& args);
 void compile_source(std::filesystem::path file, std::string source, compile_args& args)
 {
 	timer_restart();
@@ -6778,6 +6743,21 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 		{
 			semal_result child_result = semal(child, source, ptr);
 		}
+		for(const auto& [src_path, included_from_srcloc] : global.added_source_files)
+		{
+			if(!global.compiled_source_files.contains(src_path))
+			{
+				compile_file(src_path, args);
+			}
+		}
+		for(const auto& [lib_path, included_from_srcloc] : global.added_link_libraries)
+		{
+			if(!global.registered_link_libraries.contains(lib_path))
+			{
+				args.link_libraries.push_back(lib_path);
+				global.registered_link_libraries.insert(lib_path);
+			}
+		}
 		/*
 		auto temp_state = *types;
 		semal(*build, temp_state, ctx);
@@ -6798,6 +6778,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	}
 	//semal(ast, *types, ctx, true);
 	semal(ast, source);
+	global.compiled_source_files.insert(file);
 
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -6858,6 +6839,11 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
 		global.added_link_libraries.emplace(path, n.begin_location);
+	}
+	else if(call.function_name == "__add_source_file")
+	{
+		std::filesystem::path path = get_as_string(call.params.front());
+		global.added_source_files.emplace(path, n.begin_location);
 	}
 	return semal_result::null();
 }
