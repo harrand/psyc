@@ -116,6 +116,9 @@ consteval int payload_index()
 	}
 }
 
+#define IS_A(variant, type) ((variant).index() == payload_index<type, std::decay_t<decltype((variant))>>())
+#define AS_A(variant, type) std::get<type>(variant)
+
 
 std::chrono::time_point<std::chrono::system_clock> now;
 void timer_restart()
@@ -2449,6 +2452,18 @@ enum class biop_type
 	assign,
 	_count
 };
+constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_precedence
+{
+	1,
+	1,
+	1,
+	1,
+	2,
+	3,
+	3,
+	1,
+	0
+};
 
 struct ast_biop_expr
 {
@@ -2470,6 +2485,11 @@ struct ast_biop_expr
 			"compare_eq",
 			"assign"
 		}[static_cast<int>(this->type)]);
+	}
+
+	unsigned int precedence() const
+	{
+		return biop_precedence[static_cast<int>(this->type)];
 	}
 };
 
@@ -2533,6 +2553,7 @@ struct ast_expr
 		ast_unop_expr,
 		ast_blkinit_expr
 	> expr_;
+	bool parenthesised = false;
 
 	const char* type_name() const
 	{
@@ -2548,6 +2569,19 @@ struct ast_expr
 			"unop",
 			"blockinit"
 		}[this->expr_.index()];
+	}
+
+	unsigned int precedence() const
+	{
+		if(this->parenthesised)
+		{
+			return 4;
+		}
+		if(IS_A(expr_, ast_biop_expr))
+		{
+			return AS_A(expr_, ast_biop_expr).precedence();
+		}
+		return 0;
 	}
 
 	std::string value_tostring() const
@@ -3090,9 +3124,9 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 			}
 			chord_result result = entry.chord_fn(nodes, state);
 			state.chord_invocation_count++;
-			if(verbose_parse)
+			if(verbose_parse && nodes.size())
 			{
-				std::print("{}{}\n\t=> ", entry.description, entry.extra.extensible ? ", ..." : "");
+				std::print("{}\n{}{}\n\t=> ", nodes.front().begin_location, entry.description, entry.extra.extensible ? ", ..." : "");
 			}
 			switch(result.action)
 			{
@@ -3391,9 +3425,6 @@ struct semal_context
 
 constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
 constexpr const char unnamed_enum_ty[] = "_unnamed_enum";
-
-#define IS_A(variant, type) ((variant).index() == payload_index<type, std::decay_t<decltype((variant))>>())
-#define AS_A(variant, type) std::get<type>(variant)
 
 void handle_defer(std::span<node> children)
 {
@@ -3803,6 +3834,10 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
 	const type_t& lhs_ty = lhs_result.val.ty;
 	if(!(lhs_ty.qual & typequal_mut))
 	{
@@ -4703,12 +4738,12 @@ std::unordered_set<token> unop_tokens{};
 		LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(x), NODE(ast_expr)), FN\
 		{\
 			auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);\
-			const auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);\
-			if(lhs_expr.expr_.index() == payload_index<ast_biop_expr, decltype(lhs_expr.expr_)>())\
+			auto& rhs_expr = std::get<ast_expr>(nodes[2].payload);\
+			if(IS_A(lhs_expr.expr_, ast_biop_expr))\
 			{\
-				/*appending biop to an assignment expression (i.e x = 5@s32) means x = (5@s32) */\
 				auto& lhs_biop_expr = std::get<ast_biop_expr>(lhs_expr.expr_);\
-				if(lhs_biop_expr.type == biop_type::assign)\
+				unsigned int prec = biop_precedence[static_cast<int>(biop_type::biop_ty)];\
+				if(prec > lhs_expr.precedence())\
 				{\
 					auto& actual_rhs_expr = *lhs_biop_expr.rhs;\
 					actual_rhs_expr = ast_expr{.expr_ = ast_biop_expr\
@@ -4768,12 +4803,32 @@ std::unordered_set<token> unop_tokens{};
 			{\
 				chord_error("ksdfkjdshkfjh");\
 			}\
-			decl.initialiser.value() = ast_expr{.expr_ = ast_biop_expr\
+			ast_expr& lhs_expr = decl.initialiser.value();\
+			const ast_expr& rhs_expr = AS_A(nodes[2].payload, ast_expr);\
+			bool rearranged = false;\
+			if(IS_A(lhs_expr.expr_, ast_biop_expr))\
 			{\
-				.lhs = decl.initialiser.value(),\
-				.type = biop_type::biop_ty,\
-				.rhs = std::get<ast_expr>(nodes[2].payload)\
-			}};\
+				auto& lhs_biop_expr = std::get<ast_biop_expr>(lhs_expr.expr_);\
+				if(biop_precedence[static_cast<int>(biop_type::biop_ty)] > lhs_expr.precedence())\
+				{\
+					lhs_biop_expr.rhs = ast_expr{.expr_ = ast_biop_expr\
+						{\
+							.lhs = *lhs_biop_expr.rhs,\
+							.type = biop_type::biop_ty,\
+							.rhs = rhs_expr\
+						}};\
+					rearranged = true;\
+				}\
+			}\
+			if(!rearranged)\
+			{\
+				decl.initialiser.value() = ast_expr{.expr_ = ast_biop_expr\
+				{\
+					.lhs = decl.initialiser.value(),\
+					.type = biop_type::biop_ty,\
+					.rhs = std::get<ast_expr>(nodes[2].payload)\
+				}};\
+			}\
 			return\
 			{\
 				.action = parse_action::reduce,\
@@ -6407,11 +6462,19 @@ CHORD_END
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), NODE(ast_expr)), FN
 	{
-		const auto& lhs_expr = std::get<ast_expr>(nodes[0].payload);
+		auto lhs_expr = std::get<ast_expr>(nodes[0].payload);
 		if(lhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(lhs_expr.expr_)>())
 		{
-			const char* expr_name = lhs_expr.type_name();
-			chord_error("lhs of expr.expr is always expected to be a symbol expr (for now). you have supplied a {} expression", expr_name);
+			// what if its a biop?
+			if(IS_A(lhs_expr.expr_, ast_biop_expr))
+			{
+				lhs_expr = *AS_A(lhs_expr.expr_, ast_biop_expr).rhs;
+			}
+			else
+			{
+				const char* expr_name = lhs_expr.type_name();
+				chord_error("lhs of expr.expr is always expected to be a symbol expr (for now). you have supplied a {} expression", expr_name);
+			}
 		}
 		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
 		auto& expr_node = nodes[2];
