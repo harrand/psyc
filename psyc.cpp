@@ -9,6 +9,7 @@
 #include <sstream>
 #include <cstdint>
 #include <cstddef>
+#include <cstdlib>
 #include <array>
 #include <charconv>
 #include <variant>
@@ -4220,6 +4221,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("__set_object", stringparam_noret);
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
+	local->pending_functions.emplace("__error", stringparam_noret);
 	local->pending_functions.emplace("__warn", stringparam_noret);
 	local->pending_functions.emplace("_cstrcat", strcat_fn);
 	return semal_result::null();
@@ -7057,6 +7059,9 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		semal_result result = semal_expr(expr, n, source, local);
 		return std::get<std::string>(std::get<literal_val>(result.val.val));
 	};
+	type_t strlit = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8));
+	strlit.qual = typequal_static;
+
 	if(call.function_name == "__add_link_library")
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
@@ -7066,6 +7071,84 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
 		global.added_source_files.emplace(path, n.begin_location);
+	}
+	else if(call.function_name == "__set_object")
+	{
+		// todo: impl
+	}
+	else if(call.function_name == "__msg")
+	{
+		std::string msg = get_as_string(call.params.front());
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		message(n.begin_location, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+	}
+	else if(call.function_name == "__warning")
+	{
+		std::string msg = get_as_string(call.params.front());
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		warning(n.begin_location, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+	}
+	else if(call.function_name == "__error")
+	{
+		std::string msg = get_as_string(call.params.front());
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		error(n.begin_location, "{}", msg);
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+	}
+	else if(call.function_name == "__env")
+	{
+		std::string envvar_name = get_as_string(call.params.front());
+		const char* envval = std::getenv(envvar_name.c_str());
+		std::string envstr = "";
+		if(envval != nullptr)
+		{
+			envstr = envval;
+		}
+		return
+		{
+			.t = semal_type::misc,
+			.label = std::format("__env({})", envvar_name),
+			.val =
+			{
+				.val = literal_val{envstr},
+				.ty = strlit
+			}
+		};
+	}
+	else if(call.function_name == "__concat")
+	{
+		std::string lhs = get_as_string(call.params[0]);
+		std::string rhs = get_as_string(call.params[1]);
+		std::string result = lhs + rhs;
+
+		return
+		{
+			.t = semal_type::misc,
+			.label = result,
+			.val =
+			{
+				.val = literal_val{result},
+				.ty = strlit
+			}
+		};
+	}
+	else if(call.function_name.starts_with("__"))
+	{
+		return semal_result::err("unknown builtin \"{}\"", call.function_name);
 	}
 	return semal_result::null();
 }
