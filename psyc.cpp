@@ -935,7 +935,7 @@ struct type_t
 		return false;
 	}
 
-	llvm::Type* llvm();
+	llvm::Type* llvm() const;
 
 	std::string name() const
 	{
@@ -1518,7 +1518,7 @@ std::pair<type_t, bool> semal_local_state::parse_type_global_fallback(std::strin
 }
 
 
-llvm::Type* type_t::llvm()
+llvm::Type* type_t::llvm() const
 {
 	if(this->is_badtype())
 	{
@@ -1531,6 +1531,58 @@ llvm::Type* type_t::llvm()
 	if(this->is_struct())
 	{
 		return global.llvm_structs.at(AS_A(this->payload, struct_ty));
+	}
+
+	if(this->is_prim())
+	{
+		auto prim = AS_A(this->payload, prim_ty);
+		using enum prim_ty::type;
+		switch(prim.p)
+		{
+			case s64:
+				[[fallthrough]];
+			case u64:
+				return llvm::Type::getInt64Ty(*codegen.ctx);	
+			break;
+			case s32:
+				[[fallthrough]];
+			case u32:
+				return llvm::Type::getInt32Ty(*codegen.ctx);
+			break;
+
+			case s16:
+				[[fallthrough]];
+			case u16:
+				return llvm::Type::getInt16Ty(*codegen.ctx);
+			break;
+
+			case s8:
+				[[fallthrough]];
+			case u8:
+				return llvm::Type::getInt8Ty(*codegen.ctx);
+			break;
+
+			case v0:
+				return llvm::Type::getVoidTy(*codegen.ctx);
+			break;
+
+			case boolean:
+				return llvm::Type::getInt1Ty(*codegen.ctx);
+			break;
+
+			case f64:
+				return llvm::Type::getDoubleTy(*codegen.ctx);
+			break;
+			case f32:
+				return llvm::Type::getFloatTy(*codegen.ctx);
+			break;
+			default:
+			{
+				auto name = prim.name();
+				panic("dont know how to convert primitive type \"{}\" to llvm type", name);
+			}
+			break;
+		}
 	}
 	auto name = this->name();
 	panic("dont know how to convert type \"{}\" to llvm type", name);
@@ -4439,7 +4491,33 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 			if(parent->unfinished_types.size())
 			{
 				semal_result last = parent->unfinished_types.back();
-				panic_ifnt(last.t == semal_type::function_decl || last.t == semal_type::struct_decl || last.t == semal_type::enum_decl, "when popping context (closing of block {}), last unfinished type was detected, but it was neither a non-extern function, enum nor struct", n.end_location);
+				switch(last.t)
+				{
+					case semal_type::struct_decl:
+						if(do_codegen)
+						{
+							std::string_view structname = last.label;
+							semal_state2::struct_value* structval = std::get<0>(local->find_struct(structname));
+							panic_ifnt(structval != nullptr, "waaah");
+							struct_ty ty = *structval;
+							std::vector<llvm::Type*> member_tys;
+							for(const auto& [name, memty] : ty.members)
+							{
+								member_tys.push_back(memty->llvm());
+							}
+							global.llvm_structs[ty] = llvm::StructType::create(member_tys, structname);
+						}
+					break;
+					case semal_type::function_decl:
+
+					break;
+					case semal_type::enum_decl:
+
+					break;
+					default:
+						panic("when popping context (closing of block {}), last unfinished type was detected, but it was neither a non-extern function, enum nor struct", n.end_location);
+					break;
+				}
 				parent->unfinished_types.pop_back();
 			}
 		}
