@@ -4032,6 +4032,7 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	sval::struct_val table = {};
 	semal_result blk{.t = semal_type::blkinit, .label = expr.type_name, .val = empty_structinit};
 	local->unfinished_types.push_back(blk);
+	auto& structinit = blk.val;
 	bool is_static = true;
 	// codegen will need to do a bunch of work here to actually create the structinit.
 	for(const ast_designator_stmt& desig : expr.initialisers)
@@ -4052,8 +4053,8 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	}
 	if(is_static)
 	{
-		empty_structinit.val = table;
-		blk.val.ty.qual = blk.val.ty.qual | typequal_static;
+		structinit.val = table;
+		structinit.ty.qual = structinit.ty.qual | typequal_static;
 	}
 	local->unfinished_types.pop_back();
 	return blk;
@@ -4319,6 +4320,13 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
 		}
 		// todo: codegen needs to do a conversion here if the types are convertible but dont exactly match.
+		if(actual_result.val.ty.qual & typequal_static)
+		{
+			// if the init expr of a designator is static, then the designator itself should yield static
+			// this is safe as (T static) can convert to T.
+			// and in some cases if all designators are static then some useful optimisation can occur.
+			expected_ty.qual = expected_ty.qual | typequal_static;
+		}
 		actual_result.val.ty = expected_ty;
 		return actual_result;
 	}
