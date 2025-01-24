@@ -19,13 +19,17 @@
 #include <unordered_set>
 #include <chrono>
 #include <deque>
+#include <memory>
 #ifdef _WIN32
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/IRBuilder.h"
 
 #define STRINGIFY(...) #__VA_ARGS__
 
@@ -3253,6 +3257,32 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 	return state.nodes.front();
 }
 
+
+//////////////////////////// CODEGEN -> LLVM-IR ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE codegen
+
+struct codegen_t
+{
+	std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
+	std::unique_ptr<llvm::Module> mod = nullptr;
+	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
+} codegen;
+
+void codegen_initialise(std::string_view name)
+{
+	codegen.ctx = std::make_unique<llvm::LLVMContext>();
+	codegen.mod = std::make_unique<llvm::Module>(name, *codegen.ctx);
+	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
+}
+
+void codegen_terminate()
+{
+	codegen.ir = nullptr;
+	codegen.mod = nullptr;
+	codegen.ctx = nullptr;
+}
+
 //////////////////////////// SEMAL ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE semal
@@ -4493,10 +4523,6 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 //////////////////////////// META ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE meta
-
-//////////////////////////// CODEGEN -> LLVM-IR ////////////////////////////
-#undef COMPILER_STAGE
-#define COMPILER_STAGE codegen
 
 //////////////////////////// ASSEMBLE -> OBJECTS ////////////////////////////
 #undef COMPILER_STAGE
@@ -7120,8 +7146,11 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
+	auto name = args.build_file.stem().string();
+	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
+	codegen_terminate();
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
