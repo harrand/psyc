@@ -3527,7 +3527,7 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 		else if(IS_A(expr.value, std::string))
 		{
 			std::string_view str = AS_A(expr.value, std::string);
-			ret.ll = codegen.ir->CreateGlobalString(str, std::format("strlit_{}", str), 0, codegen.mod.get());
+			ret.ll = codegen.ir->CreateGlobalString(str, "strlit", 0, codegen.mod.get());
 		}
 	codegen_logic_end
 	return
@@ -4536,7 +4536,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 	std::vector<semal_result> children_results(n.children.size());
 	for(std::size_t i = 0; i < n.children.size(); i++)
 	{
-		children_results[i] = semal(n.children[i], source, local);
+		children_results[i] = semal(n.children[i], source, local, do_codegen);
 	}
 
 	// special logic for block statements AFTER its done its children (pop context)
@@ -7095,6 +7095,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	time_parse += elapsed_time();
 	timer_restart();
 	auto now_cpy = now;
+	auto codegen_cpy = time_codegen;
 
 	node* build = try_find_build_metaregion(ast);
 	if(build != nullptr)
@@ -7141,12 +7142,15 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 		*/
 	}
 	//semal(ast, *types, ctx, true);
-	semal(ast, source);
+	semal(ast, source, nullptr, true);
 	global.compiled_source_files.insert(file);
 
+	auto codegen_diff = time_codegen - codegen_cpy;
 	timer_restart();
 	auto right_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 	time_semal += right_now - std::chrono::duration_cast<std::chrono::milliseconds>(now_cpy.time_since_epoch()).count();
+	// some of the semal may have been spent codegen'ing. remove that.
+	time_semal -= codegen_diff;
 
 	// todo: codegen
 
