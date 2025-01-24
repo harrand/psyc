@@ -365,6 +365,7 @@ struct compile_args
 	bool verbose_lex = false;
 	bool verbose_ast = false;
 	bool verbose_parse = false;
+	bool verbose_codegen = false;
 	std::filesystem::path build_file = {};
 	std::filesystem::path output_dir = {};
 	std::vector<std::filesystem::path> link_libraries = {};
@@ -396,11 +397,16 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.verbose_parse = true;
 		}
+		else if(arg == "--verbose-codegen")
+		{
+			ret.verbose_codegen = true;
+		}
 		else if(arg == "--verbose-all")
 		{
 			ret.verbose_lex = true;
 			ret.verbose_ast = true;
 			ret.verbose_parse = true;
+			ret.verbose_codegen = true;
 		}
 		else if(arg == "-o")
 		{
@@ -3280,8 +3286,15 @@ void codegen_initialise(std::string_view name)
 	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
 }
 
-void codegen_terminate()
+void codegen_terminate(bool verbose_print)
 {
+	if(codegen.mod != nullptr && verbose_print)
+	{
+		std::string ir;
+		llvm::raw_string_ostream os{ir};
+		codegen.mod->print(os, nullptr);
+		std::println("llvm IR is as follows:\n\033[1;34m{}\033[0m", ir);
+	}
 	codegen.ir = nullptr;
 	codegen.mod = nullptr;
 	codegen.ctx = nullptr;
@@ -7177,7 +7190,7 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
-	codegen_terminate();
+	codegen_terminate(args.verbose_codegen);
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
