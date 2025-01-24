@@ -28,6 +28,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
 
@@ -535,24 +536,6 @@ struct prim_ty
 
 		"v0"
 	};
-	static constexpr std::array<const char*, static_cast<int>(type::_count)> llvm_type_names =
-	{
-		"i64",
-		"i32",
-		"i16",
-		"i8",
-		"i64",
-		"i32",
-		"i16",
-		"i8",
-
-		"i8",
-
-		"f64",
-		"f32",
-
-		"void"
-	};
 	type p;
 
 	bool is_numeric() const
@@ -653,10 +636,6 @@ struct prim_ty
 	{
 		return type_names[static_cast<int>(p)];
 	}
-	std::string llvm_typename() const
-	{
-		return llvm_type_names[static_cast<int>(p)];
-	}
 	bool operator==(const prim_ty& rhs) const = default;
 };
 
@@ -665,12 +644,10 @@ struct type_t;
 struct struct_ty
 {
 	string_map<box<type_t>> members = {};
-	std::string maybe_name = "_STRUCT_ERROR";
 	std::string name() const
 	{
 		return "struct";
 	}
-	std::string llvm_typename() const {return std::format("%{}", maybe_name);}
 	bool operator==(const struct_ty& rhs) const = default;
 };
 
@@ -682,7 +659,6 @@ struct enum_ty
 	{
 		return "enum";
 	}
-	std::string llvm_typename() const;
 	bool operator==(const enum_ty& rhs) const = default;
 };
 
@@ -690,10 +666,6 @@ struct ptr_ty
 {
 	box<type_t> underlying_ty;
 	std::string name() const;
-	std::string llvm_typename() const
-	{
-		return "ptr";	
-	}
 	static ptr_ty ref(const type_t& t);
 	bool operator==(const ptr_ty& rhs) const = default;
 };
@@ -704,10 +676,6 @@ struct fn_ty
 	std::vector<type_t> params;
 	box<type_t> return_ty;
 	std::string name() const;
-	std::string llvm_typename() const
-	{
-		return "_FN_ERROR_";
-	}
 	bool operator==(const fn_ty& rhs) const = default;
 };
 
@@ -717,10 +685,6 @@ struct meta_ty
 	bool operator==(const meta_ty& rhs) const = default;
 
 	std::string name() const;
-	std::string llvm_typename() const
-	{
-		return "_META_ERROR_";
-	}
 };
 
 #define meta_type "type"
@@ -749,7 +713,6 @@ struct type_t
 	{
 		return create_primitive_type(prim_ty::type::v0);
 	}
-
 
 	static type_t create_pointer_type(const type_t& pointee)
 	{
@@ -947,22 +910,9 @@ struct type_t
 		return false;
 	}
 
-	std::string llvm_typename() const
+	llvm::Type* llvm()
 	{
-		std::string ret;
-		std::visit([&ret](auto&& arg)
-		{
-			if constexpr(std::is_same_v<std::decay_t<decltype(arg)>, std::monostate>)
-			{
-				ret = "<bad type>";
-			}
-			else
-			{
-				ret = arg.llvm_typename();	
-			}
-			
-		}, this->payload);
-		return ret;
+		return nullptr;
 	}
 
 	std::string name() const
@@ -1053,11 +1003,6 @@ std::string ptr_ty::name() const
 /*static*/ptr_ty ptr_ty::ref(const type_t& t)
 {
 	return {.underlying_ty = {t}};
-}
-
-std::string enum_ty::llvm_typename() const
-{
-	return underlying_ty->llvm_typename();
 }
 
 std::string fn_ty::name() const
@@ -3387,97 +3332,6 @@ std::filesystem::path get_compiler_path()
 	return std::filesystem::canonical("/proc/self/exe");
 	#endif
 }
-
-/*
-sval call_builtin_function(const ast_callfunc_expr& call, semal_state& state, srcloc loc);
-
-struct semal_context
-{
-	enum class type
-	{
-		in_function,
-		in_struct,
-		in_enum,
-		in_metaregion,
-		in_other_statement,
-		undefined
-	};
-	struct entry
-	{
-		type t;
-		std::string name;
-		bool ends_with_return_stmt = false;
-	};
-	std::vector<entry> entries = {};
-	std::unordered_map<std::string, sval> variables_to_exist_in_next_scope = {};
-	bool skip_next_block = false;
-
-	const entry* try_get_parent_function() const
-	{
-		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
-				[](const entry& e)->bool
-				{
-					return e.t == semal_context::type::in_function;
-				});
-		if(iter != this->entries.rend())
-		{
-			return &*iter;
-		}
-		return nullptr;
-	}
-	const entry* try_get_parent_struct() const
-	{
-		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
-				[](const entry& e)->bool
-				{
-					return e.t == semal_context::type::in_struct;
-				});
-		if(iter != this->entries.rend())
-		{
-			return &*iter;
-		}
-		return nullptr;
-	}
-	const entry* try_get_parent_enum() const
-	{
-		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
-				[](const entry& e)->bool
-				{
-					return e.t == semal_context::type::in_enum;
-				});
-		if(iter != this->entries.rend())
-		{
-			return &*iter;
-		}
-		return nullptr;
-	}
-	const entry* try_get_parent_metaregion() const
-	{
-		auto iter = std::find_if(this->entries.rbegin(), this->entries.rend(),
-				[](const entry& e)->bool
-				{
-					return e.t == semal_context::type::in_metaregion;
-				});
-		if(iter != this->entries.rend())
-		{
-			return &*iter;
-		}
-		return nullptr;
-	}
-
-	type most_recent_entry_type() const
-	{
-		if(this->entries.empty())
-		{
-			return type::undefined;
-		}
-		return this->entries.back().t;
-	}
-};
-*/
-
-constexpr const char unnamed_struct_ty[] = "_unnamed_struct";
-constexpr const char unnamed_enum_ty[] = "_unnamed_enum";
 
 void handle_defer(std::span<node> children)
 {
