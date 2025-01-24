@@ -25,6 +25,8 @@
 #include <windows.h>
 #endif
 
+#include "llvm/IR/Value.h"
+
 #define STRINGIFY(...) #__VA_ARGS__
 
 std::string get_preload_source();
@@ -1090,6 +1092,7 @@ struct sval
 	using struct_val = std::unordered_map<std::string, sval>;
 	std::variant<std::monostate, literal_val, struct_val> val = std::monostate{};
 	type_t ty;
+	llvm::Value* ll = nullptr;
 
 	bool operator==(const sval& rhs) const = default;
 
@@ -1252,6 +1255,8 @@ enum class semal_type
 	blkinit,
 	err,
 	misc,
+	variable_use,
+	variable_ref,
 	unknown
 } t;
 
@@ -3566,7 +3571,7 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	{
 		return
 		{
-			.t = semal_type::misc,
+			.t = semal_type::variable_use,
 			.label = std::string{symbol},
 			.val = *local_iter
 		};
@@ -3575,7 +3580,7 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	{
 		return
 		{
-			.t = semal_type::misc,
+			.t = semal_type::variable_use,
 			.label = std::string{symbol},
 			.val = *global_iter
 		};
@@ -3786,7 +3791,7 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		member_ty.qual = ty.qual;
 		return
 		{
-			.t = semal_type::misc,
+			.t = lhs_result.t,
 			.label = std::format("{}::{}", ty.name(), rhs_symbol),
 			.val = wrap_type(member_ty)
 		};
@@ -3914,25 +3919,38 @@ semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
 	// todo: do not allow ref on an rvalue
-	expr_result.label = std::format("ref {}", expr_result.label);
-	expr_result.val.val = std::monostate{};
-	expr_result.val.ty = type_t::create_pointer_type(expr_result.val.ty);
-	return expr_result;
+	return
+	{
+		.t = expr_result.t == semal_type::variable_use ? semal_type::variable_ref : semal_type::misc,
+		.label = std::format("ref {}", expr_result.label),
+		.val = 
+		{
+			.val = std::monostate{},
+			.ty = type_t::create_pointer_type(expr_result.val.ty)
+		}
+	};
 }
 
 semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
-	expr_result.label = std::format("deref {}", expr_result.label);
-	expr_result.val.val = std::monostate{};
-	auto& ty = expr_result.val.ty;
+	type_t ty = expr_result.val.ty;
 	if(!ty.is_ptr())
 	{
 		return semal_result::err("cannot deref non-pointer-type \"{}\"", ty.name());
 	}
-	ptr_ty cpy = AS_A(ty.payload, ptr_ty);
-	ty = *cpy.underlying_ty;
-	return expr_result;
+	ptr_ty ptr = AS_A(ty.payload, ptr_ty);
+	ty = *ptr.underlying_ty;
+	return
+	{
+		.t = expr_result.t == semal_type::variable_ref ? semal_type::variable_use : semal_type::misc,
+		.label = std::format("deref {}", expr_result.label),
+		.val =
+		{
+			.val = std::monostate{},
+			.ty = ty
+		}
+	};
 }
 
 semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
