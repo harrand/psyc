@@ -1089,7 +1089,7 @@ using literal_val = std::variant<std::int64_t, double, char, std::string, bool>;
 
 struct sval
 {
-	using struct_val = std::unordered_map<std::string, sval>;
+	using struct_val = string_map<sval>;
 	std::variant<std::monostate, literal_val, struct_val> val = std::monostate{};
 	type_t ty;
 	llvm::Value* ll = nullptr;
@@ -3789,11 +3789,22 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		// remember the struct member will inherit the qualifiers of the struct value.
 		type_t member_ty = *iter->second;
 		member_ty.qual = ty.qual;
+
+		sval member{.ty = member_ty};
+		if(ty.qual & typequal_static)
+		{
+			auto name = ty.name();
+			panic_ifnt(IS_A(lhs_result.val.val, sval::struct_val), "sval of struct type \"{}\" {} did not have struct_val sval payload.", name, n.begin_location);
+			auto structval = AS_A(lhs_result.val.val, sval::struct_val);
+			auto iter = structval.find(rhs_symbol);
+			panic_ifnt(iter != structval.end(), "static value of struct type \"{}\"'s struct_val did not contain an entry for member \"{}\"", name, rhs_symbol);
+			member.val = iter->second.val;
+		}
 		return
 		{
 			.t = lhs_result.t,
 			.label = std::format("{}::{}", ty.name(), rhs_symbol),
-			.val = wrap_type(member_ty)
+			.val = member
 		};
 	}
 	else
@@ -3918,7 +3929,7 @@ semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	{
 		return semal_result::err("attempt to negate non-numeric primitive \"{}\"", ty.name());
 	}
-	if(ty.qual | typequal_static)
+	if(ty.qual & typequal_static)
 	{
 		auto& lit = AS_A(result.val.val, literal_val);
 		if(IS_A(lit, std::int64_t))
@@ -4021,10 +4032,15 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	sval::struct_val table = {};
 	semal_result blk{.t = semal_type::blkinit, .label = expr.type_name, .val = empty_structinit};
 	local->unfinished_types.push_back(blk);
+	bool is_static = true;
 	// codegen will need to do a bunch of work here to actually create the structinit.
 	for(const ast_designator_stmt& desig : expr.initialisers)
 	{
 		semal_result desig_result = semal_designator_stmt(desig, n, source, local);
+		if(!(desig_result.val.ty.qual & typequal_static))
+		{
+			is_static = false;
+		}
 		if(desig_result.val.has_val())
 		{
 			table[desig.name] = desig_result.val;
@@ -4034,7 +4050,11 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 			return desig_result;
 		}
 	}
-	empty_structinit.val = table;
+	if(is_static)
+	{
+		empty_structinit.val = table;
+		blk.val.ty.qual = blk.val.ty.qual | typequal_static;
+	}
 	local->unfinished_types.pop_back();
 	return blk;
 }
@@ -4111,7 +4131,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		if(decl.initialiser.has_value())
 		{
 			// make sure its convertible to the initialiser expression if it exists.
-			if(!parse_ty.is_convertible_to(val.ty))
+			if(!val.ty.is_convertible_to(parse_ty))
 			{
 				return semal_result::err("decl \"{}\" was defined with explicit type \"{}\", but the initialiser expression type \"{}\" is not implicitly convertible", decl.name, decl.type_name, val.ty.name());
 			}
@@ -6510,12 +6530,13 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot), NODE(ast_expr)), FN
 	{
 		auto lhs_expr = std::get<ast_expr>(nodes[0].payload);
-		if(lhs_expr.expr_.index() != payload_index<ast_symbol_expr, decltype(lhs_expr.expr_)>())
+		while(!IS_A(lhs_expr.expr_, ast_symbol_expr))
 		{
 			// what if its a biop?
 			if(IS_A(lhs_expr.expr_, ast_biop_expr))
 			{
-				lhs_expr = *AS_A(lhs_expr.expr_, ast_biop_expr).rhs;
+				auto biop = AS_A(lhs_expr.expr_, ast_biop_expr);
+				lhs_expr = *biop.rhs;
 			}
 			else
 			{
