@@ -346,6 +346,7 @@ void generic_message(err ty, const char* msg, srcloc where, std::format_args&& a
 #define message(loc, msg, ...) generic_message(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
 #define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
+std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
 //////////////////////////// ARGPARSE ////////////////////////////
 #undef COMPILER_STAGE
@@ -3269,6 +3270,9 @@ struct codegen_t
 	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
 } codegen;
 
+#define codegen_logic_begin {auto impl_codegen_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+#define codegen_logic_end time_codegen += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_codegen_time_;}
+
 void codegen_initialise(std::string_view name)
 {
 	codegen.ctx = std::make_unique<llvm::LLVMContext>();
@@ -3488,11 +3492,36 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 
 semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	sval ret{.val = expr.value, .ty = expr.get_type()};
+	if(do_codegen)
+	codegen_logic_begin
+		if(IS_A(expr.value, std::int64_t))
+		{
+			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(expr.value, std::int64_t)), true});
+		}
+		else if(IS_A(expr.value, double))
+		{
+			ret.ll = llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(expr.value, double)});
+		}
+		else if(IS_A(expr.value, char))
+		{
+			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{8, static_cast<std::uint64_t>(AS_A(expr.value, char))});
+		}
+		else if(IS_A(expr.value, bool))
+		{
+			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{1, AS_A(expr.value, bool) ? std::uint64_t{1} : std::uint64_t{0}});
+		}
+		else if(IS_A(expr.value, std::string))
+		{
+			std::string_view str = AS_A(expr.value, std::string);
+			ret.ll = codegen.ir->CreateGlobalString(str, std::format("strlit_{}", str), 0, codegen.mod.get());
+		}
+	codegen_logic_end
 	return
 	{
 		.t = semal_type::misc,
 		.label = "literal",
-		.val = {.val = expr.value, .ty = expr.get_type()}
+		.val = ret
 	};
 }
 
@@ -7030,8 +7059,6 @@ CHORD_END
 //////////////////////////// BUILD SYSTEM ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE build_system
-
-std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
 void compile_file(std::filesystem::path file, compile_args& args);
 void compile_source(std::filesystem::path file, std::string source, compile_args& args)
