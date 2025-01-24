@@ -349,6 +349,14 @@ void generic_message(err ty, const char* msg, srcloc where, std::format_args&& a
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
+struct codegen_t
+{
+	std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
+	std::unique_ptr<llvm::Module> mod = nullptr;
+	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
+} codegen;
+
+
 //////////////////////////// ARGPARSE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE argparse
@@ -651,6 +659,23 @@ struct struct_ty
 	bool operator==(const struct_ty& rhs) const = default;
 };
 
+namespace std
+{
+    template <> struct hash<struct_ty>
+    {
+        size_t operator()(const struct_ty& ty) const
+        {
+			std::size_t ret = 30457934875;
+			for(const auto& [name, ty] : ty.members)
+			{
+				ret ^= std::hash<std::string>{}(name);
+			}
+			return ret;
+        }
+    };
+} // namespace std
+
+
 struct enum_ty
 {
 	box<type_t> underlying_ty;
@@ -910,10 +935,7 @@ struct type_t
 		return false;
 	}
 
-	llvm::Type* llvm()
-	{
-		return nullptr;
-	}
+	llvm::Type* llvm();
 
 	std::string name() const
 	{
@@ -934,12 +956,10 @@ struct type_t
 		{
 			ret += get_typequal_name(typequal_mut);
 		}
-
 		if(this->qual & typequal_weak)
 		{
 			ret += get_typequal_name(typequal_weak);
 		}
-
 		if(this->qual & typequal_static)
 		{
 			ret += get_typequal_name(typequal_static);
@@ -1304,6 +1324,9 @@ struct semal_global_state
 	std::unordered_set<std::filesystem::path> compiled_source_files = {};
 	std::unordered_set<std::filesystem::path> registered_link_libraries = {};
 
+	string_map<llvm::Function*> llvm_functions = {};
+	std::unordered_map<struct_ty, llvm::StructType*> llvm_structs = {};
+
 	type_t parse_type(std::string_view type_name) const
 	{
 		return state.parse_type(type_name);
@@ -1311,7 +1334,6 @@ struct semal_global_state
 };
 
 semal_global_state global;
-
 
 void semal_local_state::declare_function(std::string function_name, fn_ty ty)
 {
@@ -1493,6 +1515,26 @@ std::pair<type_t, bool> semal_local_state::parse_type_global_fallback(std::strin
 		parse = global.parse_type(type_name);
 	}
 	return {parse, need_global};
+}
+
+
+llvm::Type* type_t::llvm()
+{
+	if(this->is_badtype())
+	{
+		return nullptr;
+	}
+	if(this->is_ptr())
+	{
+		return llvm::PointerType::get(*codegen.ctx, 0);
+	}
+	if(this->is_struct())
+	{
+		return global.llvm_structs.at(AS_A(this->payload, struct_ty));
+	}
+	auto name = this->name();
+	panic("dont know how to convert type \"{}\" to llvm type", name);
+	std::unreachable();
 }
 
 //////////////////////////// LEXER -> TOKENS ////////////////////////////
@@ -3213,13 +3255,6 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 //////////////////////////// CODEGEN -> LLVM-IR ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE codegen
-
-struct codegen_t
-{
-	std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
-	std::unique_ptr<llvm::Module> mod = nullptr;
-	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
-} codegen;
 
 #define codegen_logic_begin {auto impl_codegen_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 #define codegen_logic_end time_codegen += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_codegen_time_;}
