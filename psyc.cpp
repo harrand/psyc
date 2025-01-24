@@ -3486,7 +3486,7 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
-semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	return
 	{
@@ -3496,8 +3496,8 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 	};
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local);
-semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
+semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// todo: foreach static param, generate a semal_result, push it, and the caller decl will somehow deal with all of them.
 	// for now, static params are ignored and we only generate one unfinished function.
@@ -3512,7 +3512,7 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 
 	for(const ast_decl& param : expr.params)
 	{
-		semal_result param_result = semal_decl(param, n, source, local);
+		semal_result param_result = semal_decl(param, n, source, local, do_codegen);
 		// so we need this decl to be visible in the *next* scope (if its not extern)
 		// to do this, we use "pending types"
 		if(!expr.is_extern)
@@ -3532,11 +3532,11 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	return ret;
 }
 
-semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local);
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
 
 semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local);
 
-semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	fn_ty callee = {.return_ty = type_t::badtype()};
 	// if you get around to static params and are emitting specific implementations, now is probably the time to do it.
@@ -3573,7 +3573,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	for(std::size_t i = 0; i < actual_params.size(); i++)
 	{
 		const ast_expr& actual = actual_params[i];
-		semal_result actual_result = semal_expr(actual, n, source, local);
+		semal_result actual_result = semal_expr(actual, n, source, local, do_codegen);
 		if(actual_result.is_err())
 		{
 			return actual_result;
@@ -3591,7 +3591,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	};
 }
 
-semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	std::string_view symbol = expr.symbol;
 	// so this could be alot of things.
@@ -3622,26 +3622,26 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	}
 }
 
-semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result ret = {.t = semal_type::struct_decl, .val = {.ty = {.payload = meta_ty{}}}};
 	local->unfinished_types.push_back(ret);
 	return ret;
 }
 
-semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result ret = {.t = semal_type::enum_decl, .val = {.ty = {.payload = meta_ty{}}}};
 	local->unfinished_types.push_back(ret);
 	return ret;
 }
 
-semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// x@y
 	// x is always going to be some kind of expression.
 	// y MUST be a symbol expression.
-	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
 	if(IS_A(expr.rhs->expr_, ast_symbol_expr))
 	{
 		std::string_view symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
@@ -3668,9 +3668,9 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 	}
 }
 
-semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
 	if(lhs_result.is_err())
 	{
 		return lhs_result;
@@ -3685,7 +3685,7 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	{
 		return semal_result::err("lhs of arithmetic operation is not a numeric type, but a \"{}\"", lhs_ty.name());
 	}
-	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local);
+	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	if(rhs_result.is_err())
 	{
 		return rhs_result;
@@ -3784,7 +3784,7 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	};
 }
 
-semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// two possible cases:
 	// a.) some_struct_val.member (struct access)
@@ -3794,7 +3794,7 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	// alternate method: if the expr is a symbol expression then treat the symbol as a direct typename. if the typename exists then (b) else (a)
 	// 		but: alternative could absolutely have a lhs symbol expression. so we'd have to rely on typename parsing failure
 	// they both arent bulletproof, but i think initial method is more ideal.
-	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
 	if(!lhs_result.is_err())
 	{
 		// lhs is a valid expression, assume it's a struct access.
@@ -3878,9 +3878,9 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	std::unreachable();
 }
 
-semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local);
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
 	if(lhs_result.is_err())
 	{
 		return lhs_result;
@@ -3891,7 +3891,7 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 		return semal_result::err("attempt to assign to non-mut type \"{}\"", lhs_ty.name());
 	}
 
-	semal_result rhs_result = semal_expr(*expr.lhs, n, source, local);
+	semal_result rhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
 	const type_t& rhs_ty = rhs_result.val.ty;
 
 	if(!rhs_ty.is_convertible_to(lhs_ty))
@@ -3903,13 +3903,13 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	return lhs_result;
 }
 
-semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	using enum biop_type;
 	switch(expr.type)
 	{
 		case cast:
-			return semal_cast_biop_expr(expr, n, source, local);
+			return semal_cast_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case plus:
 		[[fallthrough]];
@@ -3918,13 +3918,13 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case mul:
 		[[fallthrough]];
 		case div:
-			return semal_arith_biop_expr(expr, n, source, local);
+			return semal_arith_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case field:
-			return semal_field_biop_expr(expr, n, source, local);
+			return semal_field_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case assign:
-			return semal_assign_biop_expr(expr, n, source, local);
+			return semal_assign_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case ptr_field:
 		{
@@ -3936,7 +3936,7 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 			};
 			ast_biop_expr deref_expr = expr;
 			deref_expr.lhs = ast_expr{.expr_ = deref};
-			return semal_field_biop_expr(deref_expr, n, source, local);
+			return semal_field_biop_expr(deref_expr, n, source, local, do_codegen);
 		}
 		break;
 		default:
@@ -3946,9 +3946,9 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 	std::unreachable();
 }
 
-semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result result = semal_expr(*expr.rhs, n, source, local);
+	semal_result result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	const type_t& ty = result.val.ty;
 	if(!ty.is_prim())
 	{
@@ -3978,14 +3978,14 @@ semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	return result;
 }
 
-semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	return semal_result::err("whats an inversion?");
 }
 
-semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
+	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	// todo: do not allow ref on an rvalue
 	return
 	{
@@ -3999,9 +3999,9 @@ semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string
 	};
 }
 
-semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result expr_result = semal_expr(*expr.rhs, n, source, local);
+	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	type_t ty = expr_result.val.ty;
 	if(!ty.is_ptr())
 	{
@@ -4021,22 +4021,22 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	};
 }
 
-semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	using enum unop_type;
 	switch(expr.type)
 	{
 		case minus:
-			return semal_minus_unop_expr(expr, n, source, local);
+			return semal_minus_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		case invert:
-			return semal_invert_unop_expr(expr, n, source, local);
+			return semal_invert_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		case ref:
-			return semal_ref_unop_expr(expr, n, source, local);
+			return semal_ref_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		case deref:
-			return semal_deref_unop_expr(expr, n, source, local);
+			return semal_deref_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		default:
 			panic("unknown unop type detected {}", n.begin_location);
@@ -4045,9 +4045,9 @@ semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_vie
 	std::unreachable();
 }
 
-semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local);
+semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
 
-semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	type_t ty = local->parse_type(expr.type_name);
 	if(ty.is_badtype())
@@ -4067,7 +4067,7 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	// codegen will need to do a bunch of work here to actually create the structinit.
 	for(const ast_designator_stmt& desig : expr.initialisers)
 	{
-		semal_result desig_result = semal_designator_stmt(desig, n, source, local);
+		semal_result desig_result = semal_designator_stmt(desig, n, source, local, do_codegen);
 		if(!(desig_result.val.ty.qual & typequal_static))
 		{
 			is_static = false;
@@ -4090,43 +4090,43 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	return blk;
 }
 
-semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	if(IS_A(expr.expr_, ast_literal_expr))
 	{
-		return semal_literal_expr(AS_A(expr.expr_, ast_literal_expr), n, source, local);
+		return semal_literal_expr(AS_A(expr.expr_, ast_literal_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_funcdef_expr))
 	{
-		return semal_funcdef_expr(AS_A(expr.expr_, ast_funcdef_expr), n, source, local);
+		return semal_funcdef_expr(AS_A(expr.expr_, ast_funcdef_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_callfunc_expr))
 	{
-		return semal_callfunc_expr(AS_A(expr.expr_, ast_callfunc_expr), n, source, local);
+		return semal_callfunc_expr(AS_A(expr.expr_, ast_callfunc_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_symbol_expr))
 	{
-		return semal_symbol_expr(AS_A(expr.expr_, ast_symbol_expr), n, source, local);
+		return semal_symbol_expr(AS_A(expr.expr_, ast_symbol_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_structdef_expr))
 	{
-		return semal_structdef_expr(AS_A(expr.expr_, ast_structdef_expr), n, source, local);
+		return semal_structdef_expr(AS_A(expr.expr_, ast_structdef_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_enumdef_expr))
 	{
-		return semal_enumdef_expr(AS_A(expr.expr_, ast_enumdef_expr), n, source, local);
+		return semal_enumdef_expr(AS_A(expr.expr_, ast_enumdef_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_biop_expr))
 	{
-		return semal_biop_expr(AS_A(expr.expr_, ast_biop_expr), n, source, local);
+		return semal_biop_expr(AS_A(expr.expr_, ast_biop_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_unop_expr))
 	{
-		return semal_unop_expr(AS_A(expr.expr_, ast_unop_expr), n, source, local);
+		return semal_unop_expr(AS_A(expr.expr_, ast_unop_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_blkinit_expr))
 	{
-		return semal_blkinit_expr(AS_A(expr.expr_, ast_blkinit_expr), n, source, local);
+		return semal_blkinit_expr(AS_A(expr.expr_, ast_blkinit_expr), n, source, local, do_codegen);
 	}
 	else
 	{
@@ -4135,7 +4135,7 @@ semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, 
 	return semal_result::err("unreachable code hit within semal_expr (is one of the cases not returning as it should?)");
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
@@ -4144,7 +4144,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	semal_result init_result;
 	if(decl.initialiser.has_value())
 	{
-		init_result = semal_expr(decl.initialiser.value(), n, source, local);
+		init_result = semal_expr(decl.initialiser.value(), n, source, local, do_codegen);
 		if(init_result.is_err())
 		{
 			return init_result;
@@ -4267,21 +4267,21 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	return ret;
 }
 
-semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	return semal_decl(decl_stmt.decl, n, source, local);
+	return semal_decl(decl_stmt.decl, n, source, local, do_codegen);
 }
 
-semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	return semal_expr(expr_stmt.expr, n, source, local);
+	return semal_expr(expr_stmt.expr, n, source, local, do_codegen);
 }
 
-semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	if(return_stmt.retval.has_value())
 	{
-		return semal_expr(return_stmt.retval.value(), n, source, local);
+		return semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
 	}
 	else
 	{
@@ -4323,7 +4323,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	return semal_result::null();
 }
 
-semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	std::string_view desig_name = designator_stmt.name;
 	const ast_expr& desig_expr = *designator_stmt.initialiser;
@@ -4344,7 +4344,7 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		}
 		// type-check the member.
 		type_t expected_ty = *iter->second;
-		semal_result actual_result = semal_expr(desig_expr, n, source, local);
+		semal_result actual_result = semal_expr(desig_expr, n, source, local, do_codegen);
 		if(!actual_result.val.ty.is_convertible_to(expected_ty))
 		{
 			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
@@ -4378,9 +4378,9 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	return semal_result::null();
 }
 
-semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local);
+	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local, do_codegen);
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	if(if_stmt.is_static)
@@ -4403,7 +4403,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	return semal_result::null();
 }
 
-semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_local_state* parent = local;
 	local = &global.locals.emplace_back();
@@ -4425,23 +4425,23 @@ semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_v
 	return semal_result::null();
 }
 
-semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	if(IS_A(stmt.stmt_, ast_decl_stmt))
 	{
-		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local);
+		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local, do_codegen);
 	}
 	else if(IS_A(stmt.stmt_, ast_expr_stmt))
 	{
-		return semal_expr_stmt(AS_A(stmt.stmt_, ast_expr_stmt), n, source, local);
+		return semal_expr_stmt(AS_A(stmt.stmt_, ast_expr_stmt), n, source, local, do_codegen);
 	}
 	else if(IS_A(stmt.stmt_, ast_return_stmt))
 	{
-		return semal_return_stmt(AS_A(stmt.stmt_, ast_return_stmt), n, source, local);
+		return semal_return_stmt(AS_A(stmt.stmt_, ast_return_stmt), n, source, local, do_codegen);
 	}
 	else if(IS_A(stmt.stmt_, ast_blk_stmt))
 	{
-		return semal_blk_stmt(AS_A(stmt.stmt_, ast_blk_stmt), n, source, local);
+		return semal_blk_stmt(AS_A(stmt.stmt_, ast_blk_stmt), n, source, local, do_codegen);
 	}
 	else if(IS_A(stmt.stmt_, ast_metaregion_stmt))
 	{
@@ -4450,11 +4450,11 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	}
 	else if(IS_A(stmt.stmt_, ast_designator_stmt))
 	{
-		return semal_designator_stmt(AS_A(stmt.stmt_, ast_designator_stmt), n, source, local);
+		return semal_designator_stmt(AS_A(stmt.stmt_, ast_designator_stmt), n, source, local, do_codegen);
 	}
 	else if(IS_A(stmt.stmt_, ast_if_stmt))
 	{
-		return semal_if_stmt(AS_A(stmt.stmt_, ast_if_stmt), n, source, local);
+		return semal_if_stmt(AS_A(stmt.stmt_, ast_if_stmt), n, source, local, do_codegen);
 	}
 	else
 	{
@@ -4462,7 +4462,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	}
 }
 
-semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr)
+semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr, bool do_codegen = false)
 {
 	semal_local_state* local = parent;
 
@@ -4482,7 +4482,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 		panic_ifnt(parent != nullptr, "why is parent semi_local_state null when i am not a translation unit AST node???");
 		if(IS_A(n.payload, ast_stmt))
 		{
-			res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, local);
+			res = semal_stmt(AS_A(n.payload, ast_stmt), n, source, local, do_codegen);
 		}
 		else
 		{
@@ -7159,7 +7159,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 {
 	auto get_as_string = [&n, &source, &local](const ast_expr& expr) -> std::string
 	{
-		semal_result result = semal_expr(expr, n, source, local);
+		semal_result result = semal_expr(expr, n, source, local, false);
 		return std::get<std::string>(std::get<literal_val>(result.val.val));
 	};
 	type_t strlit = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8));
