@@ -3907,7 +3907,34 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 
 semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 {
-	return semal_result::err("minus your mum");
+	semal_result result = semal_expr(*expr.rhs, n, source, local);
+	const type_t& ty = result.val.ty;
+	if(!ty.is_prim())
+	{
+		return semal_result::err("attempt to negate non-primitive type \"{}\"", ty.name());
+	}
+	auto prim = AS_A(ty.payload, prim_ty);
+	if(!prim.is_numeric())
+	{
+		return semal_result::err("attempt to negate non-numeric primitive \"{}\"", ty.name());
+	}
+	if(ty.qual | typequal_static)
+	{
+		auto& lit = AS_A(result.val.val, literal_val);
+		if(IS_A(lit, std::int64_t))
+		{
+			lit = -AS_A(lit, std::int64_t);
+		}
+		else if(IS_A(lit, double))
+		{
+			lit = -AS_A(lit, double);
+		}
+		else
+		{
+			panic("failed to negate static value payload {}, as it wasn't a double nor int64", n.begin_location);
+		}
+	}
+	return result;
 }
 
 semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
