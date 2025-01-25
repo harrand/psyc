@@ -1262,32 +1262,28 @@ struct sval
 			auto lit = AS_A(this->val, literal_val);
 			if(IS_A(lit, std::int64_t))
 			{
-				auto val = AS_A(lit, std::int64_t);
-				if(IS_A(lit, std::int64_t))
-				{
-					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(lit, std::int64_t)), true});
-				}
-				else if(IS_A(lit, double))
-				{
-					return llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(lit, double)});
-				}
-				else if(IS_A(lit, char))
-				{
-					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{8, static_cast<std::uint64_t>(AS_A(lit, char))});
-				}
-				else if(IS_A(lit, bool))
-				{
-					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{1, AS_A(lit, bool) ? std::uint64_t{1} : std::uint64_t{0}});
-				}
-				else if(IS_A(lit, std::string))
-				{
-					std::string_view str = AS_A(lit, std::string);
-					return codegen.ir->CreateGlobalString(str, "strlit", 0, codegen.mod.get());
-				}
-				else
-				{
-					panic("unknown sval literal_val");
-				}
+				return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(lit, std::int64_t)), true});
+			}
+			else if(IS_A(lit, double))
+			{
+				return llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(lit, double)});
+			}
+			else if(IS_A(lit, char))
+			{
+				return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{8, static_cast<std::uint64_t>(AS_A(lit, char))});
+			}
+			else if(IS_A(lit, bool))
+			{
+				return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{1, AS_A(lit, bool) ? std::uint64_t{1} : std::uint64_t{0}});
+			}
+			else if(IS_A(lit, std::string))
+			{
+				std::string_view str = AS_A(lit, std::string);
+				return codegen.ir->CreateGlobalString(str, "strlit", 0, codegen.mod.get());
+			}
+			else
+			{
+				panic("unknown sval literal_val");
 			}
 		}
 		/*
@@ -3594,8 +3590,8 @@ void codegen_initialise(std::string_view name)
 
 void codegen_verify()
 {
-	bool success = llvm::verifyModule(*codegen.mod);
-	error_ifnt(success, {}, "llvm verify failed");
+	bool broken = llvm::verifyModule(*codegen.mod);
+	error_ifnt(!broken, {}, "llvm verify failed");
 }
 
 void codegen_generate(const compile_args& args)
@@ -3622,7 +3618,7 @@ void codegen_generate(const compile_args& args)
 
     // Create a TargetMachine
     llvm::TargetOptions opt;
-    auto targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::Static);
+    auto targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::PIC_);
 
     codegen.mod->setDataLayout(targetMachine->createDataLayout());
 
@@ -3668,22 +3664,6 @@ void codegen_generate(const compile_args& args)
     object_file.flush();
 
 	codegen_logic_end
-}
-
-void safelyDeleteGlobal(llvm::GlobalVariable* global) {
-    // Remove all uses of the global variable
-    while (!global->use_empty()) {
-        llvm::Use& use = *global->use_begin();
-        if (auto* inst = llvm::dyn_cast<llvm::Instruction>(use.getUser())) {
-            inst->replaceAllUsesWith(llvm::UndefValue::get(inst->getType()));
-            inst->eraseFromParent();
-        } else {
-            use.set(llvm::UndefValue::get(global->getType()));
-        }
-    }
-
-    // Erase the global variable from the module
-    global->eraseFromParent();
 }
 
 void codegen_terminate(bool verbose_print)
@@ -4776,6 +4756,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			if(do_codegen)
 			{
+				ret.val.ll = ret.val.convert_to(ret.val.ty);
 				if(local->scope == scope_type::translation_unit)
 				{
 					// this is a global variable.
@@ -7752,7 +7733,7 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
-	//codegen_verify();
+	codegen_verify();
 	codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
 
