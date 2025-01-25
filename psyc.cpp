@@ -657,6 +657,7 @@ struct type_t;
 struct struct_ty
 {
 	string_map<box<type_t>> members = {};
+	std::vector<std::string> member_order = {};
 	std::string name() const
 	{
 		return "struct";
@@ -1116,6 +1117,11 @@ struct sval
 		panic_ifnt(this->ty.is_convertible_to(rhs), "codegen: cant convert types coz you provided non-convertible types, idiot.");
 		#define lhs_is(x) this->ty.payload.index() == payload_index<x, type_t::payload_t>()
 		#define rhs_is(x) rhs.payload.index() == payload_index<x, type_t::payload_t>()
+		if(rhs_is(enum_ty))
+		{
+			auto rhs_enum_ty = AS_A(rhs.payload, enum_ty);
+			return this->convert_to(rhs_enum_ty.underlying_ty->add_weak());
+		}
 		if(lhs_is(prim_ty))
 		{
 			if(rhs_is(prim_ty))
@@ -1202,10 +1208,31 @@ struct sval
 				return codegen.ir->CreatePtrToInt(this->ll, rhs.llvm());
 			}
 		}
+		else if(lhs_is(struct_ty))
+		{
+			if(rhs_is(struct_ty))
+			{
+				// they must be the same struct
+				// or the is_convertible_to check would've failed.
+				return this->ll;
+			}
+		}
+		else if(lhs_is(enum_ty))
+		{
+			sval cpy = *this;
+			cpy.ty = *AS_A(this->ty.payload, enum_ty).underlying_ty;
+			cpy.ty = cpy.ty.add_weak();
+			return cpy.convert_to(rhs);
+		}
 		auto lhs_name = this->ty.name();
 		auto rhs_name = rhs.name();
 		panic("cant convert types codegen-wise (\"{}\" -> \"{}\")", lhs_name, rhs_name);
 		return nullptr;
+	}
+
+	llvm::Value* load() const
+	{
+		return codegen.ir->CreateLoad(this->ty.llvm(), this->ll);
 	}
 
 	llvm::Constant* llvm() const
@@ -1248,6 +1275,8 @@ struct sval
 				}
 			}
 		}
+		/*
+		// TODO: static structval support.
 		if(IS_A(this->val, struct_val))
 		{
 			auto structval = AS_A(this->val, struct_val);
@@ -1255,6 +1284,7 @@ struct sval
 			// we *really* *really* need the struct's name as it would've been declared earlier.
 			panic("AAAH THIS ONE IS REALLY HARD");
 		}
+		*/
 		return nullptr;
 	}
 };
@@ -1277,7 +1307,7 @@ constexpr const char* scope_type_names[] =
 llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val)
 {
 	panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
-	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), true, llvm::GlobalValue::LinkageTypes::ExternalLinkage, val.llvm(), name);
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), true, llvm::GlobalValue::LinkageTypes::ExternalLinkage, static_cast<llvm::Constant*>(val.ll), name);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
 	return ret;
@@ -1427,6 +1457,34 @@ struct semal_result
 	bool is_null() const
 	{
 		return this->t == semal_type::unknown;
+	}
+
+	void load_if_variable()
+	{
+		if(this->t == semal_type::variable_use)
+		{
+			this->val.ll = this->val.load();
+			this->t = semal_type::misc;
+		}
+	}
+
+	void convert_to(const type_t& ty)
+	{
+		llvm::Value* before = this->val.ll;
+		this->val.ll = this->val.convert_to(ty);
+		this->val.ty = ty;
+		if(this->val.ll == before)
+		{
+			// the conversion didnt do anything.
+		}
+		else
+		{
+			// yes, we are no longer the variable use.
+			if(this->t == semal_type::variable_use)
+			{
+				this->t = semal_type::misc;
+			}
+		}
 	}
 
 	semal_type t;
@@ -1690,11 +1748,13 @@ bool semal_local_state::struct_add_member(std::string struct_name, std::string m
 	{
 		did_a_write = true;
 		local_iter->members.emplace(member_name, member_ty);
+		local_iter->member_order.push_back(member_name);
 	}
 	if(global_iter != nullptr)
 	{
 		did_a_write = true;
 		global_iter->members.emplace(member_name, member_ty);
+		global_iter->member_order.push_back(member_name);
 	}
 	return did_a_write;
 }
@@ -3711,15 +3771,20 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 		}
 		llvm::FunctionType* llvm_fn = llvm::FunctionType::get(ty.return_ty->llvm(), llvm_params, false);
 		llvm::Function* llvm_func = llvm::Function::Create(llvm_fn, llvm::Function::ExternalLinkage, "unnamed_fn", codegen.mod.get());
-		std::size_t counter = 0;
-		for(llvm::Argument& arg : llvm_func->args())
-		{
-			arg.setName(expr.params[counter++].name);
-		}
 		if(!expr.is_extern)
 		{
 			llvm::BasicBlock* bb = llvm::BasicBlock::Create(*codegen.ctx, "entry", llvm_func);
 			codegen.ir->SetInsertPoint(bb);
+			std::size_t counter = 0;
+			for(llvm::Argument& arg : llvm_func->args())
+			{
+				std::string name = expr.params[counter].name;
+				arg.setName(name + "_param");
+				llvm::AllocaInst* llvm_param_var = codegen.ir->CreateAlloca(llvm_params[counter], nullptr, name);
+				codegen.ir->CreateStore(&arg, llvm_param_var);
+				local->pending_variables.at(std::string{name}).ll = llvm_param_var;
+				counter++;
+			}
 		}
 		ret.val.ll = llvm_func;
 	}
@@ -3779,7 +3844,11 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 		{
 			return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, expr.function_name, actual_ty.name(), expected_ty.name());
 		}
-		llvm_params.push_back(actual_result.val.ll);
+		if(do_codegen)
+		{
+			actual_result.load_if_variable();
+			llvm_params.push_back(actual_result.val.convert_to(expected_ty));
+		}
 	}
 	sval ret = wrap_type(*callee.return_ty);
 	if(do_codegen)
@@ -3868,7 +3937,8 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 			// cool
 			if(do_codegen)
 			{
-				lhs_result.val.ll = lhs_result.val.convert_to(casted_to);
+				lhs_result.load_if_variable();
+				lhs_result.convert_to(casted_to);
 			}
 			lhs_result.val.ty = casted_to;
 			return lhs_result;
@@ -3993,6 +4063,23 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			result_val.val = literal_val{static_cast<std::int64_t>(retval)};
 		}
 	}
+
+	if(do_codegen)
+	{
+		lhs_result.load_if_variable();
+		rhs_result.load_if_variable();
+		lhs_result.val.ll = lhs_result.val.convert_to(result_val.ty);
+		rhs_result.val.ll = rhs_result.val.convert_to(result_val.ty);
+		if(result_prim.is_integral())
+		{
+			result_val.ll = codegen.ir->CreateSub(lhs_result.val.ll, rhs_result.val.ll);
+		}
+		else
+		{
+			panic_ifnt(result_prim.is_floating_point(), "waaah");
+			result_val.ll = codegen.ir->CreateFSub(lhs_result.val.ll, rhs_result.val.ll);
+		}
+	}
 	return semal_result
 	{
 		.t = semal_type::misc,
@@ -4046,6 +4133,25 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			panic_ifnt(iter != structval.end(), "static value of struct type \"{}\"'s struct_val did not contain an entry for member \"{}\"", name, rhs_symbol);
 			member.val = iter->second.val;
 		}
+		if(do_codegen)
+		{
+			// expect lhs to be a struct.
+			// need the member id
+			auto iter = std::find(strty.member_order.begin(), strty.member_order.end(), rhs_symbol);
+			panic_ifnt(iter != strty.member_order.end(), "wtf member order didnt contain member");
+			std::size_t member_id = std::distance(strty.member_order.begin(), iter);
+			// is the thing a variable?
+			if(lhs_result.t == semal_type::variable_use)
+			{
+				// yes, use GEP
+				member.ll = codegen.ir->CreateStructGEP(ty.llvm(), lhs_result.val.ll, member_id);
+			}
+			else
+			{
+				// no, use extractvalue.
+				member.ll = codegen.ir->CreateExtractValue(lhs_result.val.ll, member_id);
+			}
+		}
 		return
 		{
 			.t = lhs_result.t,
@@ -4084,11 +4190,17 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		{
 			return semal_result::err("enum-access field expressionis invalid. enum \"{}\" has no entry named \"{}\"", lhs_symbol, rhs_symbol);
 		}
+		sval retval = wrap_type(ty);
+		if(do_codegen)
+		{
+			llvm::GlobalVariable* gvar = codegen.mod->getGlobalVariable(std::format("{}.{}", lhs_symbol, rhs_symbol));
+			retval.ll = codegen.ir->CreateLoad(enty.underlying_ty->llvm(), gvar);
+		}
 		return
 		{
 			.t = semal_type::misc,
 			.label = std::format("{}.{}", lhs_symbol, rhs_symbol),
-			.val = wrap_type(ty)
+			.val = retval
 		};
 	}
 	std::unreachable();
@@ -4144,7 +4256,6 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		break;
 		case ptr_field:
 		{
-//semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local)
 			ast_unop_expr deref
 			{
 				.type = unop_type::deref,
@@ -4191,6 +4302,19 @@ semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 			panic("failed to negate static value payload {}, as it wasn't a double nor int64", n.begin_location);
 		}
 	}
+	if(do_codegen)
+	{
+		result.load_if_variable();
+		if(prim.is_integral())
+		{
+			result.val.ll = codegen.ir->CreateNeg(result.val.ll);
+		}
+		else
+		{
+			panic_ifnt(prim.is_floating_point(), "waaah");
+			result.val.ll = codegen.ir->CreateFNeg(result.val.ll);
+		}
+	}
 	return result;
 }
 
@@ -4202,6 +4326,10 @@ semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::str
 semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(expr_result.t != semal_type::variable_use)
+	{
+		return semal_result::err("cannot ref a non-lvalue");
+	}
 	// todo: do not allow ref on an rvalue
 	return
 	{
@@ -4210,7 +4338,8 @@ semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string
 		.val = 
 		{
 			.val = std::monostate{},
-			.ty = type_t::create_pointer_type(expr_result.val.ty)
+			.ty = type_t::create_pointer_type(expr_result.val.ty),
+			.ll = expr_result.val.ll
 		}
 	};
 }
@@ -4225,7 +4354,8 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	}
 	ptr_ty ptr = AS_A(ty.payload, ptr_ty);
 	ty = *ptr.underlying_ty;
-	return
+
+	semal_result ret
 	{
 		.t = expr_result.t == semal_type::variable_ref ? semal_type::variable_use : semal_type::misc,
 		.label = std::format("deref {}", expr_result.label),
@@ -4235,6 +4365,11 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 			.ty = ty
 		}
 	};
+	if(do_codegen)
+	{
+		ret.val.ll = codegen.ir->CreateLoad(ty.llvm(), expr_result.val.ll);
+	}
+	return ret;
 }
 
 semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -4281,6 +4416,7 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	auto& structinit = blk.val;
 	bool is_static = true;
 	// codegen will need to do a bunch of work here to actually create the structinit.
+	std::unordered_map<std::size_t, llvm::Value*> llvm_initialisers = {};
 	for(const ast_designator_stmt& desig : expr.initialisers)
 	{
 		semal_result desig_result = semal_designator_stmt(desig, n, source, local, do_codegen);
@@ -4296,12 +4432,47 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 		{
 			return desig_result;
 		}
+		if(do_codegen)
+		{
+			// which member index are we?
+			auto struct_type = AS_A(ty.payload, struct_ty);
+			auto iter = std::find(struct_type.member_order.begin(), struct_type.member_order.end(), desig.name);
+			panic_ifnt(iter != struct_type.member_order.end(), "wtf member order didnt contain member");
+			std::size_t member_id = std::distance(struct_type.member_order.begin(), iter);
+
+			desig_result.load_if_variable();
+			llvm_initialisers.emplace(member_id, desig_result.val.ll);
+		}
 	}
 	if(is_static)
 	{
 		structinit.val = table;
 		structinit.ty.qual = structinit.ty.qual | typequal_static;
+		/*
+		todo: enable this when static structval is supported
+		dont do the runtime codegen unless we're not static at that point.
+		if(do_codegen)
+		{
+			blk.val.ll = structinit.llvm();
+		}
+		*/
 	}
+	//else
+	//{
+		if(do_codegen)
+		{
+			// do it the old fashioned way.
+			llvm::Type* llvm_struct_ty = structinit.ty.llvm();
+			llvm::Value* structval = llvm::UndefValue::get(llvm_struct_ty);
+			for(const auto& [member_id, val] : llvm_initialisers)
+			{
+				auto name = structinit.ty.name();
+				panic_ifnt(val != nullptr, "detected nullptr llvm initialiser for member {} of struct {}", member_id, name);
+				structval = codegen.ir->CreateInsertValue(structval, val, member_id);
+			}
+			blk.val.ll = structval;
+		}
+	//}
 	local->unfinished_types.pop_back();
 	return blk;
 }
@@ -4479,6 +4650,24 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		}
 		else
 		{
+			if(do_codegen)
+			{
+				if(local->scope == scope_type::translation_unit)
+				{
+					// this is a global variable.
+					ret.val.ll = codegen.declare_global_variable(decl.name, val);
+				}
+				else
+				{
+					llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(ret.val.ty.llvm(), nullptr, decl.name);
+					if(decl.initialiser.has_value())
+					{
+						codegen.ir->CreateStore(val.ll, llvm_var);
+					}
+					ret.val.ll = llvm_var;
+				}
+			}
+
 			local->declare_variable(decl.name, ret.val);
 		}
 	}
@@ -4578,7 +4767,7 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		}
 		if(do_codegen)
 		{
-			actual_result.val.ll = actual_result.val.convert_to(expected_ty);
+			actual_result.convert_to(expected_ty);
 		}
 		// todo: codegen needs to do a conversion here if the types are convertible but dont exactly match.
 		if(actual_result.val.ty.qual & typequal_static)
@@ -4752,9 +4941,9 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 							panic_ifnt(structval != nullptr, "waaah");
 							struct_ty ty = *structval;
 							std::vector<llvm::Type*> member_tys;
-							for(const auto& [name, memty] : ty.members)
+							for(std::string member_name : ty.member_order)
 							{
-								member_tys.push_back(memty->llvm());
+								member_tys.push_back(ty.members.at(member_name)->llvm());
 							}
 							global.llvm_structs[ty] = llvm::StructType::create(member_tys, structname);
 						}
