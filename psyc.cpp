@@ -1598,6 +1598,11 @@ llvm::Type* type_t::llvm() const
 		return global.llvm_structs.at(AS_A(this->payload, struct_ty));
 	}
 
+	if(this->is_enum())
+	{
+		return AS_A(this->payload, enum_ty).underlying_ty->llvm();
+	}
+
 	if(this->is_prim())
 	{
 		auto prim = AS_A(this->payload, prim_ty);
@@ -3567,6 +3572,27 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	{
 		local->unfinished_types.pop_back();
 	}
+
+	if(do_codegen)
+	{
+		std::vector<llvm::Type*> llvm_params;
+		for(std::size_t i = 0; i < ty.params.size(); i++)
+		{
+			llvm_params.push_back(ty.params[i].llvm());
+		}
+		llvm::FunctionType* llvm_fn = llvm::FunctionType::get(ty.return_ty->llvm(), llvm_params, false);
+		llvm::Function* llvm_func = llvm::Function::Create(llvm_fn, llvm::Function::ExternalLinkage, "unnamed_fn", codegen.mod.get());
+		std::size_t counter = 0;
+		for(llvm::Argument& arg : llvm_func->args())
+		{
+			arg.setName(expr.params[counter++].name);
+		}
+		if(!expr.is_extern)
+		{
+			llvm::BasicBlock* bb = llvm::BasicBlock::Create(*codegen.ctx, "entry", llvm_func);
+		}
+		ret.val.ll = llvm_func;
+	}
 	return ret;
 }
 
@@ -4220,6 +4246,8 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	if(val.ty.is_fn())
 	{
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
+		auto* llvm_func = static_cast<llvm::Function*>(init_result.val.ll);
+		llvm_func->setName(decl.name);
 		// we are declaring a function!
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
