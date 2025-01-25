@@ -362,7 +362,7 @@ void generic_msg(err ty, const char* msg, srcloc where, std::format_args&& args)
 #define msg(loc, msg, ...) generic_msg(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
 #define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
-std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
+std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0, time_assemble = 0, time_link = 0;
 
 struct type_t;
 struct sval;
@@ -3594,10 +3594,13 @@ void codegen_verify()
 	error_ifnt(!broken, {}, "llvm verify failed");
 }
 
+void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine);
+
 void codegen_generate(const compile_args& args)
 {
-	codegen_logic_begin
 	std::filesystem::path output_path = args.output_dir / args.output_name;
+	llvm::TargetMachine* targetMachine = nullptr;
+	codegen_logic_begin
 
 	// Initialize all targets and related components
     llvm::InitializeNativeTarget();
@@ -3618,19 +3621,9 @@ void codegen_generate(const compile_args& args)
 
     // Create a TargetMachine
     llvm::TargetOptions opt;
-    auto targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::PIC_);
+    targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::PIC_);
 
     codegen.mod->setDataLayout(targetMachine->createDataLayout());
-
-	std::error_code err;
-	std::string object_path = output_path.string() + ".o";
-	llvm::raw_fd_ostream object_file(object_path, err, llvm::sys::fs::OF_None);
-
-	if(err)
-	{
-		auto msg = err.message();
-		error({}, "error while generating {}: {}", object_path, msg);
-	}
 
 	llvm::PassBuilder passBuilder(targetMachine);
 
@@ -3652,18 +3645,8 @@ void codegen_generate(const compile_args& args)
     // Run the optimization passes
     modulePassManager.run(*codegen.mod, moduleAnalysisManager);
 
-    // Emit the object file
-    llvm::legacy::PassManager codeGenPassManager;
-    if (targetMachine->addPassesToEmitFile(
-            codeGenPassManager, object_file, nullptr, llvm::CodeGenFileType::ObjectFile)) {
-        llvm::errs() << "The target machine cannot emit an object file.\n";
-        return;
-    }
-
-    codeGenPassManager.run(*codegen.mod);
-    object_file.flush();
-
 	codegen_logic_end
+	generate_object_file(output_path.string() + ".o", targetMachine);
 }
 
 void codegen_terminate(bool verbose_print)
@@ -3689,6 +3672,36 @@ void codegen_terminate(bool verbose_print)
 	codegen.ir = nullptr;
 	codegen.mod = nullptr;
 	codegen.ctx = nullptr;
+}
+
+//////////////////////////// SEMAL ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE assemble
+#define assemble_logic_begin {auto impl_assemble_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+#define assemble_logic_end time_assemble += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_assemble_time_;}
+
+void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine)
+{
+	assemble_logic_begin
+    // Emit the object file
+	std::error_code err;
+	llvm::raw_fd_ostream object_file(object_path, err, llvm::sys::fs::OF_None);
+
+	if(err)
+	{
+		auto msg = err.message();
+		error({}, "error while generating {}: {}", object_path, msg);
+	}
+    llvm::legacy::PassManager codeGenPassManager;
+    if (targetMachine->addPassesToEmitFile(
+            codeGenPassManager, object_file, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+        llvm::errs() << "The target machine cannot emit an object file.\n";
+        return;
+    }
+
+    codeGenPassManager.run(*codegen.mod);
+    object_file.flush();
+	assemble_logic_end
 }
 
 //////////////////////////// SEMAL ////////////////////////////
@@ -7737,7 +7750,7 @@ int main(int argc, char** argv)
 	codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
 
-	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
+	std::print("setup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
 }
 
 semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local)
