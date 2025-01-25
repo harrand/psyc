@@ -1191,6 +1191,8 @@ struct semal_state2
 	using enum_value = decltype(enums)::mapped_type;
 	string_map<fn_ty> functions = {};
 	using function_value = decltype(functions)::mapped_type;
+	string_map<llvm::Function*> function_locations = {};
+	using function_location_value = decltype(function_locations)::mapped_type;
 	string_map<sval> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 
@@ -1365,12 +1367,13 @@ struct semal_local_state
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
 
-	void declare_function(std::string function_name, fn_ty ty);
+	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr);
 	void declare_variable(std::string variable_name, sval val);
 	void declare_enum(std::string enum_name, enum_ty ty);
 	void declare_struct(std::string struct_name, struct_ty ty);
 
 	pair_of<semal_state2::function_value*> find_function(std::string_view function_name);
+	pair_of<semal_state2::function_location_value*> find_function_location(std::string_view function_name);
 	pair_of<semal_state2::variable_value*> find_variable(std::string_view variable_name);
 	pair_of<semal_state2::enum_value*> find_enum(std::string_view enum_name);
 	pair_of<semal_state2::struct_value*> find_struct(std::string_view struct_name);
@@ -1399,13 +1402,15 @@ struct semal_global_state
 
 semal_global_state global;
 
-void semal_local_state::declare_function(std::string function_name, fn_ty ty)
+void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location)
 {
 	this->state.functions.emplace(function_name, ty);
+	this->state.function_locations.emplace(function_name, location);
 	if(this->scope == scope_type::translation_unit)
 	{
 		// declare it globally too.
 		global.state.functions.emplace(function_name, ty);
+		global.state.function_locations.emplace(function_name, location);
 	}
 }
 
@@ -1457,6 +1462,30 @@ pair_of<semal_state2::function_value*> semal_local_state::find_function(std::str
 
 	semal_state2::function_value* global_ret = nullptr;
 	if(global_iter != global.state.functions.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
+}
+
+pair_of<semal_state2::function_location_value*> semal_local_state::find_function_location(std::string_view function_name)
+{
+	semal_local_state* loc = this;
+	semal_state2::function_location_value* local_ret = nullptr;
+	auto iter = loc->state.function_locations.find(function_name);
+	while(iter == loc->state.function_locations.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.function_locations.find(function_name);
+	}
+	if(iter != loc->state.function_locations.end())
+	{
+		local_ret = &iter->second;
+	}
+	auto global_iter = global.state.function_locations.find(function_name);
+
+	semal_state2::function_location_value* global_ret = nullptr;
+	if(global_iter != global.state.function_locations.end())
 	{
 		global_ret = &global_iter->second;
 	}
@@ -3590,6 +3619,7 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 		if(!expr.is_extern)
 		{
 			llvm::BasicBlock* bb = llvm::BasicBlock::Create(*codegen.ctx, "entry", llvm_func);
+			codegen.ir->SetInsertPoint(bb);
 		}
 		ret.val.ll = llvm_func;
 	}
@@ -3634,10 +3664,11 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	{
 		return semal_result::err("function \033[1;34m{} : {}\033[0m called with {} params when it expects {}", expr.function_name, callee.name(), actual_params.size(), expected_params.size());
 	}
+	std::vector<llvm::Value*> llvm_params;
 	for(std::size_t i = 0; i < actual_params.size(); i++)
 	{
 		const ast_expr& actual = actual_params[i];
-		semal_result actual_result = semal_expr(actual, n, source, local, do_codegen);
+		semal_result actual_result = semal_expr(actual, n, source, local, false);
 		if(actual_result.is_err())
 		{
 			return actual_result;
@@ -3648,10 +3679,26 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 		{
 			return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, expr.function_name, actual_ty.name(), expected_ty.name());
 		}
+		llvm_params.push_back(actual_result.val.ll);
+	}
+	sval ret = wrap_type(*callee.return_ty);
+	if(do_codegen)
+	{
+		const auto [local_fn, global_fn] = local->find_function_location(expr.function_name);
+		llvm::Function* llvm_fn = *local_fn;
+		if(llvm_fn == nullptr)
+		{
+			llvm_fn = *global_fn;
+		}
+		if(llvm_fn == nullptr)
+		{
+			panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
+		}
+		ret.ll = codegen.ir->CreateCall(llvm_fn, llvm_params);
 	}
 	return
 	{
-		.t = semal_type::misc, .val = wrap_type(*callee.return_ty)
+		.t = semal_type::misc, .val = ret
 	};
 }
 
@@ -4251,7 +4298,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		// we are declaring a function!
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
-		local->declare_function(decl.name, ty);
+		local->declare_function(decl.name, ty, llvm_func);
 		// if its not extern then we expect an unfinished_type with no label.
 		// if there is one, let's update its name as it will be unlabeled (the funcdef_expr doesnt know its own name)
 		if(local->unfinished_types.size())
@@ -4347,10 +4394,19 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 {
 	if(return_stmt.retval.has_value())
 	{
-		return semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
+		semal_result ret = semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
+		if(do_codegen)
+		{
+			ret.val.ll = codegen.ir->CreateRet(ret.val.ll);
+		}
+		return ret;
 	}
 	else
 	{
+		if(do_codegen)
+		{
+			codegen.ir->CreateRetVoid();
+		}
 		return {.label = "return"};
 	}
 }
