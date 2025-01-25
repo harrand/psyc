@@ -32,6 +32,21 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
 
+#include "llvm/IR/Verifier.h"
+
+#include <llvm/IR/LegacyPassManager.h>
+
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Host.h"
+
 #define STRINGIFY(...) #__VA_ARGS__
 
 std::string get_preload_source();
@@ -336,15 +351,15 @@ void generic_warning(err ty, const char* msg, srcloc where, std::format_args&& a
 	std::println("\033[1;33m{} warning {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 }
 
-void generic_message(err ty, const char* msg, srcloc where, std::format_args&& args)
+void generic_msg(err ty, const char* msg, srcloc where, std::format_args&& args)
 {
-	std::println("\033[1;34m{} message {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+	std::println("\033[1;34m{} msg {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 }
 
 #define COMPILER_STAGE
 #define error(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, true, std::make_format_args(__VA_ARGS__))
 #define warning(loc, msg, ...) generic_warning(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
-#define message(loc, msg, ...) generic_message(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
+#define msg(loc, msg, ...) generic_msg(err::COMPILER_STAGE, msg, loc, std::make_format_args(__VA_ARGS__))
 #define error_nonblocking(loc, msg, ...) generic_error(err::COMPILER_STAGE, msg, loc, false, std::make_format_args(__VA_ARGS__))
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
@@ -3577,6 +3592,100 @@ void codegen_initialise(std::string_view name)
 	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
 }
 
+void codegen_verify()
+{
+	bool success = llvm::verifyModule(*codegen.mod);
+	error_ifnt(success, {}, "llvm verify failed");
+}
+
+void codegen_generate(const compile_args& args)
+{
+	codegen_logic_begin
+	std::filesystem::path output_path = args.output_dir / args.output_name;
+
+	// Initialize all targets and related components
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    // Get the target triple
+    std::string targetTriple = llvm::sys::getDefaultTargetTriple();
+    codegen.mod->setTargetTriple(targetTriple);
+
+    std::string error;
+    const llvm::Target* target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
+
+    if (!target) {
+        llvm::errs() << "Error: " << error << "\n";
+        return;
+    }
+
+    // Create a TargetMachine
+    llvm::TargetOptions opt;
+    auto targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::Static);
+
+    codegen.mod->setDataLayout(targetMachine->createDataLayout());
+
+	std::error_code err;
+	std::string object_path = output_path.string() + ".o";
+	llvm::raw_fd_ostream object_file(object_path, err, llvm::sys::fs::OF_None);
+
+	if(err)
+	{
+		auto msg = err.message();
+		error({}, "error while generating {}: {}", object_path, msg);
+	}
+
+	llvm::PassBuilder passBuilder(targetMachine);
+
+    llvm::LoopAnalysisManager loopAnalysisManager;
+    llvm::FunctionAnalysisManager functionAnalysisManager;
+    llvm::CGSCCAnalysisManager cgsccAnalysisManager;
+    llvm::ModuleAnalysisManager moduleAnalysisManager;
+
+    passBuilder.registerModuleAnalyses(moduleAnalysisManager);
+    passBuilder.registerCGSCCAnalyses(cgsccAnalysisManager);
+    passBuilder.registerFunctionAnalyses(functionAnalysisManager);
+    passBuilder.registerLoopAnalyses(loopAnalysisManager);
+    passBuilder.crossRegisterProxies(
+        loopAnalysisManager, functionAnalysisManager, cgsccAnalysisManager, moduleAnalysisManager);
+
+    llvm::ModulePassManager modulePassManager = passBuilder.buildPerModuleDefaultPipeline(
+        llvm::OptimizationLevel::O2);
+
+    // Run the optimization passes
+    modulePassManager.run(*codegen.mod, moduleAnalysisManager);
+
+    // Emit the object file
+    llvm::legacy::PassManager codeGenPassManager;
+    if (targetMachine->addPassesToEmitFile(
+            codeGenPassManager, object_file, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+        llvm::errs() << "The target machine cannot emit an object file.\n";
+        return;
+    }
+
+    codeGenPassManager.run(*codegen.mod);
+    object_file.flush();
+
+	codegen_logic_end
+}
+
+void safelyDeleteGlobal(llvm::GlobalVariable* global) {
+    // Remove all uses of the global variable
+    while (!global->use_empty()) {
+        llvm::Use& use = *global->use_begin();
+        if (auto* inst = llvm::dyn_cast<llvm::Instruction>(use.getUser())) {
+            inst->replaceAllUsesWith(llvm::UndefValue::get(inst->getType()));
+            inst->eraseFromParent();
+        } else {
+            use.set(llvm::UndefValue::get(global->getType()));
+        }
+    }
+
+    // Erase the global variable from the module
+    global->eraseFromParent();
+}
+
 void codegen_terminate(bool verbose_print)
 {
 	if(codegen.mod != nullptr && verbose_print)
@@ -3587,13 +3696,14 @@ void codegen_terminate(bool verbose_print)
 		std::println("llvm IR is as follows:\n\033[1;34m{}\033[0m", ir);
 	}
 
-	if(codegen.mod != nullptr)
+	for(std::size_t i = 0; i < codegen.global_variable_storage.size(); i++)
 	{
-		codegen.mod->dropAllReferences();
-	}
-	for(auto& glob_ptr : codegen.global_variable_storage)
-	{
-		glob_ptr->removeFromParent();
+		// llvm is so incredibly annoying
+		// the optimisation passes may or may not have invalidated some or all of these
+		// it seems there's no obvious way to know, so deleting them all is likely to crash
+		// well fuck you, i'll just leak them.
+		auto ptr = codegen.global_variable_storage[i].release();
+		(void)ptr;
 	}
 	codegen.global_variable_storage.clear();
 	codegen.ir = nullptr;
@@ -3691,6 +3801,20 @@ std::filesystem::path get_compiler_path()
 
 void handle_defer(std::span<node> children)
 {
+	if(children.empty())
+	{
+		return;
+	}
+	auto pivot = children.end();
+	auto last = children.back();
+	if(IS_A(last.payload, ast_stmt))
+	{
+		auto last_stmt = AS_A(last.payload, ast_stmt);
+		if(IS_A(last_stmt.stmt_, ast_return_stmt))
+		{
+			pivot = children.begin() + children.size() - 1;
+		}
+	}
 	for(auto iter = children.begin(); iter != children.end(); iter++)
 	{
 		const auto& p = iter->payload;
@@ -3698,7 +3822,7 @@ void handle_defer(std::span<node> children)
 		{
 			if(AS_A(p, ast_stmt).deferred)
 			{
-				std::rotate(iter, iter + 1, children.end());
+				std::rotate(iter, iter + 1, pivot);
 			}
 		}
 	}
@@ -4691,6 +4815,7 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 		semal_result ret = semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
 		if(do_codegen)
 		{
+			ret.load_if_variable();
 			ret.val.ll = codegen.ir->CreateRet(ret.val.ll);
 		}
 		return ret;
@@ -4949,7 +5074,21 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 						}
 					break;
 					case semal_type::function_decl:
-
+					{
+						// should emit an empty return.
+						std::string_view funcname = last.label;
+						semal_state2::function_value* funcval = std::get<1>(local->find_function(funcname));
+						type_t return_ty = *funcval->return_ty;
+						if(IS_A(return_ty.payload, prim_ty))
+						{
+							auto return_prim = AS_A(return_ty.payload, prim_ty);
+							if(return_prim.p == prim_ty::type::v0)
+							{
+								// let's add a fake return.
+								semal_return_stmt(ast_return_stmt{.retval = std::nullopt}, n, source, local, do_codegen);
+							}
+						}
+					}
 					break;
 					case semal_type::enum_decl:
 						if(do_codegen)
@@ -7613,6 +7752,8 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
+	//codegen_verify();
+	codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
 
 	std::print("setup: {}\nlex:   {}\nparse: {}\nsemal: {}\ncodegen: {}\ntotal: {}", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
@@ -7648,7 +7789,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		#define OLD_COMPILER_STAGE COMPILER_STAGE
 		#undef COMPILER_STAGE
 		#define COMPILER_STAGE meta
-		message(n.begin_location, "{}", msg);
+		msg(n.begin_location, "{}", msg);
 		#undef COMPILER_STAGE
 		#define COMPILER_STAGE OLD_COMPILER_STAGE
 		#undef OLD_COMPILER_STAGE

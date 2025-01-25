@@ -21,5 +21,6 @@ llvm_map_components_to_libnames(llvm_dependent_libs support core irreader execut
 	#codegen bits:
 	#AMDGPUCodeGen AArch64CodeGen ARMCodeGen AVRCodeGen BPFCodeGen HexagonCodeGen LanaiCodeGen LoongArchCodeGen MipsCodeGen MSP430CodeGen NVPTXCodeGen PowerPCCodeGen RISCVCodeGen SparcCodeGen SystemZCodeGen VECodeGen WebAssemblyCodeGen XCoreCodeGen
 	X86CodeGen X86AsmParser
+	passes
 	)
 separate_arguments(llvm_definitions_list NATIVE_COMMAND ${LLVM_DEFINITIONS})
