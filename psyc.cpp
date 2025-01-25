@@ -349,11 +349,16 @@ void generic_message(err ty, const char* msg, srcloc where, std::format_args&& a
 #define error_ifnt(cond, loc, msg, ...) if(!(cond)){error(loc, msg, __VA_ARGS__);}
 std::uint64_t time_setup = 0, time_lex = 0, time_parse = 0, time_semal = 0, time_codegen = 0;
 
+struct type_t;
+struct sval;
 struct codegen_t
 {
 	std::unique_ptr<llvm::LLVMContext> ctx = nullptr;
 	std::unique_ptr<llvm::Module> mod = nullptr;
 	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
+	std::vector<std::unique_ptr<llvm::GlobalVariable>> global_variable_storage;
+
+	llvm::GlobalVariable* declare_global_variable(std::string_view name, const sval& val);
 } codegen;
 
 
@@ -679,7 +684,7 @@ namespace std
 struct enum_ty
 {
 	box<type_t> underlying_ty;
-	std::vector<std::string> entries = {};
+	string_map<std::int64_t> entries = {};
 	std::string name() const
 	{
 		return "enum";
@@ -1102,6 +1107,56 @@ struct sval
 		}
 		return ret;
 	}
+
+	llvm::Constant* llvm() const
+	{
+		if(IS_A(this->val, std::monostate))
+		{
+			panic("detected call to sval::llvm() where the payload is monostate.");
+			return nullptr;
+		}
+		if(IS_A(this->val, literal_val))
+		{
+			auto lit = AS_A(this->val, literal_val);
+			if(IS_A(lit, std::int64_t))
+			{
+				auto val = AS_A(lit, std::int64_t);
+				if(IS_A(lit, std::int64_t))
+				{
+					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(lit, std::int64_t)), true});
+				}
+				else if(IS_A(lit, double))
+				{
+					return llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(lit, double)});
+				}
+				else if(IS_A(lit, char))
+				{
+					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{8, static_cast<std::uint64_t>(AS_A(lit, char))});
+				}
+				else if(IS_A(lit, bool))
+				{
+					return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{1, AS_A(lit, bool) ? std::uint64_t{1} : std::uint64_t{0}});
+				}
+				else if(IS_A(lit, std::string))
+				{
+					std::string_view str = AS_A(lit, std::string);
+					return codegen.ir->CreateGlobalString(str, "strlit", 0, codegen.mod.get());
+				}
+				else
+				{
+					panic("unknown sval literal_val");
+				}
+			}
+		}
+		if(IS_A(this->val, struct_val))
+		{
+			auto structval = AS_A(this->val, struct_val);
+			// ok this wont be easy
+			// we *really* *really* need the struct's name as it would've been declared earlier.
+			panic("AAAH THIS ONE IS REALLY HARD");
+		}
+		return nullptr;
+	}
 };
 
 enum class scope_type
@@ -1118,6 +1173,15 @@ constexpr const char* scope_type_names[] =
 	"metaregion",
 	"<UNDEFINED SCOPE TYPE>"
 };
+
+llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val)
+{
+	panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), true, llvm::GlobalValue::LinkageTypes::ExternalLinkage, val.llvm(), name);
+	llvm::GlobalVariable* ret = gvar.get();
+	this->global_variable_storage.push_back(std::move(gvar));
+	return ret;
+}
 
 struct semal_state2
 {
@@ -1311,7 +1375,7 @@ struct semal_local_state
 	pair_of<semal_state2::enum_value*> find_enum(std::string_view enum_name);
 	pair_of<semal_state2::struct_value*> find_struct(std::string_view struct_name);
 
-	bool enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/);
+	bool enum_add_entry(std::string enum_name, std::string entry_name, sval value);
 	bool struct_add_member(std::string struct_name, std::string member_name, type_t member_ty);
 };
 
@@ -1471,19 +1535,20 @@ pair_of<semal_state2::struct_value*> semal_local_state::find_struct(std::string_
 	return {local_ret, global_ret};
 }
 
-bool semal_local_state::enum_add_entry(std::string enum_name, std::string entry_name /*, value?!?!*/)
+bool semal_local_state::enum_add_entry(std::string enum_name, std::string entry_name, sval value)
 {
 	bool did_a_write = false;
 	auto [local_iter, global_iter] = this->find_enum(enum_name);
+	auto v = AS_A(AS_A(value.val, literal_val), std::int64_t);
 	if(local_iter != nullptr)
 	{
 		did_a_write = true;
-		local_iter->entries.push_back(entry_name);
+		local_iter->entries.emplace(entry_name, v);
 	}
 	if(global_iter != nullptr)
 	{
 		did_a_write = true;
-		global_iter->entries.push_back(entry_name);
+		global_iter->entries.emplace(entry_name, v);
 	}
 	return did_a_write;
 }
@@ -3327,6 +3392,16 @@ void codegen_terminate(bool verbose_print)
 		codegen.mod->print(os, nullptr);
 		std::println("llvm IR is as follows:\n\033[1;34m{}\033[0m", ir);
 	}
+
+	if(codegen.mod != nullptr)
+	{
+		codegen.mod->dropAllReferences();
+	}
+	for(auto& glob_ptr : codegen.global_variable_storage)
+	{
+		glob_ptr->removeFromParent();
+	}
+	codegen.global_variable_storage.clear();
 	codegen.ir = nullptr;
 	codegen.mod = nullptr;
 	codegen.ctx = nullptr;
@@ -3449,27 +3524,7 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 	sval ret{.val = expr.value, .ty = expr.get_type()};
 	if(do_codegen)
 	codegen_logic_begin
-		if(IS_A(expr.value, std::int64_t))
-		{
-			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(expr.value, std::int64_t)), true});
-		}
-		else if(IS_A(expr.value, double))
-		{
-			ret.ll = llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(expr.value, double)});
-		}
-		else if(IS_A(expr.value, char))
-		{
-			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{8, static_cast<std::uint64_t>(AS_A(expr.value, char))});
-		}
-		else if(IS_A(expr.value, bool))
-		{
-			ret.ll = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{1, AS_A(expr.value, bool) ? std::uint64_t{1} : std::uint64_t{0}});
-		}
-		else if(IS_A(expr.value, std::string))
-		{
-			std::string_view str = AS_A(expr.value, std::string);
-			ret.ll = codegen.ir->CreateGlobalString(str, "strlit", 0, codegen.mod.get());
-		}
+		ret.ll = ret.llvm();
 	codegen_logic_end
 	return
 	{
@@ -3846,7 +3901,7 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			return semal_result::err("enum-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
 		}
 		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
-		auto iter = std::find(enty.entries.begin(), enty.entries.end(), rhs_symbol);
+		auto iter = enty.entries.find(rhs_symbol);
 		if(iter == enty.entries.end())
 		{
 			return semal_result::err("enum-access field expressionis invalid. enum \"{}\" has no entry named \"{}\"", lhs_symbol, rhs_symbol);
@@ -4348,10 +4403,13 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	semal_local_state& parent = *local->parent;
 	error_ifnt(parent.unfinished_types.size(), n.begin_location, "designator statement's parent local state did not have any unfinished types. is this a blkinit that i haven't covered yet?");
 	const semal_result& parent_result = parent.unfinished_types.front();
+	// give me the type of the expr.
+	// no codegen here for enum values because we codegen later (see the end of semal(...) impl when we pop context)
+	semal_result entry_value = semal_expr(desig_expr, n, source, local, false);
 	switch(parent_result.t)
 	{
 		case semal_type::enum_decl:
-			parent.enum_add_entry(parent_result.label, designator_stmt.name);
+			parent.enum_add_entry(parent_result.label, designator_stmt.name, entry_value.val);
 		break;
 		default:
 			// option C: code is wrong.
@@ -4512,7 +4570,19 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 
 					break;
 					case semal_type::enum_decl:
-
+						if(do_codegen)
+						{
+							std::string_view enumname = last.label;
+							semal_state2::enum_value* enumval = std::get<0>(local->find_enum(enumname));
+							panic_ifnt(enumval != nullptr, "waaah but an enum");
+							enum_ty ty = *enumval;
+							for(const auto& [name, entryval] : ty.entries)
+							{
+								sval val{.val = literal_val{entryval}, .ty = *ty.underlying_ty};
+								val.ty.qual = val.ty.qual | typequal_static;
+								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val);
+							}
+						}
 					break;
 					default:
 						panic("when popping context (closing of block {}), last unfinished type was detected, but it was neither a non-extern function, enum nor struct", n.end_location);
