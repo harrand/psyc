@@ -930,6 +930,8 @@ struct type_t
 		{
 			panic("unhandled check if two similar types can be converted (\"{}\" and \"{}\"). did you add a new type payload?", lhs_name, rhs_name);
 		}
+		#undef lhs_is
+		#undef rhs_is
 		// different type of types.
 		// if we're not on the second attempt, try the other way around.
 		if(!second_attempt)
@@ -1106,6 +1108,104 @@ struct sval
 			panic("value_tostring for type {} is NYI", name);
 		}
 		return ret;
+	}
+
+	llvm::Value* convert_to(const type_t& rhs)
+	{
+		panic_ifnt(this->ll != nullptr, "codegen: cant convert from null");
+		panic_ifnt(this->ty.is_convertible_to(rhs), "codegen: cant convert types coz you provided non-convertible types, idiot.");
+		#define lhs_is(x) this->ty.payload.index() == payload_index<x, type_t::payload_t>()
+		#define rhs_is(x) rhs.payload.index() == payload_index<x, type_t::payload_t>()
+		if(lhs_is(prim_ty))
+		{
+			if(rhs_is(prim_ty))
+			{
+				const auto& lhs_prim = std::get<prim_ty>(this->ty.payload);
+				const auto& rhs_prim = std::get<prim_ty>(rhs.payload);
+
+				if(lhs_prim == rhs_prim)
+				{
+					// same bloody thing.
+					return this->ll;
+				}
+
+				using enum prim_ty::type;
+				// bool can be converted to any number. remember its guaranteed to be smaller than any integral type so always sext (trunc other way around)
+				if(lhs_prim.p == boolean && rhs_prim.is_numeric())
+				{
+					return codegen.ir->CreateZExtOrBitCast(this->ll, rhs.llvm());
+				}
+				else if(lhs_prim.is_numeric() && rhs_prim.p == boolean)
+				{
+					return codegen.ir->CreateTrunc(this->ll, rhs.llvm());
+				}
+
+				// if lhs < rhs, then sext if rhs is signed, otherwise zext
+				// if lhs == rhs, if signedness differ then bitcase, otherwise nothing
+				// if lhs > rhs, then always trunc
+				if(lhs_prim.is_integral() && rhs_prim.is_integral())
+				{
+					auto lhs_sz = lhs_prim.integral_size();
+					auto rhs_sz = rhs_prim.integral_size();
+					if(lhs_sz < rhs_sz)
+					{
+						if(rhs_prim.is_unsigned_integral())
+						{
+							return codegen.ir->CreateZExt(this->ll, rhs.llvm());
+						}
+						else
+						{
+							return codegen.ir->CreateSExt(this->ll, rhs.llvm());
+						}
+					}
+					else if(lhs_sz == rhs_sz)
+					{
+						if(lhs_prim.is_signed_integral() == rhs_prim.is_signed_integral())
+						{
+							return this->ll;
+						}
+						else
+						{
+							return codegen.ir->CreateBitCast(this->ll, rhs.llvm());
+						}
+					}
+					else
+					{
+						return codegen.ir->CreateTrunc(this->ll, rhs.llvm());
+					}
+				}
+				else
+				{
+					panic("ahh conversion logic is hard what prims am i missing");
+				}
+			}
+			else if(rhs_is(ptr_ty))
+			{
+				// convert integer to pointer.
+				return codegen.ir->CreateIntToPtr(this->ll, rhs.llvm());
+			}
+			else
+			{
+				panic("lhs prim converts to wot???");
+			}
+		}
+		else if(lhs_is(ptr_ty))
+		{
+			if(rhs_is(ptr_ty))
+			{
+				// pointers are trivially convertible
+				return this->ll;
+			}
+			else if(rhs_is(prim_ty))
+			{
+				// pointer -> u64
+				return codegen.ir->CreatePtrToInt(this->ll, rhs.llvm());
+			}
+		}
+		auto lhs_name = this->ty.name();
+		auto rhs_name = rhs.name();
+		panic("cant convert types codegen-wise (\"{}\" -> \"{}\")", lhs_name, rhs_name);
+		return nullptr;
 	}
 
 	llvm::Constant* llvm() const
@@ -3668,7 +3768,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	for(std::size_t i = 0; i < actual_params.size(); i++)
 	{
 		const ast_expr& actual = actual_params[i];
-		semal_result actual_result = semal_expr(actual, n, source, local, false);
+		semal_result actual_result = semal_expr(actual, n, source, local, do_codegen);
 		if(actual_result.is_err())
 		{
 			return actual_result;
@@ -3761,10 +3861,15 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 		{
 			return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
 		}
+		lhs_result.val.ty = lhs_result.val.ty.add_weak();
 		type_t cast_from = lhs_result.val.ty;
-		if(cast_from.add_weak().is_convertible_to(casted_to))
+		if(cast_from.is_convertible_to(casted_to))
 		{
 			// cool
+			if(do_codegen)
+			{
+				lhs_result.val.ll = lhs_result.val.convert_to(casted_to);
+			}
 			lhs_result.val.ty = casted_to;
 			return lhs_result;
 		}
@@ -4470,6 +4575,10 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		if(!actual_result.val.ty.is_convertible_to(expected_ty))
 		{
 			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
+		}
+		if(do_codegen)
+		{
+			actual_result.val.ll = actual_result.val.convert_to(expected_ty);
 		}
 		// todo: codegen needs to do a conversion here if the types are convertible but dont exactly match.
 		if(actual_result.val.ty.qual & typequal_static)
