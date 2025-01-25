@@ -353,7 +353,7 @@ void generic_warning(err ty, const char* msg, srcloc where, std::format_args&& a
 
 void generic_msg(err ty, const char* msg, srcloc where, std::format_args&& args)
 {
-	std::println("\033[1;34m{} msg {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
+	std::println("\033[1;34m{} message {}\033[0m: {}", err_names[static_cast<int>(ty)], where, std::vformat(msg, args));
 }
 
 #define COMPILER_STAGE
@@ -1559,6 +1559,7 @@ struct semal_global_state
 	std::deque<semal_local_state> locals = {};
 	std::unordered_set<std::filesystem::path> compiled_source_files = {};
 	std::unordered_set<std::filesystem::path> registered_link_libraries = {};
+	compile_args* args = nullptr;
 
 	string_map<llvm::Function*> llvm_functions = {};
 	std::unordered_map<struct_ty, llvm::StructType*> llvm_structs = {};
@@ -3596,7 +3597,7 @@ void codegen_verify()
 
 void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine);
 
-void codegen_generate(const compile_args& args)
+std::filesystem::path codegen_generate(const compile_args& args)
 {
 	std::filesystem::path output_path = args.output_dir / args.output_name;
 	llvm::TargetMachine* targetMachine = nullptr;
@@ -3616,7 +3617,7 @@ void codegen_generate(const compile_args& args)
 
     if (!target) {
         llvm::errs() << "Error: " << error << "\n";
-        return;
+        return {};
     }
 
     // Create a TargetMachine
@@ -3646,7 +3647,9 @@ void codegen_generate(const compile_args& args)
     modulePassManager.run(*codegen.mod, moduleAnalysisManager);
 
 	codegen_logic_end
-	generate_object_file(output_path.string() + ".o", targetMachine);
+	std::string object_path = output_path.string() + ".o";
+	generate_object_file(object_path, targetMachine);
+	return object_path;
 }
 
 void codegen_terminate(bool verbose_print)
@@ -3674,7 +3677,7 @@ void codegen_terminate(bool verbose_print)
 	codegen.ctx = nullptr;
 }
 
-//////////////////////////// SEMAL ////////////////////////////
+//////////////////////////// ASSEMBLE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE assemble
 #define assemble_logic_begin {auto impl_assemble_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -3702,6 +3705,98 @@ void generate_object_file(std::string object_path, llvm::TargetMachine* targetMa
     codeGenPassManager.run(*codegen.mod);
     object_file.flush();
 	assemble_logic_end
+}
+
+//////////////////////////// LINK ////////////////////////////
+#undef COMPILER_STAGE
+#define COMPILER_STAGE link
+#define link_logic_begin {auto impl_link_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+#define link_logic_end time_link += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_link_time_;}
+
+std::string exec_windows(std::string_view cmd)
+{
+	#ifdef _WIN32
+	std::array<char, 128> buffer;
+	std::string result;
+	std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd.data(), "r"), _pclose);
+	if (!pipe) {
+		return "";
+	}
+	while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
+		result += buffer.data();
+	}
+	return result;
+
+	#else
+
+	return "";
+	#endif
+}
+
+std::string replace_all(std::string str, const std::string& from, const std::string& to)
+{
+	size_t start_pos = 0;
+	while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+		str.replace(start_pos, from.length(), to);
+		start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+	}
+	return str;
+}
+
+std::string get_linker_prefix()
+{
+	// if we're on win32, we will need to invoke vcvars64.bat first.
+	// let's get that.
+	#ifdef _WIN32
+
+	std::string root_path = exec_windows("\"\"C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 | findstr \"installationPath\"");
+	if(root_path.empty())
+	{
+		return "";
+	}
+
+	root_path.erase(0, sizeof("installationPath:"));
+	std::string vcvarsall_path = replace_all(root_path + "\\VC\\Auxiliary\\Build\\vcvars64.bat", "\n", "");
+	return vcvarsall_path;
+	#else
+	return "";
+	#endif
+}
+
+void link(std::filesystem::path object_file_path, const compile_args& args)
+{
+	link_logic_begin
+	if(args.output_type == target::object)
+	{
+		msg({}, "No linkage as you have opted for objects only.\n  \"{}\" written.", object_file_path);
+		return;
+	}
+	std::string link_libs;
+	for(const auto path : args.link_libraries)
+	{
+		link_libs += std::format(" {}", path.filename());
+	}
+	std::string cmd = get_linker_prefix();
+	cmd = std::format("cd {} && \"{}\"", args.output_dir, cmd);
+	if(args.output_type == target::executable)
+	{
+		std::string lnk_cmd = std::format(" && link.exe {} -entry:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
+		cmd += lnk_cmd + "\"";
+		int ret = std::system(cmd.c_str());
+		if(ret != 0)
+		{
+			error({}, "link failed");
+		}
+	}
+	else if(args.output_type == target::library)
+	{
+		error({}, "library linkage not yet implemented");
+	}
+	else
+	{
+		panic("unrecognised output target type. expected \"object\", \"executable\" or \"library\"");
+	}
+	link_logic_end
 }
 
 //////////////////////////// SEMAL ////////////////////////////
@@ -4850,6 +4945,8 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("__set_executable", stringparam_noret);
 	local->pending_functions.emplace("__set_library", stringparam_noret);
 	local->pending_functions.emplace("__set_object", stringparam_noret);
+	local->pending_functions.emplace("__set_library", stringparam_noret);
+	local->pending_functions.emplace("__set_executable", stringparam_noret);
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
 	local->pending_functions.emplace("__error", stringparam_noret);
@@ -7730,6 +7827,7 @@ int main(int argc, char** argv)
 
 	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	compile_args args = parse_args(cli_args);
+	global.args = &args;
 	if(args.should_print_help)
 	{
 		print_help();
@@ -7747,10 +7845,12 @@ int main(int argc, char** argv)
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
 	codegen_verify();
-	codegen_generate(args);
+	std::filesystem::path object_file_path = codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
 
-	std::print("setup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen) / 1000.0f);
+	link(object_file_path, args);
+
+	std::print("setup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s\n\n", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen + time_assemble + time_link) / 1000.0f);
 }
 
 semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local)
@@ -7775,7 +7875,24 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	}
 	else if(call.function_name == "__set_object")
 	{
-		// todo: impl
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::string name = get_as_string(call.params.front());
+		global.args->output_name = name;
+		global.args->output_type = target::object;
+	}
+	else if(call.function_name == "__set_library")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::string name = get_as_string(call.params.front());
+		global.args->output_name = name;
+		global.args->output_type = target::library;
+	}
+	else if(call.function_name == "__set_executable")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::string name = get_as_string(call.params.front());
+		global.args->output_name = name;
+		global.args->output_type = target::executable;
 	}
 	else if(call.function_name == "__msg")
 	{
