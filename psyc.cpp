@@ -4284,12 +4284,53 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		rhs_result.val.ll = rhs_result.val.convert_to(result_val.ty);
 		if(result_prim.is_integral())
 		{
-			result_val.ll = codegen.ir->CreateSub(lhs_result.val.ll, rhs_result.val.ll);
+			switch(expr.type)
+			{
+				case biop_type::plus:
+					result_val.ll = codegen.ir->CreateAdd(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::minus:
+					result_val.ll = codegen.ir->CreateSub(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::mul:
+					result_val.ll = codegen.ir->CreateMul(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::div:
+					if(result_prim.is_signed_integral())
+					{
+						result_val.ll = codegen.ir->CreateSDiv(lhs_result.val.ll, rhs_result.val.ll);
+					}
+					else
+					{
+						result_val.ll = codegen.ir->CreateUDiv(lhs_result.val.ll, rhs_result.val.ll);
+					}
+				break;
+				default:
+					panic("aaah what arithmetic biop type is this???");
+				break;
+			}
 		}
 		else
 		{
 			panic_ifnt(result_prim.is_floating_point(), "waaah");
-			result_val.ll = codegen.ir->CreateFSub(lhs_result.val.ll, rhs_result.val.ll);
+			switch(expr.type)
+			{
+				case biop_type::plus:
+					result_val.ll = codegen.ir->CreateFAdd(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::minus:
+					result_val.ll = codegen.ir->CreateFSub(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::mul:
+					result_val.ll = codegen.ir->CreateFMul(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::div:
+					result_val.ll = codegen.ir->CreateFDiv(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				default:
+					panic("aaah what arithmetic biop type is this???");
+				break;
+			}
 		}
 	}
 	return semal_result
@@ -4297,6 +4338,46 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		.t = semal_type::misc,
 		.val = result_val
 	};
+}
+
+semal_result semal_ptr_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	// expect lhs to be ptr to struct.
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	semal_result cpy = lhs_result;
+	type_t ty = lhs_result.val.ty;
+	if(!ty.is_ptr())
+	{
+		return semal_result::err("expected pointer-type as lhs of -> expression, but got a \"{}\"", ty.name());
+	}
+	type_t underlying_ty = *AS_A(ty.payload, ptr_ty).underlying_ty;
+	if(!underlying_ty.is_struct())
+	{
+		return semal_result::err("expected lhs of -> expression to be a pointer-to-struct, but got a \"{}\"", ty.name());
+	}
+	auto strty = AS_A(underlying_ty.payload, struct_ty);
+	lhs_result.val.val = {};
+
+	// absolutely *must* treat b as a symbol.
+	if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
+	{
+		return semal_result::err("struct-access ptr-field expression is invalid. rhs of the ptr-field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
+	}
+	std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
+
+	auto iter = std::find(strty.member_order.begin(), strty.member_order.end(), rhs_symbol);
+	panic_ifnt(iter != strty.member_order.end(), "wtf member order didnt contain member");
+	std::size_t member_id = std::distance(strty.member_order.begin(), iter);
+
+	lhs_result.val.ty = *strty.members.at(std::string{rhs_symbol});
+	lhs_result.val.ty.qual = underlying_ty.qual;
+
+	if(do_codegen)
+	{
+		cpy.load_if_variable();
+		lhs_result.val.ll = codegen.ir->CreateStructGEP(underlying_ty.llvm(), cpy.val.ll, member_id);
+	}
+	return lhs_result;
 }
 
 semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -4431,7 +4512,7 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 		return semal_result::err("attempt to assign to non-mut type \"{}\"", lhs_ty.name());
 	}
 
-	semal_result rhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	const type_t& rhs_ty = rhs_result.val.ty;
 
 	if(!rhs_ty.is_convertible_to(lhs_ty))
@@ -4439,7 +4520,14 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 		return semal_result::err("assignment is invalid because rhs type \"{}\" cannot be converted to lhs type \"{}\"", rhs_ty.name(), lhs_ty.name());
 	}
 
-	lhs_result.val = rhs_result.val;
+	if(do_codegen)
+	{
+		rhs_result.load_if_variable();
+		codegen.ir->CreateStore(rhs_result.val.ll, lhs_result.val.ll);
+	}
+	lhs_result.val.ty = rhs_result.val.ty;
+	lhs_result.val.val = rhs_result.val.val;
+
 	return lhs_result;
 }
 
@@ -4468,6 +4556,8 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		break;
 		case ptr_field:
 		{
+			return semal_ptr_field_biop_expr(expr, n, source, local, do_codegen);
+			/*
 			ast_unop_expr deref
 			{
 				.type = unop_type::deref,
@@ -4475,7 +4565,8 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 			};
 			ast_biop_expr deref_expr = expr;
 			deref_expr.lhs = ast_expr{.expr_ = deref};
-			return semal_field_biop_expr(deref_expr, n, source, local, do_codegen);
+			return semal_field_biop_expr(deref_expr, n, source, local, false);
+			*/
 		}
 		break;
 		default:
