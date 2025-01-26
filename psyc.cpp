@@ -400,6 +400,7 @@ struct compile_args
 	std::vector<std::filesystem::path> link_libraries = {};
 	std::string output_name = "out";
 	target output_type = target::object;
+	unsigned int optimisation_level = 0;
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -1532,6 +1533,22 @@ struct semal_local_state
 	type_t parse_type(std::string_view type_name) const
 	{
 		return std::get<0>(this->parse_type_global_fallback(type_name));
+	}
+
+	const semal_result* try_find_parent_function() const
+	{
+		for(auto iter = this->unfinished_types.rbegin(); iter != this->unfinished_types.rend(); iter++)
+		{
+			if(iter->t == semal_type::function_decl)
+			{
+				return &*iter;
+			}
+		}
+		if(this->parent != nullptr)
+		{
+			return this->parent->try_find_parent_function();
+		}
+		return nullptr;
 	}
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
@@ -3640,8 +3657,24 @@ std::filesystem::path codegen_generate(const compile_args& args)
     passBuilder.crossRegisterProxies(
         loopAnalysisManager, functionAnalysisManager, cgsccAnalysisManager, moduleAnalysisManager);
 
+	llvm::OptimizationLevel opt_level;
+	switch(args.optimisation_level)
+	{
+		case 0:
+			opt_level = llvm::OptimizationLevel::O0;
+		break;
+		case 1:
+			opt_level = llvm::OptimizationLevel::O1;
+		break;
+		case 2:
+			opt_level = llvm::OptimizationLevel::O2;
+		break;
+		case 3:
+			opt_level = llvm::OptimizationLevel::O3;
+		break;
+	}
     llvm::ModulePassManager modulePassManager = passBuilder.buildPerModuleDefaultPipeline(
-        llvm::OptimizationLevel::O2);
+        opt_level);
 
     // Run the optimization passes
     modulePassManager.run(*codegen.mod, moduleAnalysisManager);
@@ -4990,12 +5023,24 @@ semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::strin
 
 semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	const semal_result* maybe_parent = local->try_find_parent_function();
+	if(maybe_parent == nullptr)
+	{
+		return semal_result::err("detected return statement but we are not in a function definition.");
+	}
+	std::string_view parent_function_name = maybe_parent->label;
+	type_t expected_return_ty = *AS_A(maybe_parent->val.ty.payload, fn_ty).return_ty;
 	if(return_stmt.retval.has_value())
 	{
 		semal_result ret = semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
+		if(!ret.val.ty.is_convertible_to(expected_return_ty))
+		{
+			return semal_result::err("return value is of type \"{}\" which is not convertible to the enclosing function \"{}\"'s return type of \"{}\"", ret.val.ty.name(), parent_function_name, expected_return_ty.name());
+		}
 		if(do_codegen)
 		{
 			ret.load_if_variable();
+			ret.convert_to(expected_return_ty);
 			ret.val.ll = codegen.ir->CreateRet(ret.val.ll);
 		}
 		return ret;
@@ -5031,18 +5076,26 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		},
 		.return_ty = string_literal
 	};
+	fn_ty strlen_fn
+	{
+		.params = 
+		{
+			string_literal,
+		},
+		.return_ty = type_t::create_primitive_type(prim_ty::type::u64)
+	};
 	local->pending_functions.emplace("__add_link_library", stringparam_noret);
 	local->pending_functions.emplace("__add_source_file", stringparam_noret);
-	local->pending_functions.emplace("__set_executable", stringparam_noret);
 	local->pending_functions.emplace("__set_library", stringparam_noret);
 	local->pending_functions.emplace("__set_object", stringparam_noret);
-	local->pending_functions.emplace("__set_library", stringparam_noret);
 	local->pending_functions.emplace("__set_executable", stringparam_noret);
+	local->pending_functions.emplace("__set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
 	local->pending_functions.emplace("__error", stringparam_noret);
-	local->pending_functions.emplace("__warn", stringparam_noret);
+	local->pending_functions.emplace("__warning", stringparam_noret);
 	local->pending_functions.emplace("_cstrcat", strcat_fn);
+	local->pending_functions.emplace("__strlen", strlen_fn);
 	return semal_result::null();
 }
 
@@ -5283,6 +5336,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 							{
 								sval val{.val = literal_val{entryval}, .ty = *ty.underlying_ty};
 								val.ty.qual = val.ty.qual | typequal_static;
+								val.ll = val.llvm();
 								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val);
 							}
 						}
@@ -7951,6 +8005,11 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		semal_result result = semal_expr(expr, n, source, local, false);
 		return std::get<std::string>(std::get<literal_val>(result.val.val));
 	};
+	auto get_as_integer = [&n, &source, &local](const ast_expr& expr) -> std::int64_t
+	{
+		semal_result result = semal_expr(expr, n, source, local, false);
+		return std::get<std::int64_t>(std::get<literal_val>(result.val.val));
+	};
 	type_t strlit = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8));
 	strlit.qual = typequal_static;
 
@@ -7984,6 +8043,12 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		std::string name = get_as_string(call.params.front());
 		global.args->output_name = name;
 		global.args->output_type = target::executable;
+	}
+	else if(call.function_name == "__set_optimisation")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		int opt = get_as_integer(call.params.front());
+		global.args->optimisation_level = opt;
 	}
 	else if(call.function_name == "__msg")
 	{
@@ -8053,6 +8118,22 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 				.val = literal_val{result},
 				.ty = strlit
 			}
+		};
+	}
+	else if(call.function_name == "__strlen")
+	{
+		std::string str = get_as_string(call.params.front());
+		sval val
+		{
+			.val = literal_val{static_cast<std::int64_t>(str.size())},
+			.ty = type_t::create_primitive_type(prim_ty::type::s64)
+		};
+		val.ll = val.llvm();
+		return
+		{
+			.t = semal_type::misc,
+			.label = "",
+			.val = val
 		};
 	}
 	else if(call.function_name.starts_with("__"))
