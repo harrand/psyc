@@ -5037,6 +5037,10 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 	if(return_stmt.retval.has_value())
 	{
 		semal_result ret = semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
+		if(ret.is_err())
+		{
+			return ret;
+		}
 		if(!ret.val.ty.is_convertible_to(expected_return_ty))
 		{
 			return semal_result::err("return value is of type \"{}\" which is not convertible to the enclosing function \"{}\"'s return type of \"{}\"", ret.val.ty.name(), parent_function_name, expected_return_ty.name());
