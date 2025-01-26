@@ -1437,6 +1437,7 @@ enum class semal_type
 	struct_decl,
 	enum_decl,
 	blkinit,
+	if_stmt,
 	err,
 	misc,
 	variable_use,
@@ -3608,8 +3609,10 @@ void codegen_initialise(std::string_view name)
 
 void codegen_verify()
 {
-	bool broken = llvm::verifyModule(*codegen.mod);
-	error_ifnt(!broken, {}, "llvm verify failed");
+	std::string err_msg;
+	llvm::raw_string_ostream output(err_msg);
+	bool broken = llvm::verifyModule(*codegen.mod, &output);
+	error_ifnt(!broken, {}, "llvm verify failed: {}", err_msg);
 }
 
 void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine);
@@ -4018,6 +4021,7 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 		llvm::Function* llvm_func = llvm::Function::Create(llvm_fn, llvm::Function::ExternalLinkage, "unnamed_fn", codegen.mod.get());
 		if(!expr.is_extern)
 		{
+			local->unfinished_types.back().val.ll = llvm_func;
 			llvm::BasicBlock* bb = llvm::BasicBlock::Create(*codegen.ctx, "entry", llvm_func);
 			codegen.ir->SetInsertPoint(bb);
 			std::size_t counter = 0;
@@ -5163,12 +5167,21 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 
 semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+
 	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local, do_codegen);
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
+	const semal_result* maybe_parent = local->try_find_parent_function();
 	if(if_stmt.is_static)
 	{
 		expected_cond_ty.qual = typequal_static;
+	}
+	else
+	{
+		if(maybe_parent == nullptr)
+		{
+			return semal_result::err("detected if statement but we are not in a function definition.");
+		}
 	}
 	if(!actual_cond_ty.is_convertible_to(expected_cond_ty))
 	{
@@ -5181,6 +5194,48 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 		if(!cond)
 		{
 			n.children.clear();
+		}
+	}
+	else
+	{
+		if(do_codegen)
+		{
+			cond_result.load_if_variable();
+			cond_result.convert_to(expected_cond_ty);
+			llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
+			llvm::BasicBlock* true_blk = llvm::BasicBlock::Create(*codegen.ctx, "then", parent_fn);
+			llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*codegen.ctx, "ifcont");
+
+			parent_fn->insert(parent_fn->end(), cont_blk);
+			codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
+			codegen.ir->SetInsertPoint(true_blk);
+
+			bool true_blk_contains_ret = false;
+			node* blk = try_get_block_child(n);
+			if(blk == nullptr)
+			{
+				panic("if statement didnt have a block child?");
+			}
+			for(const auto& child : blk->children)
+			{
+				if(IS_A(child.payload, ast_stmt))
+				{
+					const ast_stmt& child_stmt = AS_A(child.payload, ast_stmt);
+					if(IS_A(child_stmt.stmt_, ast_return_stmt))
+					{
+						true_blk_contains_ret = true;	
+					}
+				}
+			}
+			sval checker_val
+			{
+				.ll = cont_blk
+			};
+			if(true_blk_contains_ret)
+			{
+				checker_val.val = literal_val{};
+			}
+			local->unfinished_types.push_back({.t = semal_type::if_stmt, .val = checker_val});
 		}
 	}
 	return semal_result::null();
@@ -5340,6 +5395,17 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val);
 							}
 						}
+					break;
+					case semal_type::if_stmt:
+					{
+						auto* cont_blk = static_cast<llvm::BasicBlock*>(last.val.ll);
+						bool doesnt_need_branch = IS_A(last.val.val, literal_val);
+						if(!doesnt_need_branch)
+						{
+							codegen.ir->CreateBr(cont_blk);
+						}
+						codegen.ir->SetInsertPoint(cont_blk);
+					}
 					break;
 					default:
 						panic("when popping context (closing of block {}), last unfinished type was detected, but it was neither a non-extern function, enum nor struct", n.end_location);
