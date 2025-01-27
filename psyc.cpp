@@ -3844,7 +3844,7 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	cmd = std::format("cd {} && \"{}\"", args.output_dir, cmd);
 	if(args.output_type == target::executable)
 	{
-		std::string lnk_cmd = std::format(" && link.exe {} -entry:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
+		std::string lnk_cmd = std::format(" && link.exe {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
 		cmd += lnk_cmd + "\"";
 		int ret = std::system(cmd.c_str());
 		if(ret != 0)
@@ -5102,8 +5102,6 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			if(do_codegen)
 			{
-				ret.load_if_variable();
-				ret.val.ll = ret.val.convert_to(ret.val.ty);
 				if(local->scope == scope_type::translation_unit)
 				{
 					// this is a global variable.
@@ -5112,9 +5110,15 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 				else
 				{
 					llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(ret.val.ty.llvm(), nullptr, decl.name);
+
 					if(decl.initialiser.has_value())
 					{
-						codegen.ir->CreateStore(ret.val.ll, llvm_var);
+						ret.load_if_variable();
+						ret.val.ll = ret.val.convert_to(ret.val.ty);
+						if(decl.initialiser.has_value())
+						{
+							codegen.ir->CreateStore(ret.val.ll, llvm_var);
+						}
 					}
 					ret.val.ll = llvm_var;
 				}
@@ -8516,7 +8520,7 @@ std::string get_preload_source()
 	__is_linux : bool static := {};
 	__psyc ::= "{}";
 	__cwd ::= "{}";
-	__chkstk ::= func() -> v0&{{return null;}};
+	__chkstk ::= func() -> v0{{}};
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
