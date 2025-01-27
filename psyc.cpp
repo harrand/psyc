@@ -1093,6 +1093,8 @@ struct sval
 	std::variant<std::monostate, literal_val, struct_val> val = std::monostate{};
 	type_t ty;
 	llvm::Value* ll = nullptr;
+	const void* usrdata = nullptr;
+	void* usrdata2 = nullptr;
 
 	bool operator==(const sval& rhs) const = default;
 
@@ -1438,6 +1440,7 @@ enum class semal_type
 	enum_decl,
 	blkinit,
 	if_stmt,
+	while_stmt,
 	err,
 	misc,
 	variable_use,
@@ -3023,6 +3026,16 @@ struct ast_if_stmt
 	}
 };
 
+struct ast_while_stmt
+{
+	ast_expr condition;
+
+	std::string value_tostring()
+	{
+		return "while-statement";
+	}
+};
+
 struct ast_stmt
 {
 	std::variant
@@ -3033,7 +3046,8 @@ struct ast_stmt
 		ast_blk_stmt,
 		ast_metaregion_stmt,
 		ast_designator_stmt,
-		ast_if_stmt
+		ast_if_stmt,
+		ast_while_stmt
 	> stmt_;
 	bool deferred = false;
 	const char* type_name() const
@@ -3046,7 +3060,8 @@ struct ast_stmt
 			"block",
 			"metaregion",
 			"designator",
-			"if"
+			"if",
+			"while"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -3607,11 +3622,27 @@ void codegen_initialise(std::string_view name)
 	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
 }
 
+void codegen_verbose_print()
+{
+	if(codegen.mod != nullptr)
+	{
+		std::string ir;
+		llvm::raw_string_ostream os{ir};
+		codegen.mod->print(os, nullptr);
+		std::println("llvm IR is as follows:\n\033[1;34m{}\033[0m", ir);
+	}
+}
+
+
 void codegen_verify()
 {
 	std::string err_msg;
 	llvm::raw_string_ostream output(err_msg);
 	bool broken = llvm::verifyModule(*codegen.mod, &output);
+	if(broken)
+	{
+		codegen_verbose_print();
+	}
 	error_ifnt(!broken, {}, "llvm verify failed: {}", err_msg);
 }
 
@@ -3690,12 +3721,9 @@ std::filesystem::path codegen_generate(const compile_args& args)
 
 void codegen_terminate(bool verbose_print)
 {
-	if(codegen.mod != nullptr && verbose_print)
+	if(verbose_print)
 	{
-		std::string ir;
-		llvm::raw_string_ostream os{ir};
-		codegen.mod->print(os, nullptr);
-		std::println("llvm IR is as follows:\n\033[1;34m{}\033[0m", ir);
+		codegen_verbose_print();
 	}
 
 	for(std::size_t i = 0; i < codegen.global_variable_storage.size(); i++)
@@ -4550,6 +4578,10 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	}
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(rhs_result.is_err())
+	{
+		return rhs_result;
+	}
 	const type_t& rhs_ty = rhs_result.val.ty;
 
 	if(!rhs_ty.is_convertible_to(lhs_ty))
@@ -4560,12 +4592,85 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	if(do_codegen)
 	{
 		rhs_result.load_if_variable();
+		rhs_result.convert_to(lhs_ty);
 		codegen.ir->CreateStore(rhs_result.val.ll, lhs_result.val.ll);
 	}
 	lhs_result.val.ty = rhs_result.val.ty;
 	lhs_result.val.val = rhs_result.val.val;
 
 	return lhs_result;
+}
+
+semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
+
+	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(rhs_result.is_err())
+	{
+		return rhs_result;
+	}
+
+	if(!rhs_result.val.ty.is_convertible_to(lhs_result.val.ty))
+	{
+		return semal_result::err("comparison invalid - cannot convert rhs \"{}\" type to lhs \"{}\"", rhs_result.val.ty.name(), lhs_result.val.ty.name());
+	}
+
+	sval retval
+	{
+		.ty = type_t::create_primitive_type(prim_ty::type::boolean)
+	};
+	if(do_codegen)
+	{
+		type_t ty = lhs_result.val.ty;
+		lhs_result.load_if_variable();
+		rhs_result.load_if_variable();
+		rhs_result.convert_to(ty);
+		if(ty.is_enum())
+		{
+			auto enty = AS_A(ty.payload, enum_ty);
+			ty = *enty.underlying_ty;
+		}
+
+		if(ty.is_struct())
+		{
+			// member-wise compare
+			panic("codegen: dont know how to compare structs");
+		}
+		else if(ty.is_ptr())
+		{
+			// ptr value comparison
+			// note: icmp works on pointers too, so just use icmp
+			retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+		}
+		else if(ty.is_prim())
+		{
+			auto prim = AS_A(ty.payload, prim_ty);
+			if(prim.is_integral())
+			{
+				retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+			}
+			else if(prim.is_floating_point())
+			{
+				retval.ll = codegen.ir->CreateFCmpULT(lhs_result.val.ll, rhs_result.val.ll);
+			}
+			else
+			{
+				auto name = ty.name();
+				panic("codegen: dont know how to compare two \"{}\"'s {}", name, n.begin_location);
+			}
+		}
+	}
+	return
+	{
+		.t = semal_type::misc,
+		.val = retval
+	};
+
 }
 
 semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -4590,6 +4695,9 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		break;
 		case assign:
 			return semal_assign_biop_expr(expr, n, source, local, do_codegen);
+		break;
+		case compare_eq:
+			return semal_compare_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case ptr_field:
 		{
@@ -4707,6 +4815,7 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	};
 	if(do_codegen)
 	{
+		expr_result.load_if_variable();
 		ret.val.ll = codegen.ir->CreateLoad(ty.llvm(), expr_result.val.ll);
 	}
 	return ret;
@@ -4781,6 +4890,7 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 			std::size_t member_id = std::distance(struct_type.member_order.begin(), iter);
 
 			desig_result.load_if_variable();
+			desig_result.convert_to(*struct_type.members.at(desig.name));
 			llvm_initialisers.emplace(member_id, desig_result.val.ll);
 		}
 	}
@@ -4992,6 +5102,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			if(do_codegen)
 			{
+				ret.load_if_variable();
 				ret.val.ll = ret.val.convert_to(ret.val.ty);
 				if(local->scope == scope_type::translation_unit)
 				{
@@ -5003,7 +5114,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(ret.val.ty.llvm(), nullptr, decl.name);
 					if(decl.initialiser.has_value())
 					{
-						codegen.ir->CreateStore(val.ll, llvm_var);
+						codegen.ir->CreateStore(ret.val.ll, llvm_var);
 					}
 					ret.val.ll = llvm_var;
 				}
@@ -5171,7 +5282,6 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 
 semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-
 	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local, do_codegen);
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
@@ -5245,6 +5355,60 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	return semal_result::null();
 }
 
+semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	semal_result cond_result = semal_expr(while_stmt.condition, n, source, local, do_codegen);
+	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
+	const type_t& actual_cond_ty = cond_result.val.ty;
+	const semal_result* maybe_parent = local->try_find_parent_function();
+	if(!actual_cond_ty.is_convertible_to(expected_cond_ty))
+	{
+		return semal_result::err("while-statement condition is of invalid type \"{}\" as it is not convertible to a \"\"", actual_cond_ty.name(), expected_cond_ty.name());
+	}
+	if(do_codegen)
+	{
+		cond_result.load_if_variable();
+		cond_result.convert_to(expected_cond_ty);
+		llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
+		llvm::BasicBlock* true_blk = llvm::BasicBlock::Create(*codegen.ctx, "then", parent_fn);
+		llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*codegen.ctx, "whilecont");
+
+		parent_fn->insert(parent_fn->end(), cont_blk);
+		codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
+		codegen.ir->SetInsertPoint(true_blk);
+
+		bool true_blk_contains_ret = false;
+		node* blk = try_get_block_child(n);
+		if(blk == nullptr)
+		{
+			panic("while statement didnt have a block child?");
+		}
+		for(const auto& child : blk->children)
+		{
+			if(IS_A(child.payload, ast_stmt))
+			{
+				const ast_stmt& child_stmt = AS_A(child.payload, ast_stmt);
+				if(IS_A(child_stmt.stmt_, ast_return_stmt))
+				{
+					true_blk_contains_ret = true;	
+				}
+			}
+		}
+		sval checker_val
+		{
+			.ll = cont_blk,
+			.usrdata = &while_stmt,
+			.usrdata2 = true_blk
+		};
+		if(true_blk_contains_ret)
+		{
+			checker_val.val = literal_val{};
+		}
+		local->unfinished_types.push_back({.t = semal_type::while_stmt, .val = checker_val});
+	}
+	return semal_result::null();
+}
+
 semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_local_state* parent = local;
@@ -5297,6 +5461,10 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	else if(IS_A(stmt.stmt_, ast_if_stmt))
 	{
 		return semal_if_stmt(AS_A(stmt.stmt_, ast_if_stmt), n, source, local, do_codegen);
+	}
+	else if(IS_A(stmt.stmt_, ast_while_stmt))
+	{
+		return semal_while_stmt(AS_A(stmt.stmt_, ast_while_stmt), n, source, local, do_codegen);
 	}
 	else
 	{
@@ -5408,6 +5576,19 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 						{
 							codegen.ir->CreateBr(cont_blk);
 						}
+						codegen.ir->SetInsertPoint(cont_blk);
+					}
+					break;
+					case semal_type::while_stmt:
+					{
+						auto* cont_blk = static_cast<llvm::BasicBlock*>(last.val.ll);
+						auto* true_blk = static_cast<llvm::BasicBlock*>(last.val.usrdata2);
+						bool doesnt_need_branch = IS_A(last.val.val, literal_val);
+						auto* stmt = static_cast<const ast_while_stmt*>(last.val.usrdata);
+						semal_result cond_result = semal_expr(stmt->condition, n, source, local, do_codegen);
+						cond_result.load_if_variable();
+						cond_result.convert_to(type_t::create_primitive_type(prim_ty::type::boolean));
+						codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
 						codegen.ir->SetInsertPoint(cont_blk);
 					}
 					break;
@@ -7902,7 +8083,9 @@ CHORD_BEGIN
 				{
 					.condition = std::get<ast_expr>(nodes[2].payload),
 					.is_static = false
-				}}}}
+				}},
+				.children = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}
+			}}}}}
 		};
 	}
 CHORD_END
@@ -7925,6 +8108,114 @@ CHORD_END
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_if), TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+// while statement
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), NODE(ast_stmt)), FN
+	{
+		const auto& expr_node = nodes[2];
+		const auto& expr = std::get<ast_expr>(expr_node.payload);
+		const auto& stmt_node = nodes[4];
+		const auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
+		{
+			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			if(!blk.capped)
+			{
+				return {.action = parse_action::recurse, .reduction_result_offset = 4};
+			}
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = 5},
+				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_while_stmt
+					{
+						.condition = std::get<ast_expr>(nodes[2].payload),
+					}}, .children = {stmt_node}}}
+			};
+		}
+		else
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("{} statement detected directly after an if-statement. you should provide a block statement instead.");
+		}
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 6},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_while_stmt
+				{
+					.condition = std::get<ast_expr>(nodes[2].payload),
+				}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 1};
 	}
@@ -8225,6 +8516,7 @@ std::string get_preload_source()
 	__is_linux : bool static := {};
 	__psyc ::= "{}";
 	__cwd ::= "{}";
+	__chkstk ::= func() -> v0&{{return null;}};
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
