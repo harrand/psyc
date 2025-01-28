@@ -395,6 +395,7 @@ struct compile_args
 	bool verbose_ast = false;
 	bool verbose_parse = false;
 	bool verbose_codegen = false;
+	bool verbose_link = false;
 	std::filesystem::path build_file = {};
 	std::filesystem::path output_dir = {};
 	std::vector<std::filesystem::path> link_libraries = {};
@@ -431,12 +432,17 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.verbose_codegen = true;
 		}
+		else if(arg == "--verbose-link")
+		{
+			ret.verbose_link = true;
+		}
 		else if(arg == "--verbose-all")
 		{
 			ret.verbose_lex = true;
 			ret.verbose_ast = true;
 			ret.verbose_parse = true;
 			ret.verbose_codegen = true;
+			ret.verbose_link = true;
 		}
 		else if(arg == "-o")
 		{
@@ -3777,54 +3783,42 @@ void generate_object_file(std::string object_path, llvm::TargetMachine* targetMa
 #define link_logic_begin {auto impl_link_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 #define link_logic_end time_link += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_link_time_;}
 
-std::string exec_windows(std::string_view cmd)
+std::string get_default_linker()
 {
-	#ifdef _WIN32
-	std::array<char, 128> buffer;
-	std::string result;
-	std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd.data(), "r"), _pclose);
-	if (!pipe) {
-		return "";
-	}
-	while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
-		result += buffer.data();
-	}
-	return result;
-
-	#else
-
-	return "";
-	#endif
+#ifdef _WIN32
+	return "\"link.exe\"";
+#else
+	return "ld";
+#endif
 }
 
-std::string replace_all(std::string str, const std::string& from, const std::string& to)
+std::string get_linker()
 {
-	size_t start_pos = 0;
-	while((start_pos = str.find(from, start_pos)) != std::string::npos) {
-		str.replace(start_pos, from.length(), to);
-		start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-	}
-	return str;
-}
-
-std::string get_linker_prefix()
-{
-	// if we're on win32, we will need to invoke vcvars64.bat first.
-	// let's get that.
-	#ifdef _WIN32
-
-	std::string root_path = exec_windows("\"\"C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 | findstr \"installationPath\"");
-	if(root_path.empty())
+	const char* val = std::getenv("PSYC_LINKER");
+	if(val == nullptr)
 	{
-		return "";
+		return get_default_linker();
 	}
+	return val;
+}
 
-	root_path.erase(0, sizeof("installationPath:"));
-	std::string vcvarsall_path = replace_all(root_path + "\\VC\\Auxiliary\\Build\\vcvars64.bat", "\n", "");
-	return vcvarsall_path;
-	#else
-	return "";
-	#endif
+enum class linker_type
+{
+	msvc_like,
+	gnu_like
+};
+
+linker_type divine_linker_type(std::string_view linker)
+{
+#ifdef _WIN32
+	if(linker.contains("link"))
+	{
+		return linker_type::msvc_like;
+	}
+	return linker_type::gnu_like;
+#else
+	return linker_type::gnu_like;
+#endif
 }
 
 void link(std::filesystem::path object_file_path, const compile_args& args)
@@ -3840,17 +3834,19 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		link_libs += std::format(" {}", path.filename());
 	}
-	std::string cmd = get_linker_prefix();
-	cmd = std::format("cd {} && \"{}\"", args.output_dir, cmd);
+	std::string linker = get_linker();
+	linker_type type = divine_linker_type(linker);
+
+	std::string lnk_args;
+	if(type == linker_type::msvc_like)
+	{
+		lnk_args = std::format(" {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
+	}
+
+	std::string cmd = std::format("cd {}", args.output_dir);
 	if(args.output_type == target::executable)
 	{
-		std::string lnk_cmd = std::format(" && link.exe {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
-		cmd += lnk_cmd + "\"";
-		int ret = std::system(cmd.c_str());
-		if(ret != 0)
-		{
-			error({}, "link failed");
-		}
+		cmd += std::format(" && {}{}", linker, lnk_args);
 	}
 	else if(args.output_type == target::library)
 	{
@@ -3859,6 +3855,16 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	else
 	{
 		panic("unrecognised output target type. expected \"object\", \"executable\" or \"library\"");
+	}
+
+	if(args.verbose_link)
+	{
+		msg({}, "{}", cmd);
+	}
+	int ret = std::system(cmd.c_str());
+	if(ret != 0)
+	{
+		error({}, "link failed");
 	}
 	link_logic_end
 }
@@ -4131,15 +4137,20 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	if(do_codegen)
 	{
 		const auto [local_fn, global_fn] = local->find_function_location(expr.function_name);
-		llvm::Function* llvm_fn = *local_fn;
-		if(llvm_fn == nullptr)
+		llvm::Function* llvm_fn = nullptr;
+		if (local_fn != nullptr)
 		{
+			llvm_fn = *local_fn;
+		}
+		else
+		{
+			if (global_fn == nullptr)
+			{
+				panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
+			}
 			llvm_fn = *global_fn;
 		}
-		if(llvm_fn == nullptr)
-		{
-			panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
-		}
+		
 		ret.ll = codegen.ir->CreateCall(llvm_fn, llvm_params);
 	}
 	return
@@ -5067,7 +5078,6 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	}
 	else
 	{
-		ret.t = semal_type::variable_decl;
 		const bool has_parent = local->parent != nullptr;
 		const bool could_be_struct_member = has_parent && local->parent->unfinished_types.size();
 		std::string maybe_struct_parent = "";
@@ -5125,6 +5135,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			}
 
 			local->declare_variable(decl.name, ret.val);
+			ret.t = semal_type::variable_decl;
 		}
 	}
 	return ret;
@@ -5287,6 +5298,10 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local, do_codegen);
+	if(cond_result.is_err())
+	{
+		return cond_result;
+	}
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	const semal_result* maybe_parent = local->try_find_parent_function();
@@ -5362,6 +5377,10 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result cond_result = semal_expr(while_stmt.condition, n, source, local, do_codegen);
+	if(cond_result.is_err())
+	{
+		return cond_result;
+	}
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	const semal_result* maybe_parent = local->try_find_parent_function();
