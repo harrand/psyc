@@ -3842,6 +3842,10 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		lnk_args = std::format(" {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
 	}
+	else
+	{
+		lnk_args = std::format(" {} -e main -o {}{}", object_file_path, args.output_name + ".out", link_libs);
+	}
 
 	std::string cmd = std::format("cd {}", args.output_dir);
 	if(args.output_type == target::executable)
