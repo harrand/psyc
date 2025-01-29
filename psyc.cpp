@@ -4244,7 +4244,15 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 	if(IS_A(expr.rhs->expr_, ast_symbol_expr))
 	{
 		std::string_view symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
-		type_t casted_to = local->parse_type(symbol);
+		type_t casted_to = type_t::badtype();
+		if(symbol == "_")
+		{
+			casted_to = lhs_result.val.ty.add_weak();
+		}
+		else
+		{
+			casted_to = local->parse_type(symbol);
+		}
 		if(casted_to.is_badtype())
 		{
 			return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
