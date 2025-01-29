@@ -2044,6 +2044,7 @@ enum class token : std::uint32_t
 	comma,
 	dot,
 	compare,
+	comparen,
 	assign,
 	arrow,
 	oparen,
@@ -2259,6 +2260,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "compare",
 		.front_identifier = "==",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "compare",
+		.front_identifier = "!=",
 		.trivial = true
 	},
 
@@ -2816,6 +2824,7 @@ enum class biop_type
 	field,
 	ptr_field,
 	compare_eq,
+	compare_neq,
 	assign,
 	less_than,
 	greater_than,
@@ -4683,6 +4692,9 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 				case biop_type::compare_eq:
 					retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
 				break;
+				case biop_type::compare_neq:
+					retval.ll = codegen.ir->CreateICmpNE(lhs_result.val.ll, rhs_result.val.ll);
+				break;
 				case biop_type::less_than:
 					retval.ll = codegen.ir->CreateICmpULT(lhs_result.val.ll, rhs_result.val.ll);
 				break;
@@ -4704,6 +4716,9 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 				{
 					case biop_type::compare_eq:
 						retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::compare_neq:
+						retval.ll = codegen.ir->CreateICmpNE(lhs_result.val.ll, rhs_result.val.ll);
 					break;
 					case biop_type::less_than:
 						if(is_signed)
@@ -4736,6 +4751,9 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 				{
 					case biop_type::compare_eq:
 						retval.ll = codegen.ir->CreateFCmpUEQ(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::compare_neq:
+						retval.ll = codegen.ir->CreateFCmpUNE(lhs_result.val.ll, rhs_result.val.ll);
 					break;
 					case biop_type::less_than:
 						retval.ll = codegen.ir->CreateFCmpULT(lhs_result.val.ll, rhs_result.val.ll);
@@ -4787,6 +4805,8 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 			return semal_assign_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case compare_eq:
+		[[fallthrough]];
+		case compare_neq:
 		[[fallthrough]];
 		case less_than:
 		[[fallthrough]];
@@ -5861,6 +5881,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(compare)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(comparen)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -7319,6 +7346,7 @@ DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
 DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
 DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
+DEFINE_BIOPIFICATION_CHORDS(comparen, compare_neq)
 DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 DEFINE_BIOPIFICATION_CHORDS(oanglebrack, less_than)
 DEFINE_BIOPIFICATION_CHORDS(canglebrack, greater_than)
