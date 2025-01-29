@@ -794,11 +794,6 @@ struct type_t
 
 	bool is_convertible_to(const type_t& rhs, bool second_attempt = false) const
 	{
-		if(!(this->qual & typequal_static) && (rhs.qual & typequal_static))
-		{
-			// you cannot add static-ness via a cast.
-			return false;
-		}
 		std::string lhs_name = this->name();
 		std::string rhs_name = rhs.name();
 		const bool either_is_weak = (this->qual & typequal_weak) || (rhs.qual & typequal_weak);
