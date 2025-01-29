@@ -402,6 +402,7 @@ struct compile_args
 	std::string output_name = "out";
 	target output_type = target::object;
 	unsigned int optimisation_level = 0;
+	std::string target_triple = "";
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -448,6 +449,10 @@ compile_args parse_args(std::span<const std::string_view> args)
 		{
 			ret.output_dir = argnext();
 		}
+		else if(arg == "-t")
+		{
+			ret.target_triple = argnext();
+		}
 		else
 		{
 			if(arg.starts_with("-"))
@@ -466,6 +471,14 @@ compile_args parse_args(std::span<const std::string_view> args)
 	if(ret.output_dir.empty())
 	{
 		ret.output_dir = std::filesystem::current_path() / "build/";
+	}
+	if(ret.target_triple.empty())
+	{
+		const char* triple = std::getenv("PSYC_TARGET_TRIPLE");
+		if(triple != nullptr)
+		{
+			ret.target_triple = triple;
+		}
 	}
 	return ret;
 }
@@ -2804,6 +2817,8 @@ enum class biop_type
 	ptr_field,
 	compare_eq,
 	assign,
+	less_than,
+	greater_than,
 	_count
 };
 constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_precedence
@@ -3654,7 +3669,7 @@ void codegen_verify()
 
 void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine);
 
-std::filesystem::path codegen_generate(const compile_args& args)
+std::filesystem::path codegen_generate(compile_args& args)
 {
 	std::filesystem::path output_path = args.output_dir / args.output_name;
 	llvm::TargetMachine* targetMachine = nullptr;
@@ -3666,11 +3681,14 @@ std::filesystem::path codegen_generate(const compile_args& args)
     llvm::InitializeNativeTargetAsmParser();
 
     // Get the target triple
-    std::string targetTriple = llvm::sys::getDefaultTargetTriple();
-    codegen.mod->setTargetTriple(targetTriple);
+	if(args.target_triple.empty())
+	{
+		args.target_triple = llvm::sys::getDefaultTargetTriple();
+	}
+    codegen.mod->setTargetTriple(args.target_triple);
 
     std::string error;
-    const llvm::Target* target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
+    const llvm::Target* target = llvm::TargetRegistry::lookupTarget(args.target_triple, error);
 
     if (!target) {
         llvm::errs() << "Error: " << error << "\n";
@@ -3679,7 +3697,7 @@ std::filesystem::path codegen_generate(const compile_args& args)
 
     // Create a TargetMachine
     llvm::TargetOptions opt;
-    targetMachine = target->createTargetMachine(targetTriple, "generic", "", opt, llvm::Reloc::PIC_);
+    targetMachine = target->createTargetMachine(args.target_triple, "generic", "", opt, llvm::Reloc::PIC_);
 
     codegen.mod->setDataLayout(targetMachine->createDataLayout());
 
@@ -3808,10 +3826,10 @@ enum class linker_type
 	gnu_like
 };
 
-linker_type divine_linker_type(std::string_view linker)
+linker_type divine_linker_type(const compile_args& args)
 {
 #ifdef _WIN32
-	if(linker.contains("link"))
+	if(args.target_triple.contains("msvc"))
 	{
 		return linker_type::msvc_like;
 	}
@@ -3835,7 +3853,7 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 		link_libs += std::format(" {}", path.filename());
 	}
 	std::string linker = get_linker();
-	linker_type type = divine_linker_type(linker);
+	linker_type type = divine_linker_type(args);
 
 	std::string lnk_args;
 	if(type == linker_type::msvc_like)
@@ -4660,18 +4678,75 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 		{
 			// ptr value comparison
 			// note: icmp works on pointers too, so just use icmp
-			retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+			switch(expr.type)
+			{
+				case biop_type::compare_eq:
+					retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::less_than:
+					retval.ll = codegen.ir->CreateICmpULT(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::greater_than:
+					retval.ll = codegen.ir->CreateICmpUGT(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				default:
+					std::unreachable();
+				break;
+			}
 		}
 		else if(ty.is_prim())
 		{
 			auto prim = AS_A(ty.payload, prim_ty);
 			if(prim.is_integral())
 			{
-				retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+				bool is_signed = prim.is_signed_integral();
+				switch(expr.type)
+				{
+					case biop_type::compare_eq:
+						retval.ll = codegen.ir->CreateICmpEQ(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::less_than:
+						if(is_signed)
+						{
+							retval.ll = codegen.ir->CreateICmpSLT(lhs_result.val.ll, rhs_result.val.ll);
+						}
+						else
+						{
+							retval.ll = codegen.ir->CreateICmpULT(lhs_result.val.ll, rhs_result.val.ll);
+						}
+					break;
+					case biop_type::greater_than:
+						if(is_signed)
+						{
+							retval.ll = codegen.ir->CreateICmpSGT(lhs_result.val.ll, rhs_result.val.ll);
+						}
+						else
+						{
+							retval.ll = codegen.ir->CreateICmpUGT(lhs_result.val.ll, rhs_result.val.ll);
+						}
+					break;
+					default:
+						std::unreachable();
+					break;
+				}
 			}
 			else if(prim.is_floating_point())
 			{
-				retval.ll = codegen.ir->CreateFCmpULT(lhs_result.val.ll, rhs_result.val.ll);
+				switch(expr.type)
+				{
+					case biop_type::compare_eq:
+						retval.ll = codegen.ir->CreateFCmpUEQ(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::less_than:
+						retval.ll = codegen.ir->CreateFCmpULT(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::greater_than:
+						retval.ll = codegen.ir->CreateFCmpUGT(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					default:
+						std::unreachable();
+					break;
+				}
 			}
 			else
 			{
@@ -4712,6 +4787,10 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 			return semal_assign_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case compare_eq:
+		[[fallthrough]];
+		case less_than:
+		[[fallthrough]];
+		case greater_than:
 			return semal_compare_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case ptr_field:
@@ -5802,6 +5881,20 @@ std::unordered_set<token> unop_tokens{};
 	EXTENSIBLE\
 	CHORD_END\
 	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(cbrack)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(oanglebrack)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(canglebrack)), FN\
 		{\
 			return EXPRIFY_T(x);\
@@ -5897,6 +5990,7 @@ std::unordered_set<token> unop_tokens{};
 		{\
 			return {.action = parse_action::shift};\
 		}\
+	OVERRIDEABLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(x), NODE(ast_expr)), FN\
@@ -5940,7 +6034,7 @@ std::unordered_set<token> unop_tokens{};
 				.reduction_result_offset = 2\
 			};\
 		}\
-	EXTENSIBLE\
+	EXTENSIBLE_AND_OVERRIDEABLE\
 	CHORD_END\
 	CHORD_BEGIN\
 		STATE(NODE(ast_expr), TOKEN(x)), FN\
@@ -6371,7 +6465,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(canglebrack)), FN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), TOKEN(cbrack)), FN
 	{
 		auto& def = std::get<ast_partial_funcdef>(nodes[0].payload);
 		if(def.stage != partial_funcdef_stage::defining_static_params)
@@ -6645,7 +6739,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack)), FN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(obrack)), FN
 	{
 		return {.action = parse_action::shift};
 	}
@@ -6680,7 +6774,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack), TOKEN(symbol)), FN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(obrack), TOKEN(symbol)), FN
 	{
 		// it should be the start of a decl (the first param)
 		return {.action = parse_action::recurse, .reduction_result_offset = 2};
@@ -6706,7 +6800,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(oanglebrack), NODE(ast_decl)), FN
+	LOOKAHEAD_STATE(TOKEN(keyword_func), TOKEN(obrack), NODE(ast_decl)), FN
 	{
 		// we have the start of a function definition. finally.
 		ast_partial_funcdef func
@@ -7036,7 +7130,7 @@ CHORD_BEGIN
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack)), FN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrack)), FN
 	{
 		return {.action = parse_action::shift};
 	}
@@ -7090,7 +7184,7 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack), NODE(ast_expr)), FN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrack), NODE(ast_expr)), FN
 	{
 		// this is a call with at least one static param
 		ast_partial_callfunc call
@@ -7110,7 +7204,7 @@ EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
-	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(oanglebrack), WILDCARD), FN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(obrack), WILDCARD), FN
 	{
 		return{.action = parse_action::recurse, .reduction_result_offset = 2};
 	}
@@ -7213,8 +7307,24 @@ CHORD_BEGIN
 	}
 CHORD_END
 
+DEFINE_UNOPIFICATION_CHORDS(dash, minus)
+DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
+DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
+
+DEFINE_BIOPIFICATION_CHORDS(cast, cast)
+DEFINE_BIOPIFICATION_CHORDS(plus, plus)
+DEFINE_BIOPIFICATION_CHORDS(dash, minus)
+DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
+DEFINE_BIOPIFICATION_CHORDS(fslash, div)
+DEFINE_BIOPIFICATION_CHORDS(dot, field)
+DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
+DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
+DEFINE_BIOPIFICATION_CHORDS(assign, assign)
+DEFINE_BIOPIFICATION_CHORDS(oanglebrack, less_than)
+DEFINE_BIOPIFICATION_CHORDS(canglebrack, greater_than)
+
 CHORD_BEGIN
-	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(canglebrack)), FN
+	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cbrack)), FN
 	{
 		auto& call_node = nodes[0];
 		auto& call = std::get<ast_partial_callfunc>(call_node.payload);
@@ -7235,20 +7345,6 @@ CHORD_BEGIN
 		};
 	}
 CHORD_END
-
-DEFINE_UNOPIFICATION_CHORDS(dash, minus)
-DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
-DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
-
-DEFINE_BIOPIFICATION_CHORDS(cast, cast)
-DEFINE_BIOPIFICATION_CHORDS(plus, plus)
-DEFINE_BIOPIFICATION_CHORDS(dash, minus)
-DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
-DEFINE_BIOPIFICATION_CHORDS(fslash, div)
-DEFINE_BIOPIFICATION_CHORDS(dot, field)
-DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
-DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
-DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), WILDCARD), FN
