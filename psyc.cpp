@@ -2720,6 +2720,10 @@ struct ast_literal_expr
 			type_t::create_primitive_type(boolean)
 		}[value.index()];
 		ret.qual = ret.qual | typequal_static;
+		if(!IS_A(this->value, bool))
+		{
+			ret.qual = ret.qual | typequal_weak;
+		}
 		return ret;
 	}
 
