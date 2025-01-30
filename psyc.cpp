@@ -8709,6 +8709,19 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		};
 		return semal_literal_expr(lit, n, source, local, true);
 	}
+	else if(call.function_name == "__debugbreak")
+	{
+		return
+		{
+			.t = semal_type::misc,
+			.label = "debugbreak",
+			.val =
+			{
+				.ty = type_t::create_void_type(),
+				.ll = codegen.ir->CreateCall(llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::debugtrap))
+			}
+		};
+	}
 	else if(call.function_name.starts_with("__"))
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
