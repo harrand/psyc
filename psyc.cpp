@@ -5231,10 +5231,16 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			if(do_codegen)
 			{
+				if (decl.initialiser.has_value())
+				{
+					init_result.load_if_variable();
+					init_result.val.ll = init_result.val.convert_to(ret.val.ty);
+				}
+				
 				if(local->scope == scope_type::translation_unit)
 				{
 					// this is a global variable.
-					ret.val.ll = codegen.declare_global_variable(decl.name, val);
+					ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val);
 				}
 				else
 				{
@@ -5242,12 +5248,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 
 					if(decl.initialiser.has_value())
 					{
-						ret.load_if_variable();
-						ret.val.ll = ret.val.convert_to(ret.val.ty);
-						if(decl.initialiser.has_value())
-						{
-							codegen.ir->CreateStore(ret.val.ll, llvm_var);
-						}
+						codegen.ir->CreateStore(init_result.val.ll, llvm_var);
 					}
 					ret.val.ll = llvm_var;
 				}
