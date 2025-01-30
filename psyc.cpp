@@ -4243,14 +4243,18 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 		if(symbol == "_")
 		{
 			casted_to = lhs_result.val.ty.add_weak();
+			if(casted_to.is_badtype())
+			{
+				return semal_result::err("could not deduct type to add weakness", symbol);
+			}
 		}
 		else
 		{
 			casted_to = local->parse_type(symbol);
-		}
-		if(casted_to.is_badtype())
-		{
-			return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
+			if(casted_to.is_badtype())
+			{
+				return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
+			}
 		}
 		lhs_result.val.ty = lhs_result.val.ty.add_weak();
 		type_t cast_from = lhs_result.val.ty;
@@ -4283,7 +4287,7 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	{
 		return lhs_result;
 	}
-	const type_t& lhs_ty = lhs_result.val.ty;
+	type_t lhs_ty = lhs_result.val.ty;
 	if(!lhs_ty.is_prim())
 	{
 		return semal_result::err("lhs of arithmetic operation is not a primitive type, but a \"{}\"", lhs_ty.name());
@@ -4298,7 +4302,7 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	{
 		return rhs_result;
 	}
-	const type_t& rhs_ty = rhs_result.val.ty;
+	type_t rhs_ty = rhs_result.val.ty;
 	if(!rhs_ty.is_prim())
 	{
 		return semal_result::err("rhs of arithmetic operation is not a primitive type, but a \"{}\"", rhs_ty.name());
@@ -4329,6 +4333,11 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 	}
 
 	sval result_val{.ty = type_t{.payload = result_prim}};
+	if(lhs_ty.qual & typequal_weak || rhs_ty.qual & typequal_weak)
+	{
+		result_val.ty.qual = typequal_weak;
+	}
+
 	if(lhs_ty.qual & typequal_static && rhs_ty.qual & typequal_static)
 	{
 		result_val.ty.qual = result_val.ty.qual | typequal_static;
@@ -5818,6 +5827,16 @@ FAKEFN(EXPRIFY_string_literal)
 		.action = parse_action::reduce,
 		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = symbol}}}}
+	};
+}
+FAKEFN(EXPRIFY_char_literal)
+{
+	std::string symbol{std::get<ast_token>(nodes[0].payload).lexeme};
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_literal_expr{.value = symbol.front()}}}}
 	};
 }
 FAKEFN(EXPRIFY_keyword_true)
@@ -7452,6 +7471,7 @@ CHORD_END
 
 DEFINE_EXPRIFICATION_CHORDS(integer_literal)
 DEFINE_EXPRIFICATION_CHORDS(decimal_literal)
+DEFINE_EXPRIFICATION_CHORDS(char_literal)
 DEFINE_EXPRIFICATION_CHORDS(string_literal)
 DEFINE_EXPRIFICATION_CHORDS(symbol)
 DEFINE_EXPRIFICATION_CHORDS(keyword_true)
@@ -8650,6 +8670,39 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			.label = "",
 			.val = val
 		};
+	}
+	else if(call.function_name == "__sizeof")
+	{
+		ast_expr expr = call.params.front();
+		type_t ty = type_t::badtype();
+		semal_result expr_result = semal_expr(expr, n, source, local, false);
+		if(expr_result.is_err())
+		{
+			// it better be a sytmbol expression.
+			if(IS_A(expr.expr_, ast_symbol_expr))
+			{
+				std::string_view symbol = AS_A(expr.expr_, ast_symbol_expr).symbol;
+				ty = local->parse_type(symbol);
+			}
+			else
+			{
+				return semal_result::err("invalid parameter passed to __sizeof. expected a valid expression, or a typename.");
+			}
+		}
+		else
+		{
+			ty = expr_result.val.ty;
+		}
+		if(ty.is_badtype())
+		{
+			return semal_result::err("unknown type passed to __sizeof.");
+		}
+		llvm::Type* llty = ty.llvm();
+		ast_literal_expr lit
+		{
+			.value = static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSize(llty))
+		};
+		return semal_literal_expr(lit, n, source, local, true);
 	}
 	else if(call.function_name.starts_with("__"))
 	{
