@@ -3818,12 +3818,31 @@ std::string get_default_linker()
 #endif
 }
 
+std::string get_default_archiver()
+{
+#ifdef _WIN32
+	return "\"lib.exe\"";
+#else
+	return "ar";
+#endif
+}
+
 std::string get_linker()
 {
 	const char* val = std::getenv("PSYC_LINKER");
 	if(val == nullptr)
 	{
 		return get_default_linker();
+	}
+	return val;
+}
+
+std::string get_archiver()
+{
+	const char* val = std::getenv("PSYC_ARCHIVER");
+	if(val == nullptr)
+	{
+		return get_default_archiver();
 	}
 	return val;
 }
@@ -3861,26 +3880,35 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 		link_libs += std::format(" {}", path.filename());
 	}
 	std::string linker = get_linker();
+	std::string archiver = get_archiver();
 	linker_type type = divine_linker_type(args);
 
 	std::string lnk_args;
-	if(type == linker_type::msvc_like)
-	{
-		lnk_args = std::format(" {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
-	}
-	else
-	{
-		lnk_args = std::format(" {} -e main -o {}{}", object_file_path, args.output_name + ".out", link_libs);
-	}
 
-	std::string cmd = std::format("cd {}", args.output_dir);
+	std::string cmd = std::format("cd {} && ", args.output_dir);
 	if(args.output_type == target::executable)
 	{
-		cmd += std::format(" && {}{}", linker, lnk_args);
+		if(type == linker_type::msvc_like)
+		{
+			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
+		}
+		else
+		{
+			lnk_args = std::format(" {} -e main -o {}{}", object_file_path, args.output_name + ".out", link_libs);
+		}
+		cmd += std::format("{}{}", linker, lnk_args);
 	}
 	else if(args.output_type == target::library)
 	{
-		error({}, "library linkage not yet implemented");
+		if(type == linker_type::msvc_like)
+		{
+			lnk_args = std::format(" {} /OUT:{}", object_file_path, args.output_name + ".lib");
+		}
+		else
+		{
+			lnk_args = std::format(" rvs {} {}", args.output_name + ".a", object_file_path);
+		}
+		cmd += std::format("{}{}", archiver, lnk_args);
 	}
 	else
 	{
