@@ -3986,7 +3986,7 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		if(type == linker_type::msvc_like)
 		{
-			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{} /DEBUG", object_file_path, args.output_name + ".exe", link_libs);
+			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{} {}", object_file_path, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
 		}
 		else
 		{
