@@ -8589,6 +8589,10 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	else if(call.function_name == "__add_source_file")
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
+		if(!std::filesystem::exists(path))
+		{
+			return semal_result::err("cannot find source file \"{}\"", path);
+		}
 		global.added_source_files.emplace(path, n.begin_location);
 	}
 	else if(call.function_name == "__set_object")
