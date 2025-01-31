@@ -31,6 +31,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/DIBuilder.h"
 
 #include "llvm/IR/Verifier.h"
 
@@ -373,6 +374,9 @@ struct codegen_t
 	std::unique_ptr<llvm::IRBuilder<>> ir = nullptr;
 	std::vector<std::unique_ptr<llvm::GlobalVariable>> global_variable_storage;
 
+	std::unique_ptr<llvm::DIBuilder> debug;
+	llvm::DICompileUnit* dbg = nullptr;
+
 	llvm::GlobalVariable* declare_global_variable(std::string_view name, const sval& val);
 } codegen;
 
@@ -403,6 +407,7 @@ struct compile_args
 	target output_type = target::object;
 	unsigned int optimisation_level = 0;
 	std::string target_triple = "";
+	bool debug_symbols = false;
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -3649,6 +3654,9 @@ void codegen_initialise(std::string_view name)
 	codegen.ctx = std::make_unique<llvm::LLVMContext>();
 	codegen.mod = std::make_unique<llvm::Module>(name, *codegen.ctx);
 	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
+
+	codegen.debug = std::make_unique<llvm::DIBuilder>(*codegen.mod);
+	codegen.dbg = codegen.debug->createCompileUnit(llvm::dwarf::DW_LANG_C, codegen.debug->createFile(name, "."), "Psy Compiler", false, "", 0);
 }
 
 void codegen_verbose_print()
@@ -3682,6 +3690,8 @@ std::filesystem::path codegen_generate(compile_args& args)
 	std::filesystem::path output_path = args.output_dir / args.output_name;
 	llvm::TargetMachine* targetMachine = nullptr;
 	codegen_logic_begin
+
+	codegen.debug->finalize();
 
 	// Initialize all targets and related components
     llvm::InitializeNativeTarget();
@@ -3769,6 +3779,7 @@ void codegen_terminate(bool verbose_print)
 	}
 	codegen.global_variable_storage.clear();
 	codegen.ir = nullptr;
+	codegen.debug = nullptr;
 	codegen.mod = nullptr;
 	codegen.ctx = nullptr;
 }
@@ -8621,6 +8632,20 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		int opt = get_as_integer(call.params.front());
 		global.args->optimisation_level = opt;
+		if(opt == 0)
+		{
+			global.args->debug_symbols = true;
+		}
+		else
+		{
+			global.args->debug_symbols = false;
+		}
+	}
+	else if(call.function_name == "__enable_debug_symbols")
+	{
+		semal_result result = semal_expr(call.params.front(), n, source, local, false);
+		auto debug = std::get<bool>(std::get<literal_val>(result.val.val));
+		global.args->debug_symbols = debug;
 	}
 	else if(call.function_name == "__msg")
 	{
