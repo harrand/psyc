@@ -979,6 +979,7 @@ struct type_t
 	}
 
 	llvm::Type* llvm() const;
+	llvm::DIType* debug_llvm() const;
 
 	std::string name() const
 	{
@@ -1603,6 +1604,7 @@ struct semal_global_state
 
 	string_map<llvm::Function*> llvm_functions = {};
 	std::unordered_map<struct_ty, llvm::StructType*> llvm_structs = {};
+	std::unordered_map<struct_ty, llvm::DIType*> llvm_debug_structs = {};
 
 	type_t parse_type(std::string_view type_name) const
 	{
@@ -1897,6 +1899,86 @@ llvm::Type* type_t::llvm() const
 	}
 	auto name = this->name();
 	panic("dont know how to convert type \"{}\" to llvm type", name);
+	std::unreachable();
+}
+
+llvm::DIType* type_t::debug_llvm() const
+{
+	type_t cpy = *this;
+	cpy.qual = typequal_none;
+	if(this->is_badtype())
+	{
+		return nullptr;
+	}
+	if(this->is_ptr())
+	{
+		auto ptr = AS_A(this->payload, ptr_ty);
+		llvm::DIType* pointee = ptr.underlying_ty->debug_llvm();
+		return codegen.debug->createPointerType(pointee, sizeof(void*));
+	}
+	if(this->is_struct())
+	{
+		return global.llvm_debug_structs.at(AS_A(this->payload, struct_ty));
+	}
+
+	if(this->is_enum())
+	{
+		return AS_A(this->payload, enum_ty).underlying_ty->debug_llvm();
+	}
+
+	if(this->is_prim())
+	{
+		auto prim = AS_A(this->payload, prim_ty);
+		using enum prim_ty::type;
+		switch(prim.p)
+		{
+			case s64:
+				return codegen.debug->createBasicType(prim.name(), 64, llvm::dwarf::DW_ATE_signed);
+			case u64:
+				return codegen.debug->createBasicType(prim.name(), 64, llvm::dwarf::DW_ATE_unsigned);
+			break;
+			case s32:
+				return codegen.debug->createBasicType(prim.name(), 32, llvm::dwarf::DW_ATE_signed);
+			case u32:
+				return codegen.debug->createBasicType(prim.name(), 32, llvm::dwarf::DW_ATE_unsigned);
+			break;
+
+			case s16:
+				return codegen.debug->createBasicType(prim.name(), 16, llvm::dwarf::DW_ATE_signed);
+			case u16:
+				return codegen.debug->createBasicType(prim.name(), 16, llvm::dwarf::DW_ATE_unsigned);
+			break;
+
+			case s8:
+				return codegen.debug->createBasicType(prim.name(), 8, llvm::dwarf::DW_ATE_signed);
+			case u8:
+				return codegen.debug->createBasicType(prim.name(), 8, llvm::dwarf::DW_ATE_unsigned);
+			break;
+
+			case v0:
+				return codegen.debug->createUnspecifiedType(prim.name());
+			break;
+
+			case boolean:
+				return codegen.debug->createBasicType(prim.name(), 1, llvm::dwarf::DW_ATE_boolean);
+			break;
+
+			case f64:
+				return codegen.debug->createBasicType(prim.name(), 64, llvm::dwarf::DW_ATE_float);
+			break;
+			case f32:
+				return codegen.debug->createBasicType(prim.name(), 32, llvm::dwarf::DW_ATE_float);
+			break;
+			default:
+			{
+				auto name = prim.name();
+				panic("dont know how to convert primitive type \"{}\" to llvm debug type", name);
+			}
+			break;
+		}
+	}
+	auto name = this->name();
+	panic("dont know how to convert type \"{}\" to llvm debug type", name);
 	std::unreachable();
 }
 
