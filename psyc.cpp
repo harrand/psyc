@@ -52,6 +52,9 @@
 
 std::string get_preload_source();
 
+std::vector<llvm::DIFile*> debug_files = {};
+std::vector<llvm::DIScope*> lexical_blocks = {};
+
 template <typename T>
 class box
 {
@@ -4146,6 +4149,25 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
+void emit_debug_location(const node& n)
+{
+	llvm::DIScope* scope;
+	if(lexical_blocks.empty())
+	{
+		scope = codegen.dbg;
+	}
+	else
+	{
+		scope = lexical_blocks.back();
+	}
+	codegen.ir->SetCurrentDebugLocation(llvm::DILocation::get(scope->getContext(), n.begin_location.line, n.begin_location.column, scope));
+}
+
+void emit_empty_debug_location()
+{
+	codegen.ir->SetCurrentDebugLocation(llvm::DebugLoc());
+}
+
 semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	sval ret{.val = expr.value, .ty = expr.get_type()};
@@ -4198,14 +4220,32 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	if(do_codegen)
 	{
 		std::vector<llvm::Type*> llvm_params;
+		std::vector<llvm::DIType*> llvm_debug_params;
 		for(std::size_t i = 0; i < ty.params.size(); i++)
 		{
 			llvm_params.push_back(ty.params[i].llvm());
+			llvm_debug_params.push_back(ty.params[i].debug_llvm());
 		}
 		llvm::FunctionType* llvm_fn = llvm::FunctionType::get(ty.return_ty->llvm(), llvm_params, false);
 		llvm::Function* llvm_func = llvm::Function::Create(llvm_fn, llvm::Function::ExternalLinkage, "unnamed_fn", codegen.mod.get());
+
+		std::vector<llvm::Metadata*> el_tys = {};
+		llvm::DISubroutineType* debug_fn_ty = nullptr;
+		// first element should be return type???
+		el_tys.push_back(ty.return_ty->debug_llvm());
+		for(const type_t& param_ty : ty.params)
+		{
+			el_tys.push_back(param_ty.debug_llvm());
+		}
+		debug_fn_ty = codegen.debug->createSubroutineType(codegen.debug->getOrCreateTypeArray(el_tys));
+
+		llvm::DISubprogram* debug = codegen.debug->createFunction(debug_files.back(), "unnamed function", llvm::StringRef(), debug_files.back(), n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+		emit_empty_debug_location();
+
 		if(!expr.is_extern)
 		{
+			llvm_func->setSubprogram(debug);
+			lexical_blocks.push_back(debug);
 			local->unfinished_types.back().val.ll = llvm_func;
 			llvm::BasicBlock* bb = llvm::BasicBlock::Create(*codegen.ctx, "entry", llvm_func);
 			codegen.ir->SetInsertPoint(bb);
@@ -4217,9 +4257,15 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 				llvm::AllocaInst* llvm_param_var = codegen.ir->CreateAlloca(llvm_params[counter], nullptr, name);
 				codegen.ir->CreateStore(&arg, llvm_param_var);
 				local->pending_variables.at(std::string{name}).ll = llvm_param_var;
+
+				llvm::DILocalVariable* dbg_var = codegen.debug->createParameterVariable(debug, name, counter + 1, debug_files.back(), n.begin_location.line, llvm_debug_params[counter], true);
+				codegen.debug->insertDeclare(llvm_param_var, dbg_var, codegen.debug->createExpression(), llvm::DILocation::get(debug->getContext(), n.begin_location.line, 0, debug), codegen.ir->GetInsertBlock());
+
 				counter++;
 			}
 		}
+
+		emit_debug_location(n);
 		ret.val.ll = llvm_func;
 	}
 	return ret;
@@ -5272,10 +5318,13 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		auto* llvm_func = static_cast<llvm::Function*>(init_result.val.ll);
 		llvm_func->setName(decl.name);
+		//llvm_func->getSubprogram()->setName(decl.name);
 		// we are declaring a function!
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
+
 		local->declare_function(decl.name, ty, llvm_func);
+
 		// if its not extern then we expect an unfinished_type with no label.
 		// if there is one, let's update its name as it will be unlabeled (the funcdef_expr doesnt know its own name)
 		if(local->unfinished_types.size())
@@ -5289,94 +5338,98 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			}
 		}
 	}
-	else if(val.ty.is_type())
-	{
-		using enum semal_type;
-		panic_ifnt(init_result.t == struct_decl || init_result.t == enum_decl, "noticed decl \"{}\" {} with initialiser being a struct or enum, but the expression did not correctly register itself as a struct/enum decl.", decl.name, n.begin_location);
-		if(!decl.initialiser.has_value())
-		{
-			auto meta = AS_A(val.ty.payload, meta_ty);
-			return semal_result::err("detected lack of initialiser/explicit typing when defining a struct/enum. this is not how you declare a {}. remove the explicit typename (i.e no \" : {}\") and defer it instead via ::=", meta.underlying_typename, decl.type_name);
-		}
-		local->unfinished_types.back().label = decl.name;
-		switch(init_result.t)
-		{
-			case semal_type::struct_decl:
-				ret.t = struct_decl;
-				local->declare_struct(decl.name, struct_ty{});
-			break;
-			case semal_type::enum_decl:
-				ret.t = enum_decl;
-				local->declare_enum(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
-			break;
-			default:
-				std::unreachable();
-			break;
-		}
-		// ret.t = semal_result::type::struct_decl or enum_decl?
-		// not sure if i need to do anything else here. your call, future harry.
-	}
 	else
 	{
-		const bool has_parent = local->parent != nullptr;
-		const bool could_be_struct_member = has_parent && local->parent->unfinished_types.size();
-		std::string maybe_struct_parent = "";
-		if(could_be_struct_member)
+		emit_debug_location(n);
+		if(val.ty.is_type())
 		{
-			const auto& last_unfinished = local->parent->unfinished_types.back();
-			if(last_unfinished.t == semal_type::struct_decl)
+			using enum semal_type;
+			panic_ifnt(init_result.t == struct_decl || init_result.t == enum_decl, "noticed decl \"{}\" {} with initialiser being a struct or enum, but the expression did not correctly register itself as a struct/enum decl.", decl.name, n.begin_location);
+			if(!decl.initialiser.has_value())
 			{
-				maybe_struct_parent = last_unfinished.label;
+				auto meta = AS_A(val.ty.payload, meta_ty);
+				return semal_result::err("detected lack of initialiser/explicit typing when defining a struct/enum. this is not how you declare a {}. remove the explicit typename (i.e no \" : {}\") and defer it instead via ::=", meta.underlying_typename, decl.type_name);
 			}
-		}
-		if(maybe_struct_parent.size())
-		{
-			bool added = local->struct_add_member(maybe_struct_parent, decl.name, ret.val.ty);
-			if(!added) [[unlikely]]
+			local->unfinished_types.back().label = decl.name;
+			switch(init_result.t)
 			{
-				panic("attempted to add member \"{}\" to non-existent struct \"{}\" {}. the logic of this code path implies the struct *must* exist. please submit a bug report.", decl.name, maybe_struct_parent, n.begin_location);
+				case semal_type::struct_decl:
+					ret.t = struct_decl;
+					local->declare_struct(decl.name, struct_ty{});
+				break;
+				case semal_type::enum_decl:
+					ret.t = enum_decl;
+					local->declare_enum(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+				break;
+				default:
+					std::unreachable();
+				break;
 			}
-		}
-		else if(local->unfinished_types.size())
-		{
-			// could be that we're a parameter of a function currently being defined.
-			const auto& last_unfinished = local->unfinished_types.back();
-			if (last_unfinished.t == semal_type::function_decl)
-			{
-				// dont need to do anything here. you would think "why not add us as a param?"
-				// well, at this point, we are called by semal_funcdef_expr which doesnt know its own name
-				// so we let it deal with that, and just make sure we dont register this as a local variable here.
-			}
+			// ret.t = semal_result::type::struct_decl or enum_decl?
+			// not sure if i need to do anything else here. your call, future harry.
 		}
 		else
 		{
-			if(do_codegen)
+			const bool has_parent = local->parent != nullptr;
+			const bool could_be_struct_member = has_parent && local->parent->unfinished_types.size();
+			std::string maybe_struct_parent = "";
+			if(could_be_struct_member)
 			{
-				if (decl.initialiser.has_value())
+				const auto& last_unfinished = local->parent->unfinished_types.back();
+				if(last_unfinished.t == semal_type::struct_decl)
 				{
-					init_result.load_if_variable();
-					init_result.val.ll = init_result.val.convert_to(ret.val.ty);
-				}
-				
-				if(local->scope == scope_type::translation_unit)
-				{
-					// this is a global variable.
-					ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val);
-				}
-				else
-				{
-					llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(ret.val.ty.llvm(), nullptr, decl.name);
-
-					if(decl.initialiser.has_value())
-					{
-						codegen.ir->CreateStore(init_result.val.ll, llvm_var);
-					}
-					ret.val.ll = llvm_var;
+					maybe_struct_parent = last_unfinished.label;
 				}
 			}
+			if(maybe_struct_parent.size())
+			{
+				bool added = local->struct_add_member(maybe_struct_parent, decl.name, ret.val.ty);
+				if(!added) [[unlikely]]
+				{
+					panic("attempted to add member \"{}\" to non-existent struct \"{}\" {}. the logic of this code path implies the struct *must* exist. please submit a bug report.", decl.name, maybe_struct_parent, n.begin_location);
+				}
+			}
+			else if(local->unfinished_types.size())
+			{
+				// could be that we're a parameter of a function currently being defined.
+				const auto& last_unfinished = local->unfinished_types.back();
+				if (last_unfinished.t == semal_type::function_decl)
+				{
+					// dont need to do anything here. you would think "why not add us as a param?"
+					// well, at this point, we are called by semal_funcdef_expr which doesnt know its own name
+					// so we let it deal with that, and just make sure we dont register this as a local variable here.
+				}
+			}
+			else
+			{
+				if(do_codegen)
+				{
+					if (decl.initialiser.has_value())
+					{
+						init_result.load_if_variable();
+						init_result.val.ll = init_result.val.convert_to(ret.val.ty);
+					}
+					
+					if(local->scope == scope_type::translation_unit)
+					{
+						// this is a global variable.
+						ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val);
+					}
+					else
+					{
+						llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(ret.val.ty.llvm(), nullptr, decl.name);
 
-			local->declare_variable(decl.name, ret.val);
-			ret.t = semal_type::variable_decl;
+						if(decl.initialiser.has_value())
+						{
+							codegen.ir->CreateStore(init_result.val.ll, llvm_var);
+						}
+						ret.val.ll = llvm_var;
+					}
+				}
+
+				local->declare_variable(decl.name, ret.val);
+				ret.t = semal_type::variable_decl;
+			}
 		}
 	}
 	return ret;
@@ -5389,11 +5442,13 @@ semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::strin
 
 semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	return semal_expr(expr_stmt.expr, n, source, local, do_codegen);
 }
 
 semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	const semal_result* maybe_parent = local->try_find_parent_function();
 	if(maybe_parent == nullptr)
 	{
@@ -5476,6 +5531,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 
 semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	std::string_view desig_name = designator_stmt.name;
 	const ast_expr& desig_expr = *designator_stmt.initialiser;
 	// so a designator has a different meaning depending on its context
@@ -5538,6 +5594,7 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 
 semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	semal_result cond_result = semal_expr(if_stmt.condition, n, source, local, do_codegen);
 	if(cond_result.is_err())
 	{
@@ -5617,6 +5674,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 
 semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	semal_result cond_result = semal_expr(while_stmt.condition, n, source, local, do_codegen);
 	if(cond_result.is_err())
 	{
@@ -5675,6 +5733,7 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 
 semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
+	emit_debug_location(n);
 	semal_local_state* parent = local;
 	local = &global.locals.emplace_back();
 	local->scope = scope_type::block;
@@ -5814,6 +5873,8 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 								semal_return_stmt(ast_return_stmt{.retval = std::nullopt}, n, source, local, do_codegen);
 							}
 						}
+						panic_ifnt(lexical_blocks.size(), "whaat why didnt hte function lexical block exist");
+						lexical_blocks.pop_back();
 					}
 					break;
 					case semal_type::enum_decl:
@@ -8531,6 +8592,11 @@ CHORD_END
 void compile_file(std::filesystem::path file, compile_args& args);
 void compile_source(std::filesystem::path file, std::string source, compile_args& args)
 {
+	std::string filename = file.filename().string();
+	std::string directory = file.parent_path().string();
+	llvm::DIFile* debug_file = codegen.debug->createFile(filename.c_str(), directory.c_str());
+	debug_files.push_back(debug_file);
+
 	timer_restart();
 	lex_output tokens = lex_from_data(file, source);
 	if(args.verbose_lex)
@@ -8611,6 +8677,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 
 	time_codegen = elapsed_time();
 	timer_restart();
+	debug_files.pop_back();
 }
 
 void compile_file(std::filesystem::path file, compile_args& args)
