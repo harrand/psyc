@@ -3986,7 +3986,7 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		if(type == linker_type::msvc_like)
 		{
-			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{}", object_file_path, args.output_name + ".exe", link_libs);
+			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{} /DEBUG", object_file_path, args.output_name + ".exe", link_libs);
 		}
 		else
 		{
@@ -8592,8 +8592,9 @@ CHORD_END
 void compile_file(std::filesystem::path file, compile_args& args);
 void compile_source(std::filesystem::path file, std::string source, compile_args& args)
 {
-	std::string filename = file.filename().string();
-	std::string directory = file.parent_path().string();
+	auto absolute = std::filesystem::absolute(file);
+	std::string filename = absolute.filename().string();
+	std::string directory = absolute.parent_path().string();
 	llvm::DIFile* debug_file = codegen.debug->createFile(filename.c_str(), directory.c_str());
 	debug_files.push_back(debug_file);
 
@@ -8713,7 +8714,7 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	auto name = args.build_file.stem().string();
+	auto name = args.build_file.filename().string();
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
