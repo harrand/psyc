@@ -478,7 +478,7 @@ compile_args parse_args(std::span<const std::string_view> args)
 	}
 	if(ret.output_dir.empty())
 	{
-		ret.output_dir = std::filesystem::current_path() / "build/";
+		ret.output_dir = ".";
 	}
 	if(ret.target_triple.empty())
 	{
@@ -4382,9 +4382,40 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	}
 	else
 	{
-		// i give up.
-		return semal_result::err("unknown symbol \"{}\"", symbol);
+		// perhaps you're trying to refer to a function as a variable?
+		// that should yield a pointer to the function.
+		const auto [fn_local, fn_global] = local->find_function_location(symbol);
+		if(fn_local != nullptr)
+		{
+			return
+			{
+				.t = semal_type::misc,
+				.label = std::format("fnptr {}", symbol),
+				.val =
+				{
+					.val = {},
+					.ty = type_t::create_primitive_type(prim_ty::type::u64),
+					.ll = *fn_local
+				}
+			};
+		}
+		else if(fn_global != nullptr)
+		{
+			return
+			{
+				.t = semal_type::misc,
+				.label = std::format("fnptr {}", symbol),
+				.val =
+				{
+					.val = {},
+					.ty = type_t::create_primitive_type(prim_ty::type::u64),
+					.ll = *fn_local
+				}
+			};
+		}
 	}
+	// i give up.
+	return semal_result::err("unknown symbol \"{}\"", symbol);
 }
 
 semal_result semal_structdef_expr(const ast_structdef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -5514,18 +5545,20 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		},
 		.return_ty = type_t::create_primitive_type(prim_ty::type::u64)
 	};
-	local->pending_functions.emplace("__add_link_library", stringparam_noret);
-	local->pending_functions.emplace("__add_source_file", stringparam_noret);
-	local->pending_functions.emplace("__set_library", stringparam_noret);
-	local->pending_functions.emplace("__set_object", stringparam_noret);
-	local->pending_functions.emplace("__set_executable", stringparam_noret);
-	local->pending_functions.emplace("__set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
+	local->pending_functions.emplace("add_link_library", stringparam_noret);
+	local->pending_functions.emplace("add_source_file", stringparam_noret);
+	local->pending_functions.emplace("set_library", stringparam_noret);
+	local->pending_functions.emplace("set_object", stringparam_noret);
+	local->pending_functions.emplace("set_executable", stringparam_noret);
+	local->pending_functions.emplace("set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
+	/*
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
 	local->pending_functions.emplace("__error", stringparam_noret);
 	local->pending_functions.emplace("__warning", stringparam_noret);
 	local->pending_functions.emplace("_cstrcat", strcat_fn);
 	local->pending_functions.emplace("__strlen", strlen_fn);
+	*/
 	return semal_result::null();
 }
 
@@ -8742,12 +8775,12 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	type_t strlit = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8));
 	strlit.qual = typequal_static;
 
-	if(call.function_name == "__add_link_library")
+	if(call.function_name == "add_link_library")
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
 		global.added_link_libraries.emplace(path, n.begin_location);
 	}
-	else if(call.function_name == "__add_source_file")
+	else if(call.function_name == "add_source_file")
 	{
 		std::filesystem::path path = get_as_string(call.params.front());
 		if(!std::filesystem::exists(path))
@@ -8756,28 +8789,28 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		}
 		global.added_source_files.emplace(path, n.begin_location);
 	}
-	else if(call.function_name == "__set_object")
+	else if(call.function_name == "set_object")
 	{
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		std::string name = get_as_string(call.params.front());
 		global.args->output_name = name;
 		global.args->output_type = target::object;
 	}
-	else if(call.function_name == "__set_library")
+	else if(call.function_name == "set_library")
 	{
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		std::string name = get_as_string(call.params.front());
 		global.args->output_name = name;
 		global.args->output_type = target::library;
 	}
-	else if(call.function_name == "__set_executable")
+	else if(call.function_name == "set_executable")
 	{
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		std::string name = get_as_string(call.params.front());
 		global.args->output_name = name;
 		global.args->output_type = target::executable;
 	}
-	else if(call.function_name == "__set_optimisation")
+	else if(call.function_name == "set_optimisation")
 	{
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		int opt = get_as_integer(call.params.front());
