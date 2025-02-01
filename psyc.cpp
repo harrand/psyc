@@ -4923,9 +4923,9 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 		else if(ty.is_prim())
 		{
 			auto prim = AS_A(ty.payload, prim_ty);
-			if(prim.is_integral())
+			if(prim.is_integral() || prim.p == prim_ty::type::boolean)
 			{
-				bool is_signed = prim.is_signed_integral();
+				bool is_signed = prim.is_signed_integral() || prim.p == prim_ty::type::boolean;
 				switch(expr.type)
 				{
 					case biop_type::compare_eq:
@@ -5145,6 +5145,7 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	{
 		expr_result.load_if_variable();
 		ret.val.ll = codegen.ir->CreateLoad(ty.llvm(), expr_result.val.ll);
+		ret.val.usrdata2 = expr_result.val.ll;
 	}
 	return ret;
 }
@@ -5884,11 +5885,17 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 							panic_ifnt(structval != nullptr, "waaah");
 							struct_ty ty = *structval;
 							std::vector<llvm::Type*> member_tys;
+							std::vector<llvm::Metadata*> member_debug_tys;
 							for(std::string member_name : ty.member_order)
 							{
 								member_tys.push_back(ty.members.at(member_name)->llvm());
+								member_debug_tys.push_back(ty.members.at(member_name)->debug_llvm());
 							}
-							global.llvm_structs[ty] = llvm::StructType::create(member_tys, structname);
+							llvm::StructType* llvm_ty =  llvm::StructType::create(member_tys, structname);
+							global.llvm_structs[ty] = llvm_ty;
+							auto struct_size = 8 * static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSize(llvm_ty));
+							auto align_size = codegen.mod->getDataLayout().getABITypeAlign(llvm_ty).value() * 8;
+							global.llvm_debug_structs[ty] = codegen.debug->createStructType(codegen.dbg, "unnamed struct", debug_files.back(), n.begin_location.line, struct_size, align_size, llvm::DINode::DIFlags::FlagZero, nullptr, codegen.debug->getOrCreateArray(member_debug_tys));
 						}
 					break;
 					case semal_type::function_decl:
