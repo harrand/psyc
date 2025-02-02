@@ -919,9 +919,21 @@ struct type_t
 				const auto& lhs_ptr = std::get<ptr_ty>(this->payload);
 				const auto& rhs_ptr = std::get<ptr_ty>(rhs.payload);
 
+				// should T& be convertible to T mut&
+				// yes, but not the other way around
+				auto lhs_underlying = *lhs_ptr.underlying_ty;
+				auto rhs_underlying = *rhs_ptr.underlying_ty;
+				bool lhs_mut = lhs_underlying.qual & typequal_mut;
+				bool rhs_mut = rhs_underlying.qual & typequal_mut;
+				if(!lhs_mut && rhs_mut)
+				{
+					// cannot convert from T mut& to X&, even if X == T
+					return false;
+				}
+
 				// pointers always convert to one-another if they are the same or one of them is weak.
 				// many of these conversions will be unsafe unless care is taken, like C.
-				return lhs_ptr == rhs_ptr || either_is_weak;
+				return lhs_underlying.payload == rhs_underlying.payload || either_is_weak;
 			}
 			else
 			{
