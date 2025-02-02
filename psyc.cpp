@@ -1593,10 +1593,10 @@ struct semal_local_state
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
 
-	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr);
-	void declare_variable(std::string variable_name, sval val);
-	void declare_enum(std::string enum_name, enum_ty ty);
-	void declare_struct(std::string struct_name, struct_ty ty);
+	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr, srcloc loc = {});
+	void declare_variable(std::string variable_name, sval val, srcloc loc = {});
+	void declare_enum(std::string enum_name, enum_ty ty, srcloc loc = {});
+	void declare_struct(std::string struct_name, struct_ty ty, srcloc loc = {});
 
 	pair_of<semal_state2::function_value*> find_function(std::string_view function_name);
 	pair_of<semal_state2::function_location_value*> find_function_location(std::string_view function_name);
@@ -1630,8 +1630,13 @@ struct semal_global_state
 
 semal_global_state global;
 
-void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location)
+void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location, srcloc loc)
 {
+	auto [local, glob] = this->find_function(function_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate definition of function \"{}\"", function_name);
+	}
 	this->state.functions.emplace(function_name, ty);
 	this->state.function_locations.emplace(function_name, location);
 	if(this->scope == scope_type::translation_unit)
@@ -1642,8 +1647,13 @@ void semal_local_state::declare_function(std::string function_name, fn_ty ty, ll
 	}
 }
 
-void semal_local_state::declare_variable(std::string variable_name, sval val)
+void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc)
 {
+	auto [local, glob] = this->find_variable(variable_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate definition of variable \"{}\"", variable_name);
+	}
 	this->state.variables.emplace(variable_name, val);
 	if(this->scope == scope_type::translation_unit)
 	{
@@ -1652,8 +1662,13 @@ void semal_local_state::declare_variable(std::string variable_name, sval val)
 	}
 }
 
-void semal_local_state::declare_enum(std::string enum_name, enum_ty ty)
+void semal_local_state::declare_enum(std::string enum_name, enum_ty ty, srcloc loc)
 {
+	auto [local, glob] = this->find_enum(enum_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate definition of enum \"{}\"", enum_name);
+	}
 	this->state.enums.emplace(enum_name, ty);
 	if(this->scope == scope_type::translation_unit)
 	{
@@ -1662,8 +1677,13 @@ void semal_local_state::declare_enum(std::string enum_name, enum_ty ty)
 	}
 }
 
-void semal_local_state::declare_struct(std::string struct_name, struct_ty ty)
+void semal_local_state::declare_struct(std::string struct_name, struct_ty ty, srcloc loc)
 {
+	auto [local, glob] = this->find_struct(struct_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate definition of struct \"{}\"", struct_name);
+	}
 	this->state.structs.emplace(struct_name, ty);
 	if(this->scope == scope_type::translation_unit)
 	{
@@ -5377,7 +5397,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
 
-		local->declare_function(decl.name, ty, llvm_func);
+		local->declare_function(decl.name, ty, llvm_func, n.begin_location);
 
 		// if its not extern then we expect an unfinished_type with no label.
 		// if there is one, let's update its name as it will be unlabeled (the funcdef_expr doesnt know its own name)
@@ -8317,6 +8337,14 @@ CHORD_END
 
 // static if statements
 CHORD_BEGIN
+	STATE(TOKEN(keyword_static_if), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_static_if)), FN
 	{
 		return {.action = parse_action::shift};
@@ -8426,6 +8454,14 @@ EXTENSIBLE
 CHORD_END
 
 // if statements
+CHORD_BEGIN
+	STATE(TOKEN(keyword_if), WILDCARD), FN
+	{
+		chord_error("if-statements are not allowed outside of a block. use a static-if-statement or place this if-statement inside of a function block/metaregion");
+	}
+EXTENSIBLE
+CHORD_END
+
 CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_if)), FN
 	{
@@ -8696,6 +8732,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 		{
 			if(!global.compiled_source_files.contains(src_path))
 			{
+				global.compiled_source_files.insert(src_path);
 				compile_file(src_path, args);
 			}
 		}
