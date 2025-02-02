@@ -1344,7 +1344,8 @@ constexpr const char* scope_type_names[] =
 llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val)
 {
 	panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
-	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), true, llvm::GlobalValue::LinkageTypes::ExternalLinkage, static_cast<llvm::Constant*>(val.ll), name);
+	bool is_const = !(val.ty.qual | typequal_mut);
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, llvm::GlobalValue::LinkageTypes::PrivateLinkage, static_cast<llvm::Constant*>(val.ll), name);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
 	return ret;
