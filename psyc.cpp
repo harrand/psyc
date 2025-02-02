@@ -5708,6 +5708,30 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	{
 		return cond_result;
 	}
+	// go through all child nodes
+	// if they are decl statements, do them now.
+	// this is for codegen reasons.
+	// what we really really do not want to do is alloca in a loop. i know an if statement is not a loop but we will do this for while/for so lets be consistent.
+	node* blk = try_get_block_child(n);
+	if(blk != nullptr && do_codegen)
+	{
+		for(auto iter = blk->children.begin(); iter != blk->children.end();)
+		{
+			auto& child = *iter;
+			if(IS_A(child.payload, ast_stmt))
+			{
+				auto child_stmt = AS_A(child.payload, ast_stmt);
+				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
+				{
+					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
+					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen);
+					iter = blk->children.erase(iter);
+					continue;
+				}
+			}
+			iter++;
+		}
+	}
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	const semal_result* maybe_parent = local->try_find_parent_function();
@@ -5788,6 +5812,31 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 	{
 		return cond_result;
 	}
+	// go through all child nodes
+	// if they are decl statements, do them now.
+	// this is for codegen reasons.
+	// what we really really do not want to do is alloca in a loop. remember allocas last till the end of the scope, *not* basic block.
+	node* blk = try_get_block_child(n);
+	if(blk != nullptr && do_codegen)
+	{
+		for(auto iter = blk->children.begin(); iter != blk->children.end();)
+		{
+			auto& child = *iter;
+			if(IS_A(child.payload, ast_stmt))
+			{
+				auto child_stmt = AS_A(child.payload, ast_stmt);
+				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
+				{
+					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
+					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen);
+					iter = blk->children.erase(iter);
+					continue;
+				}
+			}
+			iter++;
+		}
+	}
+
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	const semal_result* maybe_parent = local->try_find_parent_function();
