@@ -4471,6 +4471,10 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 	// x is always going to be some kind of expression.
 	// y MUST be a symbol expression.
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
 	if(IS_A(expr.rhs->expr_, ast_symbol_expr))
 	{
 		std::string_view symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
@@ -4698,6 +4702,10 @@ semal_result semal_ptr_field_biop_expr(const ast_biop_expr& expr, node& n, std::
 {
 	// expect lhs to be ptr to struct.
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
 	semal_result cpy = lhs_result;
 	type_t ty = lhs_result.val.ty;
 	if(!ty.is_ptr())
@@ -5094,6 +5102,10 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(result.is_err())
+	{
+		return result;
+	}
 	const type_t& ty = result.val.ty;
 	if(!ty.is_prim())
 	{
@@ -5144,6 +5156,10 @@ semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::str
 semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(expr_result.is_err())
+	{
+		return expr_result;
+	}
 	if(expr_result.t != semal_type::variable_use)
 	{
 		return semal_result::err("cannot ref a non-lvalue");
@@ -5165,6 +5181,10 @@ semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string
 semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(expr_result.is_err())
+	{
+		return expr_result;
+	}
 	type_t ty = expr_result.val.ty;
 	if(!ty.is_ptr())
 	{
@@ -5240,6 +5260,10 @@ semal_result semal_blkinit_expr(const ast_blkinit_expr& expr, node& n, std::stri
 	for(const ast_designator_stmt& desig : expr.initialisers)
 	{
 		semal_result desig_result = semal_designator_stmt(desig, n, source, local, do_codegen);
+		if(desig_result.is_err())
+		{
+			return desig_result;
+		}
 		if(!(desig_result.val.ty.qual & typequal_static))
 		{
 			is_static = false;
@@ -5628,6 +5652,10 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		// type-check the member.
 		type_t expected_ty = *iter->second;
 		semal_result actual_result = semal_expr(desig_expr, n, source, local, do_codegen);
+		if(actual_result.is_err())
+		{
+			return actual_result;
+		}
 		if(!actual_result.val.ty.is_convertible_to(expected_ty))
 		{
 			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
@@ -5655,6 +5683,10 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	// give me the type of the expr.
 	// no codegen here for enum values because we codegen later (see the end of semal(...) impl when we pop context)
 	semal_result entry_value = semal_expr(desig_expr, n, source, local, false);
+	if(entry_value.is_err())
+	{
+		return entry_value;
+	}
 	switch(parent_result.t)
 	{
 		case semal_type::enum_decl:
