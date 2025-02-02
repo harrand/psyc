@@ -925,7 +925,7 @@ struct type_t
 				auto rhs_underlying = *rhs_ptr.underlying_ty;
 				bool lhs_mut = lhs_underlying.qual & typequal_mut;
 				bool rhs_mut = rhs_underlying.qual & typequal_mut;
-				if(!lhs_mut && rhs_mut)
+				if(!lhs_mut && rhs_mut && !either_is_weak)
 				{
 					// cannot convert from T mut& to X&, even if X == T
 					return false;
@@ -4862,6 +4862,15 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	{
 		rhs_result.load_if_variable();
 		rhs_result.convert_to(lhs_ty);
+		if(lhs_result.label.starts_with("deref"))
+		{
+			// probably a deref
+			// val.ll will contain the loaded value
+			// but if a deref expr is the lhs of an assign, then we actually want the original ptr
+			// which in this special case we keep tucked into usrdata2.
+			panic_ifnt(lhs_result.val.usrdata2 != nullptr, "deref semal_result didn't contain usrdata2 pointing to a valid store location");
+			lhs_result.val.ll = static_cast<llvm::Value*>(lhs_result.val.usrdata2);
+		}
 		codegen.ir->CreateStore(rhs_result.val.ll, lhs_result.val.ll);
 	}
 	lhs_result.val.ty = rhs_result.val.ty;
