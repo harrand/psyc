@@ -3202,6 +3202,7 @@ struct ast_stmt
 		ast_while_stmt
 	> stmt_;
 	bool deferred = false;
+	string_map<std::optional<ast_expr>> attributes = {};
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
@@ -3259,6 +3260,17 @@ struct ast_funcdef
 	}
 };
 
+struct ast_attribute
+{
+	std::string key;
+	std::optional<ast_expr> value = std::nullopt;
+
+	std::string value_tostring() const
+	{
+		return std::format("[[{}]]", this->key);
+	}
+};
+
 using node_payload = std::variant
 <
 	std::monostate,
@@ -3269,7 +3281,8 @@ using node_payload = std::variant
 	ast_decl,
 	ast_stmt,
 	ast_partial_funcdef,
-	ast_funcdef
+	ast_funcdef,
+	ast_attribute
 >;
 std::array<const char*, std::variant_size_v<node_payload>> node_names
 {
@@ -8414,6 +8427,134 @@ CHORD_BEGIN
 	{
 		chord_error("unexpected token(s) directly following a decl, did you forget a semicolon?");
 	}
+CHORD_END
+
+CHORD_BEGIN
+	STATE(TOKEN(obrack), TOKEN(obrack)), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack), NODE(ast_expr), TOKEN(cbrack)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack), NODE(ast_expr), TOKEN(cbrack), TOKEN(cbrack)), FN
+	{
+		ast_attribute attr;
+		const ast_expr& expr = AS_A(nodes[2].payload, ast_expr);
+		if(IS_A(expr.expr_, ast_symbol_expr))
+		{
+			attr.key = std::string{AS_A(expr.expr_, ast_symbol_expr).symbol};
+		}
+		else if(IS_A(expr.expr_, ast_biop_expr))
+		{
+			const auto& biop = AS_A(expr.expr_, ast_biop_expr);
+			if(biop.type != biop_type::assign)
+			{
+				chord_error("attribute contents that are a binary operation are only allowed to be assignments");
+			}
+			if(!IS_A(biop.lhs->expr_, ast_symbol_expr))
+			{
+				auto name = biop.lhs->type_name();
+				chord_error("lhs of assignment within attribute contents is only allowed to be a symbol expression. yours is a {} expression.", name);
+			}
+			attr.key = std::string{AS_A(biop.lhs->expr_, ast_symbol_expr).symbol};
+			attr.value = *biop.rhs;
+		}
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 5},
+			.reduction_result = {node{.payload = attr}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(obrack), TOKEN(obrack), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+// attribute preceding statement.
+CHORD_BEGIN
+	STATE(NODE(ast_attribute), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_attribute)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_attribute), NODE(ast_stmt)), FN
+	{
+		const auto& attr = AS_A(nodes[0].payload, ast_attribute);
+		auto& stmt = AS_A(nodes[1].payload, ast_stmt);
+		if(stmt.attributes.contains(attr.key))
+		{
+			chord_error("attribute \"{}\" defined more than once for the same statement", attr.key);
+		}
+		stmt.attributes.emplace(attr.key, attr.value);
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 1}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_attribute), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
 CHORD_END
 
 // static if statements
