@@ -408,6 +408,7 @@ struct compile_args
 	std::vector<std::filesystem::path> link_libraries = {};
 	std::string output_name = "out";
 	target output_type = target::object;
+	std::string custom_entry_point = "";
 	unsigned int optimisation_level = 0;
 	std::string target_triple = "";
 	bool debug_symbols = false;
@@ -3188,6 +3189,8 @@ struct ast_while_stmt
 	}
 };
 
+using attributes_t = string_map<std::optional<ast_expr>>;
+
 struct ast_stmt
 {
 	std::variant
@@ -3202,7 +3205,7 @@ struct ast_stmt
 		ast_while_stmt
 	> stmt_;
 	bool deferred = false;
-	string_map<std::optional<ast_expr>> attributes = {};
+	attributes_t attributes = {};
 	const char* type_name() const
 	{
 		return std::array<const char*, std::variant_size_v<decltype(stmt_)>>
@@ -4032,11 +4035,11 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		if(type == linker_type::msvc_like)
 		{
-			lnk_args = std::format(" {} /ENTRY:main /OUT:{}{} {}", object_file_path, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
+			lnk_args = std::format(" {} /ENTRY:{} /subsystem:console /OUT:{}{} {}", object_file_path, args.custom_entry_point, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
 		}
 		else
 		{
-			lnk_args = std::format(" {} -e main -o {}{}", object_file_path, args.output_name + ".out", link_libs);
+			lnk_args = std::format(" {} -e {} -o {}{}", object_file_path, args.custom_entry_point, args.output_name + ".out", link_libs);
 		}
 		cmd += std::format("{}{}", linker, lnk_args);
 	}
@@ -4229,7 +4232,7 @@ semal_result semal_literal_expr(const ast_literal_expr& expr, node& n, std::stri
 	};
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen, const attributes_t& attributes = {});
 semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// todo: foreach static param, generate a semal_result, push it, and the caller decl will somehow deal with all of them.
@@ -5380,7 +5383,7 @@ semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, 
 	return semal_result::err("unreachable code hit within semal_expr (is one of the cases not returning as it should?)");
 }
 
-semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, semal_local_state*& local, bool do_codegen, const attributes_t& attributes)
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
@@ -5426,6 +5429,24 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	};
 	if(val.ty.is_fn())
 	{
+		for(const auto& [name, maybe_expr] : attributes)
+		{
+			if(name == "doc")
+			{
+			}
+			else if(name == "entry")
+			{
+				if(global.args->custom_entry_point != "")
+				{
+					error(n.begin_location, "multiple redefinition of entry-point via [[entry]]. you marked \"{}\" but was previously marked on \"{}\"", decl.name, global.args->custom_entry_point);
+				}
+				global.args->custom_entry_point = decl.name;
+			}
+			else
+			{
+				warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+			}
+		}
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		auto* llvm_func = static_cast<llvm::Function*>(init_result.val.ll);
 		llvm_func->setName(decl.name);
@@ -5546,9 +5567,9 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	return ret;
 }
 
-semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+semal_result semal_decl_stmt(const ast_decl_stmt& decl_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen, const attributes_t& attributes)
 {
-	return semal_decl(decl_stmt.decl, n, source, local, do_codegen);
+	return semal_decl(decl_stmt.decl, n, source, local, do_codegen, attributes);
 }
 
 semal_result semal_expr_stmt(const ast_expr_stmt& expr_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -5737,7 +5758,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
 				{
 					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
-					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen);
+					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
 					iter = blk->children.erase(iter);
 					continue;
 				}
@@ -5841,7 +5862,7 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
 				{
 					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
-					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen);
+					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
 					iter = blk->children.erase(iter);
 					continue;
 				}
@@ -5928,7 +5949,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 {
 	if(IS_A(stmt.stmt_, ast_decl_stmt))
 	{
-		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local, do_codegen);
+		return semal_decl_stmt(AS_A(stmt.stmt_, ast_decl_stmt), n, source, local, do_codegen, stmt.attributes);
 	}
 	else if(IS_A(stmt.stmt_, ast_expr_stmt))
 	{
@@ -6104,11 +6125,15 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 	return res;
 }
 
-void semal_verify(const compile_args& args)
+void semal_verify(compile_args& args)
 {
-	if(args.output_type == target::executable && !global.state.functions.contains("main"))
+	if(args.custom_entry_point == "")
 	{
-		error({}, "no main function defined. executables must define a main function.");
+		args.custom_entry_point = "main";
+	}
+	if(args.output_type == target::executable && !global.state.functions.contains(args.custom_entry_point))
+	{
+		error({}, "no entry point defined. executables must define an entry point. mark a function with the [[entry]] attribute, or provide a function called \"main\"");
 	}
 }
 
