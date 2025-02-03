@@ -6104,6 +6104,14 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 	return res;
 }
 
+void semal_verify(const compile_args& args)
+{
+	if(args.output_type == target::executable && !global.state.functions.contains("main"))
+	{
+		error({}, "no main function defined. executables must define a main function.");
+	}
+}
+
 //////////////////////////// TYPE ////////////////////////////
 #undef COMPILER_STAGE
 #define COMPILER_STAGE type
@@ -9039,6 +9047,7 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
+	semal_verify(args);
 	codegen_verify();
 	std::filesystem::path object_file_path = codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
