@@ -5431,10 +5431,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	{
 		for(const auto& [name, maybe_expr] : attributes)
 		{
-			if(name == "doc")
-			{
-			}
-			else if(name == "entry")
+			if(name == "entry")
 			{
 				if(global.args->custom_entry_point != "")
 				{
