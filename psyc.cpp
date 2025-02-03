@@ -3821,7 +3821,10 @@ void generate_object_file(std::string object_path, llvm::TargetMachine* targetMa
 
 std::filesystem::path codegen_generate(compile_args& args)
 {
-	std::filesystem::path output_path = args.output_dir / args.output_name;
+	if(!std::filesystem::exists(args.output_dir))
+	{
+		std::filesystem::create_directory(args.output_dir);
+	}
 	llvm::TargetMachine* targetMachine = nullptr;
 	codegen_logic_begin
 
@@ -3890,8 +3893,8 @@ std::filesystem::path codegen_generate(compile_args& args)
     modulePassManager.run(*codegen.mod, moduleAnalysisManager);
 
 	codegen_logic_end
-	std::string object_path = output_path.string() + ".o";
-	generate_object_file(object_path, targetMachine);
+	std::string object_path = args.output_name + ".o";
+	generate_object_file((args.output_dir / object_path).string(), targetMachine);
 	return object_path;
 }
 
@@ -5649,6 +5652,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("set_object", stringparam_noret);
 	local->pending_functions.emplace("set_executable", stringparam_noret);
 	local->pending_functions.emplace("set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
+	local->pending_functions.emplace("set_output_directory", stringparam_noret);
 	/*
 	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
 	local->pending_functions.emplace("__msg", stringparam_noret);
@@ -9052,6 +9056,7 @@ int main(int argc, char** argv)
 
 	std::vector<std::string_view> cli_args(argv + 1, argv + argc);
 	compile_args args = parse_args(cli_args);
+	std::filesystem::path cli_output_dir = args.output_dir;
 	global.args = &args;
 	if(args.should_print_help)
 	{
@@ -9071,6 +9076,13 @@ int main(int argc, char** argv)
 	compile_file(args.build_file, args);
 	semal_verify(args);
 	codegen_verify();
+	if(cli_output_dir != ".")
+	{
+		// this means that CLI specified -o for an output directory
+		// this should always override anything specified in the code.
+		warning({}, "\"-o {}\" overrides path \"{}\" set by build system", cli_output_dir, args.output_dir);
+		args.output_dir = cli_output_dir;
+	}
 	std::filesystem::path object_file_path = codegen_generate(args);
 	codegen_terminate(args.verbose_codegen);
 
@@ -9142,6 +9154,12 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		{
 			global.args->debug_symbols = false;
 		}
+	}
+	else if(call.function_name == "set_output_directory")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::string name = get_as_string(call.params.front());
+		global.args->output_dir = name;
 	}
 	else if(call.function_name == "__enable_debug_symbols")
 	{
