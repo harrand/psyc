@@ -5653,14 +5653,6 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("set_executable", stringparam_noret);
 	local->pending_functions.emplace("set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
 	local->pending_functions.emplace("set_output_directory", stringparam_noret);
-	/*
-	local->pending_functions.emplace("__env", fn_ty{.params = {string_literal}, .return_ty = string_literal});
-	local->pending_functions.emplace("__msg", stringparam_noret);
-	local->pending_functions.emplace("__error", stringparam_noret);
-	local->pending_functions.emplace("__warning", stringparam_noret);
-	local->pending_functions.emplace("_cstrcat", strcat_fn);
-	local->pending_functions.emplace("__strlen", strlen_fn);
-	*/
 	return semal_result::null();
 }
 
@@ -9167,7 +9159,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		auto debug = std::get<bool>(std::get<literal_val>(result.val.val));
 		global.args->debug_symbols = debug;
 	}
-	else if(call.function_name == "__msg")
+	else if(call.function_name == "__message")
 	{
 		std::string msg = get_as_string(call.params.front());
 		#define OLD_COMPILER_STAGE COMPILER_STAGE
@@ -9303,7 +9295,14 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
 	}
-	return semal_result::null();
+	if(call.function_name.starts_with("__"))
+	{
+		return semal_result{.t = semal_type::misc};
+	}
+	else
+	{
+		return semal_result::null();
+	}
 }
 
 std::string get_preload_source()
