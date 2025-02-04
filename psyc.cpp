@@ -380,7 +380,7 @@ struct codegen_t
 	std::unique_ptr<llvm::DIBuilder> debug;
 	llvm::DICompileUnit* dbg = nullptr;
 
-	llvm::GlobalVariable* declare_global_variable(std::string_view name, const sval& val);
+	llvm::GlobalVariable* declare_global_variable(std::string_view name, const sval& val, bool external_linkage = false);
 } codegen;
 
 
@@ -1234,6 +1234,23 @@ struct sval
 						return codegen.ir->CreateTrunc(this->ll, rhs.llvm());
 					}
 				}
+				else if (lhs_prim.is_floating_point() && rhs_prim.is_floating_point())
+				{
+					auto lhs_sz = lhs_prim.floating_point_size();
+					auto rhs_sz = rhs_prim.floating_point_size();
+					if (lhs_sz < rhs_sz)
+					{
+						return codegen.ir->CreateFPExt(this->ll, rhs.llvm());
+					}
+					else if (lhs_sz == rhs_sz)
+					{
+						return this->ll;
+					}
+					else
+					{
+						return codegen.ir->CreateFPTrunc(this->ll, rhs.llvm());
+					}
+				}
 				else
 				{
 					panic("ahh conversion logic is hard what prims am i missing");
@@ -1354,11 +1371,12 @@ constexpr const char* scope_type_names[] =
 	"<UNDEFINED SCOPE TYPE>"
 };
 
-llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val)
+llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val, bool external_linkage)
 {
-	panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
+	//panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
 	bool is_const = !(val.ty.qual | typequal_mut);
-	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, llvm::GlobalValue::LinkageTypes::PrivateLinkage, static_cast<llvm::Constant*>(val.ll), name);
+	auto linkage = external_linkage ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::PrivateLinkage;
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, linkage, static_cast<llvm::Constant*>(val.ll), name);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
 	return ret;
@@ -5536,6 +5554,18 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			{
 				if(do_codegen)
 				{
+					bool external_linkage = false;
+					for (const auto& [name, maybe_expr] : attributes)
+					{
+						if (name == "public_linkage")
+						{
+							external_linkage = true;
+						}
+						else
+						{
+							warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+						}
+					}
 					if (decl.initialiser.has_value())
 					{
 						init_result.load_if_variable();
@@ -5545,7 +5575,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					if(local->scope == scope_type::translation_unit)
 					{
 						// this is a global variable.
-						ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val);
+						ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val, external_linkage);
 					}
 					else
 					{
@@ -9338,6 +9368,8 @@ std::string get_preload_source()
 	__psyc ::= "{}";
 	__cwd ::= "{}";
 	__chkstk ::= func() -> v0{{}};
+	[[public_linkage]]
+	_fltused : s32 := (0@s32);
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
