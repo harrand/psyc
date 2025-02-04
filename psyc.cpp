@@ -5629,23 +5629,6 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		},
 		.return_ty = type_t::create_void_type()
 	};
-	fn_ty strcat_fn
-	{
-		.params = 
-		{
-			string_literal,
-			string_literal
-		},
-		.return_ty = string_literal
-	};
-	fn_ty strlen_fn
-	{
-		.params = 
-		{
-			string_literal,
-		},
-		.return_ty = type_t::create_primitive_type(prim_ty::type::u64)
-	};
 	local->pending_functions.emplace("add_link_library", stringparam_noret);
 	local->pending_functions.emplace("add_source_file", stringparam_noret);
 	local->pending_functions.emplace("set_library", stringparam_noret);
@@ -5653,6 +5636,8 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("set_executable", stringparam_noret);
 	local->pending_functions.emplace("set_optimisation", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::u64).add_weak()}, .return_ty = type_t::create_void_type()});
 	local->pending_functions.emplace("set_output_directory", stringparam_noret);
+	local->pending_functions.emplace("bundle_file", stringparam_noret);
+	local->pending_functions.emplace("bundle_directory", stringparam_noret);
 	return semal_result::null();
 }
 
@@ -9152,6 +9137,41 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		std::string name = get_as_string(call.params.front());
 		global.args->output_dir = name;
+	}
+	else if(call.function_name == "bundle_file")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::filesystem::path path = get_as_string(call.params.front());
+		error_ifnt(std::filesystem::exists(path), {}, "bundle file \"{}\" does not exist", path);
+		error_ifnt(std::filesystem::is_regular_file(path), {}, "bundle file \"{}\" is not a regular file, did you mean to bundle_directory?", path);
+		std::error_code ec;
+		std::string errmsg;
+		std::filesystem::copy(path, global.args->output_dir, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+		errmsg = ec.message();
+		error_ifnt(!ec, {}, "bundle file copy failed: \"{}\"", errmsg);
+		auto full_path = std::filesystem::absolute(global.args->output_dir / path.filename());
+		msg({}, "bundle \"{}\" => \"{}\"", path, full_path);
+	}
+	else if(call.function_name == "bundle_directory")
+	{
+		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
+		std::filesystem::path path = get_as_string(call.params.front());
+		error_ifnt(std::filesystem::exists(path), {}, "bundle directory \"{}\" does not exist", path);
+		error_ifnt(std::filesystem::is_directory(path), {}, "\"{}\" is not a directory", path);
+		std::error_code ec;
+		std::string errmsg;
+		std::filesystem::path bundle_output_path = global.args->output_dir / path.filename();
+		if(!std::filesystem::exists(bundle_output_path))
+		{
+			std::filesystem::create_directories(bundle_output_path, ec);
+			errmsg = ec.message();
+			error_ifnt(!ec, {}, "bundle directory copy failed: \"{}\"", errmsg);
+		}
+		std::filesystem::copy(path, bundle_output_path, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+		errmsg = ec.message();
+		error_ifnt(!ec, {}, "bundle directory copy failed: \"{}\"", errmsg);
+		auto full_path = std::filesystem::absolute(global.args->output_dir / path.filename());
+		msg({}, "bundle \"{}\" => \"{}\" (recursively)", path, full_path);
 	}
 	else if(call.function_name == "__enable_debug_symbols")
 	{
