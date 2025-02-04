@@ -9341,6 +9341,118 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			}
 		};
 	}
+	else if(call.function_name == "__sqrt")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* sqrt_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::sqrt, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__sqrt",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(sqrt_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__sin")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* sin_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::sin, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__sin",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(sin_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__cos")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* cos_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::cos, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__cos",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(cos_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__tan")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* tan_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::tan, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__tan",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__asin")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* sin_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::asin, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__asin",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(sin_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__acos")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* cos_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::acos, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__acos",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(cos_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__atan")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
+		llvm::Function* tan_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::atan, {param.val.ty.llvm()});
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__atan",
+			.val =
+			{
+				.ty = param.val.ty,
+				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
+			}
+		};
+	}
 	else if(call.function_name.starts_with("__"))
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
@@ -9368,6 +9480,7 @@ std::string get_preload_source()
 	__psyc ::= "{}";
 	__cwd ::= "{}";
 	__chkstk ::= func() -> v0{{}};
+	__pi ::= 3.14159;
 	[[public_linkage]]
 	_fltused : s32 := (0@s32);
 	)psy"; 
