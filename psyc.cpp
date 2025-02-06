@@ -600,6 +600,7 @@ struct prim_ty
 		return
 			this->p == type::s64 ||
 			this->p == type::s32 ||
+			this->p == type::s16 ||
 			this->p == type::s8  ||
 			this->p == type::u64 ||
 			this->p == type::u32 ||
@@ -615,6 +616,7 @@ struct prim_ty
 		return
 			this->p == type::s64 ||
 			this->p == type::s32 ||
+			this->p == type::s16 ||
 			this->p == type::s8  ||
 			this->p == type::u64 ||
 			this->p == type::u32 ||
@@ -627,6 +629,7 @@ struct prim_ty
 		return this->is_integral() && 
 			this->p == type::s64 ||
 			this->p == type::s32 ||
+			this->p == type::s16 ||
 			this->p == type::s8;
 	}
 
@@ -635,6 +638,7 @@ struct prim_ty
 		return this->is_integral() && 
 			this->p == type::u64 ||
 			this->p == type::u32 ||
+			this->p == type::u16 ||
 			this->p == type::u8;
 	}
 
@@ -1443,6 +1447,75 @@ struct semal_state2
 			else
 			{
 				// im gonna assume this is the base type now then.
+				if(word.starts_with("func"))
+				{
+					fn_ty retty{.return_ty = type_t::badtype()};
+					std::string_view fntyname = tyname;
+					fntyname.remove_prefix(4);
+					if(fntyname.starts_with("("))
+					{
+						// parse params.
+						fntyname.remove_prefix(1);
+						std::size_t close_pos = fntyname.find_first_of(')');
+						if(close_pos == std::string_view::npos)
+						{
+							error({}, "invalid function typename \"{}\"", type_name);
+						}
+						std::deque<std::size_t> comma_positions = {};
+						for(std::size_t i = 0; i < fntyname.size(); i++)
+						{
+							if(fntyname[i] == ',')
+							{
+								comma_positions.push_back(i);
+							}
+						}
+						bool end = false;
+						do
+						{
+							std::size_t first_end_pos;
+							if(comma_positions.size())
+							{
+								first_end_pos = comma_positions.front();
+								comma_positions.pop_front();
+							}
+							else
+							{
+								first_end_pos = close_pos;
+								end = true;
+							}
+							retty.params.push_back(this->parse_type(fntyname.substr(0, first_end_pos)));
+							fntyname.remove_prefix(first_end_pos + 1);
+							close_pos -= (first_end_pos + 1);
+						}while(!end);
+					}
+					// we're beyond the cparen and the arrow is next. could be whitespace though.
+					// let's just get the first character that could be the start of a symbol.
+					std::size_t i;
+					for(i = 0; i < fntyname.size(); i++)
+					{
+						if(std::isalpha(fntyname[i]) || fntyname[i] == '_')
+						{
+							break;
+						}
+					}
+					std::size_t j;
+					for(j = i; j < fntyname.size(); j++)
+					{
+						if(!(std::isalnum(fntyname[j]) || fntyname[j] == '_' || fntyname[j] == '&'))
+						{
+							break;
+						}
+					}
+					retty.return_ty = this->parse_type(fntyname.substr(i));
+					// its a function pointer, to make a pointer to the function.
+					current_type.payload = retty;
+					current_type = {.payload = ptr_ty::ref(current_type)};
+					fntyname = fntyname.substr(j);
+					tyname = fntyname;
+					continue;
+				}
+
+
 				for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
 				{
 					auto primty = static_cast<prim_ty::type>(i);
@@ -4056,7 +4129,7 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		if(type == linker_type::msvc_like)
 		{
-			lnk_args = std::format(" {} /ENTRY:{} /subsystem:console /OUT:{}{} {}", object_file_path, args.custom_entry_point, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
+			lnk_args = std::format(" {} /ENTRY:{} /NODEFAULTLIB /subsystem:console /OUT:{}{} {}", object_file_path, args.custom_entry_point, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
 		}
 		else
 		{
@@ -4187,6 +4260,7 @@ void handle_defer(std::span<node> children)
 	{
 		return;
 	}
+	std::size_t pivot_offset = 0;
 	auto pivot = children.end();
 	auto last = children.back();
 	if(IS_A(last.payload, ast_stmt))
@@ -4195,9 +4269,10 @@ void handle_defer(std::span<node> children)
 		if(IS_A(last_stmt.stmt_, ast_return_stmt))
 		{
 			pivot = children.begin() + children.size() - 1;
+			pivot_offset = 1;
 		}
 	}
-	for(auto iter = children.begin(); iter != children.end(); iter++)
+	for(auto iter = children.begin(); iter != pivot; iter++)
 	{
 		const auto& p = iter->payload;
 		if(IS_A(p, ast_stmt))
@@ -4205,6 +4280,8 @@ void handle_defer(std::span<node> children)
 			if(AS_A(p, ast_stmt).deferred)
 			{
 				std::rotate(iter, iter + 1, pivot);
+				iter = children.begin();
+				pivot = children.begin() + children.size() - (++pivot_offset);
 			}
 		}
 	}
@@ -4270,6 +4347,10 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 	for(const ast_decl& param : expr.params)
 	{
 		semal_result param_result = semal_decl(param, n, source, local, do_codegen);
+		if(param_result.is_err())
+		{
+			return param_result;
+		}
 		// so we need this decl to be visible in the *next* scope (if its not extern)
 		// to do this, we use "pending types"
 		if(!expr.is_extern)
@@ -4457,6 +4538,7 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 		const auto [fn_local, fn_global] = local->find_function_location(symbol);
 		if(fn_local != nullptr)
 		{
+			fn_ty fnty = *std::get<0>(local->find_function(symbol));
 			return
 			{
 				.t = semal_type::misc,
@@ -4464,13 +4546,14 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 				.val =
 				{
 					.val = {},
-					.ty = type_t::create_primitive_type(prim_ty::type::u64),
+					.ty = type_t::create_pointer_type(type_t{.payload = fnty}),
 					.ll = *fn_local
 				}
 			};
 		}
 		else if(fn_global != nullptr)
 		{
+			fn_ty fnty = *std::get<1>(local->find_function(symbol));
 			return
 			{
 				.t = semal_type::misc,
@@ -4478,8 +4561,8 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 				.val =
 				{
 					.val = {},
-					.ty = type_t::create_primitive_type(prim_ty::type::u64),
-					.ll = *fn_local
+					.ty = type_t::create_pointer_type(type_t{.payload = fnty}),
+					.ll = *fn_global
 				}
 			};
 		}
@@ -5424,7 +5507,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	{
 		// user has told us the type.
 		auto [parse_ty, only_found_in_global] = local->parse_type_global_fallback(decl.type_name);
-		if(parse_ty.is_badtype() || only_found_in_global)
+		if(parse_ty.is_badtype())
 		{
 			return semal_result::err("decl \"{}\"'s explicit type \"{}\" was unknown{}", decl.name, decl.type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
 		}
@@ -6094,7 +6177,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 								sval val{.val = literal_val{entryval}, .ty = *ty.underlying_ty};
 								val.ty.qual = val.ty.qual | typequal_static;
 								val.ll = val.llvm();
-								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val);
+								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val, true);
 							}
 						}
 					break;
@@ -6683,6 +6766,51 @@ CHORD_BEGIN
 			.reduction_result = {node{.payload = decl}}
 		};
 	}
+CHORD_END
+
+// decl with an explicit type that is a function type.
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon), TOKEN(keyword_func)), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(symbol), TOKEN(colon), NODE(ast_partial_funcdef)), FN
+	{
+		const auto& funcdef = AS_A(nodes[2].payload, ast_partial_funcdef);
+		if(funcdef.stage == partial_funcdef_stage::awaiting_body)
+		{
+			std::string params_str;
+			for(std::size_t i = 0; i < funcdef.params.size(); i++)
+			{
+				params_str += funcdef.params[i].type_name;
+				if(i < (funcdef.params.size() - 1))
+				{
+					params_str += ',';
+				}
+			}
+			std::string func_typename = std::format("func({}) -> {}", params_str, funcdef.return_type);
+			ast_decl decl
+			{
+				.type_name = func_typename,
+				.name = std::string{std::get<ast_token>(nodes[0].payload).lexeme}
+			};
+			return
+			{
+				.action = parse_action::reduce,
+				.nodes_to_remove = {.offset = 0, .length = nodes.size()},
+				.reduction_result = {node{.payload = decl}}
+			};
+		}
+		else
+		{
+			return {.action = parse_action::recurse, .reduction_result_offset = 2};
+		}
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
