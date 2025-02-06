@@ -954,6 +954,10 @@ struct type_t
 						return false;
 					}
 				}
+				else
+				{
+					return false;
+				}
 			}
 		}
 		else if(lhs_is(fn_ty))
@@ -1452,6 +1456,7 @@ struct semal_state2
 					fn_ty retty{.return_ty = type_t::badtype()};
 					std::string_view fntyname = tyname;
 					fntyname.remove_prefix(4);
+					std::size_t offset = 0;
 					if(fntyname.starts_with("("))
 					{
 						// parse params.
@@ -1475,17 +1480,22 @@ struct semal_state2
 							std::size_t first_end_pos;
 							if(comma_positions.size())
 							{
-								first_end_pos = comma_positions.front();
+								first_end_pos = comma_positions.front() - offset;
 								comma_positions.pop_front();
 							}
 							else
 							{
-								first_end_pos = close_pos;
+								first_end_pos = close_pos - offset;
 								end = true;
+							}
+							if(first_end_pos == 0)
+							{
+								break;
 							}
 							retty.params.push_back(this->parse_type(fntyname.substr(0, first_end_pos)));
 							fntyname.remove_prefix(first_end_pos + 1);
-							close_pos -= (first_end_pos + 1);
+							//close_pos -= (first_end_pos + 1);
+							offset += (first_end_pos) + 1;
 						}while(!end);
 					}
 					// we're beyond the cparen and the arrow is next. could be whitespace though.
@@ -2043,6 +2053,10 @@ llvm::DIType* type_t::debug_llvm() const
 		auto ptr = AS_A(this->payload, ptr_ty);
 		llvm::DIType* pointee = ptr.underlying_ty->debug_llvm();
 		return codegen.debug->createPointerType(pointee, sizeof(void*));
+	}
+	if(this->is_fn())
+	{
+		return codegen.debug->createBasicType("u64", 64, llvm::dwarf::DW_ATE_unsigned);
 	}
 	if(this->is_struct())
 	{
