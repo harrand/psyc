@@ -4436,6 +4436,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	{
 		return builtin_result;
 	}
+	llvm::Value* llvm_fnval = nullptr;
 
 	auto [local_iter, global_iter] = local->find_function(expr.function_name);
 	if(local_iter != nullptr)
@@ -4450,7 +4451,29 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	else
 	{
 		// ok this thing doesnt exist.
-		return semal_result::err("unknown function \"{}\"", expr.function_name);
+		// let's treat it as a symbol expression.
+		ast_symbol_expr sym{.symbol = expr.function_name};
+		ast_expr symexpr{.expr_ = ast_symbol_expr{.symbol = expr.function_name}};
+		semal_result result = semal_expr(symexpr, n, source, local, do_codegen);
+		if(result.is_err())
+		{
+			return result;
+		}
+		result.load_if_variable();
+		if(result.val.ty.is_ptr())
+		{
+			auto pointee = *AS_A(result.val.ty.payload, ptr_ty).underlying_ty;
+			if(pointee.is_fn())
+			{
+				// this is a function ptr. use ll as a function.
+				llvm_fnval = result.val.ll;
+				callee = AS_A(pointee.payload, fn_ty);
+			}
+		}
+		if(llvm_fnval == nullptr)
+		{
+			return semal_result::err("unknown function \"{}\"", expr.function_name);
+		}
 	}
 	// ok we have a function to call.
 	// result is just whatever the return type is.
@@ -4484,22 +4507,36 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	sval ret = wrap_type(*callee.return_ty);
 	if(do_codegen)
 	{
+		// call function by name.
 		const auto [local_fn, global_fn] = local->find_function_location(expr.function_name);
 		llvm::Function* llvm_fn = nullptr;
-		if (local_fn != nullptr)
+		if(llvm_fnval == nullptr)
 		{
-			llvm_fn = *local_fn;
+			if (local_fn != nullptr)
+			{
+				llvm_fn = *local_fn;
+			}
+			else
+			{
+				if (global_fn == nullptr)
+				{
+					panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
+				}
+				llvm_fn = *global_fn;
+			}
+			ret.ll = codegen.ir->CreateCall(llvm_fn, llvm_params);
 		}
 		else
 		{
-			if (global_fn == nullptr)
+			// call function by pointer.
+			std::vector<llvm::Type*> llvm_param_types;
+			for(const auto& param : callee.params)
 			{
-				panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
+				llvm_param_types.push_back(param.llvm());
 			}
-			llvm_fn = *global_fn;
+			llvm::FunctionType* functy = llvm::FunctionType::get(callee.return_ty->llvm(), llvm_param_types, false);
+			ret.ll = codegen.ir->CreateCall(functy, llvm_fnval, llvm_params);
 		}
-		
-		ret.ll = codegen.ir->CreateCall(llvm_fn, llvm_params);
 	}
 	return
 	{
