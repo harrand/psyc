@@ -1403,171 +1403,7 @@ struct semal_state2
 	string_map<sval> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 
-	type_t parse_type(std::string_view type_name) const
-	{
-		// typenames can get very complicated so this isnt trivial at all.
-
-		// Initialize the type to be parsed
-		type_t current_type = type_t::badtype();
-		
-		std::string_view tyname = type_name;
-		while(!tyname.empty())
-		{
-			// skip whitespace
-			if(std::isspace(tyname.front()))
-			{
-				tyname.remove_prefix(1);
-				continue;
-			}
-			if(tyname.front() == '&')
-			{
-				error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
-				current_type = type_t{ptr_ty::ref(current_type)};
-				tyname.remove_prefix(1);
-				continue;
-			}
-			std::size_t till_next_thing = 0;
-			for(std::size_t i = 0; i < tyname.size(); i++)
-			{
-				if(!(std::isalnum(tyname[i]) || tyname[i] == '_'))
-				{
-					break;
-				}
-				till_next_thing++;
-			}
-			std::string_view word = (till_next_thing == tyname.size()) ? tyname : tyname.substr(0, till_next_thing);
-			if(word == "mut")
-			{
-				current_type.qual = current_type.qual | typequal_mut;
-			}
-			else if(word == "static")
-			{
-				current_type.qual = current_type.qual | typequal_static;
-			}
-			else if(word == "weak")
-			{
-				current_type.qual = current_type.qual | typequal_weak;
-			}
-			else
-			{
-				// im gonna assume this is the base type now then.
-				if(word.starts_with("func"))
-				{
-					fn_ty retty{.return_ty = type_t::badtype()};
-					std::string_view fntyname = tyname;
-					fntyname.remove_prefix(4);
-					std::size_t offset = 0;
-					if(fntyname.starts_with("("))
-					{
-						// parse params.
-						fntyname.remove_prefix(1);
-						std::size_t close_pos = fntyname.find_first_of(')');
-						if(close_pos == std::string_view::npos)
-						{
-							error({}, "invalid function typename \"{}\"", type_name);
-						}
-						std::deque<std::size_t> comma_positions = {};
-						for(std::size_t i = 0; i < fntyname.size(); i++)
-						{
-							if(fntyname[i] == ',')
-							{
-								comma_positions.push_back(i);
-							}
-						}
-						bool end = false;
-						do
-						{
-							std::size_t first_end_pos;
-							if(comma_positions.size())
-							{
-								first_end_pos = comma_positions.front() - offset;
-								comma_positions.pop_front();
-							}
-							else
-							{
-								first_end_pos = close_pos - offset;
-								end = true;
-							}
-							if(first_end_pos == 0)
-							{
-								break;
-							}
-							retty.params.push_back(this->parse_type(fntyname.substr(0, first_end_pos)));
-							fntyname.remove_prefix(first_end_pos + 1);
-							//close_pos -= (first_end_pos + 1);
-							offset += (first_end_pos) + 1;
-						}while(!end);
-					}
-					// we're beyond the cparen and the arrow is next. could be whitespace though.
-					// let's just get the first character that could be the start of a symbol.
-					std::size_t i;
-					for(i = 0; i < fntyname.size(); i++)
-					{
-						if(std::isalpha(fntyname[i]) || fntyname[i] == '_')
-						{
-							break;
-						}
-					}
-					std::size_t j;
-					for(j = i; j < fntyname.size(); j++)
-					{
-						if(!(std::isalnum(fntyname[j]) || fntyname[j] == '_' || fntyname[j] == '&'))
-						{
-							break;
-						}
-					}
-					retty.return_ty = this->parse_type(fntyname.substr(i));
-					// its a function pointer, to make a pointer to the function.
-					current_type.payload = retty;
-					current_type = {.payload = ptr_ty::ref(current_type)};
-					fntyname = fntyname.substr(j);
-					tyname = fntyname;
-					continue;
-				}
-
-
-				for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
-				{
-					auto primty = static_cast<prim_ty::type>(i);
-					const char* name = prim_ty::type_names[i];
-					if(name == word)
-					{
-						current_type.payload = prim_ty{.p = primty};
-					}
-				}
-
-				// Or with structs
-				for (const auto& [name, structval] : this->structs)
-				{
-					if (name == word)
-					{
-						current_type.payload = structval;
-						break;
-					}
-				}
-
-				// Or with enums
-				for (const auto& [name, enumval] : this->enums)
-				{
-					if (name == word)
-					{
-						current_type.payload = enumval;
-						break;
-					}
-				}
-
-				if(current_type.payload.index() == payload_index<std::monostate, type_t::payload_t>())
-				{
-					// bad base type. couldn't figure out what it is.
-					return type_t::badtype();
-				}
-			}
-
-			// Truncate the parsed word
-			tyname = (till_next_thing == tyname.size()) ? std::string_view() : tyname.substr(till_next_thing);
-		}
-		return current_type;
-	}
+	type_t parse_type(std::string_view type_name) const;
 };
 
 enum class semal_type
@@ -1731,6 +1567,188 @@ struct semal_global_state
 };
 
 semal_global_state global;
+
+type_t semal_state2::parse_type(std::string_view type_name) const
+{
+	// typenames can get very complicated so this isnt trivial at all.
+
+	// Initialize the type to be parsed
+	type_t current_type = type_t::badtype();
+	
+	std::string_view tyname = type_name;
+	while(!tyname.empty())
+	{
+		// skip whitespace
+		if(std::isspace(tyname.front()))
+		{
+			tyname.remove_prefix(1);
+			continue;
+		}
+		if(tyname.front() == '&')
+		{
+			error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
+			current_type = type_t{ptr_ty::ref(current_type)};
+			tyname.remove_prefix(1);
+			continue;
+		}
+		std::size_t till_next_thing = 0;
+		for(std::size_t i = 0; i < tyname.size(); i++)
+		{
+			if(!(std::isalnum(tyname[i]) || tyname[i] == '_'))
+			{
+				break;
+			}
+			till_next_thing++;
+		}
+		std::string_view word = (till_next_thing == tyname.size()) ? tyname : tyname.substr(0, till_next_thing);
+		if(word == "mut")
+		{
+			current_type.qual = current_type.qual | typequal_mut;
+		}
+		else if(word == "static")
+		{
+			current_type.qual = current_type.qual | typequal_static;
+		}
+		else if(word == "weak")
+		{
+			current_type.qual = current_type.qual | typequal_weak;
+		}
+		else
+		{
+			// im gonna assume this is the base type now then.
+			if(word.starts_with("func"))
+			{
+				fn_ty retty{.return_ty = type_t::badtype()};
+				std::string_view fntyname = tyname;
+				fntyname.remove_prefix(4);
+				std::size_t offset = 0;
+				if(fntyname.starts_with("("))
+				{
+					// parse params.
+					fntyname.remove_prefix(1);
+					std::size_t close_pos = fntyname.find_first_of(')');
+					if(close_pos == std::string_view::npos)
+					{
+						error({}, "invalid function typename \"{}\"", type_name);
+					}
+					std::deque<std::size_t> comma_positions = {};
+					for(std::size_t i = 0; i < fntyname.size(); i++)
+					{
+						if(fntyname[i] == ',')
+						{
+							comma_positions.push_back(i);
+						}
+					}
+					bool end = false;
+					do
+					{
+						std::size_t first_end_pos;
+						if(comma_positions.size())
+						{
+							first_end_pos = comma_positions.front() - offset;
+							comma_positions.pop_front();
+						}
+						else
+						{
+							first_end_pos = close_pos - offset;
+							end = true;
+						}
+						if(first_end_pos == 0)
+						{
+							break;
+						}
+						retty.params.push_back(this->parse_type(fntyname.substr(0, first_end_pos)));
+						fntyname.remove_prefix(first_end_pos + 1);
+						//close_pos -= (first_end_pos + 1);
+						offset += (first_end_pos) + 1;
+					}while(!end);
+				}
+				// we're beyond the cparen and the arrow is next. could be whitespace though.
+				// let's just get the first character that could be the start of a symbol.
+				std::size_t i;
+				for(i = 0; i < fntyname.size(); i++)
+				{
+					if(std::isalpha(fntyname[i]) || fntyname[i] == '_')
+					{
+						break;
+					}
+				}
+				std::size_t j;
+				for(j = i; j < fntyname.size(); j++)
+				{
+					if(!(std::isalnum(fntyname[j]) || fntyname[j] == '_' || fntyname[j] == '&'))
+					{
+						break;
+					}
+				}
+				retty.return_ty = this->parse_type(fntyname.substr(i));
+				// its a function pointer, to make a pointer to the function.
+				current_type.payload = retty;
+				current_type = {.payload = ptr_ty::ref(current_type)};
+				fntyname = fntyname.substr(j);
+				tyname = fntyname;
+				continue;
+			}
+
+
+			for(int i = 0; i < static_cast<int>(prim_ty::type::_count); i++)
+			{
+				auto primty = static_cast<prim_ty::type>(i);
+				const char* name = prim_ty::type_names[i];
+				if(name == word)
+				{
+					current_type.payload = prim_ty{.p = primty};
+				}
+			}
+
+			// Or with structs
+			for (const auto& [name, structval] : global.state.structs)
+			{
+				if (name == word)
+				{
+					current_type.payload = structval;
+					break;
+				}
+			}
+			for (const auto& [name, structval] : this->structs)
+			{
+				if (name == word)
+				{
+					current_type.payload = structval;
+					break;
+				}
+			}
+
+			// Or with enums
+			for (const auto& [name, enumval] : global.state.enums)
+			{
+				if (name == word)
+				{
+					current_type.payload = enumval;
+					break;
+				}
+			}
+			for (const auto& [name, enumval] : this->enums)
+			{
+				if (name == word)
+				{
+					current_type.payload = enumval;
+					break;
+				}
+			}
+
+			if(current_type.payload.index() == payload_index<std::monostate, type_t::payload_t>())
+			{
+				// bad base type. couldn't figure out what it is.
+				return type_t::badtype();
+			}
+		}
+
+		// Truncate the parsed word
+		tyname = (till_next_thing == tyname.size()) ? std::string_view() : tyname.substr(till_next_thing);
+	}
+	return current_type;
+}
 
 void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location, srcloc loc)
 {
@@ -9631,6 +9649,38 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
 			}
 		};
+	}
+	else if(call.function_name == "__array")
+	{
+		const ast_expr& typename_expr = call.params.front();
+		if(!IS_A(typename_expr.expr_, ast_symbol_expr))
+		{
+			return semal_result::err("first parameter of __array must be a typename.");
+		}
+		std::string_view type_name = AS_A(typename_expr.expr_, ast_symbol_expr).symbol;
+		auto [parse_ty, only_found_in_global] = local->parse_type_global_fallback(type_name);
+		if(parse_ty.is_badtype())
+		{
+			return semal_result::err("requested type of array \"{}\" was unknown{}", type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
+		}
+		parse_ty.qual = parse_ty.qual | typequal_mut;
+
+		std::int64_t array_size = get_as_integer(call.params[1]);
+		llvm::Constant* llvm_arrsize = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(array_size), true});
+		// codegen an array alloca.
+		llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(parse_ty.llvm(), llvm_arrsize);
+		// treat the llvm var as a pointer to parse_ty
+		return
+		{
+			.t = semal_type::misc,
+			.label = "__array",
+			.val =
+			{
+				.ty = type_t::create_pointer_type(parse_ty),
+				.ll = llvm_var
+			}
+		};
+
 	}
 	else if(call.function_name.starts_with("__"))
 	{
