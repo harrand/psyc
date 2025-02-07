@@ -1576,6 +1576,7 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 	type_t current_type = type_t::badtype();
 	
 	std::string_view tyname = type_name;
+	bool type_is_fn = false;
 	while(!tyname.empty())
 	{
 		// skip whitespace
@@ -1584,7 +1585,7 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 			tyname.remove_prefix(1);
 			continue;
 		}
-		if(tyname.front() == '&')
+		if(tyname.front() == '&' && !type_is_fn)
 		{
 			error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
 			current_type = type_t{ptr_ty::ref(current_type)};
@@ -1601,15 +1602,15 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 			till_next_thing++;
 		}
 		std::string_view word = (till_next_thing == tyname.size()) ? tyname : tyname.substr(0, till_next_thing);
-		if(word == "mut")
+		if(word == "mut" && !type_is_fn)
 		{
 			current_type.qual = current_type.qual | typequal_mut;
 		}
-		else if(word == "static")
+		else if(word == "static" && !type_is_fn)
 		{
 			current_type.qual = current_type.qual | typequal_static;
 		}
-		else if(word == "weak")
+		else if(word == "weak" && !type_is_fn)
 		{
 			current_type.qual = current_type.qual | typequal_weak;
 		}
@@ -1618,6 +1619,7 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 			// im gonna assume this is the base type now then.
 			if(word.starts_with("func"))
 			{
+				type_is_fn = true;
 				fn_ty retty{.return_ty = type_t::badtype()};
 				std::string_view fntyname = tyname;
 				fntyname.remove_prefix(4);
@@ -1676,7 +1678,7 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 				std::size_t j;
 				for(j = i; j < fntyname.size(); j++)
 				{
-					if(!(std::isalnum(fntyname[j]) || fntyname[j] == '_' || fntyname[j] == '&'))
+					if(!(std::isspace(fntyname[j]) || std::isalnum(fntyname[j]) || fntyname[j] == '_' || fntyname[j] == '&'))
 					{
 						break;
 					}
