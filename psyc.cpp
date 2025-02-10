@@ -408,7 +408,6 @@ struct compile_args
 	std::vector<std::filesystem::path> link_libraries = {};
 	std::string output_name = "out";
 	target output_type = target::object;
-	std::string custom_entry_point = "";
 	unsigned int optimisation_level = 0;
 	std::string target_triple = "";
 	bool debug_symbols = false;
@@ -4257,11 +4256,11 @@ void link(std::filesystem::path object_file_path, const compile_args& args)
 	{
 		if(type == linker_type::msvc_like)
 		{
-			lnk_args = std::format(" {} /ENTRY:{} /NODEFAULTLIB /subsystem:console /OUT:{}{} {}", object_file_path, args.custom_entry_point, args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
+			lnk_args = std::format(" {} /ENTRY:{} /NODEFAULTLIB /subsystem:console /OUT:{}{} {}", object_file_path, "_psymain", args.output_name + ".exe", link_libs, args.debug_symbols ? "/DEBUG" : "");
 		}
 		else
 		{
-			lnk_args = std::format(" {} -e {} -o {}{}", object_file_path, args.custom_entry_point, args.output_name + ".out", link_libs);
+			lnk_args = std::format(" {} -e {} -o {}{}", object_file_path, "_psymain", args.output_name + ".out", link_libs);
 		}
 		cmd += std::format("{}{}", linker, lnk_args);
 	}
@@ -5847,18 +5846,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	{
 		for(const auto& [name, maybe_expr] : attributes)
 		{
-			if(name == "entry")
-			{
-				if(global.args->custom_entry_point != "")
-				{
-					error(n.begin_location, "multiple redefinition of entry-point via [[entry]]. you marked \"{}\" but was previously marked on \"{}\"", decl.name, global.args->custom_entry_point);
-				}
-				global.args->custom_entry_point = decl.name;
-			}
-			else
-			{
-				warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
-			}
+			warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
 		}
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		auto* llvm_func = static_cast<llvm::Function*>(init_result.val.ll);
@@ -6534,14 +6522,6 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 
 void semal_verify(compile_args& args)
 {
-	if(args.custom_entry_point == "")
-	{
-		args.custom_entry_point = "main";
-	}
-	if(args.output_type == target::executable && !global.state.functions.contains(args.custom_entry_point))
-	{
-		error({}, "no entry point defined. executables must define an entry point. mark a function with the [[entry]] attribute, or provide a function called \"main\"");
-	}
 }
 
 //////////////////////////// TYPE ////////////////////////////
@@ -9496,6 +9476,19 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
+#ifdef _WIN32
+	compile_source("entrypoint.psy", 
+	"ExitProcess ::= func(uExitCode : u32 weak) -> v0 := extern;\
+	_psymain ::= func() -> v0\
+	{\
+		ret ::= main();\
+		ExitProcess(ret);\
+	};",
+	args);
+#else
+
+#endif
+
 	semal_verify(args);
 	codegen_verify();
 	if(cli_output_dir != ".")
