@@ -1,15 +1,32 @@
 # Psy Language Cheatsheet
 
-# Basic Language Features
+# Table of Contents
+1. [Functions](#functions)
+	- [Defining basic functions](#basic_functions)
+2. [Types](#types)
+	- [Type Qualifiers](#type_qualifiers)
+	- [Primitive Types](#type_prim)
+	- [Pointer Types](#type_ptr)
+	- [Array Types](#type_array)
+	- [Enum Types](#type_enum)
+	- [Struct Types](#type_struct)
+	- [Type Conversions](#type_conv)
+		- [Primitive Conversions](#type_conv_prim)
+		- [Struct Conversions](#type_conv_struct)
+		- [Enum Conversions](#type_conv_enum)
+   		- [Pointer Conversions](#type_conv_ptr)
+       	- [Type Casting](#type_cast)
 
-## Functions
+		
+
+## Functions <a name="functions"></a>
 
 Exactly what you'd expect from other systems languages. A function consists of:
 - A name
 - Zero or more parameters (default parameter values are not supported), each with their own name and type.
 - A return type.
 
-### Defining basic functions
+### Defining basic functions <a name="basic_functions"></a>
 The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C).
 ```
 my_function_name ::= func() -> v0
@@ -37,7 +54,7 @@ The following function doubles the value `5` and stores it in a new variable cal
 result ::= double_value(5);
 ```
 
-## Types
+## Types <a name="types"></a>
 Psy is a statically-typed and strongly-typed language. This means that:
 - The type of all variables are known at compile-time.
 - Typing rules are strict. Unlike languages such as C, implicit conversions are disabled by default - you must explicitly opt-into this.
@@ -45,7 +62,7 @@ Psy is a statically-typed and strongly-typed language. This means that:
 
 There are a small handful of type qualifiers available in Psy. Learn what these are first, or you will run into endless issues and confusion coming from C.
 
-### Type Qualifiers
+### Type Qualifiers <a name="type_qualifiers"></a>
 A type can have zero or more qualifiers. Qualifiers appear at the end of the type's name.
 | Type Qualifier         | C Equivalent      | Explanation                                                                    |
 | :--------------------- | :---------------: | :----------------------------------------------------------------------------- |
@@ -59,7 +76,7 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 - `f32 mut` - mutable, no implicit conversions, not a compile-time constant.
 - `v0& weak static` - pointer type. implicit conversions allowed. compile-time constant. pointee is `v0` - immutable, no implicit conversions, not a compile-time constant.
 
- ### Primitive Types
+ ### Primitive Types <a name="type_prim"></a>
  There are a number of primitive types:
  | Primitive Type         | C Equivalent | Description                            |
 | :---------------- | :----------: | :------------------------------------- |
@@ -76,7 +93,7 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 | f32               |  float       | 32-bit floating-point number. IEEE-754 |
 | v0                |  void        | Represents no value. Zero size.        |
 
-### Pointer Types
+### Pointer Types <a name="type_ptr"></a>
 Pointers work almost identically to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
 ```
 main ::= func() -> v0
@@ -113,7 +130,7 @@ main ::= func() -> s32 weak
 };
 ```
 
-### Array Types
+### Array Types <a name="type_array"></a>
 I consider arrays in C to be highly error-prone, particularly around its implicit conversion to a pointer (decay). Here's how it works in Psy:
 ```
 // array of three u64s. initial values are undefined.
@@ -132,7 +149,7 @@ pointer : u64& := my_favourite_numbers at 0;
 // Array is now: 7, 69, 420.
 ```
 
-### Enum Types
+### Enum Types <a name="type_enum"></a>
 Enums in Psy are similar to `enum class` in C++11. The syntax is slightly different.
 ```
 window_flags ::= enum
@@ -147,7 +164,7 @@ my_flag : window_flags := window_flags.opengl;
 value ::= my_flag@s64; // 1
 ```
 
-### Struct Types
+### Struct Types <a name="type_struct"></a>
 Structs in Psy are virtually identical to that of C. Structs must be defined as new types, and then can be used as a type for variables. A syntax very similar to C/C++20 designated initialisers can be used to initialise a struct value.
 
 #### Declaring a new struct
@@ -178,29 +195,29 @@ Struct initialisers are very similar to C++20 designated initializers. It is the
 - Unlike C++20, you do not have to list the initialisers in-order.
 - It is valid to not initialise every single data member of the struct. However, the data members you don't set in the struct initialiser will be of indeterminate value. It is considered *erroneous behaviour* to read indeterminate values.
 
-### Type Conversions
+### Type Conversions <a name="type_conv"></a>
 Without the `weak` qualifier, almost no implicit type conversions are available to you.
 ```
 my_int : u64 := 5;
 my_int2 : s64 := my_int; // error.
 ```
 If either type `A` or `B` are `weak`, then the following type conversion rules are in effect:
-#### Primitive Conversions
+#### Primitive Conversions <a name="type_conv_prim"></a>
 - If A and B are *numeric primitives*, conversion is allowed.
 - If A is a `bool` and B is a *numeric primitive*, conversion is allowed. The same is true in reverse.
 - If A is a `v0`, no form of type conversion is allowed.
-#### Struct Conversions
+#### Struct Conversions <a name="type_conv_struct"></a>
 - If A and B are both two differing struct types, then they cannot be converted unless they have the exact same members.
 - Struct types do not convert to anything else.
-#### Enum Conversions
+#### Enum Conversions <a name="type_conv_enum"></a>
 - If A and B are both enum types and their underlying types are implicitly convertible, conversion is allowed.
 - If A is an enum type, it is implicitly convertible to its underlying type, and vice-versa.
-#### Pointer Conversions
+#### Pointer Conversions <a name="type_conv_ptr"></a>
 - Pointer types can be freely converted to other pointer types, with the following restriction:
 	- You cannot apply mutability with a cast. `T&` cannot be converted to `T mut&`
  - While `*reinterpret_cast<T*>(some_pointer)` is almost always "undefined behaviour" in C, it is not so in Psy. There are no aliasing rules in place, so you are free to do this - memory is memory and there is no type-based alias analysis.
 
-### Type Casting
+### Type Casting <a name="type_cast"></a>
 You have now learned about the various possible type conversions. No form of conversion is done without the `weak` qualifier. This is so that these conversions don't happen unless you ask for them - an attempt to produce more predictable code. However, if you want to opt-into these conversions, then it should be easy.
 
 Casting is the act of explicitly applying `weak`ness to a value's type, and allowing it to undergo a conversion. It is done using the `@` symbol. It is a different approach to C and C++. Here's a very basic example:
