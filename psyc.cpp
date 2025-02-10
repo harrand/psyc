@@ -4759,12 +4759,22 @@ semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_
 		return lhs_result;
 	}
 	type_t lhs_ty = lhs_result.val.ty;
-	if(!lhs_ty.is_arr())
+	type_t element_ty = type_t::badtype();
+	std::optional<std::size_t> array_size = std::nullopt;
+	if(lhs_ty.is_arr())
 	{
-		return semal_result::err("lhs of 'at' operator is not an array type, but a \"{}\"", lhs_ty.name());
+		auto arr = AS_A(lhs_ty.payload, arr_ty);
+		element_ty = *arr.underlying_ty;
+		array_size = arr.array_length;
 	}
-	auto arr = AS_A(lhs_ty.payload, arr_ty);
-	auto element_ty = *arr.underlying_ty;
+	else if(lhs_ty.is_ptr())
+	{
+		element_ty = *AS_A(lhs_ty.payload, ptr_ty).underlying_ty;
+	}
+	else
+	{
+		return semal_result::err("lhs of 'at' operator is not an array or pointer type, but a \"{}\"", lhs_ty.name());
+	}
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	if(rhs_result.is_err())
@@ -4778,23 +4788,33 @@ semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_
 	}
 
 	sval retval = wrap_type(type_t::create_pointer_type(element_ty));
-	if(rhs_result.val.has_val())
+	if(rhs_result.val.has_val() && array_size.has_value())
 	{
 		auto array_index = AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
-		if(array_index >= arr.array_length)
+		if(array_index >= array_size.value())
 		{
-			return semal_result::err("array index \"{}\" is out-of-bounds of the array (length {})", array_index, arr.array_length);
+			return semal_result::err("array index \"{}\" is out-of-bounds of the array (length {})", array_index, array_size.value());
 		}
 	}
 	if(do_codegen)
 	{
-		//lhs_result.load_if_variable();
 		rhs_result.load_if_variable();
 		llvm::Value* idxlist[2];
+
 		idxlist[0] = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, 0});
 		idxlist[1] = rhs_result.val.ll;
 
-		retval.ll = codegen.ir->CreateGEP(lhs_result.val.ty.llvm(), lhs_result.val.ll, idxlist);
+		if(lhs_ty.is_ptr())
+		{
+			// it's not immediately clear to my why i dont load if its an array, but i do if its a pointer.
+			// however, this is what works. im sure you'll figure it all out, sweetheart.
+			lhs_result.load_if_variable();
+			retval.ll = codegen.ir->CreateGEP(element_ty.llvm(), lhs_result.val.ll, rhs_result.val.ll);
+		}
+		else
+		{
+			retval.ll = codegen.ir->CreateGEP(lhs_result.val.ty.llvm(), lhs_result.val.ll, idxlist);
+		}
 	}
 	return semal_result
 	{
