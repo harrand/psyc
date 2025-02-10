@@ -5080,6 +5080,12 @@ semal_result semal_ptr_field_biop_expr(const ast_biop_expr& expr, node& n, std::
 	lhs_result.val.val = {};
 
 	// absolutely *must* treat b as a symbol.
+	if(IS_A(expr.rhs->expr_, ast_callfunc_expr))
+	{
+		// note there's nothing stopping you from copying over the callfunc functionality from semal_field...
+		// i've chosen not to do it right now because it's a little complex.
+		return semal_result::err("calling a function via struct-access ptr-field expression is not yet implemented. use the normal field expression (dot) instead.");
+	}
 	if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
 	{
 		return semal_result::err("struct-access ptr-field expression is invalid. rhs of the ptr-field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
