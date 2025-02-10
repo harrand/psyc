@@ -16,6 +16,19 @@
 		- [Enum Conversions](#type_conv_enum)
    		- [Pointer Conversions](#type_conv_ptr)
        	- [Type Casting](#type_cast)
+3. [Values](#values)
+   	- [Literal Values](#val_lit)
+   	- [Named Values](#val_named)
+4. [Variables](#vars)
+   	- [Global Variables](#var_glob)
+   	- [Local Variables](#var_loc)
+5. [Statements](#stmt)
+   	- [Declaration Statements](#stmt_decl)
+   	- [Expression Statements](#stmt_expr)
+   	- [Return Statements](#stmt_ret)
+   	- [Block Statements](#stmt_blk)
+   	- [Designator Statements](#stmt_decl)
+   	- [Metaregion Statements](#stmt_metaregion)
 
 		
 
@@ -244,8 +257,141 @@ What if you want to "apply weakness" to an existing variable? You can do so usin
 my_int : u64 := 5;
 my_int@_ // this is the same as my_int@u64 weak. or in general, value@_ is equivalent to value@type_of_value weak
 ```
+
 This will allow you to be very selective in where you opt-into implicit conversions, and makes it easy to do so when you don't need the very strict type safety rules.
 ```
 my_int2 : s64 := my_int@_;
 // my_int remains a strongly-typed u64. the "apply weakness" idiom only affects the expression it is used in -- it doesnt magically change the type qualifier of the variable forevermore.
+```
+
+
+# Values <a name="values"></a>
+Values represent a stored permutation of bits, representative of a given type. Unlike C, values of a given type have no such concept of a lifetime - only memory has a lifetime. For this reason, the notion of constructors and destructors do not exist in Psy. Values are used to initialise variables, re-assign mutable variables, and pass/return from functions.
+
+## Literal Values <a name="val_lit"></a>
+Literal values are values restricted to certain types, and are known at compile time. Literal values can be used to initialise `static` variables.
+`5` is a literal value, and so is `"my awesome string literal!"`. `my_function()` does not yield a literal value, as functions compute their values at runtime.
+
+Struct initialisers can be literal values, but only if every initialiser is a literal value. For example, the following struct initialiser is a literal value:
+```
+animal
+{
+	.type := animal_type.tiger;
+	.name := "bob";
+};
+```
+
+As such, it can be used to initialise a `animal static`:
+```
+bob_the_tiger : animal static := animal
+{
+	.type := animal_type.tiger;
+	.name := "bob";
+};
+```
+
+The following struct initialiser is not a literal value, as one of its initialisers is the result of a non-static function call:
+```
+new_world ::= world
+{
+	.name := "My New World";
+	.seed := generate_random_seed();
+};
+world_cpy : world static := new_world; // error: cannot convert world to world static.
+```
+
+## Named Values <a name="val_named"></a>
+Named Values (otherwise known as lvalues in C) are values that have an identifiable location in memory. All variables are named values.
+
+# Variables <a name="vars"></a>
+Variables in Psy are very similar to other C-like languages. Variables are named values that are of a given type.
+
+# Global Variables <a name="var_glob"></a>
+Global variables are variables whose memory is not automatically reserved - the lifetime of its memory matches that of the program's runtime. Global variables do not have to be initialised initially, but if they are given an initialiser, that initialiser must be a literal value.
+
+Global variables are visible across the whole of the source file, aswell as any source files that add the containing source file in its *build metaregion*.
+
+# Local Variables <a name="var_loc"></a>
+Local variables are variables that are limited to a function's scope. The lifetime of a variable's memory begins when its declaration is executed, and ends when the function returns.
+
+Do not be misled - this is not how variables work in C. In C, the variable's lifetime ends when it reaches the end of its current scope (in most cases a curly brace). See the following example:
+```
+while(true)
+{
+	int x;
+	// do stuff
+}
+```
+In this case, the lifetime of variable `x` begins and ends within each iteration of the while-loop. The Psy equivalent is quite different:
+```
+while(true)
+{
+	x : s32;
+}
+```
+The lifetime of variable `x` starts *once* on the first iteration of the loop. Attempting to provide an initialiser to this example will yield an error - on subsequent iterations an assignment is needed, which can't be done as `x` is not a `s32 mut`.
+
+This might seem highly misleading. The moral of the story is: Declare your local variables at once, ahead-of-time.
+TODO: edit this. is this really what i want?
+
+# Statements <a name="stmt"></a>
+Statements represent the main building blocks of a Psy program. Each statement compiles down to a sequential list of zero or more instructions.
+
+Some statements are purely a compile-time mechanism and do not generate any code.
+
+## Declaration Statements <a name="stmt_decl"></a>
+Declaration statements are the primary way to define variables. The syntax of a declaration statement is as follows:
+```
+(1)
+decl_name : typename;
+(2)
+decl_name : typename := init_expr;
+(3)
+decl_name ::= init_expr;
+(4)
+decl_name ::= funcdef_expr
+{
+	...
+};
+(5)
+decl_name ::= funcdef_expr := extern;
+```
+The behaviour of (1) is as follows:
+* Allocate memory on the stack, enough to store a value of type `typename`.
+* If this statement is within a function implementation block, then this is a local variable, and the variable `decl_name` is now available to proceeding code within the block.
+  	* If it is outside of a function implementation block and a top-level statement within the source file, then it represents a global variable. The variable `decl_name` is now available to all proceeding code in the source file, aswell as any code that adds this source file in its *build metaregion*.
+* The variable has an indeterminate value.
+Example:
+```
+myvar : u32;
+```
+
+The behaviour of (2) is identical to (1), except that the expression `init_expr` is treated as an initialiser. The variable now has that value.
+Example:
+```
+myvar : u32 := 500;
+```
+
+The behaviour of (3) is similar to (2), except that the type of the variable is deduced automatically by the `init_expr` initialiser. The type of the variable will exactly match that of the initialiser, including *type qualifiers*.
+Example:
+```
+myvar ::= 500;
+// note: myvar is of type (s64 static weak)
+```
+
+Both (4) and (5) are only used to declare *functions*.
+(4) Declares a function, and provides an implementation block for the function.
+Example:
+```
+main ::= func() -> s32 weak
+{
+	hello_world();
+	return 0;
+};
+```
+
+(5) Declares a function, but indicates that the implementation of the function lives elsewhere. The linker is expected to locate this implementation after compilation. You should use this to declare functions from other libraries (.lib/.o) that you wish to link against and call in your program.
+Example:
+```
+wglGetProcAddress ::= func(unnamedParam1 : u8&) -> u64 weak := extern;
 ```
