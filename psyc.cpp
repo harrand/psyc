@@ -9476,18 +9476,21 @@ int main(int argc, char** argv)
 	codegen_initialise(name);
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
-#ifdef _WIN32
-	compile_source("entrypoint.psy", 
-	"ExitProcess ::= func(uExitCode : u32 weak) -> v0 := extern;\
-	_psymain ::= func() -> v0\
-	{\
-		ret ::= main();\
-		ExitProcess(ret);\
-	};",
-	args);
-#else
-
-#endif
+	if(args.output_type == target::executable)
+	{
+		#ifdef _WIN32
+		compile_source("entrypoint.psy", 
+		"ExitProcess ::= func(uExitCode : u32 weak) -> v0 := extern;\
+		_psymain ::= func() -> v0\
+		{\
+			ret ::= main();\
+			ExitProcess(ret);\
+		};",
+		args);
+		#else
+		panic("todo: linux support");
+		#endif
+	}
 
 	semal_verify(args);
 	codegen_verify();
