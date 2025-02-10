@@ -4763,7 +4763,8 @@ semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_
 	{
 		return semal_result::err("lhs of 'at' operator is not an array type, but a \"{}\"", lhs_ty.name());
 	}
-	auto element_ty = *AS_A(lhs_ty.payload, arr_ty).underlying_ty;
+	auto arr = AS_A(lhs_ty.payload, arr_ty);
+	auto element_ty = *arr.underlying_ty;
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	if(rhs_result.is_err())
@@ -4777,6 +4778,14 @@ semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_
 	}
 
 	sval retval = wrap_type(type_t::create_pointer_type(element_ty));
+	if(rhs_result.val.has_val())
+	{
+		auto array_index = AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
+		if(array_index >= arr.array_length)
+		{
+			return semal_result::err("array index \"{}\" is out-of-bounds of the array (length {})", array_index, arr.array_length);
+		}
+	}
 	if(do_codegen)
 	{
 		//lhs_result.load_if_variable();
