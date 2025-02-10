@@ -9868,38 +9868,6 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			}
 		};
 	}
-	else if(call.function_name == "__array")
-	{
-		const ast_expr& typename_expr = call.params.front();
-		if(!IS_A(typename_expr.expr_, ast_symbol_expr))
-		{
-			return semal_result::err("first parameter of __array must be a typename.");
-		}
-		std::string_view type_name = AS_A(typename_expr.expr_, ast_symbol_expr).symbol;
-		auto [parse_ty, only_found_in_global] = local->parse_type_global_fallback(type_name);
-		if(parse_ty.is_badtype())
-		{
-			return semal_result::err("requested type of array \"{}\" was unknown{}", type_name, !(parse_ty.is_badtype()) ? " \nnote: i could find this type globally but it is not accesible in this scope." : "");
-		}
-		parse_ty.qual = parse_ty.qual | typequal_mut;
-
-		std::int64_t array_size = get_as_integer(call.params[1]);
-		llvm::Constant* llvm_arrsize = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(array_size), true});
-		// codegen an array alloca.
-		llvm::AllocaInst* llvm_var = codegen.ir->CreateAlloca(parse_ty.llvm(), llvm_arrsize);
-		// treat the llvm var as a pointer to parse_ty
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__array",
-			.val =
-			{
-				.ty = type_t::create_pointer_type(parse_ty),
-				.ll = llvm_var
-			}
-		};
-
-	}
 	else if(call.function_name.starts_with("__"))
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
