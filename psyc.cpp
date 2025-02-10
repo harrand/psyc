@@ -5124,7 +5124,6 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		// absolutely *must* treat b as a symbol.
 		if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
 		{
-			// todo: unless it is a function call via UFCS
 			return semal_result::err("struct-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
 		}
 		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
@@ -5195,7 +5194,6 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		// get the rhs.
 		if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
 		{
-			// todo: unless it is a function call via UFCS
 			return semal_result::err("enum-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
 		}
 		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
@@ -8589,10 +8587,6 @@ CHORD_END
 
 // compositing field expressions at the end of declarations.
 
-// uniform function call syntax
-// foo.bar(1, 2)
-// is equivalent too
-// bar(foo, 1, 2)
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_expr), TOKEN(dot)), FN
 	{
@@ -8628,18 +8622,7 @@ CHORD_BEGIN
 		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
 		auto& expr_node = nodes[2];
 		auto& expr = std::get<ast_expr>(expr_node.payload);
-		if(expr.expr_.index() == payload_index<ast_callfunc_expr, decltype(expr.expr_)>())
-		{
-			// ufcs
-			auto& call = std::get<ast_callfunc_expr>(expr.expr_);
-			call.params.insert(call.params.begin(), ast_expr{.expr_ = ast_symbol_expr{.symbol = std::string{symbol}}});
-			return
-			{
-				.action = parse_action::reduce,
-				.nodes_to_remove = {.offset = 0, .length = 2}
-			};
-		}
-		else if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+		if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
 		{
 			std::string rhs = std::get<ast_symbol_expr>(expr.expr_).symbol;
 			// ok rhs of the dot is not a call to a function
@@ -8664,7 +8647,7 @@ CHORD_BEGIN
 		else
 		{
 			const char* expr_name = expr.type_name();
-			chord_error("in a expr.expr reduction, did not expect rhs expr to be a {}, expected either a function call expression (UFCS), or a symbol expression (forming a field expression)", expr_name);
+			chord_error("in a expr.expr reduction, did not expect rhs expr to be a {}, expected a symbol expression (forming a field expression)", expr_name);
 		}
 	}
 EXTENSIBLE
@@ -8703,7 +8686,7 @@ CHORD_BEGIN
 		else
 		{
 			const char* expr_name = expr.type_name();
-			chord_error("in a expr->expr reduction, did not expect rhs expr to be a {}, expected either a function call expression (UFCS), or a symbol expression (forming a field expression)", expr_name);
+			chord_error("in a expr->expr reduction, did not expect rhs expr to be a {}, expected a symbol expression (forming a field expression)", expr_name);
 		}
 	}
 EXTENSIBLE
