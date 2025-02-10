@@ -1384,7 +1384,12 @@ llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, 
 	//panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
 	bool is_const = !(val.ty.qual | typequal_mut);
 	auto linkage = external_linkage ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::PrivateLinkage;
-	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, linkage, static_cast<llvm::Constant*>(val.ll), name);
+	llvm::Value* ptr = val.ll;
+	if(ptr == nullptr)
+	{
+		ptr = llvm::Constant::getNullValue(val.ty.llvm());
+	}
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, linkage, static_cast<llvm::Constant*>(ptr), name);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
 	return ret;
@@ -5729,6 +5734,10 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					if(local->scope == scope_type::translation_unit)
 					{
 						// this is a global variable.
+						if(init_result.val.ty.is_badtype())
+						{
+							init_result.val.ty = ret.val.ty;
+						}
 						ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val, external_linkage);
 					}
 					else
