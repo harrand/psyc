@@ -41,9 +41,25 @@ Psy is a statically-typed and strongly-typed language. This means that:
 - Typing rules are strict. Unlike languages such as C, implicit conversions are disabled by default - you must explicitly opt-into this.
   	- This means for example that a `u32` is not implicitly convertible to a `s64` or even a `s32`.
 
+There are a small handful of type qualifiers available in Psy. Learn what these are first, or you will run into endless issues and confusion coming from C.
+
+### Type Qualifiers
+A type can have zero or more qualifiers. Qualifiers appear at the end of the type's name.
+| Type Qualifier         | C Equivalent      | Explanation                                                                    |
+| :--------------------- | :---------------: | :----------------------------------------------------------------------------- |
+| none                   | `const`           | Everything is immutable by default, like Rust but unlike C.                    |
+| `mut`                  |                   | The variable is mutable - it's value can be changed after initialisation.      |
+| `weak`                 | none              | Types that are marked `weak` will be subject to *implicit conversions*.        |
+| `static`               | `constexpr` (C++) | The variable must be a compile-time constant, or a compile error will occur.   |
+
+Note that a type can have multiple qualifiers. Here are some examples of various types:
+- `u64` - immutable, no implicit conversions, not a compile-time constant.
+- `f32 mut` - mutable, no implicit conversions, not a compile-time constant.
+- `v0& weak static` - pointer type. implicit conversions allowed. compile-time constant. pointee is `v0` - immutable, no implicit conversions, not a compile-time constant.
+
  ### Primitive Types
  There are a number of primitive types:
- | Psy Type         | C Equivalent | Description                            |
+ | Primitive Type         | C Equivalent | Description                            |
 | :---------------- | :----------: | :------------------------------------- |
 | s64               |   int64_t    | 64-bit signed integer.                 |
 | s32               |   int32_t    | 32-bit signed integer.                 |
@@ -57,3 +73,59 @@ Psy is a statically-typed and strongly-typed language. This means that:
 | f64               |  double      | 64-bit floating-point number. IEEE-754 |
 | f32               |  float       | 32-bit floating-point number. IEEE-754 |
 | v0                |  void        | Represents no value. Zero size.        |
+
+### Pointer Types
+Pointers work almost identically to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
+```
+main ::= func() -> v0
+{
+	my_value : s64 mut := 5;
+	my_pointer : s64 mut& := ref my_value;
+
+	// equivalent to: my_value = 0;
+	(deref my_pointer) = 0;
+};
+```
+Within a typename, pointer-ness is represented by the ampersand `&` symbol. It directly proceeds the base type representing the pointee.
+
+- The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
+- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
+- Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
+
+Like C, you can also have function pointers. Also like C, the syntax is a little (albeit less) arcane. A quick example is below, but I will go into detail later:
+```
+// normal function definition
+my_cool_function ::= func() -> v0
+{
+	// code...
+};
+
+// later on in main:
+main ::= func() -> s32 weak
+{
+	// function pointer variable.
+	my_function_pointer : func() -> v0 := my_cool_function;
+	// you can let the compiler determine the type for you:
+	the_same_function_pointer ::= my_cool_function;
+	my_function_pointer(); // calls my_cool_function.
+};
+```
+
+### Array Types
+I consider arrays in C to be highly error-prone, particularly around its implicit conversion to a pointer (decay). Here's how it works in Psy:
+```
+	// array of three u64s. initial values are undefined.
+	my_favourite_numbers : u64#3;
+	// pointer to first number (note that this does *not* perform a load, unlike dereferencing in C. this is pointer arithmetic)
+	pointer : u64& := my_favourite_numbers at 0;
+
+	// note that array does not implicitly decay to pointer
+	//another_pointer : u64& := my_favourite_numbers; // error!
+
+	// populate each value.
+	(deref pointer) = 7; // equivalent to (deref (my_favourite_numbers at 0)) = 7;
+	(deref (my_favourite_numbers at 1)) = 69;
+	(deref (my_favourite_numbers at 12)) = 420;
+
+	// Array is now: 7, 69, 420.
+```
