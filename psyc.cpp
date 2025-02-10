@@ -749,6 +749,16 @@ struct ptr_ty
 	bool operator==(const ptr_ty& rhs) const = default;
 };
 
+struct arr_ty
+{
+	box<type_t> underlying_ty;
+	std::size_t array_length;
+
+	std::string name() const;
+	static arr_ty of(const type_t&, std::size_t length);
+	bool operator==(const arr_ty& rhs) const = default;
+};
+
 struct fn_ty
 {
 	std::vector<type_t> static_params;
@@ -777,6 +787,7 @@ struct type_t
 		struct_ty,
 		enum_ty,
 		ptr_ty,
+		arr_ty,
 		fn_ty,
 		meta_ty
 	>;
@@ -1075,6 +1086,11 @@ struct type_t
 		return this->payload.index() == payload_index<ptr_ty, decltype(this->payload)>();
 	}
 
+	bool is_arr() const
+	{
+		return this->payload.index() == payload_index<arr_ty, decltype(this->payload)>();
+	}
+
 	bool is_fn() const
 	{
 		return this->payload.index() == payload_index<fn_ty, decltype(this->payload)>();
@@ -1091,6 +1107,16 @@ std::string ptr_ty::name() const
 /*static*/ptr_ty ptr_ty::ref(const type_t& t)
 {
 	return {.underlying_ty = {t}};
+}
+
+std::string arr_ty::name() const
+{
+	return std::format("{}#{}", this->underlying_ty->name(), this->array_length);
+}
+
+/*static*/ arr_ty arr_ty::of(const type_t& t, std::size_t length)
+{
+	return{.underlying_ty = {t}, .array_length = length};
 }
 
 std::string fn_ty::name() const
@@ -1597,6 +1623,21 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 			tyname.remove_prefix(1);
 			continue;
 		}
+		if(tyname.front() == '#' && !type_is_fn)
+		{
+			tyname.remove_prefix(1);
+			const char* first_digit = tyname.data();
+			const char* last_digit = first_digit;
+			while(tyname.size() && std::isdigit(tyname.front()))
+			{
+				last_digit++;
+				tyname.remove_prefix(1);
+			}
+			std::size_t array_length = std::stoi(std::string{first_digit, last_digit});
+			error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw array symbol before i found the base type", type_name);
+			current_type = type_t{arr_ty::of(current_type, array_length)};
+			continue;
+		}
 		std::size_t till_next_thing = 0;
 		for(std::size_t i = 0; i < tyname.size(); i++)
 		{
@@ -1999,6 +2040,11 @@ llvm::Type* type_t::llvm() const
 	{
 		return llvm::PointerType::get(*codegen.ctx, 0);
 	}
+	if(this->is_arr())
+	{
+		const auto& arr = AS_A(this->payload, arr_ty);
+		return llvm::ArrayType::get(arr.underlying_ty->llvm(), arr.array_length);
+	}
 	if(this->is_struct())
 	{
 		return global.llvm_structs.at(AS_A(this->payload, struct_ty));
@@ -2307,6 +2353,7 @@ enum class token : std::uint32_t
 	asterisk,
 	fslash,
 	cast,
+	arr,
 	oanglebrack,
 	canglebrack,
 	keyword_static_if,
@@ -2322,6 +2369,7 @@ enum class token : std::uint32_t
 	keyword_ref,
 	keyword_deref,
 	keyword_defer,
+	keyword_at,
 	keyword_true,
 	keyword_false,
 	symbol,
@@ -2337,6 +2385,7 @@ struct tokeniser
 	tokenise_fn fn = nullptr;
 	bool trivial = false;
 	bool affects_code = true;
+	bool allow_run_on = true;
 };
 std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 {
@@ -2612,6 +2661,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "array",
+		.front_identifier = "#",
+		.trivial = true
+	},
+
+	tokeniser
+	{
 		.name = "oanglebrack",
 		.front_identifier = "<",
 		.trivial = true
@@ -2628,105 +2684,128 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "static if keyword",
 		.front_identifier = "if static",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "if keyword",
 		.front_identifier = "if",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "else keyword",
 		.front_identifier = "else",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "while keyword",
 		.front_identifier = "while",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "for keyword",
 		.front_identifier = "for",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "return keyword",
 		.front_identifier = "return",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "func keyword",
 		.front_identifier = "func",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "extern keyword",
 		.front_identifier = "extern",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "struct keyword",
 		.front_identifier = "struct",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "enum keyword",
 		.front_identifier = "enum",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "ref keyword",
 		.front_identifier = "ref",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "deref keyword",
 		.front_identifier = "deref",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "defer keyword",
 		.front_identifier = "defer",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
+	},
+
+	tokeniser
+	{
+		.name = "at keyword",
+		.front_identifier = "at",
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "true keyword",
 		.front_identifier = "true",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
 	{
 		.name = "false keyword",
 		.front_identifier = "false",
-		.trivial = true
+		.trivial = true,
+		.allow_run_on = false
 	},
 
 	tokeniser
@@ -2741,7 +2820,7 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 				std::size_t symbol_begin = state.cursor;
 				std::size_t symbol_length = state.advance_until([](std::string_view next)
 				{
-					return !(std::isalnum(next.front()) || next.front() == '_' || next.front() == '&'
+					return !(std::isalnum(next.front()) || next.front() == '_' || next.front() == '&' || next.front() == '#'
 								|| next.starts_with(get_typequal_name(typequal_mut))
 								|| next.starts_with(get_typequal_name(typequal_weak))
 								|| next.starts_with(get_typequal_name(typequal_static))
@@ -2773,11 +2852,16 @@ bool try_tokenise(std::string_view front, token tok, lex_output& out, lex_state&
 		// do trivial lexing
 		if(front.starts_with(trait.front_identifier))
 		{
-			std::size_t cursor_before = state.cursor;
-			state.advance(trait.front_identifier);
-			out.tokens.push_back(tok);
-			out.lexemes.push_back({.offset = cursor_before, .length = std::strlen(trait.front_identifier)});
-			return true;
+			// if the front identifier is "at", we shouldnt match "attention"
+			std::string_view next = front.substr(std::strlen(trait.front_identifier));
+			if(trait.allow_run_on || next.empty() || !std::isalnum(next.front()))
+			{
+				std::size_t cursor_before = state.cursor;
+				state.advance(trait.front_identifier);
+				out.tokens.push_back(tok);
+				out.lexemes.push_back({.offset = cursor_before, .length = std::strlen(trait.front_identifier)});
+				return true;
+			}
 		}
 	}
 	else
@@ -3076,6 +3160,7 @@ enum class biop_type
 	cast,
 	field,
 	ptr_field,
+	at,
 	compare_eq,
 	compare_neq,
 	assign,
@@ -3092,8 +3177,12 @@ constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_pre
 	2,
 	3,
 	3,
+	3,
 	1,
-	0
+	1,
+	0,
+	1,
+	1
 };
 
 struct ast_biop_expr
@@ -4661,6 +4750,51 @@ semal_result semal_enumdef_expr(const ast_enumdef_expr& expr, node& n, std::stri
 	return ret;
 }
 
+semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	// rhs must be an array type.
+	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
+	if(lhs_result.is_err())
+	{
+		return lhs_result;
+	}
+	type_t lhs_ty = lhs_result.val.ty;
+	if(!lhs_ty.is_arr())
+	{
+		return semal_result::err("lhs of 'at' operator is not an array type, but a \"{}\"", lhs_ty.name());
+	}
+	auto element_ty = *AS_A(lhs_ty.payload, arr_ty).underlying_ty;
+
+	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(rhs_result.is_err())
+	{
+		return rhs_result;
+	}
+	type_t rhs_ty = rhs_result.val.ty;
+	if(!(rhs_ty.is_prim() && AS_A(rhs_ty.payload, prim_ty).is_integral()))
+	{
+		return semal_result::err("rhs of 'at' operator is not an type, but a \"{}\"", rhs_ty.name());
+	}
+
+	sval retval = wrap_type(type_t::create_pointer_type(element_ty));
+	if(do_codegen)
+	{
+		//lhs_result.load_if_variable();
+		rhs_result.load_if_variable();
+		llvm::Value* idxlist[2];
+		idxlist[0] = llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, 0});
+		idxlist[1] = rhs_result.val.ll;
+
+		retval.ll = codegen.ir->CreateGEP(lhs_result.val.ty.llvm(), lhs_result.val.ll, idxlist);
+	}
+	return semal_result
+	{
+		.t = semal_type::misc,
+		.label = std::format("{} at", lhs_result.label),
+		.val = retval
+	};
+}
+
 semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	// x@y
@@ -5287,6 +5421,9 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 			return semal_field_biop_expr(deref_expr, n, source, local, false);
 			*/
 		}
+		break;
+		case at:
+			return semal_at_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		default:
 			panic("unknown biop type detected {}", n.begin_location);
@@ -6456,6 +6593,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(dot)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(keyword_at)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -7984,6 +8128,7 @@ DEFINE_BIOPIFICATION_CHORDS(comparen, compare_neq)
 DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 DEFINE_BIOPIFICATION_CHORDS(oanglebrack, less_than)
 DEFINE_BIOPIFICATION_CHORDS(canglebrack, greater_than)
+DEFINE_BIOPIFICATION_CHORDS(keyword_at, at)
 
 CHORD_BEGIN
 	LOOKAHEAD_STATE(NODE(ast_partial_callfunc), TOKEN(cbrack)), FN
