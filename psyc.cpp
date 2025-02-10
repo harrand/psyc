@@ -4620,7 +4620,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 		{
 			return actual_result;
 		}
-		const type_t& actual_ty = actual_result.val.ty;
+const type_t& actual_ty = actual_result.val.ty;
 		const type_t& expected_ty = expected_params[i];
 		if(!actual_ty.is_convertible_to(expected_ty))
 		{
@@ -5122,11 +5122,26 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		}
 		auto strty = AS_A(ty.payload, struct_ty);
 		// absolutely *must* treat b as a symbol.
-		if(!IS_A(expr.rhs->expr_, ast_symbol_expr))
+		std::string_view rhs_symbol;
+		bool is_function = false;
+		std::optional<fn_ty> as_function = std::nullopt;
+		std::span<const ast_expr> function_call_params = {};
+		if(IS_A(expr.rhs->expr_, ast_callfunc_expr))
+		{
+			// okay
+			const auto& call = AS_A(expr.rhs->expr_, ast_callfunc_expr);
+			rhs_symbol = call.function_name;
+			function_call_params = call.params;
+			is_function = true;
+		}
+		else if(IS_A(expr.rhs->expr_, ast_symbol_expr))
+		{
+			rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
+		}
+		else
 		{
 			return semal_result::err("struct-access field expression is invalid. rhs of the field expression must be a symbol expression, but instead it is a {} expression", expr.rhs->type_name());
 		}
-		std::string_view rhs_symbol = AS_A(expr.rhs->expr_, ast_symbol_expr).symbol;
 		auto iter = strty.members.find(rhs_symbol);
 		if(iter == strty.members.end())
 		{
@@ -5146,6 +5161,22 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			panic_ifnt(iter != structval.end(), "static value of struct type \"{}\"'s struct_val did not contain an entry for member \"{}\"", name, rhs_symbol);
 			member.val = iter->second.val;
 		}
+		if(is_function)
+		{
+			if(!member.ty.is_ptr())
+			{
+				return semal_result::err("attempt to call non-function-pointer member \"{}\" as function.", rhs_symbol);
+			}
+			auto member_ptr = AS_A(member.ty.payload, ptr_ty);
+			auto member_underlying = *member_ptr.underlying_ty;
+			if(!member_underlying.is_fn())
+			{
+				return semal_result::err("attempt to call non-function-pointer member \"{}\" as function.", rhs_symbol);
+			}
+			auto member_fnty = AS_A(member_underlying.payload, fn_ty);
+			as_function = member_fnty;
+			member = wrap_type(*member_fnty.return_ty);
+		}
 		if(do_codegen)
 		{
 			// expect lhs to be a struct.
@@ -5163,6 +5194,41 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			{
 				// no, use extractvalue.
 				member.ll = codegen.ir->CreateExtractValue(lhs_result.val.ll, member_id);
+			}
+
+			if(is_function)
+			{
+				lhs_result.t = semal_type::misc;
+				// load as ptr.
+				llvm::Type* llvm_ptr_ty = llvm::PointerType::get(*codegen.ctx, 0);
+				member.ll = codegen.ir->CreateLoad(llvm_ptr_ty, member.ll);
+				// call it.
+				std::vector<llvm::Value*> llvm_params;
+				std::vector<llvm::Type*> llvm_param_types;
+				for(const type_t& param_ty : as_function->params)
+				{
+					llvm_param_types.push_back(param_ty.llvm());
+				}
+				for(std::size_t i = 0; i < function_call_params.size(); i++)
+				{
+					const ast_expr& param = function_call_params[i];
+					semal_result actual_result = semal_expr(param, n, source, local, do_codegen);
+					if(actual_result.is_err())
+					{
+						return actual_result;
+					}
+					const type_t& actual_ty = actual_result.val.ty;
+					const type_t& expected_ty = as_function->params[i];
+					if(!actual_ty.is_convertible_to(expected_ty))
+					{
+						return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, rhs_symbol, actual_ty.name(), expected_ty.name());
+					}
+					actual_result.load_if_variable();
+					llvm_params.push_back(actual_result.val.convert_to(expected_ty));
+				}
+
+				llvm::FunctionType* functy = llvm::FunctionType::get(as_function->return_ty->llvm(), llvm_param_types, false);
+				member.ll = codegen.ir->CreateCall(functy, member.ll, llvm_params);
 			}
 		}
 		return
@@ -8622,33 +8688,20 @@ CHORD_BEGIN
 		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
 		auto& expr_node = nodes[2];
 		auto& expr = std::get<ast_expr>(expr_node.payload);
-		if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+		return
 		{
-			std::string rhs = std::get<ast_symbol_expr>(expr.expr_).symbol;
-			// ok rhs of the dot is not a call to a function
-			// that means it must be a field expr
-			// which requires a symbol expression.
-
-			return
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = ast_expr
 			{
-				.action = parse_action::reduce,
-				.nodes_to_remove = {.offset = 0, .length = 3},
-				.reduction_result = {node{.payload = ast_expr
+				.expr_ = ast_biop_expr
 				{
-					.expr_ = ast_biop_expr
-					{
-							.lhs = lhs_expr,
-							.type = biop_type::field,
-							.rhs = expr
-					}
-				}}}
-			};
-		}
-		else
-		{
-			const char* expr_name = expr.type_name();
-			chord_error("in a expr.expr reduction, did not expect rhs expr to be a {}, expected a symbol expression (forming a field expression)", expr_name);
-		}
+					.lhs = lhs_expr,
+					.type = biop_type::field,
+					.rhs = expr
+				}
+			}}}
+		};
 	}
 EXTENSIBLE
 CHORD_END
@@ -8665,29 +8718,20 @@ CHORD_BEGIN
 		std::string_view symbol = std::get<ast_symbol_expr>(lhs_expr.expr_).symbol;
 		auto& expr_node = nodes[2];
 		auto& expr = std::get<ast_expr>(expr_node.payload);
-		if(expr.expr_.index() == payload_index<ast_symbol_expr, decltype(expr.expr_)>())
+		return
 		{
-			std::string rhs = std::get<ast_symbol_expr>(expr.expr_).symbol;
-			return
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 3},
+			.reduction_result = {node{.payload = ast_expr
 			{
-				.action = parse_action::reduce,
-				.nodes_to_remove = {.offset = 0, .length = 3},
-				.reduction_result = {node{.payload = ast_expr
+				.expr_ = ast_biop_expr
 				{
-					.expr_ = ast_biop_expr
-					{
-							.lhs = lhs_expr,
-							.type = biop_type::ptr_field,
-							.rhs = expr,
-					}
-				}}}
-			};
-		}
-		else
-		{
-			const char* expr_name = expr.type_name();
-			chord_error("in a expr->expr reduction, did not expect rhs expr to be a {}, expected a symbol expression (forming a field expression)", expr_name);
-		}
+					.lhs = lhs_expr,
+					.type = biop_type::ptr_field,
+					.rhs = expr,
+				}
+			}}}
+		};
 	}
 EXTENSIBLE
 CHORD_END
