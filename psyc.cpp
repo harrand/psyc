@@ -9925,6 +9925,27 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			}
 		};
 	}
+	else if(call.function_name == "__embed")
+	{
+		#define OLD_COMPILER_STAGE COMPILER_STAGE
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE meta
+		std::filesystem::path path = get_as_string(call.params.front());
+		if(!std::filesystem::exists(path))
+		{
+			error(n.begin_location, "cannot \033[1;34m__embed\033[0m non-existent file \"{}\"", path);
+		}
+		if(!std::filesystem::is_regular_file(path))
+		{
+			error(n.begin_location, "cannot \033[1;34m__embed\033[0m \"{}\" as it is not a regular file", path);
+		}
+		std::string file_contents = read_file(path);
+
+		#undef COMPILER_STAGE
+		#define COMPILER_STAGE OLD_COMPILER_STAGE
+		#undef OLD_COMPILER_STAGE
+		return semal_literal_expr({.value = file_contents}, n, source, local, true);
+	}
 	else if(call.function_name.starts_with("__"))
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
