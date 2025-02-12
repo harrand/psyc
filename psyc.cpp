@@ -9868,13 +9868,31 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	else if(call.function_name == "__enumname")
 	{
 		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		param.load_if_variable();
 		if(!param.val.ty.is_enum())
 		{
 			return semal_result::err("__enumname must be provided an enum value, but you have provided a \"{}\"", param.val.ty.name());
 		}
 		auto enumty = AS_A(param.val.ty.payload, enum_ty);
+		ast_literal_expr badenum
+		{
+			.value = std::string{"badenum"}
+		};
+		if(param.val.ty.qual & typequal_static)
+		{
+			// let's do it real easy now.
+			auto val = AS_A(AS_A(param.val.val, literal_val), std::int64_t);
+			for(const auto& [name, value] : enumty.entries)
+			{
+				if(value == val)
+				{
+					return semal_literal_expr({.value = std::string{name}}, n, source, local, true);
+				}
+			}
+			return semal_literal_expr(badenum, n, source, local, true);
+		}
 
-		semal_result variable = semal_decl(ast_decl{.type_name = "u8& mut", .name = "_enumname_result", .initialiser = ast_expr{.expr_ = ast_literal_expr{.value = "badenum"}}}, n, source, local, true);
+		semal_result variable = semal_decl(ast_decl{.type_name = "u8& mut", .name = "_enumname_result", .initialiser = ast_expr{.expr_ = badenum}}, n, source, local, true);
 
 		const semal_result* maybe_parent = local->try_find_parent_function();
 		llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
