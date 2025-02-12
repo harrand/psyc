@@ -5274,6 +5274,7 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			return semal_result::err("enum-access field expressionis invalid. enum \"{}\" has no entry named \"{}\"", lhs_symbol, rhs_symbol);
 		}
 		sval retval = wrap_type(ty);
+		retval.val = literal_val{iter->second};
 		if(do_codegen)
 		{
 			llvm::GlobalVariable* gvar = codegen.mod->getGlobalVariable(std::format("{}.{}", lhs_symbol, rhs_symbol));
@@ -9861,6 +9862,48 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			{
 				.ty = param.val.ty,
 				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
+			}
+		};
+	}
+	else if(call.function_name == "__enumname")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, true);
+		if(!param.val.ty.is_enum())
+		{
+			return semal_result::err("__enumname must be provided an enum value, but you have provided a \"{}\"", param.val.ty.name());
+		}
+		auto enumty = AS_A(param.val.ty.payload, enum_ty);
+
+		semal_result variable = semal_decl(ast_decl{.type_name = "u8& mut", .name = "_enumname_result", .initialiser = ast_expr{.expr_ = ast_literal_expr{.value = "badenum"}}}, n, source, local, true);
+
+		const semal_result* maybe_parent = local->try_find_parent_function();
+		llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
+		for(const auto& [name, value] : enumty.entries)
+		{
+			semal_result lit = semal_literal_expr({.value = value}, n, source, local, true);
+			llvm::Value* cond = codegen.ir->CreateICmpEQ(param.val.ll, lit.val.ll);
+			if(maybe_parent == nullptr)
+			{
+				return semal_result::err("it is an error to call __enumname outside of a function implementation.");
+			}
+			llvm::BasicBlock* cond_blk = llvm::BasicBlock::Create(*codegen.ctx, std::format("__enum_name_{}", name), parent_fn);
+			llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*codegen.ctx, "__enumname cont");
+			parent_fn->insert(parent_fn->end(), cont_blk);
+			codegen.ir->CreateCondBr(cond, cond_blk, cont_blk);
+			codegen.ir->SetInsertPoint(cond_blk);
+			semal_result strlit = semal_literal_expr({.value = name}, n, source, local, true);
+			codegen.ir->CreateStore(strlit.val.ll, variable.val.ll);
+			codegen.ir->CreateBr(cont_blk);
+
+			codegen.ir->SetInsertPoint(cont_blk);
+		}
+		return
+		{
+			.t = semal_type::misc,
+			.val =
+			{
+				.ty = type_t::create_pointer_type(type_t::create_primitive_type(prim_ty::type::u8)),
+				.ll = variable.val.load()
 			}
 		};
 	}
