@@ -3370,6 +3370,7 @@ struct ast_stmt;
 struct ast_blk_stmt
 {
 	bool capped = false;
+	bool introduce_scope = true;
 
 	std::string value_tostring(){return "";}
 };
@@ -4399,13 +4400,14 @@ void handle_defer(std::span<node> children)
 			pivot_offset = 1;
 		}
 	}
-	for(auto iter = children.begin(); iter != pivot; iter++)
+	for(auto iter = children.begin(); iter != pivot && iter != children.end(); iter++)
 	{
-		const auto& p = iter->payload;
+		auto& p = iter->payload;
 		if(IS_A(p, ast_stmt))
 		{
 			if(AS_A(p, ast_stmt).deferred)
 			{
+				AS_A(p, ast_stmt).deferred = false;
 				std::rotate(iter, iter + 1, pivot);
 				iter = children.begin();
 				pivot = children.begin() + children.size() - (++pivot_offset);
@@ -5813,6 +5815,10 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			return init_result;
 		}
+		if(init_result.val.ty.is_void())
+		{
+			return semal_result::err("cannot initialise declaration with initialiser of type \"{}\"", init_result.val.ty.name());
+		}
 		val = init_result.val;
 	}
 	if(decl.type_name != deduced_type)
@@ -6130,6 +6136,9 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 	return semal_result::null();
 }
 
+
+semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr, bool do_codegen = false);
+
 semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	emit_debug_location(n);
@@ -6142,6 +6151,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	// if they are decl statements, do them now.
 	// this is for codegen reasons.
 	// what we really really do not want to do is alloca in a loop. i know an if statement is not a loop but we will do this for while/for so lets be consistent.
+	/*
 	node* blk = try_get_block_child(n);
 	if(blk != nullptr && do_codegen)
 	{
@@ -6162,6 +6172,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 			iter++;
 		}
 	}
+	*/
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
 	const semal_result* maybe_parent = local->try_find_parent_function();
@@ -6191,7 +6202,7 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	}
 	else
 	{
-		if(do_codegen)
+		if(do_codegen && !if_stmt.is_static)
 		{
 			cond_result.load_if_variable();
 			cond_result.convert_to(expected_cond_ty);
@@ -6321,6 +6332,10 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	emit_debug_location(n);
+	if(!blk_stmt.introduce_scope)
+	{
+		return semal_result::null();
+	}
 	semal_local_state* parent = local;
 	local = &global.locals.emplace_back();
 	local->scope = scope_type::block;
@@ -6382,7 +6397,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	}
 }
 
-semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr, bool do_codegen = false)
+semal_result semal(node& n, std::string_view source, semal_local_state* parent, bool do_codegen)
 {
 	semal_local_state* local = parent;
 
@@ -9043,15 +9058,17 @@ CHORD_BEGIN
 	{
 		const auto& expr_node = nodes[2];
 		const auto& expr = std::get<ast_expr>(expr_node.payload);
-		const auto& stmt_node = nodes[4];
-		const auto& stmt = std::get<ast_stmt>(stmt_node.payload);
+		auto& stmt_node = nodes[4];
+		auto& stmt = std::get<ast_stmt>(stmt_node.payload);
 		if(stmt.stmt_.index() == payload_index<ast_blk_stmt, decltype(stmt.stmt_)>())
 		{
-			const auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
+			auto& blk = std::get<ast_blk_stmt>(stmt.stmt_);
 			if(!blk.capped)
 			{
 				return {.action = parse_action::recurse, .reduction_result_offset = 4};
 			}
+			// static if blocks do *not* introduce scope.
+			blk.introduce_scope = false;
 			return
 			{
 				.action = parse_action::reduce,
