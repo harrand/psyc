@@ -2124,6 +2124,13 @@ llvm::DIType* type_t::debug_llvm() const
 		llvm::DIType* pointee = ptr.underlying_ty->debug_llvm();
 		return codegen.debug->createPointerType(pointee, sizeof(void*));
 	}
+	if(this->is_arr())
+	{
+		auto arr = AS_A(this->payload, arr_ty);
+		llvm::DIType* elem = arr.underlying_ty->debug_llvm();
+		// technically should use createArrayType, but its scary.
+		return codegen.debug->createPointerType(elem, sizeof(void*));
+	}
 	if(this->is_fn())
 	{
 		return codegen.debug->createBasicType("u64", 64, llvm::dwarf::DW_ATE_unsigned);
@@ -8578,6 +8585,14 @@ CHORD_BEGIN
 		};
 	}
 	EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(NODE(ast_partial_funcdef), WILDCARD, WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
 CHORD_END
 
 CHORD_BEGIN
