@@ -9697,16 +9697,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		std::string rhs = get_as_string(call.params[1]);
 		std::string result = lhs + rhs;
 
-		return
-		{
-			.t = semal_type::misc,
-			.label = result,
-			.val =
-			{
-				.val = literal_val{result},
-				.ty = strlit
-			}
-		};
+		return semal_literal_expr({.value = result}, n, source, local, true);
 	}
 	else if(call.function_name == "__strlen")
 	{
