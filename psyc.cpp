@@ -2360,6 +2360,9 @@ enum class token : std::uint32_t
 	fslash,
 	cast,
 	arr,
+	bitwise_and,
+	bitwise_or,
+	bitwise_exor,
 	oanglebrack,
 	canglebrack,
 	keyword_static_if,
@@ -2669,6 +2672,27 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "array",
 		.front_identifier = "#",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "bitwise_and",
+		.front_identifier = "&",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "bitwise_or",
+		.front_identifier = "|",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "bitwise_exor",
+		.front_identifier = "^",
 		.trivial = true
 	},
 
@@ -3163,6 +3187,9 @@ enum class biop_type
 	minus,
 	mul,
 	div,
+	bitwise_and,
+	bitwise_or,
+	bitwise_exor,
 	cast,
 	field,
 	ptr_field,
@@ -3176,6 +3203,9 @@ enum class biop_type
 };
 constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_precedence
 {
+	1,
+	1,
+	1,
 	1,
 	1,
 	1,
@@ -4966,6 +4996,15 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			rhs_val = std::get<std::int64_t>(std::get<literal_val>(rhs_result.val.val));
 		}
 
+		if(lhs_prim.is_floating_point() || rhs_prim.is_floating_point())
+		{
+			// floating points aren't allowed with the bitwise operators.
+			if(expr.type == biop_type::bitwise_and || expr.type == biop_type::bitwise_or || expr.type == biop_type::bitwise_exor)
+			{
+				return semal_result::err("floating point numbers are not allowed in bitwise operators. you have provided \"{}\" and \"{}\"", lhs_ty.name(), rhs_ty.name());
+			}
+		}
+
 		double retval;
 		using enum biop_type;
 		switch(expr.type)
@@ -4985,6 +5024,15 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 					return semal_result::err("divide by zero detected at compile time!");
 				}
 				retval = lhs_val / rhs_val;
+			break;
+			case bitwise_and:
+				retval = static_cast<std::int64_t>(lhs_val) & static_cast<std::int64_t>(rhs_val);
+			break;
+			case bitwise_or:
+				retval = static_cast<std::int64_t>(lhs_val) | static_cast<std::int64_t>(rhs_val);
+			break;
+			case bitwise_exor:
+				retval = static_cast<std::int64_t>(lhs_val) ^ static_cast<std::int64_t>(rhs_val);
 			break;
 			default:
 				panic("aaah what arithmetic biop type is this???");
@@ -5029,6 +5077,15 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 					{
 						result_val.ll = codegen.ir->CreateUDiv(lhs_result.val.ll, rhs_result.val.ll);
 					}
+				break;
+				case biop_type::bitwise_and:
+					result_val.ll = codegen.ir->CreateAnd(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::bitwise_or:
+					result_val.ll = codegen.ir->CreateOr(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::bitwise_exor:
+					result_val.ll = codegen.ir->CreateXor(lhs_result.val.ll, rhs_result.val.ll);
 				break;
 				default:
 					panic("aaah what arithmetic biop type is this???");
@@ -5498,6 +5555,12 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case mul:
 		[[fallthrough]];
 		case div:
+		[[fallthrough]];
+		case bitwise_and:
+		[[fallthrough]];
+		case bitwise_or:
+		[[fallthrough]];
+		case bitwise_exor:
 			return semal_arith_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case field:
@@ -6793,6 +6856,27 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(fslash)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(bitwise_and)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(bitwise_or)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(bitwise_exor)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -8223,6 +8307,9 @@ DEFINE_BIOPIFICATION_CHORDS(plus, plus)
 DEFINE_BIOPIFICATION_CHORDS(dash, minus)
 DEFINE_BIOPIFICATION_CHORDS(asterisk, mul)
 DEFINE_BIOPIFICATION_CHORDS(fslash, div)
+DEFINE_BIOPIFICATION_CHORDS(bitwise_and, bitwise_and)
+DEFINE_BIOPIFICATION_CHORDS(bitwise_or, bitwise_or)
+DEFINE_BIOPIFICATION_CHORDS(bitwise_exor, bitwise_exor)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
 DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
 DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
