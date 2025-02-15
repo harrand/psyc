@@ -1512,7 +1512,6 @@ struct semal_local_state
 	std::deque<semal_result> unfinished_types = {};
 	string_map<sval> pending_variables = {};
 	string_map<fn_ty> pending_functions = {};
-	std::vector<void*> pending_macro_calls = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
 
@@ -4563,17 +4562,25 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 
 semal_result semal_macrodef_expr(const ast_macrodef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	if(expr.params.size())
+	fn_ty ty
 	{
-		auto sz = expr.params.size();
-		warning(n.begin_location, "macro has {} parameters. parameter support for macros is NYI", sz);
-	}
-	if (expr.return_type != "v0")
-	{
-		warning(n.begin_location, "macro has non-v0 return type \"{}\". support for macros returning stuff is NYI", expr.return_type);
-	}
+		.return_ty = local->parse_type(expr.return_type)
+	};
 	local->unfinished_types.push_back({.t = semal_type::macro_decl});	
-	return {.t = semal_type::macro_decl, .val = {.usrdata2 = &n}};
+
+	for(const ast_decl& param : expr.params)
+	{
+		semal_result param_result = semal_decl(param, n, source, local, do_codegen);
+		if(param_result.is_err())
+		{
+			return param_result;
+		}
+		// so we need this decl to be visible in the *next* scope (if its not extern)
+		// to do this, we use "pending types"
+		local->pending_variables.emplace(param.name, param_result.val);
+		ty.params.push_back(param_result.val.ty);
+	}
+	return {.t = semal_type::macro_decl, .val = {.usrdata = &n}};
 }
 
 
@@ -4703,14 +4710,10 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	else
 	{
 		auto [mac_local, mac_global] = local->find_macro(expr.function_name);
-		void* mac = nullptr;
-		if(mac_global != nullptr)
+		void* mac = mac_local;
+		if(mac == nullptr)
 		{
-			mac = *mac_global;
-		}
-		if(mac_local != nullptr)
-		{
-			mac = *mac_local;
+			mac = mac_global;
 		}
 		if(mac != nullptr)
 		{
@@ -4719,18 +4722,8 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 			auto* nodeptr = reinterpret_cast<node*>(mac);
 			for(node& child : nodeptr->children)
 			{
-				// todo: add pending_macro_calls if its deferred.
-				const auto& stmt = AS_A(child.payload, ast_stmt);
-				if(stmt.deferred)
-				{
-					local->pending_macro_calls.push_back(&child);
-				}
-				else
-				{
-					semal(child, source, local, do_codegen);
-				}
+				semal(child, source, local, do_codegen);
 			}
-			return semal_result::null();
 		}
 		else
 		{
@@ -6042,8 +6035,8 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		// initialiser did not have a type
 		// this can only mean the decl is actually a macro definition.
 		panic_ifnt(init_result.t == semal_type::macro_decl, "fooey");
-		local->declare_macro(decl.name, try_get_block_child(*reinterpret_cast<node*>(init_result.val.usrdata2)));
-		return init_result;
+		init_result.label = decl.name;
+		return semal_result::null();
 	}
 	panic_ifnt(!val.ty.is_badtype(), "did not expect semal_decl to return a bad type.");
 	semal_result ret
@@ -6632,28 +6625,10 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 	}
 	verify_semal_result(res, n, source);
 
-	if(res.t != semal_type::macro_decl && n.children.size())
+	std::vector<semal_result> children_results(n.children.size());
+	for(std::size_t i = 0; i < n.children.size(); i++)
 	{
-		auto pivot = n.children.end();
-		if(IS_A(n.children.back().payload, ast_stmt))
-		{
-			auto last_stmt = AS_A(n.children.back().payload, ast_stmt);
-			if(IS_A(last_stmt.stmt_, ast_return_stmt))
-			{
-				pivot = n.children.begin() + n.children.size() - 1;
-			}
-		}
-		for(std::size_t i = 0; i < n.children.size(); i++)
-		{
-			semal(n.children[i], source, local, do_codegen);
-			while(local->pending_macro_calls.size())
-			{
-				void* deferred_code = local->pending_macro_calls.back();
-				local->pending_macro_calls.pop_back();
-				pivot = n.children.insert(pivot, *reinterpret_cast<const node*>(deferred_code));
-			}
-			local->pending_macro_calls.clear();
-		}
+		children_results[i] = semal(n.children[i], source, local, do_codegen);
 	}
 
 	// special logic for block statements AFTER its done its children (pop context)
@@ -6692,6 +6667,9 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 					break;
 					case semal_type::macro_decl:
 					{
+						std::string_view macroname = last.label;
+						auto* nodeptr = reinterpret_cast<const node*>(last.val.usrdata);
+						//local->declare_macro(macroname, last.val.usrdata);
 					}
 					break;
 					case semal_type::function_decl:
