@@ -1230,7 +1230,11 @@ struct sval
 				}
 				else if(lhs_prim.is_numeric() && rhs_prim.p == boolean)
 				{
-					return codegen.ir->CreateTrunc(this->ll, rhs.llvm());
+					// don't trunc.
+					// number converts to true if its not zero.
+					llvm::Constant* zero =  llvm::ConstantInt::get(this->ty.llvm(), 0, true);
+					return codegen.ir->CreateICmpNE(this->ll, zero);
+					//return codegen.ir->CreateTrunc(this->ll, rhs.llvm());
 				}
 
 				// if lhs < rhs, then sext if rhs is signed, otherwise zext
@@ -1430,6 +1434,8 @@ struct semal_state2
 	using function_value = decltype(functions)::mapped_type;
 	string_map<llvm::Function*> function_locations = {};
 	using function_location_value = decltype(function_locations)::mapped_type;
+	string_map<bool> function_visibilities = {};
+	using function_visibility_value = decltype(function_visibilities)::mapped_type;
 	string_map<sval> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 
@@ -1561,7 +1567,7 @@ struct semal_local_state
 
 	std::pair<type_t, bool> parse_type_global_fallback(std::string_view type_name) const;
 
-	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr, srcloc loc = {});
+	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr, srcloc loc = {}, bool maybe_globally_visible = true);
 	void declare_variable(std::string variable_name, sval val, srcloc loc = {});
 	void declare_enum(std::string enum_name, enum_ty ty, srcloc loc = {});
 	void declare_struct(std::string struct_name, struct_ty ty, srcloc loc = {});
@@ -1797,7 +1803,7 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 	return current_type;
 }
 
-void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location, srcloc loc)
+void semal_local_state::declare_function(std::string function_name, fn_ty ty, llvm::Function* location, srcloc loc, bool maybe_globally_visible)
 {
 	auto [local, glob] = this->find_function(function_name);
 	if(local != nullptr || glob != nullptr)
@@ -1811,6 +1817,7 @@ void semal_local_state::declare_function(std::string function_name, fn_ty ty, ll
 		// declare it globally too.
 		global.state.functions.emplace(function_name, ty);
 		global.state.function_locations.emplace(function_name, location);
+		global.state.function_visibilities.emplace(function_name, maybe_globally_visible);
 	}
 }
 
@@ -4613,6 +4620,10 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	else if(global_iter != nullptr)
 	{
 		callee = *global_iter;
+		if(!global.state.function_visibilities.at(expr.function_name))
+		{
+			return semal_result::err("call to inaccessible function \"{}\"", expr.function_name);
+		}
 	}
 	else
 	{
@@ -5875,6 +5886,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 {
 	// i will need to parse types, give me access to the type system.
 	// if we are in a local scope then use it from there
+	bool maybe_globally_visible = true;
 
 	sval val = wrap_type(type_t::badtype());
 	semal_result init_result;
@@ -5923,7 +5935,14 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	{
 		for(const auto& [name, maybe_expr] : attributes)
 		{
-			warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+			if(name == "private")
+			{
+				maybe_globally_visible = false;
+			}
+			else
+			{
+				warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+			}
 		}
 		panic_ifnt(init_result.t == semal_type::function_decl, "noticed decl \"{}\" {} with initialiser being a function definition, but the expression did not correctly register itself as a function decl.", decl.name, n.begin_location);
 		auto* llvm_func = static_cast<llvm::Function*>(init_result.val.ll);
@@ -5933,7 +5952,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		ret.t = semal_type::function_decl;
 		auto ty = std::get<fn_ty>(init_result.val.ty.payload);
 
-		local->declare_function(decl.name, ty, llvm_func, n.begin_location);
+		local->declare_function(decl.name, ty, llvm_func, n.begin_location, maybe_globally_visible);
 
 		// if its not extern then we expect an unfinished_type with no label.
 		// if there is one, let's update its name as it will be unlabeled (the funcdef_expr doesnt know its own name)
