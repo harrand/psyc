@@ -2397,6 +2397,7 @@ enum class token : std::uint32_t
 	bitwise_and,
 	bitwise_or,
 	bitwise_exor,
+	invert,
 	oanglebrack,
 	canglebrack,
 	keyword_static_if,
@@ -2728,6 +2729,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "bitwise_exor",
 		.front_identifier = "^",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "invert",
+		.front_identifier = "!",
 		.trivial = true
 	},
 
@@ -5773,7 +5781,45 @@ semal_result semal_minus_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 
 semal_result semal_invert_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	return semal_result::err("whats an inversion?");
+	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
+	if(expr_result.is_err())
+	{
+		return expr_result;
+	}
+	auto ty = expr_result.val.ty;
+	if(!ty.is_prim())
+	{
+		return semal_result::err("operand of invert unary operator must be a bool or other integral type, you have provided a non-primitive \"{}\"", ty.name());
+	}
+	auto prim = AS_A(ty.payload, prim_ty);
+	if(!prim.is_integral() && prim.p != prim_ty::type::boolean)
+	{
+		return semal_result::err("operand of invert unary operator must be a bool or other integral type. you have provided a \"{}\"", ty.name());
+	}
+
+	if(ty.qual & typequal_static)
+	{
+		auto& lit = AS_A(expr_result.val.val, literal_val);
+		if(IS_A(lit, std::int64_t))
+		{
+			lit = ~AS_A(lit, std::int64_t);
+		}
+		else if(IS_A(lit, bool))
+		{
+			lit = !AS_A(lit, bool);
+		}
+		else
+		{
+			panic("failed to invert static value payload {}, as it wasn't a bool nor int64", n.begin_location);
+		}
+	}
+
+	if(do_codegen)
+	{
+		expr_result.load_if_variable();
+		expr_result.val.ll = codegen.ir->CreateNot(expr_result.val.ll);
+	}
+	return expr_result;
 }
 
 semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
@@ -6268,6 +6314,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	};
 	local->pending_functions.emplace("add_link_library", stringparam_noret);
 	local->pending_functions.emplace("add_source_file", stringparam_noret);
+	local->pending_functions.emplace("run_command", stringparam_noret);
 	local->pending_functions.emplace("set_library", stringparam_noret);
 	local->pending_functions.emplace("set_object", stringparam_noret);
 	local->pending_functions.emplace("set_executable", stringparam_noret);
@@ -8436,6 +8483,7 @@ CHORD_BEGIN
 CHORD_END
 
 DEFINE_UNOPIFICATION_CHORDS(dash, minus)
+DEFINE_UNOPIFICATION_CHORDS(invert, invert)
 DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
 DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
 
@@ -9740,7 +9788,7 @@ int main(int argc, char** argv)
 
 	link(object_file_path, args);
 
-	std::print("setup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s\n\n", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen + time_assemble + time_link) / 1000.0f);
+	std::print("\nsetup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s\n\n", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen + time_assemble + time_link) / 1000.0f);
 }
 
 semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local)
@@ -9771,6 +9819,15 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			return semal_result::err("cannot find source file \"{}\"", path);
 		}
 		global.added_source_files.emplace(path, n.begin_location);
+	}
+	else if(call.function_name == "run_command")
+	{
+		std::string str = get_as_string(call.params.front());
+		int ret = system(str.c_str());
+		if(ret != 0)
+		{
+			error(n.begin_location, "run_command \033[1;34m{}\033[0m returned exit code \"{}\"", str, ret);
+		}
 	}
 	else if(call.function_name == "set_object")
 	{
@@ -9964,6 +10021,40 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		};
 		return semal_literal_expr(lit, n, source, local, true);
 	}
+	else if(call.function_name == "__alignof")
+	{
+		ast_expr expr = call.params.front();
+		type_t ty = type_t::badtype();
+		semal_result expr_result = semal_expr(expr, n, source, local, false);
+		if(expr_result.is_err())
+		{
+			// it better be a sytmbol expression.
+			if(IS_A(expr.expr_, ast_symbol_expr))
+			{
+				std::string_view symbol = AS_A(expr.expr_, ast_symbol_expr).symbol;
+				ty = local->parse_type(symbol);
+			}
+			else
+			{
+				return semal_result::err("invalid parameter passed to __sizeof. expected a valid expression, or a typename.");
+			}
+		}
+		else
+		{
+			ty = expr_result.val.ty;
+		}
+		if(ty.is_badtype())
+		{
+			return semal_result::err("unknown type passed to __sizeof.");
+		}
+		llvm::Type* llty = ty.llvm();
+		ast_literal_expr lit
+		{
+			.value = static_cast<std::int64_t>(codegen.mod->getDataLayout().getABITypeAlign(llty).value() * 8)
+		};
+		return semal_literal_expr(lit, n, source, local, true);
+		
+	}
 	else if(call.function_name == "__debugbreak")
 	{
 		return
@@ -9974,6 +10065,19 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			{
 				.ty = type_t::create_void_type(),
 				.ll = codegen.ir->CreateCall(llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::debugtrap))
+			}
+		};
+	}
+	else if(call.function_name == "__unreachable")
+	{
+		return
+		{
+			.t = semal_type::misc,
+			.label = "unreachable",
+			.val =
+			{
+				.ty = type_t::create_void_type(),
+				.ll = codegen.ir->CreateUnreachable()
 			}
 		};
 	}
