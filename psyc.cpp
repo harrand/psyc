@@ -6092,6 +6092,10 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		emit_debug_location(n);
 		if(val.ty.is_type())
 		{
+			for(const auto& [name, maybe_expr] : attributes)
+			{
+				warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+			}
 			using enum semal_type;
 			panic_ifnt(init_result.t == struct_decl || init_result.t == enum_decl, "noticed decl \"{}\" {} with initialiser being a struct or enum, but the expression did not correctly register itself as a struct/enum decl.", decl.name, n.begin_location);
 			if(!decl.initialiser.has_value())
@@ -6104,11 +6108,11 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			{
 				case semal_type::struct_decl:
 					ret.t = struct_decl;
-					local->declare_struct(decl.name, struct_ty{});
+					local->declare_struct(decl.name, struct_ty{}, n.begin_location);
 				break;
 				case semal_type::enum_decl:
 					ret.t = enum_decl;
-					local->declare_enum(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)});
+					local->declare_enum(decl.name, enum_ty{.underlying_ty = type_t::create_primitive_type(prim_ty::type::s64)}, n.begin_location);
 				break;
 				default:
 					std::unreachable();
