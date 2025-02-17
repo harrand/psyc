@@ -1573,7 +1573,7 @@ struct semal_local_state
 struct semal_global_state
 {
 	semal_state2 state;
-	path_map<srcloc> added_source_files = {};
+	std::vector<std::pair<std::filesystem::path, srcloc>> added_source_files = {};
 	path_map<srcloc> added_link_libraries = {};
 	std::deque<semal_local_state> locals = {};
 	std::unordered_set<std::filesystem::path> compiled_source_files = {};
@@ -3110,7 +3110,7 @@ struct ast_token
 	}
 };
 
-struct ast_translation_unit{std::string value_tostring(){return "";}};
+struct ast_translation_unit { std::filesystem::path path; std::string value_tostring() { return ""; } };
 
 struct ast_literal_expr
 {
@@ -3930,7 +3930,7 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 	parser_state state{.in = impl_in};
 	srcloc tu_begin = impl_in.begin_locations.front();
 	srcloc tu_end = impl_in.end_locations.back();
-	state.nodes = {node{.payload = ast_translation_unit{}, .begin_location = tu_begin, .end_location = tu_end}};
+	state.nodes = {node{.payload = ast_translation_unit{.path = impl_in.source_file}, .begin_location = tu_begin, .end_location = tu_end}};
 
 	// only exit the loop if:
 	// token cursor is at the end AND we have exactly 1 node
@@ -6664,10 +6664,12 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 
 	if(IS_A(n.payload, ast_translation_unit))
 	{
+		auto tu = AS_A(n.payload, ast_translation_unit);
 		panic_ifnt(parent == nullptr, "why is parent semal_local_state of TU not null???");
 		local = &global.locals.emplace_back();
 		local->scope = scope_type::translation_unit;
 		local->parent = parent;
+		global.compiled_source_files.insert(tu.path);
 	}
 	else
 	{
@@ -9668,11 +9670,12 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 		{
 			semal_result child_result = semal(child, source, ptr);
 		}
-		for(const auto& [src_path, included_from_srcloc] : global.added_source_files)
+		while (global.added_source_files.size())
 		{
-			if(!global.compiled_source_files.contains(src_path))
+			const auto [src_path, included_from_srcloc] = global.added_source_files.back();
+			global.added_source_files.pop_back();
+			if (!global.compiled_source_files.contains(src_path))
 			{
-				global.compiled_source_files.insert(src_path);
 				compile_file(src_path, args);
 			}
 		}
@@ -9703,8 +9706,11 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 		*/
 	}
 	//semal(ast, *types, ctx, true);
+	if(global.compiled_source_files.contains(file))
+	{
+		return;
+	}
 	semal(ast, source, nullptr, true);
-	global.compiled_source_files.insert(file);
 
 	auto codegen_diff = time_codegen - codegen_cpy;
 	timer_restart();
@@ -9818,7 +9824,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		{
 			return semal_result::err("cannot find source file \"{}\"", path);
 		}
-		global.added_source_files.emplace(path, n.begin_location);
+		global.added_source_files.emplace_back(path, n.begin_location);
 	}
 	else if(call.function_name == "run_command")
 	{
@@ -10320,6 +10326,6 @@ std::string get_preload_source()
 	std::replace(cwd_path.begin(), cwd_path.end(), '\\', '/');
 	std::string psyc_path = get_compiler_path().string();
 	std::replace(psyc_path.begin(), psyc_path.end(), '\\', '/');
-	return std::format(preload_src, windows, linux, psyc_path, cwd_path);
+	return std::format(preload_src, windows ? "true" : "false", linux ? "true" : "false", psyc_path, cwd_path);
 
 }
