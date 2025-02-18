@@ -2510,6 +2510,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 		{
 			double val;
 			auto result = std::from_chars(front.data(), front.data() + front.size(), val);
+			// note: "inf" parses as a decimal literal which is wrong.
+			// only consider a possible decimal literal if the first char is - or numeric
+			char fr = front.front();
+			if(!(fr == '-' || std::isdigit(fr)))
+			{
+				return false;
+			}
 			if(result.ec == std::errc() && result.ptr != front.data())
 			{
 				std::size_t parse_count = result.ptr - front.data();
