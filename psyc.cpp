@@ -1270,6 +1270,28 @@ struct sval
 						return codegen.ir->CreateFPTrunc(this->ll, rhs.llvm());
 					}
 				}
+				else if(lhs_prim.is_floating_point() && rhs_prim.is_integral())
+				{
+					if(rhs_prim.is_signed_integral())
+					{
+						return codegen.ir->CreateFPToSI(this->ll, rhs.llvm());
+					}
+					else
+					{
+						return codegen.ir->CreateFPToUI(this->ll, rhs.llvm());
+					}
+				}
+				else if(lhs_prim.is_integral() && rhs_prim.is_floating_point())
+				{
+					if(lhs_prim.is_signed_integral())
+					{
+						return codegen.ir->CreateSIToFP(this->ll, rhs.llvm());
+					}
+					else
+					{
+						return codegen.ir->CreateUIToFP(this->ll, rhs.llvm());
+					}
+				}
 				else
 				{
 					panic("ahh conversion logic is hard what prims am i missing");
@@ -5058,6 +5080,13 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		return lhs_result;
 	}
 	type_t lhs_ty = lhs_result.val.ty;
+	// enums are allowed in case of bitwise operators.
+	if(lhs_ty.is_enum() && (expr.type == biop_type::bitwise_and || expr.type == biop_type::bitwise_or || expr.type == biop_type::bitwise_exor))
+	{
+		auto enumty = AS_A(lhs_ty.payload, enum_ty);
+		lhs_ty = *enumty.underlying_ty;
+		lhs_ty.qual = lhs_ty.qual | typequal_weak;
+	}
 	if(!lhs_ty.is_prim())
 	{
 		return semal_result::err("lhs of arithmetic operation is not a primitive type, but a \"{}\"", lhs_ty.name());
@@ -5073,6 +5102,13 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		return rhs_result;
 	}
 	type_t rhs_ty = rhs_result.val.ty;
+	// enums are allowed in case of bitwise operators.
+	if(rhs_ty.is_enum() && (expr.type == biop_type::bitwise_and || expr.type == biop_type::bitwise_or || expr.type == biop_type::bitwise_exor))
+	{
+		auto enumty = AS_A(rhs_ty.payload, enum_ty);
+		rhs_ty = *enumty.underlying_ty;
+		rhs_ty.qual = rhs_ty.qual | typequal_weak;
+	}
 	if(!rhs_ty.is_prim())
 	{
 		return semal_result::err("rhs of arithmetic operation is not a primitive type, but a \"{}\"", rhs_ty.name());
