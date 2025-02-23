@@ -4180,6 +4180,8 @@ std::filesystem::path codegen_generate(compile_args& args)
 {
 	// tell the LLVM optimiser not to detect "hand-rolled" memset/memcpy and optimise them to CRT memset/memcpy.
 	// this optimisation assumes these functions are always available i.e link against CRT. that's absolutely not the case. go away.
+	// https://github.com/llvm/llvm-project/issues/56467/
+	// fun fact: in my current code this does indeed stop memset generation, but not memcpy. :)
 	llvm::DisableLIRP::Memset = true;
 	llvm::DisableLIRP::Memcpy = true;
 
