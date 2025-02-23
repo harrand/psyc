@@ -38,6 +38,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Scalar/LoopIdiomRecognize.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -4177,6 +4178,11 @@ void generate_object_file(std::string object_path, llvm::TargetMachine* targetMa
 
 std::filesystem::path codegen_generate(compile_args& args)
 {
+	// tell the LLVM optimiser not to detect "hand-rolled" memset/memcpy and optimise them to CRT memset/memcpy.
+	// this optimisation assumes these functions are always available i.e link against CRT. that's absolutely not the case. go away.
+	llvm::DisableLIRP::Memset = true;
+	llvm::DisableLIRP::Memcpy = true;
+
 	if(!std::filesystem::exists(args.output_dir))
 	{
 		std::filesystem::create_directory(args.output_dir);
@@ -6395,6 +6401,7 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		{
 			return actual_result;
 		}
+		actual_result.load_if_variable();
 		if(!actual_result.val.ty.is_convertible_to(expected_ty))
 		{
 			return semal_result::err("designator \"{}::{}\" is given expression of type \"{}\", which is not convertible to the actual type \"{}\"", struct_tyname, desig_name, actual_result.val.ty.name(), expected_ty.name());
