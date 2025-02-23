@@ -1459,6 +1459,7 @@ enum class semal_type
 	blkinit,
 	if_stmt,
 	while_stmt,
+	for_stmt,
 	err,
 	misc,
 	variable_use,
@@ -2420,6 +2421,7 @@ enum class token : std::uint32_t
 	bitwise_and,
 	bitwise_or,
 	bitwise_exor,
+	modulo,
 	invert,
 	oanglebrack,
 	canglebrack,
@@ -2759,6 +2761,13 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "bitwise_exor",
 		.front_identifier = "^",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "modulo",
+		.front_identifier = "%",
 		.trivial = true
 	},
 
@@ -3278,6 +3287,7 @@ enum class biop_type
 	bitwise_and,
 	bitwise_or,
 	bitwise_exor,
+	modulo,
 	cast,
 	field,
 	ptr_field,
@@ -3291,6 +3301,7 @@ enum class biop_type
 };
 constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_precedence
 {
+	1,
 	1,
 	1,
 	1,
@@ -3535,6 +3546,18 @@ struct ast_while_stmt
 	}
 };
 
+struct ast_for_stmt
+{
+	ast_expr init;
+	ast_expr cond;
+	ast_expr iter;
+
+	std::string value_tostring()
+	{
+		return "for-statement";
+	}
+};
+
 using attributes_t = string_map<std::optional<ast_expr>>;
 
 struct ast_stmt
@@ -3548,7 +3571,8 @@ struct ast_stmt
 		ast_metaregion_stmt,
 		ast_designator_stmt,
 		ast_if_stmt,
-		ast_while_stmt
+		ast_while_stmt,
+		ast_for_stmt
 	> stmt_;
 	bool deferred = false;
 	attributes_t attributes = {};
@@ -3563,7 +3587,8 @@ struct ast_stmt
 			"metaregion",
 			"designator",
 			"if",
-			"while"
+			"while",
+			"for"
 		}[this->stmt_.index()];
 	}
 	std::string value_tostring() const
@@ -3922,10 +3947,10 @@ void add_chord(std::span<const node> subtrees, const char* description, chord_fu
 #define WILDCARD node::wildcard()
 #define FN [](std::span<node> nodes, parser_state& state)->chord_result
 #define FAKEFN(name) chord_result name(std::span<node> nodes, parser_state& state)
-#define STATE(...) [](){return std::array{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}(), "translation_unit, " STRINGIFY(__VA_ARGS__)
+#define STATE(...) [](){return std::vector{node{.payload = ast_translation_unit{}}, __VA_ARGS__};}(), "translation_unit, " STRINGIFY(__VA_ARGS__)
 // the difference between STATE and LOOSE state is that STATE means your chord function will only target nodes/tokens right at the beginning of the parse state
 // LOOKAHEAD_STATE means it could be offsetted deep in the parse state.
-#define LOOKAHEAD_STATE(...) [](){return std::array{__VA_ARGS__};}(), STRINGIFY(__VA_ARGS__)
+#define LOOKAHEAD_STATE(...) [](){return std::vector{__VA_ARGS__};}(), STRINGIFY(__VA_ARGS__)
 void populate_chords();
 
 #define chord_error(msg, ...) error_nonblocking(nodes.front().begin_location, msg, __VA_ARGS__); return chord_result{.action = parse_action::error}
@@ -5212,6 +5237,9 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 			case bitwise_exor:
 				retval = static_cast<std::int64_t>(lhs_val) ^ static_cast<std::int64_t>(rhs_val);
 			break;
+			case modulo:
+				retval = static_cast<std::int64_t>(lhs_val) % static_cast<std::int64_t>(rhs_val);
+			break;
 			default:
 				panic("aaah what arithmetic biop type is this???");
 			break;
@@ -5264,6 +5292,16 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 				break;
 				case biop_type::bitwise_exor:
 					result_val.ll = codegen.ir->CreateXor(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::modulo:
+					if(result_prim.is_signed_integral())
+					{
+						result_val.ll = codegen.ir->CreateSRem(lhs_result.val.ll, rhs_result.val.ll);
+					}
+					else
+					{
+						result_val.ll = codegen.ir->CreateURem(lhs_result.val.ll, rhs_result.val.ll);
+					}
 				break;
 				default:
 					panic("aaah what arithmetic biop type is this???");
@@ -5739,6 +5777,8 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case bitwise_or:
 		[[fallthrough]];
 		case bitwise_exor:
+		[[fallthrough]];
+		case modulo:
 			return semal_arith_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case field:
@@ -6638,6 +6678,95 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 	return semal_result::null();
 }
 
+semal_result semal_for_stmt(const ast_for_stmt& for_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	emit_debug_location(n);
+	semal_result init_result = semal_expr(for_stmt.init, n, source, local, do_codegen);
+	if(init_result.is_err())
+	{
+		return init_result;
+	}
+	semal_result cond_result = semal_expr(for_stmt.cond, n, source, local, do_codegen);
+	if(cond_result.is_err())
+	{
+		return cond_result;
+	}
+	// go through all child nodes
+	// if they are decl statements, do them now.
+	// this is for codegen reasons.
+	// what we really really do not want to do is alloca in a loop. remember allocas last till the end of the scope, *not* basic block.
+	node* blk = try_get_block_child(n);
+	if(blk != nullptr && do_codegen)
+	{
+		for(auto iter = blk->children.begin(); iter != blk->children.end();)
+		{
+			auto& child = *iter;
+			if(IS_A(child.payload, ast_stmt))
+			{
+				auto child_stmt = AS_A(child.payload, ast_stmt);
+				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
+				{
+					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
+					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
+					iter = blk->children.erase(iter);
+					continue;
+				}
+			}
+			iter++;
+		}
+	}
+
+	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
+	const type_t& actual_cond_ty = cond_result.val.ty;
+	const semal_result* maybe_parent = local->try_find_parent_function();
+	if(!actual_cond_ty.is_convertible_to(expected_cond_ty))
+	{
+		return semal_result::err("for-statement condition is of invalid type \"{}\" as it is not convertible to a \"\"", actual_cond_ty.name(), expected_cond_ty.name());
+	}
+	if(do_codegen)
+	{
+		cond_result.load_if_variable();
+		cond_result.convert_to(expected_cond_ty);
+		llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
+		llvm::BasicBlock* true_blk = llvm::BasicBlock::Create(*codegen.ctx, "then", parent_fn);
+		llvm::BasicBlock* cont_blk = llvm::BasicBlock::Create(*codegen.ctx, "whilecont");
+
+		parent_fn->insert(parent_fn->end(), cont_blk);
+		codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
+		codegen.ir->SetInsertPoint(true_blk);
+
+		bool true_blk_contains_ret = false;
+		node* blk = try_get_block_child(n);
+		if(blk == nullptr)
+		{
+			panic("for statement didnt have a block child?");
+		}
+		for(const auto& child : blk->children)
+		{
+			if(IS_A(child.payload, ast_stmt))
+			{
+				const ast_stmt& child_stmt = AS_A(child.payload, ast_stmt);
+				if(IS_A(child_stmt.stmt_, ast_return_stmt))
+				{
+					true_blk_contains_ret = true;	
+				}
+			}
+		}
+		sval checker_val
+		{
+			.ll = cont_blk,
+			.usrdata = &for_stmt,
+			.usrdata2 = true_blk
+		};
+		if(true_blk_contains_ret)
+		{
+			checker_val.val = literal_val{};
+		}
+		local->unfinished_types.push_back({.t = semal_type::for_stmt, .val = checker_val});
+	}
+	return semal_result::null();
+}
+
 semal_result semal_blk_stmt(const ast_blk_stmt& blk_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	emit_debug_location(n);
@@ -6699,6 +6828,10 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	else if(IS_A(stmt.stmt_, ast_while_stmt))
 	{
 		return semal_while_stmt(AS_A(stmt.stmt_, ast_while_stmt), n, source, local, do_codegen);
+	}
+	else if(IS_A(stmt.stmt_, ast_for_stmt))
+	{
+		return semal_for_stmt(AS_A(stmt.stmt_, ast_for_stmt), n, source, local, do_codegen);
 	}
 	else
 	{
@@ -6852,6 +6985,22 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 						bool doesnt_need_branch = IS_A(last.val.val, literal_val);
 						auto* stmt = static_cast<const ast_while_stmt*>(last.val.usrdata);
 						semal_result cond_result = semal_expr(stmt->condition, n, source, local, do_codegen);
+						cond_result.load_if_variable();
+						cond_result.convert_to(type_t::create_primitive_type(prim_ty::type::boolean));
+						codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
+						codegen.ir->SetInsertPoint(cont_blk);
+					}
+					break;
+					case semal_type::for_stmt:
+					{
+						auto* cont_blk = static_cast<llvm::BasicBlock*>(last.val.ll);
+						auto* true_blk = static_cast<llvm::BasicBlock*>(last.val.usrdata2);
+						bool doesnt_need_branch = IS_A(last.val.val, literal_val);
+						auto* stmt = static_cast<const ast_for_stmt*>(last.val.usrdata);
+						semal_result iter_result = semal_expr(stmt->iter, n, source, local, do_codegen);
+						verify_semal_result(iter_result, n, source);
+
+						semal_result cond_result = semal_expr(stmt->cond, n, source, local, do_codegen);
 						cond_result.load_if_variable();
 						cond_result.convert_to(type_t::create_primitive_type(prim_ty::type::boolean));
 						codegen.ir->CreateCondBr(cond_result.val.ll, true_blk, cont_blk);
@@ -7140,6 +7289,13 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(bitwise_exor)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(modulo)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -8549,6 +8705,7 @@ DEFINE_BIOPIFICATION_CHORDS(fslash, div)
 DEFINE_BIOPIFICATION_CHORDS(bitwise_and, bitwise_and)
 DEFINE_BIOPIFICATION_CHORDS(bitwise_or, bitwise_or)
 DEFINE_BIOPIFICATION_CHORDS(bitwise_exor, bitwise_exor)
+DEFINE_BIOPIFICATION_CHORDS(modulo, modulo)
 DEFINE_BIOPIFICATION_CHORDS(dot, field)
 DEFINE_BIOPIFICATION_CHORDS(arrow, ptr_field)
 DEFINE_BIOPIFICATION_CHORDS(compare, compare_eq)
@@ -9671,6 +9828,181 @@ CHORD_BEGIN
 	LOOKAHEAD_STATE(TOKEN(keyword_while), TOKEN(oparen), WILDCARD), FN
 	{
 		return {.action = parse_action::recurse, .reduction_result_offset = 1};
+	}
+EXTENSIBLE
+CHORD_END
+
+// for statement
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 2};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 4};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 6};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(cparen)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 6};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace)), FN
+	{
+		return {.action = parse_action::shift};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), TOKEN(cbrace)), FN
+	{
+		const auto& init_node = nodes[2];
+		const auto& cond_node = nodes[4];
+		const auto& iter_node = nodes[6];
+
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 10},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_for_stmt
+				{
+					.init = AS_A(init_node.payload, ast_expr),
+					.cond = AS_A(cond_node.payload, ast_expr),
+					.iter = AS_A(iter_node.payload, ast_expr)
+				}}, .children = {node{.payload = ast_stmt{.stmt_ = ast_blk_stmt{}}}}}}
+		};
+	}
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(cparen), NODE(ast_stmt)), FN
+	{
+		const auto& init_node = nodes[2];
+		const auto& cond_node = nodes[4];
+		const auto& iter_node = nodes[6];
+		const auto& stmt_node = nodes[8];
+		const auto& stmt = AS_A(stmt_node.payload, ast_stmt);
+		if(!IS_A(stmt.stmt_, ast_blk_stmt))
+		{
+			const char* stmt_name = stmt.type_name();
+			chord_error("{} statement detected directly after for-statement. you should provide a block statement instead.");
+		}
+
+		const auto& blk = AS_A(stmt.stmt_, ast_blk_stmt);
+		if(!blk.capped)
+		{
+			return {.action = parse_action::recurse, .reduction_result_offset = 8};
+		}
+		return
+		{
+			.action = parse_action::reduce,
+			.nodes_to_remove = {.offset = 0, .length = 9},
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_for_stmt
+				{
+					.init = AS_A(init_node.payload, ast_expr),
+					.cond = AS_A(cond_node.payload, ast_expr),
+					.iter = AS_A(iter_node.payload, ast_expr)
+				}}, .children = {stmt_node}}}
+		};
+	}
+EXTENSIBLE
+CHORD_END
+
+CHORD_BEGIN
+	LOOKAHEAD_STATE(TOKEN(keyword_for), TOKEN(oparen), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(comma), NODE(ast_expr), TOKEN(cparen), TOKEN(obrace), WILDCARD), FN
+	{
+		return {.action = parse_action::recurse, .reduction_result_offset = 8};
 	}
 EXTENSIBLE
 CHORD_END
