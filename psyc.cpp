@@ -4054,12 +4054,13 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 					slice rem = result.nodes_to_remove;
 					// remove everything according to the slice
 					std::size_t begin_offset = rem.offset + 1;
+					std::size_t end_offset = rem.offset + rem.length;
 					if(state.recursing)
 					{
 						begin_offset = rem.offset + state.recursive_offset;
+						end_offset = rem.offset + rem.length + state.recursive_offset - 1;
 					}
 					const srcloc begin_loc = state.nodes[begin_offset].begin_location;
-					std::size_t end_offset = rem.offset + rem.length;
 					const srcloc end_loc = state.nodes[end_offset].end_location;
 					// todo: deal with begin/end loc better, rright now we just set that for all of the results.
 					for(node& n : result.reduction_result)
