@@ -381,7 +381,7 @@ struct codegen_t
 	std::unique_ptr<llvm::DIBuilder> debug;
 	llvm::DICompileUnit* dbg = nullptr;
 
-	llvm::GlobalVariable* declare_global_variable(std::string_view name, const sval& val, bool external_linkage = false);
+	llvm::GlobalVariable* declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage = false);
 } codegen;
 
 
@@ -1413,11 +1413,32 @@ constexpr const char* scope_type_names[] =
 	"<UNDEFINED SCOPE TYPE>"
 };
 
-llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, const sval& val, bool external_linkage)
+llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage)
 {
-	//panic_ifnt(val.ty.qual & typequal_static, "rarr xD");
-	bool is_const = !(val.ty.qual | typequal_mut);
 	auto linkage = external_linkage ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::PrivateLinkage;
+	bool is_const = !(val.ty.qual | typequal_mut);
+	if(val.ll != nullptr)
+	{
+		val.convert_to(ty);
+	}
+	llvm::Constant* initialiser = static_cast<llvm::Constant*>(val.ll);
+	if(initialiser == nullptr)
+	{
+		if(val.has_val())
+		{
+			initialiser = val.llvm();
+		}
+		else
+		{
+			initialiser = llvm::Constant::getNullValue(val.ty.llvm());
+		}
+	}
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, ty.llvm(), is_const, linkage, initialiser, name);
+	llvm::GlobalVariable* ret = gvar.get();
+	this->global_variable_storage.push_back(std::move(gvar));
+	return ret;
+
+	/*
 	llvm::Value* ptr = val.ll;
 	if(ptr == nullptr)
 	{
@@ -1426,6 +1447,7 @@ llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, 
 	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, val.ty.llvm(), is_const, linkage, static_cast<llvm::Constant*>(ptr), name);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
+	*/
 	return ret;
 }
 
@@ -6320,7 +6342,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 						{
 							init_result.val.ty = ret.val.ty;
 						}
-						ret.val.ll = codegen.declare_global_variable(decl.name, init_result.val, external_linkage);
+						ret.val.ll = codegen.declare_global_variable(decl.name, ret.val.ty, init_result.val, external_linkage);
 					}
 					else
 					{
@@ -6964,7 +6986,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 								sval val{.val = literal_val{entryval}, .ty = *ty.underlying_ty};
 								val.ty.qual = val.ty.qual | typequal_static;
 								val.ll = val.llvm();
-								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val, true);
+								codegen.declare_global_variable(std::format("{}.{}", enumname, name), val.ty, val, true);
 							}
 						}
 					break;
