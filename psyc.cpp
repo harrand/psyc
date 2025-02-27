@@ -4683,15 +4683,6 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 
 semal_result semal_macrodef_expr(const ast_macrodef_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	if(expr.params.size())
-	{
-		auto sz = expr.params.size();
-		warning(n.begin_location, "macro has {} parameters. parameter support for macros is NYI", sz);
-	}
-	if (expr.return_type != "v0")
-	{
-		warning(n.begin_location, "macro has non-v0 return type \"{}\". support for macros returning stuff is NYI", expr.return_type);
-	}
 	local->unfinished_types.push_back({.t = semal_type::macro_decl});	
 	return { .t = semal_type::macro_decl, .val = {.usrdata = new ast_macrodef_expr{expr}, .usrdata2 = new node{n}} };
 }
@@ -6892,7 +6883,7 @@ semal_result semal_stmt(const ast_stmt& stmt, node& n, std::string_view source, 
 	}
 	else if(IS_A(stmt.stmt_, ast_yield_stmt))
 	{
-		return semal_result::null();
+		return semal_result::err("unexpected yield statement. yield statements are only valid within macros. did you mean to use a return statement instead?");
 	}
 	else if(IS_A(stmt.stmt_, ast_blk_stmt))
 	{
