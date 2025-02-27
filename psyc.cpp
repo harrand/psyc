@@ -1482,6 +1482,7 @@ enum class semal_type
 {
 	variable_decl,
 	macro_decl,
+	macro_impl,
 	function_decl,
 	struct_decl,
 	enum_decl,
@@ -1568,6 +1569,8 @@ struct semal_local_state
 	std::vector<void*> pending_macro_calls = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
+	const void* current_macro_label = nullptr;
+	const void* current_macro_body = nullptr;
 
 	type_t parse_type_no_global(std::string_view type_name) const
 	{
@@ -1600,6 +1603,21 @@ struct semal_local_state
 		if(this->parent != nullptr)
 		{
 			return this->parent->try_find_parent_function();
+		}
+		return nullptr;
+	}
+	const semal_result* try_find_parent_macro() const
+	{
+		for(auto iter = this->unfinished_types.rbegin(); iter != this->unfinished_types.rend(); iter++)
+		{
+			if(iter->t == semal_type::macro_decl)
+			{
+				return &*iter;
+			}
+		}
+		if(this->parent != nullptr)
+		{
+			return this->parent->try_find_parent_macro();
 		}
 		return nullptr;
 	}
@@ -4829,19 +4847,11 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 			// call it by just invoking its code right now.
 			semal_result macroret = semal_result::null();
 			const auto& macrodef_expr = *reinterpret_cast<const ast_macrodef_expr*>(mac->macrodef_expr);
+			local->current_macro_label = &macrodef_expr;
+			local->current_macro_body = &expr;
 			if(macrodef_expr.params.size() != expr.params.size())
 			{
 				return semal_result::err("macro expected {} params, you provided {}", macrodef_expr.params.size(), expr.params.size());
-			}
-			for(std::size_t i = 0; i < macrodef_expr.params.size(); i++)
-			{
-				ast_decl macroparam = macrodef_expr.params[i];
-				macroparam.initialiser = expr.params[i];
-				semal_result res = semal_decl(macroparam, n, source, local, do_codegen);
-				if(res.is_err())
-				{
-					return res;
-				}
 			}
 			auto* nodeptr = try_get_block_child(*reinterpret_cast<node*>(mac->node));
 			std::optional<srcloc> found_yield = std::nullopt;
@@ -4857,6 +4867,15 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 					}
 					const auto& yield = AS_A(stmt.stmt_, ast_yield_stmt);
 					macroret = semal_expr(yield.retval, n, source, local, do_codegen);
+					type_t retty = local->parse_type(macrodef_expr.return_type);
+					if(retty.is_void())
+					{
+						return semal_result::err("you cannot yield in a macro that yields v0");
+					}
+					if(macrodef_expr.return_type != deduced_type && !macroret.val.ty.is_convertible_to(retty))
+					{
+						return semal_result::err("yielded value was of type \"{}\" which is not convertible to the macro's yield type \"{}\"", macroret.val.ty.name(), retty.name());
+					}
 					found_yield = child.begin_location;
 				}
 				else
@@ -4871,6 +4890,8 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 					}
 				}
 			}
+			local->current_macro_body = nullptr;
+			local->current_macro_label = nullptr;
 			return macroret;
 		}
 		else
@@ -4974,7 +4995,28 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 {
 	std::string_view symbol = expr.symbol;
 	// so this could be alot of things.
-	// option 1: a local variable.
+	// option 1: a macro parameter. not treated like function params.
+	if(local->current_macro_body != nullptr && local->current_macro_label != nullptr)
+	{
+		const auto& macrodef = *reinterpret_cast<const ast_macrodef_expr*>(local->current_macro_label);
+		const auto& macro_call = *reinterpret_cast<const ast_callfunc_expr*>(local->current_macro_body);
+		for(std::size_t i = 0; i < macro_call.params.size(); i++)
+		{
+			const auto& param = macro_call.params[i];
+			const auto& def = macrodef.params[i];
+			type_t ty = local->parse_type(def.type_name);
+			if(def.name == symbol)
+			{
+				semal_result res = semal_expr(param, n, source, local, do_codegen);
+				if(def.type_name != deduced_type && !res.val.ty.is_convertible_to(ty))
+				{
+					return semal_result::err("parameter {} in call to macro is invalid. cannot convert from {} to {}", i, res.val.ty.name(), ty.name());
+				}
+				return res;
+			}
+		}
+	}
+	// option 2: a local variable.
 	const auto [local_iter, global_iter] = local->find_variable(symbol);
 	if(local_iter != nullptr)
 	{
@@ -10610,117 +10652,10 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		ty.qual = typequal_none;
 		return semal_literal_expr({.value = param.val.ty == ty}, n, source, local, true);
 	}
-	else if(call.function_name == "__sqrt")
+	else if(call.function_name == "__typename")
 	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* sqrt_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::sqrt, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__sqrt",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(sqrt_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__sin")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* sin_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::sin, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__sin",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(sin_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__cos")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* cos_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::cos, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__cos",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(cos_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__tan")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* tan_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::tan, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__tan",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__asin")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* sin_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::asin, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__asin",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(sin_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__acos")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* cos_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::acos, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__acos",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(cos_func, {param.val.ll})
-			}
-		};
-	}
-	else if(call.function_name == "__atan")
-	{
-		semal_result param = semal_expr(call.params.front(), n, source, local, true);
-		param.load_if_variable();
-		llvm::Function* tan_func = llvm::Intrinsic::getOrInsertDeclaration(codegen.mod.get(), llvm::Intrinsic::atan, {param.val.ty.llvm()});
-		return
-		{
-			.t = semal_type::misc,
-			.label = "__atan",
-			.val =
-			{
-				.ty = param.val.ty,
-				.ll = codegen.ir->CreateCall(tan_func, {param.val.ll})
-			}
-		};
+		semal_result param = semal_expr(call.params.front(), n, source, local, false);
+		return semal_literal_expr({.value = param.val.ty.name()}, n, source, local, true);
 	}
 	else if(call.function_name == "__enumname")
 	{
