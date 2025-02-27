@@ -10602,6 +10602,14 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			}
 		};
 	}
+	else if(call.function_name == "__is_a")
+	{
+		semal_result param = semal_expr(call.params.front(), n, source, local, false);
+		param.val.ty.qual = typequal_none;
+		type_t ty = local->parse_type(AS_A(call.params[1].expr_, ast_symbol_expr).symbol);
+		ty.qual = typequal_none;
+		return semal_literal_expr({.value = param.val.ty == ty}, n, source, local, true);
+	}
 	else if(call.function_name == "__sqrt")
 	{
 		semal_result param = semal_expr(call.params.front(), n, source, local, true);
