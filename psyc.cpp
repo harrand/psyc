@@ -2470,6 +2470,8 @@ enum class token : std::uint32_t
 	bitwise_exor,
 	modulo,
 	invert,
+	loreq,
+	goreq,
 	oanglebrack,
 	canglebrack,
 	keyword_static_if,
@@ -2823,6 +2825,20 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "invert",
 		.front_identifier = "!",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "loreq",
+		.front_identifier = "<=",
+		.trivial = true
+	},
+
+	tokeniser
+	{
+		.name = "goreq",
+		.front_identifier = ">=",
 		.trivial = true
 	},
 
@@ -3353,6 +3369,8 @@ enum class biop_type
 	assign,
 	less_than,
 	greater_than,
+	less_than_or_equal,
+	greater_than_or_equal,
 	_count
 };
 constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_precedence
@@ -3372,6 +3390,8 @@ constexpr std::array<unsigned int, static_cast<int>(biop_type::_count)> biop_pre
 	1,
 	1,
 	0,
+	1,
+	1,
 	1,
 	1
 };
@@ -5789,6 +5809,12 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 				case biop_type::greater_than:
 					retval.ll = codegen.ir->CreateICmpUGT(lhs_result.val.ll, rhs_result.val.ll);
 				break;
+				case biop_type::less_than_or_equal:
+					retval.ll = codegen.ir->CreateICmpULE(lhs_result.val.ll, rhs_result.val.ll);
+				break;
+				case biop_type::greater_than_or_equal:
+					retval.ll = codegen.ir->CreateICmpUGE(lhs_result.val.ll, rhs_result.val.ll);
+				break;
 				default:
 					std::unreachable();
 				break;
@@ -5828,6 +5854,26 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 							retval.ll = codegen.ir->CreateICmpUGT(lhs_result.val.ll, rhs_result.val.ll);
 						}
 					break;
+					case biop_type::less_than_or_equal:
+						if(is_signed)
+						{
+							retval.ll = codegen.ir->CreateICmpSLE(lhs_result.val.ll, rhs_result.val.ll);
+						}
+						else
+						{
+							retval.ll = codegen.ir->CreateICmpULE(lhs_result.val.ll, rhs_result.val.ll);
+						}
+					break;
+					case biop_type::greater_than_or_equal:
+						if(is_signed)
+						{
+							retval.ll = codegen.ir->CreateICmpSGE(lhs_result.val.ll, rhs_result.val.ll);
+						}
+						else
+						{
+							retval.ll = codegen.ir->CreateICmpUGE(lhs_result.val.ll, rhs_result.val.ll);
+						}
+					break;
 					default:
 						std::unreachable();
 					break;
@@ -5848,6 +5894,12 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 					break;
 					case biop_type::greater_than:
 						retval.ll = codegen.ir->CreateFCmpUGT(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::less_than_or_equal:
+						retval.ll = codegen.ir->CreateFCmpULE(lhs_result.val.ll, rhs_result.val.ll);
+					break;
+					case biop_type::greater_than_or_equal:
+						retval.ll = codegen.ir->CreateFCmpUGE(lhs_result.val.ll, rhs_result.val.ll);
 					break;
 					default:
 						std::unreachable();
@@ -5907,6 +5959,10 @@ semal_result semal_biop_expr(const ast_biop_expr& expr, node& n, std::string_vie
 		case less_than:
 		[[fallthrough]];
 		case greater_than:
+		[[fallthrough]];
+		case less_than_or_equal:
+		[[fallthrough]];
+		case greater_than_or_equal:
 			return semal_compare_biop_expr(expr, n, source, local, do_codegen);
 		break;
 		case ptr_field:
@@ -7352,6 +7408,20 @@ std::unordered_set<token> unop_tokens{};
 	CHORD_END\
 	CHORD_BEGIN\
 		LOOKAHEAD_STATE(TOKEN(x), TOKEN(canglebrack)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(loreq)), FN\
+		{\
+			return EXPRIFY_T(x);\
+		}\
+	EXTENSIBLE\
+	CHORD_END\
+	CHORD_BEGIN\
+		LOOKAHEAD_STATE(TOKEN(x), TOKEN(goreq)), FN\
 		{\
 			return EXPRIFY_T(x);\
 		}\
@@ -8832,6 +8902,8 @@ DEFINE_BIOPIFICATION_CHORDS(comparen, compare_neq)
 DEFINE_BIOPIFICATION_CHORDS(assign, assign)
 DEFINE_BIOPIFICATION_CHORDS(oanglebrack, less_than)
 DEFINE_BIOPIFICATION_CHORDS(canglebrack, greater_than)
+DEFINE_BIOPIFICATION_CHORDS(loreq, less_than_or_equal)
+DEFINE_BIOPIFICATION_CHORDS(goreq, less_than_or_equal)
 DEFINE_BIOPIFICATION_CHORDS(keyword_at, at)
 
 CHORD_BEGIN
