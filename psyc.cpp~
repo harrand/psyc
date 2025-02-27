@@ -4693,7 +4693,7 @@ semal_result semal_macrodef_expr(const ast_macrodef_expr& expr, node& n, std::st
 		warning(n.begin_location, "macro has non-v0 return type \"{}\". support for macros returning stuff is NYI", expr.return_type);
 	}
 	local->unfinished_types.push_back({.t = semal_type::macro_decl});	
-	return { .t = semal_type::macro_decl, .val = {.usrdata = new ast_macrodef_expr{expr}, .usrdata2 = new node{n}} };
+	return {.t = semal_type::macro_decl, .val = {.usrdata = &expr, .usrdata2 = &n}};
 }
 
 
@@ -4865,19 +4865,16 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 						return semal_result::err("detected multiple yield statements in the same macro. previous was {}", found_yield.value());
 					}
 					const auto& yield = AS_A(stmt.stmt_, ast_yield_stmt);
-					macroret = semal_expr(yield.retval, n, source, local, do_codegen);
+					macroret = semal_expr(yield.retval, child, source, local, do_codegen);
 					found_yield = child.begin_location;
+				}
+				if(stmt.deferred)
+				{
+					local->pending_macro_calls.push_back(&child);
 				}
 				else
 				{
-					if(stmt.deferred)
-					{
-						local->pending_macro_calls.push_back(&child);
-					}
-					else
-					{
-						semal(child, source, local, do_codegen);
-					}
+					semal(child, source, local, do_codegen);
 				}
 			}
 			return macroret;
@@ -9380,7 +9377,7 @@ CHORD_BEGIN
 			{
 				.action = parse_action::reduce,
 				.nodes_to_remove = {.offset = 0, .length = nodes.size()},
-				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_yield_stmt{.retval = retval}}}}
+				.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_return_stmt{.retval = retval}}}}
 			};
 		}
 		else
@@ -9412,7 +9409,7 @@ CHORD_BEGIN
 		{
 			.action = parse_action::reduce,
 			.nodes_to_remove = {.offset = 0, .length = nodes.size()},
-			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_yield_stmt{.retval = retval}}}}
+			.reduction_result = {node{.payload = ast_stmt{.stmt_ = ast_return_stmt{.retval = retval}}}}
 		};
 	}
 CHORD_END
@@ -10816,7 +10813,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			{
 				return "";
 			}
-			for(std::size_t i = loc.unfinished_types.size() - 1; i > 0; i--)
+			for(std::size_t i = loc.unfinished_types.size() - 1; i >= 0; i--)
 			{
 				if(loc.unfinished_types[i].t == semal_type::function_decl)
 				{
@@ -10875,24 +10872,6 @@ std::string get_preload_source()
 	__pi ::= 3.14159;
 	[[public_linkage]]
 	_fltused : s32 := (0@s32);
-
-	srcloc ::= struct
-	{{
-		file : u8&;
-		function : u8&;
-		line : u64;
-		column : u64;
-	}};
-	srcloc_current ::= macro() -> srcloc
-	{{
-		yield srcloc
-		{{
-			.file := __file();
-			.function := __function();
-			.line := __line();
-			.column := __column();
-		}};
-	}};
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
