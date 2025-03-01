@@ -4253,14 +4253,16 @@ node parse(const lex_output& impl_in, bool verbose_parse)
 #define codegen_logic_begin {auto impl_codegen_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 #define codegen_logic_end time_codegen += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - impl_codegen_time_;}
 
-void codegen_initialise(std::string_view name)
+void codegen_initialise(std::filesystem::path build_file)
 {
+	auto dir = build_file.parent_path().string();
+	auto name = build_file.filename().string();
 	codegen.ctx = std::make_unique<llvm::LLVMContext>();
 	codegen.mod = std::make_unique<llvm::Module>(name, *codegen.ctx);
 	codegen.ir = std::make_unique<llvm::IRBuilder<>>(*codegen.ctx);
 
 	codegen.debug = std::make_unique<llvm::DIBuilder>(*codegen.mod);
-	codegen.dbg = codegen.debug->createCompileUnit(llvm::dwarf::DW_LANG_C, codegen.debug->createFile(name, "."), "Psy Compiler", false, "", 0);
+	codegen.dbg = codegen.debug->createCompileUnit(llvm::dwarf::DW_LANG_C, codegen.debug->createFile(name, dir), "Psy Compiler", false, "", 0, "");
 }
 
 void codegen_verbose_print()
@@ -4318,6 +4320,7 @@ std::filesystem::path codegen_generate(compile_args& args)
 		args.target_triple = llvm::sys::getDefaultTargetTriple();
 	}
     codegen.mod->setTargetTriple(args.target_triple);
+	codegen.mod->setModuleFlag(llvm::Module::Error, "CodeView", 1);
 
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(args.target_triple, error);
@@ -4480,6 +4483,23 @@ enum class linker_type
 
 linker_type divine_linker_type(const compile_args& args)
 {
+	const char* lnkty = std::getenv("PSYC_LINKER_FLAVOUR");
+	if(lnkty != nullptr)
+	{
+		std::string lnktystr = lnkty;
+		if(lnktystr == "msvc")
+		{
+			return linker_type::msvc_like;
+		}
+		else if(lnktystr == "gnu")
+		{
+			return linker_type::gnu_like;
+		}
+		else
+		{
+			error({}, "unknown linker flavour \"{}\". Expected \"msvc\" or \"gnu\"", lnktystr);
+		}
+	}
 #ifdef _WIN32
 	if(args.target_triple.contains("msvc"))
 	{
@@ -4688,7 +4708,14 @@ void emit_debug_location(const node& n)
 	llvm::DIScope* scope;
 	if(lexical_blocks.empty())
 	{
-		scope = codegen.dbg;
+		if(debug_files.empty())
+		{
+			scope = codegen.dbg;
+		}
+		else
+		{
+			scope = debug_files.back();
+		}
 	}
 	else
 	{
@@ -4785,7 +4812,9 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 		}
 		debug_fn_ty = codegen.debug->createSubroutineType(codegen.debug->getOrCreateTypeArray(el_tys));
 
-		llvm::DISubprogram* debug = codegen.debug->createFunction(debug_files.back(), "unnamed function", llvm::StringRef(), debug_files.back(), n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+		static int fncount = 0;
+		std::string fnname = std::format("unnamed function{}", fncount++);
+		llvm::DISubprogram* debug = codegen.debug->createFunction(debug_files.back(), fnname, llvm::StringRef(), debug_files.back(), n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
 		emit_empty_debug_location();
 
 		if(!expr.is_extern)
@@ -4809,9 +4838,8 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 
 				counter++;
 			}
+			emit_debug_location(n);
 		}
-
-		emit_debug_location(n);
 		ret.val.ll = llvm_func;
 	}
 	return ret;
@@ -4826,6 +4854,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent =
 semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	fn_ty callee = {.return_ty = type_t::badtype()};
+	emit_debug_location(n);
 	// if you get around to static params and are emitting specific implementations, now is probably the time to do it.
 	// use expr.function_name to create fake semal_decls of the implementation type(s) and re-use the functions here instead of searching for them.
 	semal_result builtin_result = semal_call_builtin(expr, n, source, local);
@@ -7122,7 +7151,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 								semal_return_stmt(ast_return_stmt{.retval = std::nullopt}, n, source, local, do_codegen);
 							}
 						}
-						panic_ifnt(lexical_blocks.size(), "whaat why didnt hte function lexical block exist");
+						panic_ifnt(lexical_blocks.size() == 1, "whaat why didnt hte function lexical block exist");
 						lexical_blocks.pop_back();
 					}
 					break;
@@ -10264,7 +10293,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	auto absolute = std::filesystem::absolute(file);
 	std::string filename = absolute.filename().string();
 	std::string directory = absolute.parent_path().string();
-	llvm::DIFile* debug_file = codegen.debug->createFile(filename.c_str(), directory.c_str());
+	llvm::DIFile* debug_file = codegen.debug->createFile(filename.c_str(), directory.c_str(), std::nullopt, source);
 	debug_files.push_back(debug_file);
 
 	timer_restart();
@@ -10389,8 +10418,7 @@ int main(int argc, char** argv)
 	time_setup = elapsed_time();
 	timer_restart();
 
-	auto name = args.build_file.filename().string();
-	codegen_initialise(name);
+	codegen_initialise(std::filesystem::absolute(args.build_file));
 	compile_source("preload.psy", get_preload_source(), args);
 	compile_file(args.build_file, args);
 	if(args.output_type == target::executable)
