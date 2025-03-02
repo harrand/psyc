@@ -53,7 +53,6 @@
 
 std::string get_preload_source();
 
-std::vector<llvm::DIFile*> debug_files = {};
 std::vector<llvm::DIScope*> lexical_blocks = {};
 
 template <typename T>
@@ -129,6 +128,8 @@ using string_map = std::unordered_map<std::string, T, string_hash, std::equal_to
 
 template<typename T>
 using path_map = std::unordered_map<std::filesystem::path, T, string_hash, std::equal_to<>>;
+
+path_map<llvm::DIFile*> debug_files;
 
 template<typename T, typename V, std::size_t index_leave_blank = 0>
 consteval int payload_index()
@@ -4291,6 +4292,13 @@ void codegen_verify()
 
 void generate_object_file(std::string object_path, llvm::TargetMachine* targetMachine);
 
+enum class linker_type
+{
+	msvc_like,
+	gnu_like
+};
+linker_type divine_linker_type(const compile_args& args);
+
 std::filesystem::path codegen_generate(compile_args& args)
 {
 	// tell the LLVM optimiser not to detect "hand-rolled" memset/memcpy and optimise them to CRT memset/memcpy.
@@ -4320,7 +4328,10 @@ std::filesystem::path codegen_generate(compile_args& args)
 		args.target_triple = llvm::sys::getDefaultTargetTriple();
 	}
     codegen.mod->setTargetTriple(args.target_triple);
-	codegen.mod->setModuleFlag(llvm::Module::Error, "CodeView", 1);
+	if(divine_linker_type(args) == linker_type::msvc_like)
+	{
+		codegen.mod->setModuleFlag(llvm::Module::Error, "CodeView", 1);
+	}
 
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(args.target_triple, error);
@@ -4474,12 +4485,6 @@ std::string get_archiver()
 	}
 	return val;
 }
-
-enum class linker_type
-{
-	msvc_like,
-	gnu_like
-};
 
 linker_type divine_linker_type(const compile_args& args)
 {
@@ -4703,24 +4708,29 @@ void verify_semal_result(const semal_result& result, const node& n, std::string_
 	}
 }
 
-void emit_debug_location(const node& n)
+llvm::DIScope* debug_get_scope(const node& n)
 {
 	llvm::DIScope* scope;
 	if(lexical_blocks.empty())
 	{
-		if(debug_files.empty())
+		if(debug_files.empty() || n.begin_location.file.empty())
 		{
-			scope = codegen.dbg;
+			return codegen.dbg;
 		}
 		else
 		{
-			scope = debug_files.back();
+			return debug_files.at(n.begin_location.file);
 		}
 	}
 	else
 	{
-		scope = lexical_blocks.back();
+		return lexical_blocks.back();
 	}
+}
+
+void emit_debug_location(const node& n)
+{
+	llvm::DIScope* scope = debug_get_scope(n);
 	codegen.ir->SetCurrentDebugLocation(llvm::DILocation::get(scope->getContext(), n.begin_location.line, n.begin_location.column, scope));
 }
 
@@ -4814,7 +4824,8 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 
 		static int fncount = 0;
 		std::string fnname = std::format("unnamed function{}", fncount++);
-		llvm::DISubprogram* debug = codegen.debug->createFunction(debug_files.back(), fnname, llvm::StringRef(), debug_files.back(), n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+		llvm::DIFile* file = debug_files.at(n.begin_location.file);
+		llvm::DISubprogram* debug = codegen.debug->createFunction(file, fnname, llvm::StringRef(), file, n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
 		emit_empty_debug_location();
 
 		if(!expr.is_extern)
@@ -4833,7 +4844,7 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 				codegen.ir->CreateStore(&arg, llvm_param_var);
 				local->pending_variables.at(std::string{name}).ll = llvm_param_var;
 
-				llvm::DILocalVariable* dbg_var = codegen.debug->createParameterVariable(debug, name, counter + 1, debug_files.back(), n.begin_location.line, llvm_debug_params[counter], true);
+				llvm::DILocalVariable* dbg_var = codegen.debug->createParameterVariable(debug, name, counter + 1, file, n.begin_location.line, llvm_debug_params[counter], true);
 				codegen.debug->insertDeclare(llvm_param_var, dbg_var, codegen.debug->createExpression(), llvm::DILocation::get(debug->getContext(), n.begin_location.line, 0, debug), codegen.ir->GetInsertBlock());
 
 				counter++;
@@ -6512,6 +6523,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 						init_result.val.ll = init_result.val.convert_to(ret.val.ty);
 					}
 					
+					llvm::DIFile* file = debug_files.at(n.begin_location.file);
 					if(local->scope == scope_type::translation_unit)
 					{
 						// this is a global variable.
@@ -6520,6 +6532,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 							init_result.val.ty = ret.val.ty;
 						}
 						ret.val.ll = codegen.declare_global_variable(decl.name, ret.val.ty, init_result.val, external_linkage);
+						codegen.debug->createGlobalVariableExpression(file, decl.name, decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm(), true);
 					}
 					else
 					{
@@ -6530,6 +6543,8 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 							codegen.ir->CreateStore(init_result.val.ll, llvm_var);
 						}
 						ret.val.ll = llvm_var;
+
+						codegen.debug->createAutoVariable(debug_get_scope(n), decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm());
 					}
 				}
 
@@ -7129,7 +7144,8 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 							global.llvm_structs[ty] = llvm_ty;
 							auto struct_size = 8 * static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSize(llvm_ty));
 							auto align_size = codegen.mod->getDataLayout().getABITypeAlign(llvm_ty).value() * 8;
-							global.llvm_debug_structs[ty] = codegen.debug->createStructType(codegen.dbg, "unnamed struct", debug_files.back(), n.begin_location.line, struct_size, align_size, llvm::DINode::DIFlags::FlagZero, nullptr, codegen.debug->getOrCreateArray(member_debug_tys));
+							llvm::DIFile* file = debug_files.at(n.begin_location.file);
+							global.llvm_debug_structs[ty] = codegen.debug->createStructType(codegen.dbg, "unnamed struct", file, n.begin_location.line, struct_size, align_size, llvm::DINode::DIFlags::FlagZero, nullptr, codegen.debug->getOrCreateArray(member_debug_tys));
 						}
 					break;
 					case semal_type::macro_decl:
@@ -10294,7 +10310,7 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 	std::string filename = absolute.filename().string();
 	std::string directory = absolute.parent_path().string();
 	llvm::DIFile* debug_file = codegen.debug->createFile(filename.c_str(), directory.c_str(), std::nullopt, source);
-	debug_files.push_back(debug_file);
+	debug_files.emplace(file, debug_file);
 
 	timer_restart();
 	lex_output tokens = lex_from_data(file, source);
@@ -10381,7 +10397,6 @@ void compile_source(std::filesystem::path file, std::string source, compile_args
 
 	time_codegen = elapsed_time();
 	timer_restart();
-	debug_files.pop_back();
 }
 
 void compile_file(std::filesystem::path file, compile_args& args)
