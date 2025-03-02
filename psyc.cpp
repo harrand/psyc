@@ -2227,6 +2227,10 @@ llvm::DIType* type_t::debug_llvm() const
 	if(this->is_ptr())
 	{
 		auto ptr = AS_A(this->payload, ptr_ty);
+		if(ptr.underlying_ty->is_void())
+		{
+			return codegen.debug->createBasicType("v0&", 64, llvm::dwarf::DW_ATE_address);
+		}
 		llvm::DIType* pointee = ptr.underlying_ty->debug_llvm();
 		return codegen.debug->createPointerType(pointee, sizeof(void*));
 	}
@@ -7136,17 +7140,33 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 							struct_ty ty = *structval;
 							std::vector<llvm::Type*> member_tys;
 							std::vector<llvm::Metadata*> member_debug_tys;
+
+
 							for(std::string member_name : ty.member_order)
 							{
-								member_tys.push_back(ty.members.at(member_name)->llvm());
-								member_debug_tys.push_back(ty.members.at(member_name)->debug_llvm());
+								type_t memty = *ty.members.at(member_name);
+								member_tys.push_back(memty.llvm());
 							}
 							llvm::StructType* llvm_ty =  llvm::StructType::create(member_tys, structname);
 							global.llvm_structs[ty] = llvm_ty;
 							auto struct_size = 8 * static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSize(llvm_ty));
 							auto align_size = codegen.mod->getDataLayout().getABITypeAlign(llvm_ty).value() * 8;
+
+							const auto& dlayout = codegen.mod->getDataLayout();
+							auto* structlayout = dlayout.getStructLayout(llvm_ty);
+							std::size_t counter = 0;
 							llvm::DIFile* file = debug_files.at(n.begin_location.file);
-							global.llvm_debug_structs[ty] = codegen.debug->createStructType(codegen.dbg, "unnamed struct", file, n.begin_location.line, struct_size, align_size, llvm::DINode::DIFlags::FlagZero, nullptr, codegen.debug->getOrCreateArray(member_debug_tys));
+							for(std::string member_name : ty.member_order)
+							{
+								type_t memty = *ty.members.at(member_name);
+								auto offset = static_cast<std::int64_t>(structlayout->getElementOffsetInBits(counter));
+								auto member_size = static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSizeInBits(memty.llvm()));
+								auto member_align = 0;
+								member_debug_tys.push_back(codegen.debug->createMemberType(file, member_name, file, n.begin_location.line, member_size, member_align, offset, llvm::DINode::DIFlags::FlagPublic, memty.debug_llvm()));
+								counter++;
+							}
+
+							global.llvm_debug_structs[ty] = codegen.debug->createStructType(file, structname, file, n.begin_location.line, struct_size, align_size, llvm::DINode::DIFlags::FlagPublic, nullptr, codegen.debug->getOrCreateArray(member_debug_tys));
 						}
 					break;
 					case semal_type::macro_decl:
