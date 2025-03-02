@@ -6530,7 +6530,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 							init_result.val.ty = ret.val.ty;
 						}
 						ret.val.ll = codegen.declare_global_variable(decl.name, ret.val.ty, init_result.val, external_linkage);
-						codegen.debug->createGlobalVariableExpression(file, decl.name, decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm(), true);
+						llvm::DIGlobalVariable* dbg_var = codegen.debug->createTempGlobalVariableFwdDecl(file, decl.name, decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm(), true);
 					}
 					else
 					{
@@ -6542,7 +6542,10 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 						}
 						ret.val.ll = llvm_var;
 
-						codegen.debug->createAutoVariable(debug_get_scope(n), decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm());
+						llvm::DILocalVariable* dbg_var = codegen.debug->createAutoVariable(debug_get_scope(n), decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm());
+						const semal_result* parent_fn = local->try_find_parent_function();
+						auto* debug = static_cast<llvm::Function*>(parent_fn->val.ll)->getSubprogram();
+						codegen.debug->insertDeclare(llvm_var, dbg_var, codegen.debug->createExpression(), llvm::DILocation::get(debug->getContext(), n.begin_location.line, 0, debug), codegen.ir->GetInsertBlock());
 					}
 				}
 
