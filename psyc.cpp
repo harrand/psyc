@@ -4822,10 +4822,8 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 		}
 		debug_fn_ty = codegen.debug->createSubroutineType(codegen.debug->getOrCreateTypeArray(el_tys));
 
-		static int fncount = 0;
-		std::string fnname = std::format("unnamed function{}", fncount++);
 		llvm::DIFile* file = debug_files.at(n.begin_location.file);
-		llvm::DISubprogram* debug = codegen.debug->createFunction(file, fnname, llvm::StringRef(), file, n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+		llvm::DISubprogram* debug = codegen.debug->createFunction(file, llvm::StringRef(), llvm::StringRef(), file, n.begin_location.line, debug_fn_ty, n.begin_location.column, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
 		emit_empty_debug_location();
 
 		if(!expr.is_extern)
