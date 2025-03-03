@@ -1467,20 +1467,20 @@ struct semal_state2
 		bool globally_visible = true;
 	};
 
+	struct variable_data
+	{
+		sval var;
+		srcloc loc = {};
+		bool globally_visible = true;
+	};
+
 	string_map<struct_ty> structs = {};
 	using struct_value = decltype(structs)::mapped_type;
 	string_map<enum_ty> enums = {};
 	using enum_value = decltype(enums)::mapped_type;
-	//string_map<fn_ty> functions = {};
 	string_map<function_data> functions = {};
 	using function_value = decltype(functions)::mapped_type;
-	/*
-	string_map<llvm::Function*> function_locations = {};
-	using function_location_value = decltype(function_locations)::mapped_type;
-	string_map<bool> function_visibilities = {};
-	using function_visibility_value = decltype(function_visibilities)::mapped_type;
-	*/
-	string_map<sval> variables = {};
+	string_map<variable_data> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 
 	struct macro_data_t
@@ -1643,7 +1643,7 @@ struct semal_local_state
 
 	void declare_macro(std::string macro_name, semal_state2::macro_data_t macro);
 	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr, srcloc loc = {}, bool maybe_globally_visible = true);
-	void declare_variable(std::string variable_name, sval val, srcloc loc = {});
+	void declare_variable(std::string variable_name, sval val, srcloc loc = {}, bool globally_visible = true);
 	void declare_enum(std::string enum_name, enum_ty ty, srcloc loc = {});
 	void declare_struct(std::string struct_name, struct_ty ty, srcloc loc = {});
 
@@ -1915,18 +1915,24 @@ void semal_local_state::declare_macro(std::string macro_name, semal_state2::macr
 	}
 }
 
-void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc)
+void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc, bool globally_visible)
 {
 	auto [local, glob] = this->find_variable(variable_name);
 	if(local != nullptr || glob != nullptr)
 	{
 		error(loc, "duplicate definition of variable \"{}\"", variable_name);
 	}
-	this->state.variables.emplace(variable_name, val);
+	auto data = semal_state2::variable_data
+	{
+		.var = val,
+		.loc = loc,
+		.globally_visible = globally_visible
+	};
+	this->state.variables.emplace(variable_name, data);
 	if(this->scope == scope_type::translation_unit)
 	{
 		// declare it globally too.
-		global.state.variables.emplace(variable_name, val);
+		global.state.variables.emplace(variable_name, data);
 	}
 }
 
@@ -4881,9 +4887,9 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	else if(global_iter != nullptr)
 	{
 		callee = global_iter->ty;
-		if(!global.state.functions.at(expr.function_name).globally_visible)
+		if(!global_iter->globally_visible)
 		{
-			return semal_result::err("call to inaccessible function \"{}\"", expr.function_name);
+			return semal_result::err("call to inaccessible function \"{}\" (defined {})", expr.function_name, global_iter->loc);
 		}
 	}
 	else
@@ -5081,16 +5087,20 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 		{
 			.t = semal_type::variable_use,
 			.label = std::string{symbol},
-			.val = *local_iter
+			.val = local_iter->var
 		};
 	}
 	else if(global_iter != nullptr)
 	{
+		if(!global_iter->globally_visible)
+		{
+			return semal_result::err("use of inaccessible variable \"{}\" (declared {})", symbol, global_iter->loc);
+		}
 		return
 		{
 			.t = semal_type::variable_use,
 			.label = std::string{symbol},
-			.val = *global_iter
+			.val = global_iter->var
 		};
 	}
 	else
@@ -6603,20 +6613,24 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			}
 			else
 			{
+				bool external_linkage = false;
+				for (const auto& [name, maybe_expr] : attributes)
+				{
+					if(name == "public_linkage")
+					{
+						external_linkage = true;
+					}
+					else if(name == "private")
+					{
+						maybe_globally_visible = false;
+					}
+					else
+					{
+						warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
+					}
+				}
 				if(do_codegen)
 				{
-					bool external_linkage = false;
-					for (const auto& [name, maybe_expr] : attributes)
-					{
-						if (name == "public_linkage")
-						{
-							external_linkage = true;
-						}
-						else
-						{
-							warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
-						}
-					}
 					if (decl.initialiser.has_value())
 					{
 						init_result.load_if_variable();
@@ -6651,7 +6665,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					}
 				}
 
-				local->declare_variable(decl.name, ret.val);
+				local->declare_variable(decl.name, ret.val, n.begin_location, maybe_globally_visible);
 				ret.t = semal_type::variable_decl;
 			}
 		}
