@@ -412,7 +412,8 @@ struct compile_args
 	target output_type = target::object;
 	unsigned int optimisation_level = 0;
 	std::string target_triple = "";
-	bool debug_symbols = false;
+	bool debug_symbols = true;
+	std::string build_config = "debug";
 };
 
 compile_args parse_args(std::span<const std::string_view> args)
@@ -462,6 +463,10 @@ compile_args parse_args(std::span<const std::string_view> args)
 		else if(arg == "-t")
 		{
 			ret.target_triple = argnext();
+		}
+		else if(arg == "-c")
+		{
+			ret.build_config = argnext();
 		}
 		else
 		{
@@ -1454,16 +1459,27 @@ llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, 
 
 struct semal_state2
 {
+	struct function_data
+	{
+		fn_ty ty;
+		llvm::Function* location = nullptr;
+		srcloc loc = {};
+		bool globally_visible = true;
+	};
+
 	string_map<struct_ty> structs = {};
 	using struct_value = decltype(structs)::mapped_type;
 	string_map<enum_ty> enums = {};
 	using enum_value = decltype(enums)::mapped_type;
-	string_map<fn_ty> functions = {};
+	//string_map<fn_ty> functions = {};
+	string_map<function_data> functions = {};
 	using function_value = decltype(functions)::mapped_type;
+	/*
 	string_map<llvm::Function*> function_locations = {};
 	using function_location_value = decltype(function_locations)::mapped_type;
 	string_map<bool> function_visibilities = {};
 	using function_visibility_value = decltype(function_visibilities)::mapped_type;
+	*/
 	string_map<sval> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 
@@ -1633,7 +1649,6 @@ struct semal_local_state
 
 	pair_of<semal_state2::macro_value*> find_macro(std::string_view macro_name);
 	pair_of<semal_state2::function_value*> find_function(std::string_view function_name);
-	pair_of<semal_state2::function_location_value*> find_function_location(std::string_view function_name);
 	pair_of<semal_state2::variable_value*> find_variable(std::string_view variable_name);
 	pair_of<semal_state2::enum_value*> find_enum(std::string_view enum_name);
 	pair_of<semal_state2::struct_value*> find_struct(std::string_view struct_name);
@@ -1870,14 +1885,18 @@ void semal_local_state::declare_function(std::string function_name, fn_ty ty, ll
 	{
 		error(loc, "duplicate definition of function \"{}\"", function_name);
 	}
-	this->state.functions.emplace(function_name, ty);
-	this->state.function_locations.emplace(function_name, location);
+	auto data = semal_state2::function_data
+	{
+		.ty = ty,
+		.location = location,
+		.loc = loc,
+		.globally_visible = maybe_globally_visible
+	};
+	this->state.functions.emplace(function_name, data);
 	if(this->scope == scope_type::translation_unit)
 	{
 		// declare it globally too.
-		global.state.functions.emplace(function_name, ty);
-		global.state.function_locations.emplace(function_name, location);
-		global.state.function_visibilities.emplace(function_name, maybe_globally_visible);
+		global.state.functions.emplace(function_name, data);
 	}
 }
 
@@ -1983,30 +2002,6 @@ pair_of<semal_state2::function_value*> semal_local_state::find_function(std::str
 
 	semal_state2::function_value* global_ret = nullptr;
 	if(global_iter != global.state.functions.end())
-	{
-		global_ret = &global_iter->second;
-	}
-	return {local_ret, global_ret};
-}
-
-pair_of<semal_state2::function_location_value*> semal_local_state::find_function_location(std::string_view function_name)
-{
-	semal_local_state* loc = this;
-	semal_state2::function_location_value* local_ret = nullptr;
-	auto iter = loc->state.function_locations.find(function_name);
-	while(iter == loc->state.function_locations.end() && loc->parent != nullptr)
-	{
-		loc = loc->parent;
-		iter = loc->state.function_locations.find(function_name);
-	}
-	if(iter != loc->state.function_locations.end())
-	{
-		local_ret = &iter->second;
-	}
-	auto global_iter = global.state.function_locations.find(function_name);
-
-	semal_state2::function_location_value* global_ret = nullptr;
-	if(global_iter != global.state.function_locations.end())
 	{
 		global_ret = &global_iter->second;
 	}
@@ -4880,13 +4875,13 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	auto [local_iter, global_iter] = local->find_function(expr.function_name);
 	if(local_iter != nullptr)
 	{
-		callee = *local_iter;
+		callee = local_iter->ty;
 	}
 	// you are allowed to call functions defined in other source files, so check the global iter too.
 	else if(global_iter != nullptr)
 	{
-		callee = *global_iter;
-		if(!global.state.function_visibilities.at(expr.function_name))
+		callee = global_iter->ty;
+		if(!global.state.functions.at(expr.function_name).globally_visible)
 		{
 			return semal_result::err("call to inaccessible function \"{}\"", expr.function_name);
 		}
@@ -5017,13 +5012,13 @@ const type_t& actual_ty = actual_result.val.ty;
 	if(do_codegen)
 	{
 		// call function by name.
-		const auto [local_fn, global_fn] = local->find_function_location(expr.function_name);
+		const auto [local_fn, global_fn] = local->find_function(expr.function_name);
 		llvm::Function* llvm_fn = nullptr;
 		if(llvm_fnval == nullptr)
 		{
 			if (local_fn != nullptr)
 			{
-				llvm_fn = *local_fn;
+				llvm_fn = local_fn->location;
 			}
 			else
 			{
@@ -5031,7 +5026,7 @@ const type_t& actual_ty = actual_result.val.ty;
 				{
 					panic("codegen: failed to call \"{}\" coz the function location was not found in local/global state. however, an error should already have been emitted if it wasnt defined by the user.", expr.function_name);
 				}
-				llvm_fn = *global_fn;
+				llvm_fn = global_fn->location;
 			}
 			ret.ll = codegen.ir->CreateCall(llvm_fn, llvm_params);
 		}
@@ -5102,10 +5097,10 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	{
 		// perhaps you're trying to refer to a function as a variable?
 		// that should yield a pointer to the function.
-		const auto [fn_local, fn_global] = local->find_function_location(symbol);
+		const auto [fn_local, fn_global] = local->find_function(symbol);
 		if(fn_local != nullptr)
 		{
-			fn_ty fnty = *std::get<0>(local->find_function(symbol));
+			fn_ty fnty = fn_local->ty;
 			return
 			{
 				.t = semal_type::misc,
@@ -5114,13 +5109,13 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 				{
 					.val = {},
 					.ty = type_t::create_pointer_type(type_t{.payload = fnty}),
-					.ll = *fn_local
+					.ll = fn_local->location
 				}
 			};
 		}
 		else if(fn_global != nullptr)
 		{
-			fn_ty fnty = *std::get<1>(local->find_function(symbol));
+			fn_ty fnty = fn_global->ty;
 			return
 			{
 				.t = semal_type::misc,
@@ -5129,7 +5124,7 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 				{
 					.val = {},
 					.ty = type_t::create_pointer_type(type_t{.payload = fnty}),
-					.ll = *fn_global
+					.ll = fn_global->location
 				}
 			};
 		}
@@ -5807,9 +5802,112 @@ semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::st
 		return rhs_result;
 	}
 
+
 	if(!rhs_result.val.ty.is_convertible_to(lhs_result.val.ty))
 	{
 		return semal_result::err("comparison invalid - cannot convert rhs \"{}\" type to lhs \"{}\"", rhs_result.val.ty.name(), lhs_result.val.ty.name());
+	}
+
+	if((lhs_result.val.ty.qual & typequal_static) && (rhs_result.val.ty.qual & typequal_static))
+	{
+		bool retbool;
+		switch(expr.type)
+		{
+			case biop_type::compare_eq:
+				retbool = lhs_result.val.val == rhs_result.val.val;
+			break;
+			case biop_type::compare_neq:
+				retbool = lhs_result.val.val != rhs_result.val.val;
+			break;
+			case biop_type::less_than:
+			{
+				if(!lhs_result.val.ty.is_prim())
+				{
+					return semal_result::err("cannot pass non-primitives as operands to biop operator <");
+				}
+				auto prim = AS_A(lhs_result.val.ty.payload, prim_ty);
+				if(prim.is_floating_point())
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), double) < AS_A(AS_A(rhs_result.val.val, literal_val), double);
+				}
+				else if(prim.p == prim_ty::type::boolean)
+				{
+					return semal_result::err("operator < is not valid with booleans");
+				}
+				else
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), std::int64_t) < AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
+				}
+			}
+			break;
+			case biop_type::greater_than:
+			{
+				if(!lhs_result.val.ty.is_prim())
+				{
+					return semal_result::err("cannot pass non-primitives as operands to biop operator <");
+				}
+				auto prim = AS_A(lhs_result.val.ty.payload, prim_ty);
+				if(prim.is_floating_point())
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), double) > AS_A(AS_A(rhs_result.val.val, literal_val), double);
+				}
+				else if(prim.p == prim_ty::type::boolean)
+				{
+					return semal_result::err("operator > is not valid with booleans");
+				}
+				else
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), std::int64_t) > AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
+				}
+			}
+			break;
+			case biop_type::less_than_or_equal:
+			{
+				if(!lhs_result.val.ty.is_prim())
+				{
+					return semal_result::err("cannot pass non-primitives as operands to biop operator <");
+				}
+				auto prim = AS_A(lhs_result.val.ty.payload, prim_ty);
+				if(prim.is_floating_point())
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), double) <= AS_A(AS_A(rhs_result.val.val, literal_val), double);
+				}
+				else if(prim.p == prim_ty::type::boolean)
+				{
+					return semal_result::err("operator <= is not valid with booleans");
+				}
+				else
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), std::int64_t) <= AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
+				}
+			}
+			break;
+			case biop_type::greater_than_or_equal:
+			{
+				if(!lhs_result.val.ty.is_prim())
+				{
+					return semal_result::err("cannot pass non-primitives as operands to biop operator <");
+				}
+				auto prim = AS_A(lhs_result.val.ty.payload, prim_ty);
+				if(prim.is_floating_point())
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), double) >= AS_A(AS_A(rhs_result.val.val, literal_val), double);
+				}
+				else if(prim.p == prim_ty::type::boolean)
+				{
+					return semal_result::err("operator >= is not valid with booleans");
+				}
+				else
+				{
+					retbool = AS_A(AS_A(lhs_result.val.val, literal_val), std::int64_t) >= AS_A(AS_A(rhs_result.val.val, literal_val), std::int64_t);
+				}
+			}
+			break;
+			default:
+				panic("unexpected biop type passed to semal_compare_...");
+			break;
+		}
+		return semal_literal_expr({.value = retbool}, n, source, local, do_codegen);
 	}
 
 	sval retval
@@ -6623,6 +6721,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 		},
 		.return_ty = type_t::create_void_type()
 	};
+
 	local->pending_functions.emplace("add_link_library", stringparam_noret);
 	local->pending_functions.emplace("add_source_file", stringparam_noret);
 	local->pending_functions.emplace("run_command", stringparam_noret);
@@ -6633,6 +6732,7 @@ semal_result semal_metaregion_stmt(const ast_metaregion_stmt& metaregion_stmt, n
 	local->pending_functions.emplace("set_output_directory", stringparam_noret);
 	local->pending_functions.emplace("bundle_file", stringparam_noret);
 	local->pending_functions.emplace("bundle_directory", stringparam_noret);
+	local->pending_functions.emplace("enable_debug_symbols", fn_ty{.params = {type_t::create_primitive_type(prim_ty::type::boolean)}, .return_ty = type_t::create_void_type()});
 	return semal_result::null();
 }
 
@@ -7178,7 +7278,7 @@ semal_result semal(node& n, std::string_view source, semal_local_state* parent, 
 						// should emit an empty return.
 						std::string_view funcname = last.label;
 						semal_state2::function_value* funcval = std::get<1>(local->find_function(funcname));
-						type_t return_ty = *funcval->return_ty;
+						type_t return_ty = *funcval->ty.return_ty;
 						if(IS_A(return_ty.payload, prim_ty))
 						{
 							auto return_prim = AS_A(return_ty.payload, prim_ty);
@@ -10554,14 +10654,6 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		panic_ifnt(global.args != nullptr, "compiler dev forgot to set global.args :)");
 		int opt = get_as_integer(call.params.front());
 		global.args->optimisation_level = opt;
-		if(opt == 0)
-		{
-			global.args->debug_symbols = true;
-		}
-		else
-		{
-			global.args->debug_symbols = false;
-		}
 	}
 	else if(call.function_name == "set_output_directory")
 	{
@@ -10604,7 +10696,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		auto full_path = std::filesystem::absolute(global.args->output_dir / path.filename());
 		msg({}, "bundle \"{}\" => \"{}\" (recursively)", path, full_path);
 	}
-	else if(call.function_name == "__enable_debug_symbols")
+	else if(call.function_name == "enable_debug_symbols")
 	{
 		semal_result result = semal_expr(call.params.front(), n, source, local, false);
 		auto debug = std::get<bool>(std::get<literal_val>(result.val.val));
@@ -10914,6 +11006,10 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	else if(call.function_name == "__column")
 	{
 		return semal_literal_expr({.value = n.begin_location.column}, n, source, local, true);
+	}
+	else if(call.function_name == "__config")
+	{
+		return semal_literal_expr({.value = global.args->build_config}, n, source, local, true);
 	}
 	else if(call.function_name.starts_with("__"))
 	{
