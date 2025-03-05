@@ -11029,6 +11029,50 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 	{
 		return semal_literal_expr({.value = global.args->build_config}, n, source, local, true);
 	}
+	else if(call.function_name == "__memcpy")
+	{
+		semal_result dst = semal_expr(call.params[0], n, source, local, true);
+		dst.load_if_variable();
+		dst.convert_to(local->parse_type("v0& weak"));
+		semal_result src = semal_expr(call.params[1], n, source, local, true);
+		src.load_if_variable();
+		src.convert_to(local->parse_type("v0& weak"));
+		semal_result count = semal_expr(call.params[2], n, source, local, true);
+		count.load_if_variable();
+		count.convert_to(local->parse_type("u64"));
+
+		return semal_result
+		{
+			.t = semal_type::misc,
+			.val = sval
+			{
+				.ty = type_t::create_void_type(),
+				.ll = codegen.ir->CreateMemCpyInline(dst.val.ll, llvm::MaybeAlign(), src.val.ll, llvm::MaybeAlign(), count.val.ll)
+			}
+		};
+	}
+	else if(call.function_name == "__memset")
+	{
+		semal_result ptr = semal_expr(call.params[0], n, source, local, true);
+		ptr.load_if_variable();
+		ptr.convert_to(local->parse_type("v0& weak"));
+		semal_result fill = semal_expr(call.params[1], n, source, local, true);
+		fill.load_if_variable();
+		fill.convert_to(local->parse_type("u8"));
+		semal_result count = semal_expr(call.params[2], n, source, local, true);
+		count.load_if_variable();
+		count.convert_to(local->parse_type("u64"));
+
+		return semal_result
+		{
+			.t = semal_type::misc,
+			.val = sval
+			{
+				.ty = type_t::create_void_type(),
+				.ll = codegen.ir->CreateMemSetInline(ptr.val.ll, llvm::MaybeAlign(), fill.val.ll, count.val.ll)
+			}
+		};
+	}
 	else if(call.function_name.starts_with("__"))
 	{
 		return semal_result::err("unknown builtin \"{}\"", call.function_name);
