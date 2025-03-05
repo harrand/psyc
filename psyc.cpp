@@ -11121,6 +11121,13 @@ std::string get_preload_source()
 			.column := __column();
 		}};
 	}};
+	if static(__config() != "debug")
+	{{
+	memcpy ::= func(dst : v0 mut& weak, src : v0& weak, count : u64 weak) -> v0
+	{{
+		__memcpy(dst, src, count);
+	}};
+	}}
 	)psy"; 
 #ifdef _WIN32
 	constexpr bool windows = true;
