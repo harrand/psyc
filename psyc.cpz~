@@ -827,10 +827,6 @@ struct type_t
 		const bool either_is_weak = (this->qual & typequal_weak) || (rhs.qual & typequal_weak);
 		#define lhs_is(x) this->payload.index() == payload_index<x, payload_t>()
 		#define rhs_is(x) rhs.payload.index() == payload_index<x, payload_t>()
-		if(this->payload == rhs.payload)
-		{
-			return true;
-		}
 		if(lhs_is(prim_ty))
 		{
 			if(rhs_is(prim_ty))
@@ -1158,8 +1154,7 @@ struct sval_zero_tag
 struct sval
 {
 	using struct_val = string_map<sval>;
-	using array_val = std::vector<sval>;
-	std::variant<std::monostate, literal_val, struct_val, sval_zero_tag, array_val> val = std::monostate{};
+	std::variant<std::monostate, literal_val, struct_val, sval_zero_tag> val = std::monostate{};
 	type_t ty;
 	llvm::Value* ll = nullptr;
 	const void* usrdata = nullptr;
@@ -1204,10 +1199,6 @@ struct sval
 		panic_ifnt(this->ty.is_convertible_to(rhs), "codegen: cant convert types coz you provided non-convertible types, idiot.");
 		#define lhs_is(x) this->ty.payload.index() == payload_index<x, type_t::payload_t>()
 		#define rhs_is(x) rhs.payload.index() == payload_index<x, type_t::payload_t>()
-		if(this->ty.payload == rhs.payload)
-		{
-			return this->ll;
-		}
 		if(rhs_is(enum_ty))
 		{
 			auto rhs_enum_ty = AS_A(rhs.payload, enum_ty);
@@ -1517,7 +1508,7 @@ struct semal_result
 
 	bool is_zero() const
 	{
-		return this->t == semal_type::zero_expr && IS_A(this->val.val, sval_zero_tag);
+		return this->t == semal_type::zero_expr;
 	}
 
 	void load_if_variable()
@@ -2327,17 +2318,6 @@ llvm::Constant* sval::llvm() const
 		{
 			panic("unknown sval literal_val");
 		}
-	}
-	if(IS_A(this->val, array_val))
-	{
-		auto arrval = AS_A(this->val, array_val);
-		auto arrty = AS_A(this->ty.payload, arr_ty);
-		std::vector<llvm::Constant*> elem_inits{};
-		for(const sval& elem : arrval)
-		{
-			elem_inits.push_back(elem.llvm());
-		}
-		return llvm::ConstantArray::get(llvm::ArrayType::get(arrty.underlying_ty->llvm(), arrty.array_length), elem_inits);
 	}
 	if(IS_A(this->val, struct_val))
 	{
@@ -5058,19 +5038,14 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	std::vector<llvm::Value*> llvm_params;
 	for(std::size_t i = 0; i < actual_params.size(); i++)
 	{
-		const type_t& expected_ty = expected_params[i];
-
 		const ast_expr& actual = actual_params[i];
 		semal_result actual_result = semal_expr(actual, n, source, local, do_codegen);
-		if(actual_result.is_zero())
-		{
-			actual_result.val = zero_as(expected_ty);
-		}
 		if(actual_result.is_err())
 		{
 			return actual_result;
 		}
-		const type_t& actual_ty = actual_result.val.ty;
+const type_t& actual_ty = actual_result.val.ty;
+		const type_t& expected_ty = expected_params[i];
 		if(!actual_ty.is_convertible_to(expected_ty))
 		{
 			return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, expr.function_name, actual_ty.name(), expected_ty.name());
@@ -5251,10 +5226,6 @@ semal_result semal_at_biop_expr(const ast_biop_expr& expr, node& n, std::string_
 	}
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
-	if(rhs_result.is_zero())
-	{
-		rhs_result.val = zero_as(type_t::create_primitive_type(prim_ty::type::u64));
-	}
 	if(rhs_result.is_err())
 	{
 		return rhs_result;
@@ -5318,10 +5289,6 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 		type_t casted_to = type_t::badtype();
 		if(symbol == "_")
 		{
-			if(lhs_result.is_zero() && lhs_result.val.ty.is_badtype())
-			{
-				return semal_result::err("it is invalid to perform the decay-idiom (@_) directly on a zero-init");
-			}
 			casted_to = lhs_result.val.ty.add_weak();
 			if(casted_to.is_badtype())
 			{
@@ -5335,12 +5302,6 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 			{
 				return semal_result::err("invalid cast to unknown type \"{}\"", symbol);
 			}
-			if(lhs_result.is_zero())
-			{
-				lhs_result.val = zero_as(casted_to);
-				return lhs_result;
-			}
-			
 		}
 		lhs_result.val.ty = lhs_result.val.ty.add_weak();
 		type_t cast_from = lhs_result.val.ty;
@@ -5369,10 +5330,6 @@ semal_result semal_cast_biop_expr(const ast_biop_expr& expr, node& n, std::strin
 semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
-	if(lhs_result.is_zero())
-	{
-		return semal_result::err("zero-init cannot be the lhs of any arithmetic/bitwise operation");
-	}
 	if(lhs_result.is_err())
 	{
 		return lhs_result;
@@ -5395,10 +5352,6 @@ semal_result semal_arith_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		return semal_result::err("lhs of arithmetic operation is not a numeric type, but a \"{}\"", lhs_ty.name());
 	}
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
-	if(rhs_result.is_zero())
-	{
-		rhs_result.val = zero_as(lhs_result.val.ty);
-	}
 	if(rhs_result.is_err())
 	{
 		return rhs_result;
@@ -5847,10 +5800,6 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
-	if(lhs_result.is_zero())
-	{
-		return semal_result::err("the zero-initialiser cannot be assigned to");
-	}
 	if(lhs_result.is_err())
 	{
 		return lhs_result;
@@ -5862,10 +5811,6 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	}
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
-	if(rhs_result.is_zero())
-	{
-		rhs_result.val = zero_as(lhs_ty);
-	}
 	if(rhs_result.is_err())
 	{
 		return rhs_result;
@@ -5901,20 +5846,12 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 semal_result semal_compare_biop_expr(const ast_biop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	semal_result lhs_result = semal_expr(*expr.lhs, n, source, local, do_codegen);
-	if(lhs_result.is_zero())
-	{
-		return semal_result::err("zero-init cannot be on the lhs of any comparison");
-	}
 	if(lhs_result.is_err())
 	{
 		return lhs_result;
 	}
 
 	semal_result rhs_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
-	if(rhs_result.is_zero())
-	{
-		rhs_result.val = zero_as(lhs_result.val.ty);
-	}
 	if(rhs_result.is_err())
 	{
 		return rhs_result;
@@ -6902,10 +6839,6 @@ semal_result semal_designator_stmt(const ast_designator_stmt& designator_stmt, n
 		// type-check the member.
 		type_t expected_ty = *iter->second;
 		semal_result actual_result = semal_expr(desig_expr, n, source, local, do_codegen);
-		if(actual_result.is_zero())
-		{
-			actual_result.val = zero_as(expected_ty);
-		}
 		if(actual_result.is_err())
 		{
 			return actual_result;
@@ -7513,11 +7446,7 @@ sval zero_as(const type_t& ty)
 		.ty = ty
 	};
 	ret.ty.qual = ret.ty.qual | typequal_static;
-	if(ty.is_ptr())
-	{
-		error({}, "cannot zero-init a pointer type. did you mean to use 'null'?");
-	}
-	if(ty.is_enum())
+	if(ty.is_ptr() || ty.is_enum())
 	{
 		ret.val = literal_val{std::int64_t{0}};
 	}
@@ -7533,10 +7462,7 @@ sval zero_as(const type_t& ty)
 	}
 	else if(ty.is_arr())
 	{
-		const auto& arrty = AS_A(ty.payload, arr_ty);
-		sval::array_val elems;
-		elems.resize(arrty.array_length, zero_as(*arrty.underlying_ty));
-		ret.val = elems;
+		panic("zero-expr for arrays are not yet implemented");
 	}
 	else if(ty.is_prim())
 	{
