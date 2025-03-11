@@ -1155,11 +1155,17 @@ struct sval_zero_tag
 	bool operator!=(const sval_zero_tag& t)const = default;
 };
 
+struct sval_null_tag
+{
+	bool operator==(const sval_null_tag& t)const = default;
+	bool operator!=(const sval_null_tag& t)const = default;
+};
+
 struct sval
 {
 	using struct_val = string_map<sval>;
 	using array_val = std::vector<sval>;
-	std::variant<std::monostate, literal_val, struct_val, sval_zero_tag, array_val> val = std::monostate{};
+	std::variant<std::monostate, literal_val, struct_val, sval_zero_tag, sval_null_tag, array_val> val = std::monostate{};
 	type_t ty;
 	llvm::Value* ll = nullptr;
 	const void* usrdata = nullptr;
@@ -1390,7 +1396,7 @@ constexpr const char* scope_type_names[] =
 llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage)
 {
 	auto linkage = external_linkage ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::PrivateLinkage;
-	bool is_const = !(val.ty.qual | typequal_mut);
+	bool is_const = !(ty.qual | typequal_mut);
 	if(val.ll != nullptr)
 	{
 		val.convert_to(ty);
@@ -2328,6 +2334,12 @@ llvm::Constant* sval::llvm() const
 			panic("unknown sval literal_val");
 		}
 	}
+	if(IS_A(this->val, sval_null_tag))
+	{
+		auto name = this->ty.name();
+		panic_ifnt(this->ty.is_ptr(), "sval with value sval_null_tag was not a pointer type. instead it was \"{}\"", name);
+		return llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(this->ty.llvm()));
+	}
 	if(IS_A(this->val, array_val))
 	{
 		auto arrval = AS_A(this->val, array_val);
@@ -2540,6 +2552,7 @@ enum class token : std::uint32_t
 	keyword_true,
 	keyword_false,
 	keyword_zero,
+	keyword_null,
 	symbol,
 	end_of_file,
 	_count
@@ -3058,6 +3071,14 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "null keyword",
+		.front_identifier = "null",
+		.trivial = true,
+		.allow_run_on = false
+	},
+
+	tokeniser
+	{
 		.name = "symbol",
 		.fn = [](std::string_view front, lex_state& state, lex_output& out)->bool
 		{
@@ -3332,6 +3353,14 @@ struct ast_zero_expr
 	}
 };
 
+struct ast_null_expr
+{
+	std::string value_tostring() const
+	{
+		return "null";
+	}
+};
+
 struct ast_decl;
 
 struct ast_macrodef_expr
@@ -3540,6 +3569,7 @@ struct ast_expr
 	<
 		ast_literal_expr,
 		ast_zero_expr,
+		ast_null_expr,
 		ast_macrodef_expr,
 		ast_funcdef_expr,
 		ast_callfunc_expr,
@@ -3558,6 +3588,7 @@ struct ast_expr
 		{
 			"literal",
 			"zero",
+			"null",
 			"macrodef",
 			"funcdef",
 			"callfunc",
@@ -5770,14 +5801,19 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 				}
 				for(std::size_t i = 0; i < function_call_params.size(); i++)
 				{
+					const type_t& expected_ty = as_function->params[i];
+
 					const ast_expr& param = function_call_params[i];
 					semal_result actual_result = semal_expr(param, n, source, local, do_codegen);
+					if(actual_result.is_zero())
+					{
+						actual_result.val = zero_as(expected_ty);
+					}
 					if(actual_result.is_err())
 					{
 						return actual_result;
 					}
 					const type_t& actual_ty = actual_result.val.ty;
-					const type_t& expected_ty = as_function->params[i];
 					if(!actual_ty.is_convertible_to(expected_ty))
 					{
 						return semal_result::err("invalid parameter {} within call to function {} - provided type \"{}\" which does not convert to the param type \"{}\"", i, rhs_symbol, actual_ty.name(), expected_ty.name());
@@ -6516,6 +6552,10 @@ semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, 
 		return semal_literal_expr(AS_A(expr.expr_, ast_literal_expr), n, source, local, do_codegen);
 	}
 	else if(IS_A(expr.expr_, ast_zero_expr))
+	{
+		return semal_result::zero();
+	}
+	else if(IS_A(expr.expr_, ast_null_expr))
 	{
 		return semal_result::zero();
 	}
@@ -7515,7 +7555,7 @@ sval zero_as(const type_t& ty)
 	ret.ty.qual = ret.ty.qual | typequal_static;
 	if(ty.is_ptr())
 	{
-		error({}, "cannot zero-init a pointer type. did you mean to use 'null'?");
+		ret.val = sval_null_tag{};
 	}
 	if(ty.is_enum())
 	{
@@ -7688,6 +7728,16 @@ FAKEFN(EXPRIFY_keyword_zero)
 		.action = parse_action::reduce,
 		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
 		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_zero_expr{}}}}
+	};
+}
+
+FAKEFN(EXPRIFY_keyword_null)
+{
+	return
+	{
+		.action = parse_action::reduce,
+		.nodes_to_remove = {.offset = 0, .length = nodes.size() - 1},
+		.reduction_result = {node{.payload = ast_expr{.expr_ = ast_null_expr{}}}}
 	};
 }
 
@@ -8269,6 +8319,10 @@ CHORD_BEGIN
 			if(value.tok == token::keyword_zero)
 			{
 					decl.initialiser = ast_expr{.expr_ = ast_zero_expr{}};
+			}
+			else if(value.tok == token::keyword_null)
+			{
+					decl.initialiser = ast_expr{.expr_ = ast_null_expr{}};
 			}
 			else
 			{
@@ -9371,6 +9425,7 @@ DEFINE_EXPRIFICATION_CHORDS(symbol)
 DEFINE_EXPRIFICATION_CHORDS(keyword_true)
 DEFINE_EXPRIFICATION_CHORDS(keyword_false)
 DEFINE_EXPRIFICATION_CHORDS(keyword_zero)
+DEFINE_EXPRIFICATION_CHORDS(keyword_null)
 
 CHORD_BEGIN
 	STATE(TOKEN(keyword_defer)), FN
@@ -11298,8 +11353,6 @@ std::string get_preload_source()
 	// some psy source code that is *always* compiled before any file. its API is available to everything.
 	// so uh try not to make it code that compiles slow as fuck thanks
 	static constexpr char preload_src[] = R"psy(
-	null ::= 0@u64 static@v0& weak static;
-
 	__is_windows : bool static := {};
 	__is_linux : bool static := {};
 	__psyc ::= "{}";
