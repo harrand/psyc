@@ -1684,7 +1684,8 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 		if(tyname.front() == '&' && !type_is_fn)
 		{
 			error_ifnt(!current_type.is_badtype(), {}, "type {} is malformed? saw pointer symbol before i found the base type", type_name);
-			current_type = type_t{ptr_ty::ref(current_type)};
+			auto safecpy = ptr_ty::ref(current_type);
+			current_type = type_t{safecpy};
 			tyname.remove_prefix(1);
 			continue;
 		}
@@ -2310,11 +2311,20 @@ llvm::Constant* sval::llvm() const
 		auto lit = AS_A(this->val, literal_val);
 		if(IS_A(lit, std::int64_t))
 		{
-			return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{64, static_cast<std::uint64_t>(AS_A(lit, std::int64_t)), true});
+			prim_ty primty;
+			if(this->ty.is_enum())
+			{
+				primty = AS_A(AS_A(this->ty.payload, enum_ty).underlying_ty->payload, prim_ty);
+			}
+			else
+			{
+				primty = AS_A(this->ty.payload, prim_ty);
+			}
+			return llvm::ConstantInt::get(*codegen.ctx, llvm::APInt{static_cast<unsigned int>(primty.integral_size()), static_cast<std::uint64_t>(AS_A(lit, std::int64_t)), true});
 		}
 		else if(IS_A(lit, double))
 		{
-			return llvm::ConstantFP::get(codegen.ir->getDoubleTy(), llvm::APFloat{AS_A(lit, double)});
+			return llvm::ConstantFP::get(this->ty.llvm(), llvm::APFloat{AS_A(lit, double)});
 		}
 		else if(IS_A(lit, char))
 		{
@@ -2696,7 +2706,7 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 			std::size_t string_begin = state.cursor + 1;
 			// careful - advance_until could easily get the same quote as the front, so we nudge the cursor forward once
 			state.advance(1);
-			std::size_t string_length = state.advance_until([](std::string_view next){return next.starts_with("\"");});
+			std::size_t string_length = state.advance_until([](std::string_view next){return next.starts_with("\"") && *(next.data() - 1) != '\\';});
 			if(state.cursor < state.src.size())
 			{
 				state.advance(1);
@@ -6418,7 +6428,7 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 
 	semal_result ret
 	{
-		.t = expr_result.t == semal_type::variable_ref ? semal_type::variable_use : semal_type::misc,
+		.t = semal_type::misc,
 		.label = std::format("deref {}", expr_result.label),
 		.val =
 		{
@@ -6866,6 +6876,10 @@ semal_result semal_return_stmt(const ast_return_stmt& return_stmt, node& n, std:
 	if(return_stmt.retval.has_value())
 	{
 		semal_result ret = semal_expr(return_stmt.retval.value(), n, source, local, do_codegen);
+		if(ret.is_zero())
+		{
+			ret.val = zero_as(expected_return_ty);
+		}
 		if(ret.is_err())
 		{
 			return ret;
@@ -7584,6 +7598,10 @@ sval zero_as(const type_t& ty)
 		if(prim.is_floating_point())
 		{
 			ret.val = literal_val{0.0};
+		}
+		else if(prim.p == prim_ty::type::boolean)
+		{
+			ret.val = literal_val{false};
 		}
 		else
 		{
