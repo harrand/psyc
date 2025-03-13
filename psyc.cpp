@@ -382,7 +382,7 @@ struct codegen_t
 	std::unique_ptr<llvm::DIBuilder> debug;
 	llvm::DICompileUnit* dbg = nullptr;
 
-	llvm::GlobalVariable* declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage = false);
+	llvm::GlobalVariable* declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage = false, bool is_thread_local = false);
 } codegen;
 
 
@@ -1393,9 +1393,10 @@ constexpr const char* scope_type_names[] =
 	"<UNDEFINED SCOPE TYPE>"
 };
 
-llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage)
+llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, type_t ty, sval val, bool external_linkage, bool is_thread_local)
 {
 	auto linkage = external_linkage ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::PrivateLinkage;
+	auto tls = is_thread_local ? llvm::GlobalVariable::LocalExecTLSModel : llvm::GlobalVariable::NotThreadLocal;
 	bool is_const = !(ty.qual | typequal_mut);
 	if(val.ll != nullptr)
 	{
@@ -1413,7 +1414,7 @@ llvm::GlobalVariable* codegen_t::declare_global_variable(std::string_view name, 
 			initialiser = llvm::Constant::getNullValue(val.ty.llvm());
 		}
 	}
-	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, ty.llvm(), is_const, linkage, initialiser, name);
+	auto gvar = std::make_unique<llvm::GlobalVariable>(*this->mod, ty.llvm(), is_const, linkage, initialiser, name, nullptr, tls);
 	llvm::GlobalVariable* ret = gvar.get();
 	this->global_variable_storage.push_back(std::move(gvar));
 	return ret;
@@ -2557,6 +2558,7 @@ enum class token : std::uint32_t
 	keyword_enum,
 	keyword_ref,
 	keyword_deref,
+	keyword_atomic_deref,
 	keyword_defer,
 	keyword_at,
 	keyword_true,
@@ -3035,6 +3037,14 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 	{
 		.name = "deref keyword",
 		.front_identifier = "deref",
+		.trivial = true,
+		.allow_run_on = false
+	},
+
+	tokeniser
+	{
+		.name = "atomic_deref keyword",
+		.front_identifier = "atomic deref",
 		.trivial = true,
 		.allow_run_on = false
 	},
@@ -3533,6 +3543,7 @@ enum class unop_type
 	invert,
 	ref,
 	deref,
+	atomic_deref,
 	_count
 };
 
@@ -3549,7 +3560,8 @@ struct ast_unop_expr
 			"minus",
 			"invert",
 			"ref",
-			"deref"
+			"deref",
+			"atomic_deref"
 		}[static_cast<int>(this->type)]);
 	}
 };
@@ -5927,8 +5939,13 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 	{
 		rhs_result.load_if_variable();
 		rhs_result.convert_to(lhs_ty);
-		if(lhs_result.label.starts_with("deref"))
+		bool is_atomic = false;
+		if(lhs_result.label.starts_with("atomic deref") || lhs_result.label.starts_with("deref"))
 		{
+			if(lhs_result.label.starts_with("atomic deref"))
+			{
+				is_atomic = true;
+			}
 			// probably a deref
 			// val.ll will contain the loaded value
 			// but if a deref expr is the lhs of an assign, then we actually want the original ptr
@@ -5937,6 +5954,13 @@ semal_result semal_assign_biop_expr(const ast_biop_expr& expr, node& n, std::str
 			lhs_result.val.ll = static_cast<llvm::Value*>(lhs_result.val.usrdata2);
 		}
 		codegen.ir->CreateStore(rhs_result.val.ll, lhs_result.val.ll);
+		/*
+		auto store_inst = codegen.ir->CreateStore(rhs_result.val.ll, lhs_result.val.ll);
+		if(is_atomic)
+		{
+			store_inst->setAtomic(llvm::AtomicOrdering::Monotonic);
+		}
+		*/
 	}
 	lhs_result.val.ty = rhs_result.val.ty;
 	lhs_result.val.val = rhs_result.val.val;
@@ -6411,7 +6435,7 @@ semal_result semal_ref_unop_expr(const ast_unop_expr& expr, node& n, std::string
 	};
 }
 
-semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool atomic, bool do_codegen)
 {
 	semal_result expr_result = semal_expr(*expr.rhs, n, source, local, do_codegen);
 	if(expr_result.is_err())
@@ -6429,7 +6453,7 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	semal_result ret
 	{
 		.t = semal_type::misc,
-		.label = std::format("deref {}", expr_result.label),
+		.label = std::format("{} {}", atomic ? "atomic deref" : "deref", expr_result.label),
 		.val =
 		{
 			.val = std::monostate{},
@@ -6439,7 +6463,12 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	if(do_codegen)
 	{
 		expr_result.load_if_variable();
-		ret.val.ll = codegen.ir->CreateLoad(ty.llvm(), expr_result.val.ll);
+		auto load_inst = codegen.ir->CreateLoad(ty.llvm(), expr_result.val.ll);
+		if(atomic)
+		{
+			load_inst->setAtomic(llvm::AtomicOrdering::Monotonic);
+		}
+		ret.val.ll = load_inst;
 		ret.val.usrdata2 = expr_result.val.ll;
 	}
 	return ret;
@@ -6460,7 +6489,10 @@ semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_vie
 			return semal_ref_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		case deref:
-			return semal_deref_unop_expr(expr, n, source, local, do_codegen);
+			return semal_deref_unop_expr(expr, n, source, local, false, do_codegen);
+		break;
+		case atomic_deref:
+			return semal_deref_unop_expr(expr, n, source, local, true, do_codegen);
 		break;
 		default:
 			panic("unknown unop type detected {}", n.begin_location);
@@ -6793,11 +6825,16 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			else
 			{
 				bool external_linkage = false;
+				bool is_thread_local = false;
 				for (const auto& [name, maybe_expr] : attributes)
 				{
 					if(name == "public_linkage")
 					{
 						external_linkage = true;
+					}
+					else if(name == "thread_local")
+					{
+						is_thread_local = true;
 					}
 					else if(name == "private")
 					{
@@ -6824,7 +6861,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 						{
 							init_result.val.ty = ret.val.ty;
 						}
-						ret.val.ll = codegen.declare_global_variable(decl.name, ret.val.ty, init_result.val, external_linkage);
+						ret.val.ll = codegen.declare_global_variable(decl.name, ret.val.ty, init_result.val, external_linkage, is_thread_local);
 						llvm::DIGlobalVariable* dbg_var = codegen.debug->createTempGlobalVariableFwdDecl(file, decl.name, decl.name, file, n.begin_location.line, ret.val.ty.debug_llvm(), true);
 					}
 					else
@@ -9341,6 +9378,7 @@ DEFINE_UNOPIFICATION_CHORDS(dash, minus)
 DEFINE_UNOPIFICATION_CHORDS(invert, invert)
 DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
 DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
+DEFINE_UNOPIFICATION_CHORDS(keyword_atomic_deref, atomic_deref)
 
 DEFINE_BIOPIFICATION_CHORDS(cast, cast)
 DEFINE_BIOPIFICATION_CHORDS(plus, plus)
@@ -10997,6 +11035,40 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		semal_result result = semal_expr(call.params.front(), n, source, local, false);
 		auto debug = std::get<bool>(std::get<literal_val>(result.val.val));
 		global.args->debug_symbols = debug;
+	}
+	else if(call.function_name == "__atomic_add")
+	{
+		semal_result ptr = semal_expr(call.params[0], n, source, local, true);
+		if(!ptr.val.ty.is_ptr())
+		{
+			return semal_result::err("first parameter to __atomic_add must be a pointer. you have provided a {}", ptr.val.ty.name());
+		}
+		ptr.load_if_variable();
+		semal_result addval = semal_expr(call.params[1], n, source, local, true);
+		if(!addval.val.ty.is_prim())
+		{
+			return semal_result::err("second parameter to __atomic_add must be an integral type. you have provided a {}", addval.val.ty.name());
+		}
+		if(!(addval.val.ty.qual & typequal_static))
+		{
+			return semal_result::err("second parameter to __atomic_add must be static. you have provided a {}", addval.val.ty.name());
+		}
+		return semal_result
+		{
+			.t = semal_type::misc,
+			.val = sval
+			{
+				.ty = type_t::create_void_type(),
+				.ll = codegen.ir->CreateAtomicRMW
+				(
+					llvm::AtomicRMWInst::BinOp::Add,
+					ptr.val.ll,
+					addval.val.llvm(),
+					llvm::MaybeAlign(),
+					llvm::AtomicOrdering::Monotonic
+				)
+			}
+		};
 	}
 	else if(call.function_name == "__message")
 	{
