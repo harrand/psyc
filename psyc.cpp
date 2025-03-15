@@ -542,6 +542,12 @@ constexpr bool operator&(typequal lhs, typequal& rhs)
 {
 	return static_cast<int>(lhs) & static_cast<int>(rhs);
 }
+
+constexpr typequal operator~(typequal rhs)
+{
+	return static_cast<typequal>(~static_cast<int>(rhs));
+}
+
 constexpr const char* typequal_names[] =
 {
 	"",
@@ -6700,6 +6706,12 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			val.ty = parse_ty;
 		}
 	}
+	if(attributes.contains("__force_mutable"))
+	{
+		// remove static and force mut
+		val.ty.qual = static_cast<typequal>(val.ty.qual & ~typequal_static);
+		val.ty.qual = val.ty.qual | typequal_mut;
+	}
 	if(val.ty.qual & typequal_static && !decl.initialiser.has_value())
 	{
 		return semal_result::err("decl \"{}\" is of static type \"{}\" but no initialiser. static variables cannot be left uninitialised.", decl.name, val.ty.name());
@@ -7176,8 +7188,35 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
 				{
 					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
+					child_stmt.attributes =
+					{
+						{"__force_mutable", std::nullopt}
+					};
+					if(child_decl_stmt.decl.type_name != deduced_type)
+					{
+						child_decl_stmt.decl.type_name += " mut";
+					}
 					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
-					iter = blk->children.erase(iter);
+					// convert the actual child to an *assignment*
+					if(child_decl_stmt.decl.initialiser.has_value())
+					{
+						AS_A(child.payload, ast_stmt).stmt_ = ast_expr_stmt
+						{
+							.expr = ast_expr
+							{
+								.expr_ = ast_biop_expr
+								{
+									.lhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = child_decl_stmt.decl.name}},
+									.type = biop_type::assign,
+									.rhs = child_decl_stmt.decl.initialiser.value()
+								},
+							}
+						};
+					}
+					else
+					{
+						iter = blk->children.erase(iter);
+					}
 					continue;
 				}
 			}
@@ -7265,8 +7304,35 @@ semal_result semal_for_stmt(const ast_for_stmt& for_stmt, node& n, std::string_v
 				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
 				{
 					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
+					child_stmt.attributes =
+					{
+						{"__force_mutable", std::nullopt}
+					};
+					if(child_decl_stmt.decl.type_name != deduced_type)
+					{
+						child_decl_stmt.decl.type_name += " mut";
+					}
 					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
-					iter = blk->children.erase(iter);
+					// convert the actual child to an *assignment*
+					if(child_decl_stmt.decl.initialiser.has_value())
+					{
+						AS_A(child.payload, ast_stmt).stmt_ = ast_expr_stmt
+						{
+							.expr = ast_expr
+							{
+								.expr_ = ast_biop_expr
+								{
+									.lhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = child_decl_stmt.decl.name}},
+									.type = biop_type::assign,
+									.rhs = child_decl_stmt.decl.initialiser.value()
+								},
+							}
+						};
+					}
+					else
+					{
+						iter = blk->children.erase(iter);
+					}
 					continue;
 				}
 			}
