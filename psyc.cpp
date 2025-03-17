@@ -1453,6 +1453,7 @@ struct semal_state2
 		sval var;
 		srcloc loc = {};
 		bool globally_visible = true;
+		bool ignore_already_defined = false;
 	};
 
 	string_map<struct_ty> structs = {};
@@ -1635,7 +1636,7 @@ struct semal_local_state
 
 	void declare_macro(std::string macro_name, semal_state2::macro_data_t macro);
 	void declare_function(std::string function_name, fn_ty ty, llvm::Function* location = nullptr, srcloc loc = {}, bool maybe_globally_visible = true);
-	void declare_variable(std::string variable_name, sval val, srcloc loc = {}, bool globally_visible = true);
+	void declare_variable(std::string variable_name, sval val, srcloc loc = {}, bool globally_visible = true, bool ignore_already_decl = false);
 	void declare_enum(std::string enum_name, enum_ty ty, srcloc loc = {});
 	void declare_struct(std::string struct_name, struct_ty ty, srcloc loc = {});
 
@@ -1908,18 +1909,27 @@ void semal_local_state::declare_macro(std::string macro_name, semal_state2::macr
 	}
 }
 
-void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc, bool globally_visible)
+void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc, bool globally_visible, bool ignore_already_decl)
 {
 	auto [local, glob] = this->find_variable(variable_name);
-	if(local != nullptr || glob != nullptr)
+	if((local != nullptr || glob != nullptr) && !ignore_already_decl)
 	{
-		error(loc, "duplicate definition of variable \"{}\"", variable_name);
+		auto* ptr = local;
+		if(ptr == nullptr)
+		{
+			ptr = glob;
+		}
+		if(!ptr->ignore_already_defined)
+		{
+			error(loc, "duplicate definition of variable \"{}\"", variable_name);
+		}
 	}
 	auto data = semal_state2::variable_data
 	{
 		.var = val,
 		.loc = loc,
-		.globally_visible = globally_visible
+		.globally_visible = globally_visible,
+		.ignore_already_defined = ignore_already_decl
 	};
 	this->state.variables.emplace(variable_name, data);
 	if(this->scope == scope_type::translation_unit)
@@ -6852,7 +6862,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					{
 						maybe_globally_visible = false;
 					}
-					else
+					else if(!name.starts_with("__"))
 					{
 						warning(n.begin_location, "irrelevant attribute \"{}\" ignored", name);
 					}
@@ -6893,7 +6903,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 					}
 				}
 
-				local->declare_variable(decl.name, ret.val, n.begin_location, maybe_globally_visible);
+				local->declare_variable(decl.name, ret.val, n.begin_location, maybe_globally_visible, attributes.contains("__force_mutable"));
 				ret.t = semal_type::variable_decl;
 			}
 		}
@@ -7164,22 +7174,11 @@ semal_result semal_if_stmt(const ast_if_stmt& if_stmt, node& n, std::string_view
 	return semal_result::null();
 }
 
-semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+void hoist_variable_decls(node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
-	emit_debug_location(n);
-	semal_result cond_result = semal_expr(while_stmt.condition, n, source, local, do_codegen);
-	if(cond_result.is_err())
+	if(do_codegen)
 	{
-		return cond_result;
-	}
-	// go through all child nodes
-	// if they are decl statements, do them now.
-	// this is for codegen reasons.
-	// what we really really do not want to do is alloca in a loop. remember allocas last till the end of the scope, *not* basic block.
-	node* blk = try_get_block_child(n);
-	if(blk != nullptr && do_codegen)
-	{
-		for(auto iter = blk->children.begin(); iter != blk->children.end();)
+		for(auto iter = n.children.begin(); iter != n.children.end();)
 		{
 			auto& child = *iter;
 			if(IS_A(child.payload, ast_stmt))
@@ -7215,14 +7214,30 @@ semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::st
 					}
 					else
 					{
-						iter = blk->children.erase(iter);
+						iter = n.children.erase(iter);
 					}
 					continue;
 				}
 			}
+			hoist_variable_decls(child, source, local, do_codegen);
 			iter++;
 		}
 	}
+}
+
+semal_result semal_while_stmt(const ast_while_stmt& while_stmt, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	emit_debug_location(n);
+	semal_result cond_result = semal_expr(while_stmt.condition, n, source, local, do_codegen);
+	if(cond_result.is_err())
+	{
+		return cond_result;
+	}
+	// go through all child nodes
+	// if they are decl statements, do them now.
+	// this is for codegen reasons.
+	// what we really really do not want to do is alloca in a loop. remember allocas last till the end of the scope, *not* basic block.
+	hoist_variable_decls(*try_get_block_child(n), source, local, do_codegen);
 
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
@@ -7288,57 +7303,8 @@ semal_result semal_for_stmt(const ast_for_stmt& for_stmt, node& n, std::string_v
 	{
 		return cond_result;
 	}
-	// go through all child nodes
-	// if they are decl statements, do them now.
-	// this is for codegen reasons.
-	// what we really really do not want to do is alloca in a loop. remember allocas last till the end of the scope, *not* basic block.
-	node* blk = try_get_block_child(n);
-	if(blk != nullptr && do_codegen)
-	{
-		for(auto iter = blk->children.begin(); iter != blk->children.end();)
-		{
-			auto& child = *iter;
-			if(IS_A(child.payload, ast_stmt))
-			{
-				auto child_stmt = AS_A(child.payload, ast_stmt);
-				if(IS_A(child_stmt.stmt_, ast_decl_stmt))
-				{
-					auto child_decl_stmt = AS_A(child_stmt.stmt_, ast_decl_stmt);
-					child_stmt.attributes =
-					{
-						{"__force_mutable", std::nullopt}
-					};
-					if(child_decl_stmt.decl.type_name != deduced_type)
-					{
-						child_decl_stmt.decl.type_name += " mut";
-					}
-					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
-					// convert the actual child to an *assignment*
-					if(child_decl_stmt.decl.initialiser.has_value())
-					{
-						AS_A(child.payload, ast_stmt).stmt_ = ast_expr_stmt
-						{
-							.expr = ast_expr
-							{
-								.expr_ = ast_biop_expr
-								{
-									.lhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = child_decl_stmt.decl.name}},
-									.type = biop_type::assign,
-									.rhs = child_decl_stmt.decl.initialiser.value()
-								},
-							}
-						};
-					}
-					else
-					{
-						iter = blk->children.erase(iter);
-					}
-					continue;
-				}
-			}
-			iter++;
-		}
-	}
+	
+	hoist_variable_decls(*try_get_block_child(n), source, local, do_codegen);
 
 	type_t expected_cond_ty = type_t::create_primitive_type(prim_ty::type::boolean);
 	const type_t& actual_cond_ty = cond_result.val.ty;
