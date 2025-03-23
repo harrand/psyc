@@ -1464,6 +1464,7 @@ struct semal_state2
 	using function_value = decltype(functions)::mapped_type;
 	string_map<variable_data> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
+	string_map<type_t> alias_types = {};
 
 	struct macro_data_t
 	{
@@ -1480,6 +1481,7 @@ struct semal_state2
 enum class semal_type
 {
 	variable_decl,
+	alias_decl,
 	macro_decl,
 	macro_impl,
 	function_decl,
@@ -1639,6 +1641,7 @@ struct semal_local_state
 	void declare_variable(std::string variable_name, sval val, srcloc loc = {}, bool globally_visible = true, bool ignore_already_decl = false);
 	void declare_enum(std::string enum_name, enum_ty ty, srcloc loc = {});
 	void declare_struct(std::string struct_name, struct_ty ty, srcloc loc = {});
+	void declare_alias(std::string alias_name, type_t alias_ty, srcloc loc = {});
 
 	pair_of<semal_state2::macro_value*> find_macro(std::string_view macro_name);
 	pair_of<semal_state2::function_value*> find_function(std::string_view function_name);
@@ -1823,6 +1826,26 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 				}
 			}
 
+			for(const auto& [name, aliasval] : global.state.alias_types)
+			{
+				if(name == word)
+				{
+					current_type.payload = aliasval.payload;
+					current_type.qual = current_type.qual | aliasval.qual;
+					break;
+				}
+			}
+
+			for(const auto& [name, aliasval] : this->alias_types)
+			{
+				if(name == word)
+				{
+					current_type.payload = aliasval.payload;
+					current_type.qual = current_type.qual | aliasval.qual;
+					break;
+				}
+			}
+
 			// Or with structs
 			for (const auto& [name, structval] : global.state.structs)
 			{
@@ -1968,6 +1991,29 @@ void semal_local_state::declare_struct(std::string struct_name, struct_ty ty, sr
 		// declare it globally too.
 		global.state.structs.emplace(struct_name, ty);
 	}
+}
+
+void semal_local_state::declare_alias(std::string alias_name, type_t alias_ty, srcloc loc)
+{
+	if(!this->state.parse_type(alias_name).is_badtype())
+	{
+		error(loc, "alias \"{}\" is invalid because typename was already defined", alias_name);
+	}
+	this->state.alias_types.emplace(alias_name, alias_ty);
+	/*
+	auto [local, glob] = this->find_struct(struct_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate definition of struct \"{}\"", struct_name);
+	}
+	ty.label = struct_name;
+	this->state.structs.emplace(struct_name, ty);
+	if(this->scope == scope_type::translation_unit)
+	{
+		// declare it globally too.
+		global.state.structs.emplace(struct_name, ty);
+	}
+	*/
 }
 
 pair_of<semal_state2::macro_value*> semal_local_state::find_macro(std::string_view macro_name)
@@ -2576,6 +2622,7 @@ enum class token : std::uint32_t
 	keyword_deref,
 	keyword_atomic_deref,
 	keyword_defer,
+	keyword_alias,
 	keyword_at,
 	keyword_true,
 	keyword_false,
@@ -3075,6 +3122,14 @@ std::array<tokeniser, static_cast<int>(token::_count)> token_traits
 
 	tokeniser
 	{
+		.name = "alias keyword",
+		.front_identifier = "alias",
+		.trivial = true,
+		.allow_run_on = false
+	},
+
+	tokeniser
+	{
 		.name = "at keyword",
 		.front_identifier = "at",
 		.trivial = true,
@@ -3560,6 +3615,7 @@ enum class unop_type
 	ref,
 	deref,
 	atomic_deref,
+	alias,
 	_count
 };
 
@@ -3577,7 +3633,8 @@ struct ast_unop_expr
 			"invert",
 			"ref",
 			"deref",
-			"atomic_deref"
+			"atomic_deref",
+			"alias"
 		}[static_cast<int>(this->type)]);
 	}
 };
@@ -6463,8 +6520,13 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	{
 		return semal_result::err("cannot deref non-pointer-type \"{}\"", ty.name());
 	}
+	auto tyname = ty.name();
 	ptr_ty ptr = AS_A(ty.payload, ptr_ty);
 	ty = *ptr.underlying_ty;
+	if (ty.is_void())
+	{
+		return semal_result::err("illegal deref of type \"{}\"", tyname);
+	}
 
 	semal_result ret
 	{
@@ -6490,6 +6552,22 @@ semal_result semal_deref_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	return ret;
 }
 
+semal_result semal_alias_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	const auto& thing = *expr.rhs;
+	if(!IS_A(thing.expr_, ast_symbol_expr))
+	{
+		return semal_result::err("rhs of 'alias' expr must be a symbol expression, but instead it is a {}", thing.type_name());
+	}
+	std::string_view tyname = AS_A(thing.expr_, ast_symbol_expr).symbol;
+
+	return semal_result
+	{
+		.t = semal_type::alias_decl,
+		.label = std::string{tyname}
+	};
+}
+
 semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	using enum unop_type;
@@ -6509,6 +6587,9 @@ semal_result semal_unop_expr(const ast_unop_expr& expr, node& n, std::string_vie
 		break;
 		case atomic_deref:
 			return semal_deref_unop_expr(expr, n, source, local, true, do_codegen);
+		break;
+		case alias:
+			return semal_alias_unop_expr(expr, n, source, local, do_codegen);
 		break;
 		default:
 			panic("unknown unop type detected {}", n.begin_location);
@@ -6669,6 +6750,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	sval val = wrap_type(type_t::badtype());
 	semal_result init_result;
 	bool is_zero_init = false;
+	bool init_is_static = false;
 	if(decl.initialiser.has_value())
 	{
 		init_result = semal_expr(decl.initialiser.value(), n, source, local, do_codegen);
@@ -6688,6 +6770,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 		{
 			return semal_result::err("cannot initialise declaration with initialiser of type \"{}\"", init_result.val.ty.name());
 		}
+		init_is_static = (init_result.val.ty.qual & typequal_static);
 		val = init_result.val;
 	}
 	if(decl.type_name != deduced_type)
@@ -6712,6 +6795,10 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 				{
 					return semal_result::err("decl \"{}\" was defined with explicit type \"{}\", but the initialiser expression type \"{}\" is not implicitly convertible", decl.name, decl.type_name, val.ty.name());
 				}
+				if((parse_ty.qual & typequal_static) && !init_is_static)
+				{
+					return semal_result::err("decl \"{}\" of static type \"{}\" had non-static initialiser of type \"{}\"", decl.name, parse_ty.name(), init_result.val.ty.name());
+				}
 			}
 			val.ty = parse_ty;
 		}
@@ -6729,12 +6816,23 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	if(val.ty.is_badtype())
 	{
 		// initialiser did not have a type
-		// this can only mean the decl is actually a macro definition.
-		panic_ifnt(init_result.t == semal_type::macro_decl, "fooey");
-		auto* macrodef = reinterpret_cast<const ast_macrodef_expr*>(init_result.val.usrdata);
-		auto* nodeptr = reinterpret_cast<node*>(init_result.val.usrdata2);
-		local->declare_macro(decl.name, {.macrodef_expr = macrodef, .node = nodeptr});
-		return init_result;
+		// this means the decl is either a macro definition or a alias
+		if(init_result.t == semal_type::macro_decl)
+		{
+			auto* macrodef = reinterpret_cast<const ast_macrodef_expr*>(init_result.val.usrdata);
+			auto* nodeptr = reinterpret_cast<node*>(init_result.val.usrdata2);
+			local->declare_macro(decl.name, { .macrodef_expr = macrodef, .node = nodeptr });
+			return init_result;
+		}
+		else if(init_result.t == semal_type::alias_decl)
+		{
+			local->declare_alias(decl.name, local->parse_type(init_result.label));
+			return init_result;
+		}
+		else
+		{
+			panic("fooey");
+		}
 	}
 	panic_ifnt(!val.ty.is_badtype(), "did not expect semal_decl to return a bad type.");
 	semal_result ret
@@ -9411,6 +9509,7 @@ DEFINE_UNOPIFICATION_CHORDS(invert, invert)
 DEFINE_UNOPIFICATION_CHORDS(keyword_ref, ref)
 DEFINE_UNOPIFICATION_CHORDS(keyword_deref, deref)
 DEFINE_UNOPIFICATION_CHORDS(keyword_atomic_deref, atomic_deref)
+DEFINE_UNOPIFICATION_CHORDS(keyword_alias, alias)
 
 DEFINE_BIOPIFICATION_CHORDS(cast, cast)
 DEFINE_BIOPIFICATION_CHORDS(plus, plus)
