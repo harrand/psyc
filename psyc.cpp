@@ -1465,6 +1465,7 @@ struct semal_state2
 	string_map<variable_data> variables = {};
 	using variable_value = decltype(variables)::mapped_type;
 	string_map<type_t> alias_types = {};
+	using alias_value = decltype(alias_types)::mapped_type;
 
 	struct macro_data_t
 	{
@@ -1480,6 +1481,7 @@ struct semal_state2
 
 enum class semal_type
 {
+	unknown,
 	variable_decl,
 	alias_decl,
 	macro_decl,
@@ -1496,7 +1498,6 @@ enum class semal_type
 	variable_use,
 	variable_ref,
 	zero_expr,
-	unknown
 } t;
 
 struct semal_result
@@ -1564,7 +1565,7 @@ struct semal_result
 		}
 	}
 
-	semal_type t;
+	semal_type t = semal_type::unknown;
 	std::string label;
 	sval val = sval{};
 };
@@ -1648,6 +1649,7 @@ struct semal_local_state
 	pair_of<semal_state2::variable_value*> find_variable(std::string_view variable_name);
 	pair_of<semal_state2::enum_value*> find_enum(std::string_view enum_name);
 	pair_of<semal_state2::struct_value*> find_struct(std::string_view struct_name);
+	pair_of<semal_state2::alias_value*> find_alias(std::string_view alias_name);
 
 	bool enum_add_entry(std::string enum_name, std::string entry_name, sval value);
 	bool struct_add_member(std::string struct_name, std::string member_name, type_t member_ty);
@@ -1995,25 +1997,20 @@ void semal_local_state::declare_struct(std::string struct_name, struct_ty ty, sr
 
 void semal_local_state::declare_alias(std::string alias_name, type_t alias_ty, srcloc loc)
 {
+	auto [local, glob] = this->find_alias(alias_name);
+	if(local != nullptr || glob != nullptr)
+	{
+		error(loc, "duplicate alias \"{}\"", alias_name);
+	}
 	if(!this->state.parse_type(alias_name).is_badtype())
 	{
 		error(loc, "alias \"{}\" is invalid because typename was already defined", alias_name);
 	}
 	this->state.alias_types.emplace(alias_name, alias_ty);
-	/*
-	auto [local, glob] = this->find_struct(struct_name);
-	if(local != nullptr || glob != nullptr)
-	{
-		error(loc, "duplicate definition of struct \"{}\"", struct_name);
-	}
-	ty.label = struct_name;
-	this->state.structs.emplace(struct_name, ty);
 	if(this->scope == scope_type::translation_unit)
 	{
-		// declare it globally too.
-		global.state.structs.emplace(struct_name, ty);
+		global.state.alias_types.emplace(alias_name, alias_ty);
 	}
-	*/
 }
 
 pair_of<semal_state2::macro_value*> semal_local_state::find_macro(std::string_view macro_name)
@@ -2130,6 +2127,30 @@ pair_of<semal_state2::struct_value*> semal_local_state::find_struct(std::string_
 
 	semal_state2::struct_value* global_ret = nullptr;
 	if(global_iter != global.state.structs.end())
+	{
+		global_ret = &global_iter->second;
+	}
+	return {local_ret, global_ret};
+}
+
+pair_of<semal_state2::alias_value*> semal_local_state::find_alias(std::string_view alias_name)
+{
+	semal_local_state* loc = this;
+	semal_state2::alias_value* local_ret = nullptr;
+	auto iter = loc->state.alias_types.find(alias_name);
+	while(iter == loc->state.alias_types.end() && loc->parent != nullptr)
+	{
+		loc = loc->parent;
+		iter = loc->state.alias_types.find(alias_name);
+	}
+	if(iter != loc->state.alias_types.end())
+	{
+		local_ret = &iter->second;
+	}
+	auto global_iter = global.state.alias_types.find(alias_name);
+
+	semal_state2::alias_value* global_ret = nullptr;
+	if(global_iter != global.state.alias_types.end())
 	{
 		global_ret = &global_iter->second;
 	}
@@ -5332,6 +5353,33 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 			};
 		}
 	}
+	const auto [al_local, al_global] = local->find_alias(symbol);
+	if(al_local != nullptr)
+	{
+		return
+		{
+			.t = semal_type::misc,
+			.label = std::format("type"),
+			.val =
+			{
+				.val = {},
+				.ty = *al_local
+			}
+		};
+	}
+	if(al_global != nullptr)
+	{
+		return
+		{
+			.t = semal_type::misc,
+			.label = std::format("type"),
+			.val =
+			{
+				.val = {},
+				.ty = *al_global
+			}
+		};
+	}
 	// i give up.
 	return semal_result::err("unknown symbol \"{}\"", symbol);
 }
@@ -6564,7 +6612,12 @@ semal_result semal_alias_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 	return semal_result
 	{
 		.t = semal_type::alias_decl,
-		.label = std::string{tyname}
+		.label = std::string{tyname},
+		.val =
+		{
+			.val = {},
+			.ty = local->parse_type(tyname)
+		}
 	};
 }
 
@@ -6813,6 +6866,11 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 	{
 		return semal_result::err("decl \"{}\" is of static type \"{}\" but no initialiser. static variables cannot be left uninitialised.", decl.name, val.ty.name());
 	}
+	if(init_result.t == semal_type::alias_decl)
+	{
+		local->declare_alias(decl.name, local->parse_type(init_result.label));
+		return init_result;
+	}
 	if(val.ty.is_badtype())
 	{
 		// initialiser did not have a type
@@ -6824,11 +6882,7 @@ semal_result semal_decl(const ast_decl& decl, node& n, std::string_view source, 
 			local->declare_macro(decl.name, { .macrodef_expr = macrodef, .node = nodeptr });
 			return init_result;
 		}
-		else if(init_result.t == semal_type::alias_decl)
-		{
-			local->declare_alias(decl.name, local->parse_type(init_result.label));
-			return init_result;
-		}
+		
 		else
 		{
 			panic("fooey");
