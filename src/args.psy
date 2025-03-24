@@ -1,0 +1,45 @@
+[[private]]
+impl_win32_get_args ::= func(argc : s32 mut&, argv : u8&& mut&) -> v0
+{
+	GetCommandLineW ::= func() -> u16& := extern;
+	CommandLineToArgvW ::= func(lpCmdLine : u16&, pNumArgs : s32 mut&) -> u16&& := extern;
+
+	cmd_line ::= GetCommandLineW();
+	wide_argc : s32 mut;
+	wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
+
+	if(wide_argv == null)
+	{
+		deref(argc) = 0;
+	}
+	deref(argc) = wide_argc;
+	deref(argv) = wide_argv@_;
+};
+
+psyc_build_target ::= enum
+{
+	.objects := 0;
+	.executable := 1;
+	.library := 2;
+};
+
+psyc_compile_args ::= struct
+{
+	build_file : u8&;
+	output_dir : u8&;
+	output_name : u8&;
+};
+
+psyc_parse_args ::= func() -> psyc_compile_args
+{
+	argc : s32 mut;
+	argv : u8&& mut;
+	if static(__is_windows)
+	{
+		impl_win32_get_args(ref argc, ref argv);
+	}
+
+	ret ::= zero@psyc_compile_args;
+	return ret;
+};
+
