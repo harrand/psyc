@@ -1,8 +1,10 @@
 [[private]]
-impl_win32_get_args ::= func(argc : s32 mut&, argv : u8&& mut&) -> v0
+impl_win32_get_args ::= func(argc : s32 mut&, argv : u8&& mut&, a : arena mut&) -> v0
 {
 	GetCommandLineW ::= func() -> u16& := extern;
 	CommandLineToArgvW ::= func(lpCmdLine : u16&, pNumArgs : s32 mut&) -> u16&& := extern;
+	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16&, cchWideChar : s32, lpMultiByteStr : u8 mut&, cbMultiByte : s32, lpDefaultChar : u16&, lpUsedDefaultChar : s32 mut&) -> s32 := extern;
+	LocalFree ::= func(hMem : u64) -> u64 := extern;
 
 	cmd_line ::= GetCommandLineW();
 	wide_argc : s32 mut;
@@ -12,8 +14,40 @@ impl_win32_get_args ::= func(argc : s32 mut&, argv : u8&& mut&) -> v0
 	{
 		deref(argc) = 0;
 	}
+
+	args : u8 mut& mut& mut := null;
+	args_cap : u64 mut := 0;
+	args_size : u64 mut := 0;
+
+	i : s32 mut;
+	for(i = 0, i < wide_argc, i = i + 1)
+	{
+		size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv at i), -1, null, 0, null, null);
+		if(size_needed > 0)
+		{
+			if(args == null)
+			{
+				args_cap = 16;
+				args = arena_push(a, __sizeof(deref args) * args_cap);
+			}
+			if(args_size >= args_cap)
+			{
+				oldcap ::= args_cap;
+				args_cap = args_cap * 2;
+				oldargs ::= args;
+				args = arena_push(a, __sizeof(deref args) * args_cap);
+				__memcpy(args, oldargs, oldcap);
+			}
+			deref(args at args_size) = arena_push(a, __sizeof(u8) * size_needed);
+			WideCharToMultiByte(0, 0, deref(wide_argv at i), -1, deref(args at args_size), size_needed, null, null);
+			args_size = args_size + 1;
+		}
+	}
+
+	LocalFree(wide_argv@u64);
+
 	deref(argc) = wide_argc;
-	deref(argv) = wide_argv@_;
+	deref(argv) = args@_;
 };
 
 psyc_build_target ::= enum
@@ -30,16 +64,38 @@ psyc_compile_args ::= struct
 	output_name : u8&;
 };
 
-psyc_parse_args ::= func() -> psyc_compile_args
+psyc_parse_args ::= func(a : arena mut&) -> psyc_compile_args
 {
 	argc : s32 mut;
 	argv : u8&& mut;
 	if static(__is_windows)
 	{
-		impl_win32_get_args(ref argc, ref argv);
+		impl_win32_get_args(ref argc, ref argv, a);
 	}
 
-	ret ::= zero@psyc_compile_args;
+	ret : psyc_compile_args mut := zero@psyc_compile_args;
+
+	i : s32 mut;
+	for(i = 1, i < argc, i = i + 1)
+	{
+		curarg ::= deref(argv at i);
+		isopt ::= cstr_starts_with(curarg, "-");
+		if(!isopt)
+		{
+			// must be a build file then.
+			if(ret.build_file != null)
+			{
+				psyc_fatal_error(zero, "more than one build file specified. you can only specify a single build file.");
+			}
+			ret.build_file = curarg;
+		}
+	}
+
 	return ret;
 };
 
+== build ==
+{
+	add_source_file("arena.psy");
+	add_source_file("diag.psy");
+}

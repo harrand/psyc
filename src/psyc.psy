@@ -1,12 +1,29 @@
+setup_arenas ::= macro() -> v0
+{
+	permanent_arena_val : arena mut := arena_create(4096 * 1024);
+	permanent_arena ::= ref permanent_arena_val;
+	defer puts("arena free: ");
+	defer putuint(permanent_arena_val.cursor);
+	defer puts("B");
+	defer putchar(10);
+	defer arena_destroy(permanent_arena_val);
+
+	frame_arena_val : arena mut := arena_create(4096 * 1024);
+	frame_arena ::= ref frame_arena_val;
+	defer arena_destroy(frame_arena_val);
+};
+
 main ::= func() -> s32
 {
-	args ::= psyc_parse_args();
+	setup_arenas();
+	args ::= psyc_parse_args(permanent_arena);
 	defer psyc_report_timings();
 
 	if(args.build_file == null)
 	{
-		//psyc_fatal_error(srcloc_current(), "no build file!");
+		psyc_fatal_error(zero, "no build file!");
 	}
+	psyc_message(zero, args.build_file);
 
 	lex();
 
