@@ -1176,6 +1176,7 @@ struct sval
 	llvm::Value* ll = nullptr;
 	const void* usrdata = nullptr;
 	void* usrdata2 = nullptr;
+	bool is_type = false;
 
 	bool operator==(const sval& rhs) const = default;
 
@@ -5070,7 +5071,39 @@ semal_result semal_funcdef_expr(const ast_funcdef_expr& expr, node& n, std::stri
 
 semal_result semal_expr(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
 
-semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local);
+bool expr_is_alias(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	semal_result param = semal_expr(expr, n, source, local, do_codegen);
+	if(param.is_err())
+	{
+		return false;
+	}
+	return param.val.is_type;
+}
+
+bool expr_is_type(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	semal_result param = semal_expr(expr, n, source, local, do_codegen);
+	if(param.is_err())
+	{
+		auto sym = AS_A(expr.expr_, ast_symbol_expr);
+		return !local->parse_type(sym.symbol).is_badtype();
+	}
+	return param.val.is_type;
+}
+
+bool expr_is_struct(const ast_expr& expr, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
+{
+	semal_result param = semal_expr(expr, n, source, local, do_codegen);
+	if(param.is_err())
+	{
+		auto sym = AS_A(expr.expr_, ast_symbol_expr);
+		return local->parse_type(sym.symbol).is_struct();
+	}
+	return param.val.ty.is_struct();
+}
+
+semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local, bool do_codegen);
 
 semal_result semal(node& n, std::string_view source, semal_local_state* parent = nullptr, bool do_codegen = false);
 
@@ -5080,7 +5113,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 	emit_debug_location(n);
 	// if you get around to static params and are emitting specific implementations, now is probably the time to do it.
 	// use expr.function_name to create fake semal_decls of the implementation type(s) and re-use the functions here instead of searching for them.
-	semal_result builtin_result = semal_call_builtin(expr, n, source, local);
+	semal_result builtin_result = semal_call_builtin(expr, n, source, local, do_codegen);
 	if(!builtin_result.is_null())
 	{
 		return builtin_result;
@@ -5216,6 +5249,10 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 		if(actual_result.is_err())
 		{
 			return actual_result;
+		}
+		if(actual_result.val.is_type)
+		{
+			return semal_result::err("parameter {} in call to function \"{}\" was a type. function parameters cannot be types", i, expr.function_name);
 		}
 		const type_t& actual_ty = actual_result.val.ty;
 		if(!actual_ty.is_convertible_to(expected_ty))
@@ -5363,7 +5400,8 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 			.val =
 			{
 				.val = {},
-				.ty = *al_local
+				.ty = *al_local,
+				.is_type = true
 			}
 		};
 	}
@@ -5376,7 +5414,8 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 			.val =
 			{
 				.val = {},
-				.ty = *al_global
+				.ty = *al_global,
+				.is_type = true
 			}
 		};
 	}
@@ -6616,7 +6655,8 @@ semal_result semal_alias_unop_expr(const ast_unop_expr& expr, node& n, std::stri
 		.val =
 		{
 			.val = {},
-			.ty = local->parse_type(tyname)
+			.ty = local->parse_type(tyname),
+			.is_type = true
 		}
 	};
 }
@@ -11105,7 +11145,7 @@ int main(int argc, char** argv)
 	std::print("\nsetup:    {}s\nlex:      {}s\nparse:    {}s\nsemal:    {}s\ncodegen:  {}s\nassemble: {}s\nlink:     {}s\ntotal:    {}s\n\n", time_setup / 1000.0f, time_lex / 1000.0f, time_parse / 1000.0f, time_semal / 1000.0f, time_codegen / 1000.0f, time_assemble / 1000.0f, time_link / 1000.0f, (time_setup + time_lex + time_parse + time_semal + time_codegen + time_assemble + time_link) / 1000.0f);
 }
 
-semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local)
+semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::string_view source, semal_local_state*& local, bool do_codegen)
 {
 	auto get_as_string = [&n, &source, &local](const ast_expr& expr) -> std::string
 	{
@@ -11314,7 +11354,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		std::string rhs = get_as_string(call.params[1]);
 		std::string result = lhs + rhs;
 
-		return semal_literal_expr({.value = result}, n, source, local, true);
+		return semal_literal_expr({.value = result}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__strlen")
 	{
@@ -11363,7 +11403,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		{
 			.value = static_cast<std::int64_t>(codegen.mod->getDataLayout().getTypeAllocSize(llty))
 		};
-		return semal_literal_expr(lit, n, source, local, true);
+		return semal_literal_expr(lit, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__alignof")
 	{
@@ -11396,7 +11436,7 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		{
 			.value = static_cast<std::int64_t>(codegen.mod->getDataLayout().getABITypeAlign(llty).value() * 8)
 		};
-		return semal_literal_expr(lit, n, source, local, true);
+		return semal_literal_expr(lit, n, source, local, do_codegen);
 		
 	}
 	else if(call.function_name == "__debugbreak")
@@ -11431,12 +11471,24 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		param.val.ty.qual = typequal_none;
 		type_t ty = local->parse_type(AS_A(call.params[1].expr_, ast_symbol_expr).symbol);
 		ty.qual = typequal_none;
-		return semal_literal_expr({.value = param.val.ty == ty}, n, source, local, true);
+		return semal_literal_expr({.value = param.val.ty == ty}, n, source, local, do_codegen);
+	}
+	else if(call.function_name == "__is_type")
+	{
+		return semal_literal_expr({.value = expr_is_type(call.params.front(), n, source, local, do_codegen)}, n, source, local, do_codegen);
+	}
+	else if(call.function_name == "__is_alias")
+	{
+		return semal_literal_expr({.value = expr_is_alias(call.params.front(), n, source, local, do_codegen)}, n, source, local, do_codegen);
+	}
+	else if(call.function_name == "__is_struct")
+	{
+		return semal_literal_expr({.value = expr_is_struct(call.params.front(), n, source, local, do_codegen)}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__typename")
 	{
 		semal_result param = semal_expr(call.params.front(), n, source, local, false);
-		return semal_literal_expr({.value = param.val.ty.name()}, n, source, local, true);
+		return semal_literal_expr({.value = param.val.ty.name()}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__enumname")
 	{
@@ -11459,14 +11511,25 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			{
 				if(value == val)
 				{
-					return semal_literal_expr({.value = std::string{name}}, n, source, local, true);
+					return semal_literal_expr({.value = std::string{name}}, n, source, local, do_codegen);
 				}
 			}
-			return semal_literal_expr(badenum, n, source, local, true);
+			return semal_literal_expr(badenum, n, source, local, do_codegen);
 		}
 
-		semal_result variable = semal_decl(ast_decl{.type_name = "u8& mut", .name = "_enumname_result", .initialiser = ast_expr{.expr_ = badenum}}, n, source, local, true);
-
+		//auto decl = semal_decl(ast_decl{.type_name = "u8& mut", .name = "_enumname_result", .initialiser = ast_expr{.expr_ = badenum}}, n, source, local, true);
+		auto decl_stmt = ast_decl_stmt
+		{
+			.decl =
+			{
+				.type_name = "u8& mut",
+				.name = "_enumname_result",
+				.initialiser = ast_expr{.expr_ = badenum}
+			}
+		};
+		attributes_t attr;
+		attr["__force_mutable"] = {};
+		semal_result variable = semal_decl_stmt(decl_stmt, n, source, local, true, attr);
 		const semal_result* maybe_parent = local->try_find_parent_function();
 		llvm::Function* parent_fn = static_cast<llvm::Function*>(maybe_parent->val.ll);
 		for(const auto& [name, value] : enumty.entries)
@@ -11517,11 +11580,11 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		#undef COMPILER_STAGE
 		#define COMPILER_STAGE OLD_COMPILER_STAGE
 		#undef OLD_COMPILER_STAGE
-		return semal_literal_expr({.value = file_contents}, n, source, local, true);
+		return semal_literal_expr({.value = file_contents}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__file")
 	{
-		return semal_literal_expr({.value = n.begin_location.file.string()}, n, source, local, true);
+		return semal_literal_expr({.value = n.begin_location.file.string()}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__function")
 	{
@@ -11550,19 +11613,19 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 				l = l->parent;
 			}
 		}
-		return semal_literal_expr({.value = ret}, n, source, local, true);
+		return semal_literal_expr({.value = ret}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__line")
 	{
-		return semal_literal_expr({.value = n.begin_location.line}, n, source, local, true);
+		return semal_literal_expr({.value = n.begin_location.line}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__column")
 	{
-		return semal_literal_expr({.value = n.begin_location.column}, n, source, local, true);
+		return semal_literal_expr({.value = n.begin_location.column}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__config")
 	{
-		return semal_literal_expr({.value = global.args->build_config}, n, source, local, true);
+		return semal_literal_expr({.value = global.args->build_config}, n, source, local, do_codegen);
 	}
 	else if(call.function_name == "__memcpy")
 	{
