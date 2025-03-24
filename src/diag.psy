@@ -1,7 +1,109 @@
+psyc_stage ::= enum
+{
+	.setup := 0;
+	.lex := 1;
+};
+
+psyc_stage_times : f32 mut#4;
+
+psyc_colour_red ::= macro() -> v0
+{
+	putchar(27); // esc character
+	putchar('[');
+	putchar('3');
+    putchar('1');
+    putchar('m');
+};
+
+psyc_colour_yellow ::= macro() -> v0
+{
+	putchar(27); // esc character
+	putchar('[');
+	putchar('3');
+    putchar('3');
+    putchar('m');
+};
+
+psyc_colour_blue ::= macro() -> v0
+{
+	putchar(27); // esc character
+	putchar('[');
+	putchar('3');
+    putchar('4');
+    putchar('m');
+};
+
+psyc_colour_reset ::= macro() -> v0
+{
+	putchar(27); // esc character
+	putchar('[');
+    putchar('0');
+    putchar('m');
+};
+
+psyc_exit_failure ::= func() -> v0
+{
+	__debugbreak();
+};
+
 psyc_error ::= func(loc : srcloc, msg : u8&) -> v0
 {
+	psyc_colour_red();
+	puts("error: ");
 	puts(msg);
-	__debugbreak();
+	psyc_colour_reset();
+};
+
+psyc_fatal_error ::= func(loc : srcloc, msg : u8&) -> v0
+{
+	psyc_error(loc, msg);
+	psyc_exit_failure();
+};
+
+if static(__is_windows)
+{
+	QueryPerformanceCounter ::= func(lpPerformanceCount : s64 mut&) -> s32 := extern;
+	QueryPerformanceFrequency ::= func(lpPerformanceCount : s64 mut&) -> s32 := extern;
+}
+
+psyc_gettime ::= func() -> s64
+{
+	if static(__is_windows)
+	{
+		ret : s64 mut;
+		QueryPerformanceCounter(ref ret);
+		return ret;
+	}
+};
+
+psyc_timed ::= macro(stage : psyc_stage) -> v0
+{
+	_f : s64 mut;
+	QueryPerformanceFrequency(ref _f);
+	_t ::= psyc_gettime();
+	_s ::= stage@s64;
+	defer _diff ::= ((psyc_gettime() - _t) * 1000000) / _f;
+	defer _diff_f32 ::= _diff / 1000000.0;
+	defer(deref(psyc_stage_times at _s) = (deref(psyc_stage_times at _s) + _diff_f32));
+};
+
+psyc_report_a_timing ::= func(stage : psyc_stage) -> v0
+{
+	puts(__enumname(stage));
+	puts(": ");
+	putfloat(deref(psyc_stage_times at (stage@s64)));
+	putchar('s');
+	putchar(10);
+};
+
+psyc_report_timings ::= func() -> v0
+{
+	count ::= __sizeof(psyc_stage_times) / __sizeof(deref(psyc_stage_times at 0));
+	i : u32 mut;
+	for(i = 0, i < count, i = i + 1)
+	{
+		psyc_report_a_timing(i@psyc_stage);
+	}
 };
 
 == build ==
