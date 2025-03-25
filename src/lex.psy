@@ -6,6 +6,40 @@ lex_slice ::= struct
 	len : u64;
 };
 
+impl_is_newline ::= func(char : u8) -> bool
+{
+	return char == 10;
+};
+
+impl_is_whitespace ::= func(char : u8) -> bool
+{
+	if(char == 0x20) // ' '
+	{
+		return true;
+	}
+	if(char == 0x0c) // '\f'
+	{
+		return true;
+	}
+	if(char == 0x0a) // '\n'
+	{
+		return true;
+	}
+	if(char == 0x0d) // '\r'
+	{
+		return true;
+	}
+	if(char == 0x09) // '/t'
+	{
+		return true;
+	}
+	if(char == 0x0b) // '/v'
+	{
+		return true;
+	}
+	return false;
+};
+
 lex_token ::= enum
 {
 	.comment := 0;
@@ -70,40 +104,6 @@ lex_token ::= enum
 	.end_of_file := 59;
 };
 
-tokenise_instruction ::= struct
-{
-	name : u8&;
-	front_identifier : u8&;
-	tokenise_fn : func(front : u8&) -> v0;
-	trivial : bool;
-	affects_code : bool;
-	allow_run_on : bool;
-};
-
-[[private]]
-lex_instructions : tokenise_instruction mut#59;
-
-[[private]]
-impl_setup_instruction ::= func(tok : lex_token, inst : tokenise_instruction mut) -> v0
-{
-	inst.name = __enumname(tok);
-	deref(lex_instructions at (tok@s64)) = inst;
-};
-
-[[private]]
-tokenise_comment ::= func(front : u8&) -> v0
-{
-};
-
-lex_setup ::= func() -> v0
-{
-	impl_setup_instruction(lex_token.comment, tokenise_instruction
-	{
-		.front_identifier := "//";
-		.tokenise_fn := tokenise_comment;
-	});
-};
-
 token_data ::= struct
 {
 	tok : lex_token;
@@ -124,10 +124,20 @@ lex_state ::= struct
 	tokens_cap : u64;
 };
 
-impl_is_newline ::= func(char : u8) -> bool
+td_print ::= func(s : lex_state&, tok : token_data) -> v0
 {
-	return char == 10;
+	slice ::= tok.lexeme;
+	puts(__enumname(tok.tok));
+	putchar(' ');
+	lexeme_data ::= (s->src) at (slice.off);
+	j : u64 mut;
+	for(j = 0, j < (slice.len), j = j + 1)
+	{
+		putchar(deref(lexeme_data at j));
+	}
+	putchar(10);
 };
+
 
 ls_advance ::= func(s : lex_state mut&, count : u32) -> v0
 {
@@ -144,12 +154,115 @@ ls_advance ::= func(s : lex_state mut&, count : u32) -> v0
 		{
 			(s->col) = (s->col) + 1;
 		}
+		(s->cursor) = (s->cursor) + 1;
 	}
 };
 
 ls_advance_str ::= func(s : lex_state mut&, str : u8&) -> v0
 {
 	ls_advance(s, cstrlen(str)@_);
+};
+
+ls_push_token ::= func(state : lex_state mut&, token : token_data) -> v0
+{
+	if((state->tokens) == null)
+	{
+		psyc_panic("lex_state did not initialise its token list correctly. it was null.");
+	}
+	if((state->tokens_size) >= (state->tokens_cap))
+	{
+		psyc_panic("lex_state ran out of space for new tokens");
+	}
+	deref((state->tokens) at (state->tokens_size)) = token;
+	(state->tokens_size) = (state->tokens_size) + 1;
+	td_print(state, token);
+};
+
+tokenise_instruction ::= struct
+{
+	name : u8&;
+	front_identifier : u8&;
+	tokenise_fn : func(front : u8&, state : lex_state mut&) -> bool;
+	trivial : bool;
+	affects_code : bool;
+	allow_run_on : bool;
+};
+
+[[private]]
+lex_instructions : tokenise_instruction mut#59;
+
+[[private]]
+impl_setup_instruction ::= func(tok : lex_token, inst : tokenise_instruction mut) -> v0
+{
+	inst.name = __enumname(tok);
+	deref(lex_instructions at (tok@s64)) = inst;
+};
+
+[[private]]
+tokenise_invalid ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	psyc_panic("asserty tokeniser function called. there is a bug in the lexer, or you didn't add support for a new lex token type.");
+	return true;
+};
+
+[[private]]
+tokenise_comment ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	// assume we already found '//' via front identifier.
+	// just advance until we hit a newline.
+	initial ::= state->cursor;
+	chars_left : u64 mut := cstrlen(state->src) - (state->cursor);
+	i : u64 mut;
+	for(i = 0, i < chars_left, i = i + 1)
+	{
+		is_newline ::= impl_is_newline(deref(front at i));
+		if(!is_newline)
+		{
+			ls_advance(state, 1);
+		}
+		if(is_newline)
+		{
+			chars_left = 0;
+		}
+	}
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.comment;
+		.lexeme := lex_slice{.off := initial; .len := i;};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+lex_setup ::= func() -> v0
+{
+	token_type_count ::= __sizeof(lex_instructions) / __sizeof(deref(lex_instructions at 0));
+	i : u64 mut;
+
+	// set them all to instructions that will assert.
+	for(i = 0, i < token_type_count, i = i + 1)
+	{
+		deref(lex_instructions at i) = tokenise_instruction
+		{
+			.front_identifier := "";
+			.tokenise_fn := tokenise_invalid;
+			.trivial := false;
+			.affects_code := false;
+			.allow_run_on := false;
+		};
+	}
+
+	// manually populate them all. if we choose one thats wrong then the assert will go off.
+
+	impl_setup_instruction(lex_token.comment, tokenise_instruction
+	{
+		.front_identifier := "//";
+		.tokenise_fn := tokenise_comment;
+		.trivial := false;
+		.affects_code := false;
+		.allow_run_on := false;
+	});
 };
 
 ls_verbose_print ::= func(s : lex_state&) -> v0
@@ -160,24 +273,78 @@ ls_verbose_print ::= func(s : lex_state&) -> v0
 	for(i = 0, i < (s->tokens_size), i = i + 1)
 	{
 		tok ::= deref ((s->tokens) at i);
-		slice ::= tok.lexeme;
-		puts(__enumname(tok.tok));
-		putchar(' ');
-		lexeme_data ::= (s->src) at (slice.off);
-		j : u64 mut;
-		for(j = 0, j < (slice.len), j = j + 1)
-		{
-			putchar(deref(lexeme_data at j));
-		}
-		putchar(10);
+		td_print(s, tok);
 	}
 };
 
-lex ::= func(src : u8&) -> lex_state
+try_tokenise ::= func(state : lex_state mut&) -> bool
+{
+	token_type_count ::= __sizeof(lex_instructions) / __sizeof(deref(lex_instructions at 0));
+	i : u64 mut;
+
+	while(impl_is_whitespace(deref((state->src) at (state->cursor))))
+	{
+		(state->cursor) = (state->cursor) + 1;
+	}
+	if((state->cursor) >= cstrlen(state->src))
+	{
+		// we are out of chars to lex.
+		return false;
+	}
+	front ::= (state->src) at (state->cursor);
+
+	for(i = 0, i < token_type_count, i = i + 1)
+	{
+		instruction ::= deref(lex_instructions at i);
+		if(instruction.trivial)
+		{
+			// its trivial. do trivial lexing.
+			if(cstr_starts_with(front, instruction.front_identifier))
+			{
+				// match!
+				ls_advance_str(state, instruction.front_identifier);
+				// todo: not zero!
+				ls_push_token(state, zero@token_data);
+				return true;
+			}
+		}
+		if(!(instruction.trivial))
+		{
+			// its not trivial. we must have a tokeniser_fn.
+			tokfn ::= instruction.tokenise_fn;
+			if(tokfn == null)
+			{
+				psyc_panic("non-trivial instruction did not have a tokeniser function");
+				__debugbreak();
+			}
+			if(cstr_starts_with(front, instruction.front_identifier))
+			{
+				tokfn(front, state);
+				return true;
+			}
+		}
+	}
+	psyc_panic("failed to lex");
+	return true;
+};
+
+lex ::= func(src : u8&, a : arena mut&) -> lex_state
 {
 	psyc_timed(psyc_stage.lex);
 	ret : lex_state mut := zero;
 	(ret.src) = src;
+	(ret.tokens_cap) = 1024;
+	(ret.tokens) = arena_push(a, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
+	len ::= cstrlen(src);
+
+	while((ret.cursor) < len@_)
+	{
+		if(!try_tokenise(ref ret))
+		{
+			return ret;
+		}
+	}
+
 	ls_verbose_print(ref ret);
 	return ret;
 };
