@@ -7386,6 +7386,7 @@ void hoist_variable_decls(node& n, std::string_view source, semal_local_state*& 
 					if(child_decl_stmt.decl.type_name != deduced_type)
 					{
 						child_decl_stmt.decl.type_name += " mut";
+						child_decl_stmt.decl.initialiser = std::nullopt;
 					}
 					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
 					// convert the actual child to an *assignment*
