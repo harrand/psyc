@@ -13,6 +13,19 @@ setup_arenas ::= macro() -> v0
 	defer arena_destroy(frame_arena_val);
 };
 
+// read a file path. allocates for the whole file data. returns null if file didnt exist.
+fully_read_file ::= func(path : u8&, a : arena mut&) -> u8 mut&
+{
+	len ::= file_size_bytes(path);
+	if(len == 0)
+	{
+		return null;
+	}
+	data : u8 mut& := arena_push(a, len);
+	file_read(path, data, len);
+	return data;
+};
+
 main ::= func() -> s32
 {
 	setup_arenas();
@@ -23,7 +36,14 @@ main ::= func() -> s32
 	{
 		psyc_fatal_error(zero, "no build file!");
 	}
+	if(!file_exists(args.build_file))
+	{
+		psyc_fatal_error(zero, "build file does not exist.");
+	}
 	psyc_message(zero, args.build_file);
+	buildfile_data ::= fully_read_file(args.build_file, permanent_arena);
+
+	puts(buildfile_data);
 
 	lex();
 
