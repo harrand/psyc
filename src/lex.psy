@@ -40,6 +40,41 @@ impl_is_whitespace ::= func(char : u8) -> bool
 	return false;
 };
 
+impl_is_digit ::= func(char : u8) -> bool
+{
+	if(char >= '0')
+	{
+		if(char <= '9')
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+impl_is_hexdigit ::= func(char : u8) -> bool
+{
+	if(impl_is_digit(char))
+	{
+		return true;
+	}
+	if(char >= 'a')
+	{
+		if(char <= 'f')
+		{
+			return true;
+		}
+	}
+	if(char >= 'A')
+	{
+		if(char <= 'F')
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
 lex_token ::= enum
 {
 	.comment := 0;
@@ -228,7 +263,81 @@ tokenise_comment ::= func(front : u8&, state : lex_state mut&) -> bool
 	ls_push_token(state, token_data
 	{
 		.tok := lex_token.comment;
-		.lexeme := lex_slice{.off := initial; .len := i;};
+		.lexeme := lex_slice{.off := initial; .len := i - 1;};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+[[private]]
+tokenise_multicomment ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	// we're at /*
+	// advance till we find '*/'
+	initial ::= state->cursor;
+	offset_till_close ::= cstr_find(front, "*/");
+	if(offset_till_close == -1)
+	{
+		return false;
+	}
+	ls_advance(state, offset_till_close@_);
+	ls_advance_str(state, "*/");
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.multicomment;
+		.lexeme := lex_slice{.off := initial; .len := offset_till_close@_;};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+[[private]]
+tokenise_integer_literal ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	myfront : u8& mut := front;
+	is_hex_number ::= cstr_starts_with(front, "0x");
+	f ::= deref(front at 0);
+	starts_with_digit ::= impl_is_digit(f);
+	starts_with_minus ::= f == '-';
+
+	[[__force_mutable]]
+	digit_checker : func(char : u8) -> bool := impl_is_digit;
+	if(!is_hex_number)
+	{
+		if(!starts_with_digit)
+		{
+			if(!starts_with_minus)
+			{
+				return false;
+			}
+		}
+	}
+
+	initial ::= state->cursor;
+	if(is_hex_number)
+	{
+		// skip the 0x
+		myfront = (myfront at 2);
+		ls_advance_str(state, "0x");
+		// remember - if we're lexing a hex literal then we also allow a-fA-F in our digits.
+		digit_checker = impl_is_hexdigit;
+	}
+	if(starts_with_minus)
+	{
+		myfront = (myfront at 1);
+		ls_advance_str(state, "-");
+	}
+	while(digit_checker(deref(myfront at 0)))
+	{
+		myfront = (myfront at 1);
+		ls_advance(state, 1);
+	}
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.integer_literal;
+		.lexeme := lex_slice{.off := initial; .len := ((state->cursor) - initial);};
 		.begin := zero;
 		.end := zero;
 	});
@@ -259,6 +368,24 @@ lex_setup ::= func() -> v0
 	{
 		.front_identifier := "//";
 		.tokenise_fn := tokenise_comment;
+		.trivial := false;
+		.affects_code := false;
+		.allow_run_on := false;
+	});
+
+	impl_setup_instruction(lex_token.multicomment, tokenise_instruction
+	{
+		.front_identifier := "/*";
+		.tokenise_fn := tokenise_multicomment;
+		.trivial := false;
+		.affects_code := false;
+		.allow_run_on := false;
+	});
+
+	impl_setup_instruction(lex_token.integer_literal, tokenise_instruction
+	{
+		.front_identifier := null;
+		.tokenise_fn := tokenise_integer_literal;
 		.trivial := false;
 		.affects_code := false;
 		.allow_run_on := false;
@@ -317,10 +444,20 @@ try_tokenise ::= func(state : lex_state mut&) -> bool
 				psyc_panic(srcloc_current(), "non-trivial instruction did not have a tokeniser function");
 				__debugbreak();
 			}
-			if(cstr_starts_with(front, instruction.front_identifier))
+			if((instruction.front_identifier) == null)
 			{
-				tokfn(front, state);
-				return true;
+				if(tokfn(front, state))
+				{
+					return true;
+				}
+			}
+			if((instruction.front_identifier) != null)
+			{
+				if(cstr_starts_with(front, instruction.front_identifier))
+				{
+					tokfn(front, state);
+					return true;
+				}
 			}
 		}
 	}
