@@ -40,8 +40,73 @@ impl_is_whitespace ::= func(char : u8) -> bool
 	return false;
 };
 
+impl_is_alpha ::= func(char : u8) -> bool
+{
+	if(char >= 'a')
+	{
+		if(char <= 'z')
+		{
+			return true;
+		}
+	}
+	if(char >= 'A')
+	{
+		if(char <= 'Z')
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+impl_starts_symbol ::= func(char : u8) -> bool
+{
+	if(impl_is_alpha(char))
+	{
+		return true;
+	}
+	if(char == '_')
+	{
+		return true;
+	}
+	return false;
+};
+
 impl_is_digit ::= func(char : u8) -> bool
 {
+	if(char >= '0')
+	{
+		if(char <= '9')
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+impl_continues_symbol ::= func(char : u8) -> bool
+{
+	if(impl_is_digit(char))
+	{
+		return true;
+	}
+	if(char == '_')
+	{
+		return true;
+	}
+	if(impl_is_alpha(char))
+	{
+		return true;
+	}
+	return false;
+};
+
+impl_is_digit_or_period ::= func(char : u8) -> bool
+{
+	if(char == '.')
+	{
+		return true;
+	}
 	if(char >= '0')
 	{
 		if(char <= '9')
@@ -79,8 +144,8 @@ lex_token ::= enum
 {
 	.comment := 0;
 	.multicomment := 1;
-	.integer_literal := 2;
-	.decimal_literal := 3;
+	.numeric_literal := 2;
+	.symbol := 3;
 	.char_literal := 4;
 	.string_literal := 5;
 	.semicol := 6;
@@ -135,8 +200,6 @@ lex_token ::= enum
 	.keyword_false := 55;
 	.keyword_zero := 56;
 	.keyword_null := 57;
-	.symbol := 58;
-	.end_of_file := 59;
 };
 
 token_data ::= struct
@@ -294,7 +357,7 @@ tokenise_multicomment ::= func(front : u8&, state : lex_state mut&) -> bool
 };
 
 [[private]]
-tokenise_integer_literal ::= func(front : u8&, state : lex_state mut&) -> bool
+tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 {
 	myfront : u8& mut := front;
 	is_hex_number ::= cstr_starts_with(front, "0x");
@@ -302,8 +365,10 @@ tokenise_integer_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	starts_with_digit ::= impl_is_digit(f);
 	starts_with_minus ::= f == '-';
 
+	contains_decimal : bool mut := false;
+
 	[[__force_mutable]]
-	digit_checker : func(char : u8) -> bool := impl_is_digit;
+	digit_checker : func(char : u8) -> bool := impl_is_digit_or_period;
 	if(!is_hex_number)
 	{
 		if(!starts_with_digit)
@@ -329,15 +394,107 @@ tokenise_integer_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 		myfront = (myfront at 1);
 		ls_advance_str(state, "-");
 	}
+	found_decimal : bool mut := false;
 	while(digit_checker(deref(myfront at 0)))
 	{
+		if(deref(myfront at 0) == '.')
+		{
+			if(found_decimal)
+			{
+				psyc_fatal_error(zero, "multiple decimal points detected in numeric literal");
+			}
+			found_decimal = true;
+		}
 		myfront = (myfront at 1);
 		ls_advance(state, 1);
 	}
 	ls_push_token(state, token_data
 	{
-		.tok := lex_token.integer_literal;
+		.tok := lex_token.numeric_literal;
 		.lexeme := lex_slice{.off := initial; .len := ((state->cursor) - initial);};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+[[private]]
+tokenise_symbol ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	myfront : u8& mut := front;
+	if(!impl_starts_symbol(deref(myfront at 0)))
+	{
+		return false;
+	}
+	initial ::= state->cursor;
+	ls_advance(state, 1);
+	myfront = (myfront at 1);
+	while(impl_continues_symbol(deref(myfront at 0)))
+	{
+		ls_advance(state, 1);
+		myfront = (myfront at 1);
+	}
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.symbol;
+		.lexeme := lex_slice{.off := initial; .len := ((state->cursor) - initial);};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+[[private]]
+tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	myfront : u8& mut := front;
+	ls_advance(state, 1);
+	myfront = (myfront at 1);
+	// we're at '
+	// go until next '
+	initial ::= state->cursor;
+	off ::= cstr_find(myfront, "'");
+	if(off == -1)
+	{
+		psyc_fatal_error(zero, "could not find terminating single-quote ' in char literal");
+	}
+	ls_advance(state, off + 1);
+	charlen ::= ((state->cursor) - initial - 1);
+	if(charlen == 0)
+	{
+		psyc_fatal_error(zero, "invalid char literal ''");
+	}
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.char_literal;
+		.lexeme := lex_slice{.off := initial; .len := charlen;};
+		.begin := zero;
+		.end := zero;
+	});
+	return true;
+};
+
+[[private]]
+tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
+{
+	myfront : u8& mut := front;
+	ls_advance(state, 1);
+	myfront = (myfront at 1);
+	// we're at '
+	// go until next '
+	initial ::= state->cursor;
+	strlit ::= "\"";
+	off ::= cstr_find(myfront, strlit);
+	if(off == -1)
+	{
+		psyc_fatal_error(zero, "could not find terminating double-quote in char literal");
+	}
+	ls_advance(state, off + 1);
+	strlen ::= ((state->cursor) - initial - 1);
+	ls_push_token(state, token_data
+	{
+		.tok := lex_token.string_literal;
+		.lexeme := lex_slice{.off := initial; .len := strlen;};
 		.begin := zero;
 		.end := zero;
 	});
@@ -378,16 +535,44 @@ lex_setup ::= func() -> v0
 		.front_identifier := "/*";
 		.tokenise_fn := tokenise_multicomment;
 		.trivial := false;
-		.affects_code := false;
+		.affects_code := true;
 		.allow_run_on := false;
 	});
 
-	impl_setup_instruction(lex_token.integer_literal, tokenise_instruction
+	impl_setup_instruction(lex_token.numeric_literal, tokenise_instruction
 	{
 		.front_identifier := null;
-		.tokenise_fn := tokenise_integer_literal;
+		.tokenise_fn := tokenise_numeric_literal;
 		.trivial := false;
-		.affects_code := false;
+		.affects_code := true;
+		.allow_run_on := false;
+	});
+
+	impl_setup_instruction(lex_token.symbol, tokenise_instruction
+	{
+		.front_identifier := null;
+		.tokenise_fn := tokenise_symbol;
+		.trivial := false;
+		.affects_code := true;
+		.allow_run_on := false;
+	});
+
+	impl_setup_instruction(lex_token.char_literal, tokenise_instruction
+	{
+		.front_identifier := "'";
+		.tokenise_fn := tokenise_char_literal;
+		.trivial := false;
+		.affects_code := true;
+		.allow_run_on := false;
+	});
+
+	strlit ::= "\"";
+	impl_setup_instruction(lex_token.string_literal, tokenise_instruction
+	{
+		.front_identifier := strlit;
+		.tokenise_fn := tokenise_string_literal;
+		.trivial := false;
+		.affects_code := true;
 		.allow_run_on := false;
 	});
 };
