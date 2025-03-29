@@ -1,5 +1,17 @@
 Sleep ::= func(millis : s32) -> v0 := extern;
 
+linefeed_size ::= func() -> u64
+{
+	if static(__is_windows)
+	{
+		return 2;
+	}
+	if static(__is_linux)
+	{
+		return 1;
+	}
+};
+
 lex_slice ::= struct
 {
 	off : u64;
@@ -245,19 +257,23 @@ td_print ::= func(s : lex_state&, tok : token_data) -> v0
 	{
 		putchar(deref(lexeme_data at j));
 	}
+	putchar(' ');
+	print_srcloc(tok.begin);
 	putchar(10);
 };
 
 ls_advance ::= func(s : lex_state mut&, count : u32) -> v0
 {
 	i : u32 mut;
+	cursor ::= (s->cursor)@_;
 	for(i = 0, i < count, i = i + 1)
 	{
-		is_newline ::= impl_is_newline(deref ((s->src) at i));
+		idx ::= cursor + i;
+		is_newline ::= impl_is_newline(deref ((s->src) at idx));
 		if(is_newline)
 		{
 			(s->line) = (s->line) + 1;
-			(s->col) = 0;
+			(s->col) = 1;
 		}
 		if(!is_newline)
 		{
@@ -320,6 +336,7 @@ tokenise_comment ::= func(front : u8&, state : lex_state mut&) -> bool
 	// assume we already found '//' via front identifier.
 	// just advance until we hit a newline.
 	initial ::= state->cursor;
+	beginloc ::= ls_current_loc(state);
 	chars_left : u64 mut := cstrlen(state->src) - (state->cursor);
 	i : u64 mut;
 	for(i = 0, i < chars_left, i = i + 1)
@@ -337,9 +354,9 @@ tokenise_comment ::= func(front : u8&, state : lex_state mut&) -> bool
 	ls_push_token(state, token_data
 	{
 		.tok := lex_token.comment;
-		.lexeme := lex_slice{.off := initial; .len := i - 1;};
-		.begin := zero;
-		.end := zero;
+		.lexeme := lex_slice{.off := initial; .len := i - linefeed_size();};
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -350,6 +367,7 @@ tokenise_multicomment ::= func(front : u8&, state : lex_state mut&) -> bool
 	// we're at /*
 	// advance till we find '*/'
 	initial ::= state->cursor;
+	beginloc ::= ls_current_loc(state);
 	offset_till_close ::= cstr_find(front, "*/");
 	if(offset_till_close == -1)
 	{
@@ -361,8 +379,8 @@ tokenise_multicomment ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		.tok := lex_token.multicomment;
 		.lexeme := lex_slice{.off := initial; .len := offset_till_close@_;};
-		.begin := zero;
-		.end := zero;
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -392,6 +410,7 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	}
 
 	initial ::= state->cursor;
+	beginloc ::= ls_current_loc(state);
 	if(is_hex_number)
 	{
 		// skip the 0x
@@ -423,8 +442,8 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		.tok := lex_token.numeric_literal;
 		.lexeme := lex_slice{.off := initial; .len := ((state->cursor) - initial);};
-		.begin := zero;
-		.end := zero;
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -438,6 +457,7 @@ tokenise_symbol ::= func(front : u8&, state : lex_state mut&) -> bool
 		return false;
 	}
 	initial ::= state->cursor;
+	beginloc ::= ls_current_loc(state);
 	ls_advance(state, 1);
 	myfront = (myfront at 1);
 	while(impl_continues_symbol(deref(myfront at 0)))
@@ -449,8 +469,8 @@ tokenise_symbol ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		.tok := lex_token.symbol;
 		.lexeme := lex_slice{.off := initial; .len := ((state->cursor) - initial);};
-		.begin := zero;
-		.end := zero;
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -459,6 +479,7 @@ tokenise_symbol ::= func(front : u8&, state : lex_state mut&) -> bool
 tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 {
 	myfront : u8& mut := front;
+	beginloc ::= ls_current_loc(state);
 	ls_advance(state, 1);
 	myfront = (myfront at 1);
 	// we're at '
@@ -479,8 +500,8 @@ tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		.tok := lex_token.char_literal;
 		.lexeme := lex_slice{.off := initial; .len := charlen;};
-		.begin := zero;
-		.end := zero;
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -489,6 +510,7 @@ tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 {
 	myfront : u8& mut := front;
+	beginloc ::= ls_current_loc(state);
 	ls_advance(state, 1);
 	myfront = (myfront at 1);
 	// we're at '
@@ -506,8 +528,8 @@ tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		.tok := lex_token.string_literal;
 		.lexeme := lex_slice{.off := initial; .len := strlen;};
-		.begin := zero;
-		.end := zero;
+		.begin := beginloc;
+		.end := ls_current_loc(state);
 	});
 	return true;
 };
@@ -538,7 +560,6 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_comment;
 		.trivial := false;
 		.affects_code := false;
-		.allow_run_on := false;
 	});
 
 	impl_setup_instruction(lex_token.multicomment, tokenise_instruction
@@ -547,7 +568,6 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_multicomment;
 		.trivial := false;
 		.affects_code := true;
-		.allow_run_on := false;
 	});
 
 	impl_setup_instruction(lex_token.numeric_literal, tokenise_instruction
@@ -556,7 +576,6 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_numeric_literal;
 		.trivial := false;
 		.affects_code := true;
-		.allow_run_on := false;
 	});
 
 	impl_setup_instruction(lex_token.symbol, tokenise_instruction
@@ -565,7 +584,6 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_symbol;
 		.trivial := false;
 		.affects_code := true;
-		.allow_run_on := false;
 	});
 
 	impl_setup_instruction(lex_token.char_literal, tokenise_instruction
@@ -574,7 +592,6 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_char_literal;
 		.trivial := false;
 		.affects_code := true;
-		.allow_run_on := false;
 	});
 
 	strlit ::= "\"";
@@ -584,7 +601,14 @@ lex_setup ::= func() -> v0
 		.tokenise_fn := tokenise_string_literal;
 		.trivial := false;
 		.affects_code := true;
-		.allow_run_on := false;
+	});
+
+	impl_setup_instruction(lex_token.semicol, tokenise_instruction
+	{
+		.front_identifier := ";";
+		.tokenise_fn := null;
+		.trivial := true;
+		.affects_code := true;
 	});
 };
 
@@ -607,6 +631,16 @@ try_tokenise ::= func(state : lex_state mut&) -> bool
 
 	while(impl_is_whitespace(deref((state->src) at (state->cursor))))
 	{
+		is_newline ::= impl_is_newline(deref((state->src) at (state->cursor)));
+		if(is_newline)
+		{
+			(state->line) = (state->line) + 1;
+			(state->col) = 1;
+		}
+		if(!is_newline)
+		{
+			(state->col) = (state->col) + 1;
+		}
 		(state->cursor) = (state->cursor) + 1;
 	}
 	if((state->cursor) >= cstrlen(state->src))
@@ -625,9 +659,18 @@ try_tokenise ::= func(state : lex_state mut&) -> bool
 			if(cstr_starts_with(front, instruction.front_identifier))
 			{
 				// match!
+				initial ::= state->cursor;
+				loc ::= ls_current_loc(state);
 				ls_advance_str(state, instruction.front_identifier);
+				endloc ::= ls_current_loc(state);
 				// todo: not zero!
-				ls_push_token(state, zero@token_data);
+				ls_push_token(state, token_data
+				{
+					.tok := i@lex_token;
+					.lexeme := lex_slice{.off := initial; .len := (state->cursor) - initial;};
+					.begin := loc;
+					.end := endloc;
+				});
 				return true;
 			}
 		}
@@ -665,6 +708,8 @@ lex ::= func(path : u8&, src : u8&, a : arena mut&) -> lex_state
 {
 	psyc_timed(psyc_stage.lex);
 	ret : lex_state mut := zero;
+	(ret.line) = 1;
+	(ret.col) = 1;
 	(ret.path) = path;
 	(ret.src) = src;
 	(ret.tokens_cap) = 1024;
