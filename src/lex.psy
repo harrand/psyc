@@ -212,6 +212,7 @@ token_data ::= struct
 
 lex_state ::= struct
 {
+	path : u8&;
 	src : u8&;
 	cursor : u64;
 	line : u64;
@@ -220,6 +221,17 @@ lex_state ::= struct
 	tokens : token_data mut&;
 	tokens_size : u64;
 	tokens_cap : u64;
+};
+
+ls_current_loc ::= func(s : lex_state&) -> srcloc
+{
+	return srcloc
+	{
+		.file := (s->path);
+		.function := "";
+		.line := (s->line);
+		.column := (s->col);
+	};
 };
 
 td_print ::= func(s : lex_state&, tok : token_data) -> v0
@@ -235,7 +247,6 @@ td_print ::= func(s : lex_state&, tok : token_data) -> v0
 	}
 	putchar(10);
 };
-
 
 ls_advance ::= func(s : lex_state mut&, count : u32) -> v0
 {
@@ -401,7 +412,7 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 		{
 			if(found_decimal)
 			{
-				psyc_fatal_error(zero, "multiple decimal points detected in numeric literal");
+				psyc_fatal_error(ls_current_loc(state), "multiple decimal points detected in numeric literal");
 			}
 			found_decimal = true;
 		}
@@ -456,13 +467,13 @@ tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	off ::= cstr_find(myfront, "'");
 	if(off == -1)
 	{
-		psyc_fatal_error(zero, "could not find terminating single-quote ' in char literal");
+		psyc_fatal_error(ls_current_loc(state), "could not find terminating single-quote ' in char literal");
 	}
 	ls_advance(state, off + 1);
 	charlen ::= ((state->cursor) - initial - 1);
 	if(charlen == 0)
 	{
-		psyc_fatal_error(zero, "invalid char literal ''");
+		psyc_fatal_error(ls_current_loc(state), "invalid char literal ''");
 	}
 	ls_push_token(state, token_data
 	{
@@ -487,7 +498,7 @@ tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	off ::= cstr_find(myfront, strlit);
 	if(off == -1)
 	{
-		psyc_fatal_error(zero, "could not find terminating double-quote in char literal");
+		psyc_fatal_error(ls_current_loc(state), "could not find terminating double-quote in string literal");
 	}
 	ls_advance(state, off + 1);
 	strlen ::= ((state->cursor) - initial - 1);
@@ -650,10 +661,11 @@ try_tokenise ::= func(state : lex_state mut&) -> bool
 	return true;
 };
 
-lex ::= func(src : u8&, a : arena mut&) -> lex_state
+lex ::= func(path : u8&, src : u8&, a : arena mut&) -> lex_state
 {
 	psyc_timed(psyc_stage.lex);
 	ret : lex_state mut := zero;
+	(ret.path) = path;
 	(ret.src) = src;
 	(ret.tokens_cap) = 1024;
 	(ret.tokens) = arena_push(a, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
