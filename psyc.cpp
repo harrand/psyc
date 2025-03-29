@@ -1115,6 +1115,10 @@ struct type_t
 
 std::string ptr_ty::name() const
 {
+	if(this->underlying_ty->is_fn())
+	{
+		return this->underlying_ty->name();
+	}
 	return std::format("{}&", this->underlying_ty->name());
 }
 
@@ -7383,14 +7387,36 @@ void hoist_variable_decls(node& n, std::string_view source, semal_local_state*& 
 					{
 						{"__force_mutable", std::nullopt}
 					};
-					if(child_decl_stmt.decl.type_name != deduced_type)
+					type_t decl_init_ty = type_t::badtype();
+					auto decl_init = child_decl_stmt.decl.initialiser;
+					child_decl_stmt.decl.initialiser = std::nullopt;
+					if(decl_init.has_value())
 					{
-						child_decl_stmt.decl.type_name += " mut";
-						child_decl_stmt.decl.initialiser = std::nullopt;
+						auto init_result = semal_expr(decl_init.value(), child, source, local, false);
+						if(init_result.is_err())
+						{
+							panic("booey");
+						}
+						decl_init_ty = init_result.val.ty;
+					}
+					if(child_decl_stmt.decl.type_name == deduced_type)
+					{
+						// little hack here.
+						// if the decl_init is a function pointer, don't include any qualifiers in the name.
+						// trust me on this one.
+						if(decl_init_ty.is_ptr())
+						{
+								auto underlying = AS_A(decl_init_ty.payload, ptr_ty);
+								if(underlying.underlying_ty->is_fn())
+								{
+									decl_init_ty.qual = typequal_none;
+								}
+						}
+						child_decl_stmt.decl.type_name = decl_init_ty.name();
 					}
 					semal_decl_stmt(child_decl_stmt, child, source, local, do_codegen, child_stmt.attributes);
 					// convert the actual child to an *assignment*
-					if(child_decl_stmt.decl.initialiser.has_value())
+					if(decl_init.has_value())
 					{
 						AS_A(child.payload, ast_stmt).stmt_ = ast_expr_stmt
 						{
@@ -7400,7 +7426,7 @@ void hoist_variable_decls(node& n, std::string_view source, semal_local_state*& 
 								{
 									.lhs = ast_expr{.expr_ = ast_symbol_expr{.symbol = child_decl_stmt.decl.name}},
 									.type = biop_type::assign,
-									.rhs = child_decl_stmt.decl.initialiser.value()
+									.rhs = decl_init.value()
 								},
 							}
 						};
