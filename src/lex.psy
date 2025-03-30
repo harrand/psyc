@@ -233,6 +233,8 @@ lex_state ::= struct
 	tokens : token_data mut&;
 	tokens_size : u64;
 	tokens_cap : u64;
+
+	ar : arena mut&;
 };
 
 ls_current_loc ::= func(s : lex_state&) -> srcloc
@@ -296,11 +298,15 @@ ls_push_token ::= func(state : lex_state mut&, token : token_data) -> v0
 	}
 	if((state->tokens_size) >= (state->tokens_cap))
 	{
-		psyc_panic(srcloc_current(), "lex_state ran out of space for new tokens");
+		oldcap ::= state->tokens_cap;
+		old_tokens ::= state->tokens;
+
+		(state->tokens_cap) = (state->tokens_cap) * 2;
+		(state->tokens) = arena_push(state->ar, __sizeof(deref (state->tokens)) * (state->tokens_cap));
+		__memcpy(state->tokens, old_tokens, __sizeof(deref (state->tokens)) * oldcap);
 	}
 	deref((state->tokens) at (state->tokens_size)) = token;
 	(state->tokens_size) = (state->tokens_size) + 1;
-	td_print(state, token);
 };
 
 tokenise_instruction ::= struct
@@ -338,7 +344,8 @@ impl_trivial_setup ::= func(tok : lex_token, front_identifier : u8&) -> v0
 [[private]]
 tokenise_invalid ::= func(front : u8&, state : lex_state mut&) -> bool
 {
-	psyc_panic(srcloc_current(), "asserty tokeniser function called. there is a bug in the lexer, or you didn't add support for a new lex token type.");
+	psyc_error(srcloc_current(), "asserty tokeniser function called. there is a bug in the lexer, or you didn't add support for a new lex token type.");
+	psyc_panic(zero, front);
 	return true;
 };
 
@@ -771,14 +778,12 @@ lex ::= func(path : u8&, src : u8&, a : arena mut&) -> lex_state
 	(ret.src) = src;
 	(ret.tokens_cap) = 1024;
 	(ret.tokens) = arena_push(a, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
+	(ret.ar) = a;
 	len ::= cstrlen(src);
 
 	while((ret.cursor) < len@_)
 	{
-		if(!try_tokenise(ref ret))
-		{
-			return ret;
-		}
+		try_tokenise(ref ret);
 	}
 
 	ls_verbose_print(ref ret);
