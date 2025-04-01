@@ -1,0 +1,31 @@
+hashdata ::= func(buf : u8&, buflen : u64) -> u64
+{
+	hash : u64 mut := 14695981039346656037;
+    prime : u64 := 1099511628211;
+	i : u64 mut;
+
+	for(i = 0, i < buflen, i = i + 1)
+	{
+		cur64 ::= (deref(buf at i))@u64;
+		hash = (hash ^ cur64);
+		hash = (hash * prime);
+	}
+
+	return hash;
+};
+
+hashstr ::= func(cstr : u8&) -> u64
+{
+	return hashdata(cstr, cstrlen(cstr));
+};
+
+hash ::= macro(T : auto) -> u64
+{
+	sz : u64 static := __sizeof(T);
+	yield hashdata((ref T)@_, sz);
+};
+
+== build ==
+{
+	add_source_file("cstr.psy");
+}

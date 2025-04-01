@@ -5176,6 +5176,10 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 					}
 					const auto& yield = AS_A(stmt.stmt_, ast_yield_stmt);
 					macroret = semal_expr(yield.retval, n, source, local, do_codegen);
+					if(macroret.is_err())
+					{
+						return macroret;
+					}
 					type_t retty = local->parse_type(macrodef_expr.return_type);
 					if(retty.is_void())
 					{
