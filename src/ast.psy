@@ -24,11 +24,78 @@ ast_stmt ::= struct
 ast_type ::= enum
 {
 	.unknown := 0;
-	.statement := 1;
+	.root := 1;
+	.statement := 2;
+};
+
+ast_root ::= struct
+{
+	path : u8&;
 };
 
 ast ::= struct
 {
 	type : ast_type;
+	root : ast_root;
 	stmt : ast_stmt;
+	loc : srcloc;
+
+	childcount : u64;
+	childcap : u64;
+	children : v0 mut&;
 };
+
+ast_get_child ::= func(a : ast mut&, cid : u64) -> ast mut&
+{
+	childrenptr ::= ((a->children)@ast mut&);
+	return childrenptr at cid;
+};
+
+ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
+{
+	if((a->children) == null)
+	{
+		(a->childcap) = 8;
+		(a->children) = arena_push(ar, __sizeof(ast) * (a->childcap));
+	}
+	while((a->childcount) >= (a->childcap))
+	{
+		olddata ::= (a->children);
+		oldcap ::= (a->childcap);
+
+		(a->childcap) = ((a->childcap) * 2);
+		(a->children) = arena_push(ar, __sizeof(ast) * (a->childcap));
+	}
+
+	childrenptr ::= ((a->children)@ast mut&);
+	deref(childrenptr at (a->childcount)) = child;
+	childid ::= a->childcount;
+	(a->childcount) = (a->childcount) + 1;
+	return childid;
+};
+
+make_root_ast ::= func(path : u8&) -> ast
+{
+	ret : ast mut := zero;
+	(ret.type) = (ast_type.root);
+	(ret.root) = ast_root{.path := path;};
+	(ret.loc) = zero;
+	return ret;
+};
+
+ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
+{
+	i : u64 mut;
+	for(i = 0, i < tabcount, i = i + 1)
+	{
+		putchar(9);
+	}
+	puts(__enumname(a->type));
+	print_srcloc(a->loc);
+	putchar(10);
+};
+
+== build ==
+{
+	add_source_file("io.psy");
+}
