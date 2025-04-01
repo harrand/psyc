@@ -1,13 +1,61 @@
-parse ::= func(lex : lex_state&, verbose_parse : bool) -> ast
+parse_state ::= struct
+{
+	lex : lex_state&;
+	lex_cursor : u64 mut;
+
+	node_array : ast mut&;
+	node_array_cap : u64;
+	node_array_size : u64;
+
+	recursive_offset : u64 mut;
+};
+
+[[private]]
+node_array_reserve ::= func(s : parse_state mut&, cap : u64) -> v0
+{
+	lex ::= s->lex;
+	a ::= lex->ar;
+
+	oldptr ::= s->node_array;
+	oldcap ::= s->node_array_cap;
+
+	(s->node_array_cap) = cap;
+	(s->node_array) = arena_push(a, __sizeof(deref (s->node_array)) * (s->node_array_cap));
+	if(oldptr != null)
+	{
+		__memcpy(s->node_array, oldptr, oldcap);
+	}
+};
+
+[[private]]
+node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
+{
+	cap ::= s->node_array_cap;
+	if((s->node_array_size) >= cap)
+	{
+		node_array_reserve(s, cap * 2);
+	}
+
+	deref((s->node_array) at (s->node_array_size)) = node;
+	(s->node_array_size) = (s->node_array_size) + 1;
+};
+
+parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 {
 	psyc_timed(psyc_stage.parse);
 	root ::= make_root_ast(lex->path);
+
+	state : parse_state mut := zero;
+	state.lex = lex;
+
+	node_array_reserve(ref state, 1024);
 
 	if(verbose_parse)
 	{
 		ast_verbose_print(ref root, 0);
 	}
-	return root;
+
+	return state;
 };
 
 == build ==
