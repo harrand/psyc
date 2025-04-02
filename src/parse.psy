@@ -40,19 +40,39 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 	(s->node_array_size) = (s->node_array_size) + 1;
 };
 
+shift ::= func(s : parse_state mut&) -> v0
+{
+	// make unparsed token.
+	lex ::= s->lex;
+	tok ::= deref ((lex->tokens) at (s->lex_cursor));
+	node_array_add(s, make_unparsed_token_ast(tok));
+	(s->lex_cursor) = (s->lex_cursor) + 1;
+};
+
 parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 {
 	psyc_timed(psyc_stage.parse);
-	root ::= make_root_ast(lex->path);
+	root : ast mut := make_root_ast(lex->path);
 
 	state : parse_state mut := zero;
 	state.lex = lex;
 
 	node_array_reserve(ref state, 1024);
+	node_array_add(ref state, root);
+
+	shift(ref state);
+	shift(ref state);
+	shift(ref state);
+
+	ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
 
 	if(verbose_parse)
 	{
-		ast_verbose_print(ref root, 0);
+		i : u64 mut;
+		for(i = 0, i < (state.node_array_size), i = i + 1)
+		{
+			ast_verbose_print((state.node_array) at i, 0);
+		}
 	}
 
 	return state;

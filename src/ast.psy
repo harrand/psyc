@@ -25,7 +25,8 @@ ast_type ::= enum
 {
 	.unknown := 0;
 	.root := 1;
-	.statement := 2;
+	.unparsed_token := 2;
+	.stmt := 3;
 };
 
 ast_root ::= struct
@@ -33,10 +34,16 @@ ast_root ::= struct
 	path : u8&;
 };
 
+ast_unparsed_token ::= struct
+{
+	tok : token_data;
+};
+
 ast ::= struct
 {
 	type : ast_type;
 	root : ast_root;
+	utok : ast_unparsed_token;
 	stmt : ast_stmt;
 	loc : srcloc;
 
@@ -74,6 +81,12 @@ ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
 	return childid;
 };
 
+ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> ast mut&
+{
+	cid ::= ast_add_child(a, child, ar);
+	return ast_get_child(a, cid);
+};
+
 make_root_ast ::= func(path : u8&) -> ast
 {
 	ret : ast mut := zero;
@@ -81,6 +94,22 @@ make_root_ast ::= func(path : u8&) -> ast
 	(ret.root) = ast_root{.path := path;};
 	(ret.loc) = zero;
 	return ret;
+};
+
+make_unparsed_token_ast ::= func(tok : token_data) -> ast
+{
+	return ast
+	{
+		.type := ast_type.unparsed_token;
+		.utok := ast_unparsed_token
+		{
+			.tok := tok;
+		};
+		.loc := tok.begin;
+		.childcount := zero;
+		.childcap := zero;
+		.children := zero;
+	};
 };
 
 ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
@@ -91,11 +120,20 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 		putchar(9);
 	}
 	puts(__enumname(a->type));
+	putchar(' ');
 	print_srcloc(a->loc);
 	putchar(10);
+
+	childrenptr ::= ((a->children)@ast mut&);
+
+	for(i = 0, i < (a->childcount), i = i + 1)
+	{
+		ast_verbose_print(childrenptr at i, 1);
+	}
 };
 
 == build ==
 {
 	add_source_file("io.psy");
+	add_source_file("lex.psy");
 }
