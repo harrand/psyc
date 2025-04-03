@@ -40,6 +40,33 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 	(s->node_array_size) = (s->node_array_size) + 1;
 };
 
+hash_state ::= func(nodes : ast&, node_count : u64) -> u64
+{
+	i : u64 mut;
+	hash : u64 mut := zero;
+	for(i = 0, i < node_count, i = i + 1)
+	{
+		curnode ::= deref (nodes at i);
+		if((curnode.type) == (ast_type.unparsed_token))
+		{
+			utok ::= curnode.utok;
+			tokdata ::= utok.tok;
+			hash = (hash ^ token(tokdata.tok));
+		}
+		if((curnode.type) != (ast_type.unparsed_token))
+		{
+			hash = (hash ^ node(curnode.type));
+		}
+		hash = hash * 34875947865;
+	}
+	return hash;
+};
+
+parse_state_hash ::= func(s : parse_state mut&) -> u64
+{
+	return hash_state(s->node_array, s->node_array_size);
+};
+
 shift ::= func(s : parse_state mut&) -> v0
 {
 	// make unparsed token.
@@ -47,6 +74,12 @@ shift ::= func(s : parse_state mut&) -> v0
 	tok ::= deref ((lex->tokens) at (s->lex_cursor));
 	node_array_add(s, make_unparsed_token_ast(tok));
 	(s->lex_cursor) = (s->lex_cursor) + 1;
+};
+
+parse_complete ::= func(p : parse_state&) -> bool
+{
+	lex ::= p->lex;
+	return (p->lex_cursor) >= (lex->tokens_size);
 };
 
 parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
@@ -60,9 +93,12 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	node_array_reserve(ref state, 1024);
 	node_array_add(ref state, root);
 
-	shift(ref state);
-	shift(ref state);
-	shift(ref state);
+	while(!parse_complete(ref state))
+	{
+		putuint(parse_state_hash(ref state));
+		putchar(10);
+		shift(ref state);
+	}
 
 	ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
 
@@ -83,4 +119,5 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	add_source_file("lex.psy");
 	add_source_file("diag.psy");
 	add_source_file("hash.psy");
+	add_source_file("grammar.psy");
 }
