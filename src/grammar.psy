@@ -9,12 +9,35 @@ token ::= func(t : lex_token) -> u64
 	return multiplier ^ hash(t);
 };
 
-chord ::= func(hash : u64, fn : v0&) -> v0
+parse_action ::= enum
 {
+	.reduce := 0;
+	.shift := 1;
+	.recurse := 2;
+	.commit := 3;
 };
 
-grammar_setup ::= func() -> v0
+chord_result ::= struct
 {
+	action : parse_action;
+};
+
+chord_data ::= struct
+{
+	fn : func(s : parse_state&) -> chord_result;
+};
+
+[[private]]
+chords : chord_data mut& mut;
+[[private]]
+chords_size : u64 mut;
+[[private]]
+chords_cap : u64 mut;
+
+grammar_setup ::= func(a : arena mut&) -> v0
+{
+	chords_cap = 16384;
+	chords = arena_push(a, __sizeof(deref chords) * chords_cap);
 };
 
 == build ==
