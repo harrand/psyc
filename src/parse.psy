@@ -76,6 +76,30 @@ shift ::= func(s : parse_state mut&) -> v0
 	(s->lex_cursor) = (s->lex_cursor) + 1;
 };
 
+parse_slice ::= alias lex_slice;
+
+commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
+{
+	if((nodes_to_commit.off) == 0)
+	{
+		psyc_panic(srcloc_current(), "attempt to commit the 0th node (the root node)");
+	}
+	lex ::= s->lex;
+	root ::= (s->node_array) at 0;
+	i : u64 mut;
+	for(i = 0, i < (nodes_to_commit.len), i = i + 1)
+	{
+		off ::= (nodes_to_commit.off) + i;
+		cur ::= ((s->node_array) at off);
+		ast_add_child(root, deref cur, lex->ar);
+	}
+	// remove children.
+	(s->node_array_size) = (s->node_array_size) - (nodes_to_commit.len);
+	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_commit.off);
+	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_commit.off) + (nodes_to_commit.len));
+	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_commit.len));
+};
+
 parse_complete ::= func(p : parse_state&) -> bool
 {
 	lex ::= p->lex;
@@ -100,7 +124,9 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		shift(ref state);
 	}
 
-	ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
+	commit(ref state, parse_slice{.off := 2; .len := 3;});
+
+	//ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
 
 	if(verbose_parse)
 	{
