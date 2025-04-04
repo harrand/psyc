@@ -50,6 +50,10 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 	i : u64 mut;
 	for(i = 0, i < (s->node_array_size), i = i + 1)
 	{
+		if(i != 0)
+		{
+			puts(", ");
+		}
 		cur_node ::= (s->node_array) at i;
 		if((cur_node->type) != (ast_type.unparsed_token))
 		{
@@ -61,8 +65,8 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 			tokdata ::= utok.tok;
 			puts(__enumname(tokdata.tok));
 		}
-		print_srcloc(cur_node->loc);
 		putchar(' ');
+		print_srcloc(cur_node->loc);
 	}
 	putchar(10);
 };
@@ -73,8 +77,12 @@ shift ::= func(s : parse_state mut&) -> v0
 {
 	// make unparsed token.
 	lex ::= s->lex;
-	tok ::= deref ((lex->tokens) at (s->lex_cursor));
-	node_array_add(s, make_unparsed_token_ast(tok));
+	tokdata ::= deref ((lex->tokens) at (s->lex_cursor));
+	tok ::= tokdata.tok;
+	if(token_affects_code(tok))
+	{
+		node_array_add(s, make_unparsed_token_ast(tokdata));
+	}
 	(s->lex_cursor) = (s->lex_cursor) + 1;
 };
 
@@ -229,13 +237,17 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		{
 			shift(ref state);
 		}
-		if((result.action == (parse_action.recurse)))
+		if((result.action) == (parse_action.recurse))
 		{
 			psyc_panic(srcloc_current(), "todo: recurse");
 		}
-		if((result.action == (parse_action.commit)))
+		if((result.action) == (parse_action.commit))
 		{
 			psyc_panic(srcloc_current(), "todo: commit");
+		}
+		if((result.action) == (parse_action.error))
+		{
+			psyc_fatal_error(zero, result.errmsg);
 		}
 	}
 

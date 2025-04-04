@@ -315,7 +315,7 @@ tokenise_instruction ::= struct
 	front_identifier : u8&;
 	tokenise_fn : func(front : u8&, state : lex_state mut&) -> bool;
 	trivial : bool;
-	affects_code : bool;
+	doesnt_affect_code : bool;
 	allow_run_on : bool;
 };
 
@@ -337,7 +337,7 @@ impl_trivial_setup ::= func(tok : lex_token, front_identifier : u8&) -> v0
 		.front_identifier := front_identifier;
 		.tokenise_fn := null;
 		.trivial := true;
-		.affects_code := true;
+		.doesnt_affect_code := true;
 	});
 };
 
@@ -553,6 +553,12 @@ tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	return true;
 };
 
+token_affects_code ::= func(tok : lex_token) -> bool
+{
+	inst ::= deref(lex_instructions at (tok@s64));
+	return !(inst.doesnt_affect_code);
+};
+
 lex_setup ::= func() -> v0
 {
 	token_type_count ::= __sizeof(lex_instructions) / __sizeof(deref(lex_instructions at 0));
@@ -566,7 +572,7 @@ lex_setup ::= func() -> v0
 			.front_identifier := "";
 			.tokenise_fn := tokenise_invalid;
 			.trivial := false;
-			.affects_code := false;
+			.doesnt_affect_code := false;
 			.allow_run_on := false;
 		};
 	}
@@ -578,7 +584,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := "//";
 		.tokenise_fn := tokenise_comment;
 		.trivial := false;
-		.affects_code := false;
+		.doesnt_affect_code := true;
 	});
 
 	impl_setup_instruction(lex_token.multicomment, tokenise_instruction
@@ -586,7 +592,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := "/*";
 		.tokenise_fn := tokenise_multicomment;
 		.trivial := false;
-		.affects_code := true;
+		.doesnt_affect_code := true;
 	});
 
 	impl_setup_instruction(lex_token.numeric_literal, tokenise_instruction
@@ -594,7 +600,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := null;
 		.tokenise_fn := tokenise_numeric_literal;
 		.trivial := false;
-		.affects_code := true;
+		.doesnt_affect_code := false;
 	});
 
 	impl_setup_instruction(lex_token.symbol, tokenise_instruction
@@ -602,7 +608,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := null;
 		.tokenise_fn := tokenise_symbol;
 		.trivial := false;
-		.affects_code := true;
+		.doesnt_affect_code := false;
 	});
 
 	impl_setup_instruction(lex_token.char_literal, tokenise_instruction
@@ -610,7 +616,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := "'";
 		.tokenise_fn := tokenise_char_literal;
 		.trivial := false;
-		.affects_code := true;
+		.doesnt_affect_code := false;
 	});
 
 	strlit ::= "\"";
@@ -619,7 +625,7 @@ lex_setup ::= func() -> v0
 		.front_identifier := strlit;
 		.tokenise_fn := tokenise_string_literal;
 		.trivial := false;
-		.affects_code := true;
+		.doesnt_affect_code := false;
 	});
 
 	impl_trivial_setup(lex_token.semicol, ";");

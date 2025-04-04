@@ -38,11 +38,13 @@ parse_action ::= enum
 	.shift := 1;
 	.recurse := 2;
 	.commit := 3;
+	.error := 4;
 };
 
 chord_result ::= struct
 {
 	action : parse_action;
+	errmsg : u8&;
 };
 
 chord_data ::= struct
@@ -57,13 +59,6 @@ chords : chord_data mut& mut;
 chords_size : u64 mut;
 [[private]]
 chords_cap : u64 mut;
-
-grammar_setup ::= func(a : arena mut&) -> v0
-{
-	chords_cap = 16384;
-	chords = arena_push(a, __sizeof(deref chords) * chords_cap);
-	__memset(chords, 0, __sizeof(deref chords) * chords_cap);
-};
 
 grammar_install ::= func(hash : u64, chord : chord_data) -> v0
 {
@@ -84,6 +79,49 @@ grammar_find_chord ::= func(hash : u64) -> chord_data&
 		return null;
 	}
 	return chords at idx;
+};
+
+error_chord ::= func(nodes : ast mut&, nodes_size : u64) -> chord_result
+{
+	firstnode ::= nodes at 0;
+	loc ::= firstnode->loc;
+	return chord_result
+	{
+		.action := parse_action.error;
+		.errmsg := "error chord";
+	};
+};
+
+shift_chord ::= func(nodes : ast mut&, nodes_size : u64) -> chord_result
+{
+	return chord_result{.action := parse_action.shift;};
+};
+
+grammar_setup ::= func(a : arena mut&) -> v0
+{
+	chords_cap = 16384;
+	chords = arena_push(a, __sizeof(deref chords) * chords_cap);
+	__memset(chords, 0, __sizeof(deref chords) * chords_cap);
+
+	hashes : ast mut#64;
+	i : u64 mut;
+	j : u64 mut;
+	clear ::= macro() -> v0
+	{
+		for(j = 0, j < 64, j = j + 1)
+		{
+			deref(hashes at j) = zero;
+		}
+	};
+
+	deref(hashes at 0) = ast{.type := ast_type.root;};
+	grammar_install(hash_state(hashes at 0, 1), chord_data
+	{
+		.fn := shift_chord;
+		.occupied := true;
+	});
+	clear();
+
 };
 
 == build ==
