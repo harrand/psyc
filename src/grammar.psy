@@ -9,6 +9,29 @@ token ::= func(t : lex_token) -> u64
 	return multiplier ^ hash(t);
 };
 
+hash_state ::= func(nodes : ast&, node_count : u64) -> u64
+{
+	i : u64 mut;
+	hash : u64 mut := zero;
+	for(i = 0, i < node_count, i = i + 1)
+	{
+		curnode ::= deref (nodes at i);
+		if((curnode.type) == (ast_type.unparsed_token))
+		{
+			utok ::= curnode.utok;
+			tokdata ::= utok.tok;
+			hash = (hash ^ token(tokdata.tok));
+		}
+		if((curnode.type) != (ast_type.unparsed_token))
+		{
+			hash = (hash ^ node(curnode.type));
+		}
+		hash = hash * 34875947865;
+	}
+	return hash;
+};
+
+
 parse_action ::= enum
 {
 	.reduce := 0;
@@ -24,7 +47,8 @@ chord_result ::= struct
 
 chord_data ::= struct
 {
-	fn : func(s : parse_state&) -> chord_result;
+	fn : func(nodes : ast mut&, nodes_size : u64) -> chord_result;
+	occupied : bool;
 };
 
 [[private]]
@@ -38,6 +62,28 @@ grammar_setup ::= func(a : arena mut&) -> v0
 {
 	chords_cap = 16384;
 	chords = arena_push(a, __sizeof(deref chords) * chords_cap);
+	__memset(chords, 0, __sizeof(deref chords) * chords_cap);
+};
+
+grammar_install ::= func(hash : u64, chord : chord_data) -> v0
+{
+	idx ::= hash % chords_cap;
+	ptr ::= chords at idx;
+	if(ptr->occupied)
+	{
+		psyc_panic(srcloc_current(), "multiple definition of chord via colliding hash");
+	}
+	(deref ptr) = chord;
+};
+
+grammar_find_chord ::= func(hash : u64) -> chord_data&
+{
+	idx ::= hash % chords_cap;
+	if(idx >= chords_cap)
+	{
+		return null;
+	}
+	return chords at idx;
 };
 
 == build ==

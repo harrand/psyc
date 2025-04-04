@@ -40,31 +40,31 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 	(s->node_array_size) = (s->node_array_size) + 1;
 };
 
-hash_state ::= func(nodes : ast&, node_count : u64) -> u64
-{
-	i : u64 mut;
-	hash : u64 mut := zero;
-	for(i = 0, i < node_count, i = i + 1)
-	{
-		curnode ::= deref (nodes at i);
-		if((curnode.type) == (ast_type.unparsed_token))
-		{
-			utok ::= curnode.utok;
-			tokdata ::= utok.tok;
-			hash = (hash ^ token(tokdata.tok));
-		}
-		if((curnode.type) != (ast_type.unparsed_token))
-		{
-			hash = (hash ^ node(curnode.type));
-		}
-		hash = hash * 34875947865;
-	}
-	return hash;
-};
-
 parse_state_hash ::= func(s : parse_state mut&) -> u64
 {
 	return hash_state(s->node_array, s->node_array_size);
+};
+
+parse_state_print ::= func(s : parse_state mut&) -> v0
+{
+	i : u64 mut;
+	for(i = 0, i < (s->node_array_size), i = i + 1)
+	{
+		cur_node ::= (s->node_array) at i;
+		if((cur_node->type) != (ast_type.unparsed_token))
+		{
+			puts(__enumname(cur_node->type));
+		}
+		if((cur_node->type) == (ast_type.unparsed_token))
+		{
+			utok ::= cur_node->utok;
+			tokdata ::= utok.tok;
+			puts(__enumname(tokdata.tok));
+		}
+		print_srcloc(cur_node->loc);
+		putchar(' ');
+	}
+	putchar(10);
 };
 
 parse_slice ::= alias lex_slice;
@@ -205,16 +205,43 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 
 	while(!parse_complete(ref state))
 	{
-		putuint(parse_state_hash(ref state));
-		putchar(10);
-		shift(ref state);
+		hash ::= parse_state_hash(ref state);
+		chord ::= grammar_find_chord(hash);
+		if(chord == null)
+		{
+			psyc_error(zero, "could not find chord matching state:");
+			psyc_colour_yellow();
+			parse_state_print(ref state);
+			psyc_colour_reset();
+			psyc_exit_failure();
+		}
+		fn ::= chord->fn;
+		if(fn == null)
+		{
+			psyc_error(zero, "could not find chord matching state:");
+			psyc_colour_yellow();
+			parse_state_print(ref state);
+			psyc_colour_reset();
+			psyc_exit_failure();
+		}
+		result ::= fn(state.node_array, state.node_array_size);
+		if((result.action) == (parse_action.shift))
+		{
+			shift(ref state);
+		}
+		if((result.action == (parse_action.recurse)))
+		{
+			psyc_panic(srcloc_current(), "todo: recurse");
+		}
+		if((result.action == (parse_action.commit)))
+		{
+			psyc_panic(srcloc_current(), "todo: commit");
+		}
 	}
 
-	my_new_nodes : ast mut#2 := zero;
-	reduce(ref state, parse_slice{.off := 2; .len := 1;}, my_new_nodes at 0, 2);
-
+	//my_new_nodes : ast mut#2 := zero;
+	//reduce(ref state, parse_slice{.off := 2; .len := 1;}, my_new_nodes at 0, 2);
 	//commit(ref state, parse_slice{.off := 2; .len := 3;});
-
 	//ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
 
 	if(verbose_parse)
