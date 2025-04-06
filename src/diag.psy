@@ -5,6 +5,9 @@ psyc_stage ::= enum
 	.parse := 2;
 };
 
+[[private]]
+current_stage : psyc_stage mut;
+
 psyc_stage_times : f32 mut#4;
 
 psyc_colour_red ::= func() -> v0
@@ -66,7 +69,8 @@ psyc_exit_failure ::= func() -> v0
 psyc_error ::= func(loc : srcloc, msg : u8&) -> v0
 {
 	psyc_colour_red();
-	puts("error ");
+	puts(__enumname(current_stage));
+	puts(" error ");
 	print_srcloc(loc);
 	puts(": ");
 	puts(msg);
@@ -127,8 +131,15 @@ psyc_gettime ::= func() -> s64
 	}
 };
 
+psyc_set_stage ::= func(stage : psyc_stage) -> v0
+{
+	current_stage = stage;
+};
+
 psyc_timed ::= macro(stage : psyc_stage) -> v0
 {
+	psyc_set_stage(stage);
+	defer psyc_set_stage(psyc_stage.setup);
 	_f : s64 mut;
 	QueryPerformanceFrequency(ref _f);
 	_t ::= psyc_gettime();
