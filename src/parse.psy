@@ -222,36 +222,22 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	while(!parse_complete(ref state))
 	{
 		hash ::= parse_state_hash(ref state);
-		chord ::= grammar_find_chord(hash);
-		if(chord == null)
+		result ::= grammar_get_parse_value(hash);
+		if((result.action) == (parse_action.invalid))
 		{
-			psyc_error(zero, "could not find chord matching state:");
+			psyc_error(zero, "invalid syntax: ");
 			psyc_colour_yellow();
 			parse_state_print(ref state);
 			psyc_colour_reset();
 			psyc_exit_failure();
 		}
-		fn ::= chord->fn;
-		if(fn == null)
+		if((result.action) == (parse_action.reduce))
 		{
-			psyc_error(zero, "could not find chord matching state:");
-			psyc_colour_yellow();
-			parse_state_print(ref state);
-			psyc_colour_reset();
-			psyc_exit_failure();
+			psyc_panic(srcloc_current(), "todo: reduce");
 		}
-		result ::= fn(state.node_array, state.node_array_size);
 		if((result.action) == (parse_action.shift))
 		{
 			shift(ref state);
-		}
-		if((result.action) == (parse_action.recurse))
-		{
-			psyc_panic(srcloc_current(), "todo: recurse");
-		}
-		if((result.action) == (parse_action.commit))
-		{
-			psyc_panic(srcloc_current(), "todo: commit");
 		}
 		if((result.action) == (parse_action.error))
 		{
