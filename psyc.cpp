@@ -819,6 +819,11 @@ struct type_t
 		return type_t{.payload = ptr_ty{.underlying_ty = pointee}};
 	}
 
+	static type_t create_array_type(const type_t& element_ty, std::size_t len)
+	{
+		return type_t{.payload = arr_ty{.underlying_ty = element_ty, .array_length = len}};
+	}
+
 	type_t add_weak()
 	{
 		type_t cpy = *this;
@@ -1555,7 +1560,12 @@ struct semal_result
 	{
 		llvm::Value* before = this->val.ll;
 		this->val.ll = this->val.convert_to(ty);
+		bool is_static = this->val.ty.qual & typequal_static;
 		this->val.ty = ty;
+		if(is_static)
+		{
+			this->val.ty.qual = this->val.ty.qual | typequal_static;
+		}
 		if(this->val.ll == before)
 		{
 			// the conversion didnt do anything.
@@ -2457,7 +2467,14 @@ llvm::Constant* sval::llvm() const
 		std::vector<llvm::Constant*> member_inits{};
 		for(const auto& memname : structty.member_order)
 		{
-			member_inits.push_back(structval.at(memname).llvm());
+			if(structval.contains(memname))
+			{
+				member_inits.push_back(structval.at(memname).llvm());
+			}
+			else
+			{
+				member_inits.push_back(llvm::UndefValue::get(structty.members.at(memname)->llvm()));
+			}
 		}
 		return llvm::ConstantStruct::get(global.llvm_structs.at(structty), member_inits);
 	}
@@ -6055,6 +6072,7 @@ semal_result semal_field_biop_expr(const ast_biop_expr& expr, node& n, std::stri
 		}
 		sval retval = wrap_type(ty);
 		retval.val = literal_val{iter->second};
+		retval.ty.qual = retval.ty.qual | typequal_static;
 		if(do_codegen)
 		{
 			llvm::GlobalVariable* gvar = codegen.mod->getGlobalVariable(std::format("{}.{}", lhs_symbol, rhs_symbol));
@@ -11700,6 +11718,86 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 				.ty = type_t::create_void_type(),
 				.ll = codegen.ir->CreateMemSetInline(ptr.val.ll, llvm::MaybeAlign(), fill.val.ll, count.val.ll)
 			}
+		};
+	}
+	else if(call.function_name == "__arrlen")
+	{
+		semal_result arr = semal_expr(call.params[0], n, source, local, do_codegen);
+		if(arr.is_err())
+		{
+			return arr;
+		}
+		if(!arr.val.ty.is_arr())
+		{
+			return semal_result::err("__arrlen expects an array type");
+		}
+		arr_ty arrty = AS_A(arr.val.ty.payload, arr_ty);
+		return semal_literal_expr(ast_literal_expr{.value = literal_val{static_cast<std::int64_t>(arrty.array_length)}}, n, source, local, do_codegen);
+	}
+	else if(call.function_name == "__array")
+	{
+		ast_expr expr = call.params.front();
+		type_t element_ty = type_t::badtype();
+		semal_result expr_result = semal_expr(expr, n, source, local, do_codegen);
+		if (expr_result.is_err())
+		{
+			// it better be a sytmbol expression.
+			if (IS_A(expr.expr_, ast_symbol_expr))
+			{
+				std::string_view symbol = AS_A(expr.expr_, ast_symbol_expr).symbol;
+				element_ty = local->parse_type(symbol);
+			}
+			else
+			{
+				return semal_result::err("invalid first parameter passed to __array. expected a valid expression, or a typename.");
+			}
+		}
+		else
+		{
+			element_ty = expr_result.val.ty;
+		}
+		if (element_ty.is_badtype())
+		{
+			return semal_result::err("unknown type passed to __array.");
+		}
+
+		element_ty.qual = element_ty.qual | typequal_static;
+		if(element_ty.is_badtype())
+		{
+			return semal_result::err("invalid array element type \"{}\"", element_ty.name());
+		}
+		std::size_t arr_len = call.params.size() - 1;
+		sval::array_val arr;
+		arr.resize(arr_len);
+		for(std::size_t i = 0; i < arr_len; i++)
+		{
+			semal_result res = semal_expr(call.params[1 + i], n, source, local, do_codegen);
+			if(res.is_err())
+			{
+				return res;
+			}
+			if(!res.val.ty.is_convertible_to(element_ty))
+			{
+				return semal_result::err("fooey");
+			}
+			if(!(res.val.ty.qual & typequal_static))
+			{
+				return semal_result::err("all elements within a call to __array must be static");
+			}
+			arr[i] = res.val;
+		}
+		type_t arrty = type_t::create_array_type(element_ty, arr_len);
+		arrty.qual = typequal_static;
+		sval ret = sval
+		{
+			.val = arr,
+			.ty = arrty
+		};
+		ret.ll = ret.llvm();
+		return semal_result
+		{
+			.t = semal_type::misc,
+			.val = ret
 		};
 	}
 	else if(call.function_name.starts_with("__"))
