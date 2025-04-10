@@ -3,6 +3,8 @@ parse_state ::= struct
 	lex : lex_state&;
 	lex_cursor : u64 mut;
 
+	lookahead : ast mut;
+
 	node_array : ast mut&;
 	node_array_cap : u64;
 	node_array_size : u64;
@@ -40,9 +42,41 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 	(s->node_array_size) = (s->node_array_size) + 1;
 };
 
+parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
+{
+	lex ::= s->lex;
+	delta : u64 mut := 1;
+	cursor ::= (s->lex_cursor) + delta;
+	if(cursor < (lex->tokens_size))
+	{
+		// just get the next token and convert it to an unparsed ast
+		tokdata : token_data mut := deref((lex->tokens) at ((s->lex_cursor) + delta));
+		while(!token_affects_code(tokdata.tok))
+		{
+			delta = delta + 1;
+			tokdata = deref((lex->tokens) at ((s->lex_cursor) + delta));
+		}
+		if(cursor_delta != null)
+		{
+			deref(cursor_delta) = delta;
+		}
+		return make_unparsed_token_ast(tokdata);
+	}
+	return zero;
+};
+
 parse_state_hash ::= func(s : parse_state mut&) -> u64
 {
-	return hash_state(s->node_array, s->node_array_size);
+	hash ::= hash_state(s->node_array, s->node_array_size);
+
+	la ::= s->lookahead;
+	la_hash : u64 mut := zero;
+	if((la.type) != (ast_type.unknown))
+	{
+		la_hash = !hash_state(ref la, 1);
+	}
+
+	return hash ^ la_hash;
 };
 
 parse_state_print ::= func(s : parse_state mut&) -> v0
@@ -75,8 +109,34 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 		print_srcloc(cur_node->loc);
 		putchar(10);
 	}
-	putchar(10);
+	la ::= s->lookahead;
+	if((la.type) != (ast_type.unknown))
+	{
+		putchar(9);
+		puts("lookahead: ");
+		if((la.type) != (ast_type.unparsed_token))
+		{
+			puts(__enumname(la.type));
+			if((la.type) == (ast_type.root))
+			{
+				root ::= la.root;
+				puts(" [");
+				puts(root.path);
+				puts("]");
+			}
+		}
+		if((la.type) == (ast_type.unparsed_token))
+		{
+			utok ::= la.utok;
+			tokdata ::= utok.tok;
+			puts(__enumname(tokdata.tok));
+		}
+		putchar(' ');
+		print_srcloc(la.loc);
+		putchar(10);
+	}
 	putchar('}');
+	putchar(10);
 };
 
 parse_slice ::= alias lex_slice;
@@ -84,14 +144,9 @@ parse_slice ::= alias lex_slice;
 shift ::= func(s : parse_state mut&) -> v0
 {
 	// make unparsed token.
-	lex ::= s->lex;
-	tokdata ::= deref ((lex->tokens) at (s->lex_cursor));
-	tok ::= tokdata.tok;
-	if(token_affects_code(tok))
-	{
-		node_array_add(s, make_unparsed_token_ast(tokdata));
-	}
-	(s->lex_cursor) = (s->lex_cursor) + 1;
+	delta : u64 mut;
+	node_array_add(s, parse_get_lookahead(s, ref delta));
+	(s->lex_cursor) = (s->lex_cursor) + delta + 1;
 };
 
 commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
@@ -208,24 +263,59 @@ parse_complete ::= func(p : parse_state&) -> bool
 	return (p->lex_cursor) >= (lex->tokens_size);
 };
 
+sized_string ::= struct
+{
+	str : u8&;
+	len : u64;
+};
+
+quote_source_from_indices ::= func(p : parse_state&, begin : u64, end : u64) -> sized_string
+{
+	lex ::= p->lex;
+	return sized_string
+	{
+		.str := (lex->src) at begin;
+		.len := (end - begin);
+	};
+};
+
+quote_source_from_nodes ::= func(p : parse_state&, nodes : ast&, nodes_size : u64) -> sized_string
+{
+	if(nodes_size == 0)
+	{
+		return zero;
+	}
+	begin_node ::= deref(nodes at 0);
+	end_node ::= deref(nodes at (nodes_size - 1));
+
+	return quote_source_from_indices(p, begin_node.cursor_begin, end_node.cursor_end);
+};
+
 parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 {
 	psyc_timed(psyc_stage.parse);
-	root : ast mut := make_root_ast(lex->path);
 
 	state : parse_state mut := zero;
 	state.lex = lex;
 
 	node_array_reserve(ref state, 1024);
-	node_array_add(ref state, root);
+	shift(ref state);
 
 	while(!parse_complete(ref state))
 	{
+		state.lookahead = parse_get_lookahead(ref state, null);
 		hash ::= parse_state_hash(ref state);
 		result ::= grammar_get_parse_value(hash);
 		if((result.action) == (parse_action.invalid))
 		{
 			psyc_error(zero, "invalid syntax: ");
+			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
+			i : u64 mut;
+			for(i = 0, i < (srcmsg.len), i = i + 1)
+			{
+				putchar(deref((srcmsg.str) at i));
+			}
+			putchar(10);
 			psyc_colour_yellow();
 			parse_state_print(ref state);
 			psyc_colour_reset();
@@ -234,6 +324,11 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		if((result.action) == (parse_action.reduce))
 		{
 			psyc_panic(srcloc_current(), "todo: reduce");
+			(state.recursive_offset) = 0;
+		}
+		if((result.action) == (parse_action.recurse))
+		{
+			(state.recursive_offset) = (state.recursive_offset) + (result.offset);
 		}
 		if((result.action) == (parse_action.shift))
 		{
