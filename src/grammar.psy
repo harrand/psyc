@@ -1,9 +1,9 @@
-node ::= func(t : ast_type) -> u64
+hashnode ::= func(t : ast_type) -> u64
 {
 	return hash(t);
 };
 
-token ::= func(t : lex_token) -> u64
+hashtoken ::= func(t : lex_token) -> u64
 {
 	multiplier ::= (ast_type.unparsed_token)@s64 * 54948375;
 	return multiplier ^ hash(t);
@@ -20,11 +20,11 @@ hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 		{
 			utok ::= curnode.utok;
 			tokdata ::= utok.tok;
-			hash = (hash ^ token(tokdata.tok));
+			hash = (hash ^ hashtoken(tokdata.tok));
 		}
 		if((curnode.type) != (ast_type.unparsed_token))
 		{
-			hash = (hash ^ node(curnode.type));
+			hash = (hash ^ hashnode(curnode.type));
 		}
 		hash = hash * 34875947865;
 	}
@@ -54,11 +54,57 @@ parse_table_size : u64 mut;
 [[private]]
 parse_table_cap : u64 mut;
 
+grammar_install ::= macro(nodes : auto, val : parse_value) -> v0
+{
+	[[__force_mutable]] nodearr ::= nodes;
+	[[__force_mutable]] hash ::= hash_state(nodearr at 0, __arrlen(nodes));
+	puts("(size = ");
+	putuint(__arrlen(nodes));
+	puts(", ptr = ");
+	putuint((nodearr at 0)@u64);
+	puts(") ");
+	puts("in hash = ");
+	putuint(hash);
+	putchar(10);
+	deref(parse_table at (hash % parse_table_cap)) = val;
+};
+
+token ::= macro(t : lex_token) -> ast static
+{
+	yield ast
+	{
+		.type := ast_type.unparsed_token;
+		.utok := ast_unparsed_token
+		{
+			.tok := token_data
+			{
+				.tok := t;
+			};
+		};
+	};
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	parse_table_cap = 16384;
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
+
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal)),
+	parse_value
+	{
+		.action := parse_action.shift;
+		.errmsg := "single numeric literal detected";
+	});
+
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal), token(lex_token.numeric_literal)),
+	parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "two numeric literals detected!";
+	});
 };
 
 grammar_get_parse_value ::= func(hash : u64) -> parse_value
