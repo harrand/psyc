@@ -1597,8 +1597,7 @@ struct semal_local_state
 	std::vector<void*> pending_macro_calls = {};
 	semal_state2 state;
 	semal_local_state* parent = nullptr;
-	const void* current_macro_label = nullptr;
-	const void* current_macro_body = nullptr;
+	std::vector<std::pair<const void*, const void*>> current_macros = {};
 
 	type_t parse_type_no_global(std::string_view type_name) const
 	{
@@ -1952,14 +1951,23 @@ void semal_local_state::declare_macro(std::string macro_name, semal_state2::macr
 void semal_local_state::declare_variable(std::string variable_name, sval val, srcloc loc, bool globally_visible, bool ignore_already_decl)
 {
 	auto [local, glob] = this->find_variable(variable_name);
-	if((local != nullptr || glob != nullptr) && !ignore_already_decl)
+	if((local != nullptr || glob != nullptr))
 	{
 		auto* ptr = local;
 		if(ptr == nullptr)
 		{
 			ptr = glob;
 		}
-		if(!ptr->ignore_already_defined)
+		if(ptr->ignore_already_defined)
+		{
+			// just overwrite it.
+			this->state.variables.erase(variable_name);
+			if(this->scope == scope_type::translation_unit)
+			{
+				global.state.variables.erase(variable_name);
+			}
+		}
+		else if(!ignore_already_decl)
 		{
 			error(loc, "duplicate definition of variable \"{}\"", variable_name);
 		}
@@ -5173,8 +5181,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 			// call it by just invoking its code right now.
 			semal_result macroret = semal_result::null();
 			const auto& macrodef_expr = *reinterpret_cast<const ast_macrodef_expr*>(mac->macrodef_expr);
-			local->current_macro_label = &macrodef_expr;
-			local->current_macro_body = &expr;
+			local->current_macros.push_back({mac->macrodef_expr, &expr});
 			if(macrodef_expr.params.size() != expr.params.size())
 			{
 				return semal_result::err("macro expected {} params, you provided {}", macrodef_expr.params.size(), expr.params.size());
@@ -5220,8 +5227,7 @@ semal_result semal_callfunc_expr(const ast_callfunc_expr& expr, node& n, std::st
 					}
 				}
 			}
-			local->current_macro_body = nullptr;
-			local->current_macro_label = nullptr;
+			local->current_macros.pop_back();
 			return macroret;
 		}
 		else
@@ -5335,10 +5341,10 @@ semal_result semal_symbol_expr(const ast_symbol_expr& expr, node& n, std::string
 	std::string_view symbol = expr.symbol;
 	// so this could be alot of things.
 	// option 1: a macro parameter. not treated like function params.
-	if(local->current_macro_body != nullptr && local->current_macro_label != nullptr)
+	for(const auto& [label, body] : local->current_macros)
 	{
-		const auto& macrodef = *reinterpret_cast<const ast_macrodef_expr*>(local->current_macro_label);
-		const auto& macro_call = *reinterpret_cast<const ast_callfunc_expr*>(local->current_macro_body);
+		const auto& macrodef = *reinterpret_cast<const ast_macrodef_expr*>(label);
+		const auto& macro_call = *reinterpret_cast<const ast_callfunc_expr*>(body);
 		for(std::size_t i = 0; i < macro_call.params.size(); i++)
 		{
 			const auto& param = macro_call.params[i];
