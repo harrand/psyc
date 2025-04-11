@@ -2457,6 +2457,10 @@ llvm::Constant* sval::llvm() const
 		panic_ifnt(this->ty.is_ptr(), "sval with value sval_null_tag was not a pointer type. instead it was \"{}\"", name);
 		return llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(this->ty.llvm()));
 	}
+	if(IS_A(this->val, sval_zero_tag))
+	{
+		return llvm::UndefValue::get(this->ty.llvm());
+	}
 	if(IS_A(this->val, array_val))
 	{
 		auto arrval = AS_A(this->val, array_val);
@@ -11739,6 +11743,58 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 		}
 		arr_ty arrty = AS_A(arr.val.ty.payload, arr_ty);
 		return semal_literal_expr(ast_literal_expr{.value = literal_val{static_cast<std::int64_t>(arrty.array_length)}}, n, source, local, do_codegen);
+	}
+	else if(call.function_name == "__union")
+	{
+		// represents an array of bytes of fixed-size (equal to the largest size of the types passed to the union)
+		std::size_t size = 0;
+		if(call.params.empty())
+		{
+			return semal_result::err("__union must be called with at least one parameter/typename");
+		}
+		for(const ast_expr& expr : call.params)
+		{
+			type_t cur_ty = type_t::badtype();
+			semal_result expr_result = semal_expr(expr, n, source, local, do_codegen);
+			if (expr_result.is_err())
+			{
+				// it better be a sytmbol expression.
+				if (IS_A(expr.expr_, ast_symbol_expr))
+				{
+					std::string_view symbol = AS_A(expr.expr_, ast_symbol_expr).symbol;
+					cur_ty = local->parse_type(symbol);
+				}
+				else
+				{
+					return semal_result::err("invalid parameter passed to __union. expected a valid expression, or a typename.");
+				}
+			}
+			else
+			{
+				cur_ty = expr_result.val.ty;
+			}
+			if (cur_ty.is_badtype())
+			{
+				return semal_result::err("unknown type passed to __union.");
+			}
+			size = std::max(size, 8 * static_cast<std::size_t>(codegen.mod->getDataLayout().getTypeAllocSize(cur_ty.llvm())));
+		}
+		sval::array_val arr;
+		auto element_ty = type_t::create_primitive_type(prim_ty::type::u8);
+		arr.resize(size, sval{.val = sval_zero_tag{}, .ty = element_ty});
+
+		auto ret_ty = type_t::create_array_type(element_ty, size);
+		sval retval
+		{
+			.val = arr,
+			.ty = type_t::create_array_type(element_ty, size),
+		};
+		retval.ll = retval.llvm();
+		return semal_result
+		{
+			.t = semal_type::misc,
+			.val = retval
+		};
 	}
 	else if(call.function_name == "__array")
 	{
