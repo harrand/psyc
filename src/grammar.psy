@@ -66,7 +66,12 @@ grammar_install ::= macro(nodes : auto, val : parse_value) -> v0
 	puts("in hash = ");
 	putuint(hash);
 	putchar(10);
-	deref(parse_table at (hash % parse_table_cap)) = val;
+	[[__force_mutable]] ptr ::= parse_table at (hash % parse_table_cap);
+	if((ptr->action) != (parse_action.invalid))
+	{
+		psyc_panic(srcloc_current(), "hash collision detected");
+	}
+	deref(ptr) = val;
 };
 
 token ::= macro(t : lex_token) -> ast static
