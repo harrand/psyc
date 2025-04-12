@@ -40,24 +40,49 @@ parse_action ::= enum
 	.error := 4;
 };
 
+
 parse_value ::= struct
 {
 	action : parse_action;
 	offset : u64;
+	len : u64;
 	errmsg : u8&;
+	nodes : ast mut#16;
+	nodes_size : u64;
+};
+grammar_rule ::= struct
+{
+	fn : func(nodes : ast mut&, nodes_size : u64) -> parse_value;
+};
+
+default_rule ::= func(nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "default rule invoked";
+	};
 };
 
 [[private]]
-parse_table : parse_value mut& mut;
+parse_table : grammar_rule mut& mut;
 [[private]]
 parse_table_size : u64 mut;
 [[private]]
 parse_table_cap : u64 mut;
 
-grammar_install ::= macro(nodes : auto, val : parse_value) -> v0
+zero_lookahead ::= zero@ast;
+grammar_install ::= macro(nodes : auto, lookahead_node : ast, rule : grammar_rule) -> v0
 {
 	[[__force_mutable]] nodearr ::= nodes;
-	[[__force_mutable]] hash ::= hash_state(nodearr at 0, __arrlen(nodes));
+	[[__force_mutable]] hash : u64 mut := hash_state(nodearr at 0, __arrlen(nodes));
+	[[__force_mutable]] la ::= lookahead_node;
+	[[__force_mutable]] la_hash : u64 mut := zero;
+	if((la.type) != (ast_type.unknown))
+	{
+		la_hash = (!hash_state(ref la, 1));
+		hash = (hash ^ la_hash);
+	}
 	puts("(size = ");
 	putuint(__arrlen(nodes));
 	puts(", ptr = ");
@@ -67,11 +92,11 @@ grammar_install ::= macro(nodes : auto, val : parse_value) -> v0
 	putuint(hash);
 	putchar(10);
 	[[__force_mutable]] ptr ::= parse_table at (hash % parse_table_cap);
-	if((ptr->action) != (parse_action.invalid))
+	if(ptr->fn == default_rule)
 	{
 		psyc_panic(srcloc_current(), "hash collision detected");
 	}
-	deref(ptr) = val;
+	deref(ptr) = rule;
 };
 
 token ::= macro(t : lex_token) -> ast static
@@ -89,6 +114,39 @@ token ::= macro(t : lex_token) -> ast static
 	};
 };
 
+s1 ::= func(nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift;};
+};
+
+c1 ::= func(nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	first ::= deref(nodes at 0);
+	last ::= deref(nodes at (nodes_size - 1));
+
+	ret : parse_value mut := parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 0;
+		.len := nodes_size;
+	};
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.stmt;
+		.stmt := make_expr_stmt(make_literal_expr(ast_literal_expr{}));
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
+	(ret.nodes_size) = 1;
+	return ret;
+};
+
+rule ::= macro(f : auto) -> grammar_rule
+{
+	yield grammar_rule{.fn := f;};
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	parse_table_cap = 16384;
@@ -97,22 +155,21 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_install(
 		__array(ast, token(lex_token.numeric_literal)),
-	parse_value
-	{
-		.action := parse_action.shift;
-		.errmsg := "single numeric literal detected";
-	});
+		token(lex_token.semicol),
+	grammar_rule{.fn := s1;});
+
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal), token(lex_token.semicol)),
+		zero_lookahead,
+	rule(c1));
 
 	grammar_install(
 		__array(ast, token(lex_token.numeric_literal), token(lex_token.numeric_literal)),
-	parse_value
-	{
-		.action := parse_action.error;
-		.errmsg := "two numeric literals detected!";
-	});
+		zero_lookahead,
+	grammar_rule{.fn := default_rule;});
 };
 
-grammar_get_parse_value ::= func(hash : u64) -> parse_value
+grammar_get_rule ::= func(hash : u64) -> grammar_rule
 {
 	idx ::= hash % parse_table_cap;
 	// todo: open addressing.

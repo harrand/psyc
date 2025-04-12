@@ -1,12 +1,26 @@
+ast_literal_type ::= enum
+{
+	.integral := 0;
+	.floating_point := 1;
+};
+ast_literal_expr ::= struct
+{
+	type : ast_literal_type;
+	integral : s64;
+	floating_point : f64;
+};
+
 ast_expr_type ::= enum
 {
 	.unknown := 0;
 	.symbol := 1;
+	.literal := 2;
 };
 
 ast_expr ::= struct
 {
 	type : ast_expr_type;
+	literal : ast_literal_expr;
 };
 
 ast_stmt_type ::= enum
@@ -96,6 +110,24 @@ make_root_ast ::= func(path : u8&) -> ast
 	(ret.root) = ast_root{.path := path;};
 	(ret.loc) = zero;
 	return ret;
+};
+
+make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
+{
+	return ast_expr
+	{
+		.type := ast_expr_type.literal;
+		.literal := lit;
+	};
+};
+
+make_expr_stmt ::= func(expr : ast_expr) -> ast_stmt
+{
+	return ast_stmt
+	{
+		.type := ast_stmt_type.expr_stmt;
+		.expr := expr;
+	};
 };
 
 make_unparsed_token_ast ::= func(tok : token_data) -> ast

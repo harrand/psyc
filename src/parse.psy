@@ -65,18 +65,16 @@ parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 	return zero;
 };
 
-parse_state_hash ::= func(s : parse_state mut&) -> u64
+parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool) -> u64
 {
-	hash ::= hash_state(s->node_array, s->node_array_size);
+	hash : u64 mut := hash_state(s->node_array, s->node_array_size);
 
 	la ::= s->lookahead;
-	la_hash : u64 mut := zero;
-	if((la.type) != (ast_type.unknown))
+	if(include_lookahead)
 	{
-		la_hash = !hash_state(ref la, 1);
+		hash = hash ^ (!hash_state(ref la, 1));
 	}
-
-	return hash/* ^ la_hash*/;
+	return hash;
 };
 
 parse_state_print ::= func(s : parse_state mut&) -> v0
@@ -304,14 +302,25 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	while(!parse_complete(ref state))
 	{
 		state.lookahead = parse_get_lookahead(ref state, null);
-		hash ::= parse_state_hash(ref state);
+		hash : u64 mut := parse_state_hash(ref state, false);
 		puts("out hash = ");
 		putuint(hash);
 		putchar(10);
-		result ::= grammar_get_parse_value(hash);
-		if((result.action) == (parse_action.invalid))
+		rule : grammar_rule mut := grammar_get_rule(hash);
+
+		first_node ::= deref((state.node_array) at (state.recursive_offset));
+		begin_loc ::= first_node.loc;
+
+		if((rule.fn) == null)
 		{
-			psyc_error(zero, "invalid syntax: ");
+			// nothing that excludes lookahead.
+			// try with lookahead.
+			hash = parse_state_hash(ref state, true);
+			rule = grammar_get_rule(hash);
+		}
+		if((rule.fn) == null)
+		{
+			psyc_error(begin_loc, "invalid syntax: ");
 			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
 			i : u64 mut;
 			for(i = 0, i < (srcmsg.len), i = i + 1)
@@ -324,9 +333,12 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			psyc_colour_reset();
 			psyc_exit_failure();
 		}
+		result ::= rule.fn(state.node_array at 0, state.node_array_size);
 		if((result.action) == (parse_action.reduce))
 		{
-			psyc_panic(srcloc_current(), "todo: reduce");
+			//psyc_panic(srcloc_current(), "todo: reduce");
+			replacement_begin ::= (result.nodes) at 0;
+			reduce(ref state, parse_slice{.off := result.offset; .len := result.len;}, replacement_begin, result.nodes_size);
 			(state.recursive_offset) = 0;
 		}
 		if((result.action) == (parse_action.recurse))
@@ -339,7 +351,18 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		}
 		if((result.action) == (parse_action.error))
 		{
-			psyc_fatal_error(zero, result.errmsg);
+			psyc_error(begin_loc, result.errmsg);
+			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
+			i : u64 mut;
+			for(i = 0, i < (srcmsg.len), i = i + 1)
+			{
+				putchar(deref((srcmsg.str) at i));
+			}
+			putchar(10);
+			psyc_colour_yellow();
+			parse_state_print(ref state);
+			psyc_colour_reset();
+			psyc_exit_failure();
 		}
 	}
 
