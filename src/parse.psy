@@ -89,18 +89,12 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 		if((cur_node->type) != (ast_type.unparsed_token))
 		{
 			puts(__enumname(cur_node->type));
-			if((cur_node->type) == (ast_type.root))
-			{
-				root ::= cur_node->root;
-				puts(" [");
-				puts(root.path);
-				puts("]");
-			}
 		}
 		if((cur_node->type) == (ast_type.unparsed_token))
 		{
 			utok ::= cur_node->utok;
 			tokdata ::= utok.tok;
+			puts("token.");
 			puts(__enumname(tokdata.tok));
 		}
 		putchar(' ');
@@ -115,18 +109,12 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 		if((la.type) != (ast_type.unparsed_token))
 		{
 			puts(__enumname(la.type));
-			if((la.type) == (ast_type.root))
-			{
-				root ::= la.root;
-				puts(" [");
-				puts(root.path);
-				puts("]");
-			}
 		}
 		if((la.type) == (ast_type.unparsed_token))
 		{
 			utok ::= la.utok;
 			tokdata ::= utok.tok;
+			puts("token.");
 			puts(__enumname(tokdata.tok));
 		}
 		putchar(' ');
@@ -145,33 +133,6 @@ shift ::= func(s : parse_state mut&) -> v0
 	delta : u64 mut;
 	node_array_add(s, parse_get_lookahead(s, ref delta));
 	(s->lex_cursor) = (s->lex_cursor) + delta + 1;
-};
-
-commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
-{
-	if((nodes_to_commit.off) == 0)
-	{
-		if((s->recursive_offset) == 0)
-		{
-			psyc_panic(srcloc_current(), "attempt to commit the 0th node (the root node)");
-		}
-	}
-	lex ::= s->lex;
-	root ::= (s->node_array) at 0;
-	i : u64 mut;
-	for(i = 0, i < (nodes_to_commit.len), i = i + 1)
-	{
-		off ::= (nodes_to_commit.off) + i;
-		cur ::= ((s->node_array) at off);
-		ast_add_child(root, deref cur, lex->ar);
-	}
-	// remove children.
-	(s->node_array_size) = (s->node_array_size) - (nodes_to_commit.len);
-	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_commit.off);
-	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_commit.off) + (nodes_to_commit.len));
-	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_commit.len));
-
-	(s->recursive_offset) = zero;
 };
 
 [[private]]
@@ -317,6 +278,10 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			// try with lookahead.
 			hash = parse_state_hash(ref state, true);
 			rule = grammar_get_rule(hash);
+			puts("out hash = ");
+			putuint(hash);
+			puts(" (incl. lookahead)");
+			putchar(10);
 		}
 		if((rule.fn) == null)
 		{
@@ -333,7 +298,7 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			psyc_colour_reset();
 			psyc_exit_failure();
 		}
-		result ::= rule.fn(state.node_array at 0, state.node_array_size);
+		result ::= rule.fn(lex->src, state.node_array at 0, state.node_array_size);
 		if((result.action) == (parse_action.reduce))
 		{
 			//psyc_panic(srcloc_current(), "todo: reduce");
@@ -365,11 +330,6 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			psyc_exit_failure();
 		}
 	}
-
-	//my_new_nodes : ast mut#2 := zero;
-	//reduce(ref state, parse_slice{.off := 2; .len := 1;}, my_new_nodes at 0, 2);
-	//commit(ref state, parse_slice{.off := 2; .len := 3;});
-	//ast_add_child(ref root, make_unparsed_token_ast(deref ((lex->tokens) at 0)), lex->ar);
 
 	if(verbose_parse)
 	{

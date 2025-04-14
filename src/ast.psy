@@ -41,6 +41,7 @@ ast_type ::= enum
 	.root := 1;
 	.unparsed_token := 2;
 	.stmt := 3;
+	.expr := 4;
 };
 
 ast_root ::= struct
@@ -59,6 +60,7 @@ ast ::= struct
 	root : ast_root;
 	utok : ast_unparsed_token;
 	stmt : ast_stmt;
+	expr : ast_expr;
 	loc : srcloc;
 	cursor_begin : u64;
 	cursor_end : u64;
@@ -167,6 +169,100 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 	{
 		ast_verbose_print(childrenptr at i, 1);
 	}
+};
+
+interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal_expr
+{
+	src_begin : u8& mut := src at (lexeme.off);
+	begin_cpy ::= src_begin;
+	i : u64 mut := 0;
+
+	sign : s64 mut := 1;
+	if(deref(src_begin) == '-')
+	{
+		sign = -1;
+		src_begin = src_begin at 1;
+		i = i + 1;
+	}
+
+	base : s64 mut := 10;
+	if(deref(src_begin) == '0')
+	{
+		src_begin = src_begin at 1;
+		ch ::= deref(src_begin);
+		if(ch == 'x')
+		{
+			base = 16;
+			src_begin = src_begin at 1;
+			i = i + 1;
+		}
+		if(ch == 'b')
+		{
+			base = 2;
+			src_begin = src_begin at 1;
+			i = i + 1;
+		}
+	}
+
+	ival : s64 mut := 0;
+	fval : f64 mut := 0;
+
+	digit_val : s64 mut := 0;
+	frac_div : f64 mut := 0.0;
+
+	is_integral : bool mut := true;
+	while(i < (lexeme.len))
+	{
+		ch ::= deref(begin_cpy at i);
+		if(ch == '.')
+		{
+			is_integral = false;
+		}
+		if(impl_is_digit(ch))
+		{
+			digit_val = ch - '0';
+		}
+		if(ch >= 'a')
+		{
+			if(ch <= 'f')
+			{
+				digit_val = 10 + (ch - 'a');
+			}
+		}
+
+		if(digit_val >= base)
+		{
+			psyc_panic(srcloc_current(), "waaah it all went wrong");
+		}
+
+		if(is_integral)
+		{
+			ival = ((ival * base) + digit_val);
+		}
+		if(!is_integral)
+		{
+			frac_div = frac_div / (base@f64);
+			fval = fval + ((digit_val@f64) * frac_div);
+		}
+
+		i = i + 1;
+	}
+
+	ret : ast_literal_expr mut;
+	if(is_integral)
+	{
+		ival = ival * sign;
+		ret.type = (ast_literal_type.integral);
+		ret.integral = ival;
+	}
+	if(!is_integral)
+	{
+		fval = fval + (ival@f64) * (sign@f64);
+		ret.type = (ast_literal_type.floating_point);
+		ret.floating_point = fval;
+	}
+
+	return ret;
 };
 
 == build ==
