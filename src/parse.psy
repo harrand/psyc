@@ -65,14 +65,20 @@ parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 	return zero;
 };
 
-parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool) -> u64
+parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, allow_begin_state : bool) -> u64
 {
-	hash : u64 mut := hash_state(s->node_array, s->node_array_size);
+	array_start ::= (s->node_array) at (s->recursive_offset);
+	array_len ::= (s->node_array_size) - (s->recursive_offset);
+	hash : u64 mut := hash_state(array_start, array_len);
 
 	la ::= s->lookahead;
 	if(include_lookahead)
 	{
 		hash = hash ^ (!hash_state(ref la, 1));
+	}
+	if(allow_begin_state)
+	{
+		return !hash;
 	}
 	return hash;
 };
@@ -84,6 +90,10 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 	putchar(10);
 	for(i = 0, i < (s->node_array_size), i = i + 1)
 	{
+		if(i == (s->recursive_offset))
+		{
+			puts("*");
+		}
 		putchar(9);
 		cur_node ::= (s->node_array) at i;
 		if((cur_node->type) != (ast_type.unparsed_token))
@@ -263,7 +273,8 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	while(!parse_complete(ref state))
 	{
 		state.lookahead = parse_get_lookahead(ref state, null);
-		hash : u64 mut := parse_state_hash(ref state, false);
+		allow_begin_state ::= (state.recursive_offset) == 0;
+		hash : u64 mut := parse_state_hash(ref state, false, allow_begin_state);
 		puts("out hash = ");
 		putuint(hash);
 		putchar(10);
@@ -276,7 +287,7 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		{
 			// nothing that excludes lookahead.
 			// try with lookahead.
-			hash = parse_state_hash(ref state, true);
+			hash = parse_state_hash(ref state, true, allow_begin_state);
 			rule = grammar_get_rule(hash);
 			puts("out hash = ");
 			putuint(hash);
@@ -298,17 +309,23 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			psyc_colour_reset();
 			psyc_exit_failure();
 		}
-		result ::= rule.fn(lex->src, state.node_array at 0, state.node_array_size);
+		result ::= rule.fn(lex->src, state.node_array at (state.recursive_offset), state.node_array_size - (state.recursive_offset));
 		if((result.action) == (parse_action.reduce))
 		{
 			//psyc_panic(srcloc_current(), "todo: reduce");
 			replacement_begin ::= (result.nodes) at 0;
-			reduce(ref state, parse_slice{.off := result.offset; .len := result.len;}, replacement_begin, result.nodes_size);
+			reduce(ref state, parse_slice{.off := (state.recursive_offset) + (result.offset); .len := result.len;}, replacement_begin, result.nodes_size);
 			(state.recursive_offset) = 0;
 		}
 		if((result.action) == (parse_action.recurse))
 		{
 			(state.recursive_offset) = (state.recursive_offset) + (result.offset);
+			tmp : u64 mut := state.recursive_offset;
+			while(tmp >= (state.node_array_size))
+			{
+				shift(ref state);
+				tmp = (state.recursive_offset);
+			}
 		}
 		if((result.action) == (parse_action.shift))
 		{

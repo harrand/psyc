@@ -38,15 +38,10 @@ ast_stmt ::= struct
 ast_type ::= enum
 {
 	.unknown := 0;
-	.root := 1;
 	.unparsed_token := 2;
 	.stmt := 3;
-	.expr := 4;
-};
-
-ast_root ::= struct
-{
-	path : u8&;
+	.stmt_list := 4;
+	.expr := 5;
 };
 
 ast_unparsed_token ::= struct
@@ -57,7 +52,6 @@ ast_unparsed_token ::= struct
 ast ::= struct
 {
 	type : ast_type;
-	root : ast_root;
 	utok : ast_unparsed_token;
 	stmt : ast_stmt;
 	expr : ast_expr;
@@ -103,15 +97,6 @@ ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> ast mu
 {
 	cid ::= ast_add_child(a, child, ar);
 	return ast_get_child(a, cid);
-};
-
-make_root_ast ::= func(path : u8&) -> ast
-{
-	ret : ast mut := zero;
-	(ret.type) = (ast_type.root);
-	(ret.root) = ast_root{.path := path;};
-	(ret.loc) = zero;
-	return ret;
 };
 
 make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr

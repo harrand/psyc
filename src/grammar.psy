@@ -1,3 +1,5 @@
+ar : arena mut& mut;
+
 hashnode ::= func(t : ast_type) -> u64
 {
 	return hash(t);
@@ -40,7 +42,6 @@ parse_action ::= enum
 	.error := 4;
 };
 
-
 parse_value ::= struct
 {
 	action : parse_action;
@@ -72,7 +73,7 @@ parse_table_size : u64 mut;
 parse_table_cap : u64 mut;
 
 zero_lookahead ::= zero@ast;
-grammar_install ::= macro(nodes : auto, lookahead_node : ast, rule : grammar_rule) -> v0
+grammar_install ::= macro(nodes : auto, lookahead_node : ast, allow_begin_state : bool, rule : grammar_rule) -> v0
 {
 	[[__force_mutable]] nodearr ::= nodes;
 	[[__force_mutable]] hash : u64 mut := hash_state(nodearr at 0, __arrlen(nodes));
@@ -82,6 +83,10 @@ grammar_install ::= macro(nodes : auto, lookahead_node : ast, rule : grammar_rul
 	{
 		la_hash = (!hash_state(ref la, 1));
 		hash = (hash ^ la_hash);
+	}
+	if(allow_begin_state)
+	{
+		hash = !hash;
 	}
 	puts("(size = ");
 	putuint(__arrlen(nodes));
@@ -93,6 +98,10 @@ grammar_install ::= macro(nodes : auto, lookahead_node : ast, rule : grammar_rul
 	if((la.type) != (ast_type.unknown))
 	{
 		puts(" (incl. lookahead)");
+	}
+	if(allow_begin_state)
+	{
+		puts(" (allow_begin_state)");
 	}
 	putchar(10);
 	[[__force_mutable]] ptr ::= parse_table at (hash % parse_table_cap);
@@ -129,6 +138,13 @@ node ::= macro(t : ast_type) -> ast static
 s1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value{.action := parse_action.shift;};
+};
+
+r1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	puts("RECURSE 1");
+	putchar(10);
+	return parse_value{.action := parse_action.recurse; .offset := 1;};
 };
 
 numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -190,6 +206,30 @@ exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	return ret;
 };
 
+stmt2stmtlist ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	first ::= deref(nodes at 0);
+	last ::= deref(nodes at (nodes_size - 1));
+
+	ret : parse_value mut := parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 1;
+	};
+	list : ast mut := ast
+	{
+		.type := ast_type.stmt_list;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
+	ast_add_child(ref list, first, ar);
+	deref((ret.nodes) at 0) = list;
+	return ret;
+};
+
 rule ::= macro(f : auto) -> grammar_rule
 {
 	yield grammar_rule{.fn := f;};
@@ -197,6 +237,7 @@ rule ::= macro(f : auto) -> grammar_rule
 
 grammar_setup ::= func(a : arena mut&) -> v0
 {
+	ar = a;
 	parse_table_cap = 16384;
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
@@ -204,22 +245,53 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_install(
 		__array(ast, token(lex_token.numeric_literal)),
 		zero_lookahead,
+		false,
+	rule(numlit2expr));
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal)),
+		zero_lookahead,
+		true,
 	rule(numlit2expr));
 
 	grammar_install(
 		__array(ast, node(ast_type.expr)),
 		token(lex_token.semicol),
+		false,
+	rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.expr)),
+		token(lex_token.semicol),
+		true,
 	rule(s1));
 
 	grammar_install(
 		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
 		zero_lookahead,
+		false,
+	rule(exprsemicol2stmt));
+	grammar_install(
+		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
+		zero_lookahead,
+		true,
 	rule(exprsemicol2stmt));
 
+	// only at beginning of state, not recursive.
 	grammar_install(
-		__array(ast, token(lex_token.numeric_literal), token(lex_token.numeric_literal)),
+		__array(ast, node(ast_type.stmt)),
 		zero_lookahead,
-	grammar_rule{.fn := default_rule;});
+		true,
+	rule(stmt2stmtlist));
+
+	grammar_install(
+		__array(ast, node(ast_type.stmt_list)),
+		zero_lookahead,
+		false,
+	rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.stmt_list)),
+		zero_lookahead,
+		true,
+	rule(r1));
 };
 
 grammar_get_rule ::= func(hash : u64) -> grammar_rule
