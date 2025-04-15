@@ -136,6 +136,18 @@ node ::= macro(t : ast_type) -> ast static
 	};
 };
 
+rule ::= macro(f : auto) -> grammar_rule
+{
+	yield grammar_rule{.fn := f;};
+};
+
+grammar_get_rule ::= func(hash : u64) -> grammar_rule
+{
+	idx ::= hash % parse_table_cap;
+	// todo: open addressing.
+	return deref(parse_table at idx);
+};
+
 s1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value{.action := parse_action.shift;};
@@ -158,19 +170,26 @@ r1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	return parse_value{.action := parse_action.recurse; .offset := 1;};
 };
 
-numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+reduce_setup ::= macro(action : parse_action) -> v0
 {
-	// numeric_literal ; => literal expression statement.
 	first ::= deref(nodes at 0);
 	last ::= deref(nodes at (nodes_size - 1));
 
 	ret : parse_value mut := parse_value
 	{
-		.action := parse_action.reduce;
+		.action := action;
 		.offset := 0;
 		.len := nodes_size;
-		.nodes_size := 1;
+		.nodes_size := 0;
 	};
+	defer return ret;
+};
+
+numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// numeric_literal ; => literal expression statement.
+	reduce_setup(parse_action.reduce);
+
 	utok ::= first.utok;
 	tok ::= utok.tok;
 	literal ::= interpret_numeric_literal(source, tok.lexeme);
@@ -182,25 +201,16 @@ numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
 	};
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
 symbol2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// symbol ; => literal expression statement.
-	first ::= deref(nodes at 0);
-	last ::= deref(nodes at (nodes_size - 1));
+	reduce_setup(parse_action.reduce);
 
-	ret : parse_value mut := parse_value
-	{
-		.action := parse_action.reduce;
-		.offset := 0;
-		.len := nodes_size;
-		.nodes_size := 1;
-	};
 	utok ::= first.utok;
 	tok ::= utok.tok;
-
 	lex ::= tok.lexeme;
 	symbol ::= ast_symbol_expr
 	{
@@ -216,25 +226,16 @@ symbol2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
 	};
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
 charlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// char_literal ; => literal expression statement.
-	first ::= deref(nodes at 0);
-	last ::= deref(nodes at (nodes_size - 1));
+	reduce_setup(parse_action.reduce);
 
-	ret : parse_value mut := parse_value
-	{
-		.action := parse_action.reduce;
-		.offset := 0;
-		.len := nodes_size;
-		.nodes_size := 1;
-	};
 	utok ::= first.utok;
 	tok ::= utok.tok;
-
 	lex ::= tok.lexeme;
 	literal ::= ast_literal_expr
 	{
@@ -250,25 +251,16 @@ charlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
 	};
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
 strlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// string_literal ; => literal expression statement.
-	first ::= deref(nodes at 0);
-	last ::= deref(nodes at (nodes_size - 1));
+	reduce_setup(parse_action.reduce);
 
-	ret : parse_value mut := parse_value
-	{
-		.action := parse_action.reduce;
-		.offset := 0;
-		.len := nodes_size;
-		.nodes_size := 1;
-	};
 	utok ::= first.utok;
 	tok ::= utok.tok;
-
 	lex ::= tok.lexeme;
 	literal ::= ast_literal_expr
 	{
@@ -284,26 +276,18 @@ strlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
 	};
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
 exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	first ::= deref(nodes at 0);
-	last ::= deref(nodes at (nodes_size - 1));
+	reduce_setup(parse_action.reduce);
 
 	if((first.type) != (ast_type.expr))
 	{
 		psyc_panic(srcloc_current(), "fooey");
 	}
 
-	ret : parse_value mut := parse_value
-	{
-		.action := parse_action.reduce;
-		.offset := 0;
-		.len := nodes_size;
-		.nodes_size := 1;
-	};
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.stmt;
@@ -316,21 +300,13 @@ exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
 	};
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
 stmt2stmtlist ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	first ::= deref(nodes at 0);
-	last ::= deref(nodes at (nodes_size - 1));
+	reduce_setup(parse_action.reduce);
 
-	ret : parse_value mut := parse_value
-	{
-		.action := parse_action.reduce;
-		.offset := 0;
-		.len := nodes_size;
-		.nodes_size := 1;
-	};
 	list : ast mut := zero@ast;
 	(list.type) = (ast_type.stmt_list);
 	(list.loc) = (first.loc);
@@ -339,12 +315,109 @@ stmt2stmtlist ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 
 	ast_add_child(ref list, first, ar);
 	deref((ret.nodes) at 0) = list;
-	return ret;
+	(ret.nodes_size) = 1;
 };
 
-rule ::= macro(f : auto) -> grammar_rule
+[[private]]
+grammar_exprification ::= func() -> v0
 {
-	yield grammar_rule{.fn := f;};
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal)),
+		zero_lookahead,
+		false,
+	rule(numlit2expr));
+	grammar_install(
+		__array(ast, token(lex_token.numeric_literal)),
+		zero_lookahead,
+		true,
+	rule(numlit2expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.symbol)),
+		zero_lookahead,
+		false,
+	rule(symbol2expr));
+	grammar_install(
+		__array(ast, token(lex_token.symbol)),
+		zero_lookahead,
+		true,
+	rule(symbol2expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.char_literal)),
+		zero_lookahead,
+		false,
+	rule(charlit2expr));
+	grammar_install(
+		__array(ast, token(lex_token.char_literal)),
+		zero_lookahead,
+		true,
+	rule(charlit2expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.string_literal)),
+		zero_lookahead,
+		false,
+	rule(strlit2expr));
+	grammar_install(
+		__array(ast, token(lex_token.string_literal)),
+		zero_lookahead,
+		true,
+	rule(strlit2expr));
+};
+
+[[private]]
+grammar_stmtification ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, node(ast_type.expr)),
+		token(lex_token.semicol),
+		false,
+	rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.expr)),
+		token(lex_token.semicol),
+		true,
+	rule(s1));
+
+	// stmtification
+
+	grammar_install(
+		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
+		zero_lookahead,
+		false,
+	rule(exprsemicol2stmt));
+	grammar_install(
+		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
+		zero_lookahead,
+		true,
+	rule(exprsemicol2stmt));
+};
+
+[[private]]
+grammar_stmtlistification ::= func() -> v0
+{
+	// only at beginning of state, not recursive.
+	grammar_install(
+		__array(ast, node(ast_type.stmt)),
+		zero_lookahead,
+		true,
+	rule(stmt2stmtlist));
+};
+
+[[private]]
+grammar_commits ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, node(ast_type.stmt_list)),
+		zero_lookahead,
+		false,
+	rule(c1));
+	grammar_install(
+		__array(ast, node(ast_type.stmt_list)),
+		zero_lookahead,
+		true,
+	rule(c1));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
@@ -354,98 +427,10 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
-	// exprification
-	grammar_install(
-		__array(ast, token(lex_token.numeric_literal)),
-		zero_lookahead,
-		false,
-	rule(numlit2expr));
-	grammar_install(
-		__array(ast, token(lex_token.numeric_literal)),
-		zero_lookahead,
-		true,
-	rule(numlit2expr));
-
-	grammar_install(
-		__array(ast, token(lex_token.symbol)),
-		zero_lookahead,
-		false,
-	rule(symbol2expr));
-	grammar_install(
-		__array(ast, token(lex_token.symbol)),
-		zero_lookahead,
-		true,
-	rule(symbol2expr));
-
-	grammar_install(
-		__array(ast, token(lex_token.char_literal)),
-		zero_lookahead,
-		false,
-	rule(charlit2expr));
-	grammar_install(
-		__array(ast, token(lex_token.char_literal)),
-		zero_lookahead,
-		true,
-	rule(charlit2expr));
-
-	grammar_install(
-		__array(ast, token(lex_token.string_literal)),
-		zero_lookahead,
-		false,
-	rule(strlit2expr));
-	grammar_install(
-		__array(ast, token(lex_token.string_literal)),
-		zero_lookahead,
-		true,
-	rule(strlit2expr));
-
-	// next
-	grammar_install(
-		__array(ast, node(ast_type.expr)),
-		token(lex_token.semicol),
-		false,
-	rule(s1));
-	grammar_install(
-		__array(ast, node(ast_type.expr)),
-		token(lex_token.semicol),
-		true,
-	rule(s1));
-
-	grammar_install(
-		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
-		zero_lookahead,
-		false,
-	rule(exprsemicol2stmt));
-	grammar_install(
-		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
-		zero_lookahead,
-		true,
-	rule(exprsemicol2stmt));
-
-	// only at beginning of state, not recursive.
-	grammar_install(
-		__array(ast, node(ast_type.stmt)),
-		zero_lookahead,
-		true,
-	rule(stmt2stmtlist));
-
-	grammar_install(
-		__array(ast, node(ast_type.stmt_list)),
-		zero_lookahead,
-		false,
-	rule(c1));
-	grammar_install(
-		__array(ast, node(ast_type.stmt_list)),
-		zero_lookahead,
-		true,
-	rule(c1));
-};
-
-grammar_get_rule ::= func(hash : u64) -> grammar_rule
-{
-	idx ::= hash % parse_table_cap;
-	// todo: open addressing.
-	return deref(parse_table at idx);
+	grammar_exprification();
+	grammar_stmtification();
+	grammar_stmtlistification();
+	grammar_commits();
 };
 
 == build ==
