@@ -10,6 +10,7 @@ parse_state ::= struct
 	node_array_size : u64;
 
 	recursive_offset : u64 mut;
+	root : ast mut;
 };
 
 [[private]]
@@ -226,6 +227,29 @@ reduce ::= func(s : parse_state mut&, destroy : parse_slice, new_nodes : ast&, n
 	(s->recursive_offset) = zero;
 };
 
+commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
+{
+	lex ::= s->lex;
+	i : u64 mut;
+	for(i = 0, i < (nodes_to_commit.len), i = i + 1)
+	{
+		off ::= (nodes_to_commit.off) + i;
+		cur ::= ((s->node_array) at off);
+		ast_add_child(ref (s->root), deref cur, lex->ar);
+	}
+	// remove children.
+	(s->node_array_size) = (s->node_array_size) - (nodes_to_commit.len);
+	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_commit.off);
+	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_commit.off) + (nodes_to_commit.len));
+	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_commit.len));
+
+	(s->recursive_offset) = zero;
+	if((s->node_array_size) == 0)
+	{
+		shift(s);
+	}
+};
+
 parse_complete ::= func(p : parse_state&) -> bool
 {
 	lex ::= p->lex;
@@ -266,6 +290,10 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 
 	state : parse_state mut := zero;
 	state.lex = lex;
+
+	root : ast mut := zero;
+	(root.type) = (ast_type.stmt_list);
+	(state.root) = root;
 
 	node_array_reserve(ref state, 1024);
 	shift(ref state);
@@ -316,6 +344,10 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			replacement_begin ::= (result.nodes) at 0;
 			reduce(ref state, parse_slice{.off := (state.recursive_offset) + (result.offset); .len := result.len;}, replacement_begin, result.nodes_size);
 			(state.recursive_offset) = 0;
+		}
+		if((result.action) == (parse_action.commit))
+		{
+			commit(ref state, parse_slice{.off := result.offset; .len := result.len;});
 		}
 		if((result.action) == (parse_action.recurse))
 		{

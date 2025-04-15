@@ -39,7 +39,8 @@ parse_action ::= enum
 	.reduce := 1;
 	.recurse := 2;
 	.shift := 3;
-	.error := 4;
+	.commit := 4;
+	.error := 5;
 };
 
 parse_value ::= struct
@@ -138,6 +139,16 @@ node ::= macro(t : ast_type) -> ast static
 s1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value{.action := parse_action.shift;};
+};
+
+c1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.commit;
+		.offset := 0;
+		.len := 1;
+	};
 };
 
 r1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -286,12 +297,12 @@ grammar_setup ::= func(a : arena mut&) -> v0
 		__array(ast, node(ast_type.stmt_list)),
 		zero_lookahead,
 		false,
-	rule(r1));
+	rule(c1));
 	grammar_install(
 		__array(ast, node(ast_type.stmt_list)),
 		zero_lookahead,
 		true,
-	rule(r1));
+	rule(c1));
 };
 
 grammar_get_rule ::= func(hash : u64) -> grammar_rule
