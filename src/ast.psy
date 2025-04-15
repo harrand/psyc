@@ -1,15 +1,3 @@
-ast_literal_type ::= enum
-{
-	.integral := 0;
-	.floating_point := 1;
-};
-ast_literal_expr ::= struct
-{
-	type : ast_literal_type;
-	integral : s64;
-	floating_point : f64;
-};
-
 ast_expr_type ::= enum
 {
 	.unknown := 0;
@@ -17,9 +5,32 @@ ast_expr_type ::= enum
 	.literal := 2;
 };
 
+ast_literal_type ::= enum
+{
+	.integral := 0;
+	.floating_point := 1;
+	.char_literal := 2;
+	.string_literal := 3;
+};
+
+ast_literal_expr ::= struct
+{
+	type : ast_literal_type;
+	integral : s64;
+	floating_point : f64;
+	chardata : lex_slice;
+};
+
+ast_symbol_expr ::= struct
+{
+	symbol : u8&;
+	len : u64;
+};
+
 ast_expr ::= struct
 {
 	type : ast_expr_type;
+	symbol : ast_symbol_expr;
 	literal : ast_literal_expr;
 };
 
@@ -105,6 +116,15 @@ make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
 	{
 		.type := ast_expr_type.literal;
 		.literal := lit;
+	};
+};
+
+make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
+{
+	return ast_expr
+	{
+		.type := ast_expr_type.symbol;
+		.symbol := symbol;
 	};
 };
 
