@@ -17,6 +17,12 @@ hashexpr ::= func(t : ast_expr_type) -> u64
 	return multiplier ^ hash(t);
 };
 
+hashstmt ::= func(t : ast_stmt_type) -> u64
+{
+	multiplier ::= (ast_type.stmt)@s64 * 54948375;
+	return multiplier ^ hash(t);
+};
+
 hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 {
 	i : u64 mut;
@@ -26,6 +32,7 @@ hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 		curnode ::= deref (nodes at i);
 		istoken ::= (curnode.type) == (ast_type.unparsed_token);
 		isexpr ::= (curnode.type) == (ast_type.expr);
+		isstmt ::= (curnode.type) == (ast_type.stmt);
 		if(istoken)
 		{
 			utok ::= curnode.utok;
@@ -37,11 +44,19 @@ hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 			expr ::= curnode.expr;
 			hash = (hash ^ hashexpr(expr.type));
 		}
+		if(isstmt)
+		{
+			stmt ::= curnode.stmt;
+			hash = (hash ^ hashstmt(stmt.type));
+		}
 		if(!istoken)
 		{
 			if(!isexpr)
 			{
-				hash = (hash ^ hashnode(curnode.type));
+				if(!isstmt)
+				{
+					hash = (hash ^ hashnode(curnode.type));
+				}
 			}
 		}
 		hash = hash * 34875947865;
@@ -159,6 +174,15 @@ expr ::= macro(t : ast_expr_type) -> ast static
 	{
 		.type := ast_type.expr;
 		.expr := ast_expr{.type := t;};
+	};
+};
+
+stmt ::= macro(t : ast_stmt_type) -> ast static
+{
+	yield ast
+	{
+		.type := ast_type.stmt;
+		.stmt := ast_stmt{.type := t;};
 	};
 };
 
@@ -442,6 +466,7 @@ grammar_exprification ::= func() -> v0
 [[private]]
 grammar_stmtification ::= func() -> v0
 {
+	// note: this should support *all expr types*
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol)),
 		token(lex_token.semicol),
@@ -514,8 +539,15 @@ grammar_stmtification ::= func() -> v0
 [[private]]
 grammar_commits ::= func() -> v0
 {
+	// note: this should support *all stmt types*
 	grammar_install(
-		__array(ast, node(ast_type.stmt)),
+		__array(ast, stmt(ast_stmt_type.expr_stmt)),
+		zero_lookahead,
+		true,
+	rule(c1));
+
+	grammar_install(
+		__array(ast, stmt(ast_stmt_type.decl_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
