@@ -35,23 +35,6 @@ ast_expr ::= struct
 	literal : ast_literal_expr;
 };
 
-ast_stmt_type ::= enum
-{
-	.unknown := 0;
-	.expr_stmt := 1;
-};
-
-ast_stmt ::= struct
-{
-	type : ast_stmt_type;
-	expr : ast_expr;
-};
-
-ast_unparsed_token ::= struct
-{
-	tok : token_data;
-};
-
 ast_decl ::= struct
 {
 	name : u8&;
@@ -60,6 +43,25 @@ ast_decl ::= struct
 	typename_len : u64;
 	init : ast_expr;
 	has_init : bool;
+};
+
+ast_stmt_type ::= enum
+{
+	.unknown := 0;
+	.expr_stmt := 1;
+	.decl_stmt := 2;
+};
+
+ast_stmt ::= struct
+{
+	type : ast_stmt_type;
+	expr : ast_expr;
+	decl : ast_decl;
+};
+
+ast_unparsed_token ::= struct
+{
+	tok : token_data;
 };
 
 ast_type ::= enum
@@ -108,6 +110,7 @@ ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
 
 		(a->childcap) = ((a->childcap) * 2);
 		(a->children) = arena_push(ar, __sizeof(ast) * (a->childcap));
+		__memcpy(a->children, olddata, __sizeof(ast) * oldcap);
 	}
 
 	childrenptr ::= ((a->children)@ast mut&);
@@ -185,7 +188,7 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 
 	for(i = 0, i < (a->childcount), i = i + 1)
 	{
-		ast_verbose_print(childrenptr at i, 1);
+		ast_verbose_print(childrenptr at i, tabcount + 1);
 	}
 };
 

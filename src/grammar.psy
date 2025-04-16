@@ -90,6 +90,7 @@ parse_table_size : u64 mut;
 parse_table_cap : u64 mut;
 
 zero_lookahead ::= zero@ast;
+
 grammar_install ::= macro(nodes : auto, lookahead_node : ast, allow_begin_state : bool, rule : grammar_rule) -> v0
 {
 	[[__force_mutable]] nodearr ::= nodes;
@@ -337,18 +338,27 @@ exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	(ret.nodes_size) = 1;
 };
 
-stmt2stmtlist ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+declsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	reduce_setup(parse_action.reduce);
 
-	list : ast mut := zero@ast;
-	(list.type) = (ast_type.stmt_list);
-	(list.loc) = (first.loc);
-	(list.cursor_begin) = (first.cursor_begin);
-	(list.cursor_end) = (last.cursor_end);
+	if((first.type) != (ast_type.decl))
+	{
+		psyc_panic(srcloc_current(), "fooey");
+	}
 
-	ast_add_child(ref list, first, ar);
-	deref((ret.nodes) at 0) = list;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.stmt;
+		.stmt := ast_stmt
+		{
+			.type := ast_stmt_type.decl_stmt;
+			.decl := first.decl;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
 	(ret.nodes_size) = 1;
 };
 
@@ -454,7 +464,18 @@ grammar_stmtification ::= func() -> v0
 		true,
 	rule(s1));
 
-	// stmtification
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.semicol),
+		false,
+	rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.semicol),
+		true,
+	rule(s1));
+
+	// expr stmtification
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.semicol)),
 		zero_lookahead,
@@ -476,29 +497,25 @@ grammar_stmtification ::= func() -> v0
 		zero_lookahead,
 		true,
 	rule(exprsemicol2stmt));
-};
 
-[[private]]
-grammar_stmtlistification ::= func() -> v0
-{
-	// only at beginning of state, not recursive.
+	// decl stmtification
 	grammar_install(
-		__array(ast, node(ast_type.stmt)),
+		__array(ast, node(ast_type.decl), token(lex_token.semicol)),
+		zero_lookahead,
+		false,
+	rule(declsemicol2stmt));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.semicol)),
 		zero_lookahead,
 		true,
-	rule(stmt2stmtlist));
+	rule(declsemicol2stmt));
 };
 
 [[private]]
 grammar_commits ::= func() -> v0
 {
 	grammar_install(
-		__array(ast, node(ast_type.stmt_list)),
-		zero_lookahead,
-		false,
-	rule(c1));
-	grammar_install(
-		__array(ast, node(ast_type.stmt_list)),
+		__array(ast, node(ast_type.stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
@@ -558,7 +575,6 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_exprification();
 	grammar_stmtification();
-	grammar_stmtlistification();
 	grammar_commits();
 	grammar_decls();
 };
