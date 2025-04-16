@@ -11,6 +11,12 @@ hashtoken ::= func(t : lex_token) -> u64
 	return multiplier ^ hash(t);
 };
 
+hashexpr ::= func(t : ast_expr_type) -> u64
+{
+	multiplier ::= (ast_type.expr)@s64 * 54948375;
+	return multiplier ^ hash(t);
+};
+
 hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 {
 	i : u64 mut;
@@ -18,15 +24,25 @@ hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 	for(i = 0, i < node_count, i = i + 1)
 	{
 		curnode ::= deref (nodes at i);
-		if((curnode.type) == (ast_type.unparsed_token))
+		istoken ::= (curnode.type) == (ast_type.unparsed_token);
+		isexpr ::= (curnode.type) == (ast_type.expr);
+		if(istoken)
 		{
 			utok ::= curnode.utok;
 			tokdata ::= utok.tok;
 			hash = (hash ^ hashtoken(tokdata.tok));
 		}
-		if((curnode.type) != (ast_type.unparsed_token))
+		if(isexpr)
 		{
-			hash = (hash ^ hashnode(curnode.type));
+			expr ::= curnode.expr;
+			hash = (hash ^ hashexpr(expr.type));
+		}
+		if(!istoken)
+		{
+			if(!isexpr)
+			{
+				hash = (hash ^ hashnode(curnode.type));
+			}
 		}
 		hash = hash * 34875947865;
 	}
@@ -136,6 +152,15 @@ node ::= macro(t : ast_type) -> ast static
 	};
 };
 
+expr ::= macro(t : ast_expr_type) -> ast static
+{
+	yield ast
+	{
+		.type := ast_type.expr;
+		.expr := ast_expr{.type := t;};
+	};
+};
+
 rule ::= macro(f : auto) -> grammar_rule
 {
 	yield grammar_rule{.fn := f;};
@@ -168,6 +193,13 @@ r1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	puts("RECURSE 1");
 	putchar(10);
 	return parse_value{.action := parse_action.recurse; .offset := 1;};
+};
+
+r2 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	puts("RECURSE 2");
+	putchar(10);
+	return parse_value{.action := parse_action.recurse; .offset := 2;};
 };
 
 reduce_setup ::= macro(action : parse_action) -> v0
@@ -240,7 +272,8 @@ charlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse
 	literal ::= ast_literal_expr
 	{
 		.type := ast_literal_type.char_literal;
-		.chardata := lex;
+		.chars := source at (lex.off);
+		.chars_len := lex.len;
 	};
 
 	deref((ret.nodes) at 0) = ast
@@ -265,7 +298,8 @@ strlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	literal ::= ast_literal_expr
 	{
 		.type := ast_literal_type.string_literal;
-		.chardata := lex;
+		.chars := source at (lex.off);
+		.chars_len := lex.len;
 	};
 
 	deref((ret.nodes) at 0) = ast
@@ -315,6 +349,35 @@ stmt2stmtlist ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 
 	ast_add_child(ref list, first, ar);
 	deref((ret.nodes) at 0) = list;
+	(ret.nodes_size) = 1;
+};
+
+basic_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+
+	first_expr ::= first.expr;
+	first_symbol ::= first_expr.symbol;
+
+	last_expr ::= last.expr;
+	last_symbol ::= last_expr.symbol;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := ast_decl
+		{
+			.name := first_symbol.symbol;
+			.name_len := first_symbol.len;
+			.typename := last_symbol.symbol;
+			.typename_len := last_symbol.len;
+			.init := zero;
+			.has_init := false;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
 	(ret.nodes_size) = 1;
 };
 
@@ -370,25 +433,46 @@ grammar_exprification ::= func() -> v0
 grammar_stmtification ::= func() -> v0
 {
 	grammar_install(
-		__array(ast, node(ast_type.expr)),
+		__array(ast, expr(ast_expr_type.symbol)),
 		token(lex_token.semicol),
 		false,
 	rule(s1));
 	grammar_install(
-		__array(ast, node(ast_type.expr)),
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.semicol),
+		true,
+	rule(s1));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal)),
+		token(lex_token.semicol),
+		false,
+	rule(s1));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal)),
 		token(lex_token.semicol),
 		true,
 	rule(s1));
 
 	// stmtification
-
 	grammar_install(
-		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.semicol)),
 		zero_lookahead,
 		false,
 	rule(exprsemicol2stmt));
 	grammar_install(
-		__array(ast, node(ast_type.expr), token(lex_token.semicol)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.semicol)),
+		zero_lookahead,
+		true,
+	rule(exprsemicol2stmt));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.semicol)),
+		zero_lookahead,
+		false,
+	rule(exprsemicol2stmt));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.semicol)),
 		zero_lookahead,
 		true,
 	rule(exprsemicol2stmt));
@@ -420,6 +504,51 @@ grammar_commits ::= func() -> v0
 	rule(c1));
 };
 
+[[private]]
+grammar_decls ::= func() -> v0
+{
+	// expr(symbol) lookahead colon
+	// shift to expr(symbol) colon
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.colon),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.colon),
+		true,
+		rule(s1));
+
+	// expr(symbol) colon
+	// recurse twice (so offsetted nodes are now zero which causes an implicit shift)
+	// this means the offsetted node state is *just* whatever was our lookahead before
+	// long-story-short: recurse twice and start parsing whatever's next.
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon)),
+		zero_lookahead,
+		true,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon)),
+		zero_lookahead,
+		false,
+		rule(r2));
+
+	// expr(symbol) colon expr(symbol)
+	// this is the most basic form of decl the language supports. e.g myvar : u64
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(basic_decl));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(basic_decl));
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -431,6 +560,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtification();
 	grammar_stmtlistification();
 	grammar_commits();
+	grammar_decls();
 };
 
 == build ==
