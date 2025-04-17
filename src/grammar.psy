@@ -227,6 +227,13 @@ r2 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	return parse_value{.action := parse_action.recurse; .offset := 2;};
 };
 
+r3 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	puts("RECURSE 3");
+	putchar(10);
+	return parse_value{.action := parse_action.recurse; .offset := 3;};
+};
+
 reduce_setup ::= macro(action : parse_action) -> v0
 {
 	first ::= deref(nodes at 0);
@@ -257,6 +264,9 @@ numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -282,6 +292,9 @@ symbol2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -407,6 +420,35 @@ basic_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_v
 			.typename_len := last_symbol.len;
 			.init := zero;
 			.has_init := false;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
+	(ret.nodes_size) = 1;
+};
+
+type_deduced_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+
+	first_expr ::= first.expr;
+	first_symbol ::= first_expr.symbol;
+
+	last_expr ::= last.expr;
+	last_symbol ::= last_expr.symbol;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := ast_decl
+		{
+			.name := first_symbol.symbol;
+			.name_len := first_symbol.len;
+			.typename := psyc_deduced_typename;
+			.typename_len := cstrlen(psyc_deduced_typename);
+			.init := last_expr;
+			.has_init := true;
 		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -619,6 +661,20 @@ grammar_decls ::= func() -> v0
 		false,
 		rule(r2));
 
+	// special case if the colon is directly followed by an initialiser
+	// then we're probably parsing a variable decl with a deduced type.
+	// shift in that specific case.
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon)),
+		token(lex_token.initialiser),
+		true,
+		rule(s1));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon)),
+		token(lex_token.initialiser),
+		false,
+		rule(s1));
+
 	// expr(symbol) colon expr(symbol)
 	// this is the most basic form of decl the language supports. e.g myvar : u64
 	grammar_install(
@@ -654,7 +710,8 @@ grammar_decls ::= func() -> v0
 		false,
 		rule(r2));
 
-	// do this for *all expr types*
+	// do this for *all expr types* that can be decl initialisers
+	// which is all of them.
 	grammar_install(
 		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
 		zero_lookahead,
@@ -676,6 +733,43 @@ grammar_decls ::= func() -> v0
 		zero_lookahead,
 		false,
 		rule(give_decl_an_initialiser));
+
+	// expr(symbol) colon initialiser
+	// variable declaration with an initialiser expression. e.g myvar ::= 5
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser)),
+		zero_lookahead,
+		true,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser)),
+		zero_lookahead,
+		false,
+		rule(r3));
+
+	// do this for *all expr types* that can be decl initialisers
+	// which is all of them.
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(type_deduced_decl));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(type_deduced_decl));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(type_deduced_decl));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(type_deduced_decl));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
@@ -695,4 +789,5 @@ grammar_setup ::= func(a : arena mut&) -> v0
 {
 	add_source_file("ast.psy");
 	add_source_file("hash.psy");
+	add_source_file("type.psy");
 }
