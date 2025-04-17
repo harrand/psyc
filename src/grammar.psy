@@ -415,6 +415,41 @@ basic_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_v
 	(ret.nodes_size) = 1;
 };
 
+give_decl_an_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+	if((first.type) != (ast_type.decl))
+	{
+		psyc_panic(srcloc_current(), "first parameter of give_decl_an_initialiser expects a decl");
+	}
+	if((last.type) != (ast_type.expr))
+	{
+		psyc_panic(srcloc_current(), "last parameter of give_decl_an_initialiser expects an expr");
+	}
+
+	firstdecl : ast_decl mut := first.decl;
+	if(firstdecl.has_init)
+	{
+		return parse_value
+		{
+			.action := parse_action.error;
+			.errmsg := "decl already had an initialiser";
+		};
+	}
+	(firstdecl.has_init) = true;
+	(firstdecl.init) = (last.expr);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := first.type;
+		.decl := firstdecl;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+	};
+	(ret.nodes_size) = 1;
+};
+
 [[private]]
 grammar_exprification ::= func() -> v0
 {
@@ -596,6 +631,51 @@ grammar_decls ::= func() -> v0
 		zero_lookahead,
 		false,
 		rule(basic_decl));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.initialiser),
+		true,
+		rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.initialiser),
+		false,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser)),
+		zero_lookahead,
+		true,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser)),
+		zero_lookahead,
+		false,
+		rule(r2));
+
+	// do this for *all expr types*
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(give_decl_an_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(give_decl_an_initialiser));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(give_decl_an_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(give_decl_an_initialiser));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
