@@ -3,6 +3,18 @@ ast_expr_type ::= enum
 	.unknown := 0;
 	.symbol := 1;
 	.literal := 2;
+	.biop := 3;
+};
+
+ast_biop_type ::= enum
+{
+	.assign := 0;
+	.plus := 1;
+};
+
+ast_biop_expr ::= struct
+{
+	type : ast_biop_type;
 };
 
 ast_literal_type ::= enum
@@ -33,6 +45,7 @@ ast_expr ::= struct
 	type : ast_expr_type;
 	symbol : ast_symbol_expr;
 	literal : ast_literal_expr;
+	biop : ast_biop_expr;
 };
 
 ast_decl ::= struct
@@ -124,6 +137,48 @@ ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> ast mu
 {
 	cid ::= ast_add_child(a, child, ar);
 	return ast_get_child(a, cid);
+};
+
+ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut&) -> v0
+{
+	childrenptr ::= ((a->children)@ast mut&);
+	c ::= a->childcount;
+	if(c >= 1)
+	{
+		deref(childrenptr at 0) = lhs;
+	}
+	if(c == 0)
+	{
+		ast_add_child(a, lhs, ar);
+	}
+};
+
+ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut&) -> v0
+{
+	childrenptr ::= ((a->children)@ast mut&);
+	c ::= a->childcount;
+	if(c >= 2)
+	{
+		deref(childrenptr at 1) = rhs;
+	}
+	if(c == 1)
+	{
+		ast_add_child(a, rhs, ar);
+	}
+	if(c == 0)
+	{
+		ast_add_child(a, zero, ar);
+		ast_add_child(a, rhs, ar);
+	}
+};
+
+make_biop_expr ::= func(biop : ast_biop_expr) -> ast_expr
+{
+	return ast_expr
+	{
+		.type := ast_expr_type.biop;
+		.biop := biop;
+	};
 };
 
 make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr

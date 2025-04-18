@@ -321,6 +321,9 @@ charlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -347,6 +350,9 @@ strlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -371,6 +377,9 @@ exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -395,6 +404,9 @@ declsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -424,6 +436,9 @@ basic_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_v
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -453,6 +468,9 @@ type_deduced_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> 
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -488,7 +506,72 @@ give_decl_an_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
 	};
+	(ret.nodes_size) = 1;
+};
+
+create_biop ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+	if((first.type) != (ast_type.expr))
+	{
+		psyc_panic(srcloc_current(), "first parameter of create_biop expects an expr");
+	}
+	if((last.type) != (ast_type.expr))
+	{
+		psyc_panic(srcloc_current(), "last parameter of create_biop expects an expr");
+	}
+
+	opnode ::= deref(nodes at 1);
+	if((opnode.type) != (ast_type.unparsed_token))
+	{
+		psyc_panic(srcloc_current(), "2nd parameter of create_biop expects an unparsed token (representing the biop type)");
+	}
+	utok ::= opnode.utok;
+	tok ::= utok.tok;
+
+	// todo: derive biop_ty based on the token op
+	invalid_biop ::= -1@ast_biop_type;
+	biop_ty : ast_biop_type mut := invalid_biop;
+
+	if((tok.tok) == (lex_token.assign))
+	{
+		biop_ty = (ast_biop_type.assign);
+	}
+	if((tok.tok) == (lex_token.plus))
+	{
+		biop_ty = (ast_biop_type.plus);
+	}
+	if(biop_ty == invalid_biop)
+	{
+		return parse_value
+		{
+			.action := parse_action.error;
+			.errmsg := "unrecognised binary operator operand";
+		};
+	}
+
+	biop ::= make_biop_expr(ast_biop_expr
+	{
+		.type := biop_ty;
+	});
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := biop;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_biop_set_lhs((ret.nodes) at 0, first, ar);
+	ast_biop_set_rhs((ret.nodes) at 0, last, ar);
 	(ret.nodes_size) = 1;
 };
 
@@ -567,6 +650,17 @@ grammar_stmtification ::= func() -> v0
 	rule(s1));
 
 	grammar_install(
+		__array(ast, expr(ast_expr_type.biop)),
+		token(lex_token.semicol),
+		false,
+	rule(s1));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop)),
+		token(lex_token.semicol),
+		true,
+	rule(s1));
+
+	grammar_install(
 		__array(ast, node(ast_type.decl)),
 		token(lex_token.semicol),
 		false,
@@ -577,7 +671,7 @@ grammar_stmtification ::= func() -> v0
 		true,
 	rule(s1));
 
-	// expr stmtification
+	// expr stmtification (do this foreach expr type aswell as other things)
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.semicol)),
 		zero_lookahead,
@@ -596,6 +690,17 @@ grammar_stmtification ::= func() -> v0
 	rule(exprsemicol2stmt));
 	grammar_install(
 		__array(ast, expr(ast_expr_type.literal), token(lex_token.semicol)),
+		zero_lookahead,
+		true,
+	rule(exprsemicol2stmt));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.semicol)),
+		zero_lookahead,
+		false,
+	rule(exprsemicol2stmt));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.semicol)),
 		zero_lookahead,
 		true,
 	rule(exprsemicol2stmt));
@@ -772,6 +877,44 @@ grammar_decls ::= func() -> v0
 		rule(type_deduced_decl));
 };
 
+[[private]]
+grammar_biops ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.assign),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.assign),
+		true,
+		rule(r2));
+
+	// do this foreach expr type.
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.assign), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.assign), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.assign), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.assign), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -783,6 +926,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtification();
 	grammar_commits();
 	grammar_decls();
+	grammar_biops();
 };
 
 == build ==
