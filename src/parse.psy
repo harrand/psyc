@@ -46,7 +46,7 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 {
 	lex ::= s->lex;
-	delta : u64 mut := 1;
+	delta : u64 mut := 0;
 	cursor ::= (s->lex_cursor) + delta;
 	if(cursor < (lex->tokens_size))
 	{
@@ -120,7 +120,7 @@ shift ::= func(s : parse_state mut&) -> v0
 	{
 		node_array_add(s, la);
 	}
-	(s->lex_cursor) = (s->lex_cursor) + delta + 1;
+	(s->lex_cursor) = ((s->lex_cursor) + delta + 1);
 };
 
 [[private]]
@@ -230,7 +230,16 @@ commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
 parse_complete ::= func(p : parse_state&) -> bool
 {
 	lex ::= p->lex;
-	return (p->lex_cursor) >= (lex->tokens_size);
+	out_of_tokens ::= (p->lex_cursor) >= (lex->tokens_size);
+	nodes_empty ::= p->node_array_size == 0;
+	if(out_of_tokens)
+	{
+		if(nodes_empty)
+		{
+			return true;
+		}
+	}
+	return false;
 };
 
 sized_string ::= struct
