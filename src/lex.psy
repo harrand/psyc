@@ -157,61 +157,61 @@ lex_token ::= enum
 	.comment := 0;
 	.multicomment := 1;
 	.numeric_literal := 2;
-	.symbol := 3;
-	.char_literal := 4;
-	.string_literal := 5;
-	.semicol := 6;
-	.initialiser := 7;
-	.colon := 8;
-	.comma := 9;
-	.dot := 10;
-	.compare := 11;
-	.comparen := 12;
-	.assign := 13;
-	.arrow := 14;
-	.oparen := 15;
-	.cparen := 16;
-	.obrace := 17;
-	.cbrace := 18;
-	.obrack := 19;
-	.cbrack := 20;
-	.plus := 21;
-	.dash := 22;
-	.asterisk := 23;
-	.fslash := 24;
-	.cast := 25;
-	.arr := 26;
-	.bitwise_and := 27;
-	.bitwise_or := 28;
-	.bitwise_exor := 29;
-	.modulo := 30;
-	.invert := 31;
-	.loreq := 32;
-	.goreq := 33;
-	.oanglebrack := 34;
-	.canglebrack := 35;
-	.keyword_static_if := 36;
-	.keyword_if := 37;
-	.keyword_else := 38;
-	.keyword_while := 39;
-	.keyword_for := 40;
-	.keyword_return := 41;
-	.keyword_yield := 42;
-	.keyword_func := 43;
-	.keyword_macro := 44;
-	.keyword_extern := 45;
-	.keyword_struct := 46;
-	.keyword_enum := 47;
-	.keyword_ref := 48;
-	.keyword_deref := 49;
-	.keyword_atomic_deref := 50;
-	.keyword_defer := 51;
-	.keyword_alias := 52;
-	.keyword_at := 53;
-	.keyword_true := 54;
-	.keyword_false := 55;
-	.keyword_zero := 56;
-	.keyword_null := 57;
+	.char_literal := 3;
+	.string_literal := 4;
+	.semicol := 5;
+	.initialiser := 6;
+	.colon := 7;
+	.comma := 8;
+	.dot := 9;
+	.compare := 10;
+	.comparen := 11;
+	.assign := 12;
+	.arrow := 13;
+	.oparen := 14;
+	.cparen := 15;
+	.obrace := 16;
+	.cbrace := 17;
+	.obrack := 18;
+	.cbrack := 19;
+	.plus := 20;
+	.dash := 21;
+	.asterisk := 22;
+	.fslash := 23;
+	.cast := 24;
+	.arr := 25;
+	.bitwise_and := 26;
+	.bitwise_or := 27;
+	.bitwise_exor := 28;
+	.modulo := 29;
+	.invert := 30;
+	.loreq := 31;
+	.goreq := 32;
+	.oanglebrack := 33;
+	.canglebrack := 34;
+	.keyword_static_if := 35;
+	.keyword_if := 36;
+	.keyword_else := 37;
+	.keyword_while := 38;
+	.keyword_for := 39;
+	.keyword_return := 40;
+	.keyword_yield := 41;
+	.keyword_func := 42;
+	.keyword_macro := 43;
+	.keyword_extern := 44;
+	.keyword_struct := 45;
+	.keyword_enum := 46;
+	.keyword_ref := 47;
+	.keyword_deref := 48;
+	.keyword_atomic_deref := 49;
+	.keyword_defer := 50;
+	.keyword_alias := 51;
+	.keyword_at := 52;
+	.keyword_true := 53;
+	.keyword_false := 54;
+	.keyword_zero := 55;
+	.keyword_null := 56;
+	.symbol := 57;
 };
 
 token_data ::= struct
@@ -411,7 +411,6 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	is_hex_number ::= cstr_starts_with(front, "0x");
 	f ::= deref(front at 0);
 	starts_with_digit ::= impl_is_digit(f);
-	starts_with_minus ::= f == '-';
 
 	contains_decimal : bool mut := false;
 
@@ -421,10 +420,7 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	{
 		if(!starts_with_digit)
 		{
-			if(!starts_with_minus)
-			{
-				return false;
-			}
+			return false;
 		}
 	}
 
@@ -437,11 +433,6 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 		ls_advance_str(state, "0x");
 		// remember - if we're lexing a hex literal then we also allow a-fA-F in our digits.
 		digit_checker = impl_is_hexdigit;
-	}
-	if(starts_with_minus)
-	{
-		myfront = (myfront at 1);
-		ls_advance_str(state, "-");
 	}
 	found_decimal : bool mut := false;
 	while(digit_checker(deref(myfront at 0)))
