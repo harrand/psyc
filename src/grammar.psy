@@ -121,6 +121,7 @@ grammar_install ::= macro(nodes : auto, lookahead_node : ast, allow_begin_state 
 	{
 		hash = !hash;
 	}
+	/*
 	puts("(size = ");
 	putuint(__arrlen(nodes));
 	puts(", ptr = ");
@@ -137,6 +138,7 @@ grammar_install ::= macro(nodes : auto, lookahead_node : ast, allow_begin_state 
 		puts(" (allow_begin_state)");
 	}
 	putchar(10);
+	*/
 	[[__force_mutable]] ptr ::= parse_table at (hash % parse_table_cap);
 	if(ptr->fn == default_rule)
 	{
@@ -404,9 +406,9 @@ declsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
-		.children := null;
-		.childcap := 0;
-		.childcount := 0;
+		.children := first.children;
+		.childcap := first.childcap;
+		.childcount := first.childcount;
 	};
 	(ret.nodes_size) = 1;
 };
@@ -513,6 +515,19 @@ give_decl_an_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 	(ret.nodes_size) = 1;
 };
 
+get_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
+{
+	if(t == (lex_token.assign))
+	{
+		return ast_biop_type.assign;
+	}
+	if(t == (lex_token.plus))
+	{
+		return ast_biop_type.plus;
+	}
+	return -1@ast_biop_type;
+};
+
 create_biop ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	reduce_setup(parse_action.reduce);
@@ -533,18 +548,8 @@ create_biop ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	utok ::= opnode.utok;
 	tok ::= utok.tok;
 
-	// todo: derive biop_ty based on the token op
+	biop_ty ::= get_biop_type_from_token(tok.tok);
 	invalid_biop ::= -1@ast_biop_type;
-	biop_ty : ast_biop_type mut := invalid_biop;
-
-	if((tok.tok) == (lex_token.assign))
-	{
-		biop_ty = (ast_biop_type.assign);
-	}
-	if((tok.tok) == (lex_token.plus))
-	{
-		biop_ty = (ast_biop_type.plus);
-	}
 	if(biop_ty == invalid_biop)
 	{
 		return parse_value
@@ -572,6 +577,89 @@ create_biop ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	};
 	ast_biop_set_lhs((ret.nodes) at 0, first, ar);
 	ast_biop_set_rhs((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
+};
+
+biopify_decl_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+
+	if((first.type) != (ast_type.decl))
+	{
+		psyc_panic(srcloc_current(), "first parameter of biopify_decl_initialiser expects a decl");
+	}
+	if((last.type) != (ast_type.expr))
+	{
+		psyc_panic(srcloc_current(), "last parameter of biopify_decl_initialiser expects an expr");
+	}
+
+	second_last ::= deref(nodes at (nodes_size - 2));
+
+	utok ::= second_last.utok;
+	tok ::= utok.tok;
+
+	biop_ty ::= get_biop_type_from_token(tok.tok);
+	invalid_biop ::= -1@ast_biop_type;
+	if(biop_ty == invalid_biop)
+	{
+		return parse_value
+		{
+			.action := parse_action.error;
+			.errmsg := "unrecognised binary operator operand";
+		};
+	}
+	
+	decl : ast_decl mut := first.decl;
+	// first is our decl with an initialiser
+	// 1. make a new ast node for that initialiser. that is our biop lhs
+	lhs_expr ::= decl.init;
+	if(!(decl.has_init))
+	{
+		psyc_panic(srcloc_current(), "foo");
+	}
+
+	lhs_node ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := lhs_expr;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		// note: if first.decl.init was already a biop then it has children.
+		.children := first.children;
+		.childcap := first.childcap;
+		.childcount := first.childcount;
+	};
+
+	// 2. last is a new expr representing the biop rhs.
+	rhs_expr ::= last.expr;
+	rhs_node ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := rhs_expr;
+		.loc := last.loc;
+		.cursor_begin := last.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := last.children;
+		.childcap := last.childcap;
+		.childcount := last.childcount;
+	};
+	// make first.decl.init a biop where 1 is lhs and 2 is rhs
+	(decl.init) = make_biop_expr(ast_biop_expr{.type := biop_ty;});
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := decl;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_biop_set_lhs((ret.nodes) at 0, lhs_node, ar);
+	ast_biop_set_rhs((ret.nodes) at 0, rhs_node, ar);
 	(ret.nodes_size) = 1;
 };
 
@@ -878,8 +966,9 @@ grammar_decls ::= func() -> v0
 };
 
 [[private]]
-grammar_biops ::= func() -> v0
+grammar_biop_assign ::= func() -> v0
 {
+	// all expr types
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol)),
 		token(lex_token.assign),
@@ -909,6 +998,17 @@ grammar_biops ::= func() -> v0
 		rule(r2));
 	grammar_install(
 		__array(ast, expr(ast_expr_type.biop)),
+		token(lex_token.assign),
+		true,
+		rule(r2));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.assign),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
 		token(lex_token.assign),
 		true,
 		rule(r2));
@@ -946,6 +1046,17 @@ grammar_biops ::= func() -> v0
 		true,
 		rule(create_biop));
 
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
+
 	// 
 
 	grammar_install(
@@ -981,6 +1092,17 @@ grammar_biops ::= func() -> v0
 		true,
 		rule(create_biop));
 
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
+
 	// 
 
 	grammar_install(
@@ -1015,6 +1137,202 @@ grammar_biops ::= func() -> v0
 		zero_lookahead,
 		true,
 		rule(create_biop));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.assign), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
+};
+
+[[private]]
+grammar_biop_plus ::= func() -> v0
+{
+	// all expr types
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.plus),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol)),
+		token(lex_token.plus),
+		true,
+		rule(r2));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal)),
+		token(lex_token.plus),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal)),
+		token(lex_token.plus),
+		true,
+		rule(r2));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop)),
+		token(lex_token.plus),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop)),
+		token(lex_token.plus),
+		true,
+		rule(r2));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.plus),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.decl)),
+		token(lex_token.plus),
+		true,
+		rule(r2));
+
+	// do this foreach expr type. (both first and last)
+	// last
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
+
+	// 
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
+
+	// 
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.literal), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(create_biop));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.biop), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(create_biop));
+
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(biopify_decl_initialiser));
+	grammar_install(
+		__array(ast, node(ast_type.decl), token(lex_token.plus), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(biopify_decl_initialiser));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
@@ -1028,7 +1346,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtification();
 	grammar_commits();
 	grammar_decls();
-	grammar_biops();
+	grammar_biop_assign();
+	grammar_biop_plus();
 };
 
 == build ==
