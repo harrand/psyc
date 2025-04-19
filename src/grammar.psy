@@ -702,7 +702,7 @@ wipfn_cap_off_params ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) 
 	{
 		psyc_panic(srcloc_current(), "expected blue wipfn when capping off params");
 	}
-	(wipfn->type) = (ast_type.wipfn_yellow);
+	(wipfn->type) = (ast_type.wipfn_red);
 	last ::= deref(nodes at (nodes_size - 1));
 	(wipfn->cursor_end) = (last.cursor_end);
 	// remove all but the first node
@@ -745,24 +745,26 @@ wipfn_last_node_is_return_type ::= func(source : u8&, nodes : ast mut&, nodes_si
 	};
 };
 
-wipfn_move_last_node_to_param_red ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+wipfn_move_2nd_node_to_param_blue ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	// get last node and set it as a param.
-	// reduce to erase the last node
+	// get 2nd node and set it as a param.
+	// kill all but first node
 	wipfn ::= nodes at 0;
 	last ::= deref(nodes at (nodes_size - 1));
-	ast_add_child(wipfn, last, ar);
+	second ::= deref(nodes at 1);
+	ast_add_child(wipfn, second, ar);
 	if((wipfn->type) != (ast_type.wipfn_blue))
 	{
 		psyc_panic(srcloc_current(), "expected blue wipfn when appending param (-> red)");
 	}
-	(wipfn->type) = (ast_type.wipfn_red);
+	(wipfn->type) = (ast_type.wipfn_blue);
 	(wipfn->cursor_end) = (last.cursor_end);
+	// remove all but the first node
 	return parse_value
 	{
 		.action := parse_action.reduce;
-		.offset := nodes_size - 1;
-		.len := 1;
+		.offset := 1;
+		.len := (nodes_size - 1);
 		.nodes_size := 0;
 	};
 };
@@ -1379,12 +1381,24 @@ grammar_wipfn ::= func() -> v0
 		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
 		token(lex_token.comma),
 		false,
-		rule(wipfn_move_last_node_to_param_red));
+		rule(s1));
 	grammar_install(
 		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
 		token(lex_token.comma),
 		true,
-		rule(wipfn_move_last_node_to_param_red));
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl), token(lex_token.comma)),
+		zero_lookahead,
+		false,
+		rule(wipfn_move_2nd_node_to_param_blue));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl), token(lex_token.comma)),
+		zero_lookahead,
+		true,
+		rule(wipfn_move_2nd_node_to_param_blue));
+
 
 	// blue -> blue (accept a new param followed by a cparen implying this is the last param and we will cap off soon)
 	grammar_install(
@@ -1398,7 +1412,7 @@ grammar_wipfn ::= func() -> v0
 		true,
 		rule(wipfn_move_last_node_to_param_blue));
 
-	// blue -> yellow (close off params)
+	// blue -> red (close off params)
 	grammar_install(
 		__array(ast, node(ast_type.wipfn_blue), token(lex_token.cparen)),
 		zero_lookahead,
@@ -1410,26 +1424,26 @@ grammar_wipfn ::= func() -> v0
 		true,
 		rule(wipfn_cap_off_params));
 
-	// yellow wipfn has all the parameters finalised but nothing further - needs return type
+	// red wipfn has all the parameters finalised but nothing further - needs return type
 	grammar_install(
-		__array(ast, node(ast_type.wipfn_yellow)),
+		__array(ast, node(ast_type.wipfn_red)),
 		token(lex_token.arrow),
 		false,
 		rule(s2));
 	grammar_install(
-		__array(ast, node(ast_type.wipfn_yellow)),
+		__array(ast, node(ast_type.wipfn_red)),
 		token(lex_token.arrow),
 		true,
 		rule(s2));
 
-	// yellow -> green (collect return type)
+	// red -> green (collect return type)
 	grammar_install(
-		__array(ast, node(ast_type.wipfn_yellow), token(lex_token.arrow), token(lex_token.symbol)),
+		__array(ast, node(ast_type.wipfn_red), token(lex_token.arrow), token(lex_token.symbol)),
 		zero_lookahead,
 		false,
 		rule(wipfn_last_node_is_return_type));
 	grammar_install(
-		__array(ast, node(ast_type.wipfn_yellow), token(lex_token.arrow), token(lex_token.symbol)),
+		__array(ast, node(ast_type.wipfn_red), token(lex_token.arrow), token(lex_token.symbol)),
 		zero_lookahead,
 		true,
 		rule(wipfn_last_node_is_return_type));
