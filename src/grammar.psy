@@ -804,6 +804,28 @@ wipfn_complain_need_impl_blk_or_extern ::= func(source : u8&, nodes : ast mut&, 
 	};
 };
 
+wipfn2externdeffunc_expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	first ::= nodes at 0;
+	last ::= deref(nodes at (nodes_size - 1));
+	wipfn ::= first->wipfn;
+	(first->expr) = make_deffunc_expr(ast_deffunc_expr
+	{
+		.ret_typename := wipfn.ret_typename;
+		.ret_typename_len := wipfn.ret_typename_len;
+		.is_extern := true;
+	});
+	(first->type) = (ast_type.expr);
+	(first->cursor_end) = last.cursor_end;
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := nodes_size - 1;
+		.len := 1;
+		.nodes_size := 0;
+	};
+};
+
 [[private]]
 grammar_exprification ::= func() -> v0
 {
@@ -1469,6 +1491,32 @@ grammar_wipfn ::= func() -> v0
 		rule(wipfn_complain_need_impl_blk_or_extern));
 };
 
+[[private]]
+grammar_deffunc ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green)),
+		token(lex_token.initialiser),
+		false,
+		rule(s2));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green)),
+		token(lex_token.initialiser),
+		true,
+		rule(s2));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green), token(lex_token.initialiser), token(lex_token.keyword_extern)),
+		zero_lookahead,
+		false,
+		rule(wipfn2externdeffunc_expr));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green), token(lex_token.initialiser), token(lex_token.keyword_extern)),
+		zero_lookahead,
+		true,
+		rule(wipfn2externdeffunc_expr));
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -1485,6 +1533,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop_op(lex_token.dash);
 	grammar_biop_op(lex_token.keyword_at);
 	grammar_wipfn();
+	grammar_deffunc();
 };
 
 == build ==
