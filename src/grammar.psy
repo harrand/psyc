@@ -203,7 +203,12 @@ grammar_get_rule ::= func(hash : u64) -> grammar_rule
 
 s1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.shift;};
+	return parse_value{.action := parse_action.shift; .len := 1;};
+};
+
+s2 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift; .len := 2;};
 };
 
 c1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -670,6 +675,131 @@ biopify_decl_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 	ast_biop_set_lhs((ret.nodes) at 0, lhs_node, ar);
 	ast_biop_set_rhs((ret.nodes) at 0, rhs_node, ar);
 	(ret.nodes_size) = 1;
+};
+
+create_empty_wipfn ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipfn_blue;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipfn_cap_off_params ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// assume first is a wipfn
+	wipfn ::= nodes at 0;
+	if((wipfn->type) != (ast_type.wipfn_blue))
+	{
+		psyc_panic(srcloc_current(), "expected blue wipfn when capping off params");
+	}
+	(wipfn->type) = (ast_type.wipfn_yellow);
+	last ::= deref(nodes at (nodes_size - 1));
+	(wipfn->cursor_end) = (last.cursor_end);
+	// remove all but the first node
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 1;
+		.len := (nodes_size - 1);
+		.nodes_size := 0;
+	};
+};
+
+wipfn_last_node_is_return_type ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	wipfn ::= nodes at 0;
+	last ::= deref(nodes at (nodes_size - 1));
+	if((last.type) != (ast_type.unparsed_token))
+	{
+		psyc_panic(srcloc_current(), "expected symbol when treating last node as return type");
+	}
+	utok ::= last.utok;
+	tok ::= utok.tok;
+
+	lex ::= tok.lexeme;
+
+	(wipfn->wipfn) = ast_wipfn
+	{
+		.ret_typename := source at (lex.off);
+		.ret_typename_len := lex.len;
+	};
+	(wipfn->type) = (ast_type.wipfn_green);
+	(wipfn->cursor_end) = (last.cursor_end);
+	// remove all but the first node
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 1;
+		.len := (nodes_size - 1);
+		.nodes_size := 0;
+	};
+};
+
+wipfn_move_last_node_to_param_red ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// get last node and set it as a param.
+	// reduce to erase the last node
+	wipfn ::= nodes at 0;
+	last ::= deref(nodes at (nodes_size - 1));
+	ast_add_child(wipfn, last, ar);
+	if((wipfn->type) != (ast_type.wipfn_blue))
+	{
+		psyc_panic(srcloc_current(), "expected blue wipfn when appending param (-> red)");
+	}
+	(wipfn->type) = (ast_type.wipfn_red);
+	(wipfn->cursor_end) = (last.cursor_end);
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := nodes_size - 1;
+		.len := 1;
+		.nodes_size := 0;
+	};
+};
+
+wipfn_move_last_node_to_param_blue ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// get last node and set it as a param.
+	// reduce to erase the last node
+	wipfn ::= nodes at 0;
+	last ::= deref(nodes at (nodes_size - 1));
+	ast_add_child(wipfn, last, ar);
+	if((wipfn->type) != (ast_type.wipfn_blue))
+	{
+		psyc_panic(srcloc_current(), "expected blue wipfn when appending param (-> blue)");
+	}
+	(wipfn->type) = (ast_type.wipfn_blue);
+	(wipfn->cursor_end) = last.cursor_end;
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := nodes_size - 1;
+		.len := 1;
+		.nodes_size := 0;
+	};
+};
+
+wipfn_complain_need_impl_blk_or_extern ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// this happens if impl-blk or := extern is missing
+	// e.g "func() -> v0" should be followed by:
+	// ":= extern"
+	// { ...impl block details... }
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "function declaration expression should either be followed by ':= extern' (to indicate external impl) or '{' to start an implementation block.";
+	};
 };
 
 [[private]]
@@ -1158,6 +1288,173 @@ grammar_biop_op ::= macro(tok : lex_token) -> v0
 		rule(biopify_decl_initialiser));
 };
 
+[[private]]
+grammar_wipfn ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, token(lex_token.keyword_func)),
+		token(lex_token.oparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.keyword_func)),
+		token(lex_token.oparen),
+		true,
+		rule(s1));
+
+	// create wipfn here
+
+	grammar_install(
+		__array(ast, token(lex_token.keyword_func), token(lex_token.oparen)),
+		zero_lookahead,
+		false,
+		rule(create_empty_wipfn));
+	grammar_install(
+		__array(ast, token(lex_token.keyword_func), token(lex_token.oparen)),
+		zero_lookahead,
+		true,
+		rule(create_empty_wipfn));
+
+	// blue wipfn is waiting for either:
+	// cparen (end of params)
+	// anything else (assume will parse down to a decl which will then become red)
+	//	note: for the aforementioned "anything else", lots of these rules will just recurse 1 to get the wipfn out of the way and re-use the decl parse rules
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue)),
+		zero_lookahead,
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue)),
+		zero_lookahead,
+		true,
+		rule(r1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol), token(lex_token.colon)),
+		zero_lookahead,
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol), token(lex_token.colon)),
+		zero_lookahead,
+		true,
+		rule(r1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol), token(lex_token.colon), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), expr(ast_expr_type.symbol), token(lex_token.colon), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(r1));
+
+	// blue -> red (accept a new param followed by a commar implying more params to come)
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
+		token(lex_token.comma),
+		false,
+		rule(wipfn_move_last_node_to_param_red));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
+		token(lex_token.comma),
+		true,
+		rule(wipfn_move_last_node_to_param_red));
+
+	// blue -> blue (accept a new param followed by a cparen implying this is the last param and we will cap off soon)
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
+		token(lex_token.cparen),
+		false,
+		rule(wipfn_move_last_node_to_param_blue));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), node(ast_type.decl)),
+		token(lex_token.cparen),
+		true,
+		rule(wipfn_move_last_node_to_param_blue));
+
+	// blue -> yellow (close off params)
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(wipfn_cap_off_params));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_blue), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(wipfn_cap_off_params));
+
+	// yellow wipfn has all the parameters finalised but nothing further - needs return type
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_yellow)),
+		token(lex_token.arrow),
+		false,
+		rule(s2));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_yellow)),
+		token(lex_token.arrow),
+		true,
+		rule(s2));
+
+	// yellow -> green (collect return type)
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_yellow), token(lex_token.arrow), token(lex_token.symbol)),
+		zero_lookahead,
+		false,
+		rule(wipfn_last_node_is_return_type));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_yellow), token(lex_token.arrow), token(lex_token.symbol)),
+		zero_lookahead,
+		true,
+		rule(wipfn_last_node_is_return_type));
+
+	// green has all the information about the function signature itself (params and return type)
+	// but in psy, func(..) -> foo is followed by one of two things:
+	// - a obrace, which means a block statement is expected next
+	// - a fragment that reads: ":= extern" indicating that the function is implemented externally.
+
+	// impl note: i am just checking for semicol lookahead here which is the most obvious erroneous syntax
+	// however i havent bothered to implement the impl-blk or extern paths yet
+	// what you should todo: handle impl-blk and extern paths
+	// if neither of them are hit, then the rule should be wipfn_complain_... instead of just checking for semicol lookahead.
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green)),
+		token(lex_token.semicol),
+		false,
+		rule(wipfn_complain_need_impl_blk_or_extern));
+	grammar_install(
+		__array(ast, node(ast_type.wipfn_green)),
+		token(lex_token.semicol),
+		true,
+		rule(wipfn_complain_need_impl_blk_or_extern));
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -1173,6 +1470,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop_op(lex_token.plus);
 	grammar_biop_op(lex_token.dash);
 	grammar_biop_op(lex_token.keyword_at);
+	grammar_wipfn();
 };
 
 == build ==
