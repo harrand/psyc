@@ -4589,7 +4589,7 @@ std::filesystem::path codegen_generate(compile_args& args)
 
     // Create a TargetMachine
     llvm::TargetOptions opt;
-    targetMachine = target->createTargetMachine(args.target_triple, "generic", "", opt, llvm::Reloc::PIC_);
+    targetMachine = target->createTargetMachine(args.target_triple, "generic", "", opt, llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::None);
 
     codegen.mod->setDataLayout(targetMachine->createDataLayout());
 
