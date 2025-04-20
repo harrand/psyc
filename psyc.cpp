@@ -11796,6 +11796,66 @@ semal_result semal_call_builtin(const ast_callfunc_expr& call, node& n, std::str
 			.val = retval
 		};
 	}
+	else if(call.function_name == "__arrcpy")
+	{
+		ast_expr expr = call.params[0];
+		type_t element_ty = type_t::badtype();
+		semal_result expr_result = semal_expr(expr, n, source, local, do_codegen);
+		if (expr_result.is_err())
+		{
+			// it better be a sytmbol expression.
+			if (IS_A(expr.expr_, ast_symbol_expr))
+			{
+				std::string_view symbol = AS_A(expr.expr_, ast_symbol_expr).symbol;
+				element_ty = local->parse_type(symbol);
+			}
+			else
+			{
+				return semal_result::err("invalid first parameter passed to __array. expected a valid expression, or a typename.");
+			}
+		}
+		else
+		{
+			element_ty = expr_result.val.ty;
+		}
+		if (element_ty.is_badtype())
+		{
+			return semal_result::err("unknown type passed to __array.");
+		}
+
+		ast_expr target = call.params[1];
+		std::size_t arr_len = call.params.size() - 2;
+		for(std::size_t i = 0; i < arr_len; i++)
+		{
+			ast_expr val = call.params[2 + i];
+			// deref(target at i) = val
+			ast_biop_expr target_ptr
+			{
+				.lhs = target,
+				.type = biop_type::at,
+				.rhs = ast_expr
+				{
+					.expr_ = ast_literal_expr{.value = literal_val{static_cast<int64_t>(i)}}
+				}
+			};
+			ast_unop_expr deref
+			{
+				.type = unop_type::deref,
+				.rhs = ast_expr
+				{
+					.expr_ = target_ptr
+				}
+			};
+			ast_biop_expr assign
+			{
+				.lhs = ast_expr{.expr_ = deref},
+				.type = biop_type::assign,
+				.rhs = val
+			};
+			semal_expr(ast_expr{.expr_ = assign}, n, source, local, do_codegen);
+		}
+		return semal_literal_expr(ast_literal_expr{.value = static_cast<std::int64_t>(arr_len)}, n, source, local, do_codegen);
+	}
 	else if(call.function_name == "__array")
 	{
 		ast_expr expr = call.params.front();
@@ -11886,7 +11946,7 @@ std::string get_preload_source()
 	__is_linux : bool static := {};
 	__psyc ::= "{}";
 	__cwd ::= "{}";
-	__chkstk ::= func() -> v0{{}};
+	//__chkstk ::= func() -> v0{{}};
 	__pi ::= 3.14159;
 	[[public_linkage]]
 	_fltused : s32 := (0@s32);
