@@ -5,6 +5,7 @@ ast_expr_type ::= enum
 	.literal := 2;
 	.biop := 3;
 	.deffunc := 4;
+	.callfunc := 5;
 };
 
 ast_biop_type ::= enum
@@ -50,6 +51,12 @@ ast_deffunc_expr ::= struct
 	is_extern : bool;
 };
 
+ast_callfunc_expr ::= struct
+{
+	funcname : u8&;
+	funcname_len : u64;
+};
+
 ast_expr ::= struct
 {
 	type : ast_expr_type;
@@ -57,6 +64,7 @@ ast_expr ::= struct
 	literal : ast_literal_expr;
 	biop : ast_biop_expr;
 	deffunc : ast_deffunc_expr;
+	callfunc : ast_callfunc_expr;
 };
 
 ast_decl ::= struct
@@ -65,8 +73,6 @@ ast_decl ::= struct
 	name_len : u64;
 	typename : u8&;
 	typename_len : u64;
-	init : ast_expr;
-	has_init : bool;
 };
 
 ast_stmt_type ::= enum
@@ -246,6 +252,15 @@ make_deffunc_expr ::= func(def : ast_deffunc_expr) -> ast_expr
 	{
 		.type := ast_expr_type.deffunc;
 		.deffunc := def;
+	};
+};
+
+make_callfunc_expr ::= func(call : ast_callfunc_expr) -> ast_expr
+{
+	return ast_expr
+	{
+		.type := ast_expr_type.callfunc;
+		.callfunc := call;
 	};
 };
 
