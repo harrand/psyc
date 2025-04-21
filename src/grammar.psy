@@ -697,6 +697,67 @@ create_empty_wipfn ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) ->
 	(ret.nodes_size) = 1;
 };
 
+make_wipcall ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// expect a symbol(some-expr-type
+	// create a wipcall with that as a single parameter
+	reduce_setup(parse_action.reduce);
+	first_expr ::= first.expr;
+	first_symbol ::= first_expr.symbol;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipcall;
+		.wipcall := ast_wipcall
+		{
+			.funcname := first_symbol.symbol;
+			.funcname_len := first_symbol.len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_add_child((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
+};
+
+wipcall_add_another_arg ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// we already have a wipcall
+	// last is some expression
+	// literally just add it as a child and delete non-first nodes
+	ast_add_child(nodes at 0, deref(nodes at (nodes_size - 1)), ar);
+	// remove all but the first node
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 1;
+		.len := (nodes_size - 1);
+		.nodes_size := 0;
+	};
+};
+
+cap_off_wipcall ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+	wipcall ::= first.wipcall;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_callfunc_expr(ast_callfunc_expr{.funcname := wipcall.funcname; .funcname_len := wipcall.funcname_len;});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := first.children;
+		.childcap := first.childcap;
+		.childcount := first.childcount;
+	};
+	(ret.nodes_size) = 1;
+};
+
 wipfn_cap_off_params ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// assume first is a wipfn
@@ -1711,6 +1772,7 @@ grammar_callfunc ::= func() -> v0
 		true,
 		rule(s1));
 
+	// if lookahead is cparen, then we know its an empty thing
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen)),
 		token(lex_token.cparen),
@@ -1721,6 +1783,144 @@ grammar_callfunc ::= func() -> v0
 		token(lex_token.cparen),
 		true,
 		rule(s1));
+	// if not, then we kinda hope its gonna be an expr
+	// so we will recurse to it
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen)),
+		zero_lookahead,
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen)),
+		zero_lookahead,
+		true,
+		rule(r2));
+	// all expr types
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(make_wipcall));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(make_wipcall));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(make_wipcall));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(make_wipcall));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		false,
+		rule(make_wipcall));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		true,
+		rule(make_wipcall));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		false,
+		rule(make_wipcall));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		true,
+		rule(make_wipcall));
+
+	// multi argument wipcall
+	grammar_install(
+		__array(ast, node(ast_type.wipcall)),
+		token(lex_token.comma),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall)),
+		token(lex_token.comma),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma)),
+		zero_lookahead,
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma)),
+		zero_lookahead,
+		true,
+		rule(r2));
+
+	// grab another argument
+	// every expr type once again
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(wipcall_add_another_arg));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(wipcall_add_another_arg));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(wipcall_add_another_arg));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(wipcall_add_another_arg));
+
+	// biop is most likely going to parse as a symbol first... as such it will also have an edge-case...
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		false,
+		rule(wipcall_add_another_arg));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.comma), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		true,
+		rule(wipcall_add_another_arg));
+
+	// cap off a wipcall
+	grammar_install(
+		__array(ast, node(ast_type.wipcall)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(cap_off_wipcall));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(cap_off_wipcall));
 
 	// empty callfunc
 	grammar_install(
@@ -1738,7 +1938,7 @@ grammar_callfunc ::= func() -> v0
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
-	parse_table_cap = 32768;
+	parse_table_cap = 65536;
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
