@@ -24,14 +24,15 @@ arena_create ::= func(initial_capacity : u64) -> arena
 _arena_double_capacity ::= func(a : arena mut&) -> v0
 {
 	// need to increase size. let's double the cap.
-	offset ::= ((a->ptr)@u64)@v0&;
-	VirtualAlloc(offset, a->cap, MEM_COMMIT, PAGE_READWRITE);
+	byteptr ::= (a->ptr)@u8&;
+	offset ::= byteptr at (a->cap);
+	VirtualAlloc(offset@_, a->cap, MEM_COMMIT, PAGE_READWRITE);
 	(a->cap) = (a->cap) * 2;
 };
 
 arena_push ::= func(a : arena mut&, bytes : u64) -> v0& weak
 {
-	while((a->cursor) > (a->cap + bytes))
+	while(((a->cursor) + bytes) > (a->cap))
 	{
 		_arena_double_capacity(a);
 	}
