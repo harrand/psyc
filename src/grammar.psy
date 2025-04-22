@@ -1982,7 +1982,62 @@ grammar_deffunc ::= func() -> v0
 [[private]]
 grammar_callfunc_edge_case_param_callfunc ::= func() -> v0
 {
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_black), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_black), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(r1));
 
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(r1));
+
+	// wipcall_white, symbol lookahead (
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(r2));
+
+	// wipcall_black wipcall_black (i.e nested function call but the 2nd function call is not yet fully parsed)
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_black), node(ast_type.wipcall_black)),
+		zero_lookahead,
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_black), node(ast_type.wipcall_black)),
+		zero_lookahead,
+		true,
+		rule(r1));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), token(lex_token.comma), node(ast_type.wipcall_black)),
+		zero_lookahead,
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, node(ast_type.wipcall_white), token(lex_token.comma), node(ast_type.wipcall_black)),
+		zero_lookahead,
+		true,
+		rule(r2));
 };
 
 [[private]]
@@ -2226,8 +2281,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop_op(lex_token.keyword_at);
 	grammar_wipfn();
 	grammar_deffunc();
-	grammar_callfunc();
 	grammar_callfunc_edge_case_param_callfunc();
+	grammar_callfunc();
 };
 
 == build ==
