@@ -1119,6 +1119,11 @@ grammar_commits ::= func() -> v0
 [[private]]
 grammar_decls_edge_case_callfunc ::= func() -> v0
 {
+	// decl ::= myfunc()
+	// already got rules elsewhere to not grab the symbol too early if its followed by an oparen - thats not the problem here
+	// the problem is that the decl will only bind the initialiser to an expr
+	// which is good, but our wipcalls are not exprs until they're complete
+	
 	// non-type-deduced
 	grammar_install(
 		__array(ast, node(ast_type.decl), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
@@ -1135,12 +1140,206 @@ grammar_decls_edge_case_callfunc ::= func() -> v0
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
 		token(lex_token.oparen),
-		true,
+		false,
 		rule(r3));
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), expr(ast_expr_type.symbol)),
 		token(lex_token.oparen),
+		true,
+		rule(r3));
+
+	// recurse to wipcalls as they need to be fully parsed before we will accept them as a decl initialiser.
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black)),
+		zero_lookahead,
 		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	// also for both preceding comma and non-preceding comma
+	// all expr types again im afraid for both black and white
+	// black
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_black), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	// white
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	// with commas
+	// white
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.symbol)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.literal)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.biop)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.deffunc)),
+		zero_lookahead,
+		true,
+		rule(r3));
+
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		false,
+		rule(r3));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipcall_white), token(lex_token.comma), expr(ast_expr_type.callfunc)),
+		zero_lookahead,
+		true,
 		rule(r3));
 };
 
