@@ -236,6 +236,11 @@ r3 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	return parse_value{.action := parse_action.recurse; .offset := 3;};
 };
 
+err_too_much_nested_callfuncs ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.error; .errmsg := "Detected nested callfuncs of more than 2 - this is illegal. Factor out into a temporary please.";};
+};
+
 reduce_setup ::= macro(action : parse_action) -> v0
 {
 	first ::= deref(nodes at 0);
@@ -1753,6 +1758,56 @@ grammar_deffunc ::= func() -> v0
 };
 
 [[private]]
+grammar_callfunc_edge_case_param_callfunc ::= func() -> v0
+{
+	// funccall is an interesting one because it initially looks like a symbol expression but eventually parses down
+	// how do we make sure we don't accidentally slurp a symbol expression as a param if its going to become a funccall?
+	// easy - check for oparen lookahead directly after the symbol expression - this is fine for foo(bar())
+	
+	// however, for further nested callfuncs (e.g 3 would be foo(bar(baz()))) it simply needs more and more rules with repeating pairs of oparen and symbol
+	// it cant be done recursively because callfuncs do not parse down in a single go, so the unparsed callfunc bits (symbol and oparen) will just stack up
+	// to deal with this, i will allow 2-level nested for now, but error out on 3 and 4. 5 and upwards im not bothering so those will be marked as a syntax error.
+
+	// 2-level nesting callfuncs
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(r2));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(r2));
+
+	// 3-level nesting callfuncs
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(err_too_much_nested_callfuncs));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(err_too_much_nested_callfuncs));
+
+	// 4-level nesting callfuncs (illegal)
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		false,
+		rule(err_too_much_nested_callfuncs));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.oparen),
+		true,
+		rule(err_too_much_nested_callfuncs));
+
+	// any further is simply a syntax error because i dont want to waste setup time.
+};
+
+[[private]]
 grammar_callfunc ::= func() -> v0
 {
 	grammar_install(
@@ -1789,7 +1844,9 @@ grammar_callfunc ::= func() -> v0
 		zero_lookahead,
 		true,
 		rule(r2));
+
 	// all expr types
+
 	grammar_install(
 		__array(ast, expr(ast_expr_type.symbol), token(lex_token.oparen), expr(ast_expr_type.symbol)),
 		zero_lookahead,
@@ -1948,6 +2005,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_wipfn();
 	grammar_deffunc();
 	grammar_callfunc();
+	grammar_callfunc_edge_case_param_callfunc();
 };
 
 == build ==
