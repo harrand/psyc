@@ -270,6 +270,44 @@ quote_source_from_nodes ::= func(p : parse_state&, nodes : ast&, nodes_size : u6
 	return quote_source_from_indices(p, begin_node.cursor_begin, end_node.cursor_end);
 };
 
+print_source_line ::= func(loc : srcloc) -> v0
+{
+	putuint(loc.line);
+	puts(" | ");
+};
+
+decimal_digit_count ::= func(n : u64) -> u64
+{
+	if(n < 10)
+	{
+		return 1;
+	}
+	return 1 + decimal_digit_count(n / 10);
+};
+
+print_offset_line ::= func(p : parse_state&) -> v0
+{
+	first ::= (p->node_array) at 0;
+	target ::= (p->node_array) at (p->recursive_offset);
+
+	offset_length ::= (target->cursor_begin) - (first->cursor_begin);
+	tarloc ::= target->loc;
+	line ::= tarloc.line;
+
+	i : u64 mut;
+	for(i = 0, i < decimal_digit_count(line), i = i + 1)
+	{
+		putchar(' ');
+	}
+	puts("   ");
+	for(i = 0, i < offset_length, i = i + 1)
+	{
+		putchar('~');
+	}
+	putchar('^');
+	putchar(10);
+};
+
 parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 {
 	psyc_timed(psyc_stage.parse);
@@ -315,12 +353,15 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		if((rule.fn) == null)
 		{
 			psyc_error(begin_loc, "invalid syntax: ");
+			print_source_line(first_node.loc);
 			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
 			i : u64 mut;
 			for(i = 0, i < (srcmsg.len), i = i + 1)
 			{
 				putchar(deref((srcmsg.str) at i));
 			}
+			putchar(10);
+			print_offset_line(ref state);
 			putchar(10);
 			psyc_colour_yellow();
 			parse_state_print(ref state);
@@ -360,12 +401,15 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		if((result.action) == (parse_action.error))
 		{
 			psyc_error(begin_loc, result.errmsg);
+			print_source_line(first_node.loc);
 			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
 			i : u64 mut;
 			for(i = 0, i < (srcmsg.len), i = i + 1)
 			{
 				putchar(deref((srcmsg.str) at i));
 			}
+			putchar(10);
+			print_offset_line(ref state);
 			putchar(10);
 			psyc_colour_yellow();
 			parse_state_print(ref state);
