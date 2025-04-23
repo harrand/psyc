@@ -261,6 +261,16 @@ reduce_setup ::= macro(action : parse_action) -> v0
 	defer return ret;
 };
 
+parenthesised_expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// ( expr(any) )
+	// just want the parens gone
+	reduce_setup(parse_action.reduce);
+	second ::= deref(nodes at 1);
+	deref((ret.nodes) at 0) = second;
+	(ret.nodes_size) = 1;
+};
+
 numlit2expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// numeric_literal ; => literal expression statement.
@@ -968,6 +978,133 @@ wipstruct_add_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) ->
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
 	};
+};
+
+[[private]]
+grammar_parenthesised_expr ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, token(lex_token.oparen)),
+		zero_lookahead,
+		false,
+		rule(r1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen)),
+		zero_lookahead,
+		true,
+		rule(r1));
+
+	// foreach expr type
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.symbol)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.literal)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.literal)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.biop)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.biop)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.deffunc)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.deffunc)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.callfunc)),
+		token(lex_token.cparen),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.callfunc)),
+		token(lex_token.cparen),
+		true,
+		rule(s1));
+
+	// foreach expr type
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(parenthesised_expr));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.symbol), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(parenthesised_expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.literal), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(parenthesised_expr));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.literal), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(parenthesised_expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.biop), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(parenthesised_expr));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.biop), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(parenthesised_expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.deffunc), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(parenthesised_expr));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.deffunc), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(parenthesised_expr));
+
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.callfunc), token(lex_token.cparen)),
+		zero_lookahead,
+		false,
+		rule(parenthesised_expr));
+	grammar_install(
+		__array(ast, token(lex_token.oparen), expr(ast_expr_type.callfunc), token(lex_token.cparen)),
+		zero_lookahead,
+		true,
+		rule(parenthesised_expr));
 };
 
 [[private]]
@@ -2491,6 +2628,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
+	grammar_parenthesised_expr();
 	grammar_exprification();
 	grammar_stmtification();
 	grammar_commits();
@@ -2511,7 +2649,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 == build ==
 {
+	add_source_file("stdlib/hash.psy");
+
 	add_source_file("ast.psy");
-	add_source_file("hash.psy");
 	add_source_file("type.psy");
 }
