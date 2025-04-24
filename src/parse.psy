@@ -9,6 +9,9 @@ parse_state ::= struct
 	node_array_cap : u64;
 	node_array_size : u64;
 
+	node_stash : ast mut#8;
+	node_stash_cursor : u64;
+
 	recursive_offset : u64 mut;
 	root : ast mut;
 };
@@ -153,7 +156,7 @@ impl_shift_nodes_right ::= func(s : parse_state mut&, pivot : u64, shift_amount 
 	// so we do it in backwards order.
 	copy_src ::= (s->node_array) at pivot;
 	copy_dst ::= copy_src at shift_amount;
-	mirrored_memcpy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * ((s->node_array_size) - (pivot + shift_amount)));
+	mirrored_memcpy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * (shift_amount));
 	// zero out the gap
 	__memset(copy_src, 0, __sizeof(deref (s->node_array)) * shift_amount);
 	(s->node_array_size) = (s->node_array_size) + shift_amount;
@@ -204,27 +207,71 @@ reduce ::= func(s : parse_state mut&, destroy : parse_slice, new_nodes : ast&, n
 	(s->recursive_offset) = zero;
 };
 
+[[private]]
+impl_remove_nodes ::= func(s : parse_state mut&, nodes_to_remove : parse_slice) -> v0
+{
+	// remove children.
+	(s->node_array_size) = (s->node_array_size) - (nodes_to_remove.len);
+	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_remove.off);
+	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_remove.off) + (nodes_to_remove.len));
+	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_remove.len));
+};
+
+[[private]]
+impl_has_stash ::= func(s : parse_state&) -> bool
+{
+	return (s->node_stash_cursor) != 0;
+};
+
 commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
 {
+	parent : ast mut& mut := ref(s->root);
+	if(impl_has_stash(s))
+	{
+		parent = (s->node_stash) at ((s->node_stash_cursor) - 1);
+	}
+
 	lex ::= s->lex;
 	i : u64 mut;
 	for(i = 0, i < (nodes_to_commit.len), i = i + 1)
 	{
 		off ::= (nodes_to_commit.off) + i;
 		cur ::= ((s->node_array) at off);
-		ast_add_child(ref (s->root), deref cur, lex->ar);
+
+		ast_add_child(parent, deref cur, lex->ar);
 	}
-	// remove children.
-	(s->node_array_size) = (s->node_array_size) - (nodes_to_commit.len);
-	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_commit.off);
-	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_commit.off) + (nodes_to_commit.len));
-	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_commit.len));
+
+	impl_remove_nodes(s, nodes_to_commit);
 
 	(s->recursive_offset) = zero;
 	if((s->node_array_size) == 0)
 	{
 		shift(s);
 	}
+};
+
+stash ::= func(s : parse_state mut&, node_offset : u64) -> v0
+{
+	stashptr ::= (s->node_stash) at (s->node_stash_cursor);
+	(s->node_stash_cursor) = (s->node_stash_cursor) + 1;
+
+	node ::= deref((s->node_array) at node_offset);
+	deref(stashptr) = node;
+	(s->node_array_size) = (s->node_array_size) - 1;
+};
+
+unstash ::= func(s : parse_state mut&, node_offset : u64) -> v0
+{
+	if((s->node_stash_cursor) == 0)
+	{
+		psyc_panic(srcloc_current(), "unstash invoked when stash was empty");
+	}
+	(s->node_stash_cursor) = (s->node_stash_cursor) - 1;
+
+	stashed_ptr ::= (s->node_stash) at (s->node_stash_cursor);
+	impl_shift_nodes_right(s, node_offset, 1);
+	deref((s->node_array) at node_offset) = deref(stashed_ptr);
+	deref(stashed_ptr) = zero;
 };
 
 parse_complete ::= func(p : parse_state&) -> bool
@@ -422,6 +469,18 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			parse_state_print(ref state);
 			psyc_colour_reset();
 			psyc_exit_failure();
+		}
+		if(result.push)
+		{
+			stash(ref state, result.offset);
+			if((state.node_array_size) == 0)
+			{
+				shift(ref state);
+			}
+		}
+		if(result.pop)
+		{
+			unstash(ref state, result.offset);
 		}
 	}
 

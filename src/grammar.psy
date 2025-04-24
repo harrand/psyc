@@ -83,6 +83,9 @@ parse_value ::= struct
 	errmsg : u8&;
 	nodes : ast mut#16;
 	nodes_size : u64;
+
+	push : bool;
+	pop : bool;
 };
 grammar_rule ::= struct
 {
@@ -95,6 +98,8 @@ default_rule ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse
 	{
 		.action := parse_action.error;
 		.errmsg := "default rule invoked";
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -203,12 +208,17 @@ grammar_get_rule ::= func(hash : u64) -> grammar_rule
 
 s1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.shift; .len := 1;};
+	return parse_value{.action := parse_action.shift; .len := 1; .push := false; .pop := false;};
 };
 
 s2 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.shift; .len := 2;};
+	return parse_value{.action := parse_action.shift; .len := 2; .push := false; .pop := false;};
+};
+
+s3 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift; .len := 3; .push := false; .pop := false;};
 };
 
 c1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -218,32 +228,34 @@ c1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 		.action := parse_action.commit;
 		.offset := 0;
 		.len := 1;
+		.push := false;
+		.pop := false;
 	};
 };
 
 r1 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.recurse; .offset := 1;};
+	return parse_value{.action := parse_action.recurse; .offset := 1; .push := false; .pop := false;};
 };
 
 r2 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.recurse; .offset := 2;};
+	return parse_value{.action := parse_action.recurse; .offset := 2; .push := false; .pop := false;};
 };
 
 r3 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.recurse; .offset := 3;};
+	return parse_value{.action := parse_action.recurse; .offset := 3; .push := false; .pop := false;};
 };
 
 r4 ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.recurse; .offset := 4;};
+	return parse_value{.action := parse_action.recurse; .offset := 4; .push := false; .pop := false;};
 };
 
 err_too_much_nested_callfuncs ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.error; .errmsg := "Detected nested callfuncs of more than 2 - this is illegal. Factor out into a temporary please.";};
+	return parse_value{.action := parse_action.error; .errmsg := "Detected nested callfuncs of more than 2 - this is illegal. Factor out into a temporary please."; .push := false; .pop := false;};
 };
 
 reduce_setup ::= macro(action : parse_action) -> v0
@@ -257,6 +269,8 @@ reduce_setup ::= macro(action : parse_action) -> v0
 		.offset := 0;
 		.len := nodes_size;
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 	defer return ret;
 };
@@ -504,6 +518,8 @@ give_decl_an_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 		{
 			.action := parse_action.error;
 			.errmsg := "decl already had an initialiser";
+			.push := false;
+			.pop := false;
 		};
 	}
 	ast_add_child(declnode, deref(nodes at (nodes_size - 1)), ar);
@@ -514,6 +530,8 @@ give_decl_an_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 		.offset := 1;
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -566,6 +584,8 @@ create_biop ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 		{
 			.action := parse_action.error;
 			.errmsg := "unrecognised binary operator operand";
+			.push := false;
+			.pop := false;
 		};
 	}
 
@@ -638,6 +658,8 @@ biopify_decl_initialiser ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 		{
 			.action := parse_action.error;
 			.errmsg := "unrecognised binary operator operand";
+			.push := false;
+			.pop := false;
 		};
 	}
 	
@@ -843,6 +865,8 @@ wipfn_last_node_is_return_type ::= func(source : u8&, nodes : ast mut&, nodes_si
 		.offset := 1;
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -867,6 +891,8 @@ wipfn_move_2nd_node_to_param_blue ::= func(source : u8&, nodes : ast mut&, nodes
 		.offset := 1;
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -889,6 +915,8 @@ wipfn_move_last_node_to_param_blue ::= func(source : u8&, nodes : ast mut&, node
 		.offset := nodes_size - 1;
 		.len := 1;
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -902,6 +930,8 @@ wipfn_complain_need_impl_blk_or_extern ::= func(source : u8&, nodes : ast mut&, 
 	{
 		.action := parse_action.error;
 		.errmsg := "function declaration expression should either be followed by ':= extern' (to indicate external impl) or '{' to start an implementation block.";
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -924,6 +954,8 @@ wipfn2externdeffunc_expr ::= func(source : u8&, nodes : ast mut&, nodes_size : u
 		.offset := 1;
 		.len := nodes_size - 1;
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -961,6 +993,8 @@ cap_off_wipstruct ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> 
 		.offset := 1;
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -977,6 +1011,84 @@ wipstruct_add_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) ->
 		.offset := 1;
 		.len := (nodes_size - 1);
 		.nodes_size := 0;
+		.push := false;
+		.pop := false;
+	};
+};
+
+push_first_node ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.commit;
+		.offset := 0;
+		.len := 0;
+		.push := true;
+		.pop := false;
+	};
+};
+
+pop_node_to_front ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.commit;
+		.offset := 0;
+		.len := 0;
+		.push := false;
+		.pop := true;
+	};
+};
+
+create_wipregion ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	// 2nd param is the symbol
+	symbol ::= deref(nodes at 1);
+	utok ::= symbol.utok;
+	tok ::= utok.tok;
+
+	lslice ::= tok.lexeme;
+	reduce_setup(parse_action.reduce);
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipregion;
+		.wipregion := ast_region_stmt
+		{
+			.name := source at (lslice.off);
+			.name_len := lslice.len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+
+	(ret.nodes_size) = 1;
+};
+
+cap_off_region ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	first ::= nodes at 0;
+	(first->type) = (ast_type.stmt);
+	stmt ::= ast_stmt
+	{
+		.type := ast_stmt_type.region_stmt;
+		.region := first->wipregion;
+	};
+	(first->stmt) = stmt;
+	last ::= deref(nodes at (nodes_size - 1));
+	(first->cursor_end) = (last.cursor_end);
+	// remove all but the first node
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 1;
+		.len := (nodes_size - 1);
+		.nodes_size := 0;
+		.push := false;
+		.pop := false;
 	};
 };
 
@@ -1306,6 +1418,12 @@ grammar_commits ::= func() -> v0
 
 	grammar_install(
 		__array(ast, stmt(ast_stmt_type.decl_stmt)),
+		zero_lookahead,
+		true,
+	rule(c1));
+
+	grammar_install(
+		__array(ast, stmt(ast_stmt_type.region_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
@@ -2621,6 +2739,57 @@ grammar_defstruct ::= func() -> v0
 		rule(wipstruct_add_decl));
 };
 
+[[private]]
+grammar_region ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, token(lex_token.compare)),
+		token(lex_token.symbol),
+		false,
+		rule(s3));
+	grammar_install(
+		__array(ast, token(lex_token.compare)),
+		token(lex_token.symbol),
+		true,
+		rule(s3));
+
+	// todo: create empty wipregion
+	grammar_install(
+		__array(ast, token(lex_token.compare), token(lex_token.symbol), token(lex_token.compare), token(lex_token.obrace)),
+		zero_lookahead,
+		false,
+		rule(create_wipregion));
+	grammar_install(
+		__array(ast, token(lex_token.compare), token(lex_token.symbol), token(lex_token.compare), token(lex_token.obrace)),
+		zero_lookahead,
+		true,
+		rule(create_wipregion));
+
+	// todo: winch regions
+	grammar_install(
+		__array(ast, node(ast_type.wipregion)),
+		zero_lookahead,
+		false,
+		rule(push_first_node));
+	grammar_install(
+		__array(ast, node(ast_type.wipregion)),
+		zero_lookahead,
+		true,
+		rule(push_first_node));
+	
+	// cap off region
+	grammar_install(
+		__array(ast, node(ast_type.wipregion), token(lex_token.cbrace)),
+		zero_lookahead,
+		false,
+		rule(cap_off_region));
+	grammar_install(
+		__array(ast, node(ast_type.wipregion), token(lex_token.cbrace)),
+		zero_lookahead,
+		true,
+		rule(cap_off_region));
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -2645,6 +2814,19 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_edge_case_decl_defstruct();
 	grammar_defstruct();
+
+	grammar_region();
+
+	grammar_install(
+		__array(ast, token(lex_token.cbrace)),
+		zero_lookahead,
+		false,
+		rule(pop_node_to_front));
+	grammar_install(
+		__array(ast, token(lex_token.cbrace)),
+		zero_lookahead,
+		true,
+		rule(pop_node_to_front));
 };
 
 == build ==
