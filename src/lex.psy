@@ -96,21 +96,38 @@ impl_is_digit ::= func(char : u8) -> bool
 	return false;
 };
 
-impl_continues_symbol ::= func(char : u8) -> bool
+impl_continues_symbol ::= func(str : u8&) -> u64
 {
+	char ::= deref(str at 0);
 	if(impl_is_digit(char))
 	{
-		return true;
+		return 1;
 	}
 	if(char == '_')
 	{
-		return true;
+		return 1;
+	}
+	if(char == '&')
+	{
+		return 1;
 	}
 	if(impl_is_alpha(char))
 	{
-		return true;
+		return 1;
 	}
-	return false;
+	if(cstr_starts_with(str, " mut"))
+	{
+		return 4;
+	}
+	if(cstr_starts_with(str, " weak"))
+	{
+		return 5;
+	}
+	if(cstr_starts_with(str, " static"))
+	{
+		return 7;
+	}
+	return 0;
 };
 
 impl_is_digit_or_period ::= func(char : u8) -> bool
@@ -470,10 +487,13 @@ tokenise_symbol ::= func(front : u8&, state : lex_state mut&) -> bool
 	beginloc ::= ls_current_loc(state);
 	ls_advance(state, 1);
 	myfront = (myfront at 1);
-	while(impl_continues_symbol(deref(myfront at 0)))
+	advance_len : u64 mut := impl_continues_symbol(myfront at 0);
+	while(advance_len > 0)
 	{
-		ls_advance(state, 1);
-		myfront = (myfront at 1);
+		ls_advance(state, advance_len@_);
+		myfront = (myfront at advance_len);
+
+		advance_len = impl_continues_symbol(myfront at 0);
 	}
 	ls_push_token(state, token_data
 	{
