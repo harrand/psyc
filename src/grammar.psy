@@ -447,6 +447,33 @@ declsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	(ret.nodes_size) = 1;
 };
 
+structdefsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+
+	if((first.type) != (ast_type.structdef))
+	{
+		psyc_panic(srcloc_current(), "shooey");
+	}
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.stmt;
+		.stmt := ast_stmt
+		{
+			.type := ast_stmt_type.struct_stmt;
+		};
+		.structdef := first.structdef;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := first.children;
+		.childcap := first.childcap;
+		.childcount := first.childcount;
+	};
+	(ret.nodes_size) = 1;
+};
+
 basic_decl ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	reduce_setup(parse_action.reduce);
@@ -985,7 +1012,11 @@ create_empty_wipstruct ::= func(source : u8&, nodes : ast mut&, nodes_size : u64
 cap_off_wipstruct ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	firstptr ::= nodes at 0;
-	(firstptr->type) = (ast_type.structdef);
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = ast_stmt
+	{
+		.type := ast_stmt_type.struct_stmt;
+	};
 	// remove all but the first node
 	return parse_value
 	{
@@ -1473,6 +1504,12 @@ grammar_commits ::= func() -> v0
 		zero_lookahead,
 		true,
 	rule(c1));
+
+	grammar_install(
+		__array(ast, stmt(ast_stmt_type.struct_stmt)),
+		zero_lookahead,
+		true,
+	rule(c1));
 };
 
 [[private]]
@@ -1835,6 +1872,16 @@ grammar_decls ::= func() -> v0
 		false,
 		rule(r3));
 
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser)),
+		token(lex_token.keyword_struct),
+		false,
+		rule(s1));
+	grammar_install(
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser)),
+		token(lex_token.keyword_struct),
+		true,
+		rule(s1));
 	// do this for *all expr types* that can be decl initialisers
 	// which is all of them.
 	grammar_install(
@@ -2708,81 +2755,59 @@ grammar_edge_case_decl_defstruct ::= func() -> v0
 grammar_defstruct ::= func() -> v0
 {
 	grammar_install(
-		__array(ast, token(lex_token.keyword_struct)),
-		token(lex_token.obrace),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), token(lex_token.keyword_struct)),
+		zero_lookahead,
 		false,
 		rule(s1));
 	grammar_install(
-		__array(ast, token(lex_token.keyword_struct)),
-		token(lex_token.obrace),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), token(lex_token.keyword_struct)),
+		zero_lookahead,
 		true,
 		rule(s1));
 
 	grammar_install(
-		__array(ast, token(lex_token.keyword_struct), token(lex_token.obrace)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), token(lex_token.keyword_struct), token(lex_token.obrace)),
 		zero_lookahead,
 		false,
 		rule(create_empty_wipstruct));
 	grammar_install(
-		__array(ast, token(lex_token.keyword_struct), token(lex_token.obrace)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), token(lex_token.keyword_struct), token(lex_token.obrace)),
 		zero_lookahead,
 		true,
 		rule(create_empty_wipstruct));
 
 	grammar_install(
 		__array(ast, node(ast_type.wipstruct)),
-		token(lex_token.cbrace),
-		false,
-		rule(s1));
-	grammar_install(
-		__array(ast, node(ast_type.wipstruct)),
-		token(lex_token.cbrace),
-		true,
-		rule(s1));
-
-	grammar_install(
-		__array(ast, node(ast_type.wipstruct)),
 		zero_lookahead,
 		false,
-		rule(r1));
+		rule(push_first_node));
 	grammar_install(
 		__array(ast, node(ast_type.wipstruct)),
 		zero_lookahead,
 		true,
-		rule(r1));
+		rule(push_first_node));
 
 	grammar_install(
 		__array(ast, node(ast_type.wipstruct), token(lex_token.cbrace)),
-		zero_lookahead,
-		false,
-		rule(cap_off_wipstruct));
-	grammar_install(
-		__array(ast, node(ast_type.wipstruct), token(lex_token.cbrace)),
-		zero_lookahead,
-		true,
-		rule(cap_off_wipstruct));
-
-	grammar_install(
-		__array(ast, node(ast_type.wipstruct), node(ast_type.decl)),
 		token(lex_token.semicol),
 		false,
 		rule(s1));
 	grammar_install(
-		__array(ast, node(ast_type.wipstruct), node(ast_type.decl)),
+		__array(ast, node(ast_type.wipstruct), token(lex_token.cbrace)),
 		token(lex_token.semicol),
 		true,
 		rule(s1));
 
 	grammar_install(
-		__array(ast, node(ast_type.wipstruct), node(ast_type.decl), token(lex_token.semicol)),
+		__array(ast, node(ast_type.wipstruct), token(lex_token.cbrace), token(lex_token.semicol)),
 		zero_lookahead,
 		false,
-		rule(wipstruct_add_decl));
+		rule(cap_off_wipstruct));
 	grammar_install(
-		__array(ast, node(ast_type.wipstruct), node(ast_type.decl), token(lex_token.semicol)),
+		__array(ast, node(ast_type.wipstruct), token(lex_token.cbrace), token(lex_token.semicol)),
 		zero_lookahead,
 		true,
-		rule(wipstruct_add_decl));
+		rule(cap_off_wipstruct));
 };
 
 [[private]]
@@ -2876,6 +2901,7 @@ grammar_block_stmt ::= func() -> v0
 
 grammar_setup ::= func(a : arena mut&) -> v0
 {
+	psyc_timed(psyc_stage.setup);
 	ar = a;
 	parse_table_cap = 65536;
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
