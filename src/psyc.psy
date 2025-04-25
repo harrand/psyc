@@ -34,24 +34,25 @@ main ::= func() -> s32
 	lex_setup();
 	grammar_setup(permanent_arena);
 
-	args ::= psyc_parse_args(permanent_arena);
+	prog : semal_program mut := zero;
+	args ::= ref(prog.compile_args);
+	deref(args) = psyc_parse_args(permanent_arena);
 	defer psyc_report_timings();
 
-	if(args.build_file == null)
+	if(args->build_file == null)
 	{
 		psyc_fatal_error(zero, "no build file!");
 	}
-	if(!file_exists(args.build_file))
+	if(!file_exists(args->build_file))
 	{
 		psyc_fatal_error(zero, "build file does not exist.");
 	}
-	psyc_message(zero, args.build_file);
-	buildfile_data ::= fully_read_file(args.build_file, permanent_arena);
+	psyc_message(zero, args->build_file);
+	buildfile_data ::= fully_read_file(args->build_file, permanent_arena);
 
-	lstate ::= lex(args.build_file, buildfile_data, permanent_arena, args.verbose_lex);
-	pstate ::= parse(ref lstate, args.verbose_parse);
+	lstate ::= lex(args->build_file, buildfile_data, permanent_arena, args->verbose_lex);
+	pstate ::= parse(ref lstate, args->verbose_parse);
 
-	prog : semal_program mut := zero;
 	semal_file(ref prog, ref (pstate.root));
 
 	return 0;
