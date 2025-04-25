@@ -1040,6 +1040,46 @@ pop_node_to_front ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> 
 	};
 };
 
+create_empty_wipblk ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	reduce_setup(parse_action.reduce);
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipblk;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+
+	(ret.nodes_size) = 1;
+};
+
+cap_off_wipblk ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	first ::= nodes at 0;
+	(first->type) = (ast_type.stmt);
+	stmt ::= ast_stmt
+	{
+		.type := ast_stmt_type.blk_stmt;
+	};
+	(first->stmt) = stmt;
+	last ::= deref(nodes at (nodes_size - 1));
+	(first->cursor_end) = (last.cursor_end);
+	// remove all but the first node
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 1;
+		.len := (nodes_size - 1);
+		.nodes_size := 0;
+		.push := false;
+		.pop := false;
+	};
+};
+
 create_wipregion ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	// 2nd param is the symbol
@@ -1424,6 +1464,12 @@ grammar_commits ::= func() -> v0
 
 	grammar_install(
 		__array(ast, stmt(ast_stmt_type.region_stmt)),
+		zero_lookahead,
+		true,
+	rule(c1));
+
+	grammar_install(
+		__array(ast, stmt(ast_stmt_type.blk_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
@@ -2790,6 +2836,44 @@ grammar_region ::= func() -> v0
 		rule(cap_off_region));
 };
 
+[[private]]
+grammar_block_stmt ::= func() -> v0
+{
+	grammar_install(
+		__array(ast, token(lex_token.obrace)),
+		zero_lookahead,
+		false,
+		rule(create_empty_wipblk));
+	grammar_install(
+		__array(ast, token(lex_token.obrace)),
+		zero_lookahead,
+		true,
+		rule(create_empty_wipblk));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipblk)),
+		zero_lookahead,
+		false,
+		rule(push_first_node));
+	grammar_install(
+		__array(ast, node(ast_type.wipblk)),
+		zero_lookahead,
+		true,
+		rule(push_first_node));
+
+	grammar_install(
+		__array(ast, node(ast_type.wipblk), token(lex_token.cbrace)),
+		zero_lookahead,
+		false,
+		rule(cap_off_wipblk));
+	grammar_install(
+		__array(ast, node(ast_type.wipblk), token(lex_token.cbrace)),
+		zero_lookahead,
+		true,
+		rule(cap_off_wipblk));
+
+};
+
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	ar = a;
@@ -2816,6 +2900,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_defstruct();
 
 	grammar_region();
+	grammar_block_stmt();
 
 	grammar_install(
 		__array(ast, token(lex_token.cbrace)),
