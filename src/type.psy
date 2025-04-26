@@ -145,6 +145,14 @@ putty ::= func(t : ty) -> v0
 		putty(deref underlying);
 		putchar('&');
 	}
+	if(tag == (tytag.arr))
+	{
+		arr ::= t.arr;
+		underlying ::= (arr.underlying)@ty&;
+		putty(deref underlying);
+		putchar('#');
+		putuint(arr.len);
+	}
 	if(tag == (tytag.badtype))
 	{
 		puts("<badtype>");
@@ -172,6 +180,32 @@ ty_deref ::= func(t : ty) -> ty
 	ptr ::= t.ptr;
 	u ::= (ptr.underlying)@ty&;
 	return deref u;
+};
+
+ty_prim ::= func(p : primty, q : tyqual) -> ty
+{
+	return ty
+	{
+		.tag := tytag.prim;
+		.qual := q;
+		.prim := p;
+	};
+};
+
+ty_arr ::= func(t : ty, len : u64, q : tyqual) -> ty
+{
+	underlying_data ::= arena_push(tyar, __sizeof(ty));
+	__memcpy(underlying_data, ref t, __sizeof(ty));
+	return ty
+	{
+		.tag := tytag.arr;
+		.qual := q;
+		.arr := arrty
+		{
+			.underlying := underlying_data;
+			.len := len;
+		};
+	};
 };
 
 == build ==
