@@ -131,28 +131,28 @@ putprim ::= func(t : primty) -> v0
 	puts(__enumname(t));
 };
 
-putty ::= func(t : ty&) -> v0
+putty ::= func(t : ty) -> v0
 {
-	tag ::= t->tag;
+	tag ::= t.tag;
 	if(tag == (tytag.prim))
 	{
-		putprim(t->prim);
+		putprim(t.prim);
 	}
 	if(tag == (tytag.ptr))
 	{
-		ptr ::= t->ptr;
+		ptr ::= t.ptr;
 		underlying ::= (ptr.underlying)@ty&;
-		putty(underlying);
+		putty(deref underlying);
 		putchar('&');
 	}
 	if(tag == (tytag.badtype))
 	{
 		puts("<badtype>");
 	}
-	putqual(t->qual);
+	putqual(t.qual);
 };
 
-// make a pointer to an existing type:w
+// make a pointer to an existing type
 ty_ref ::= func(t : ty) -> ty
 {
 	underlying_data ::= arena_push(tyar, __sizeof(ty));
@@ -165,6 +165,13 @@ ty_ref ::= func(t : ty) -> ty
 			.underlying := underlying_data;
 		};
 	};
+};
+
+ty_deref ::= func(t : ty) -> ty
+{
+	ptr ::= t.ptr;
+	u ::= (ptr.underlying)@ty&;
+	return deref u;
 };
 
 == build ==
