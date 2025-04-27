@@ -40,15 +40,24 @@ main ::= func() -> s32
 	deref(args) = psyc_parse_args(permanent_arena);
 	defer psyc_report_timings();
 
-	if(args->build_file == null)
-	{
-		psyc_fatal_error(zero, "no build file!");
-	}
 	if(!file_exists(args->build_file))
 	{
-		psyc_fatal_error(zero, "build file does not exist.");
+		psyc_error_begin(zero);
+		puts("build file ");
+		putchar('"');
+		puts(args->build_file);
+		putchar('"');
+		puts(" could not be located");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
-	psyc_message(zero, args->build_file);
+	psyc_message_begin(zero);
+	puts("building file ");
+	putchar('"');
+	puts(args->build_file);
+	putchar('"');
+	psyc_diag_end();
+
 	buildfile_data ::= fully_read_file(args->build_file, permanent_arena);
 
 	lstate ::= lex(args->build_file, buildfile_data, permanent_arena, args->verbose_lex);

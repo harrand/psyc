@@ -361,8 +361,10 @@ impl_trivial_setup ::= func(tok : lex_token, front_identifier : u8&) -> v0
 [[private]]
 tokenise_invalid ::= func(front : u8&, state : lex_state mut&) -> bool
 {
-	psyc_error(srcloc_current(), "asserty tokeniser function called. there is a bug in the lexer, or you didn't add support for a new lex token type.");
-	psyc_panic(zero, front);
+	psyc_error_begin(ls_current_loc(state));
+	puts("tokenise_invalid called. this means a bug in the lexer - not sure how to deal with these token(s)");
+	psyc_diag_end();
+	psyc_exit_failure();
 	return true;
 };
 
@@ -458,7 +460,10 @@ tokenise_numeric_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 		{
 			if(found_decimal)
 			{
-				psyc_fatal_error(ls_current_loc(state), "multiple decimal points detected in numeric literal");
+				psyc_error_begin(ls_current_loc(state));
+				puts("multiple decimal points detected in what I believe is a numeric literal");
+				psyc_diag_end();
+				psyc_exit_failure();
 			}
 			found_decimal = true;
 		}
@@ -518,13 +523,19 @@ tokenise_char_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	off ::= cstr_find(myfront, "'");
 	if(off == -1)
 	{
-		psyc_fatal_error(ls_current_loc(state), "could not find terminating single-quote ' in char literal");
+		psyc_error_begin(ls_current_loc(state));
+		puts("could not find terminating single-quote ' in char literal");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
 	ls_advance(state, off + 1);
 	charlen ::= ((state->cursor) - initial - 1);
 	if(charlen == 0)
 	{
-		psyc_fatal_error(ls_current_loc(state), "invalid char literal ''");
+		psyc_error_begin(ls_current_loc(state));
+		puts("invalid char literal ''");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
 	ls_push_token(state, token_data
 	{
@@ -550,7 +561,10 @@ tokenise_string_literal ::= func(front : u8&, state : lex_state mut&) -> bool
 	off ::= cstr_find(myfront, strlit);
 	if(off == -1)
 	{
-		psyc_fatal_error(ls_current_loc(state), "could not find terminating double-quote in string literal");
+		psyc_error_begin(ls_current_loc(state));
+		puts("could not find terminating double-quote in string literal");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
 	ls_advance(state, off + 1);
 	strlen ::= ((state->cursor) - initial - 1);

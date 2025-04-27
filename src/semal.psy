@@ -4,6 +4,17 @@ semal_program ::= struct
 	compile_args : psyc_compile_args;
 };
 
+semal_var ::= struct
+{
+	node : ast&;
+	type : ty;
+};
+
+semal_declvar ::= func(n : ast&) -> semal_var
+{
+	return zero;	
+};
+
 semal_is_build_region ::= func(n : ast&) -> bool
 {
 	if((n->type) != (ast_type.stmt))
@@ -33,7 +44,9 @@ semal_find_build_region ::= func(source : ast&) -> ast&
 
 semal_build_region ::= func(build_region : ast&, prog : semal_program mut&) -> v0
 {
-	psyc_message(build_region->loc, "build region found");
+	psyc_message_begin(build_region->loc);
+	puts("build region found");
+	psyc_diag_end();
 };
 
 semal_file ::= func(prog : semal_program mut&, source : ast&) -> v0
@@ -41,7 +54,9 @@ semal_file ::= func(prog : semal_program mut&, source : ast&) -> v0
 	build_region ::= semal_find_build_region(source);
 	if(build_region == null)
 	{
-		psyc_warning(source->loc, "File had no build region");
+		psyc_warning_begin(source->loc);
+		puts("file had no build region");
+		psyc_diag_end();
 		return;
 	}
 	semal_build_region(build_region, prog);
@@ -52,4 +67,6 @@ semal_file ::= func(prog : semal_program mut&, source : ast&) -> v0
 	add_source_file("args.psy");
 	add_source_file("ast.psy");
 	add_source_file("diag.psy");
+
+	add_source_file("sval.psy");
 }
