@@ -1,7 +1,9 @@
 psyc_deduced_typename ::= "auto";
 
+// global arena used by the type system.
 tyar : arena mut& mut;
 
+// tell me which arena im using on startup
 type_setup ::= func(a : arena mut&) -> v0
 {
 	tyar = a;
@@ -9,7 +11,6 @@ type_setup ::= func(a : arena mut&) -> v0
 
 tyqual ::= enum
 {
-	.none := 0;
 	.static := 1;
 	.mut := 2;
 	.weak := 4;
@@ -17,7 +18,6 @@ tyqual ::= enum
 
 primty ::= enum
 {
-	.unknown := 0;
 	.s64 := 1;
 	.s32 := 2;
 	.s16 := 3;
@@ -105,7 +105,7 @@ ty_badtype ::= func() -> ty
 
 putqual ::= func(q : tyqual) -> v0
 {
-	if(q == (tyqual.none))
+	if(q == zero)
 	{
 		return;
 	}
@@ -175,6 +175,7 @@ ty_ref ::= func(t : ty) -> ty
 	};
 };
 
+// deref a pointer. must be a pointer type
 ty_deref ::= func(t : ty) -> ty
 {
 	ptr ::= t.ptr;
@@ -182,7 +183,26 @@ ty_deref ::= func(t : ty) -> ty
 	return deref u;
 };
 
-ty_prim ::= func(p : primty, q : tyqual) -> ty
+// get the underlying type. must be a pointer or array type
+ty_underlying ::= func(t : ty) -> ty
+{
+	tag ::= t.tag;
+	if(tag == (tytag.ptr))
+	{
+		ptr ::= t.ptr;
+		return deref((ptr.underlying)@ty&);
+	}
+	if(tag == (tytag.arr))
+	{
+		arr ::= t.arr;
+		return deref((arr.underlying)@ty&);
+	}
+	psyc_panic(srcloc_current(), "failed get underlying type, you probably called ty_underlying on a type that doesnt have one");
+	return zero;
+};
+
+// retrieve a primitive type that matches specifications. zero = no quals
+ty_getprim ::= func(p : primty, q : tyqual) -> ty
 {
 	return ty
 	{
@@ -192,7 +212,8 @@ ty_prim ::= func(p : primty, q : tyqual) -> ty
 	};
 };
 
-ty_arr ::= func(t : ty, len : u64, q : tyqual) -> ty
+// retrieve an array type t#len. zero = no quals
+ty_getarr ::= func(t : ty, len : u64, q : tyqual) -> ty
 {
 	underlying_data ::= arena_push(tyar, __sizeof(ty));
 	__memcpy(underlying_data, ref t, __sizeof(ty));
@@ -206,6 +227,62 @@ ty_arr ::= func(t : ty, len : u64, q : tyqual) -> ty
 			.len := len;
 		};
 	};
+};
+
+ty_noquals ::= func(t : ty) -> bool
+{
+	return (t.qual) == zero;
+};
+
+// query as to whether a type has a given qualifier.
+ty_hasqual ::= func(t : ty, q : tyqual) -> bool
+{
+	return ((t.qual) & q) != 0;
+};
+
+// box of types. used to store all types defined in a given lexical scope
+tybox ::= struct
+{
+	structs : structty mut&;
+	structs_size : u64;
+	structs_cap : u64;
+};
+
+tybox_empty ::= func() -> tybox
+{
+	ret : tybox mut := zero;
+	(ret.structs_cap) = 8;
+	structs_bytes ::= __sizeof(deref (ret.structs)) * (ret.structs_cap);
+	(ret.structs) = arena_push(tyar, structs_bytes);
+	__memset(ret.structs, 0, structs_bytes);
+	return ret;
+};
+
+tybox_find_struct ::= func(box : tybox&, s : structty) -> u64
+{
+	n ::= box->structs_size;
+	i : u64 mut;
+	ptr ::= box->structs;
+	for(i = 0, i < n, i = i + 1)
+	{
+		cur ::= deref(ptr at i);
+		if((cur.name_len) == (s.name_len))
+		{
+			if(cstreql_n(cur.name, s.name, cur.name_len))
+			{
+				return i;
+			}
+		}
+	}
+	return -1;
+};
+
+tybox_add_struct ::= func(box : tybox mut&, s : structty) -> v0
+{
+	id ::= (box->structs_size);
+	(box->structs_size) = (box->structs_size) + 1;
+	ptr ::= box->structs;
+	deref(ptr at id) = s;
 };
 
 == build ==
