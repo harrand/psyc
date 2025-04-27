@@ -240,14 +240,21 @@ ty_hasqual ::= func(t : ty, q : tyqual) -> bool
 	return ((t.qual) & q) != 0;
 };
 
+tybox_struct_info ::= struct
+{
+	ty : structty;
+	defined_at : srcloc;
+};
+
 // box of types. used to store all types defined in a given lexical scope
 tybox ::= struct
 {
-	structs : structty mut&;
+	structs : tybox_struct_info mut&;
 	structs_size : u64;
 	structs_cap : u64;
 };
 
+// create an empty tybox with some sensible preallocation of resources.
 tybox_empty ::= func() -> tybox
 {
 	ret : tybox mut := zero;
@@ -258,6 +265,8 @@ tybox_empty ::= func() -> tybox
 	return ret;
 };
 
+// tell me if a struct already exists in this box with the same name.
+// returns the index of the struct in the array, or -1 if it couldnt find one.
 tybox_find_struct ::= func(box : tybox&, s : structty) -> u64
 {
 	n ::= box->structs_size;
@@ -265,7 +274,8 @@ tybox_find_struct ::= func(box : tybox&, s : structty) -> u64
 	ptr ::= box->structs;
 	for(i = 0, i < n, i = i + 1)
 	{
-		cur ::= deref(ptr at i);
+		curinfo ::= deref(ptr at i);
+		cur ::= curinfo.ty;
 		if((cur.name_len) == (s.name_len))
 		{
 			if(cstreql_n(cur.name, s.name, cur.name_len))
@@ -277,12 +287,41 @@ tybox_find_struct ::= func(box : tybox&, s : structty) -> u64
 	return -1;
 };
 
-tybox_add_struct ::= func(box : tybox mut&, s : structty) -> v0
+[[private]]
+impl_tybox_increase_struct_capacity ::= func(box : tybox mut&) -> v0
 {
+	oldcap ::= box->structs_cap;
+	olddata ::= box->structs;
+	(box->structs_cap) = (box->structs_cap) * 2;
+	(box->structs) = arena_push(tyar, __sizeof(deref olddata) * (box->structs_cap));
+	__memcpy(box->structs, olddata, oldcap);
+};
+
+// this will not even try to see if a struct by that name already exists
+// dont add that functionality here - its complex, tangles with error messages and has a cost to it
+// let it be implemented deeper in semal and handle errors properly there
+tybox_add_struct ::= func(box : tybox mut&, s : structty, loc : srcloc) -> v0
+{
+	if((box->structs_size) >= (box->structs_cap))
+	{
+		impl_tybox_increase_struct_capacity(box);
+	}
 	id ::= (box->structs_size);
 	(box->structs_size) = (box->structs_size) + 1;
 	ptr ::= box->structs;
-	deref(ptr at id) = s;
+	deref(ptr at id) = tybox_struct_info
+	{
+		.ty := s;
+		.defined_at := loc;
+	};
+};
+
+// get the struct info at a given index.
+// no bounds checking.
+tybox_get_struct ::= func(box : tybox mut&, id : u64) -> tybox_struct_info
+{
+	ptr ::= box->structs;
+	return deref(ptr at id);
 };
 
 == build ==
