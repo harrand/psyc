@@ -32,41 +32,42 @@ semal_find_build_region ::= func(source : ast&) -> ast&
 	return ast_get_child(source@_, idx);
 };
 
-semal_node ::= func(ctx : context mut&, prog : program mut&) -> v0
+semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
-	node ::= ctx->node;
+	node ::= ctx.node;
 	puts("semaling node ");
 	print_srcloc(node->loc);
 	putchar(10);
 };
 
-semal_children ::= func(ctx : context mut&, prog : program mut&) -> v0
+semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 {
-	node ::= ctx->node;
+	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
 	for(i = 0, i < count, i = i + 1)
 	{
-		child ::= childrenptr at i;
-		child_ctx ::= context
+		semal_node(context
 		{
-			.node := child;
-			.local := ctx->local;
-		};
-		semal_node(ref child_ctx, prog);
+			.node := childrenptr at i;
+			.local := ctx.local;
+		}, prog);
 	}
 };
 
-semal_build_region ::= func(ctx : context mut&, prog : program mut&) -> v0
+semal_build_region ::= func(ctx : context mut, prog : program mut&) -> v0
 {
-	(ctx->local) = program_new_scope(prog, semar, ctx->local);
-
-	node ::= ctx->node;
+	node ::= ctx.node;
 	(prog->in_metaregion) = true;
-	defer (prog->in_metaregion) = false;
 
-	semal_children(ctx, prog);
+	semal_children(context
+	{
+		.node := ctx.node;
+		.local := program_new_scope(prog, semar, ctx.local);
+	}, prog);
+	
+	(prog->in_metaregion) = false;
 };
 
 semal_file ::= func(prog : program mut&, source : ast&) -> v0
@@ -80,12 +81,12 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 		return;
 	}
 	global ::= prog->global;
-	ctx : context mut := context
+
+	semal_build_region(context
 	{
-		.node := source;
+		.node := build_region;
 		.local := zero;
-	};
-	semal_build_region(ref ctx, prog);
+	}, prog);
 	//semal_children(prog, source);
 };
 
