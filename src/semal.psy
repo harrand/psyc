@@ -32,6 +32,32 @@ semal_find_build_region ::= func(source : ast&) -> ast&
 	return ast_get_child(source@_, idx);
 };
 
+semal_node ::= func(ctx : context mut&, prog : program mut&) -> v0
+{
+	node ::= ctx->node;
+	puts("semaling node ");
+	print_srcloc(node->loc);
+	putchar(10);
+};
+
+semal_children ::= func(ctx : context mut&, prog : program mut&) -> v0
+{
+	node ::= ctx->node;
+	childrenptr ::= (node->children)@ast&;
+	count ::= node->childcount;
+	i : u64 mut;
+	for(i = 0, i < count, i = i + 1)
+	{
+		child ::= childrenptr at i;
+		child_ctx ::= context
+		{
+			.node := child;
+			.local := ctx->local;
+		};
+		semal_node(ref child_ctx, prog);
+	}
+};
+
 semal_build_region ::= func(ctx : context mut&, prog : program mut&) -> v0
 {
 	(ctx->local) = program_new_scope(prog, semar, ctx->local);
@@ -40,11 +66,7 @@ semal_build_region ::= func(ctx : context mut&, prog : program mut&) -> v0
 	(prog->in_metaregion) = true;
 	defer (prog->in_metaregion) = false;
 
-	psyc_message_begin(node->loc);
-	puts("build region found");
-	psyc_diag_end();
-
-	builtin_set_object(prog, ctx);
+	semal_children(ctx, prog);
 };
 
 semal_file ::= func(prog : program mut&, source : ast&) -> v0
