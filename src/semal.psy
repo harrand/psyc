@@ -5,13 +5,6 @@ semal_setup ::= func(a : arena mut&) -> v0
 	semar = a;
 };
 
-semal_program ::= struct
-{
-	root : ast&;
-	compile_args : psyc_compile_args;
-	in_metaregion : bool;
-};
-
 semal_is_build_region ::= func(n : ast&) -> bool
 {
 	if((n->type) != (ast_type.stmt))
@@ -39,16 +32,22 @@ semal_find_build_region ::= func(source : ast&) -> ast&
 	return ast_get_child(source@_, idx);
 };
 
-semal_build_region ::= func(build_region : ast&, prog : semal_program mut&) -> v0
+semal_build_region ::= func(ctx : context mut&, prog : program mut&) -> v0
 {
+	(ctx->local) = program_new_scope(prog, semar, ctx->local);
+
+	node ::= ctx->node;
 	(prog->in_metaregion) = true;
 	defer (prog->in_metaregion) = false;
-	psyc_message_begin(build_region->loc);
+
+	psyc_message_begin(node->loc);
 	puts("build region found");
 	psyc_diag_end();
+
+	builtin_set_object(prog, ctx);
 };
 
-semal_file ::= func(prog : semal_program mut&, source : ast&) -> v0
+semal_file ::= func(prog : program mut&, source : ast&) -> v0
 {
 	build_region ::= semal_find_build_region(source);
 	if(build_region == null)
@@ -58,15 +57,21 @@ semal_file ::= func(prog : semal_program mut&, source : ast&) -> v0
 		psyc_diag_end();
 		return;
 	}
-	semal_build_region(build_region, prog);
+	global ::= prog->global;
+	ctx : context mut := context
+	{
+		.node := source;
+		.local := zero;
+	};
+	semal_build_region(ref ctx, prog);
 	//semal_children(prog, source);
 };
 
 == build ==
 {
-	add_source_file("args.psy");
-	add_source_file("ast.psy");
+	add_source_file("program.psy");
 	add_source_file("diag.psy");
 
 	add_source_file("sval.psy");
+	add_source_file("builtin.psy");
 }

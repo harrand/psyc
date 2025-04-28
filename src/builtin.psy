@@ -1,0 +1,35 @@
+[[private]]
+assert_buildmeta ::= macro() -> v0
+{
+	if(!(prog->in_metaregion))
+	{
+		psyc_error_begin(n->loc);
+		puts("attempt to call ");
+		puts(__function());
+		puts(" outside of a build-metaregion, which is illegal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+};
+
+[[private]]
+builtin_common ::= macro() -> v0
+{
+	n ::= ctx->node;
+};
+
+builtin_set_object ::= func(prog : program mut&, ctx : context& mut) -> v0
+{
+	builtin_common();
+	assert_buildmeta();
+};
+
+builtin_declare_global_function ::= func(prog : program mut&, ctx : context mut&) -> v0
+{
+	globals ::= prog->global;
+};
+
+== build ==
+{
+	add_source_file("program.psy");
+}

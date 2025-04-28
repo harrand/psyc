@@ -1,0 +1,82 @@
+variable ::= struct
+{
+	name : u8&;
+	name_len : u64;
+	type : ty;
+	location : srcloc;
+};
+
+variable_storage ::= struct
+{
+	data : variable&;
+	size : u64;
+	cap : u64;
+};
+
+function ::= struct
+{
+	name : u8&;
+	name_len : u64;
+	location : srcloc;
+	is_extern : bool;
+};
+
+function_storage ::= struct
+{
+	data : function&;
+	size : u64;
+	cap : u64;
+};
+
+scope ::= struct
+{
+	types : tybox;
+	vars : variable_storage;
+	funcs : function_storage;
+	parent : v0&;
+};
+
+program ::= struct
+{
+	root : ast&;
+	compile_args : psyc_compile_args;
+	in_metaregion : bool;
+	global : scope;
+
+	locals : scope mut&;
+	locals_size : u64;
+	locals_cap : u64;
+};
+
+context ::= struct
+{
+	node : ast&;
+	local : scope mut&;
+};
+
+program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&) -> scope mut&
+{
+	if((prog->locals_cap) == 0)
+	{
+		(prog->locals_cap) = 8;
+		(prog->locals) = arena_push(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
+	}
+	while((prog->locals_size) >= (prog->locals_cap))
+	{
+		oldcap ::= (prog->locals_cap);
+		olddata ::= (prog->locals);
+		(prog->locals_cap) = (oldcap * 2);
+		(prog->locals) = arena_push(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
+	}
+	id ::= prog->locals_size;
+	(prog->locals_size) = (prog->locals_size) + 1;
+	ptr ::= (prog->locals) at id;
+	(ptr->parent) = (parent@_);
+	return ptr;
+};
+
+== build ==
+{
+	add_source_file("args.psy");
+	add_source_file("ast.psy");
+}
