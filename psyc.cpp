@@ -1756,7 +1756,15 @@ type_t semal_state2::parse_type(std::string_view type_name) const
 		else
 		{
 			// im gonna assume this is the base type now then.
-			if(word.starts_with("func"))
+			bool is_func = word.starts_with("func");
+			if(word.size() > 4)
+			{
+				if (std::isalnum(word[4]))
+				{
+					is_func = false;
+				}
+			}
+			if(is_func)
 			{
 				type_is_fn = true;
 				fn_ty retty{.return_ty = type_t::badtype()};
