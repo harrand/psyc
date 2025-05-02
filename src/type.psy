@@ -68,18 +68,17 @@ fnty ::= struct
 {
 	return_type : v0&;
 	param_count : u64;
-	param_types : v0&&;
+	param_types : v0 mut&;
 };
 
 tytag ::= enum
 {
-	.prim := 0;
-	.ptr := 1;
-	.arr := 2;
-	.strct := 3;
-	.enm := 4;
-	.fn := 5;
-	.badtype := 6;
+	.prim := 1;
+	.ptr := 2;
+	.arr := 3;
+	.strct := 4;
+	.enm := 5;
+	.fn := 6;
 };
 
 ty ::= struct
@@ -95,12 +94,9 @@ ty ::= struct
 	fn : fnty;
 };
 
-ty_badtype ::= func() -> ty
+ty_is_bad ::= func(t : ty) -> bool
 {
-	return ty
-	{
-		.tag := tytag.badtype;
-	};
+	return (t.tag) == zero;
 };
 
 putqual ::= func(q : tyqual) -> v0
@@ -133,6 +129,10 @@ putprim ::= func(t : primty) -> v0
 
 putty ::= func(t : ty) -> v0
 {
+	if(ty_is_bad(t))
+	{
+		puts("badtype");
+	}
 	tag ::= t.tag;
 	if(tag == (tytag.prim))
 	{
@@ -153,9 +153,23 @@ putty ::= func(t : ty) -> v0
 		putchar('#');
 		putuint(arr.len);
 	}
-	if(tag == (tytag.badtype))
+	if(tag == (tytag.fn))
 	{
-		puts("<badtype>");
+		puts("func(");
+		fn ::= t.fn;
+		i : u64 mut;
+		ptr ::= (fn.param_types)@ty&;
+		for(i = 0, i < (fn.param_count), i = i + 1)
+		{
+			putty(deref(ptr at i));
+			if(i != ((fn.param_count) - 1))
+			{
+				puts(", ");
+			}
+		}
+		puts(") -> ");
+		retty ::= (fn.return_type)@ty&;
+		putty(deref retty);
 	}
 	putqual(t.qual);
 };
@@ -227,6 +241,37 @@ ty_getarr ::= func(t : ty, len : u64, q : tyqual) -> ty
 			.len := len;
 		};
 	};
+};
+
+ty_getfn ::= func(retty : ty, param_count : u64, q : tyqual) -> ty
+{
+	retty_alloc : ty mut& := arena_push(tyar, __sizeof(ty));
+	deref(retty_alloc) = retty;
+	params_alloc : ty mut& := arena_push(tyar, __sizeof(ty) * param_count);
+	// note: this zero'ing out is not strictly necessary. todo: debug only?
+	i : u64 mut;
+	for(i = 0, i < param_count, i = i + 1)
+	{
+		deref(params_alloc at i) = zero@ty;
+	}
+	return ty
+	{
+		.tag := tytag.fn;
+		.qual := q;
+		.fn := fnty
+		{
+			.return_type := retty_alloc@_;
+			.param_count := param_count;
+			.param_types := params_alloc@_;
+		};
+	};
+};
+
+ty_fn_set_param ::= func(t : ty mut&, param_idx : u64, param_ty : ty) -> v0
+{
+	fn ::= ref(t->fn);
+	ptr ::= (fn->param_types)@ty mut&;
+	deref(ptr at param_idx) = param_ty;
 };
 
 ty_noquals ::= func(t : ty) -> bool

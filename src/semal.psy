@@ -43,8 +43,45 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 	putss(fn.fn_name, fn.fn_name_len);
 	putchar(' ');
 	print_srcloc(node->loc);
+
+	ret_ty : ty mut := scope_parse_typename(ctx.local, fn.ret_typename, fn.ret_typename_len);
+	// so the param count is *not* just equal to the childcount if the function is not extern.
+	// the statements within are also child nodes.
+	// however, all ast_fn children will start off as decls (all the params) and then the contents of the implementation will follow
+	i : u64 mut;
+	childcount ::= node->childcount;
+	param_count : u64 mut := 0;
+	for(i = 0, i < childcount, i = i + 1)
+	{
+		cur_param_node ::= ast_get_child(node@_, i);
+		if((cur_param_node->type) == (ast_type.decl))
+		{
+			param_count = param_count + 1;
+		}
+		if((cur_param_node->type) != (ast_type.decl))
+		{
+			// early out
+			i = childcount;
+		}
+	}
+	type : ty mut := ty_getfn(ret_ty, param_count, zero);
+	for(i = 0, i < param_count, i = i + 1)
+	{
+		cur_param_node ::= ast_get_child(node@_, i);
+		cur_param_decl ::= cur_param_node->decl;
+		ty_fn_set_param(ref type, i, scope_parse_typename(null, cur_param_decl.typename, cur_param_decl.typename_len));
+	}
+	if(param_count > 8)
+	{
+		psyc_panic(node->loc, "function had too many arguments. more than 8 params is NYI");
+	}
+
+	program_declare_function(prog, semar, function{.node := ctx.node;});
+	puts(", type: ");
+	putty(type);
 	putchar(10);
-	return zero;
+
+	return type;
 };
 
 semal_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
@@ -209,12 +246,12 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	semal_build_region(context
 	{
 		.node := build_region;
-		.local := zero;
+		.local := null;
 	}, prog);
 	semal_children_recursive(context
 	{
 		.node := source;
-		.local := zero;
+		.local := null;
 	}, prog);
 };
 
