@@ -1,8 +1,94 @@
+semal_function ::= struct
+{
+	fn : func(ctx : context mut, prog : program mut&) -> ty;
+};
+
 semar : arena mut& mut;
+semal_jump_table : semal_function mut#4;
+stmt_jump_table : semal_function mut#5;
+
+semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+{
+	//puts("semal_expr_common");
+	return zero;
+};
+
+semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
+{
+	//puts("semal_decl_common");
+	return zero;
+};
+
+semal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	return semal_expr_common(node->expr, ctx, prog);
+};
+
+semal_decl ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	return semal_decl_common(node->decl, ctx, prog);
+};
+
+semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	return zero;
+};
+
+semal_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+	return semal_expr_common(stmt.expr, ctx, prog);
+};
+
+semal_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+	return semal_decl_common(stmt.decl, ctx, prog);
+};
+
+semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	// remember - we handle build metaregions in its own special way
+	// so when we iterate and find a region stmt manually we simply ignore it.
+	return zero;
+};
+
+semal_blk_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	puts("block statement");
+	return zero;
+};
+
+semal_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+	pre_transform_idx ::= (stmt.type)@s64;
+	subtraction ::= (ast_stmt_type.expr_stmt)@s64;
+
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(stmt_jump_table at idx);
+	return jump.fn(ctx, prog);
+};
 
 semal_setup ::= func(a : arena mut&) -> v0
 {
 	semar = a;
+
+	deref(semal_jump_table at 0) = semal_function{.fn := semal_stmt;};
+	deref(semal_jump_table at 1) = semal_function{.fn := semal_expr;};
+	deref(semal_jump_table at 2) = semal_function{.fn := semal_decl;};
+	deref(semal_jump_table at 3) = semal_function{.fn := semal_structdef;};
+
+	deref(stmt_jump_table at 0) = semal_function{.fn := semal_expr_stmt;};
+	deref(stmt_jump_table at 1) = semal_function{.fn := semal_decl_stmt;};
+	deref(stmt_jump_table at 2) = semal_function{.fn := semal_region_stmt;};
+	deref(stmt_jump_table at 3) = semal_function{.fn := semal_structdef;};
+	deref(stmt_jump_table at 4) = semal_function{.fn := semal_blk_stmt;};
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
@@ -35,9 +121,13 @@ semal_find_build_region ::= func(source : ast&) -> ast&
 semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
-	puts("semaling node ");
-	print_srcloc(node->loc);
-	putchar(10);
+
+	pre_transform_idx ::= (node->type)@s64;
+	subtraction ::= (ast_type.stmt)@s64;
+
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(semal_jump_table at idx);
+	jump.fn(ctx, prog);
 };
 
 semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -49,6 +139,27 @@ semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 	for(i = 0, i < count, i = i + 1)
 	{
 		semal_node(context
+		{
+			.node := childrenptr at i;
+			.local := ctx.local;
+		}, prog);
+	}
+};
+
+semal_children_recursive ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	childrenptr ::= (node->children)@ast&;
+	count ::= node->childcount;
+	i : u64 mut;
+	for(i = 0, i < count, i = i + 1)
+	{
+		semal_node(context
+		{
+			.node := childrenptr at i;
+			.local := ctx.local;
+		}, prog);
+		semal_children_recursive(context
 		{
 			.node := childrenptr at i;
 			.local := ctx.local;
@@ -87,7 +198,11 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 		.node := build_region;
 		.local := zero;
 	}, prog);
-	//semal_children(prog, source);
+	semal_children_recursive(context
+	{
+		.node := source;
+		.local := zero;
+	}, prog);
 };
 
 == build ==

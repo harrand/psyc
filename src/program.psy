@@ -17,13 +17,12 @@ function ::= struct
 {
 	name : u8&;
 	name_len : u64;
-	location : srcloc;
-	is_extern : bool;
+	node : ast&;
 };
 
 function_storage ::= struct
 {
-	data : function&;
+	data : function mut&;
 	size : u64;
 	cap : u64;
 };
@@ -74,6 +73,24 @@ program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope m
 	ptr ::= (prog->locals) at id;
 	(ptr->parent) = (parent@_);
 	return ptr;
+};
+
+program_declare_function ::= func(prog : program mut&, a : arena mut&, f : function) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	funcs ::= ref(glob->funcs);
+	if((funcs->data) == null)
+	{
+		(funcs->cap) = 8;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+	}
+	while((funcs->size) <= (funcs->cap))
+	{
+		(funcs->cap) = (funcs->cap) * 2;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+	}
+	deref((funcs->data) at (funcs->size)) = f;
+	(funcs->size) = (funcs->size) + 1;
 };
 
 == build ==
