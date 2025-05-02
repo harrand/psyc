@@ -4,7 +4,6 @@ ast_expr_type ::= enum
 	.symbol := 1;
 	.literal := 2;
 	.biop := 3;
-	.deffunc := 4;
 	.callfunc := 5;
 };
 
@@ -44,13 +43,6 @@ ast_symbol_expr ::= struct
 	len : u64;
 };
 
-ast_deffunc_expr ::= struct
-{
-	ret_typename : u8&;
-	ret_typename_len : u64;
-	is_extern : bool;
-};
-
 ast_callfunc_expr ::= struct
 {
 	funcname : u8&;
@@ -63,7 +55,6 @@ ast_expr ::= struct
 	symbol : ast_symbol_expr;
 	literal : ast_literal_expr;
 	biop : ast_biop_expr;
-	deffunc : ast_deffunc_expr;
 	callfunc : ast_callfunc_expr;
 };
 
@@ -82,7 +73,8 @@ ast_stmt_type ::= enum
 	.decl_stmt := 2;
 	.region_stmt := 3;
 	.struct_stmt := 4;
-	.blk_stmt := 5;
+	.fn_stmt := 5;
+	.blk_stmt := 6;
 };
 
 ast_region_stmt ::= struct
@@ -122,12 +114,24 @@ ast_type ::= enum
 	.expr := 14;
 	.decl := 15;
 	.structdef := 16;
+	.fn := 17;
 };
 
 ast_wipfn ::= struct
 {
+	fn_name : u8&;
+	fn_name_len : u64;
 	ret_typename : u8&;
 	ret_typename_len : u64;
+};
+
+ast_fn ::= struct
+{
+	fn_name : u8&;
+	fn_name_len : u64;
+	ret_typename : u8&;
+	ret_typename_len : u64;
+	is_extern : bool;
 };
 
 ast_wipcall ::= struct
@@ -153,6 +157,7 @@ ast ::= struct
 	wipfn : ast_wipfn;
 	wipcall : ast_wipcall;
 	wipregion : ast_region_stmt;
+	fn : ast_fn;
 	loc : srcloc;
 	cursor_begin : u64;
 	cursor_end : u64;
@@ -275,15 +280,6 @@ make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
 	{
 		.type := ast_expr_type.symbol;
 		.symbol := symbol;
-	};
-};
-
-make_deffunc_expr ::= func(def : ast_deffunc_expr) -> ast_expr
-{
-	return ast_expr
-	{
-		.type := ast_expr_type.deffunc;
-		.deffunc := def;
 	};
 };
 
