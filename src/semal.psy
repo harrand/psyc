@@ -15,6 +15,25 @@ semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
 {
+	node ::= ctx.node;
+	is_deduced_type ::= cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len);
+	if(!is_deduced_type)
+	{
+		return scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+	}
+	// deduced type.
+	if((node->childcount) == 0)
+	{
+		psyc_error_begin(node->loc);
+		puts("type-deduced decl ");
+		putss(decl.name, decl.name_len);
+		puts(" did not seem to have an initialiser expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	psyc_warning_begin(node->loc);
+	puts("type-deduced decls are NYI");
+	psyc_diag_end();
 	return zero;
 };
 
@@ -49,11 +68,19 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 	(retstruct.member_name_lens) = arena_push(semar, __sizeof(u64) * childcount);
 
 	i : u64 mut;
+
+	cur_member_node : ast& mut;
+	cur_decl : ast_decl mut;
+	cur_member_type : ty mut;
 	for(i = 0, i < childcount, i = i + 1)
 	{
-		cur_member_node ::= ast_get_child(node@_, i);
-		cur_decl ::= cur_member_node->decl;
-		cur_member_type ::= semal_decl_common(cur_decl, ctx, prog);
+		cur_member_node = ast_get_child(node@_, i);
+		cur_decl = (cur_member_node->decl);
+		cur_member_type = semal_decl_common(cur_decl, context
+		{
+			.node := cur_member_node;
+			.local := ctx.local;
+		}, prog);
 		// todo: assert cur_member_type isnt badtype
 		if(ty_isbad(cur_member_type))
 		{
