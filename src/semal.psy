@@ -90,11 +90,19 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 		if(ty_isbad(cur_member_type))
 		{
 			psyc_error_begin(cur_member_node->loc);
-			puts("data member ");
-			putuint(i);
-			puts(" of struct ");
+			if(cstreql_n(cur_decl.typename, def.structname, cur_decl.name_len))
+			{
+				putss(def.structname, def.structname_len);
+				puts("::");
+				putss(cur_decl.name, cur_decl.name_len);
+				puts(" was of type ");
+				putss(def.structname, def.structname_len);
+				puts(" - struct's data member cannot be itself");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 			putss(def.structname, def.structname_len);
-			puts(" named ");
+			puts("::");
 			putss(cur_decl.name, cur_decl.name_len);
 			puts(" yielded badtype");
 			psyc_diag_end();
@@ -109,6 +117,19 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
 	// this can be fixed by simply using program_declare_struct, but i don't feel comfortable just doing that willy-nilly
+	already ::= scope_find_struct(ctx.local, def.structname, def.structname_len);
+	if(already != null)
+	{
+		psyc_error_begin(node->loc);
+		puts("a struct named ");
+		putchar('"');
+		putss(def.structname, def.structname_len);
+		putchar('"');
+		puts(" was already defined ");
+		print_srcloc(already->defined_at);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	scope_declare_struct(ctx.local, retstruct, node->loc);
 	return zero;
 };

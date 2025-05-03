@@ -78,7 +78,7 @@ impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, 
 		{
 			// found it!
 			result_info ::= tybox_get_struct(types, idx);
-			result_ty ::= result_info.ty;
+			result_ty ::= result_info->ty;
 			deref(len) = (deref(len) + (result_ty.name_len));
 			return ty
 			{
@@ -148,6 +148,24 @@ scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) ->
 	}
 	deref((funcs->data) at (funcs->size)) = f;
 	(funcs->size) = (funcs->size) + 1;
+};
+
+scope_find_struct ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&
+{
+	curscope : scope& mut := s;
+	while(curscope != null)
+	{
+		types ::= ref(s->types)@_;
+		idx ::= tybox_find_struct(types, struct_name, struct_name_len);
+		if(idx != -1)
+		{
+			// found it!
+			return tybox_get_struct(types, idx);
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
 };
 
 scope_declare_struct ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
