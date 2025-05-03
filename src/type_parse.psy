@@ -1,0 +1,91 @@
+// note: these are the building blocks of parsing specific bits of types e.g base, prims etc
+// in truth, it is impossible to parse types without struct/enum scope information
+// for that reason, if you want to just call some parse_typename function, you want scope_parse_typename so it can recognise custom structs/enums too.
+
+typarse_primty ::= func(tyname : u8&, tyname_len : u64, len : u64 mut&) -> primty
+{
+	deref(len) = 0;
+
+	i : u64 mut;
+	first_prim ::= (primty.s64)@s64@u64;
+	last_prim ::= (primty.v0)@s64@u64;
+	curprim : primty mut;
+	for(i = first_prim, i <= last_prim, i = i + 1)
+	{
+		curprim = (i@s64@primty);
+		curprim_name ::= __enumname(curprim);
+		curprim_name_len ::= cstrlen(curprim_name);
+		if(curprim_name_len <= tyname_len)
+		{
+			if(cstr_starts_with_n(tyname, curprim_name, curprim_name_len))
+			{
+				// yes it is
+				deref(len) = curprim_name_len;
+				return curprim;
+			}
+		}
+	}
+	return zero;
+};
+
+impl_typarse_qual_match ::= macro(ename : u8&, ename_len : u64, q : tyqual static, o : u64 mut&) -> bool
+{
+	// ok this shit is kinda wild ngl
+	[[__force_mutable]] qual_name ::= __concat(" ", __enumname(q));
+	deref(o) = cstrlen(qual_name);
+	yield cstr_starts_with_n(qual_name, ename, deref(o));
+};
+
+typarse_quals ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
+{
+	qual ::= ref(base_ty->qual);
+	if(extraname_len == 0)
+	{
+		return 0;
+	}
+	real_offset : u64 mut := 0;
+	offset : u64 mut := 0;
+	continue_parsing_quals : bool mut := true;
+	while(continue_parsing_quals)
+	{
+		tmpoff ::= real_offset;
+		if(impl_typarse_qual_match(extraname at tmpoff, extraname_len - tmpoff, tyqual.mut, ref offset))
+		{
+			deref(qual) = (deref(qual) | (tyqual.mut));
+			real_offset = real_offset + offset;
+		}
+		if(impl_typarse_qual_match(extraname at tmpoff, extraname_len - tmpoff, tyqual.weak, ref offset))
+		{
+			deref(qual) = (deref(qual) | (tyqual.weak));
+			real_offset = real_offset + offset;
+		}
+		if(impl_typarse_qual_match(extraname at tmpoff, extraname_len - tmpoff, tyqual.static, ref offset))
+		{
+			deref(qual) = (deref(qual) | (tyqual.static));
+			real_offset = real_offset + offset;
+		}
+		if(tmpoff == real_offset)
+		{
+			continue_parsing_quals = false;
+		}
+		offset = 0;
+	}
+	return real_offset;
+};
+
+typarse_ptr ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
+{
+	firstchar ::= deref(extraname at 0);
+	if(firstchar == '&')
+	{
+		underlying ::= deref base_ty;
+		deref(base_ty) = ty_ref(underlying);
+		return 1;
+	}
+	return 0;
+};
+
+== build ==
+{
+	add_source_file("type.psy");
+}

@@ -53,38 +53,12 @@ context ::= struct
 	local : scope mut&;
 };
 
-impl_scope_try_parse_base_primty ::= func(tyname : u8&, tyname_len : u64, len : u64 mut&) -> primty
-{
-	deref(len) = 0;
-
-	i : u64 mut;
-	first_prim ::= (primty.s64)@s64@u64;
-	last_prim ::= (primty.v0)@s64@u64;
-	curprim : primty mut;
-	for(i = first_prim, i <= last_prim, i = i + 1)
-	{
-		curprim = (i@s64@primty);
-		curprim_name ::= __enumname(curprim);
-		curprim_name_len ::= cstrlen(curprim_name);
-		if(curprim_name_len <= tyname_len)
-		{
-			if(cstr_starts_with_n(tyname, curprim_name, curprim_name_len))
-			{
-				// yes it is
-				deref(len) = curprim_name_len;
-				return curprim;
-			}
-		}
-	}
-	return zero;
-};
-
 impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
 {
 	// assume tyname starts with a valid base name. all we care about is the best name
 	// try to parse the base typename (and write the length of the name in len). if we succeed, return it. otherwise return badtype.
 	// is it a prim?
-	maybe_prim ::= impl_scope_try_parse_base_primty(tyname, tyname_len, len);
+	maybe_prim ::= typarse_primty(tyname, tyname_len, len);
 	if(maybe_prim != zero)
 	{
 		return ty_getprim(maybe_prim, zero);
@@ -92,53 +66,24 @@ impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len
 	return zero;
 };
 
-make_qual_str ::= macro(q : tyqual static) -> u8&
-{
-	yield __strcat(" ", __enumname(q));
-};
-
-impl_extraname_matches_tyqual ::= macro(ename : u8&, ename_len : u64, q : tyqual static, o : u64 mut&) -> bool
-{
-	// ok this shit is kinda wild ngl
-	[[__force_mutable]] qual_name ::= __concat(" ", __enumname(q));
-	deref(o) = cstrlen(qual_name);
-	yield cstr_starts_with_n(qual_name, ename, deref(o));
-};
-
-impl_scope_try_parse_type_extras ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
-{
-	qual ::= ref(base_ty->qual);
-	if(extraname_len == 0)
-	{
-		return 0;
-	}
-	real_offset : u64 mut := 0;
-	offset : u64 mut := 0;
-	if(impl_extraname_matches_tyqual(extraname, extraname_len, tyqual.mut, ref offset))
-	{
-		deref(qual) = (deref(qual) | (tyqual.mut));
-		real_offset = offset;
-	}
-	if(impl_extraname_matches_tyqual(extraname, extraname_len, tyqual.weak, ref offset))
-	{
-		deref(qual) = (deref(qual) | (tyqual.weak));
-		real_offset = offset;
-	}
-	if(impl_extraname_matches_tyqual(extraname, extraname_len, tyqual.static, ref offset))
-	{
-		deref(qual) = (deref(qual) | (tyqual.static));
-		real_offset = offset;
-	}
-	return real_offset;
-};
-
 scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 {
+	// fully parse a typename.
 	offset : u64 mut := zero;
 	extra_offset : u64 mut := zero;
 	ret : ty mut := impl_scope_try_parse_base_typename(s, tyname, tyname_len, ref offset);
 
-	impl_scope_try_parse_type_extras(tyname at offset, tyname_len - offset, ref ret);
+	continue_parsing : bool mut := true;
+	while(continue_parsing)
+	{
+		tmpoff ::= offset;
+		offset = offset + typarse_quals(tyname at offset, tyname_len - offset, ref ret);
+		offset = offset + typarse_ptr(tyname at offset, tyname_len - offset, ref ret);
+		if(tmpoff == offset)
+		{
+			continue_parsing = false;
+		}
+	}
 	return ret;
 };
 
@@ -187,4 +132,5 @@ program_declare_function ::= func(prog : program mut&, a : arena mut&, f : funct
 	add_source_file("args.psy");
 	add_source_file("ast.psy");
 	add_source_file("type.psy");
+	add_source_file("type_parse.psy");
 }
