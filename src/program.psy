@@ -27,12 +27,22 @@ function_storage ::= struct
 	cap : u64;
 };
 
+scope_type ::= enum
+{
+	.program := 0;
+	.file := 1;
+	.build_region := 2;
+	.code := 3;
+};
+
 scope ::= struct
 {
 	types : tybox;
 	vars : variable_storage;
 	funcs : function_storage;
 	parent : v0&;
+	loc : srcloc;
+	type : scope_type;
 };
 
 program ::= struct
@@ -123,12 +133,35 @@ scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 	return ret;
 };
 
+scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) -> v0
+{
+	funcs ::= ref(s->funcs);
+	if((funcs->data) == null)
+	{
+		(funcs->cap) = 8;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+	}
+	while((funcs->size) >= (funcs->cap))
+	{
+		(funcs->cap) = (funcs->cap) * 2;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+	}
+	deref((funcs->data) at (funcs->size)) = f;
+	(funcs->size) = (funcs->size) + 1;
+};
+
+scope_declare_struct ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
+{
+	types ::= ref(s->types);
+	tybox_add_struct(types, strct, loc);
+};
+
 program_parse_typename ::= func(prog : program mut&, tyname : u8&, tyname_len : u64) -> ty
 {
 	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
 };
 
-program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&) -> scope mut&
+program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&, type : scope_type, loc : srcloc) -> scope mut&
 {
 	if((prog->locals_cap) == 0)
 	{
@@ -153,26 +186,13 @@ program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope m
 program_declare_function ::= func(prog : program mut&, a : arena mut&, f : function) -> v0
 {
 	glob : scope mut& := ref(prog->global);
-	funcs ::= ref(glob->funcs);
-	if((funcs->data) == null)
-	{
-		(funcs->cap) = 8;
-		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
-	}
-	while((funcs->size) >= (funcs->cap))
-	{
-		(funcs->cap) = (funcs->cap) * 2;
-		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
-	}
-	deref((funcs->data) at (funcs->size)) = f;
-	(funcs->size) = (funcs->size) + 1;
+	scope_declare_function(glob, a, f);
 };
 
-program_declare_struct ::= func(prog : program mut&, s : structty, loc : srcloc) -> v0
+program_declare_struct ::= func(prog : program mut&, strct : structty, loc : srcloc) -> v0
 {
 	glob : scope mut& := ref(prog->global);
-	types ::= ref(glob->types);
-	tybox_add_struct(types, s, loc);
+	scope_declare_struct(glob, strct, loc);
 };
 
 == build ==

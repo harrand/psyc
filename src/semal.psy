@@ -105,7 +105,11 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 		deref((retstruct.member_names) at i) = (cur_decl.name);
 		deref((retstruct.member_name_lens) at i) = (cur_decl.name_len);
 	}
-	program_declare_struct(prog, retstruct, node->loc);
+
+	// note: local scope is going to be (at the very most) file scope
+	// this means that other files will not currently be able to see this definition
+	// this can be fixed by simply using program_declare_struct, but i don't feel comfortable just doing that willy-nilly
+	scope_declare_struct(ctx.local, retstruct, node->loc);
 	return zero;
 };
 
@@ -113,9 +117,6 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
-	putss(fn.fn_name, fn.fn_name_len);
-	putchar(' ');
-	print_srcloc(node->loc);
 
 	ret_ty : ty mut := scope_parse_typename(ctx.local, fn.ret_typename, fn.ret_typename_len);
 	// so the param count is *not* just equal to the childcount if the function is not extern.
@@ -144,10 +145,6 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 		cur_param_decl ::= cur_param_node->decl;
 
 		declty : ty mut := scope_parse_typename(ctx.local, cur_param_decl.typename, cur_param_decl.typename_len);
-		if(ty_isbad(declty))
-		{
-			declty = program_parse_typename(prog, cur_param_decl.typename, cur_param_decl.typename_len);
-		}
 		ty_fn_set_param(ref type, i, declty);
 	}
 	if(param_count > 8)
@@ -155,11 +152,17 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 		psyc_panic(node->loc, "function had too many arguments. more than 8 params is NYI");
 	}
 
-	program_declare_function(prog, semar, function{.node := ctx.node;});
-	puts(", type: ");
+	// note: local scope is going to be (at the very most) file scope
+	// this means that other files will not currently be able to see this definition
+	// this can be fixed by simply using program_declare_function, but i don't feel comfortable just doing that willy-nilly
+	scope_declare_function(ctx.local, semar, function{.node := ctx.node;});
+
+	putss(fn.fn_name, fn.fn_name_len);
+	putchar(' ');
+	print_srcloc(node->loc);
+	puts(" => ");
 	putty(type);
 	putchar(10);
-
 	return type;
 };
 
@@ -305,7 +308,7 @@ semal_build_region ::= func(ctx : context mut, prog : program mut&) -> v0
 	semal_children(context
 	{
 		.node := ctx.node;
-		.local := program_new_scope(prog, semar, ctx.local);
+		.local := program_new_scope(prog, semar, ctx.local, scope_type.build_region, node->loc);
 	}, prog);
 	
 	(prog->in_metaregion) = false;
@@ -324,15 +327,18 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	}
 	global ::= prog->global;
 
+	// file scope is a child of the program scope
+	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc);
+
 	semal_build_region(context
 	{
 		.node := build_region;
-		.local := null;
+		.local := file_scope;
 	}, prog);
 	semal_children_recursive(context
 	{
 		.node := source;
-		.local := null;
+		.local := file_scope;
 	}, prog);
 };
 
