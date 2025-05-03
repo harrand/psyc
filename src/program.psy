@@ -53,6 +53,32 @@ context ::= struct
 	local : scope mut&;
 };
 
+impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
+{
+	curscope : scope& mut := s;
+	while(curscope != null)
+	{
+		types ::= ref(s->types)@_;
+		idx ::= tybox_find_struct(types, tyname, tyname_len);
+		if(idx != -1)
+		{
+			// found it!
+			result_info ::= tybox_get_struct(types, idx);
+			result_ty ::= result_info.ty;
+			deref(len) = (deref(len) + (result_ty.name_len));
+			return ty
+			{
+				.tag := tytag.strct;
+				.qual := zero;
+				.strct := result_ty;
+			};
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return zero;
+};
+
 impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
 {
 	// assume tyname starts with a valid base name. all we care about is the best name
@@ -62,6 +88,11 @@ impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len
 	if(maybe_prim != zero)
 	{
 		return ty_getprim(maybe_prim, zero);
+	}
+	maybe_struct ::= impl_scope_try_find_struct(s, tyname, tyname_len, len);
+	if(!ty_isbad(maybe_struct))
+	{
+		return maybe_struct;
 	}
 	return zero;
 };
