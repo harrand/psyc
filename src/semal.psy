@@ -15,7 +15,6 @@ semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
 {
-	//puts("semal_decl_common");
 	return zero;
 };
 
@@ -33,6 +32,47 @@ semal_decl ::= func(ctx : context mut, prog : program mut&) -> ty
 
 semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 {
+	node ::= ctx.node;
+	def ::= node->structdef;
+	putss(def.structname, def.structname_len);
+	putchar(10);
+
+	childcount ::= node->childcount;
+	// todo: check if structname is already defined.
+	retstruct : structty mut := zero;
+	(retstruct.member_count) = childcount;
+	(retstruct.name) = def.structname;
+	(retstruct.name_len) = (def.structname_len);
+
+	(retstruct.member_types) = arena_push(semar, __sizeof(ty) * childcount);
+	(retstruct.member_names) = arena_push(semar, __sizeof(u8&) * childcount);
+	(retstruct.member_name_lens) = arena_push(semar, __sizeof(u64) * childcount);
+
+	i : u64 mut;
+	for(i = 0, i < childcount, i = i + 1)
+	{
+		cur_member_node ::= ast_get_child(node@_, i);
+		cur_decl ::= cur_member_node->decl;
+		cur_member_type ::= semal_decl_common(cur_decl, ctx, prog);
+		// todo: assert cur_member_type isnt badtype
+		if(ty_isbad(cur_member_type))
+		{
+			psyc_error_begin(cur_member_node->loc);
+			puts("data member ");
+			putuint(i);
+			puts(" of struct ");
+			putss(def.structname, def.structname_len);
+			puts(" named ");
+			putss(cur_decl.name, cur_decl.name_len);
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		memty_ptr ::= (retstruct.member_types)@ty mut&;
+		deref(memty_ptr at i) = cur_member_type;
+		deref((retstruct.member_names) at i) = (cur_decl.name);
+		deref((retstruct.member_name_lens) at i) = (cur_decl.name_len);
+	}
 	return zero;
 };
 
@@ -101,7 +141,7 @@ semal_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
 semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
 {
 	// remember - we handle build metaregions in its own special way
-	// so when we iterate and find a region stmt manually we simply ignore it.
+// so when we iterate and find a region stmt manually we simply ignore it.
 	return zero;
 };
 
@@ -126,6 +166,7 @@ semal_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
 
 semal_setup ::= func(a : arena mut&) -> v0
 {
+	psyc_timed(psyc_stage.setup);
 	semar = a;
 
 	deref(semal_jump_table at 0) = semal_function{.fn := semal_stmt;};
@@ -233,6 +274,7 @@ semal_build_region ::= func(ctx : context mut, prog : program mut&) -> v0
 
 semal_file ::= func(prog : program mut&, source : ast&) -> v0
 {
+	psyc_timed(psyc_stage.semal);
 	build_region ::= semal_find_build_region(source);
 	if(build_region == null)
 	{
