@@ -55,6 +55,10 @@ context ::= struct
 
 impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
 {
+	if(s == null)
+	{
+		return zero;
+	}
 	curscope : scope& mut := s;
 	while(curscope != null)
 	{
@@ -89,20 +93,17 @@ impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len
 	{
 		return ty_getprim(maybe_prim, zero);
 	}
-	maybe_struct ::= impl_scope_try_find_struct(s, tyname, tyname_len, len);
+	maybe_struct : ty mut := impl_scope_try_find_struct(s, tyname, typarse_basename_end(tyname, tyname_len), len);
 	if(!ty_isbad(maybe_struct))
 	{
 		return maybe_struct;
 	}
+
 	return zero;
 };
 
 scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 {
-	if(s == null)
-	{
-		psyc_panic(srcloc_current(), "attempt to call scope_parse_typename with a null scope");
-	}
 	// fully parse a typename.
 	offset : u64 mut := zero;
 	extra_offset : u64 mut := zero;
@@ -120,6 +121,11 @@ scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 		}
 	}
 	return ret;
+};
+
+program_parse_typename ::= func(prog : program mut&, tyname : u8&, tyname_len : u64) -> ty
+{
+	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
 };
 
 program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&) -> scope mut&
@@ -160,6 +166,13 @@ program_declare_function ::= func(prog : program mut&, a : arena mut&, f : funct
 	}
 	deref((funcs->data) at (funcs->size)) = f;
 	(funcs->size) = (funcs->size) + 1;
+};
+
+program_declare_struct ::= func(prog : program mut&, s : structty, loc : srcloc) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	types ::= ref(glob->types);
+	tybox_add_struct(types, s, loc);
 };
 
 == build ==

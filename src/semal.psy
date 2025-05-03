@@ -19,7 +19,13 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 	is_deduced_type ::= cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len);
 	if(!is_deduced_type)
 	{
-		return scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+		retty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+		if(ty_isbad(retty))
+		{
+			// try globally
+			retty = program_parse_typename(prog, decl.typename, decl.typename_len);
+		}
+		return retty;
 	}
 	// deduced type.
 	if((node->childcount) == 0)
@@ -60,7 +66,7 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 	// todo: check if structname is already defined.
 	retstruct : structty mut := zero;
 	(retstruct.member_count) = childcount;
-	(retstruct.name) = def.structname;
+	(retstruct.name) = (def.structname);
 	(retstruct.name_len) = (def.structname_len);
 
 	(retstruct.member_types) = arena_push(semar, __sizeof(ty) * childcount);
@@ -81,7 +87,6 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 			.node := cur_member_node;
 			.local := ctx.local;
 		}, prog);
-		// todo: assert cur_member_type isnt badtype
 		if(ty_isbad(cur_member_type))
 		{
 			psyc_error_begin(cur_member_node->loc);
@@ -100,6 +105,7 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 		deref((retstruct.member_names) at i) = (cur_decl.name);
 		deref((retstruct.member_name_lens) at i) = (cur_decl.name_len);
 	}
+	program_declare_struct(prog, retstruct, node->loc);
 	return zero;
 };
 
@@ -136,7 +142,13 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 	{
 		cur_param_node ::= ast_get_child(node@_, i);
 		cur_param_decl ::= cur_param_node->decl;
-		ty_fn_set_param(ref type, i, scope_parse_typename(null, cur_param_decl.typename, cur_param_decl.typename_len));
+
+		declty : ty mut := scope_parse_typename(ctx.local, cur_param_decl.typename, cur_param_decl.typename_len);
+		if(ty_isbad(declty))
+		{
+			declty = program_parse_typename(prog, cur_param_decl.typename, cur_param_decl.typename_len);
+		}
+		ty_fn_set_param(ref type, i, declty);
 	}
 	if(param_count > 8)
 	{
