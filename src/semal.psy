@@ -3,35 +3,34 @@ semal_function ::= struct
 	fn : func(ctx : context mut, prog : program mut&) -> ty;
 };
 
+semal_expr_function ::= struct
+{
+	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty;
+};
+
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
-expr_jump_table : semal_function mut#4;
+expr_jump_table : semal_expr_function mut#4;
 
 literal_types : ty mut#4;
 
-semal_symbol_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	node ::= ctx.node;
-	expr ::= node->expr;
 	sym ::= expr.symbol;
 	return zero;
 };
 
-semal_literal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	node ::= ctx.node;
-	expr ::= node->expr;
 	lit ::= expr.literal;
-
 	return deref(literal_types at ((lit.type)@s64));
 };
 
-semal_biop_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	node ::= ctx.node;
-	expr ::= node->expr;
 	biop ::= expr.biop;
+	node ::= ctx.node;
 	if((node->childcount) != 2)
 	{
 		psyc_error_begin(node->loc);
@@ -41,13 +40,13 @@ semal_biop_expr ::= func(ctx : context mut, prog : program mut&) -> ty
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	lhs ::= ast_biop_get_lhs(deref node);
+	rhs ::= ast_biop_get_rhs(deref node);
 	return zero;
 };
 
-semal_callfunc_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	node ::= ctx.node;
-	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
 	return zero;
 };
@@ -59,7 +58,7 @@ semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(expr_jump_table at idx);
-	return jump.fn(ctx, prog);
+	return jump.fn(expr, ctx, prog);
 };
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
@@ -278,10 +277,10 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(stmt_jump_table at 4) = semal_function{.fn := semal_fn;};
 	deref(stmt_jump_table at 5) = semal_function{.fn := semal_blk_stmt;};
 
-	deref(expr_jump_table at 0) = semal_function{.fn := semal_symbol_expr;};
-	deref(expr_jump_table at 1) = semal_function{.fn := semal_literal_expr;};
-	deref(expr_jump_table at 2) = semal_function{.fn := semal_biop_expr;};
-	deref(expr_jump_table at 3) = semal_function{.fn := semal_callfunc_expr;};
+	deref(expr_jump_table at 0) = semal_expr_function{.fn := semal_symbol_expr;};
+	deref(expr_jump_table at 1) = semal_expr_function{.fn := semal_literal_expr;};
+	deref(expr_jump_table at 2) = semal_expr_function{.fn := semal_biop_expr;};
+	deref(expr_jump_table at 3) = semal_expr_function{.fn := semal_callfunc_expr;};
 
 	litqual ::= (tyqual.weak) | (tyqual.static);
 	deref(literal_types at ((ast_literal_type.integral)@s64)) =
