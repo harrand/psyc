@@ -8,6 +8,8 @@ semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
 expr_jump_table : semal_function mut#4;
 
+literal_types : ty mut#4;
+
 semal_symbol_expr ::= func(ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
@@ -21,7 +23,8 @@ semal_literal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
 	node ::= ctx.node;
 	expr ::= node->expr;
 	lit ::= expr.literal;
-	return zero;
+
+	return deref(literal_types at ((lit.type)@s64));
 };
 
 semal_biop_expr ::= func(ctx : context mut, prog : program mut&) -> ty
@@ -279,6 +282,16 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(expr_jump_table at 1) = semal_function{.fn := semal_literal_expr;};
 	deref(expr_jump_table at 2) = semal_function{.fn := semal_biop_expr;};
 	deref(expr_jump_table at 3) = semal_function{.fn := semal_callfunc_expr;};
+
+	litqual ::= (tyqual.weak) | (tyqual.static);
+	deref(literal_types at ((ast_literal_type.integral)@s64)) =
+		ty_getprim(primty.s64, litqual);
+	deref(literal_types at ((ast_literal_type.floating_point)@s64)) =
+		ty_getprim(primty.f64, litqual);
+	deref(literal_types at ((ast_literal_type.char_literal)@s64)) =
+		ty_getprim(primty.u8, litqual);
+	deref(literal_types at ((ast_literal_type.string_literal)@s64)) =
+		ty_ref(ty_getprim(primty.u8, litqual), tyqual.static);
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
