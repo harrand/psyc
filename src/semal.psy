@@ -6,11 +6,57 @@ semal_function ::= struct
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
+expr_jump_table : semal_function mut#4;
+
+semal_symbol_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	sym ::= expr.symbol;
+	return zero;
+};
+
+semal_literal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	lit ::= expr.literal;
+	return zero;
+};
+
+semal_biop_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	biop ::= expr.biop;
+	if((node->childcount) != 2)
+	{
+		psyc_error_begin(node->loc);
+		puts("biop expr expects exactly 2 children representing lhs and rhs. this biop expr node has ");
+		putuint(node->childcount);
+		puts(" children.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return zero;
+};
+
+semal_callfunc_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	callfunc ::= expr.callfunc;
+	return zero;
+};
 
 semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	//puts("semal_expr_common");
-	return zero;
+	pre_transform_idx ::= (expr.type)@s64;
+	subtraction ::= (ast_expr_type.symbol)@s64;
+
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(expr_jump_table at idx);
+	return jump.fn(ctx, prog);
 };
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
@@ -228,6 +274,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(stmt_jump_table at 3) = semal_function{.fn := semal_structdef;};
 	deref(stmt_jump_table at 4) = semal_function{.fn := semal_fn;};
 	deref(stmt_jump_table at 5) = semal_function{.fn := semal_blk_stmt;};
+
+	deref(expr_jump_table at 0) = semal_function{.fn := semal_symbol_expr;};
+	deref(expr_jump_table at 1) = semal_function{.fn := semal_literal_expr;};
+	deref(expr_jump_table at 2) = semal_function{.fn := semal_biop_expr;};
+	deref(expr_jump_table at 3) = semal_function{.fn := semal_callfunc_expr;};
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
