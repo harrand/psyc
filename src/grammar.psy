@@ -18,7 +18,7 @@ hashexpr ::= func(t : ast_expr_type) -> u64
 	return multiplier ^ hash(t);
 };
 
-hashstmt ::= func(t : ast_stmt_type) -> u64
+hashstmt ::= func(t : ast_stmt) -> u64
 {
 	multiplier ::= (ast_type.stmt)@s64 * 393505272299;
 	return multiplier ^ hash(t);
@@ -47,8 +47,7 @@ hash_state ::= func(nodes : ast&, node_count : u64) -> u64
 		}
 		if(isstmt)
 		{
-			stmt ::= curnode.stmt;
-			hash = (hash ^ hashstmt(stmt.type));
+			hash = (hash ^ hashstmt(curnode.stmt));
 		}
 		if(!istoken)
 		{
@@ -185,12 +184,12 @@ expr ::= macro(t : ast_expr_type) -> ast static
 	};
 };
 
-stmt ::= macro(t : ast_stmt_type) -> ast static
+stmt ::= macro(t : ast_stmt) -> ast static
 {
 	yield ast
 	{
 		.type := ast_type.stmt;
-		.stmt := ast_stmt{.type := t;};
+		.stmt := t;
 	};
 };
 
@@ -405,10 +404,7 @@ exprsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.stmt;
-		.stmt := ast_stmt
-		{
-			.type := ast_stmt_type.expr_stmt;
-		};
+		.stmt := ast_stmt.expr_stmt;
 		.expr := first.expr;
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -432,10 +428,7 @@ declsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.stmt;
-		.stmt := ast_stmt
-		{
-			.type := ast_stmt_type.decl_stmt;
-		};
+		.stmt := ast_stmt.decl_stmt;
 		.decl := first.decl;
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -459,10 +452,7 @@ fnsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> par
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.stmt;
-		.stmt := ast_stmt
-		{
-			.type := ast_stmt_type.fn_stmt;
-		};
+		.stmt := ast_stmt.fn_stmt;
 		.fn := first.fn;
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -486,10 +476,7 @@ structdefsemicol2stmt ::= func(source : u8&, nodes : ast mut&, nodes_size : u64)
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.stmt;
-		.stmt := ast_stmt
-		{
-			.type := ast_stmt_type.struct_stmt;
-		};
+		.stmt := ast_stmt.struct_stmt;
 		.structdef := first.structdef;
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -1099,10 +1086,7 @@ cap_off_wipstruct ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> 
 {
 	firstptr ::= nodes at 0;
 	(firstptr->type) = (ast_type.stmt);
-	(firstptr->stmt) = ast_stmt
-	{
-		.type := ast_stmt_type.struct_stmt;
-	};
+	(firstptr->stmt) = (ast_stmt.struct_stmt);
 	// remove all but the first node
 	return parse_value
 	{
@@ -1178,11 +1162,7 @@ cap_off_wipblk ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> par
 {
 	first ::= nodes at 0;
 	(first->type) = (ast_type.stmt);
-	stmt ::= ast_stmt
-	{
-		.type := ast_stmt_type.blk_stmt;
-	};
-	(first->stmt) = stmt;
+	(first->stmt) = (ast_stmt.blk_stmt);
 	last ::= deref(nodes at (nodes_size - 1));
 	(first->cursor_end) = (last.cursor_end);
 	// remove all but the first node
@@ -1229,7 +1209,7 @@ cap_off_region ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> par
 {
 	first ::= nodes at 0;
 	(first->type) = (ast_type.stmt);
-	(first->stmt) = ast_stmt{.type := ast_stmt_type.region_stmt;};
+	(first->stmt) = (ast_stmt.region_stmt);
 	last ::= deref(nodes at (nodes_size - 1));
 	(first->cursor_end) = (last.cursor_end);
 	// remove all but the first node
@@ -1542,37 +1522,37 @@ grammar_commits ::= func() -> v0
 {
 	// note: this should support *all stmt types*
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.expr_stmt)),
+		__array(ast, stmt(ast_stmt.expr_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
 
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.decl_stmt)),
+		__array(ast, stmt(ast_stmt.decl_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
 
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.region_stmt)),
+		__array(ast, stmt(ast_stmt.region_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
 
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.blk_stmt)),
+		__array(ast, stmt(ast_stmt.blk_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
 
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.struct_stmt)),
+		__array(ast, stmt(ast_stmt.struct_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
 
 	grammar_install(
-		__array(ast, stmt(ast_stmt_type.fn_stmt)),
+		__array(ast, stmt(ast_stmt.fn_stmt)),
 		zero_lookahead,
 		true,
 	rule(c1));
@@ -2728,12 +2708,12 @@ grammar_edge_case_decl_structdef ::= func() -> v0
 		rule(r3));
 
 	grammar_install(
-		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipstruct), stmt(ast_stmt_type.decl_stmt)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipstruct), stmt(ast_stmt.decl_stmt)),
 		zero_lookahead,
 		false,
 		rule(r3));
 	grammar_install(
-		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipstruct), stmt(ast_stmt_type.decl_stmt)),
+		__array(ast, expr(ast_expr_type.symbol), token(lex_token.colon), token(lex_token.initialiser), node(ast_type.wipstruct), stmt(ast_stmt.decl_stmt)),
 		zero_lookahead,
 		true,
 		rule(r3));
