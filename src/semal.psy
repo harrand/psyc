@@ -187,13 +187,6 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 	return type;
 };
 
-semal_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
-{
-	node ::= ctx.node;
-	stmt ::= node->stmt;
-	return semal_expr_common(stmt.expr, ctx, prog);
-};
-
 semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
 {
 	// remember - we handle build metaregions in its own special way
@@ -230,7 +223,7 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(semal_jump_table at 2) = semal_function{.fn := semal_decl;};
 	deref(semal_jump_table at 3) = semal_function{.fn := semal_structdef;};
 
-	deref(stmt_jump_table at 0) = semal_function{.fn := semal_expr_stmt;};
+	deref(stmt_jump_table at 0) = semal_function{.fn := semal_expr;};
 	deref(stmt_jump_table at 1) = semal_function{.fn := semal_decl;};
 	deref(stmt_jump_table at 2) = semal_function{.fn := semal_region_stmt;};
 	deref(stmt_jump_table at 3) = semal_function{.fn := semal_structdef;};
@@ -249,7 +242,7 @@ semal_is_build_region ::= func(n : ast&) -> bool
 	{
 		return false;
 	}
-	region ::= stmt.region;
+	region ::= n->region;
 	build_region_name ::= "build";
 	len ::= cstrlen(build_region_name);
 	return cstreql_n(region.name, build_region_name, len);
