@@ -15,7 +15,7 @@ semal_biop_function ::= struct
 
 semal_unop_function ::= struct
 {
-	fn : func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
+	fn : func(operand_val : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
 };
 
 semar : arena mut& mut;
@@ -54,48 +54,50 @@ semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program m
 	};
 };
 
-semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_unop_minus ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	if(!ty_is_integral(operand_ty))
+	if(!ty_is_integral(operand.type))
 	{
-		if(!ty_is_floating_point(operand_ty))
+		if(!ty_is_floating_point(operand.type))
 		{
 			psyc_error_begin(operand_loc);
 			puts("operand of unary minus is of type ");
 			putchar('"');
-			putty(operand_ty);
+			putty(operand.type);
 			putchar('"');
 			puts(", but it must be either an 'integral' or 'floating-point' type");
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
 	}
-	return just_type(operand_ty);
+	literal ::= ref(operand.literal);
+	(literal->integral) = -(literal->integral);
+	(literal->floating_point) = -(literal->floating_point);
+	return operand;
 };
 
-semal_unop_ref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_unop_ref ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	// todo: do not allow refs on non-lvalues
-	return just_type(ty_ref(operand_ty, zero));
+	return just_type(ty_ref(operand.type, zero));
 };
 
-semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_unop_deref ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	if(!ty_is(operand_ty, tytag.ptr))
+	if(!ty_is(operand.type, tytag.ptr))
 	{
 		psyc_error_begin(operand_loc);
 		puts("operand of deref is of type ");
 		putchar('"');
-		putty(operand_ty);
+		putty(operand.type);
 		putchar('"');
 		puts(", but it must be a 'pointer' type");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return just_type(ty_deref(operand_ty));
+	return just_type(ty_deref(operand.type));
 };
 
-semal_unop_defer ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_unop_defer ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	psyc_panic(operand_loc, "unop defer NYI");
 	return zero;
@@ -130,7 +132,7 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	subtraction ::= 0;
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(unop_jump_table at idx);
-	return jump.fn(operand_val.type, operand.loc, ctx, prog);
+	return jump.fn(operand_val, operand.loc, ctx, prog);
 };
 
 
