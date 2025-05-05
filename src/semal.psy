@@ -8,10 +8,16 @@ semal_expr_function ::= struct
 	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty;
 };
 
+semal_biop_function ::= struct
+{
+	fn : func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty;
+};
+
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
 expr_jump_table : semal_expr_function mut#4;
+biop_jump_table : semal_biop_function mut#4;
 
 literal_types : ty mut#4;
 
@@ -35,6 +41,24 @@ semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program m
 {
 	lit ::= expr.literal;
 	return deref(literal_types at ((lit.type)@s64));
+};
+
+semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(lhs_loc, "assign biop NYI");
+	return zero;
+};
+
+semal_biop_plus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(lhs_loc, "plus biop NYI");
+	return zero;
+};
+
+semal_biop_minus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(lhs_loc, "minus biop NYI");
+	return zero;
 };
 
 semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
@@ -124,16 +148,11 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		psyc_exit_failure();
 	}
 
-	if((biop.type) == (ast_biop_type.operator_at))
-	{
-		return semal_biop_at(lhs_ty, rhs_ty, lhs.loc, rhs.loc, ctx, prog);
-	}
-	psyc_panic_begin(node->loc);
-	puts("unhandled binary operator ");
-	puts(__enumname(biop.type));
-	psyc_diag_end();
-	psyc_exit_failure();
-	return zero;
+	pre_transform_idx ::= (biop.type)@s64;
+	subtraction ::= 0;
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(biop_jump_table at idx);
+	return jump.fn(lhs_ty, rhs_ty, lhs.loc, rhs.loc, ctx, prog);
 };
 
 semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
@@ -372,6 +391,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 		ty_getprim(primty.u8, litqual);
 	deref(literal_types at ((ast_literal_type.string_literal)@s64)) =
 		ty_ref(ty_getprim(primty.u8, litqual), tyqual.static);
+
+	deref(biop_jump_table at 0) = semal_biop_function{.fn := semal_biop_assign;};
+	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_plus;};
+	deref(biop_jump_table at 2) = semal_biop_function{.fn := semal_biop_minus;};
+	deref(biop_jump_table at 3) = semal_biop_function{.fn := semal_biop_at;};
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
