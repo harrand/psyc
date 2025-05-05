@@ -293,40 +293,53 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 	return zero;
 };
 
+semal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	return semal_expr_common(node->expr, ctx, prog);
+};
+
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
 	is_deduced_type ::= cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len);
+	retty : ty mut := zero;
 	if(!is_deduced_type)
 	{
-		retty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+		retty = scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
 		if(ty_isbad(retty))
 		{
 			// try globally
 			retty = program_parse_typename(prog, decl.typename, decl.typename_len);
 		}
-		return retty;
 	}
-	// deduced type.
-	if((node->childcount) == 0)
+	if(is_deduced_type)
+	{
+		// deduced type.
+		if((node->childcount) == 0)
+		{
+			psyc_error_begin(node->loc);
+			puts("type-deduced decl ");
+			putss(decl.name, decl.name_len);
+			puts(" did not seem to have an initialiser expression");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		init_node ::= ast_get_child(node@_, 0);
+		retty = semal_expr(context{.node := init_node; .local := ctx.local;}, prog);
+	}
+	if(ty_isbad(retty))
 	{
 		psyc_error_begin(node->loc);
-		puts("type-deduced decl ");
+		puts("decl ");
+		putchar('"');
 		putss(decl.name, decl.name_len);
-		puts(" did not seem to have an initialiser expression");
+		putchar('"');
+		puts(" yielded badtype");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	psyc_warning_begin(node->loc);
-	puts("type-deduced decls are NYI");
-	psyc_diag_end();
-	return zero;
-};
-
-semal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
-{
-	node ::= ctx.node;
-	return semal_expr_common(node->expr, ctx, prog);
+	return retty;
 };
 
 semal_decl ::= func(ctx : context mut, prog : program mut&) -> ty
