@@ -10,7 +10,7 @@ semal_expr_function ::= struct
 
 semal_biop_function ::= struct
 {
-	fn : func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
+	fn : func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
 };
 
 semal_unop_function ::= struct
@@ -136,7 +136,7 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 };
 
 
-semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_assign ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	psyc_panic(lhs_loc, "assign biop NYI");
 	return zero;
@@ -180,40 +180,58 @@ semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, l
 	return lhs_ty;
 };
 
-semal_biop_plus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_plus ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return sval
-	{
-		.type := semal_biop_arithmetic_common("addition", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
-	};
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("addition", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) + (rhs_lit.integral);
+	(ret_lit->floating_point) = (lhs_lit.floating_point) + (rhs_lit.floating_point);
+	return ret;
 };
 
-semal_biop_minus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_minus ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return sval
-	{
-		.type := semal_biop_arithmetic_common("subtraction", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
-	};
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("subtraction", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) - (rhs_lit.integral);
+	(ret_lit->floating_point) = (lhs_lit.floating_point) - (rhs_lit.floating_point);
+	return ret;
 };
 
-semal_biop_multiply ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_multiply ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return sval
-	{
-		.type := semal_biop_arithmetic_common("multiply", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
-	};
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("multiplication", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) * (rhs_lit.integral);
+	(ret_lit->floating_point) = (lhs_lit.floating_point) * (rhs_lit.floating_point);
+	return ret;
 };
 
-semal_biop_divide ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_divide ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return sval
-	{
-		.type := semal_biop_arithmetic_common("divide", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
-	};
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("division", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) / (rhs_lit.integral);
+	(ret_lit->floating_point) = (lhs_lit.floating_point) / (rhs_lit.floating_point);
+	return ret;
 };
 
-semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+semal_biop_at ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
+	lhs_ty ::= lhs_val.type;
+	rhs_ty ::= rhs_val.type;
 	node ::= ctx.node;
 	// lhs must be:
 	//	- a ptr
@@ -259,10 +277,7 @@ semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : src
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return sval
-	{
-		.type := retty;
-	};
+	return just_type(retty);
 };
 
 semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
@@ -306,7 +321,7 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	subtraction ::= 0;
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(biop_jump_table at idx);
-	return jump.fn(lhs_val.type, rhs_val.type, lhs.loc, rhs.loc, ctx, prog);
+	return jump.fn(lhs_val, rhs_val, lhs.loc, rhs.loc, ctx, prog);
 };
 
 semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
