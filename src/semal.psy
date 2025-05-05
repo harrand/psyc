@@ -49,16 +49,52 @@ semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc :
 	return zero;
 };
 
+semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	if(!ty_is_integral(lhs_ty))
+	{
+		if(!ty_is_floating_point(lhs_ty))
+		{
+			psyc_error_begin(lhs_loc);
+			puts("lhs of ");
+			puts(op_name);
+			puts(" is of type ");
+			putchar('"');
+			putty(lhs_ty);
+			putchar('"');
+			puts(", but it must be either an 'integral' or 'floating-point' type");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	if(!ty_is_integral(rhs_ty))
+	{
+		if(!ty_is_floating_point(rhs_ty))
+		{
+			psyc_error_begin(rhs_loc);
+			puts("rhs of ");
+			puts(op_name);
+			puts(" is of type ");
+			putchar('"');
+			putty(rhs_ty);
+			putchar('"');
+			puts(", but it must be either an 'integral' or 'floating-point' type");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	// assert(ty_can_convert(lhs_ty, rhs_ty))
+	return lhs_ty;
+};
+
 semal_biop_plus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
-	psyc_panic(lhs_loc, "plus biop NYI");
-	return zero;
+	return semal_biop_arithmetic_common("addition", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
 };
 
 semal_biop_minus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
-	psyc_panic(lhs_loc, "minus biop NYI");
-	return zero;
+	return semal_biop_arithmetic_common("subtraction", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
 };
 
 semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
@@ -137,7 +173,7 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_ty ::= semal_expr_common(lhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
+	rhs_ty ::= semal_expr_common(rhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
 	if(ty_isbad(rhs_ty))
 	{
 		psyc_error_begin(rhs.loc);
@@ -390,7 +426,7 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(literal_types at ((ast_literal_type.char_literal)@s64)) =
 		ty_getprim(primty.u8, litqual);
 	deref(literal_types at ((ast_literal_type.string_literal)@s64)) =
-		ty_ref(ty_getprim(primty.u8, litqual), tyqual.static);
+		ty_ref(ty_getprim(primty.u8, zero), tyqual.static);
 
 	deref(biop_jump_table at 0) = semal_biop_function{.fn := semal_biop_assign;};
 	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_plus;};
