@@ -1,21 +1,21 @@
 semal_function ::= struct
 {
-	fn : func(ctx : context mut, prog : program mut&) -> ty;
+	fn : func(ctx : context mut, prog : program mut&) -> sval;
 };
 
 semal_expr_function ::= struct
 {
-	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty;
+	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval;
 };
 
 semal_biop_function ::= struct
 {
-	fn : func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty;
+	fn : func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
 };
 
 semal_unop_function ::= struct
 {
-	fn : func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty;
+	fn : func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval;
 };
 
 semar : arena mut& mut;
@@ -27,7 +27,7 @@ unop_jump_table : semal_unop_function mut#4;
 
 literal_types : ty mut#4;
 
-semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	pre_transform_idx ::= (expr.type)@s64;
 	subtraction ::= (ast_expr_type.symbol)@s64;
@@ -37,19 +37,24 @@ semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 	return jump.fn(expr, ctx, prog);
 };
 
-semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	sym ::= expr.symbol;
 	return zero;
 };
 
-semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	lit ::= expr.literal;
-	return deref(literal_types at ((lit.type)@s64));
+	return sval
+	{
+		.type := deref(literal_types at ((lit.type)@s64));
+		.tag := sval_tag.literal;
+		.literal := lit;
+	};
 };
 
-semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	if(!ty_is_integral(operand_ty))
 	{
@@ -65,16 +70,16 @@ semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context m
 			psyc_exit_failure();
 		}
 	}
-	return operand_ty;
+	return sval{.type := operand_ty;};
 };
 
-semal_unop_ref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_unop_ref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	// todo: do not allow refs on non-lvalues
-	return ty_ref(operand_ty, zero);
+	return sval{.type := ty_ref(operand_ty, zero);};
 };
 
-semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	if(!ty_is(operand_ty, tytag.ptr))
 	{
@@ -87,16 +92,16 @@ semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context m
 			psyc_diag_end();
 			psyc_exit_failure();
 	}
-	return ty_deref(operand_ty);
+	return sval{.type := ty_deref(operand_ty);};
 };
 
-semal_unop_defer ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_unop_defer ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	psyc_panic(operand_loc, "unop defer NYI");
 	return zero;
 };
 
-semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	unop ::= expr.unop;
 	node ::= ctx.node;
@@ -111,8 +116,8 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	}
 
 	operand ::= ast_unop_get_operand(deref node);
-	operand_ty ::= semal_expr_common(operand.expr, context{.node := ref operand; .local := ctx.local;}, prog);
-	if(ty_isbad(operand_ty))
+	operand_val ::= semal_expr_common(operand.expr, context{.node := ref operand; .local := ctx.local;}, prog);
+	if(ty_isbad(operand_val.type))
 	{
 		psyc_error_begin(operand.loc);
 		puts("operand of unary operator ");
@@ -125,11 +130,11 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	subtraction ::= 0;
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(unop_jump_table at idx);
-	return jump.fn(operand_ty, operand.loc, ctx, prog);
+	return jump.fn(operand_val.type, operand.loc, ctx, prog);
 };
 
 
-semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	psyc_panic(lhs_loc, "assign biop NYI");
 	return zero;
@@ -173,27 +178,39 @@ semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, l
 	return lhs_ty;
 };
 
-semal_biop_plus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_plus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return semal_biop_arithmetic_common("addition", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	return sval
+	{
+		.type := semal_biop_arithmetic_common("addition", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	};
 };
 
-semal_biop_minus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_minus ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return semal_biop_arithmetic_common("subtraction", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	return sval
+	{
+		.type := semal_biop_arithmetic_common("subtraction", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	};
 };
 
-semal_biop_multiply ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_multiply ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return semal_biop_arithmetic_common("multiply", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	return sval
+	{
+		.type := semal_biop_arithmetic_common("multiply", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	};
 };
 
-semal_biop_divide ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_divide ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	return semal_biop_arithmetic_common("divide", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	return sval
+	{
+		.type := semal_biop_arithmetic_common("divide", lhs_ty, rhs_ty, lhs_loc, rhs_loc, ctx, prog);
+	};
 };
 
-semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	// lhs must be:
@@ -240,10 +257,13 @@ semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : src
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return retty;
+	return sval
+	{
+		.type := retty;
+	};
 };
 
-semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	biop ::= expr.biop;
 	node ::= ctx.node;
@@ -259,8 +279,8 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	lhs ::= ast_biop_get_lhs(deref node);
 	rhs ::= ast_biop_get_rhs(deref node);
 
-	lhs_ty ::= semal_expr_common(lhs.expr, context{.node := ref lhs; .local := ctx.local;}, prog);
-	if(ty_isbad(lhs_ty))
+	lhs_val ::= semal_expr_common(lhs.expr, context{.node := ref lhs; .local := ctx.local;}, prog);
+	if(ty_isbad(lhs_val.type))
 	{
 		psyc_error_begin(lhs.loc);
 		puts("lhs of binary operator ");
@@ -269,8 +289,8 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_ty ::= semal_expr_common(rhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
-	if(ty_isbad(rhs_ty))
+	rhs_val ::= semal_expr_common(rhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
+	if(ty_isbad(rhs_val.type))
 	{
 		psyc_error_begin(rhs.loc);
 		puts("rhs of binary operator ");
@@ -284,16 +304,16 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	subtraction ::= 0;
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(biop_jump_table at idx);
-	return jump.fn(lhs_ty, rhs_ty, lhs.loc, rhs.loc, ctx, prog);
+	return jump.fn(lhs_val.type, rhs_val.type, lhs.loc, rhs.loc, ctx, prog);
 };
 
-semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	callfunc ::= expr.callfunc;
 	return zero;
 };
 
-semal_expr ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_expr ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	return semal_expr_common(node->expr, ctx, prog);
@@ -326,7 +346,8 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 			psyc_exit_failure();
 		}
 		init_node ::= ast_get_child(node@_, 0);
-		retty = semal_expr(context{.node := init_node; .local := ctx.local;}, prog);
+		init_val ::= semal_expr(context{.node := init_node; .local := ctx.local;}, prog);
+		retty = (init_val.type);
 	}
 	if(ty_isbad(retty))
 	{
@@ -344,13 +365,16 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 	return retty;
 };
 
-semal_decl ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_decl ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	return semal_decl_common(node->decl, ctx, prog);
+	return sval
+	{
+		.type := semal_decl_common(node->decl, ctx, prog);
+	};
 };
 
-semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
@@ -429,7 +453,7 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> ty
 	return zero;
 };
 
-semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
@@ -479,24 +503,27 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> ty
 	puts(" => ");
 	putty(type);
 	putchar(10);
-	return type;
+	return sval
+	{
+		.type := type;
+	};
 };
 
-semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	// remember - we handle build metaregions in its own special way
 // so when we iterate and find a region stmt manually we simply ignore it.
 	return zero;
 };
 
-semal_blk_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_blk_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	puts("block statement");
 	putchar(10);
 	return zero;
 };
 
-semal_stmt ::= func(ctx : context mut, prog : program mut&) -> ty
+semal_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
