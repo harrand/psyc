@@ -15,6 +15,16 @@ expr_jump_table : semal_expr_function mut#4;
 
 literal_types : ty mut#4;
 
+semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+{
+	pre_transform_idx ::= (expr.type)@s64;
+	subtraction ::= (ast_expr_type.symbol)@s64;
+
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(expr_jump_table at idx);
+	return jump.fn(expr, ctx, prog);
+};
+
 semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
 	sym ::= expr.symbol;
@@ -42,6 +52,68 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	}
 	lhs ::= ast_biop_get_lhs(deref node);
 	rhs ::= ast_biop_get_rhs(deref node);
+
+	lhs_ty ::= semal_expr_common(lhs.expr, context{.node := ref lhs; .local := ctx.local;}, prog);
+	if(ty_isbad(lhs_ty))
+	{
+		psyc_error_begin(lhs.loc);
+		puts("lhs of binary operator ");
+		puts(__enumname(biop.type));
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	rhs_ty ::= semal_expr_common(lhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
+	if(ty_isbad(rhs_ty))
+	{
+		psyc_error_begin(rhs.loc);
+		puts("rhs of binary operator ");
+		puts(__enumname(biop.type));
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	if((biop.type) == (ast_biop_type.operator_at))
+	{
+		// lhs must be:
+		//	- a ptr
+		//	- an array
+		acceptable : bool mut := false;
+		if(ty_is(lhs_ty, tytag.ptr))
+		{
+			acceptable = true;
+		}
+		if(ty_is(lhs_ty, tytag.arr))
+		{
+			acceptable = true;
+		}
+		if(!acceptable)
+		{
+			psyc_error_begin(rhs.loc);
+			puts("lhs of 'at' operator is of type ");
+			putchar('"');
+			putty(lhs_ty);
+			putchar('"');
+			puts(", but it must be either a 'pointer' or 'array' type.");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+
+		// rhs must be:
+		//	- an integral type
+		if(!ty_is_integral(rhs_ty))
+		{
+			psyc_error_begin(rhs.loc);
+			puts("rhs of 'at' operator is of type ");
+			putchar('"');
+			putty(lhs_ty);
+			putchar('"');
+			puts(", but it must be an 'integral' type.");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 	return zero;
 };
 
@@ -49,16 +121,6 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 {
 	callfunc ::= expr.callfunc;
 	return zero;
-};
-
-semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
-{
-	pre_transform_idx ::= (expr.type)@s64;
-	subtraction ::= (ast_expr_type.symbol)@s64;
-
-	idx ::= pre_transform_idx - subtraction;
-	jump ::= deref(expr_jump_table at idx);
-	return jump.fn(expr, ctx, prog);
 };
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
