@@ -16,7 +16,7 @@ semal_biop_function ::= struct
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
-expr_jump_table : semal_expr_function mut#4;
+expr_jump_table : semal_expr_function mut#5;
 biop_jump_table : semal_biop_function mut#6;
 
 literal_types : ty mut#4;
@@ -155,6 +155,14 @@ semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : src
 		psyc_exit_failure();
 	}
 	return retty;
+};
+
+semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+{
+	unop ::= expr.unop;
+	node ::= ctx.node;
+	psyc_panic(node->loc, "unop NYI");
+	return zero;
 };
 
 semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
@@ -426,7 +434,8 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(expr_jump_table at 0) = semal_expr_function{.fn := semal_symbol_expr;};
 	deref(expr_jump_table at 1) = semal_expr_function{.fn := semal_literal_expr;};
 	deref(expr_jump_table at 2) = semal_expr_function{.fn := semal_biop_expr;};
-	deref(expr_jump_table at 3) = semal_expr_function{.fn := semal_callfunc_expr;};
+	deref(expr_jump_table at 3) = semal_expr_function{.fn := semal_unop_expr;};
+	deref(expr_jump_table at 4) = semal_expr_function{.fn := semal_callfunc_expr;};
 
 	litqual ::= (tyqual.weak) | (tyqual.static);
 	deref(literal_types at ((ast_literal_type.integral)@s64)) =
