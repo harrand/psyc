@@ -37,6 +37,56 @@ semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program m
 	return deref(literal_types at ((lit.type)@s64));
 };
 
+semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
+	// lhs must be:
+	//	- a ptr
+	//	- an array
+	retty : ty mut := zero;
+	acceptable : bool mut := false;
+	if(ty_is(lhs_ty, tytag.ptr))
+	{
+		acceptable = true;
+		// return type is the same type as lhs in this case
+		retty = lhs_ty;
+	}
+	if(ty_is(lhs_ty, tytag.arr))
+	{
+		acceptable = true;
+		// return type is a pointer to underlying instead of an array
+		arr ::= lhs_ty.arr;
+		underlying ::= deref((arr.underlying)@ty&);
+		retty = ty_ref(underlying, zero);
+	}
+	if(!acceptable)
+	{
+		psyc_error_begin(lhs_loc);
+		puts("lhs of 'at' operator is of type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(", but it must be either a 'pointer' or 'array' type.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// rhs must be:
+	//	- an integral type
+	if(!ty_is_integral(rhs_ty))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("rhs of 'at' operator is of type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(", but it must be an 'integral' type.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return retty;
+};
+
 semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
 {
 	biop ::= expr.biop;
@@ -76,51 +126,7 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 
 	if((biop.type) == (ast_biop_type.operator_at))
 	{
-		// lhs must be:
-		//	- a ptr
-		//	- an array
-		retty : ty mut := zero;
-		acceptable : bool mut := false;
-		if(ty_is(lhs_ty, tytag.ptr))
-		{
-			acceptable = true;
-			// return type is the same type as lhs in this case
-			retty = lhs_ty;
-		}
-		if(ty_is(lhs_ty, tytag.arr))
-		{
-			acceptable = true;
-			// return type is a pointer to underlying instead of an array
-			arr ::= lhs_ty.arr;
-			underlying ::= deref((arr.underlying)@ty&);
-			retty = ty_ref(underlying, zero);
-		}
-		if(!acceptable)
-		{
-			psyc_error_begin(rhs.loc);
-			puts("lhs of 'at' operator is of type ");
-			putchar('"');
-			putty(lhs_ty);
-			putchar('"');
-			puts(", but it must be either a 'pointer' or 'array' type.");
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-
-		// rhs must be:
-		//	- an integral type
-		if(!ty_is_integral(rhs_ty))
-		{
-			psyc_error_begin(rhs.loc);
-			puts("rhs of 'at' operator is of type ");
-			putchar('"');
-			putty(lhs_ty);
-			putchar('"');
-			puts(", but it must be an 'integral' type.");
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		return retty;
+		return semal_biop_at(lhs_ty, rhs_ty, lhs.loc, rhs.loc, ctx, prog);
 	}
 	return zero;
 };
