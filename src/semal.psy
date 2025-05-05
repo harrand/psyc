@@ -51,20 +51,43 @@ semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program m
 
 semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
-	psyc_panic(operand_loc, "unop minus NYI");
-	return zero;
+	if(!ty_is_integral(operand_ty))
+	{
+		if(!ty_is_floating_point(operand_ty))
+		{
+			psyc_error_begin(operand_loc);
+			puts("operand of unary minus is of type ");
+			putchar('"');
+			putty(operand_ty);
+			putchar('"');
+			puts(", but it must be either an 'integral' or 'floating-point' type");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	return operand_ty;
 };
 
 semal_unop_ref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
-	psyc_panic(operand_loc, "unop ref NYI");
-	return zero;
+	// todo: do not allow refs on non-lvalues
+	return ty_ref(operand_ty, zero);
 };
 
 semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
-	psyc_panic(operand_loc, "unop deref NYI");
-	return zero;
+	if(!ty_is(operand_ty, tytag.ptr))
+	{
+			psyc_error_begin(operand_loc);
+			puts("operand of deref is of type ");
+			putchar('"');
+			putty(operand_ty);
+			putchar('"');
+			puts(", but it must be a 'pointer' type");
+			psyc_diag_end();
+			psyc_exit_failure();
+	}
+	return ty_deref(operand_ty);
 };
 
 semal_unop_defer ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
