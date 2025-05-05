@@ -13,11 +13,17 @@ semal_biop_function ::= struct
 	fn : func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty;
 };
 
+semal_unop_function ::= struct
+{
+	fn : func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty;
+};
+
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
 expr_jump_table : semal_expr_function mut#5;
 biop_jump_table : semal_biop_function mut#6;
+unop_jump_table : semal_unop_function mut#4;
 
 literal_types : ty mut#4;
 
@@ -42,6 +48,63 @@ semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program m
 	lit ::= expr.literal;
 	return deref(literal_types at ((lit.type)@s64));
 };
+
+semal_unop_minus ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(operand_loc, "unop minus NYI");
+	return zero;
+};
+
+semal_unop_ref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(operand_loc, "unop ref NYI");
+	return zero;
+};
+
+semal_unop_deref ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(operand_loc, "unop deref NYI");
+	return zero;
+};
+
+semal_unop_defer ::= func(operand_ty : ty, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
+{
+	psyc_panic(operand_loc, "unop defer NYI");
+	return zero;
+};
+
+semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
+{
+	unop ::= expr.unop;
+	node ::= ctx.node;
+	if((node->childcount) != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("unop expr expects exactly 1 child representing operand. this unop expr node has ");
+		putuint(node->childcount);
+		puts(" children.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	operand ::= ast_unop_get_operand(deref node);
+	operand_ty ::= semal_expr_common(operand.expr, context{.node := ref operand; .local := ctx.local;}, prog);
+	if(ty_isbad(operand_ty))
+	{
+		psyc_error_begin(operand.loc);
+		puts("operand of unary operator ");
+		puts(__enumname(unop.type));
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	pre_transform_idx ::= (unop.type)@s64;
+	subtraction ::= 0;
+	idx ::= pre_transform_idx - subtraction;
+	jump ::= deref(unop_jump_table at idx);
+	return jump.fn(operand_ty, operand.loc, ctx, prog);
+};
+
 
 semal_biop_assign ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
 {
@@ -155,14 +218,6 @@ semal_biop_at ::= func(lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : src
 		psyc_exit_failure();
 	}
 	return retty;
-};
-
-semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
-{
-	unop ::= expr.unop;
-	node ::= ctx.node;
-	psyc_panic(node->loc, "unop NYI");
-	return zero;
 };
 
 semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> ty
@@ -453,6 +508,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(biop_jump_table at 3) = semal_biop_function{.fn := semal_biop_multiply;};
 	deref(biop_jump_table at 4) = semal_biop_function{.fn := semal_biop_divide;};
 	deref(biop_jump_table at 5) = semal_biop_function{.fn := semal_biop_at;};
+
+	deref(unop_jump_table at 0) = semal_unop_function{.fn := semal_unop_minus;};
+	deref(unop_jump_table at 1) = semal_unop_function{.fn := semal_unop_ref;};
+	deref(unop_jump_table at 2) = semal_unop_function{.fn := semal_unop_deref;};
+	deref(unop_jump_table at 3) = semal_unop_function{.fn := semal_unop_defer;};
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
