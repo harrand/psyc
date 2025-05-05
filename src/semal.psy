@@ -79,14 +79,21 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		// lhs must be:
 		//	- a ptr
 		//	- an array
+		retty : ty mut := zero;
 		acceptable : bool mut := false;
 		if(ty_is(lhs_ty, tytag.ptr))
 		{
 			acceptable = true;
+			// return type is the same type as lhs in this case
+			retty = lhs_ty;
 		}
 		if(ty_is(lhs_ty, tytag.arr))
 		{
 			acceptable = true;
+			// return type is a pointer to underlying instead of an array
+			arr ::= lhs_ty.arr;
+			underlying ::= deref((arr.underlying)@ty&);
+			retty = ty_ref(underlying, zero);
 		}
 		if(!acceptable)
 		{
@@ -113,6 +120,7 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
+		return retty;
 	}
 	return zero;
 };
