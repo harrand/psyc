@@ -67,17 +67,13 @@ psyc_exit_failure ::= func() -> v0
 	__debugbreak();
 };
 
-psyc_panic ::= func(my_srcloc : srcloc, msg : u8&) -> v0
+psyc_panic_begin ::= func(my_srcloc : srcloc) -> v0
 {
 	psyc_colour_red();
 	puts("panic ");
 	print_srcloc(my_srcloc);
 	putchar(':');
 	putchar(' ');
-	puts(msg);
-	putchar(10);
-	psyc_colour_reset();
-	psyc_exit_failure();
 };
 
 psyc_diag_end ::= func() -> v0
@@ -110,6 +106,15 @@ psyc_message_begin ::= func(loc : srcloc) -> v0
 	print_srcloc(loc);
 	puts(": ");
 };
+
+psyc_panic ::= func(my_srcloc : srcloc, msg : u8&) -> v0
+{
+	psyc_panic_begin(my_srcloc);
+	puts(msg);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
 
 if static(__is_windows)
 {
