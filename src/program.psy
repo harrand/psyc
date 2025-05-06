@@ -8,7 +8,7 @@ variable ::= struct
 
 variable_storage ::= struct
 {
-	data : variable&;
+	data : variable mut&;
 	size : u64;
 	cap : u64;
 };
@@ -133,6 +133,51 @@ scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 	return ret;
 };
 
+scope_find_variable ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> variable&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curvar : variable& mut;
+	while(curscope != null)
+	{
+		vars ::= ref(s->vars)@_;
+		for(i = 0, i < (vars->size), i = i + 1)
+		{
+			curvar = (vars->data) at i;
+			if(varname_len == (curvar->name_len))
+			{
+				if(cstreql_n(curvar->name, varname, varname_len))
+				{
+					return curvar;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_variable ::= func(s : scope mut&, a : arena mut&, v : variable) -> v0
+{
+	vars ::= ref(s->vars);
+	if((vars->data) == null)
+	{
+		(vars->cap) = 8;
+		(vars->data) = arena_push(a, __sizeof(deref (vars->data)) * (vars->cap));
+	}
+	while((vars->size) >= (vars->cap))
+	{
+		oldcap ::= vars->cap;
+		olddata ::= vars->data;
+		(vars->cap) = (vars->cap) * 2;
+		(vars->data) = arena_push(a, __sizeof(deref (vars->data)) * (vars->cap));
+		__memcpy(vars->data, olddata, oldcap * __sizeof(deref (vars->data)));
+	}
+	deref((vars->data) at (vars->size)) = v;
+	(vars->size) = (vars->size) + 1;
+};
+
 scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) -> v0
 {
 	funcs ::= ref(s->funcs);
@@ -143,8 +188,11 @@ scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) ->
 	}
 	while((funcs->size) >= (funcs->cap))
 	{
+		oldcap ::= funcs->cap;
+		olddata ::= funcs->data;
 		(funcs->cap) = (funcs->cap) * 2;
 		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+		__memcpy(funcs->data, olddata, oldcap * __sizeof(deref (funcs->data)));
 	}
 	deref((funcs->data) at (funcs->size)) = f;
 	(funcs->size) = (funcs->size) + 1;
@@ -199,6 +247,12 @@ program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope m
 	ptr ::= (prog->locals) at id;
 	(ptr->parent) = (parent@_);
 	return ptr;
+};
+
+program_declare_variable ::= func(prog : program mut&, a : arena mut&, v : variable) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_variable(glob, a, v);
 };
 
 program_declare_function ::= func(prog : program mut&, a : arena mut&, f : function) -> v0
