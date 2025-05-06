@@ -356,6 +356,134 @@ ty_is_integral ::= func(t : ty) -> bool
 	return true;
 };
 
+tyconv ::= enum
+{
+	.cant := 0; // conversion cannot be done
+	.could_if_weak := 1;
+	.i2i := 2; // integral to integral
+	.i2f := 3; // integral to floating point
+	.i2p := 4; // integral to pointer (u64 only)
+	.i2e := 5; // integral to enum
+	.e2i := 6; // enum to integral
+	.p2i := 7; // pointer to integral
+	.p2fn := 8; // pointer to function
+	.p2p := 9; // pointer to pointer
+	.fn2p := 10; // function to pointer
+	.f2p := 11; // floating point to integral
+};
+
+ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
+{
+	lhs_weak ::= ty_hasqual(lhs, tyqual.weak);
+	rhs_weak ::= ty_hasqual(rhs, tyqual.weak);
+	either_is_weak : bool mut := lhs_weak;
+	if(rhs_weak)
+	{
+		either_is_weak = true;
+	}
+	// struct doesnt convert to anything
+	if(ty_is(lhs, tytag.strct))
+	{
+		return tyconv.cant;
+	}
+	if(ty_is(lhs, tytag.ptr))
+	{
+		// pointers can: p2i (integral), p2fn (function), p2p (other pointer)
+		if(ty_is_integral(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.p2i;
+			}
+			return tyconv.could_if_weak;
+		}
+		if(ty_is(rhs, tytag.fn))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.p2fn;
+			}
+			return tyconv.could_if_weak;
+		}
+		if(ty_is(rhs, tytag.ptr))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.p2p;
+			}
+			return tyconv.could_if_weak;
+		}
+		return tyconv.cant;
+	}
+	if(ty_is(lhs, tytag.enm))
+	{
+		if(ty_is_integral(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.e2i;
+			}
+			return tyconv.could_if_weak;
+		}
+		return tyconv.cant;
+	}
+	if(ty_is(lhs, tytag.fn))
+	{
+		if(ty_is(rhs, tytag.ptr))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.f2p;
+			}
+			return tyconv.could_if_weak;
+		}
+	}
+	if(ty_is_integral(lhs))
+	{
+		if(ty_is_integral(rhs))
+		{
+			if((lhs.prim) == (rhs.prim))
+			{
+				return tyconv.i2i;
+			}
+			if(either_is_weak)
+			{
+				return tyconv.i2i;
+			}
+			return tyconv.could_if_weak;
+		}
+		if(ty_is_floating_point(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.i2f;
+			}
+			return tyconv.could_if_weak;
+		}
+		if(ty_is(rhs, tytag.ptr))
+		{
+			if((lhs.prim) == (primty.u64))
+			{
+				if(either_is_weak)
+				{
+					return tyconv.i2p;
+				}
+				return tyconv.could_if_weak;
+			}
+			return tyconv.cant;
+		}
+		if(ty_is(rhs, tytag.enm))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.i2e;
+			}
+			return tyconv.could_if_weak;
+		}
+	}
+	return tyconv.cant;
+};
+
 tybox_struct_info ::= struct
 {
 	ty : structty;

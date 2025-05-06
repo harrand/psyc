@@ -143,8 +143,59 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 
 semal_biop_assign ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	psyc_panic(lhs_loc, "assign biop NYI");
-	return zero;
+	lhs_ty ::= lhs_val.type;
+	rhs_ty ::= rhs_val.type;
+	if(ty_hasqual(lhs_ty, tyqual.static))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("cannot assign to type with the 'static' qualifier. lhs type was ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_hasqual(lhs_ty, tyqual.mut))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("cannot assign to type without the 'mut' qualifier. lhs type was ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	conv ::= ty_get_conv(rhs_ty, lhs_ty);
+	if(conv == (tyconv.cant))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("assignment is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_ty);
+		putchar('"');
+		puts(" cannot be converted to lhs type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("assignment is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_ty);
+		putchar('"');
+		puts(" cannot be converted to lhs type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" (but it could with a cast)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return just_type(lhs_ty);
 };
 
 semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> ty
@@ -329,16 +380,115 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	return jump.fn(lhs_val, rhs_val, lhs.loc, rhs.loc, ctx, prog);
 };
 
-semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
-{
-	callfunc ::= expr.callfunc;
-	return zero;
-};
 
 semal_expr ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	return semal_expr_common(node->expr, ctx, prog);
+};
+
+semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	callfunc ::= expr.callfunc;
+
+	fn ::= scope_find_function(ctx.local, callfunc.funcname, callfunc.funcname_len);
+	if(fn == null)
+	{
+		psyc_error_begin(node->loc);
+		puts("could not find a declared function named ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	func_type ::= fn->type;
+	func_payload ::= func_type.fn;
+	return_type ::= deref((func_payload.return_type)@ty&);
+
+	call_param_count ::= node->childcount;
+	def_param_count ::= func_payload.param_count;
+	if(call_param_count != def_param_count)
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid call to function ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		puts(": called with ");
+		putuint(call_param_count);
+		puts(" params, but expects ");
+		putuint(def_param_count);
+		puts(".");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	i : u64 mut;
+	cur_param_val : sval mut;
+	cur_param_ty : ty mut;
+
+	def_param_ty : ty mut;
+	types_ptr ::= (func_payload.param_types)@ty&;
+	cur_child : ast& mut;
+	cur_conv : tyconv mut;
+	for(i = 0, i < def_param_count, i = i + 1)
+	{
+		def_param_ty = deref(types_ptr at i);
+		cur_child = ast_get_child(node@_, i);
+		cur_param_val = semal_expr(context
+		{
+			.node := cur_child@_;
+			.local := ctx.local;
+		}, prog);
+		cur_param_ty = cur_param_val.type;
+		
+		cur_conv = ty_get_conv(cur_param_ty, def_param_ty);
+		if(cur_conv == (tyconv.cant))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to function ");
+			putchar('"');
+			putss(callfunc.funcname, callfunc.funcname_len);
+			putchar('"');
+			puts(": parameter ");
+			putuint(i);
+			puts(" was of type ");
+			putchar('"');
+			putty(cur_param_ty);
+			putchar('"');
+			puts(", which is not convertible to ");
+			putchar('"');
+			putty(def_param_ty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(cur_conv == (tyconv.could_if_weak))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to function ");
+			putchar('"');
+			putss(callfunc.funcname, callfunc.funcname_len);
+			putchar('"');
+			puts(": parameter ");
+			putuint(i);
+			puts(" was of type ");
+			putchar('"');
+			putty(cur_param_ty);
+			putchar('"');
+			puts(", which is not convertible to ");
+			putchar('"');
+			putty(def_param_ty);
+			putchar('"');
+			puts(" (but it could with a cast)");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	// type-check params.
+	return just_type(return_type);
 };
 
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
@@ -524,7 +674,13 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
 	// this can be fixed by simply using program_declare_function, but i don't feel comfortable just doing that willy-nilly
-	scope_declare_function(ctx.local, semar, function{.node := ctx.node;});
+	scope_declare_function(ctx.local, semar,
+		function{
+			.node := ctx.node;
+			.name := fn.fn_name;
+			.name_len := fn.fn_name_len;
+			.type := type;
+		});
 
 	putss(fn.fn_name, fn.fn_name_len);
 	putchar(' ');

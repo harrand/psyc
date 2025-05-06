@@ -16,8 +16,9 @@ variable_storage ::= struct
 function ::= struct
 {
 	node : ast&;
-	return_ty : ty;
-	param_tys : ty mut#8;
+	name : u8&;
+	name_len : u64;
+	type : ty;
 };
 
 function_storage ::= struct
@@ -176,6 +177,31 @@ scope_declare_variable ::= func(s : scope mut&, a : arena mut&, v : variable) ->
 	}
 	deref((vars->data) at (vars->size)) = v;
 	(vars->size) = (vars->size) + 1;
+};
+
+scope_find_function ::= func(s : scope mut&, funcname : u8&, funcname_len: u64) -> function&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curfunc : function& mut;
+	while(curscope != null)
+	{
+		funcs ::= ref(s->funcs)@_;
+		for(i = 0, i < (funcs->size), i = i + 1)
+		{
+			curfunc = (funcs->data) at i;
+			if(funcname_len == (curfunc->name_len))
+			{
+				if(cstreql_n(curfunc->name, funcname, funcname_len))
+				{
+					return curfunc;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
 };
 
 scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) -> v0
