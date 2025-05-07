@@ -847,7 +847,7 @@ create_empty_wipfn ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) ->
 	{
 		.type := ast_type.wipfn_blue;
 		.loc := first.loc;
-		.wipfn := ast_wipfn
+		.fn := ast_fn
 		{
 			.fn_name := sym.symbol;
 			.fn_name_len := sym.len;
@@ -979,11 +979,9 @@ wipfn_last_node_is_return_type ::= func(source : u8&, nodes : ast mut&, nodes_si
 
 	lex ::= tok.lexeme;
 
-	(wipfn->wipfn) = ast_wipfn
-	{
-		.ret_typename := source at (lex.off);
-		.ret_typename_len := lex.len;
-	};
+	fn ::= ref(wipfn->fn);
+	(fn->ret_typename) = (source at (lex.off));
+	(fn->ret_typename_len) = (lex.len);
 	(wipfn->type) = (ast_type.wipfn_green);
 	(wipfn->cursor_end) = (last.cursor_end);
 	// remove all but the first node
@@ -1087,17 +1085,10 @@ wipfn2externfn ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> par
 {
 	first ::= nodes at 0;
 	last ::= deref(nodes at (nodes_size - 1));
-	wipfn ::= first->wipfn;
 
 	(first->type) = (ast_type.fn);
-	(first->fn) = ast_fn
-	{
-		.fn_name := wipfn.fn_name;
-		.fn_name_len := wipfn.fn_name_len;
-		.ret_typename := wipfn.ret_typename;
-		.ret_typename_len := wipfn.ret_typename_len;
-		.is_extern := true;
-	};
+	fn ::= ref(first->fn);
+	(fn->is_extern) = true;
 	(first->cursor_end) = last.cursor_end;
 	return parse_value
 	{
@@ -1114,17 +1105,10 @@ wipfn2fn ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_val
 {
 	first ::= nodes at 0;
 	last ::= deref(nodes at (nodes_size - 1));
-	wipfn ::= first->wipfn;
 
 	(first->type) = (ast_type.fn);
-	(first->fn) = ast_fn
-	{
-		.fn_name := wipfn.fn_name;
-		.fn_name_len := wipfn.fn_name_len;
-		.ret_typename := wipfn.ret_typename;
-		.ret_typename_len := wipfn.ret_typename_len;
-		.is_extern := false;
-	};
+	fn ::= ref(first->fn);
+	(fn->is_extern) = false;
 	(first->cursor_end) = last.cursor_end;
 	return parse_value
 	{
