@@ -594,8 +594,7 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	// todo: register variable if we need to do so.
-	// struct data members and function parameters for example are both decls that dont register a variable in the usual way.
+
 	scope_declare_variable(ctx.local, semar, variable
 	{
 		.name := decl.name;
@@ -642,11 +641,7 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 	{
 		cur_member_node = ast_get_child(node@_, i);
 		cur_decl = (cur_member_node->decl);
-		cur_member_type = semal_decl_common(cur_decl, context
-		{
-			.node := cur_member_node;
-			.local := ctx.local;
-		}, prog);
+		cur_member_type = scope_parse_typename(ctx.local, cur_decl.typename, cur_decl.typename_len);
 		if(ty_isbad(cur_member_type))
 		{
 			psyc_error_begin(cur_member_node->loc);
@@ -765,7 +760,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	}
 	// go through the implementation
 	impl_child_node : ast mut& mut;
-	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn);
+	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn, node->loc);
 	for(i = beyond_param_idx, i < childcount, i = i + 1)
 	{
 		impl_child_node = ast_get_child(node@_, i);
