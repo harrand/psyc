@@ -487,6 +487,36 @@ symcolsym2decl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(ret.nodes_size) = 1;
 };
 
+symcrap2deduceddecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	// var name
+	first_utok ::= first.utok;
+	first_tok ::= first_utok.tok;
+	first_lex ::= first_tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := ast_decl
+		{
+			.name := src at (first_lex.off);
+			.name_len := first_lex.len;
+			.typename := psyc_deduced_typename;
+			.typename_len := cstrlen(psyc_deduced_typename);
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -569,6 +599,29 @@ grammar_basic_decl ::= macro() -> v0
 		rule(symcolsym2decl));
 };
 
+grammar_deduced_decl ::= macro() -> v0
+{
+	// name ::=
+	// instantly becomes a decl with deduced typename
+	// that way, the grammar rules with this initialiser and the normal decl initialiser can be shared.
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		token(lex_token.initialiser),
+		null_stash,
+		pty.both,
+		rule(symcrap2deduceddecl));
+};
+
+grammar_decl_init ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		token(lex_token.initialiser),
+		null_stash,
+		pty.both,
+		rule(shift1));
+};
+
 grammar_unop ::= macro(t : lex_token static) -> v0
 {
 	grammar_install(
@@ -626,6 +679,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_string_literal();
 
 	grammar_basic_decl();
+	grammar_deduced_decl();
+	grammar_decl_init();
 
 	grammar_unop(lex_token.dash);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
