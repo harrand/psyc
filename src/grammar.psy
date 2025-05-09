@@ -88,6 +88,7 @@ parse_value ::= struct
 grammar_rule ::= struct
 {
 	fn : func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value;
+	hash : u64;
 };
 
 default_rule_errmsg ::= "default rule invoked\n";
@@ -143,12 +144,20 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 		hash = !hash;
 	}
 
-	ptr ::= parse_table at (hash % parse_table_cap);
-	if(ptr->fn != zero)
+	idx ::= hash % parse_table_cap;
+	ptr : grammar_rule mut& mut := parse_table at idx;
+	i : u64 mut := zero;
+	while((ptr->fn) != null)
 	{
-		psyc_panic(srcloc_current(), "hash collision detected");
+		i = i + 1;
+		ptr = (parse_table at ((idx + i) % parse_table_cap));
+		if(i >= parse_table_cap)
+		{
+			psyc_panic(srcloc_current(), "ran out of space in the grammar rule hashtable");
+		}
 	}
 	deref(ptr) = rule;
+	(ptr->hash) = hash;
 };
 
 grammar_install ::= macro(nc : u64, la : ast, st : ast, albs : pty, r : grammar_rule) -> v0
@@ -206,8 +215,22 @@ rule ::= macro(f : auto) -> grammar_rule
 grammar_get_rule ::= func(hash : u64) -> grammar_rule
 {
 	idx ::= hash % parse_table_cap;
-	// todo: open addressing.
-	return deref(parse_table at idx);
+	ptr : grammar_rule mut& mut := parse_table at idx;
+	i : u64 mut := zero;
+	while((ptr->hash) != hash)
+	{
+		if((ptr->fn) == null)
+		{
+			return deref ptr;
+		}
+		i = i + 1;
+		ptr = (parse_table at ((idx + i) % parse_table_cap));
+		if(i >= parse_table_cap)
+		{
+			psyc_panic(srcloc_current(), "woopsey");
+		}
+	}
+	return deref ptr;
 };
 
 // REDUCTION SETUP
@@ -646,6 +669,16 @@ grammar_decl_init ::= macro(e : ast_expr_type static) -> v0
 		node(ast_type.decl),
 		pty.both,
 		rule(commit_head));
+
+	// when should we unstash the decl?
+	// when we see the following tokens:
+	// ;
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
+		null_lookahead,
+		node(ast_type.decl),
+		pty.both,
+		rule(unstash_head));
 };
 
 grammar_unop ::= macro(t : lex_token static) -> v0

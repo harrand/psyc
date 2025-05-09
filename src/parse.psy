@@ -99,6 +99,7 @@ parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, includ
 parse_state_print ::= func(s : parse_state mut&) -> v0
 {
 	i : u64 mut;
+	j : u64 mut;
 	putchar('{');
 	putchar(10);
 	for(i = 0, i < (s->node_array_size), i = i + 1)
@@ -116,6 +117,17 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 		putchar(9);
 		puts("lookahead: ");
 		ast_verbose_print(ref la, 1);
+	}
+	if((s->node_stash_cursor) > 0)
+	{
+		putchar(9);
+		puts("stash:");
+		putchar(10);
+		for(j = 0, j < (s->node_stash_cursor), j = j + 1)
+		{
+			ast_verbose_print((s->node_stash) at j, 2);
+			putchar(10);
+		}
 	}
 	putchar('}');
 	putchar(10);
@@ -432,6 +444,12 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 			putchar(10);
 			psyc_colour_yellow();
 			parse_state_print(ref state);
+			if(verbose_parse)
+			{
+				puts("verbose parse : current ast");
+				putchar(10);
+				ast_verbose_print(ref (state.root), 0);
+			}
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
