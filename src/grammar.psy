@@ -262,6 +262,17 @@ stash_head ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_valu
 	{
 		.action := parse_action.stash;
 		.offset := 0;
+		.len := 0;
+	};
+};
+
+stash_head_delete_all ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.stash;
+		.offset := 0;
+		.len := nodes_size - 1;
 	};
 };
 
@@ -271,6 +282,7 @@ stash_last ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_valu
 	{
 		.action := parse_action.stash;
 		.offset := nodes_size - 1;
+		.len := 0;
 	};
 };
 
@@ -612,7 +624,7 @@ grammar_deduced_decl ::= macro() -> v0
 		rule(symcrap2deduceddecl));
 };
 
-grammar_decl_init ::= macro() -> v0
+grammar_decl_init ::= macro(e : ast_expr_type static) -> v0
 {
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.decl)),
@@ -620,6 +632,20 @@ grammar_decl_init ::= macro() -> v0
 		null_stash,
 		pty.both,
 		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(stash_head_delete_all));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(e)),
+		null_lookahead,
+		node(ast_type.decl),
+		pty.both,
+		rule(commit_head));
 };
 
 grammar_unop ::= macro(t : lex_token static) -> v0
@@ -680,7 +706,11 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
-	grammar_decl_init();
+	grammar_decl_init(ast_expr_type.symbol);
+	grammar_decl_init(ast_expr_type.literal);
+	grammar_decl_init(ast_expr_type.biop);
+	grammar_decl_init(ast_expr_type.unop);
+	grammar_decl_init(ast_expr_type.callfunc);
 
 	grammar_unop(lex_token.dash);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
