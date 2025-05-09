@@ -232,7 +232,7 @@ setup_delete_all ::= macro(action : parse_action) -> v0
 	defer return ret;
 };
 
-setup_delete_all_but_first ::= macro(action : parse_action) -> v0
+setup_delete_tail ::= macro(action : parse_action) -> v0
 {
 	ret : parse_value mut := parse_value
 	{
@@ -246,7 +246,7 @@ setup_delete_all_but_first ::= macro(action : parse_action) -> v0
 /////////////////////////////////////////////////////////////////////
 //////////////////////// REDUCTION FUNCTIONS ////////////////////////
 /////////////////////////////////////////////////////////////////////
-commit_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+commit_head ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value
 	{
@@ -323,6 +323,33 @@ num2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(ret.nodes_size) = 1;
 };
 
+expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.expr_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+grammar_stmtify ::= macro(e : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(e)),
+		token(lex_token.semicol),
+		null_stash,
+		pty.both,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(e), token(lex_token.semicol)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(expr2stmt));
+};
+
 grammar_numeric_literals ::= macro() -> v0
 {
 	grammar_install(
@@ -331,6 +358,16 @@ grammar_numeric_literals ::= macro() -> v0
 		null_stash,
 		pty.both,
 		rule(num2expr));
+};
+
+grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, stmt(s)),
+		null_lookahead,
+		null_stash,
+		pty.head,
+		rule(commit_head));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
@@ -343,7 +380,13 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	my_nodes : ast mut#16;
 
+	grammar_stmtify(ast_expr_type.symbol);
+	grammar_stmtify(ast_expr_type.literal);
+	grammar_stmtify(ast_expr_type.biop);
+	grammar_stmtify(ast_expr_type.unop);
+	grammar_stmtify(ast_expr_type.callfunc);
 	grammar_numeric_literals();
+	grammar_commit_stmt(ast_stmt.expr_stmt);
 };
 
 == build ==
