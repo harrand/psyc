@@ -349,6 +349,33 @@ sym2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(ret.nodes_size) = 1;
 };
 
+char2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	utok ::= first.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.char_literal;
+			.chars := src at (lex.off);
+			.chars_len := lex.len;
+		});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -396,6 +423,16 @@ grammar_symbol ::= macro() -> v0
 		rule(sym2expr));
 };
 
+grammar_char_literal ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.char_literal)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(char2expr));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -418,6 +455,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_numeric_literal();
 	grammar_symbol();
+	grammar_char_literal();
 
 	grammar_stmtify(ast_expr_type.symbol);
 	grammar_stmtify(ast_expr_type.literal);
