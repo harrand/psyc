@@ -686,7 +686,7 @@ grammar_deduced_decl ::= macro() -> v0
 		rule(symcrap2deduceddecl));
 };
 
-grammar_decl_init ::= macro(e : ast_expr_type static) -> v0
+grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 {
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.decl)),
@@ -703,7 +703,7 @@ grammar_decl_init ::= macro(e : ast_expr_type static) -> v0
 		rule(stash_head_delete_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(e)),
+		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.decl),
 		pty.both,
@@ -753,6 +753,7 @@ grammar_unop_expr ::= macro(tok : lex_token static, exp : ast_expr_type static) 
 
 grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 {
+	// basic setup
 	grammar_install(
 		__arrcpy(ast, my_nodes, expr(exp)),
 		token(tok),
@@ -760,6 +761,7 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		pty.both,
 		rule(shift1));
 	
+	// make halk biop
 	grammar_install(
 		__arrcpy(ast, my_nodes, expr(exp), token(tok)),
 		null_lookahead,
@@ -767,6 +769,7 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		pty.both,
 		rule(exprtok2halfbiop));
 
+	// stash half biops
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipbiop)),
 		null_lookahead,
@@ -774,6 +777,7 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		pty.both,
 		rule(stash_head));
 
+	// unstash a half biop if an expression is ready
 	grammar_install(
 		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
@@ -781,12 +785,22 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		pty.both,
 		rule(unstash_head));
 	
+	// half biop + expr => full biop
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipbiop), expr(exp)),
 		null_lookahead,
 		null_stash,
 		pty.both,
 		rule(wipbiop2biop));
+
+	// prevent decl initialisers from eating unfinished biops
+	// shift instead of committing.
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		node(ast_type.decl),
+		pty.both,
+		rule(shift1));
 };
 
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
@@ -833,17 +847,41 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
 
 	// binary operators
+	grammar_biop(ast_expr_type.symbol, lex_token.assign);
+	grammar_biop(ast_expr_type.literal, lex_token.assign);
+	grammar_biop(ast_expr_type.biop, lex_token.assign);
+	grammar_biop(ast_expr_type.unop, lex_token.assign);
+	grammar_biop(ast_expr_type.callfunc, lex_token.assign);
+
+	grammar_biop(ast_expr_type.symbol, lex_token.plus);
+	grammar_biop(ast_expr_type.literal, lex_token.plus);
+	grammar_biop(ast_expr_type.biop, lex_token.plus);
+	grammar_biop(ast_expr_type.unop, lex_token.plus);
+	grammar_biop(ast_expr_type.callfunc, lex_token.plus);
+
+	grammar_biop(ast_expr_type.symbol, lex_token.dash);
+	grammar_biop(ast_expr_type.literal, lex_token.dash);
+	grammar_biop(ast_expr_type.biop, lex_token.dash);
+	grammar_biop(ast_expr_type.unop, lex_token.dash);
+	grammar_biop(ast_expr_type.callfunc, lex_token.dash);
+
 	grammar_biop(ast_expr_type.symbol, lex_token.asterisk);
 	grammar_biop(ast_expr_type.literal, lex_token.asterisk);
 	grammar_biop(ast_expr_type.biop, lex_token.asterisk);
 	grammar_biop(ast_expr_type.unop, lex_token.asterisk);
 	grammar_biop(ast_expr_type.callfunc, lex_token.asterisk);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.assign);
-	grammar_biop(ast_expr_type.literal, lex_token.assign);
-	grammar_biop(ast_expr_type.biop, lex_token.assign);
-	grammar_biop(ast_expr_type.unop, lex_token.assign);
-	grammar_biop(ast_expr_type.callfunc, lex_token.assign);
+	grammar_biop(ast_expr_type.symbol, lex_token.fslash);
+	grammar_biop(ast_expr_type.literal, lex_token.fslash);
+	grammar_biop(ast_expr_type.biop, lex_token.fslash);
+	grammar_biop(ast_expr_type.unop, lex_token.fslash);
+	grammar_biop(ast_expr_type.callfunc, lex_token.fslash);
+
+	grammar_biop(ast_expr_type.symbol, lex_token.keyword_at);
+	grammar_biop(ast_expr_type.literal, lex_token.keyword_at);
+	grammar_biop(ast_expr_type.biop, lex_token.keyword_at);
+	grammar_biop(ast_expr_type.unop, lex_token.keyword_at);
+	grammar_biop(ast_expr_type.callfunc, lex_token.keyword_at);
 
 	// make stmts (largest building blocks in program)
 	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
