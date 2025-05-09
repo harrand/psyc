@@ -111,6 +111,7 @@ parse_table_size : u64 mut;
 parse_table_cap : u64 mut;
 
 null_lookahead ::= zero@ast;
+null_stash ::= zero@ast;
 
 pty ::= enum
 {
@@ -118,7 +119,7 @@ pty ::= enum
 	.tail := 2;
 	.both := 3;
 };
-grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, allow_begin_state : bool, rule : grammar_rule) -> v0
+grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, stash_node : ast, allow_begin_state : bool, rule : grammar_rule) -> v0
 {
 	if(!do_work)
 	{
@@ -133,6 +134,13 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 		la_hash = (!hash_state(ref la, 1));
 		hash = (hash ^ la_hash);
 	}
+	st ::= stash_node;
+	st_hash : u64 mut := zero;
+	if((st.type) != (ast_type.unknown))
+	{
+		st_hash = (!hash_state(ref st, 1));
+		hash = (hash ^ st_hash);
+	}
 	if(allow_begin_state)
 	{
 		hash = !hash;
@@ -146,10 +154,10 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 	deref(ptr) = rule;
 };
 
-grammar_install ::= macro(nc : u64, la : ast, albs : pty, r : grammar_rule) -> v0
+grammar_install ::= macro(nc : u64, la : ast, st : ast, albs : pty, r : grammar_rule) -> v0
 {
-	grammar_install_impl((albs & (pty.head)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, true, r);
-	grammar_install_impl((albs & (pty.tail)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, false, r);
+	grammar_install_impl((albs & (pty.head)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, st, true, r);
+	grammar_install_impl((albs & (pty.tail)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, st, false, r);
 };
 
 token ::= macro(t : lex_token) -> ast static
@@ -252,6 +260,7 @@ grammar_numeric_literals ::= macro() -> v0
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.numeric_literal)),
 		null_lookahead,
+		null_stash,
 		pty.both,
 		rule(default_rule));
 };
