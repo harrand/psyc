@@ -69,7 +69,7 @@ parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 	return zero;
 };
 
-parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, allow_begin_state : bool) -> u64
+parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, include_stash : bool, allow_begin_state : bool) -> u64
 {
 	array_start ::= (s->node_array) at (s->recursive_offset);
 	array_len ::= (s->node_array_size) - (s->recursive_offset);
@@ -79,6 +79,15 @@ parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, allow_
 	if(include_lookahead)
 	{
 		hash = hash ^ (!hash_state(ref la, 1));
+	}
+	st : ast& mut;
+	if(include_stash)
+	{
+		if((s->node_stash_cursor) != 0)
+		{
+			st = (s->node_stash) at (s->node_stash_cursor - 1);
+			hash = hash ^ (!(hash_state(st, 1) ^ 101010101));
+		}
 	}
 	if(allow_begin_state)
 	{
@@ -355,6 +364,39 @@ print_offset_line ::= func(p : parse_state&) -> v0
 	putchar(10);
 };
 
+parser_find_rule ::= func(s : parse_state mut&) -> grammar_rule
+{
+	// firstly try with both lookahead and stash
+	allow_begin_state ::= (s->recursive_offset) == 0;
+	hash : u64 mut := parse_state_hash(s, true, true, allow_begin_state);
+	rule : grammar_rule mut := grammar_get_rule(hash);
+
+	if((rule.fn) != null)
+	{
+		return rule;
+	}
+
+	hash = parse_state_hash(s, false, true, allow_begin_state);
+	rule = grammar_get_rule(hash);
+
+	if((rule.fn) != null)
+	{
+		return rule;
+	}
+
+	hash = parse_state_hash(s, true, false, allow_begin_state);
+	rule = grammar_get_rule(hash);
+
+	if((rule.fn) != null)
+	{
+		return rule;
+	}
+
+	hash = parse_state_hash(s, false, false, allow_begin_state);
+	rule = grammar_get_rule(hash);
+	return rule;
+};
+
 parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 {
 	psyc_timed(psyc_stage.parse);
@@ -378,32 +420,13 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 
 	while(!parse_complete(ref state))
 	{
-		state.lookahead = parse_get_lookahead(ref state, null);
-		allow_begin_state ::= (state.recursive_offset) == 0;
-		hash : u64 mut := parse_state_hash(ref state, true, allow_begin_state);
-		/*
-		puts("out hash = ");
-		putuint(hash);
-		puts(" (incl. lookahead)");
-		putchar(10);
-		*/
-		rule : grammar_rule mut := grammar_get_rule(hash);
 
 		first_node ::= deref((state.node_array) at (state.recursive_offset));
 		begin_loc ::= first_node.loc;
+		state.lookahead = parse_get_lookahead(ref state, null);
 
-		if((rule.fn) == null)
-		{
-			// nothing that includes lookahead.
-			// try without lookahead.
-			hash = parse_state_hash(ref state, false, allow_begin_state);
-			rule = grammar_get_rule(hash);
-			/*
-			puts("out hash = ");
-			putuint(hash);
-			putchar(10);
-			*/
-		}
+		rule ::= parser_find_rule(ref state);
+
 		if((rule.fn) == null)
 		{
 			psyc_error_begin(begin_loc);
