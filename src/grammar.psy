@@ -442,6 +442,41 @@ tokenexpr2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(ret.nodes_size) = 1;
 };
 
+symcolsym2decl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	// var name
+	first_utok ::= first.utok;
+	first_tok ::= first_utok.tok;
+	first_lex ::= first_tok.lexeme;
+
+	// type name
+	last_utok ::= last.utok;
+	last_tok ::= last_utok.tok;
+	last_lex ::= last_tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := ast_decl
+		{
+			.name := src at (first_lex.off);
+			.name_len := first_lex.len;
+			.typename := src at (last_lex.off);
+			.typename_len := last_lex.off;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 grammar_stmtify ::= macro(e : ast_expr_type static) -> v0
 {
 	grammar_install(
@@ -499,6 +534,31 @@ grammar_string_literal ::= macro() -> v0
 		rule(str2expr));
 };
 
+grammar_basic_decl ::= macro() -> v0
+{
+	// if a symbol is directly followed by a colon, its probably the start of a decl, so override before we exprify it.
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
+		token(lex_token.colon),
+		null_stash,
+		pty.both,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon), token(lex_token.symbol)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(symcolsym2decl));
+};
+
 grammar_unop ::= macro(t : lex_token static) -> v0
 {
 	grammar_install(
@@ -550,6 +610,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_symbol();
 	grammar_char_literal();
 	grammar_string_literal();
+
+	grammar_basic_decl();
 
 	grammar_unop(lex_token.dash);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
