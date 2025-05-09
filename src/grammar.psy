@@ -68,10 +68,12 @@ parse_action ::= enum
 {
 	.invalid := 0;
 	.reduce := 1;
-	.recurse := 2;
-	.shift := 3;
-	.commit := 4;
-	.error := 5;
+	.shift := 2;
+	.commit := 3;
+	.stash := 4;
+	.unstash := 5;
+	.recurse := 6;
+	.error := 7;
 };
 
 parse_value ::= struct
@@ -82,9 +84,6 @@ parse_value ::= struct
 	errmsg : u8&;
 	nodes : ast mut#16;
 	nodes_size : u64;
-
-	push : bool;
-	pop : bool;
 };
 grammar_rule ::= struct
 {
@@ -98,8 +97,6 @@ default_rule ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse
 	{
 		.action := parse_action.error;
 		.errmsg := default_rule_errmsg;
-		.push := false;
-		.pop := false;
 	};
 };
 
@@ -249,10 +246,81 @@ setup_delete_all_but_first ::= macro(action : parse_action) -> v0
 /////////////////////////////////////////////////////////////////////
 //////////////////////// REDUCTION FUNCTIONS ////////////////////////
 /////////////////////////////////////////////////////////////////////
+commit_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.commit;
+		.offset := 0;
+		.len := 1;
+	};
+};
+
+stash_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.stash;
+		.offset := 0;
+	};
+};
+
+stash_last ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.stash;
+		.offset := nodes_size - 1;
+	};
+};
+
+unstash_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.unstash;
+		.offset := 0;
+	};
+};
+
+unstash_last ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.unstash;
+		.offset := nodes_size - 1;
+	};
+};
+
+shift1 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift; .len := 1;};
+};
+
+shift2 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift; .len := 1;};
+};
 
 num2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return zero;
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	utok ::= first.utok;
+	tok ::= utok.tok;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(interpret_numeric_literal(src, tok.lexeme));
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
 };
 
 grammar_numeric_literals ::= macro() -> v0
@@ -262,14 +330,14 @@ grammar_numeric_literals ::= macro() -> v0
 		null_lookahead,
 		null_stash,
 		pty.both,
-		rule(default_rule));
+		rule(num2expr));
 };
 
 grammar_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	ar = a;
-	parse_table_cap = 65536;
+	parse_table_cap = 4096;
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
