@@ -136,16 +136,6 @@ shift ::= func(s : parse_state mut&) -> v0
 };
 
 [[private]]
-mirrored_memcpy ::= func(dst : u8 mut&, src : u8&, count : u64) -> v0
-{
-	i : u64 mut;
-	for(i = (count - 1), i > 0, i = i - 1)
-	{
-		deref(dst at i) = deref(src at i);
-	}
-};
-
-[[private]]
 impl_shift_nodes_right ::= func(s : parse_state mut&, pivot : u64, shift_amount : u64) -> v0
 {
 	// say our nodes are:
@@ -165,7 +155,7 @@ impl_shift_nodes_right ::= func(s : parse_state mut&, pivot : u64, shift_amount 
 	// so we do it in backwards order.
 	copy_src ::= (s->node_array) at pivot;
 	copy_dst ::= copy_src at shift_amount;
-	mirrored_memcpy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * (shift_amount));
+	__memcpy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * (shift_amount));
 	// zero out the gap
 	__memset(copy_src, 0, __sizeof(deref (s->node_array)) * shift_amount);
 	(s->node_array_size) = (s->node_array_size) + shift_amount;
@@ -508,10 +498,6 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		}
 	}
 
-	if(verbose_parse)
-	{
-		ast_verbose_print(ref (state.root), 0);
-	}
 
 	return state;
 };

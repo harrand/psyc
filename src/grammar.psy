@@ -256,7 +256,7 @@ commit_head ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_val
 	};
 };
 
-stash_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+stash_head ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value
 	{
@@ -274,7 +274,7 @@ stash_last ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_valu
 	};
 };
 
-unstash_first ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+unstash_head ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value
 	{
@@ -376,6 +376,33 @@ char2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(ret.nodes_size) = 1;
 };
 
+str2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	utok ::= first.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.string_literal;
+			.chars := src at (lex.off);
+			.chars_len := lex.len;
+		});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -384,6 +411,35 @@ expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->type) = (ast_type.stmt);
 	(firstptr->stmt) = (ast_stmt.expr_stmt);
 	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+tokenexpr2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	// which token type at front?
+	utok ::= first.utok;
+	tok ::= utok.tok;
+	unop_ty ::= ast_unop_type_from_token(tok.tok);
+	if(unop_ty == -1)
+	{
+		return parse_value{.action := parse_action.error; .errmsg := "unrecognised unary operator";};
+	}
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_unop_expr(ast_unop_expr{.type := unop_ty;});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_unop_set_operand((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
 };
 
 grammar_stmtify ::= macro(e : ast_expr_type static) -> v0
@@ -433,6 +489,43 @@ grammar_char_literal ::= macro() -> v0
 		rule(char2expr));
 };
 
+grammar_string_literal ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.string_literal)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(str2expr));
+};
+
+grammar_unop ::= macro(t : lex_token static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(t)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(stash_head));
+};
+
+grammar_unop_expr ::= macro(tok : lex_token static, exp : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		token(tok),
+		pty.both,
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(tok), expr(exp)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(tokenexpr2unop));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -456,6 +549,14 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_numeric_literal();
 	grammar_symbol();
 	grammar_char_literal();
+	grammar_string_literal();
+
+	grammar_unop(lex_token.dash);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.literal);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.biop);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.unop);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
 
 	grammar_stmtify(ast_expr_type.symbol);
 	grammar_stmtify(ast_expr_type.literal);
