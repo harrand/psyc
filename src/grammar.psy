@@ -91,12 +91,13 @@ grammar_rule ::= struct
 	fn : func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value;
 };
 
+default_rule_errmsg ::= "default rule invoked\n";
 default_rule ::= func(source : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value
 	{
 		.action := parse_action.error;
-		.errmsg := "default rule invoked";
+		.errmsg := default_rule_errmsg;
 		.push := false;
 		.pop := false;
 	};
@@ -123,10 +124,10 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 	{
 		return;
 	}
-	[[__force_mutable]] hash : u64 mut := hash_state(my_nodes at 0, nodes_count);
+	hash : u64 mut := hash_state(my_nodes at 0, nodes_count);
 	__memset(my_nodes at 0, 0, my_nodes_size);
-	[[__force_mutable]] la ::= lookahead_node;
-	[[__force_mutable]] la_hash : u64 mut := zero;
+	la ::= lookahead_node;
+	la_hash : u64 mut := zero;
 	if((la.type) != (ast_type.unknown))
 	{
 		la_hash = (!hash_state(ref la, 1));
@@ -137,7 +138,7 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 		hash = !hash;
 	}
 
-	[[__force_mutable]] ptr ::= parse_table at (hash % parse_table_cap);
+	ptr ::= parse_table at (hash % parse_table_cap);
 	if(ptr->fn != zero)
 	{
 		psyc_panic(srcloc_current(), "hash collision detected");
