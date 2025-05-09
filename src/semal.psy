@@ -282,7 +282,38 @@ semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, l
 			psyc_exit_failure();
 		}
 	}
-	// assert(ty_can_convert(lhs_ty, rhs_ty))
+	conv ::= ty_get_conv(lhs_ty, rhs_ty);
+	if(conv == (tyconv.cant))
+	{
+		psyc_error_begin(rhs_loc);
+		puts(op_name);
+		puts(" is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_ty);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		psyc_error_begin(rhs_loc);
+		puts(op_name);
+		puts(" is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_ty);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" (but it could with a cast)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	return lhs_ty;
 };
 
