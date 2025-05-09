@@ -413,6 +413,16 @@ expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+decl2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.expr_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 tokenexpr2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -477,21 +487,21 @@ symcolsym2decl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(ret.nodes_size) = 1;
 };
 
-grammar_stmtify ::= macro(e : ast_expr_type static) -> v0
+grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(e)),
+		__arrcpy(ast, my_nodes, nod),
 		token(lex_token.semicol),
 		null_stash,
 		pty.both,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(e), token(lex_token.semicol)),
+		__arrcpy(ast, my_nodes, nod, token(lex_token.semicol)),
 		null_lookahead,
 		null_stash,
 		pty.both,
-		rule(expr2stmt));
+		ru);
 };
 
 grammar_numeric_literal ::= macro() -> v0
@@ -620,11 +630,12 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.dash, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
 
-	grammar_stmtify(ast_expr_type.symbol);
-	grammar_stmtify(ast_expr_type.literal);
-	grammar_stmtify(ast_expr_type.biop);
-	grammar_stmtify(ast_expr_type.unop);
-	grammar_stmtify(ast_expr_type.callfunc);
+	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
+	grammar_stmtify(expr(ast_expr_type.literal), rule(expr2stmt));
+	grammar_stmtify(expr(ast_expr_type.biop), rule(expr2stmt));
+	grammar_stmtify(expr(ast_expr_type.unop), rule(expr2stmt));
+	grammar_stmtify(expr(ast_expr_type.callfunc), rule(expr2stmt));
+	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 
 	grammar_commit_stmt(ast_stmt.expr_stmt);
 	grammar_commit_stmt(ast_stmt.decl_stmt);
