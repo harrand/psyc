@@ -487,6 +487,45 @@ tokenexpr2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(ret.nodes_size) = 1;
 };
 
+exprtok2halfbiop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	// expr *
+	// make a biop with only one child
+	// so we can stash it.
+	second ::= deref(nodes at 1);
+	utok ::= second.utok;
+	tok ::= utok.tok;
+	biop_ty ::= ast_biop_type_from_token(tok.tok);
+	if(biop_ty == -1)
+	{
+		return parse_value{.action := parse_action.error; .errmsg := "unrecognised binary operator";};
+	}
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipbiop;
+		.expr := make_biop_expr(ast_biop_expr{.type := biop_ty;});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_biop_set_lhs((ret.nodes) at 0, first, ar);
+	(ret.nodes_size) = 1;
+};
+
+wipbiop2biop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.expr);
+	ast_biop_set_rhs(firstptr, last, ar);
+};
+
 symcolsym2decl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -712,6 +751,44 @@ grammar_unop_expr ::= macro(tok : lex_token static, exp : ast_expr_type static) 
 		rule(tokenexpr2unop));
 };
 
+grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		null_stash,
+		pty.both,
+		rule(shift1));
+	
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp), token(tok)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(exprtok2halfbiop));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipbiop)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipbiop),
+		pty.both,
+		rule(unstash_head));
+	
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipbiop), expr(exp)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(wipbiop2biop));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -739,12 +816,15 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
+	// note: you are going to want to add more reductions to decl_init
+	// this is because they are going to break apart biops (and probably callfuncs)
 	grammar_decl_init(ast_expr_type.symbol);
 	grammar_decl_init(ast_expr_type.literal);
 	grammar_decl_init(ast_expr_type.biop);
 	grammar_decl_init(ast_expr_type.unop);
 	grammar_decl_init(ast_expr_type.callfunc);
 
+	// unary operators
 	grammar_unop(lex_token.dash);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.literal);
@@ -752,6 +832,20 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.dash, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
 
+	// binary operators
+	grammar_biop(ast_expr_type.symbol, lex_token.asterisk);
+	grammar_biop(ast_expr_type.literal, lex_token.asterisk);
+	grammar_biop(ast_expr_type.biop, lex_token.asterisk);
+	grammar_biop(ast_expr_type.unop, lex_token.asterisk);
+	grammar_biop(ast_expr_type.callfunc, lex_token.asterisk);
+
+	grammar_biop(ast_expr_type.symbol, lex_token.assign);
+	grammar_biop(ast_expr_type.literal, lex_token.assign);
+	grammar_biop(ast_expr_type.biop, lex_token.assign);
+	grammar_biop(ast_expr_type.unop, lex_token.assign);
+	grammar_biop(ast_expr_type.callfunc, lex_token.assign);
+
+	// make stmts (largest building blocks in program)
 	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.literal), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.biop), rule(expr2stmt));
@@ -759,6 +853,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(expr(ast_expr_type.callfunc), rule(expr2stmt));
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 
+	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
 	grammar_commit_stmt(ast_stmt.decl_stmt);
 	grammar_commit_stmt(ast_stmt.region_stmt);
