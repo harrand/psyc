@@ -321,6 +321,11 @@ shift2 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	return parse_value{.action := parse_action.shift; .len := 2;};
 };
 
+shift3 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value{.action := parse_action.shift; .len := 3;};
+};
+
 swallow_all ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	return parse_value
@@ -764,6 +769,43 @@ wipstructcbrace2struct ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -
 	(firstptr->cursor_end) = last.cursor_end;
 };
 
+cmpsymcmp2wipregion ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	second ::= deref(nodes at 1);
+	utok ::= second.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipregion;
+		.region := ast_region_stmt
+		{
+			.name := src at (lex.off);
+			.name_len := lex.len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipregion2region ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.region);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -1174,6 +1216,45 @@ grammar_struct ::= macro() -> v0
 		rule(wipstructcbrace2struct));
 };
 
+grammar_build_region ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.compare)),
+		null_lookahead,
+		null_stash,
+		rule(shift3));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.compare), token(lex_token.symbol), token(lex_token.compare), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(cmpsymcmp2wipregion));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipregion)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipregion),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipregion), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipregion2region));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.region)),
+		null_lookahead,
+		null_stash,
+		rule(commit_head));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -1285,6 +1366,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
+
+	grammar_build_region();
 
 	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
