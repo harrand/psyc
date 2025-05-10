@@ -662,6 +662,26 @@ wipfn2externfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(fn->is_extern) = true;
 };
 
+wipfn_awaitimplblock ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.wipfn_green);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipfn2fn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.fn);
+	(firstptr->cursor_end) = (last.cursor_end);
+	fn ::= ref(firstptr->fn);
+	(fn->is_extern) = false;
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -874,7 +894,7 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		rule(shift1));
 };
 
-grammar_func ::= macro() -> v0
+grammar_wipfn ::= macro() -> v0
 {
 	// decl initialiser is func(...)
 	// dont let it be stashed
@@ -936,7 +956,10 @@ grammar_func ::= macro() -> v0
 		null_stash,
 		pty.both,
 		rule(wipfn_givereturn));
+};
 
+grammar_fn_extern ::= macro() -> v0
+{
 	// wipfn_red has the whole signature now, and is followed by either:
 	// (1) := extern (in which we will just set the function as extern and declare it complete)
 
@@ -953,9 +976,45 @@ grammar_func ::= macro() -> v0
 		null_stash,
 		pty.both,
 		rule(wipfn2externfn));
+};
 
-
+grammar_fn ::= macro() -> v0
+{
 	// (2) a obrace (in which case we have an implemention block incoming)
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		token(lex_token.obrace),
+		null_stash,
+		pty.both,
+		rule(shift1));
+	
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(wipfn_awaitimplblock));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipfn_green),
+		pty.both,
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(wipfn2fn));
 };
 
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
@@ -1039,7 +1098,9 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop(ast_expr_type.callfunc, lex_token.keyword_at);
 
 	// functions
-	grammar_func();
+	grammar_wipfn();
+	grammar_fn_extern();
+	grammar_fn();
 
 	// make stmts (largest building blocks in program)
 	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
