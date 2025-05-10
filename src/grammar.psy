@@ -337,6 +337,17 @@ shift2 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	return parse_value{.action := parse_action.shift; .len := 2;};
 };
 
+swallow_all ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.reduce;
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+};
+
 num2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -455,6 +466,16 @@ decl2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 
 	(firstptr->type) = (ast_type.stmt);
 	(firstptr->stmt) = (ast_stmt.expr_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+fn2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.fn_stmt);
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
@@ -627,6 +648,18 @@ wipfn_givereturn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 	fn ::= ref(firstptr->fn);
 	(fn->ret_typename) = src at (lex.off);
 	(fn->ret_typename_len) = (lex.len);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipfn2externfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.fn);
+	(firstptr->cursor_end) = (last.cursor_end);
+	fn ::= ref(firstptr->fn);
+	(fn->is_extern) = true;
 };
 
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
@@ -875,6 +908,12 @@ grammar_func ::= macro() -> v0
 		rule(commit_head));
 
 	// todo: just eat a comma to handle multiple params?
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		null_lookahead,
+		node(ast_type.wipfn_blue),
+		pty.both,
+		rule(swallow_all));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
@@ -897,6 +936,26 @@ grammar_func ::= macro() -> v0
 		null_stash,
 		pty.both,
 		rule(wipfn_givereturn));
+
+	// wipfn_red has the whole signature now, and is followed by either:
+	// (1) := extern (in which we will just set the function as extern and declare it complete)
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		token(lex_token.initialiser),
+		null_stash,
+		pty.both,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.initialiser), token(lex_token.keyword_extern)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(wipfn2externfn));
+
+
+	// (2) a obrace (in which case we have an implemention block incoming)
 };
 
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
@@ -989,6 +1048,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(expr(ast_expr_type.unop), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.callfunc), rule(expr2stmt));
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
+	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 
 	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
