@@ -433,6 +433,19 @@ str2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(ret.nodes_size) = 1;
 };
 
+parenthesise_expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	// this is a more unique reduction
+	// 3 nodes: (, expr, )
+	// literally just return expr
+	// we dont sensibly have a way to delete 2 separate spans of nodes, only one
+	// so we will just delete them all and recreate the middle node.
+	deref((ret.nodes) at 0) = deref(nodes at 1);
+	(ret.nodes_size) = 1;
+};
+
 expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -759,6 +772,36 @@ grammar_string_literal ::= macro() -> v0
 		rule(str2expr));
 };
 
+grammar_parenthesised ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.oparen)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+};
+
+grammar_parenthesised_expr ::= macro(exp : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		token(lex_token.oparen),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.oparen), expr(exp)),
+		token(lex_token.cparen),
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.oparen), expr(exp), token(lex_token.cparen)),
+		null_lookahead,
+		null_stash,
+		rule(parenthesise_expr));
+};
+
 grammar_basic_decl ::= macro() -> v0
 {
 	// if a symbol is directly followed by a colon, its probably the start of a decl, so override before we exprify it.
@@ -1078,6 +1121,13 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_symbol();
 	grammar_char_literal();
 	grammar_string_literal();
+
+	grammar_parenthesised();
+	grammar_parenthesised_expr(ast_expr_type.symbol);
+	grammar_parenthesised_expr(ast_expr_type.literal);
+	grammar_parenthesised_expr(ast_expr_type.biop);
+	grammar_parenthesised_expr(ast_expr_type.unop);
+	grammar_parenthesised_expr(ast_expr_type.callfunc);
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
