@@ -334,7 +334,7 @@ shift1 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 
 shift2 ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
-	return parse_value{.action := parse_action.shift; .len := 1;};
+	return parse_value{.action := parse_action.shift; .len := 2;};
 };
 
 num2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -591,6 +591,44 @@ symcrap2deduceddecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	(ret.nodes_size) = 1;
 };
 
+declinitfunc2wipfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	decl ::= first.decl;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipfn_blue;
+		.fn := ast_fn
+		{
+			.fn_name := decl.name;
+			.fn_name_len := decl.name_len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipfn_givereturn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	utok ::= last.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	(firstptr->type) = (ast_type.wipfn_red);
+	fn ::= ref(firstptr->fn);
+	(fn->ret_typename) = src at (lex.off);
+	(fn->ret_typename_len) = (lex.len);
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -803,6 +841,64 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		rule(shift1));
 };
 
+grammar_func ::= macro() -> v0
+{
+	// decl initialiser is func(...)
+	// dont let it be stashed
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		token(lex_token.keyword_func),
+		null_stash,
+		pty.both,
+		rule(shift2));
+	
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_func), token(lex_token.oparen)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(declinitfunc2wipfn));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(stash_head));
+
+	// push decl as new function param
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		null_lookahead,
+		node(ast_type.wipfn_blue),
+		pty.both,
+		rule(commit_head));
+
+	// todo: just eat a comma to handle multiple params?
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		token(lex_token.arrow),
+		node(ast_type.wipfn_blue),
+		pty.both,
+		rule(unstash_head));
+
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.cparen)),
+		token(lex_token.arrow),
+		null_stash,
+		pty.both,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.cparen), token(lex_token.arrow), token(lex_token.symbol)),
+		null_lookahead,
+		null_stash,
+		pty.both,
+		rule(wipfn_givereturn));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -882,6 +978,9 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop(ast_expr_type.biop, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.unop, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.callfunc, lex_token.keyword_at);
+
+	// functions
+	grammar_func();
 
 	// make stmts (largest building blocks in program)
 	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
