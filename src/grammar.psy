@@ -72,8 +72,7 @@ parse_action ::= enum
 	.commit := 3;
 	.stash := 4;
 	.unstash := 5;
-	.recurse := 6;
-	.error := 7;
+	.error := 6;
 };
 
 parse_value ::= struct
@@ -111,18 +110,8 @@ parse_table_cap : u64 mut;
 null_lookahead ::= zero@ast;
 null_stash ::= zero@ast;
 
-pty ::= enum
+grammar_install_impl ::= func(my_nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, stash_node : ast, rule : grammar_rule) -> v0
 {
-	.head := 1;
-	.tail := 2;
-	.both := 3;
-};
-grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, stash_node : ast, allow_begin_state : bool, rule : grammar_rule) -> v0
-{
-	if(!do_work)
-	{
-		return;
-	}
 	hash : u64 mut := hash_state(my_nodes at 0, nodes_count);
 	__memset(my_nodes at 0, 0, my_nodes_size);
 	la ::= lookahead_node;
@@ -138,10 +127,6 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 	{
 		st_hash = (!(hash_state(ref st, 1) ^ 101010101));
 		hash = (hash ^ st_hash);
-	}
-	if(allow_begin_state)
-	{
-		hash = !hash;
 	}
 
 	idx ::= hash % parse_table_cap;
@@ -160,10 +145,9 @@ grammar_install_impl ::= func(do_work : bool, my_nodes : ast mut&, my_nodes_size
 	(ptr->hash) = hash;
 };
 
-grammar_install ::= macro(nc : u64, la : ast, st : ast, albs : pty, r : grammar_rule) -> v0
+grammar_install ::= macro(nc : u64, la : ast, st : ast, r : grammar_rule) -> v0
 {
-	grammar_install_impl((albs & (pty.head)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, st, true, r);
-	grammar_install_impl((albs & (pty.tail)) > 0, my_nodes at 0, __sizeof(my_nodes), nc, la, st, false, r);
+	grammar_install_impl(my_nodes at 0, __sizeof(my_nodes), nc, la, st, r);
 };
 
 token ::= macro(t : lex_token) -> ast static
@@ -730,14 +714,12 @@ grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 		__arrcpy(ast, my_nodes, nod),
 		token(lex_token.semicol),
 		null_stash,
-		pty.both,
 		rule(shift1));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, nod, token(lex_token.semicol)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		ru);
 };
 
@@ -747,7 +729,6 @@ grammar_numeric_literal ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.numeric_literal)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(num2expr));
 };
 
@@ -757,7 +738,6 @@ grammar_symbol ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(sym2expr));
 };
 
@@ -767,7 +747,6 @@ grammar_char_literal ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.char_literal)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(char2expr));
 };
 
@@ -777,7 +756,6 @@ grammar_string_literal ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.string_literal)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(str2expr));
 };
 
@@ -788,21 +766,18 @@ grammar_basic_decl ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
 		token(lex_token.colon),
 		null_stash,
-		pty.both,
 		rule(shift1));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(shift1));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon), token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(symcolsym2decl));
 };
 
@@ -815,7 +790,6 @@ grammar_deduced_decl ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
 		token(lex_token.initialiser),
 		null_stash,
-		pty.both,
 		rule(symcrap2deduceddecl));
 };
 
@@ -825,21 +799,18 @@ grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.decl)),
 		token(lex_token.initialiser),
 		null_stash,
-		pty.both,
 		rule(shift1));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head_delete_all));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.decl),
-		pty.both,
 		rule(commit_head));
 
 	// when should we unstash the decl?
@@ -849,7 +820,6 @@ grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
 		null_lookahead,
 		node(ast_type.decl),
-		pty.both,
 		rule(unstash_head));
 };
 
@@ -859,7 +829,6 @@ grammar_unop ::= macro(t : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, token(t)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head));
 };
 
@@ -873,14 +842,12 @@ grammar_unop_expr ::= macro(tok : lex_token static, exp : ast_expr_type static) 
 		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
 		token(tok),
-		pty.both,
 		rule(unstash_head));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(tok), expr(exp)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(tokenexpr2unop));
 };
 
@@ -891,7 +858,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp)),
 		token(tok),
 		null_stash,
-		pty.both,
 		rule(shift1));
 	
 	// make halk biop
@@ -899,7 +865,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp), token(tok)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(exprtok2halfbiop));
 
 	// stash half biops
@@ -907,7 +872,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.wipbiop)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head));
 
 	// unstash a half biop if an expression is ready
@@ -915,7 +879,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipbiop),
-		pty.both,
 		rule(unstash_head));
 	
 	// half biop + expr => full biop
@@ -923,7 +886,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.wipbiop), expr(exp)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipbiop2biop));
 
 	// prevent decl initialisers from eating unfinished biops
@@ -932,7 +894,6 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp)),
 		token(tok),
 		node(ast_type.decl),
-		pty.both,
 		rule(shift1));
 };
 
@@ -944,21 +905,18 @@ grammar_wipfn ::= macro() -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		token(lex_token.keyword_func),
 		null_stash,
-		pty.both,
 		rule(shift2));
 	
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_func), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(declinitfunc2wipfn));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head));
 
 	// push decl as new function param
@@ -966,7 +924,6 @@ grammar_wipfn ::= macro() -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.decl)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
-		pty.both,
 		rule(commit_head));
 
 	// todo: just eat a comma to handle multiple params?
@@ -974,14 +931,12 @@ grammar_wipfn ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
-		pty.both,
 		rule(swallow_all));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
 		token(lex_token.arrow),
 		node(ast_type.wipfn_blue),
-		pty.both,
 		rule(unstash_head));
 
 
@@ -989,14 +944,12 @@ grammar_wipfn ::= macro() -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.cparen)),
 		token(lex_token.arrow),
 		null_stash,
-		pty.both,
 		rule(shift2));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.cparen), token(lex_token.arrow), token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipfn_givereturn));
 };
 
@@ -1009,14 +962,12 @@ grammar_fn_extern ::= macro() -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
 		token(lex_token.initialiser),
 		null_stash,
-		pty.both,
 		rule(shift2));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.initialiser), token(lex_token.keyword_extern)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipfn2externfn));
 };
 
@@ -1027,35 +978,30 @@ grammar_fn ::= macro() -> v0
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
 		token(lex_token.obrace),
 		null_stash,
-		pty.both,
 		rule(shift1));
 	
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipfn_awaitimplblock));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipfn_green),
-		pty.both,
 		rule(unstash_head));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipfn2fn));
 };
 
@@ -1065,21 +1011,18 @@ grammar_call ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
 		token(lex_token.oparen),
 		null_stash,
-		pty.both,
 		rule(shift1));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(symoparen2wipcall));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipcall)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(stash_head));
 
 	// take exprs as params in grammar_call_param
@@ -1088,21 +1031,18 @@ grammar_call ::= macro() -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipcall),
-		pty.both,
 		rule(swallow_all));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
 		null_lookahead,
 		node(ast_type.wipcall),
-		pty.both,
 		rule(unstash_head));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.wipcall), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
-		pty.both,
 		rule(wipcallcparen2call));
 };
 
@@ -1112,7 +1052,6 @@ grammar_call_param ::= macro(exp : ast_expr_type static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipcall),
-		pty.both,
 		rule(commit_head));
 };
 
@@ -1122,7 +1061,6 @@ grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 		__arrcpy(ast, my_nodes, stmt(s)),
 		null_lookahead,
 		null_stash,
-		pty.head,
 		rule(commit_head));
 };
 
