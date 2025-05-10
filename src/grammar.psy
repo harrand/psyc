@@ -806,6 +806,15 @@ wipregion2region ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+obracecbrace2blk ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.blk_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -1255,6 +1264,27 @@ grammar_build_region ::= macro() -> v0
 		rule(commit_head));
 };
 
+grammar_block ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		token(lex_token.obrace),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.obrace), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(obracecbrace2blk));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -1367,7 +1397,10 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
 
+	// build regions
 	grammar_build_region();
+	// block statements
+	grammar_block();
 
 	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
