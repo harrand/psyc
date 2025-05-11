@@ -440,6 +440,52 @@ str2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(ret.nodes_size) = 1;
 };
 
+true2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.bool_literal;
+			.boolean := true;
+		});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+false2expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.bool_literal;
+			.boolean := false;
+		});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 parenthesise_expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -942,6 +988,21 @@ grammar_string_literal ::= macro() -> v0
 		null_lookahead,
 		null_stash,
 		rule(str2expr));
+};
+
+grammar_bool_literal ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_true)),
+		null_lookahead,
+		null_stash,
+		rule(true2expr));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_false)),
+		null_lookahead,
+		null_stash,
+		rule(true2expr));
 };
 
 grammar_retvoid ::= macro() -> v0
@@ -1457,6 +1518,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_symbol();
 	grammar_char_literal();
 	grammar_string_literal();
+	grammar_bool_literal();
 
 	grammar_retvoid();
 	grammar_ret();
