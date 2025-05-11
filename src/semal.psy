@@ -27,6 +27,86 @@ unop_jump_table : semal_unop_function mut#4;
 
 literal_types : ty mut#5;
 
+node_is_return_stmt ::= func(node : ast&) -> bool
+{
+	if((node->type) == (ast_type.expr))
+	{
+		expr ::= node->expr;
+		if((expr.type) == (ast_expr_type.ret))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+node_get_idx_of_first_return ::= func(node : ast mut&) -> u64
+{
+	i : u64 mut;
+	for(i = 0, i < (node->childcount), i = i + 1)
+	{
+		if(node_is_return_stmt(ast_get_child(node, i)))
+		{
+			return i;
+		}
+	}
+	return i - 1;
+};
+
+
+// if the node is deferred, return the actual node as if it wasnt deferred. if the node isnt deferred at all, return null
+deferred_node_get ::= func(node : ast&) -> ast&
+{
+	if((node->type) != (ast_type.stmt))
+	{
+		return null;
+	}
+	stmt ::= node->stmt;
+	if(stmt != (ast_stmt.expr_stmt))
+	{
+		return null;
+	}
+	expr ::= node->expr;
+	if((expr.type) == (ast_expr_type.unop))
+	{
+		unop ::= expr.unop;
+		if((unop.type) == (ast_unop_type.op_defer))
+		{
+			// yes we are a deferred node.
+			// return our child
+			return ast_get_child(node@_, 0);
+		}
+	}
+	return null;
+};
+
+defer_children ::= func(node : ast mut&) -> v0
+{
+	if((node->childcount) == 0)
+	{
+		return;
+	}
+	// re-arrange children to deal with deferred nodes.
+	i : u64 mut;
+	curchild : ast& mut;
+	cur_deferred : ast& mut;
+	cache : ast mut;
+	last_id ::= node_get_idx_of_first_return(node);
+	last ::= ast_get_child(node@_, last_id);
+	for(i = 0, i < (node->childcount), i = i + 1)
+	{
+		curchild = ast_get_child(node, i);
+		cur_deferred = deferred_node_get(curchild);
+		if(cur_deferred != null)
+		{
+			cache = (deref cur_deferred);
+			// move all subsequent children down to replace us
+			__memcpy(curchild, curchild at 1, __sizeof(ast) * (last_id));
+			(deref last) = cache;
+		}
+	}
+};
+
 semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
@@ -42,6 +122,7 @@ semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
+	defer_children(node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
@@ -155,6 +236,7 @@ semal_unop_deref ::= func(operand : sval mut, operand_loc : srcloc, ctx : contex
 semal_unop_defer ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
+
 	puts("unop defer NYI ");
 	print_srcloc(node->loc);
 	putchar(10);
