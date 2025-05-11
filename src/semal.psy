@@ -21,7 +21,7 @@ semal_unop_function ::= struct
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#6;
-expr_jump_table : semal_expr_function mut#5;
+expr_jump_table : semal_expr_function mut#6;
 biop_jump_table : semal_biop_function mut#6;
 unop_jump_table : semal_unop_function mut#4;
 
@@ -154,7 +154,10 @@ semal_unop_deref ::= func(operand : sval mut, operand_loc : srcloc, ctx : contex
 
 semal_unop_defer ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	psyc_panic(operand_loc, "unop defer NYI");
+	node ::= ctx.node;
+	puts("unop defer NYI ");
+	print_srcloc(node->loc);
+	putchar(10);
 	return zero;
 };
 
@@ -570,6 +573,15 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 	return just_type(return_type);
 };
 
+semal_ret_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	puts("returning something ");
+	print_srcloc(node->loc);
+	putchar(10);
+	return zero;
+};
+
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
@@ -841,6 +853,7 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(expr_jump_table at 2) = semal_expr_function{.fn := semal_biop_expr;};
 	deref(expr_jump_table at 3) = semal_expr_function{.fn := semal_unop_expr;};
 	deref(expr_jump_table at 4) = semal_expr_function{.fn := semal_callfunc_expr;};
+	deref(expr_jump_table at 5) = semal_expr_function{.fn := semal_ret_expr;};
 
 	litqual ::= (tyqual.weak) | (tyqual.static);
 	deref(literal_types at ((ast_literal_type.integral)@s64)) =
