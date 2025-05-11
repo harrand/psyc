@@ -853,6 +853,41 @@ wipifredcbrace2if ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> par
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+err_else_no_preceding_if ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "Else statements must always directly proceed a previous if statement.";
+	};
+};
+
+keywordelseobrace2wipelse ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	
+	(firstptr->type) = (ast_type.wipelse);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipelsecbrace2else ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	
+	(firstptr->type) = (ast_type.elsedef);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+ifelse2if ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	ast_add_child(firstptr, last, ar);
+};
+
 symoparen2wipcall ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1429,6 +1464,63 @@ grammar_if_cond ::= macro(exp : ast_expr_type static) -> v0
 		rule(commit_head));
 };
 
+grammar_if_else ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.ifdef)),
+		token(lex_token.keyword_else),
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_else)),
+		null_lookahead,
+		null_stash,
+		rule(err_else_no_preceding_if));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_else)),
+		null_lookahead,
+		node(ast_type.ifdef),
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_else), token(lex_token.obrace)),
+		null_lookahead,
+		node(ast_type.ifdef),
+		rule(keywordelseobrace2wipelse));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipelse)),
+		null_lookahead,
+		node(ast_type.ifdef),
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipelse),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipelse), token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.ifdef),
+		rule(wipelsecbrace2else));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.elsedef)),
+		null_lookahead,
+		node(ast_type.ifdef),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.ifdef), node(ast_type.elsedef)),
+		null_lookahead,
+		null_stash,
+		rule(ifelse2if));
+};
+
 grammar_call ::= macro() -> v0
 {
 	grammar_install(
@@ -1715,6 +1807,8 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_if_cond(ast_expr_type.biop);
 	grammar_if_cond(ast_expr_type.unop);
 	grammar_if_cond(ast_expr_type.callfunc);
+
+	grammar_if_else();
 
 	// callfuncs
 	grammar_call();
