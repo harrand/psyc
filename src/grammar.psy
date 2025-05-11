@@ -532,6 +532,27 @@ tokenexpr2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 	(ret.nodes_size) = 1;
 };
 
+deferstmt2unop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.stmt;
+		.stmt := ast_stmt.expr_stmt;
+		.expr := make_unop_expr(ast_unop_expr{.type := ast_unop_type.op_defer;});
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_unop_set_operand((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
+};
+
 exprtok2halfbiop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1303,6 +1324,30 @@ grammar_block ::= macro() -> v0
 		rule(obracecbrace2blk));
 };
 
+grammar_defer ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_defer)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+};
+
+grammar_defer_stmt ::= macro(s : ast_stmt static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, stmt(s)),
+		null_lookahead,
+		token(lex_token.keyword_defer),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_defer), stmt(s)),
+		null_lookahead,
+		null_stash,
+		rule(deferstmt2unop));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -1419,6 +1464,9 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_build_region();
 	// block statements
 	grammar_block();
+
+	grammar_defer();
+	grammar_defer_stmt(ast_stmt.expr_stmt);
 
 	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
