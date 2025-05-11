@@ -584,6 +584,16 @@ struct2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_val
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+if2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.if_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 region2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -816,6 +826,31 @@ wipfn2fn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->cursor_end) = (last.cursor_end);
 	fn ::= ref(firstptr->fn);
 	(fn->is_extern) = false;
+};
+
+keywordifparen2wipif ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipif_blue);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipifcparen2wipifred ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipif_red);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipifredcbrace2if ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	
+	(firstptr->type) = (ast_type.ifdef);
+	(firstptr->cursor_end) = (last.cursor_end);
 };
 
 symoparen2wipcall ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -1322,6 +1357,78 @@ grammar_fn ::= macro() -> v0
 		rule(wipfn2fn));
 };
 
+grammar_if ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_if)),
+		null_lookahead,
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_if), token(lex_token.oparen)),
+		null_lookahead,
+		null_stash,
+		rule(keywordifparen2wipif));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+	
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		null_lookahead,
+		node(ast_type.wipif_blue),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue), token(lex_token.cparen)),
+		null_lookahead,
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue), token(lex_token.cparen), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipifcparen2wipifred));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipif_red)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipif_red),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipif_red), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipifredcbrace2if));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.ifdef)),
+		null_lookahead,
+		null_stash,
+		rule(if2stmt));
+};
+
+grammar_if_cond ::= macro(exp : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipif_blue),
+		rule(commit_head));
+};
+
 grammar_call ::= macro() -> v0
 {
 	grammar_install(
@@ -1602,6 +1709,13 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_fn_extern();
 	grammar_fn();
 
+	grammar_if();
+	grammar_if_cond(ast_expr_type.symbol);
+	grammar_if_cond(ast_expr_type.literal);
+	grammar_if_cond(ast_expr_type.biop);
+	grammar_if_cond(ast_expr_type.unop);
+	grammar_if_cond(ast_expr_type.callfunc);
+
 	// callfuncs
 	grammar_call();
 	grammar_call_param(ast_expr_type.symbol);
@@ -1639,6 +1753,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_commit_stmt(ast_stmt.struct_stmt);
 	grammar_commit_stmt(ast_stmt.fn_stmt);
 	grammar_commit_stmt(ast_stmt.blk_stmt);
+	grammar_commit_stmt(ast_stmt.if_stmt);
 };
 
 == build ==
