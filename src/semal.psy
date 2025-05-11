@@ -576,9 +576,119 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 semal_ret_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	puts("returning something ");
-	print_srcloc(node->loc);
-	putchar(10);
+	parentfn ::= scope_get_parent_function(ctx.local);
+	if(parentfn == null)
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid 'return' expression - only valid within a function implementation block");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	if((node->childcount) > 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("return expression node had ");
+		putuint(node->childcount);
+		puts(" child nodes, but it should have either 0 (retvoid) or exactly 1 (retval)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	parentfn_ty ::= parentfn->type;
+	parentfn_fnty ::= parentfn_ty.fn;
+	parentfn_retty ::= deref((parentfn_fnty.return_type)@ty&);
+	if((node->childcount) == 0)
+	{
+		// retvoid
+		// parent fn better be return type v0
+		if(!ty_is_v0(parentfn_retty))
+		{
+			psyc_error_begin(node->loc);
+			puts("return expression is invalid because enclosing function");
+			putchar('"');
+			putss(parentfn->name, parentfn->name_len);
+			putchar('"');
+			puts(" expects to return a ");
+			putchar('"');
+			putty(parentfn_retty);
+			putchar('"');
+			puts(" - you must return a value");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	if((node->childcount) == 1)
+	{
+		// get the return type.
+		childnode ::= ast_get_child(node@_, 0);
+		// assume its an expression
+		retval ::= semal_expr(context{.node := childnode; .local := ctx.local;}, prog);
+		retvalty ::= retval.type;
+		if(ty_isbad(retvalty))
+		{
+			psyc_error_begin(node->loc);
+			puts("return expression yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(ty_is_v0(parentfn_retty))
+		{
+			psyc_error_begin(node->loc);
+			puts("return expression is invalid because enclosing function ");
+			putchar('"');
+			putss(parentfn->name, parentfn->name_len);
+			putchar('"');
+			puts(" returns ");
+			putchar('"');
+			putty(parentfn_retty);
+			putchar('"');
+			puts(" - you cannot return a value");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+
+		conv ::= ty_get_conv(retvalty, parentfn_retty);
+		if(conv == (tyconv.cant))
+		{
+			psyc_error_begin(childnode->loc);
+			puts("return expression is invalid because expression's type ");
+			putchar('"');
+			putty(retvalty);
+			putchar('"');
+			puts(" cannot be converted to enclosing function ");
+			putchar('"');
+			putss(parentfn->name, parentfn->name_len);
+			putchar('"');
+			puts("'s return type ");
+			putchar('"');
+			putty(parentfn_retty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(conv == (tyconv.could_if_weak))
+		{
+			psyc_error_begin(childnode->loc);
+			puts("return expression is invalid because expression's type ");
+			putchar('"');
+			putty(retvalty);
+			putchar('"');
+			puts(" cannot be converted to enclosing function ");
+			putchar('"');
+			putss(parentfn->name, parentfn->name_len);
+			putchar('"');
+			puts("'s return type ");
+			putchar('"');
+			putty(parentfn_retty);
+			putchar('"');
+			puts(" (but it could with a cast)");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
 	return zero;
 };
 
@@ -746,10 +856,10 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	for(i = 0, i < childcount, i = i + 1)
 	{
 		cur_param_node ::= ast_get_child(node@_, i);
-		beyond_param_idx = beyond_param_idx + 1;
 		if((cur_param_node->type) == (ast_type.decl))
 		{
 			param_count = param_count + 1;
+			beyond_param_idx = beyond_param_idx + 1;
 		}
 		if((cur_param_node->type) != (ast_type.decl))
 		{
@@ -793,7 +903,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	}
 	// go through the implementation
 	impl_child_node : ast mut& mut;
-	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn, node->loc);
+	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
 	for(i = beyond_param_idx, i < childcount, i = i + 1)
 	{
 		impl_child_node = ast_get_child(node@_, i);
@@ -861,11 +971,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(literal_types at ((ast_literal_type.floating_point)@s64)) =
 		ty_getprim(primty.f64, litqual);
 	deref(literal_types at ((ast_literal_type.char_literal)@s64)) =
-		ty_getprim(primty.u8, litqual);
+		ty_getprim(primty.u8, zero);
 	deref(literal_types at ((ast_literal_type.string_literal)@s64)) =
 		ty_ref(ty_getprim(primty.u8, zero), tyqual.static);
 	deref(literal_types at ((ast_literal_type.bool_literal)@s64)) =
-		ty_getprim(primty.bool, litqual);
+		ty_getprim(primty.bool, zero);
 
 	deref(biop_jump_table at 0) = semal_biop_function{.fn := semal_biop_assign;};
 	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_plus;};
@@ -914,7 +1024,7 @@ semal_build_region ::= func(ctx : context mut, prog : program mut&) -> v0
 	semal_children(context
 	{
 		.node := ctx.node;
-		.local := program_new_scope(prog, semar, ctx.local, scope_type.build_region, node->loc);
+		.local := program_new_scope(prog, semar, ctx.local, scope_type.build_region, node->loc, null, zero);
 	}, prog);
 	
 	(prog->in_metaregion) = false;
@@ -934,7 +1044,7 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	global ::= prog->global;
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc);
+	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc, null, zero);
 
 	semal_build_region(context
 	{

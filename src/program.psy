@@ -46,6 +46,8 @@ scope ::= struct
 	parent : v0&;
 	loc : srcloc;
 	type : scope_type;
+	scope_label : u8&;
+	scope_label_len : u64;
 };
 
 program ::= struct
@@ -250,12 +252,55 @@ scope_declare_struct ::= func(s : scope mut&, strct : structty, loc : srcloc) ->
 	tybox_add_struct(types, strct, loc);
 };
 
+scope_get_parent_function ::= func(s : scope&) -> function&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	while(curscope != null)
+	{
+		if((curscope->type) == (scope_type.fn))
+		{
+			// the current scope is indeed the current function we're in
+			// get its name
+			parent_fnname ::= curscope->scope_label;
+			parent_fnname_len ::= curscope->scope_label_len;
+			parent_scope ::= (curscope->parent)@scope&;
+			parent_funcs ::= ref(parent_scope->funcs);
+			for(i = 0, i < (parent_funcs->size), i = i + 1)
+			{
+				curfunc ::= (parent_funcs->data) at i;
+				if((curfunc->name_len) == parent_fnname_len)
+				{
+					if(cstreql_n(curfunc->name, parent_fnname, parent_fnname_len))
+					{
+						return curfunc;
+					}
+				}
+			}
+			psyc_error_begin(s->loc);
+			puts("most recent enclosing function had label ");
+			putchar('"');
+			putss(parent_fnname, parent_fnname_len);
+			putchar('"');
+			puts(", but out of ");
+			putuint(parent_funcs->size);
+			puts(" total defined functions in its parent scope, none matched the name. this is likely a compiler bug.");
+			psyc_diag_end();
+			psyc_exit_failure();
+			psyc_panic(srcloc_current(), "");
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
 program_parse_typename ::= func(prog : program mut&, tyname : u8&, tyname_len : u64) -> ty
 {
 	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
 };
 
-program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&, type : scope_type, loc : srcloc) -> scope mut&
+program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&, type : scope_type, loc : srcloc, label : u8&, label_len : u64) -> scope mut&
 {
 	if((prog->locals_cap) == 0)
 	{
@@ -274,6 +319,9 @@ program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope m
 	(prog->locals_size) = (prog->locals_size) + 1;
 	ptr ::= (prog->locals) at id;
 	(ptr->parent) = (parent@_);
+	(ptr->type) = type;
+	(ptr->scope_label) = label;
+	(ptr->scope_label_len) = label_len;
 	return ptr;
 };
 
