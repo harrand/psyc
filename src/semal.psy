@@ -420,6 +420,63 @@ semal_biop_at ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc
 	return just_type(retty);
 };
 
+weakening_idiom ::= "_";
+
+semal_biop_cast ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	lhs_expr ::= lhs.expr;
+	rhs_expr ::= rhs.expr;
+	// rhs must be a symbol expression
+	if((rhs_expr.type) != (ast_expr_type.symbol))
+	{
+		psyc_error_begin(node->loc);
+		puts("rhs of cast expression must be a 'symbol expression'. instead it is a '");
+		puts(__enumname(rhs_expr.type));
+		puts(" expression'");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	lhs_val ::= semal_expr_common(lhs_expr, context{.node := ref lhs; .local := ctx.local;}, prog);
+	lhs_ty ::= lhs_val.type;
+	if(ty_isbad(lhs_ty))
+	{
+		psyc_error_begin(lhs.loc);
+		puts("lhs of binary operator cast yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	retty : ty mut;
+
+	rhs_sym ::= rhs_expr.symbol;
+	if((rhs_sym.len) == cstrlen(weakening_idiom))
+	{
+		if(cstreql_n(rhs_sym.symbol, weakening_idiom, rhs_sym.len))
+		{
+			// it is the weakening idiom. apply weak qualifier to lhs type and return it.
+			retty = lhs_ty;
+			(retty.qual) = ((retty.qual) | tyqual.weak);
+			return just_type(retty);
+		}
+	}
+	// not the weakening idiom.
+	retty = scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
+	if(ty_isbad(retty))
+	{
+		psyc_error_begin(rhs.loc);
+		puts("rhs of binary operator cast was typename ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		puts(" which yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return just_type(retty);
+};
+
 semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	biop ::= expr.biop;
@@ -435,6 +492,11 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	}
 	lhs ::= ast_biop_get_lhs(deref node);
 	rhs ::= ast_biop_get_rhs(deref node);
+
+	if((biop.type) == (ast_biop_type.cast))
+	{
+		return semal_biop_cast(lhs, rhs, ctx, prog);
+	}
 
 	lhs_val ::= semal_expr_common(lhs.expr, context{.node := ref lhs; .local := ctx.local;}, prog);
 	if(ty_isbad(lhs_val.type))
