@@ -35,8 +35,21 @@ call_if_match ::= macro(fn : auto, name : u8&) -> v0
 sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
+
+	if((node->childcount) != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("__message takes 1 param, you passed ");
+		putuint(node->childcount);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	msgparam ::= ast_get_child(node@_, 0);
+	msg_expr ::= msgparam->expr;
+	msg_lit ::= msg_expr.literal;
+
 	psyc_message_begin(node->loc);
-	puts("__message HAS BEEN CALLED");
+	putss(msg_lit.chars, msg_lit.chars_len);
 	psyc_diag_end();
 	return zero;
 };
@@ -45,6 +58,7 @@ static_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : prog
 {
 	deref(found) = false;
 	call_if_match(sb_message, "__message");
+
 	return zero;
 };
 
