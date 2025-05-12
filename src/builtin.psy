@@ -12,19 +12,45 @@ assert_buildmeta ::= macro() -> v0
 	}
 };
 
-[[private]]
-builtin_common ::= macro() -> v0
+callfunc_is ::= func(call : ast_callfunc_expr, name : u8&) -> bool
 {
-	n ::= ctx.node;
+	len ::= cstrlen(name);
+	if(len != (call.funcname_len))
+	{
+		return false;
+	}
+	return cstreql_n(call.funcname, name, len);
 };
 
-builtin_set_object ::= func(prog : program mut&, ctx : context mut) -> v0
+call_if_match ::= macro(fn : auto, name : u8&) -> v0
 {
-	builtin_common();
-	assert_buildmeta();
+	function ::= fn;
+	if(callfunc_is(call, name))
+	{
+		deref(found) = true;
+		return function(call, ctx, prog);
+	}
+};
+
+sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	psyc_message_begin(node->loc);
+	puts("__message HAS BEEN CALLED");
+	psyc_diag_end();
+	return zero;
+};
+
+static_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&, found : bool mut&) -> sval
+{
+	deref(found) = false;
+	call_if_match(sb_message, "__message");
+	return zero;
 };
 
 == build ==
 {
 	add_source_file("program.psy");
+	add_source_file("diag.psy");
+	add_source_file("sval.psy");
 }
