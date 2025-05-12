@@ -87,13 +87,13 @@ defer_children ::= func(node : ast mut&) -> v0
 		return;
 	}
 	// re-arrange children to deal with deferred nodes.
-	i : u64 mut;
+	i : u64 mut := 0;
 	curchild : ast& mut;
 	cur_deferred : ast& mut;
 	cache : ast mut;
 	last_id ::= node_get_idx_of_first_return(node);
 	last ::= ast_get_child(node@_, last_id);
-	for(i = 0, i < (node->childcount), i = i + 1)
+	while(i < (node->childcount))
 	{
 		curchild = ast_get_child(node, i);
 		cur_deferred = deferred_node_get(curchild);
@@ -103,6 +103,10 @@ defer_children ::= func(node : ast mut&) -> v0
 			// move all subsequent children down to replace us
 			__memcpy(curchild, curchild at 1, __sizeof(ast) * (last_id));
 			(deref last) = cache;
+		}
+		if(cur_deferred == null)
+		{
+			i = i + 1;
 		}
 	}
 };
@@ -259,6 +263,10 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 
 	operand ::= ast_unop_get_operand(deref node);
 	operand_val ::= semal_expr_common(operand.expr, context{.node := ref operand; .local := ctx.local;}, prog);
+	if((unop.type) == (ast_unop_type.op_defer))
+	{
+		psyc_panic(node->loc, "defer unary operator was encountered without having been preprocessed. this is a serious compiler bug.");
+	}
 	if(ty_isbad(operand_val.type))
 	{
 		psyc_error_begin(operand.loc);
@@ -1055,6 +1063,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	// go through the implementation
 	impl_child_node : ast mut& mut;
 	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
+	defer_children(node@_);
 	for(i = beyond_param_idx, i < childcount, i = i + 1)
 	{
 		impl_child_node = ast_get_child(node@_, i);
