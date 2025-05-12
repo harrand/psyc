@@ -1096,16 +1096,26 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	ifdef ::= node->ifdef;
-	puts("if statement (static: ");
+
+	cond_node ::= ast_get_child(node@_, 0);
+	cond_val ::= semal_expr(context{.node := cond_node; .local := ctx.local;}, prog);
+	cond_ty ::= cond_val.type;
+
 	if(ifdef.is_static)
 	{
-		puts("true");
+		if(!ty_hasqual(cond_ty, tyqual.static))
+		{
+			psyc_error_begin(cond_node->loc);
+			puts("condition of if-static statement must be 'bool static'. you have provided a non-static ");
+			putchar('"');
+			putty(cond_ty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+
+		lit ::= cond_val.literal;
 	}
-	if(!(ifdef.is_static))
-	{
-		puts("false");
-	}
-	puts(") ");
 
 	print_srcloc(node->loc);
 	putchar(10);
@@ -1156,9 +1166,9 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(literal_types at ((ast_literal_type.char_literal)@s64)) =
 		ty_getprim(primty.u8, zero);
 	deref(literal_types at ((ast_literal_type.string_literal)@s64)) =
-		ty_ref(ty_getprim(primty.u8, zero), tyqual.static);
+		ty_ref(ty_getprim(primty.u8, tyqual.static), tyqual.static);
 	deref(literal_types at ((ast_literal_type.bool_literal)@s64)) =
-		ty_getprim(primty.bool, zero);
+		ty_getprim(primty.bool, tyqual.static);
 
 	deref(biop_jump_table at 0) = semal_biop_function{.fn := semal_biop_assign;};
 	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_plus;};
