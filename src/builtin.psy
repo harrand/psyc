@@ -1,5 +1,30 @@
-
 sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+
+	if((node->childcount) != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("__warning takes 1 param, you passed ");
+		putuint(node->childcount);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	msgparam ::= ast_get_child(node@_, 0);
+	msg_val ::= semal_expr(context
+	{
+		.node := msgparam@_;
+		.local := ctx.local;
+	}, prog);
+
+	msg_lit ::= msg_val.literal;
+	psyc_message_begin(node->loc);
+	putss(msg_lit.chars, msg_lit.chars_len);
+	psyc_diag_end();
+	return zero;
+};
+
+sb_warning ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 
@@ -19,7 +44,7 @@ sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program 
 	}, prog);
 
 	msg_lit ::= msg_val.literal;
-	psyc_message_begin(node->loc);
+	psyc_warning_begin(node->loc);
 	putss(msg_lit.chars, msg_lit.chars_len);
 	psyc_diag_end();
 	return zero;
@@ -28,6 +53,7 @@ sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program 
 builtin_setup ::= func() -> v0
 {
 	deref(builtins at ((builtin.message)@s64)) = builtin_fn{.fn := sb_message;};
+	deref(builtins at ((builtin.warning)@s64)) = builtin_fn{.fn := sb_warning;};
 };
 
 == build ==
