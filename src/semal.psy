@@ -1,3 +1,15 @@
+builtin ::= enum
+{
+	.message := 0;
+};
+
+builtin_fn ::= struct
+{
+	fn : func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval;
+};
+
+builtins : builtin_fn mut#1;
+
 semal_function ::= struct
 {
 	fn : func(ctx : context mut, prog : program mut&) -> sval;
@@ -623,16 +635,45 @@ semal_expr ::= func(ctx : context mut, prog : program mut&) -> sval
 	return semal_expr_common(node->expr, ctx, prog);
 };
 
+semal_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&, found : bool mut&) -> sval
+{
+	prefix_len ::= cstrlen("__");
+	if((call.funcname_len) <= prefix_len)
+	{
+		return zero;
+	}
+	len ::= (call.funcname_len) - prefix_len;
+	offset_name ::= (call.funcname) at prefix_len;
+
+	i : u64 mut;
+	builtin_count ::= __sizeof(builtins) / __sizeof(deref(builtins at 0));
+	for(i = 0, i < builtin_count, i = i + 1)
+	{
+		cur_builtin_name ::= __enumname(i@builtin);
+		cur_builtin_len ::= cstrlen(cur_builtin_name);
+		if(cur_builtin_len == len)
+		{
+			if(cstreql_n(cur_builtin_name, offset_name, len))
+			{
+				fn ::= deref(builtins at i);
+				deref(found) = true;
+				return fn.fn(call, ctx, prog);
+			}
+		}
+	}
+	return zero;
+};
+
 semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	callfunc ::= expr.callfunc;
 
 	did_builtin : bool mut := false;
-	static_builtin_result ::= static_builtin(callfunc, ctx, prog, ref did_builtin);
+	builtin_result ::= semal_builtin(callfunc, ctx, prog, ref did_builtin);
 	if(did_builtin)
 	{
-		return static_builtin_result;
+		return builtin_result;
 	}
 
 	fn ::= scope_find_function(ctx.local, callfunc.funcname, callfunc.funcname_len);
@@ -1294,5 +1335,4 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	add_source_file("diag.psy");
 
 	add_source_file("sval.psy");
-	add_source_file("builtin.psy");
 }

@@ -1,36 +1,3 @@
-[[private]]
-assert_buildmeta ::= macro() -> v0
-{
-	if(!(prog->in_metaregion))
-	{
-		psyc_error_begin(n->loc);
-		puts("attempt to call ");
-		puts(__function());
-		puts(" outside of a build-metaregion, which is illegal");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-};
-
-callfunc_is ::= func(call : ast_callfunc_expr, name : u8&) -> bool
-{
-	len ::= cstrlen(name);
-	if(len != (call.funcname_len))
-	{
-		return false;
-	}
-	return cstreql_n(call.funcname, name, len);
-};
-
-call_if_match ::= macro(fn : auto, name : u8&) -> v0
-{
-	function ::= fn;
-	if(callfunc_is(call, name))
-	{
-		deref(found) = true;
-		return function(call, ctx, prog);
-	}
-};
 
 sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
 {
@@ -45,21 +12,22 @@ sb_message ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program 
 		psyc_exit_failure();
 	}
 	msgparam ::= ast_get_child(node@_, 0);
-	msg_expr ::= msgparam->expr;
-	msg_lit ::= msg_expr.literal;
+	msg_val ::= semal_expr(context
+	{
+		.node := msgparam@_;
+		.local := ctx.local;
+	}, prog);
 
+	msg_lit ::= msg_val.literal;
 	psyc_message_begin(node->loc);
 	putss(msg_lit.chars, msg_lit.chars_len);
 	psyc_diag_end();
 	return zero;
 };
 
-static_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&, found : bool mut&) -> sval
+builtin_setup ::= func() -> v0
 {
-	deref(found) = false;
-	call_if_match(sb_message, "__message");
-
-	return zero;
+	deref(builtins at ((builtin.message)@s64)) = builtin_fn{.fn := sb_message;};
 };
 
 == build ==
@@ -67,4 +35,5 @@ static_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : prog
 	add_source_file("program.psy");
 	add_source_file("diag.psy");
 	add_source_file("sval.psy");
+	add_source_file("semal.psy");
 }
