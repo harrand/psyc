@@ -15,8 +15,23 @@ bytecode_fragment ::= struct
 	data_cap : u64;
 };
 
-frag_add_code ::= func(frag : bytecode_fragment& mut, code : bytecode, a : arena mut&) -> v0
+frag_add_code ::= func(frag : bytecode_fragment mut&, code : bytecode, a : arena mut&) -> v0
 {
+	if((frag->data) == null)
+	{
+		(frag->data_cap) = 1024;
+		(frag->data) = arena_push(a, __sizeof(deref(frag->data)) * (frag->data_cap));
+	}
+	while((frag->data_size) >= (frag->data_cap))
+	{
+		oldcap ::= frag->data_cap;
+		olddata ::= frag->data;
+		(frag->data_cap) = (frag->data_cap) * 2;
+		(frag->data) = arena_push(a, __sizeof(deref(frag->data)) * (frag->data_cap));
+		__memcpy(frag->data, olddata, __sizeof(deref(frag->data)) * oldcap);
+	}
+	deref((frag->data) at (frag->data_size)) = code;
+	(frag->data_size) = (frag->data_size) * 2;
 };
 
 == build ==
