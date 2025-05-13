@@ -1101,20 +1101,57 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 	cond_val ::= semal_expr(context{.node := cond_node; .local := ctx.local;}, prog);
 	cond_ty ::= cond_val.type;
 
+	else_node : ast& mut;
+	else_node = null;
+	last_node : ast& mut;
+	last_idx ::= (node->childcount) - 1;
+	if((node->childcount) > 1)
+	{
+		last_node = ast_get_child(node@_, last_idx);
+		if((last_node->type) == (ast_type.elsedef))
+		{
+			else_node = last_node;
+		}
+	}
+	should_do_children : bool mut := true;
+	should_do_else : bool mut := true;
+
 	if(ifdef.is_static)
 	{
-		if(!ty_hasqual(cond_ty, tyqual.static))
-		{
-			psyc_error_begin(cond_node->loc);
-			puts("condition of if-static statement must be 'bool static'. you have provided a non-static ");
-			putchar('"');
-			putty(cond_ty);
-			putchar('"');
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-
 		lit ::= cond_val.literal;
+		should_do_children = (lit.boolean);
+		should_do_else = (!(lit.boolean));
+	}
+
+	i : u64 mut;
+	if(should_do_children)
+	{
+		end : u64 mut := node->childcount;
+		if(else_node != null)
+		{
+			end = end - 1;
+		}
+		for(i = 1, i < end, i = i + 1)
+		{
+			defer_children(node@_);
+			semal_node(context
+			{
+				.node := ast_get_child(node@_, i);
+				.local := ctx.local;
+			}, prog);
+		}
+	}
+
+	if(should_do_else)
+	{
+		if(else_node != null)
+		{
+			semal_children(context
+			{
+				.node := else_node;
+				.local := ctx.local;
+			}, prog);
+		}
 	}
 
 	print_srcloc(node->loc);
