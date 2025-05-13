@@ -36,7 +36,7 @@ semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#7;
 expr_jump_table : semal_expr_function mut#6;
-biop_jump_table : semal_biop_function mut#6;
+biop_jump_table : semal_biop_function mut#10;
 unop_jump_table : semal_unop_function mut#4;
 
 literal_types : ty mut#5;
@@ -469,6 +469,161 @@ semal_biop_divide ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs
 	ret_lit ::= ref(ret.literal);
 	(ret_lit->integral) = (lhs_lit.integral) / (rhs_lit.integral);
 	(ret_lit->floating_point) = (lhs_lit.floating_point) / (rhs_lit.floating_point);
+	return ret;
+};
+
+semal_biop_bitwise_or ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("bitwise-or", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("lhs of bitwise-or was floating point type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		puts(", only integral types can be used in a bitwise-or.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(ty_is_floating_point(rhs_val.type))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("rhs of bitwise-or was floating point type ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		puts(", only integral types can be used in a bitwise-or.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) | (rhs_lit.integral);
+	return ret;
+};
+
+semal_biop_logical_or ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("both sides of a logical-or binary operation must be boolean types. the lhs was ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("both sides of a logical-or binary operation must be boolean types. the rhs was ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	retqual : tyqual mut := zero;
+	if(ty_hasqual(lhs_val.type, tyqual.static))
+	{
+		if(ty_hasqual(rhs_val.type, tyqual.static))
+		{
+			retqual = (tyqual.static);
+		}
+	}
+	ret : sval mut := just_type(ty_getprim(primty.bool, retqual));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->boolean) = (lhs_lit.boolean);
+	if(rhs_lit.boolean)
+	{
+		(ret_lit->boolean) = true;
+	}
+	return ret;
+};
+
+semal_biop_bitwise_and ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	ret : sval mut := just_type(semal_biop_arithmetic_common("bitwise-and", lhs_val.type, rhs_val.type, lhs_loc, rhs_loc, ctx, prog));
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("lhs of bitwise-and was floating point type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		puts(", only integral types can be used in a bitwise-and.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(ty_is_floating_point(rhs_val.type))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("rhs of bitwise-and was floating point type ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		puts(", only integral types can be used in a bitwise-and.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->integral) = (lhs_lit.integral) & (rhs_lit.integral);
+	return ret;
+};
+
+semal_biop_logical_and ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("both sides of a logical-and binary operation must be boolean types. the lhs was ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("both sides of a logical-and binary operation must be boolean types. the rhs was ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	retqual : tyqual mut := zero;
+	if(ty_hasqual(lhs_val.type, tyqual.static))
+	{
+		if(ty_hasqual(rhs_val.type, tyqual.static))
+		{
+			retqual = (tyqual.static);
+		}
+	}
+	ret : sval mut := just_type(ty_getprim(primty.bool, retqual));
+	ret_lit ::= ref(ret.literal);
+	(ret_lit->boolean) = false;
+	if(lhs_lit.boolean)
+	{
+		if(rhs_lit.boolean)
+		{
+			(ret_lit->boolean) = true;
+		}
+	}
 	return ret;
 };
 
@@ -1255,7 +1410,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(biop_jump_table at 2) = semal_biop_function{.fn := semal_biop_minus;};
 	deref(biop_jump_table at 3) = semal_biop_function{.fn := semal_biop_multiply;};
 	deref(biop_jump_table at 4) = semal_biop_function{.fn := semal_biop_divide;};
-	deref(biop_jump_table at 5) = semal_biop_function{.fn := semal_biop_at;};
+	deref(biop_jump_table at 5) = semal_biop_function{.fn := semal_biop_bitwise_or;};
+	deref(biop_jump_table at 6) = semal_biop_function{.fn := semal_biop_logical_or;};
+	deref(biop_jump_table at 7) = semal_biop_function{.fn := semal_biop_bitwise_and;};
+	deref(biop_jump_table at 8) = semal_biop_function{.fn := semal_biop_logical_and;};
+	deref(biop_jump_table at 9) = semal_biop_function{.fn := semal_biop_at;};
 
 	deref(unop_jump_table at 0) = semal_unop_function{.fn := semal_unop_minus;};
 	deref(unop_jump_table at 1) = semal_unop_function{.fn := semal_unop_ref;};
@@ -1337,5 +1496,4 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	add_source_file("diag.psy");
 
 	add_source_file("sval.psy");
-	add_source_file("bytecode.psy");
 }
