@@ -1062,6 +1062,8 @@ semal_structinit_expr ::= func(expr : ast_expr, ctx : context mut, prog : progra
 		putss(init.name, init.name_len);
 		putchar('"');
 		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
 	if(!ty_is(type, tytag.strct))
 	{
@@ -1071,7 +1073,16 @@ semal_structinit_expr ::= func(expr : ast_expr, ctx : context mut, prog : progra
 		putss(init.name, init.name_len);
 		putchar('"');
 		puts(" was not a struct");
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
+	structinit_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.structinit, node->loc, init.name, init.name_len);
+	semal_children(context
+	{
+		.node := node;
+		.local := structinit_scope;
+	}, prog);
+
 	// todo: return proper sval
 	return just_type(type);
 };
@@ -1387,7 +1398,69 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 semal_init_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	puts("INIT STMT");
+	if((node->childcount) != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("init stmt was expected to have exactly 1 child, but instead had ");
+		putuint(node->childcount);
+		puts(". this is likely a compiler bug");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	init ::= node->init;
+
+	init_node ::= ast_get_child(node@_, 0);
+	init_val ::= semal_expr(context
+	{
+		.node := init_node;
+		.local := ctx.local;
+	}, prog);
+
+	scope ::= ctx.local;
+	t ::= scope->type;
+	if(t == (scope_type.structinit))
+	{
+		member_idx : u64 mut := -1;
+		type ::= scope_parse_typename(scope, scope->scope_label, scope->scope_label_len);
+		if(!ty_is(type, tytag.strct))
+		{
+			psyc_panic(scope->loc, "structinit label didnt match a struct tyname!");
+		}
+		structty ::= type.strct;
+		struct_types ::= (structty.member_types)@ty&;
+
+		i : u64 mut;
+		for(i = 0, i < (structty.member_count), i = i + 1)
+		{
+			memname ::= deref((structty.member_names) at i);
+			memlen ::= deref((structty.member_name_lens) at i);
+			memty ::= deref(struct_types at i);
+			if(memlen == (init.name_len))
+			{
+				if(cstreql_n(memname, init.name, memlen))
+				{
+					// this is the correct member.
+					member_idx = i;
+					// todo: type-check member
+				}
+			}
+		}
+		if(member_idx == -1)
+		{
+			psyc_error_begin(node->loc);
+			puts("struct ");
+			putchar('"');
+			putss(scope->scope_label, scope->scope_label_len);
+			putchar('"');
+			puts(" had no such data member ");
+			putchar('"');
+			putss(init.name, init.name_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 	putchar(10);
 	return zero;
 };
