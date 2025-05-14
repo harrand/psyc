@@ -34,7 +34,7 @@ semal_unop_function ::= struct
 
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
-stmt_jump_table : semal_function mut#8;
+stmt_jump_table : semal_function mut#9;
 expr_jump_table : semal_expr_function mut#7;
 biop_jump_table : semal_biop_function mut#10;
 unop_jump_table : semal_unop_function mut#4;
@@ -1312,6 +1312,16 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	return ret;
 };
 
+semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	mac ::= node->mac;
+	puts("macro detected: ");
+	putss(mac.mac_name, mac.mac_name_len);
+	putchar(10);
+	return zero;
+};
+
 semal_region_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	// remember - we handle build metaregions in its own special way
@@ -1556,9 +1566,10 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(stmt_jump_table at 2) = semal_function{.fn := semal_region_stmt;};
 	deref(stmt_jump_table at 3) = semal_function{.fn := semal_structdef;};
 	deref(stmt_jump_table at 4) = semal_function{.fn := semal_fn;};
-	deref(stmt_jump_table at 5) = semal_function{.fn := semal_blk_stmt;};
-	deref(stmt_jump_table at 6) = semal_function{.fn := semal_if_stmt;};
-	deref(stmt_jump_table at 7) = semal_function{.fn := semal_init_stmt;};
+	deref(stmt_jump_table at 5) = semal_function{.fn := semal_mac;};
+	deref(stmt_jump_table at 6) = semal_function{.fn := semal_blk_stmt;};
+	deref(stmt_jump_table at 7) = semal_function{.fn := semal_if_stmt;};
+	deref(stmt_jump_table at 8) = semal_function{.fn := semal_init_stmt;};
 
 	deref(expr_jump_table at 0) = semal_expr_function{.fn := semal_symbol_expr;};
 	deref(expr_jump_table at 1) = semal_expr_function{.fn := semal_literal_expr;};

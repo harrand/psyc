@@ -574,6 +574,16 @@ fn2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+mac2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.mac_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 struct2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -827,6 +837,23 @@ wipfn_awaitimplblock ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> 
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+wipmacro_givereturn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	utok ::= last.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	(firstptr->type) = (ast_type.wipmacro_red);
+	mac ::= ref(firstptr->mac);
+	(mac->yield_typename) = src at (lex.off);
+	(mac->yield_typename_len) = (lex.len);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+
 wipfn2fn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -836,6 +863,47 @@ wipfn2fn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->cursor_end) = (last.cursor_end);
 	fn ::= ref(firstptr->fn);
 	(fn->is_extern) = false;
+};
+
+declinitmacro2wipmacro ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	decl ::= first.decl;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipmacro_blue;
+		.mac := ast_macro
+		{
+			.mac_name := decl.name;
+			.mac_name_len := decl.name_len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipmacro_awaitimplblock ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.wipmacro_green);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipmacro2macro ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.mac);
+	(firstptr->cursor_end) = (last.cursor_end);
 };
 
 keywordifparen2wipif ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -1422,7 +1490,6 @@ grammar_wipfn ::= macro() -> v0
 		node(ast_type.wipfn_blue),
 		rule(commit_head));
 
-	// todo: just eat a comma to handle multiple params?
 	grammar_install(
 		__arrcpy(ast, my_nodes, token(lex_token.comma)),
 		null_lookahead,
@@ -1500,6 +1567,93 @@ grammar_fn ::= macro() -> v0
 		null_stash,
 		rule(wipfn2fn));
 };
+
+grammar_wipmacro ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		token(lex_token.keyword_macro),
+		null_stash,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_macro), token(lex_token.oparen)),
+		null_lookahead,
+		null_stash,
+		rule(declinitmacro2wipmacro));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	// push decl as new macro param
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		null_lookahead,
+		node(ast_type.wipmacro_blue),
+		rule(commit_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		null_lookahead,
+		node(ast_type.wipmacro_blue),
+		rule(swallow_all));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		token(lex_token.arrow),
+		node(ast_type.wipmacro_blue),
+		rule(unstash_head));
+
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen)),
+		token(lex_token.arrow),
+		null_stash,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen), token(lex_token.arrow), token(lex_token.symbol)),
+		null_lookahead,
+		null_stash,
+		rule(wipmacro_givereturn));
+};
+
+grammar_macro ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_red)),
+		token(lex_token.obrace),
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_red), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipmacro_awaitimplblock));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_green)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipmacro_green),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_green), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipmacro2macro));
+};
+
 
 grammar_if ::= macro() -> v0
 {
@@ -2046,6 +2200,10 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_fn_extern();
 	grammar_fn();
 
+	// macros
+	grammar_wipmacro();
+	grammar_macro();
+
 	grammar_if();
 	grammar_if_cond(ast_expr_type.symbol);
 	grammar_if_cond(ast_expr_type.literal);
@@ -2077,6 +2235,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(expr(ast_expr_type.ret), rule(expr2stmt));
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
+	grammar_stmtify(node(ast_type.mac), rule(mac2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
 	grammar_stmtify(node(ast_type.init), rule(init2stmt));
 
@@ -2106,6 +2265,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_commit_stmt(ast_stmt.region_stmt);
 	grammar_commit_stmt(ast_stmt.struct_stmt);
 	grammar_commit_stmt(ast_stmt.fn_stmt);
+	grammar_commit_stmt(ast_stmt.mac_stmt);
 	grammar_commit_stmt(ast_stmt.blk_stmt);
 	grammar_commit_stmt(ast_stmt.if_stmt);
 	grammar_commit_stmt(ast_stmt.init_stmt);
