@@ -1431,6 +1431,7 @@ semal_init_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 		struct_types ::= (structty.member_types)@ty&;
 
 		i : u64 mut;
+		conv : tyconv mut;
 		for(i = 0, i < (structty.member_count), i = i + 1)
 		{
 			memname ::= deref((structty.member_names) at i);
@@ -1443,6 +1444,48 @@ semal_init_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 					// this is the correct member.
 					member_idx = i;
 					// todo: type-check member
+					conv = ty_get_conv(init_val.type, memty);
+					if(conv == (tyconv.cant))
+					{
+						psyc_error_begin(node->loc);
+						puts("struct member initialiser is invalid because the expression of type ");
+						putchar('"');
+						putty(init_val.type);
+						putchar('"');
+						puts(" cannot be converted to data member ");
+						putchar('"');
+						putss(scope->scope_label, scope->scope_label_len);
+						puts("::");
+						putss(init.name, init.name_len);
+						putchar('"');
+						puts("'s type of ");
+						putchar('"');
+						putty(memty);
+						putchar('"');
+						psyc_diag_end();
+						psyc_exit_failure();
+					}
+					if(conv == (tyconv.could_if_weak))
+					{
+						psyc_error_begin(node->loc);
+						puts("struct member initialiser is invalid because the expression of type ");
+						putchar('"');
+						putty(init_val.type);
+						putchar('"');
+						puts(" cannot be converted to data member ");
+						putchar('"');
+						putss(scope->scope_label, scope->scope_label_len);
+						puts("::");
+						putss(init.name, init.name_len);
+						putchar('"');
+						puts("'s type of ");
+						putchar('"');
+						putty(memty);
+						putchar('"');
+						puts(" (but it could with a cast)");
+						psyc_diag_end();
+						psyc_exit_failure();
+					}
 				}
 			}
 		}
