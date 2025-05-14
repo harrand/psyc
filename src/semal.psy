@@ -1338,6 +1338,16 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 	cond_node ::= ast_get_child(node@_, 0);
 	cond_val ::= semal_expr(context{.node := cond_node; .local := ctx.local;}, prog);
 	cond_ty ::= cond_val.type;
+	if(!ty_is_boolean(cond_ty))
+	{
+		psyc_error_begin(cond_node->loc);
+		puts("condition of an if statement must be a boolean type. you have provided a ");
+		putchar('"');
+		putty(cond_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	else_node : ast& mut;
 	else_node = null;
@@ -1356,6 +1366,16 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 
 	if(ifdef.is_static)
 	{
+		if(!ty_hasqual(cond_ty, tyqual.static))
+		{
+			psyc_error_begin(cond_node->loc);
+			puts("condition of a if-static must be static (known at compile time). you have provided non-static type ");
+			putchar('"');
+			putty(cond_ty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		lit ::= cond_val.literal;
 		should_do_children = (lit.boolean);
 		should_do_else = (!(lit.boolean));

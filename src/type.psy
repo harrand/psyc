@@ -364,12 +364,15 @@ tyconv ::= enum
 	.i2f := 3; // integral to floating point
 	.i2p := 4; // integral to pointer (u64 only)
 	.i2e := 5; // integral to enum
-	.e2i := 6; // enum to integral
-	.p2i := 7; // pointer to integral
-	.p2fn := 8; // pointer to function
-	.p2p := 9; // pointer to pointer
-	.fn2p := 10; // function to pointer
-	.f2p := 11; // floating point to integral
+	.i2b := 6; // integral to bool
+	.e2i := 7; // enum to integral
+	.p2i := 8; // pointer to integral
+	.p2fn := 9; // pointer to function
+	.p2p := 10; // pointer to pointer
+	.fn2p := 11; // function to pointer
+	.f2p := 12; // floating point to integral
+	.b2i := 13; // bool to integral
+	.same := 14; // conversion is unnecessary as the types are the same
 };
 
 ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
@@ -380,6 +383,16 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 	if(rhs_weak)
 	{
 		either_is_weak = true;
+	}
+	if(ty_is(lhs, tytag.prim))
+	{
+		if(ty_is(rhs, tytag.prim))
+		{
+			if((lhs.prim) == (rhs.prim))
+			{
+				return tyconv.same;
+			}
+		}
 	}
 	// struct doesnt convert to anything
 	if(ty_is(lhs, tytag.strct))
@@ -442,10 +455,6 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 	{
 		if(ty_is_integral(rhs))
 		{
-			if((lhs.prim) == (rhs.prim))
-			{
-				return tyconv.i2i;
-			}
 			if(either_is_weak)
 			{
 				return tyconv.i2i;
@@ -477,6 +486,26 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			if(either_is_weak)
 			{
 				return tyconv.i2e;
+			}
+			return tyconv.could_if_weak;
+		}
+		if(ty_is_boolean(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.i2b;
+			}
+			return tyconv.could_if_weak;
+		}
+	}
+	
+	if(ty_is_boolean(lhs))
+	{
+		if(ty_is_integral(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.b2i;
 			}
 			return tyconv.could_if_weak;
 		}
