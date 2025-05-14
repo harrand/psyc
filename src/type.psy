@@ -577,6 +577,25 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			return tyconv.could_if_weak;
 		}
 	}
+
+	if(ty_is(lhs, tytag.arr))
+	{
+		if(ty_is(rhs, tytag.arr))
+		{
+			// convertible iff they're the exact same array
+			lhs_arr ::= lhs.arr;
+			rhs_arr ::= rhs.arr;
+			lhs_underlying ::= deref((lhs_arr.underlying)@ty&);
+			rhs_underlying ::= deref((rhs_arr.underlying)@ty&);
+			if(ty_get_conv(lhs_underlying, rhs_underlying) != (tyconv.same))
+			{
+				if((lhs_arr.len) == (rhs_arr.len))
+				{
+					return tyconv.same;
+				}
+			}
+		}
+	}
 	return tyconv.cant;
 };
 
