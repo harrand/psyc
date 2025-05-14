@@ -395,8 +395,23 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 		}
 	}
 	// struct doesnt convert to anything
+	// unless the names match
 	if(ty_is(lhs, tytag.strct))
 	{
+		if(ty_is(rhs, tytag.strct))
+		{
+			lhs_struct ::= lhs.strct;
+			rhs_struct ::= rhs.strct;
+			if((lhs_struct.name_len) == (rhs_struct.name_len))
+			{
+				if(cstreql_n(lhs_struct.name, rhs_struct.name, lhs_struct.name_len))
+				{
+					// they are the same struct
+					return tyconv.same;
+				}
+			}
+		}
+		// structs dont convert to anything at all. only the very same struct can tyconv.same.
 		return tyconv.cant;
 	}
 	if(ty_is(lhs, tytag.ptr))
@@ -420,6 +435,16 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 		}
 		if(ty_is(rhs, tytag.ptr))
 		{
+			// what if theyre the exact same pointer? ugh.
+			lhs_ptr ::= lhs.ptr;
+			rhs_ptr ::= rhs.ptr;
+			lhs_u ::= deref (lhs_ptr.underlying@ty&);
+			rhs_u ::= deref (rhs_ptr.underlying@ty&);
+			if(ty_get_conv(lhs_u, rhs_u) == (tyconv.same))
+			{
+				// they point to the same thing.
+				return tyconv.same;
+			}
 			if(either_is_weak)
 			{
 				return tyconv.p2p;
@@ -438,6 +463,18 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			}
 			return tyconv.could_if_weak;
 		}
+		if(ty_is(rhs, tytag.enm))
+		{
+			lhs_enum ::= lhs.enm;
+			rhs_enum ::= rhs.enm;
+			if((lhs_enum.name_len) == (rhs_enum.name_len))
+			{
+				if(cstreql_n(lhs_enum.name, rhs_enum.name, lhs_enum.name_len))
+				{
+					return tyconv.same;
+				}
+			}
+		}
 		return tyconv.cant;
 	}
 	if(ty_is(lhs, tytag.fn))
@@ -449,6 +486,36 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 				return tyconv.f2p;
 			}
 			return tyconv.could_if_weak;
+		}
+		if(ty_is(rhs, tytag.fn))
+		{
+			// todo: should we allow unrelated function types to be explicitly convertible? maybe. right now i dont.
+			// true iff they're the same exact signature
+			lhs_fn ::= lhs.fn;
+			rhs_fn ::= rhs.fn;
+			lhs_ret ::= deref((lhs_fn.return_type)@ty&);
+			rhs_ret ::= deref((rhs_fn.return_type)@ty&);
+			if(ty_get_conv(lhs_ret, rhs_ret) != (tyconv.same))
+			{
+				return tyconv.cant;
+			}
+			// return type matches.
+			if((lhs_fn.param_count) == (rhs_fn.param_count))
+			{
+				i : u64 mut;
+				lhs_params ::= (lhs_fn.param_types)@ty&;
+				rhs_params ::= (rhs_fn.param_types)@ty&;
+				for(i = 0, i < (lhs_fn.param_count), i = i + 1)
+				{
+					lhs_param ::= deref(lhs_params at i);
+					rhs_param ::= deref(rhs_params at i);
+					if(ty_get_conv(lhs_param, rhs_param) != (tyconv.same))
+					{
+						return tyconv.cant;
+					}
+				}
+			}
+			return tyconv.same;
 		}
 	}
 	if(ty_is_integral(lhs))
