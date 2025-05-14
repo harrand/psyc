@@ -584,6 +584,16 @@ struct2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_val
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+init2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.init_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 if2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1021,6 +1031,43 @@ obracecbrace2blk ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+dotsymbolinit2wipinit ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	second ::= deref(nodes at 1);
+	utok ::= second.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipinit;
+		.init := ast_init
+		{
+			.name := src at (lex.off);
+			.name_len := lex.len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipinitexpr2init ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.init);
+	
+	ast_add_child(firstptr, last, ar);
+};
+
 grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
 {
 	grammar_install(
@@ -1307,6 +1354,13 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		__arrcpy(ast, my_nodes, expr(exp)),
 		token(tok),
 		token(lex_token.oparen),
+		rule(shift1));
+
+	// prevent initialisers from eating unfinished biops
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		node(ast_type.wipinit),
 		rule(shift1));
 };
 
@@ -1732,6 +1786,42 @@ grammar_defer_stmt ::= macro(s : ast_stmt static) -> v0
 		rule(deferstmt2unop));
 };
 
+grammar_initialiser ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.dot)),
+		token(lex_token.symbol),
+		null_stash,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.dot), token(lex_token.symbol), token(lex_token.initialiser)),
+		null_lookahead,
+		null_stash,
+		rule(dotsymbolinit2wipinit));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipinit)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+};
+
+grammar_initialiser_expr ::= macro(exp : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipinit),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipinit), expr(exp)),
+		null_lookahead,
+		null_stash,
+		rule(wipinitexpr2init));
+};
+
 grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
 {
 	grammar_install(
@@ -1907,14 +1997,24 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
+	grammar_stmtify(node(ast_type.init), rule(init2stmt));
 
 	// build regions
 	grammar_build_region();
 	// block statements
 	grammar_block();
 
+	// defer
 	grammar_defer();
 	grammar_defer_stmt(ast_stmt.expr_stmt);
+
+	grammar_initialiser();
+	grammar_initialiser_expr(ast_expr_type.symbol);
+	grammar_initialiser_expr(ast_expr_type.literal);
+	grammar_initialiser_expr(ast_expr_type.biop);
+	grammar_initialiser_expr(ast_expr_type.unop);
+	grammar_initialiser_expr(ast_expr_type.callfunc);
+	grammar_initialiser_expr(ast_expr_type.ret);
 
 	// commit all the statements to the final result (or a stashed node)
 	grammar_commit_stmt(ast_stmt.expr_stmt);
