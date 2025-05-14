@@ -594,16 +594,6 @@ init2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
-structinit2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
-{
-	setup_decls();
-	setup_delete_tail(parse_action.reduce);
-
-	(firstptr->type) = (ast_type.stmt);
-	(firstptr->stmt) = (ast_stmt.structinit_stmt);
-	(firstptr->cursor_end) = (last.cursor_end);
-};
-
 if2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1102,7 +1092,8 @@ wipstructinitcbrace2structinit ::= func(src : u8&, nodes : ast mut&, nodes_size 
 	setup_decls();
 	setup_delete_tail(parse_action.reduce);
 
-	(firstptr->type) = (ast_type.structinit);
+	(firstptr->type) = (ast_type.expr);
+	(firstptr->expr) = ast_expr{.type := ast_expr_type.structinit;};
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
@@ -1925,6 +1916,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_ret_expr(ast_expr_type.biop);
 	grammar_ret_expr(ast_expr_type.unop);
 	grammar_ret_expr(ast_expr_type.callfunc);
+	grammar_ret_expr(ast_expr_type.structinit);
 
 	grammar_parenthesised();
 	grammar_parenthesised_expr(ast_expr_type.symbol);
@@ -1933,6 +1925,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_parenthesised_expr(ast_expr_type.unop);
 	grammar_parenthesised_expr(ast_expr_type.callfunc);
 	grammar_parenthesised_expr(ast_expr_type.ret);
+	grammar_parenthesised_expr(ast_expr_type.structinit);
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
@@ -1943,6 +1936,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_decl_init(ast_expr_type.biop);
 	grammar_decl_init(ast_expr_type.unop);
 	grammar_decl_init(ast_expr_type.callfunc);
+	grammar_decl_init(ast_expr_type.structinit);
 
 	// unary operators
 	grammar_unop(lex_token.dash);
@@ -1951,6 +1945,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.dash, ast_expr_type.biop);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
+	grammar_unop_expr(lex_token.dash, ast_expr_type.structinit);
 
 	grammar_unop(lex_token.keyword_ref);
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.symbol);
@@ -1958,6 +1953,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.biop);
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.callfunc);
+	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.structinit);
 
 	grammar_unop(lex_token.keyword_deref);
 	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.symbol);
@@ -1965,6 +1961,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.biop);
 	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.callfunc);
+	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.structinit);
 
 	// binary operators
 	grammar_biop(ast_expr_type.symbol, lex_token.assign);
@@ -1972,66 +1969,77 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_biop(ast_expr_type.biop, lex_token.assign);
 	grammar_biop(ast_expr_type.unop, lex_token.assign);
 	grammar_biop(ast_expr_type.callfunc, lex_token.assign);
+	grammar_biop(ast_expr_type.structinit, lex_token.assign);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.plus);
 	grammar_biop(ast_expr_type.literal, lex_token.plus);
 	grammar_biop(ast_expr_type.biop, lex_token.plus);
 	grammar_biop(ast_expr_type.unop, lex_token.plus);
 	grammar_biop(ast_expr_type.callfunc, lex_token.plus);
+	grammar_biop(ast_expr_type.structinit, lex_token.plus);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.dash);
 	grammar_biop(ast_expr_type.literal, lex_token.dash);
 	grammar_biop(ast_expr_type.biop, lex_token.dash);
 	grammar_biop(ast_expr_type.unop, lex_token.dash);
 	grammar_biop(ast_expr_type.callfunc, lex_token.dash);
+	grammar_biop(ast_expr_type.structinit, lex_token.dash);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.asterisk);
 	grammar_biop(ast_expr_type.literal, lex_token.asterisk);
 	grammar_biop(ast_expr_type.biop, lex_token.asterisk);
 	grammar_biop(ast_expr_type.unop, lex_token.asterisk);
 	grammar_biop(ast_expr_type.callfunc, lex_token.asterisk);
+	grammar_biop(ast_expr_type.structinit, lex_token.asterisk);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.fslash);
 	grammar_biop(ast_expr_type.literal, lex_token.fslash);
 	grammar_biop(ast_expr_type.biop, lex_token.fslash);
 	grammar_biop(ast_expr_type.unop, lex_token.fslash);
 	grammar_biop(ast_expr_type.callfunc, lex_token.fslash);
+	grammar_biop(ast_expr_type.structinit, lex_token.fslash);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.bitwise_or);
 	grammar_biop(ast_expr_type.literal, lex_token.bitwise_or);
 	grammar_biop(ast_expr_type.biop, lex_token.bitwise_or);
 	grammar_biop(ast_expr_type.unop, lex_token.bitwise_or);
 	grammar_biop(ast_expr_type.callfunc, lex_token.bitwise_or);
+	grammar_biop(ast_expr_type.structinit, lex_token.bitwise_or);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.logical_or);
 	grammar_biop(ast_expr_type.literal, lex_token.logical_or);
 	grammar_biop(ast_expr_type.biop, lex_token.logical_or);
 	grammar_biop(ast_expr_type.unop, lex_token.logical_or);
 	grammar_biop(ast_expr_type.callfunc, lex_token.logical_or);
+	grammar_biop(ast_expr_type.structinit, lex_token.logical_or);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.bitwise_and);
 	grammar_biop(ast_expr_type.literal, lex_token.bitwise_and);
 	grammar_biop(ast_expr_type.biop, lex_token.bitwise_and);
 	grammar_biop(ast_expr_type.unop, lex_token.bitwise_and);
 	grammar_biop(ast_expr_type.callfunc, lex_token.bitwise_and);
+	grammar_biop(ast_expr_type.structinit, lex_token.bitwise_and);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.logical_and);
 	grammar_biop(ast_expr_type.literal, lex_token.logical_and);
 	grammar_biop(ast_expr_type.biop, lex_token.logical_and);
 	grammar_biop(ast_expr_type.unop, lex_token.logical_and);
 	grammar_biop(ast_expr_type.callfunc, lex_token.logical_and);
+	grammar_biop(ast_expr_type.structinit, lex_token.logical_and);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.literal, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.biop, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.unop, lex_token.keyword_at);
 	grammar_biop(ast_expr_type.callfunc, lex_token.keyword_at);
+	grammar_biop(ast_expr_type.structinit, lex_token.keyword_at);
 
 	grammar_biop(ast_expr_type.symbol, lex_token.cast);
 	grammar_biop(ast_expr_type.literal, lex_token.cast);
 	grammar_biop(ast_expr_type.biop, lex_token.cast);
 	grammar_biop(ast_expr_type.unop, lex_token.cast);
 	grammar_biop(ast_expr_type.callfunc, lex_token.cast);
+	grammar_biop(ast_expr_type.structinit, lex_token.cast);
 
 	// functions
 	grammar_wipfn();
@@ -2044,6 +2052,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_if_cond(ast_expr_type.biop);
 	grammar_if_cond(ast_expr_type.unop);
 	grammar_if_cond(ast_expr_type.callfunc);
+	grammar_if_cond(ast_expr_type.structinit);
 
 	grammar_if_else();
 
@@ -2054,6 +2063,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_call_param(ast_expr_type.biop);
 	grammar_call_param(ast_expr_type.unop);
 	grammar_call_param(ast_expr_type.callfunc);
+	grammar_call_param(ast_expr_type.structinit);
 
 	// structs
 	grammar_struct();
@@ -2069,7 +2079,6 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
 	grammar_stmtify(node(ast_type.init), rule(init2stmt));
-	grammar_stmtify(node(ast_type.structinit), rule(structinit2stmt));
 
 	// build regions
 	grammar_build_region();
@@ -2087,6 +2096,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_initialiser_expr(ast_expr_type.unop);
 	grammar_initialiser_expr(ast_expr_type.callfunc);
 	grammar_initialiser_expr(ast_expr_type.ret);
+	grammar_initialiser_expr(ast_expr_type.structinit);
 
 	grammar_structinit();
 

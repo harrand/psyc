@@ -34,8 +34,8 @@ semal_unop_function ::= struct
 
 semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
-stmt_jump_table : semal_function mut#9;
-expr_jump_table : semal_expr_function mut#6;
+stmt_jump_table : semal_function mut#8;
+expr_jump_table : semal_expr_function mut#7;
 biop_jump_table : semal_biop_function mut#10;
 unop_jump_table : semal_unop_function mut#4;
 
@@ -1049,6 +1049,33 @@ semal_ret_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&)
 	return zero;
 };
 
+semal_structinit_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	init ::= node->init;
+	type ::= scope_parse_typename(ctx.local, init.name, init.name_len);
+	if(ty_isbad(type))
+	{
+		psyc_error_begin(node->loc);
+		puts("structinit type ");
+		putchar('"');
+		putss(init.name, init.name_len);
+		putchar('"');
+		puts(" yielded badtype");
+	}
+	if(!ty_is(type, tytag.strct))
+	{
+		psyc_error_begin(node->loc);
+		puts("structinit type ");
+		putchar('"');
+		putss(init.name, init.name_len);
+		putchar('"');
+		puts(" was not a struct");
+	}
+	// todo: return proper sval
+	return just_type(type);
+};
+
 semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
@@ -1365,14 +1392,6 @@ semal_init_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 	return zero;
 };
 
-semal_structinit_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
-{
-	node ::= ctx.node;
-	puts("STRUCTINIT STMT");
-	putchar(10);
-	return zero;
-};
-
 semal_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
@@ -1402,7 +1421,6 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(stmt_jump_table at 5) = semal_function{.fn := semal_blk_stmt;};
 	deref(stmt_jump_table at 6) = semal_function{.fn := semal_if_stmt;};
 	deref(stmt_jump_table at 7) = semal_function{.fn := semal_init_stmt;};
-	deref(stmt_jump_table at 8) = semal_function{.fn := semal_structinit_stmt;};
 
 	deref(expr_jump_table at 0) = semal_expr_function{.fn := semal_symbol_expr;};
 	deref(expr_jump_table at 1) = semal_expr_function{.fn := semal_literal_expr;};
@@ -1410,6 +1428,7 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(expr_jump_table at 3) = semal_expr_function{.fn := semal_unop_expr;};
 	deref(expr_jump_table at 4) = semal_expr_function{.fn := semal_callfunc_expr;};
 	deref(expr_jump_table at 5) = semal_expr_function{.fn := semal_ret_expr;};
+	deref(expr_jump_table at 6) = semal_expr_function{.fn := semal_structinit_expr;};
 
 	litqual ::= (tyqual.weak) | (tyqual.static);
 	deref(literal_types at ((ast_literal_type.integral)@s64)) =
