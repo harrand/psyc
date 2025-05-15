@@ -188,18 +188,31 @@ semal_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 
 semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
+	node ::= ctx.node;
 	sym ::= expr.symbol;
 	maybe_variable ::= scope_find_variable(ctx.local, sym.symbol, sym.len);
 	if(maybe_variable != null)
 	{
 		return just_type(maybe_variable->type);
 	}
+	psyc_error_begin(node->loc);
+	puts("unknown symbol");
+	putchar('"');
+	putss(sym.symbol, sym.len);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
 semal_literal_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
+	node ::= ctx.node;
 	lit ::= expr.literal;
+	if((lit.type) == (ast_literal_type.zero_literal))
+	{
+		psyc_panic(node->loc, "zero literals NYI");
+	}
 	return sval
 	{
 		.type := deref(literal_types at ((lit.type)@s64));
