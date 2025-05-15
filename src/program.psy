@@ -13,6 +13,21 @@ variable_storage ::= struct
 	cap : u64;
 };
 
+macrodef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	type : ty;
+};
+
+macro_storage ::= struct
+{
+	data : macrodef mut&;
+	size : u64;
+	cap : u64;
+};
+
 function ::= struct
 {
 	node : ast&;
@@ -44,6 +59,7 @@ scope ::= struct
 	types : tybox;
 	vars : variable_storage;
 	funcs : function_storage;
+	macros : macro_storage;
 	parent : v0&;
 	loc : srcloc;
 	type : scope_type;
@@ -321,6 +337,7 @@ program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope m
 	id ::= prog->locals_size;
 	(prog->locals_size) = (prog->locals_size) + 1;
 	ptr ::= (prog->locals) at id;
+	deref(ptr) = zero;
 	(ptr->parent) = (parent@_);
 	(ptr->type) = type;
 	(ptr->scope_label) = label;
