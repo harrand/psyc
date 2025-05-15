@@ -36,7 +36,7 @@ semar : arena mut& mut;
 semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#9;
 expr_jump_table : semal_expr_function mut#7;
-biop_jump_table : semal_biop_function mut#10;
+biop_jump_table : semal_biop_function mut#12;
 unop_jump_table : semal_unop_function mut#4;
 
 literal_types : ty mut#5;
@@ -422,6 +422,61 @@ semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, l
 		psyc_exit_failure();
 	}
 	return lhs_ty;
+};
+
+semal_biop_compare ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	lhs_lit ::= lhs_val.literal;
+	rhs_lit ::= rhs_val.literal;
+	both_are_static : bool mut := ty_hasqual(lhs_val.type, tyqual.static);
+	if(!ty_hasqual(rhs_val.type, tyqual.static))
+	{
+		both_are_static = false;
+	}
+
+	ret : sval mut := just_type(ty_getprim(primty.bool, zero));
+	retty ::= ref(ret.type);
+	ret_lit ::= ref(ret.literal);
+	if(ty_is_integral(lhs_val.type))
+	{
+		if(ty_is_integral(rhs_val.type))
+		{
+			if(both_are_static)
+			{
+				(retty->qual) = ((retty->qual) | (tyqual.static));
+				(ret_lit->boolean) = ((lhs_lit.integral) == (rhs_lit.integral));
+			}
+		}
+	}
+	if(ty_is_boolean(lhs_val.type))
+	{
+		if(ty_is_boolean(rhs_val.type))
+		{
+			if(both_are_static)
+			{
+				(retty->qual) = ((retty->qual) | (tyqual.static));
+				(ret_lit->boolean) = ((lhs_lit.boolean) == (rhs_lit.boolean));
+			}
+		}
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		if(ty_is_floating_point(rhs_val.type))
+		{
+			if(both_are_static)
+			{
+				(retty->qual) = ((retty->qual) | (tyqual.static));
+				(ret_lit->boolean) = ((lhs_lit.floating_point) == (rhs_lit.floating_point));
+			}
+		}
+	}
+	return ret;
+};
+
+semal_biop_comparen ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	puts("compare");
+	return zero;
 };
 
 semal_biop_plus ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
@@ -1618,15 +1673,17 @@ semal_setup ::= func(a : arena mut&) -> v0
 		ty_getprim(primty.bool, tyqual.static);
 
 	deref(biop_jump_table at 0) = semal_biop_function{.fn := semal_biop_assign;};
-	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_plus;};
-	deref(biop_jump_table at 2) = semal_biop_function{.fn := semal_biop_minus;};
-	deref(biop_jump_table at 3) = semal_biop_function{.fn := semal_biop_multiply;};
-	deref(biop_jump_table at 4) = semal_biop_function{.fn := semal_biop_divide;};
-	deref(biop_jump_table at 5) = semal_biop_function{.fn := semal_biop_bitwise_or;};
-	deref(biop_jump_table at 6) = semal_biop_function{.fn := semal_biop_logical_or;};
-	deref(biop_jump_table at 7) = semal_biop_function{.fn := semal_biop_bitwise_and;};
-	deref(biop_jump_table at 8) = semal_biop_function{.fn := semal_biop_logical_and;};
-	deref(biop_jump_table at 9) = semal_biop_function{.fn := semal_biop_at;};
+	deref(biop_jump_table at 1) = semal_biop_function{.fn := semal_biop_compare;};
+	deref(biop_jump_table at 2) = semal_biop_function{.fn := semal_biop_comparen;};
+	deref(biop_jump_table at 3) = semal_biop_function{.fn := semal_biop_plus;};
+	deref(biop_jump_table at 4) = semal_biop_function{.fn := semal_biop_minus;};
+	deref(biop_jump_table at 5) = semal_biop_function{.fn := semal_biop_multiply;};
+	deref(biop_jump_table at 6) = semal_biop_function{.fn := semal_biop_divide;};
+	deref(biop_jump_table at 7) = semal_biop_function{.fn := semal_biop_bitwise_or;};
+	deref(biop_jump_table at 8) = semal_biop_function{.fn := semal_biop_logical_or;};
+	deref(biop_jump_table at 9) = semal_biop_function{.fn := semal_biop_bitwise_and;};
+	deref(biop_jump_table at 10) = semal_biop_function{.fn := semal_biop_logical_and;};
+	deref(biop_jump_table at 11) = semal_biop_function{.fn := semal_biop_at;};
 
 	deref(unop_jump_table at 0) = semal_unop_function{.fn := semal_unop_minus;};
 	deref(unop_jump_table at 1) = semal_unop_function{.fn := semal_unop_ref;};
