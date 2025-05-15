@@ -29,6 +29,67 @@ just_type ::= func(t : ty) -> sval
 	};
 };
 
+sval_i2f ::= func(v : sval_literal mut&) -> v0
+{
+	(v->floating_point) = ((v->integral)@f64);
+};
+
+sval_i2b ::= func(v : sval_literal mut&) -> v0
+{
+	(v->boolean) = ((v->integral) != 0);
+};
+
+sval_b2i ::= func(v : sval_literal mut&) -> v0
+{
+	if(v->boolean)
+	{
+		(v->integral) = 1;
+	}
+	if(!(v->boolean))
+	{
+		(v->integral) = 0;
+	}
+};
+
+sval_f2i ::= func(v : sval_literal mut&) -> v0
+{
+	(v->integral) = ((v->floating_point)@s64);
+};
+
+sval_convert ::= func(from : sval, to : ty) -> sval
+{
+	ret : sval mut := from;
+	(ret.type) = to;
+	lit ::= ref(ret.literal);
+
+	conv ::= ty_get_conv(from.type, to);
+	if(conv == (tyconv.cant))
+	{
+		return zero;
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		return zero;
+	}
+	if(conv == (tyconv.i2f))
+	{
+		sval_i2f(lit);
+	}
+	if(conv == (tyconv.i2b))
+	{
+		sval_i2b(lit);
+	}
+	if(conv == (tyconv.b2i))
+	{
+		sval_b2i(lit);
+	}
+	if(conv == (tyconv.f2i))
+	{
+		sval_f2i(lit);
+	}
+	return ret;
+};
+
 == build ==
 {
 	add_source_file("type.psy");

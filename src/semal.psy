@@ -424,59 +424,166 @@ semal_biop_arithmetic_common ::= func(op_name : u8&, lhs_ty : ty, rhs_ty : ty, l
 	return lhs_ty;
 };
 
+both ::= func(a : bool, b : bool) -> bool
+{
+	if(a)
+	{
+		if(b)
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
 semal_biop_compare ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
+	rhscpy : sval mut := rhs_val;
+
 	lhs_lit ::= lhs_val.literal;
-	rhs_lit ::= rhs_val.literal;
 	both_are_static : bool mut := ty_hasqual(lhs_val.type, tyqual.static);
-	if(!ty_hasqual(rhs_val.type, tyqual.static))
+	if(!ty_hasqual(rhscpy.type, tyqual.static))
 	{
 		both_are_static = false;
 	}
+	conv ::= ty_get_conv(rhscpy.type, lhs_val.type);
+	if(conv == (tyconv.cant))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("invalid comparison operator: rhs type");
+		putchar('"');
+		putty(rhscpy.type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		puts(" (but it could with a cast)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		// bad
+		psyc_error_begin(rhs_loc);
+		puts("invalid comparison operator: rhs type");
+		putchar('"');
+		putty(rhscpy.type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	rhscpy = sval_convert(rhscpy, lhs_val.type);
+	rhs_lit ::= rhscpy.literal;
 
-	ret : sval mut := just_type(ty_getprim(primty.bool, zero));
-	retty ::= ref(ret.type);
-	ret_lit ::= ref(ret.literal);
-	if(ty_is_integral(lhs_val.type))
+	retqual : tyqual mut := zero;
+	ret_tag : sval_tag mut := zero;
+	ret_lit : sval_literal mut := zero;
+
+	if(both_are_static)
 	{
-		if(ty_is_integral(rhs_val.type))
+		retqual = (tyqual.static);
+		ret_tag = (sval_tag.literal);
+
+		if(both(ty_is_integral(lhs_val.type), ty_is_integral(rhscpy.type)))
 		{
-			if(both_are_static)
-			{
-				(retty->qual) = ((retty->qual) | (tyqual.static));
-				(ret_lit->boolean) = ((lhs_lit.integral) == (rhs_lit.integral));
-			}
+			(ret_lit.boolean) = ((lhs_lit.integral) == (rhs_lit.integral));
+		}
+		if(both(ty_is_boolean(lhs_val.type), ty_is_boolean(rhscpy.type)))
+		{
+			(ret_lit.boolean) = ((lhs_lit.boolean) == (rhs_lit.boolean));
+		}
+		if(both(ty_is_floating_point(lhs_val.type), ty_is_floating_point(rhscpy.type)))
+		{
+			(ret_lit.boolean) = ((lhs_lit.floating_point) == (rhs_lit.floating_point));
 		}
 	}
-	if(ty_is_boolean(lhs_val.type))
+
+	return sval
 	{
-		if(ty_is_boolean(rhs_val.type))
-		{
-			if(both_are_static)
-			{
-				(retty->qual) = ((retty->qual) | (tyqual.static));
-				(ret_lit->boolean) = ((lhs_lit.boolean) == (rhs_lit.boolean));
-			}
-		}
-	}
-	if(ty_is_floating_point(lhs_val.type))
-	{
-		if(ty_is_floating_point(rhs_val.type))
-		{
-			if(both_are_static)
-			{
-				(retty->qual) = ((retty->qual) | (tyqual.static));
-				(ret_lit->boolean) = ((lhs_lit.floating_point) == (rhs_lit.floating_point));
-			}
-		}
-	}
-	return ret;
+		.type := ty_getprim(primty.bool, retqual);
+		.tag := ret_tag;
+		.literal := ret_lit;
+	};
 };
 
 semal_biop_comparen ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
-	puts("compare");
-	return zero;
+	rhscpy : sval mut := rhs_val;
+
+	lhs_lit ::= lhs_val.literal;
+	both_are_static : bool mut := ty_hasqual(lhs_val.type, tyqual.static);
+	if(!ty_hasqual(rhscpy.type, tyqual.static))
+	{
+		both_are_static = false;
+	}
+	conv ::= ty_get_conv(rhscpy.type, lhs_val.type);
+	if(conv == (tyconv.cant))
+	{
+		psyc_error_begin(lhs_loc);
+		puts("invalid comparison operator: rhs type");
+		putchar('"');
+		putty(rhscpy.type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		puts(" (but it could with a cast)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		// bad
+		psyc_error_begin(rhs_loc);
+		puts("invalid comparison operator: rhs type");
+		putchar('"');
+		putty(rhscpy.type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	rhscpy = sval_convert(rhscpy, lhs_val.type);
+	rhs_lit ::= rhscpy.literal;
+
+	retqual : tyqual mut := zero;
+	ret_tag : sval_tag mut := zero;
+	ret_lit : sval_literal mut := zero;
+
+	if(both_are_static)
+	{
+		retqual = (tyqual.static);
+		ret_tag = (sval_tag.literal);
+
+		if(both(ty_is_integral(lhs_val.type), ty_is_integral(rhscpy.type)))
+		{
+			(ret_lit.boolean) = ((lhs_lit.integral) != (rhs_lit.integral));
+		}
+		if(both(ty_is_boolean(lhs_val.type), ty_is_boolean(rhscpy.type)))
+		{
+			(ret_lit.boolean) = ((lhs_lit.boolean) != (rhs_lit.boolean));
+		}
+		if(both(ty_is_floating_point(lhs_val.type), ty_is_floating_point(rhscpy.type)))
+		{
+			(ret_lit.boolean) = ((lhs_lit.floating_point) != (rhs_lit.floating_point));
+		}
+	}
+
+	return sval
+	{
+		.type := ty_getprim(primty.bool, retqual);
+		.tag := ret_tag;
+		.literal := ret_lit;
+	};
 };
 
 semal_biop_plus ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
