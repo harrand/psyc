@@ -1306,20 +1306,23 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 			retty = program_parse_typename(prog, decl.typename, decl.typename_len);
 		}
 	}
+	init_val : sval mut := zero;
+	if((node->childcount) > 0)
+	{
+		init_val = semal_expr(context{.node := ast_get_child(node@_, 0); .local := ctx.local;}, prog);
+	}
 	if(is_deduced_type)
 	{
 		// deduced type.
-		if((node->childcount) == 0)
+		if(ty_isbad(init_val.type))
 		{
 			psyc_error_begin(node->loc);
 			puts("type-deduced decl ");
 			putss(decl.name, decl.name_len);
-			puts(" did not seem to have an initialiser expression");
+			puts(" did not have a deduceable initialiser");
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		init_node ::= ast_get_child(node@_, 0);
-		init_val ::= semal_expr(context{.node := init_node; .local := ctx.local;}, prog);
 		retty = (init_val.type);
 	}
 	if(ty_isbad(retty))
@@ -1346,6 +1349,50 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 		putchar('"');
 		psyc_diag_end();
 		psyc_exit_failure();
+	}
+	if((node->childcount) > 0)
+	{
+		// we have an initialiser set in init_val
+		// we know its not badtype
+		// lets make sure its convertible to the decl type.
+		conv ::= ty_get_conv(init_val.type, retty);
+		if(conv == (tyconv.cant))
+		{
+			psyc_error_begin(node->loc);
+			puts("decl ");
+			putchar('"');
+			putss(decl.name, decl.name_len);
+			putchar('"');
+			puts("'s initialiser of type ");
+			putchar('"');
+			putty(init_val.type);
+			putchar('"');
+			puts(" is not convertible to ");
+			putchar('"');
+			putty(retty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(conv == (tyconv.could_if_weak))
+		{
+			psyc_error_begin(node->loc);
+			puts("decl ");
+			putchar('"');
+			putss(decl.name, decl.name_len);
+			putchar('"');
+			puts("'s initialiser of type ");
+			putchar('"');
+			putty(init_val.type);
+			putchar('"');
+			puts(" is not convertible to ");
+			putchar('"');
+			putty(retty);
+			putchar('"');
+			puts(" (but it could with a cast)");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 	}
 
 	scope_declare_variable(ctx.local, semar, variable
