@@ -196,7 +196,7 @@ semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 		return just_type(maybe_variable->type);
 	}
 	psyc_error_begin(node->loc);
-	puts("unknown symbol");
+	puts("unknown symbol ");
 	putchar('"');
 	putss(sym.symbol, sym.len);
 	putchar('"');
@@ -858,16 +858,21 @@ semal_biop_at ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc
 	return just_type(retty);
 };
 
-semal_biop_field ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program mut&) -> sval
+semal_biop_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
+	lhs_result ::= semal_expr_common(lhs->expr, context
+	{
+		.node := lhs;
+		.local := ctx.local;
+	}, prog);
 	puts("todo: implement biop field ");
 	print_srcloc(node->loc);
 	putchar(10);
 	return zero;
 };
 
-semal_biop_ptr_field ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program mut&) -> sval
+semal_biop_ptr_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	puts("todo: implement biop ptr field ");
@@ -878,11 +883,11 @@ semal_biop_ptr_field ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : pr
 
 weakening_idiom ::= "_";
 
-semal_biop_cast ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program mut&) -> sval
+semal_biop_cast ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	lhs_expr ::= lhs.expr;
-	rhs_expr ::= rhs.expr;
+	lhs_expr ::= lhs->expr;
+	rhs_expr ::= rhs->expr;
 	// rhs must be a symbol expression
 	if((rhs_expr.type) != (ast_expr_type.symbol))
 	{
@@ -894,11 +899,11 @@ semal_biop_cast ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program
 		psyc_exit_failure();
 	}
 
-	lhs_val ::= semal_expr_common(lhs_expr, context{.node := ref lhs; .local := ctx.local;}, prog);
+	lhs_val ::= semal_expr_common(lhs_expr, context{.node := lhs; .local := ctx.local;}, prog);
 	lhs_ty ::= lhs_val.type;
 	if(ty_isbad(lhs_ty))
 	{
-		psyc_error_begin(lhs.loc);
+		psyc_error_begin(lhs->loc);
 		puts("lhs of binary operator cast yielded badtype");
 		psyc_diag_end();
 		psyc_exit_failure();
@@ -921,7 +926,7 @@ semal_biop_cast ::= func(lhs : ast, rhs : ast, ctx : context mut, prog : program
 	retty = scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
 	if(ty_isbad(retty))
 	{
-		psyc_error_begin(rhs.loc);
+		psyc_error_begin(rhs->loc);
 		puts("rhs of binary operator cast was typename ");
 		putchar('"');
 		putss(rhs_sym.symbol, rhs_sym.len);
@@ -962,20 +967,20 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		return semal_biop_ptr_field(lhs, rhs, ctx, prog);
 	}
 
-	lhs_val ::= semal_expr_common(lhs.expr, context{.node := ref lhs; .local := ctx.local;}, prog);
+	lhs_val ::= semal_expr_common(lhs->expr, context{.node := lhs; .local := ctx.local;}, prog);
 	if(ty_isbad(lhs_val.type))
 	{
-		psyc_error_begin(lhs.loc);
+		psyc_error_begin(lhs->loc);
 		puts("lhs of binary operator ");
 		puts(__enumname(biop.type));
 		puts(" yielded badtype");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_val ::= semal_expr_common(rhs.expr, context{.node := ref rhs; .local := ctx.local;}, prog);
+	rhs_val ::= semal_expr_common(rhs->expr, context{.node := rhs; .local := ctx.local;}, prog);
 	if(ty_isbad(rhs_val.type))
 	{
-		psyc_error_begin(rhs.loc);
+		psyc_error_begin(rhs->loc);
 		puts("rhs of binary operator ");
 		puts(__enumname(biop.type));
 		puts(" yielded badtype");
@@ -987,7 +992,7 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	subtraction ::= 0;
 	idx ::= pre_transform_idx - subtraction;
 	jump ::= deref(biop_jump_table at idx);
-	return jump.fn(lhs_val, rhs_val, lhs.loc, rhs.loc, ctx, prog);
+	return jump.fn(lhs_val, rhs_val, lhs->loc, rhs->loc, ctx, prog);
 };
 
 
@@ -1673,9 +1678,6 @@ semal_if_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 			}, prog);
 		}
 	}
-
-	print_srcloc(node->loc);
-	putchar(10);
 	return zero;
 };
 
