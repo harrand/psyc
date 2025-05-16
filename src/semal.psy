@@ -861,14 +861,84 @@ semal_biop_at ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc
 semal_biop_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	lhs_result ::= semal_expr_common(lhs->expr, context
+
+	// the rhs of a field is expected to be an expression
+	// either a symbol expression or a callfunc expression
+	if((rhs->type) != (ast_type.expr))
+	{
+		psyc_panic(rhs->loc, "expected rhs of biop field to be an expression, but it is not");
+	}
+	rhs_expr ::= rhs->expr;
+
+	rhs_name : u8& mut;
+	rhs_len : u64 mut;
+	if((rhs_expr.type) == (ast_expr_type.symbol))
+	{
+		rhs_symbol ::= rhs_expr.symbol;
+		rhs_name = (rhs_symbol.symbol);
+		rhs_len = (rhs_symbol.len);
+	}
+	if((rhs_expr.type) == (ast_expr_type.callfunc))
+	{
+		rhs_callfunc ::= rhs_expr.callfunc;
+		rhs_name = (rhs_callfunc.funcname);
+		rhs_len = (rhs_callfunc.funcname_len);
+	}
+	puts("rhs string: ");
+	putss(rhs_name, rhs_len);
+	putchar(10);
+	// todo: find the member matching rhs_name, rhs_len
+	// return its type
+
+	lhs_val ::= semal_expr_common(lhs->expr, context
 	{
 		.node := lhs;
 		.local := ctx.local;
 	}, prog);
-	puts("todo: implement biop field ");
-	print_srcloc(node->loc);
-	putchar(10);
+	lhs_ty ::= lhs_val.type;
+	if((lhs_ty.tag) == (tytag.strct))
+	{
+		structty ::= lhs_ty.strct;
+		i : u64 mut;
+		memtypes ::= structty.member_types@ty&;
+		mem_id : u64 mut := -1;
+		for(i = 0, i < (structty.member_count), i = i + 1)
+		{
+			memname ::= deref((structty.member_names) at i);
+			memname_len ::= deref((structty.member_name_lens) at i);
+			if(memname_len == rhs_len)
+			{
+				if(cstreql_n(memname, rhs_name, memname_len))
+				{
+					// we have found the member
+					// return it
+					type ::= deref(memtypes at i);
+					if(ty_hasqual(lhs_ty, tyqual.mut))
+					{
+						(type.qual) = (type.qual) | (tyqual.mut);
+					}
+					return just_type(type);
+				}
+			}
+		}
+		psyc_error_begin(lhs->loc);
+		puts("field-access is invalid because struct data member ");
+		putchar('"');
+		putty(lhs_ty);
+		puts("::");
+		putss(rhs_name, rhs_len);
+		putchar('"');
+		puts(" doesn't exist");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	psyc_error_begin(lhs->loc);
+	puts("lhs of field-access is of non-struct type ");
+	putchar('"');
+	putty(lhs_ty);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
