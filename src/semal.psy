@@ -858,6 +858,76 @@ semal_biop_at ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc
 	return just_type(retty);
 };
 
+semal_biop_field_struct ::= func(lhs_ty : ty, rhs_name : u8&, rhs_len : u64, lhs_loc : srcloc, rhs_loc : srcloc) -> sval
+{
+	structty ::= lhs_ty.strct;
+	i : u64 mut;
+	memtypes ::= structty.member_types@ty&;
+	mem_id : u64 mut := -1;
+	for(i = 0, i < (structty.member_count), i = i + 1)
+	{
+		memname ::= deref((structty.member_names) at i);
+		memname_len ::= deref((structty.member_name_lens) at i);
+		if(memname_len == rhs_len)
+		{
+			if(cstreql_n(memname, rhs_name, memname_len))
+			{
+				// we have found the member
+				// return it
+				type ::= deref(memtypes at i);
+				if(ty_hasqual(lhs_ty, tyqual.mut))
+				{
+					(type.qual) = (type.qual) | (tyqual.mut);
+				}
+				return just_type(type);
+			}
+		}
+	}
+	psyc_error_begin(rhs_loc);
+	puts("field-access is invalid because struct data member ");
+	putchar('"');
+	putty(lhs_ty);
+	puts("::");
+	putss(rhs_name, rhs_len);
+	putchar('"');
+	puts(" doesn't exist");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+semal_field_common ::= func(lhs_ty : ty, rhs_expr : ast_expr, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	rhs_name : u8& mut;
+	rhs_len : u64 mut;
+	// note hh: this will accept callfunc exprs and even return the expected result for an enum too
+	// however, enums shouldnt allow callfunc -> symbol like this as that syntax is only for function pointer calling.
+	if(!ast_try_get_symbol_from_expr(rhs_expr, ref rhs_name, ref rhs_len))
+	{
+		psyc_error_begin(rhs_loc);
+		puts("rhs of field-expr could not be interpreted as a data member name (struct) nor a enum entry name (enum)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	if((lhs_ty.tag) == (tytag.strct))
+	{
+		return semal_biop_field_struct(lhs_ty, rhs_name, rhs_len, lhs_loc, rhs_loc);
+	}
+	if((lhs_ty.tag) == (tytag.enm))
+	{
+		psyc_panic(lhs_loc, "field-expr is NYI for enums");
+	}
+	psyc_error_begin(lhs_loc);
+	puts("lhs of field-access is of non-struct type ");
+	putchar('"');
+	putty(lhs_ty);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 semal_biop_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
@@ -868,27 +938,18 @@ semal_biop_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, pro
 	{
 		psyc_panic(rhs->loc, "expected rhs of biop field to be an expression, but it is not");
 	}
-	rhs_expr ::= rhs->expr;
+	lhs_val ::= semal_expr_common(lhs->expr, context
+	{
+		.node := lhs;
+		.local := ctx.local;
+	}, prog);
+	lhs_ty ::= lhs_val.type;
+	return semal_field_common(lhs_ty, rhs->expr, lhs->loc, rhs->loc, ctx, prog);
+};
 
-	rhs_name : u8& mut;
-	rhs_len : u64 mut;
-	if((rhs_expr.type) == (ast_expr_type.symbol))
-	{
-		rhs_symbol ::= rhs_expr.symbol;
-		rhs_name = (rhs_symbol.symbol);
-		rhs_len = (rhs_symbol.len);
-	}
-	if((rhs_expr.type) == (ast_expr_type.callfunc))
-	{
-		rhs_callfunc ::= rhs_expr.callfunc;
-		rhs_name = (rhs_callfunc.funcname);
-		rhs_len = (rhs_callfunc.funcname_len);
-	}
-	puts("rhs string: ");
-	putss(rhs_name, rhs_len);
-	putchar(10);
-	// todo: find the member matching rhs_name, rhs_len
-	// return its type
+semal_biop_ptr_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
 
 	lhs_val ::= semal_expr_common(lhs->expr, context
 	{
@@ -896,59 +957,21 @@ semal_biop_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, pro
 		.local := ctx.local;
 	}, prog);
 	lhs_ty ::= lhs_val.type;
-	if((lhs_ty.tag) == (tytag.strct))
+
+	if(!ty_is(lhs_ty, tytag.ptr))
 	{
-		structty ::= lhs_ty.strct;
-		i : u64 mut;
-		memtypes ::= structty.member_types@ty&;
-		mem_id : u64 mut := -1;
-		for(i = 0, i < (structty.member_count), i = i + 1)
-		{
-			memname ::= deref((structty.member_names) at i);
-			memname_len ::= deref((structty.member_name_lens) at i);
-			if(memname_len == rhs_len)
-			{
-				if(cstreql_n(memname, rhs_name, memname_len))
-				{
-					// we have found the member
-					// return it
-					type ::= deref(memtypes at i);
-					if(ty_hasqual(lhs_ty, tyqual.mut))
-					{
-						(type.qual) = (type.qual) | (tyqual.mut);
-					}
-					return just_type(type);
-				}
-			}
-		}
 		psyc_error_begin(lhs->loc);
-		puts("field-access is invalid because struct data member ");
+		puts("unexpected field (->) operator non non-pointer type ");
 		putchar('"');
 		putty(lhs_ty);
-		puts("::");
-		putss(rhs_name, rhs_len);
 		putchar('"');
-		puts(" doesn't exist");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	psyc_error_begin(lhs->loc);
-	puts("lhs of field-access is of non-struct type ");
-	putchar('"');
-	putty(lhs_ty);
-	putchar('"');
-	psyc_diag_end();
-	psyc_exit_failure();
-	return zero;
-};
+	lhs_ptr ::= lhs_ty.ptr;
+	lhs_underlying ::= deref((lhs_ptr.underlying)@ty&);
 
-semal_biop_ptr_field ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog : program mut&) -> sval
-{
-	node ::= ctx.node;
-	puts("todo: implement biop ptr field ");
-	print_srcloc(node->loc);
-	putchar(10);
-	return zero;
+	return semal_field_common(lhs_underlying, rhs->expr, lhs->loc, rhs->loc, ctx, prog);
 };
 
 weakening_idiom ::= "_";
