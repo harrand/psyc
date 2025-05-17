@@ -37,7 +37,7 @@ semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#9;
 expr_jump_table : semal_expr_function mut#7;
 biop_jump_table : semal_biop_function mut#12;
-unop_jump_table : semal_unop_function mut#4;
+unop_jump_table : semal_unop_function mut#6;
 
 literal_types : ty mut#5;
 
@@ -253,6 +253,43 @@ semal_unop_minus ::= func(operand : sval mut, operand_loc : srcloc, ctx : contex
 	literal ::= ref(operand.literal);
 	(literal->integral) = -(literal->integral);
 	(literal->floating_point) = -(literal->floating_point);
+	return operand;
+};
+
+semal_unop_bitwise_invert ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	if(!ty_is_integral(operand.type))
+	{
+		psyc_error_begin(operand_loc);
+		puts("operand of bitwise-invert is of type ");
+		putchar('"');
+		putty(operand.type);
+		putchar('"');
+		puts(", but it must be an 'integral' type");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	literal ::= ref(operand.literal);
+	// todo: replace this with tilde when you build this with the bootstrap compiler
+	(literal->integral) = !(literal->integral);
+	return operand;
+};
+
+semal_unop_logical_invert ::= func(operand : sval mut, operand_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
+{
+	if(!ty_is_boolean(operand.type))
+	{
+		psyc_error_begin(operand_loc);
+		puts("operand of logical-invert is of type ");
+		putchar('"');
+		putty(operand.type);
+		putchar('"');
+		puts(", but it must be a 'boolean' type");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	literal ::= ref(operand.literal);
+	(literal->boolean) = (!(literal->boolean));
 	return operand;
 };
 
@@ -2002,9 +2039,11 @@ semal_setup ::= func(a : arena mut&) -> v0
 	deref(biop_jump_table at 11) = semal_biop_function{.fn := semal_biop_at;};
 
 	deref(unop_jump_table at 0) = semal_unop_function{.fn := semal_unop_minus;};
-	deref(unop_jump_table at 1) = semal_unop_function{.fn := semal_unop_ref;};
-	deref(unop_jump_table at 2) = semal_unop_function{.fn := semal_unop_deref;};
-	deref(unop_jump_table at 3) = semal_unop_function{.fn := semal_unop_defer;};
+	deref(unop_jump_table at 1) = semal_unop_function{.fn := semal_unop_bitwise_invert;};
+	deref(unop_jump_table at 2) = semal_unop_function{.fn := semal_unop_logical_invert;};
+	deref(unop_jump_table at 3) = semal_unop_function{.fn := semal_unop_ref;};
+	deref(unop_jump_table at 4) = semal_unop_function{.fn := semal_unop_deref;};
+	deref(unop_jump_table at 5) = semal_unop_function{.fn := semal_unop_defer;};
 };
 
 semal_is_build_region ::= func(n : ast&) -> bool
