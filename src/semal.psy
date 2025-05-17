@@ -323,7 +323,6 @@ semal_unop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 	return jump.fn(operand_val, operand->loc, ctx, prog);
 };
 
-
 semal_biop_assign ::= func(lhs_val : sval, rhs_val : sval, lhs_loc : srcloc, rhs_loc : srcloc, ctx : context mut, prog : program mut&) -> sval
 {
 	lhs_ty ::= lhs_val.type;
@@ -1001,7 +1000,18 @@ semal_biop_cast ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog
 		psyc_exit_failure();
 	}
 
-	lhs_val ::= semal_expr_common(lhs_expr, context{.node := lhs; .local := ctx.local;}, prog);
+	rhs_sym ::= rhs_expr.symbol;
+	retty : ty mut := scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
+
+	lhs_val : sval mut := semal_expr_common(lhs_expr, context{.node := lhs; .local := ctx.local;}, prog);
+	if(sval_iszero(lhs_val))
+	{
+		lhs_val = sval_convert(lhs_val, retty);
+	}
+	if(sval_isnull(lhs_val))
+	{
+		lhs_val = sval_convert(lhs_val, retty);
+	}
 	lhs_ty ::= lhs_val.type;
 	if(ty_isbad(lhs_ty))
 	{
@@ -1011,9 +1021,6 @@ semal_biop_cast ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog
 		psyc_exit_failure();
 	}
 
-	retty : ty mut;
-
-	rhs_sym ::= rhs_expr.symbol;
 	if((rhs_sym.len) == cstrlen(weakening_idiom))
 	{
 		if(cstreql_n(rhs_sym.symbol, weakening_idiom, rhs_sym.len))
@@ -1024,8 +1031,6 @@ semal_biop_cast ::= func(lhs : ast mut&, rhs : ast mut&, ctx : context mut, prog
 			return just_type(retty);
 		}
 	}
-	// not the weakening idiom.
-	retty = scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
 	if(ty_isbad(retty))
 	{
 		psyc_error_begin(rhs->loc);
@@ -1079,7 +1084,15 @@ semal_biop_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_val ::= semal_expr_common(rhs->expr, context{.node := rhs; .local := ctx.local;}, prog);
+	rhs_val : sval mut := semal_expr_common(rhs->expr, context{.node := rhs; .local := ctx.local;}, prog);
+	if(sval_iszero(rhs_val))
+	{
+		rhs_val = sval_convert(rhs_val, lhs_val.type);
+	}
+	if(sval_isnull(rhs_val))
+	{
+		rhs_val = sval_convert(rhs_val, lhs_val.type);
+	}
 	if(ty_isbad(rhs_val.type))
 	{
 		psyc_error_begin(rhs->loc);
@@ -1421,6 +1434,26 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 	if(is_deduced_type)
 	{
 		// deduced type.
+		if(sval_isnull(init_val))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid use of the 'null' literal as a type-deduced initialiser for decl ");
+			putchar('"');
+			putss(decl.name, decl.name_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(sval_iszero(init_val))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid use of the 'zero' literal as a type-deduced initialiser for decl ");
+			putchar('"');
+			putss(decl.name, decl.name_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		if(ty_isbad(init_val.type))
 		{
 			psyc_error_begin(node->loc);
@@ -1459,6 +1492,14 @@ semal_decl_common ::= func(decl : ast_decl, ctx : context mut, prog : program mu
 	}
 	if((node->childcount) > 0)
 	{
+		if(sval_iszero(init_val))
+		{
+			init_val = sval_convert(init_val, retty);
+		}
+		if(sval_isnull(init_val))
+		{
+			init_val = sval_convert(init_val, retty);
+		}
 		// we have an initialiser set in init_val
 		// we know its not badtype
 		// lets make sure its convertible to the decl type.

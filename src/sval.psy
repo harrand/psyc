@@ -2,7 +2,8 @@ sval_tag ::= enum
 {
 	.val_undef := 1;
 	.val_zero := 2;
-	.literal := 3;
+	.val_null := 3;
+	.literal := 4;
 };
 
 sval_literal_tag ::= alias ast_literal_type;
@@ -18,6 +19,16 @@ sval ::= struct
 sval_hasval ::= func(v : sval) -> bool
 {
 	return (v.tag) != zero;
+};
+
+sval_iszero ::= func(v : sval) -> bool
+{
+	return (v.tag) == (sval_tag.val_zero);
+};
+
+sval_isnull ::= func(v : sval) -> bool
+{
+	return (v.tag) == (sval_tag.val_null);
 };
 
 just_type ::= func(t : ty) -> sval
@@ -60,6 +71,16 @@ sval_convert ::= func(from : sval, to : ty) -> sval
 {
 	ret : sval mut := from;
 	(ret.type) = to;
+
+	if(sval_iszero(ret))
+	{
+		return ret;
+	}
+	if(sval_isnull(ret))
+	{
+		return ret;
+	}
+
 	lit ::= ref(ret.literal);
 
 	conv ::= ty_get_conv(from.type, to);
