@@ -196,6 +196,12 @@ semal_symbol_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 	{
 		return just_type(maybe_variable->type);
 	}
+
+	maybe_function ::= scope_find_function(ctx.local, sym.symbol, sym.len);
+	if(maybe_function != null)
+	{
+		return just_type(maybe_function->type);
+	}
 	psyc_error_begin(node->loc);
 	puts("unknown symbol ");
 	putchar('"');
@@ -1194,9 +1200,33 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 	{
 		return builtin_result;
 	}
+	func_type : ty mut := zero;
 
+	fnvar ::= scope_find_variable(ctx.local, callfunc.funcname, callfunc.funcname_len);
+	if(fnvar != null)
+	{
+		func_type = (fnvar->type);
+		if(!ty_is(func_type, tytag.fn))
+		{
+			psyc_error_begin(node->loc);
+			puts("cannot call ");
+			putchar('"');
+			putss(callfunc.funcname, callfunc.funcname_len);
+			putchar('"');
+			puts(" as it is of non-function-type ");
+			putchar('"');
+			putty(func_type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 	fn ::= scope_find_function(ctx.local, callfunc.funcname, callfunc.funcname_len);
-	if(fn == null)
+	if(fn != null)
+	{
+		func_type = (fn->type);
+	}
+	if(ty_isbad(func_type))
 	{
 		psyc_error_begin(node->loc);
 		puts("could not find a declared function named ");
@@ -1206,7 +1236,6 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	func_type ::= fn->type;
 	func_payload ::= func_type.fn;
 	return_type ::= deref((func_payload.return_type)@ty&);
 
@@ -1223,7 +1252,8 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 		putuint(call_param_count);
 		puts(" params, but expects ");
 		putuint(def_param_count);
-		puts(".");
+		puts(": ");
+		putty(func_type);
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -1263,6 +1293,8 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 			putchar('"');
 			putty(def_param_ty);
 			putchar('"');
+			puts(": ");
+			putty(func_type);
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
@@ -1284,6 +1316,8 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 			putty(def_param_ty);
 			putchar('"');
 			puts(" (but it could with a cast)");
+			puts(": ");
+			putty(func_type);
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
