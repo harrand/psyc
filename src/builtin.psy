@@ -50,10 +50,36 @@ sb_warning ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program 
 	return zero;
 };
 
+sb_dumptype ::= func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+
+	if((node->childcount) != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("__warning takes 1 param, you passed ");
+		putuint(node->childcount);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	param ::= ast_get_child(node@_, 0);
+	param_val ::= semal_expr(context
+	{
+		.node := param@_;
+		.local := ctx.local;
+	}, prog);
+
+	psyc_message_begin(node->loc);
+	putty(param_val.type);
+	psyc_diag_end();
+	return zero;
+};
+
 builtin_setup ::= func() -> v0
 {
 	deref(builtins at ((builtin.message)@s64)) = builtin_fn{.fn := sb_message;};
 	deref(builtins at ((builtin.warning)@s64)) = builtin_fn{.fn := sb_warning;};
+	deref(builtins at ((builtin.dumptype)@s64)) = builtin_fn{.fn := sb_dumptype;};
 };
 
 == build ==
