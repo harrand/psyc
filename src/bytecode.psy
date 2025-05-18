@@ -2,8 +2,8 @@ bc_arena : arena mut& mut;
 
 bc_type ::= enum
 {
-	.builtin := 0;
-	.store := 1; // d0 = address, d1 = bc&
+	.store := 1; // d0 = dst addr, v1 = store value
+	.copy := 2; // d0 = dst addr, d1 = src addr
 	.load := 2; // d0 = address
 };
 
@@ -13,6 +13,7 @@ bc ::= struct
 	d0 : u64;
 	d1 : u64;
 	d2 : u64;
+	v0 : sval;
 };
 
 bc_fragment ::= struct
@@ -26,7 +27,15 @@ bc_fragment ::= struct
 	data_cap : u64;
 };
 
-//bc_store ::= func(addr : u64)
+bc_store ::= func(dst_addr : u64, store_val : sval) -> bc
+{
+	return bc
+	{
+		.type := bc_type.store;
+		.d0 := dst_addr;
+		.v0 := store_val;
+	};
+};
 
 frag_new_data ::= func(frag : bc_fragment mut&, data : sval) -> u64
 {
