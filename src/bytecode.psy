@@ -1,14 +1,14 @@
-byar : arena mut& mut;
+bc_arena : arena mut& mut;
 
-bval_type ::= enum
+bcdata_type ::= enum
 {
 	.literal := 1;
 	.ptr := 2;
 };
 
-bval ::= struct
+bcdata ::= struct
 {
-	type : bval_type;
+	type : bcdata_type;
 	literal : sval_literal;
 };
 
@@ -24,58 +24,59 @@ bc ::= struct
 
 bc_fragment ::= struct
 {
-	data : bc mut&;
+	code : bc mut&;
+	code_size : u64;
+	code_cap : u64;
+
+	data : bcdata mut&;
 	data_size : u64;
 	data_cap : u64;
 };
 
-bval_mem : bval mut& mut;
-bval_memsize : u64 mut;
-bval_memcap : u64 mut;
-
-bval_new ::= func(v : bval) -> u64
+frag_new_data ::= func(frag : bc_fragment mut&, data : bcdata) -> u64
 {
-	ret ::= bval_memsize;
-	if(bval_memcap == 0)
+	ret ::= frag->data_size;
+	if((frag->data_cap) == 0)
 	{
-		bval_memcap = 1024;
-		bval_mem = arena_push(byar, __sizeof(deref bval_mem) * bval_memcap);
+		(frag->data_cap) = 1024;
+		(frag->data) = arena_push(bc_arena, __sizeof(deref (frag->data)) * (frag->data_cap));
 	}
-	while(bval_memsize >= bval_memcap)
+	while((frag->data_size) >= (frag->data_cap))
 	{
-		olddata ::= bval_mem;
-		oldcap ::= bval_memcap;
-		bval_memcap = bval_memcap * 2;
-		bval_mem = arena_push(byar, __sizeof(deref bval_mem) * bval_memcap);
-		__memcpy(bval_mem, olddata, __sizeof(deref bval_mem) * oldcap);
+		oldcode ::= frag->data;
+		oldcap ::= frag->data_cap;
+		(frag->data_cap) = (frag->data_cap) * 2;
+		(frag->data) = arena_push(bc_arena, __sizeof(deref (frag->data)) * (frag->data_cap));
+		__memcpy(frag->data, oldcode, __sizeof(deref (frag->data)) * oldcap);
 	}
-	deref(bval_mem at ret) = v;
-	bval_memsize = bval_memsize + 1;
+
+	deref((frag->data) at ret) = data;
+	(frag->data_size) = (frag->data_size) + 1;
 	return ret;
 };
 
 frag_add_code ::= func(frag : bc_fragment mut&, code : bc) -> v0
 {
-	if((frag->data) == null)
+	if((frag->code) == null)
 	{
-		(frag->data_cap) = 1024;
-		(frag->data) = arena_push(byar, __sizeof(deref(frag->data)) * (frag->data_cap));
+		(frag->code_cap) = 1024;
+		(frag->code) = arena_push(bc_arena, __sizeof(deref(frag->code)) * (frag->code_cap));
 	}
-	while((frag->data_size) >= (frag->data_cap))
+	while((frag->code_size) >= (frag->code_cap))
 	{
-		oldcap ::= frag->data_cap;
-		olddata ::= frag->data;
-		(frag->data_cap) = (frag->data_cap) * 2;
-		(frag->data) = arena_push(byar, __sizeof(deref(frag->data)) * (frag->data_cap));
-		__memcpy(frag->data, olddata, __sizeof(deref(frag->data)) * oldcap);
+		oldcap ::= frag->code_cap;
+		oldcode ::= frag->code;
+		(frag->code_cap) = (frag->code_cap) * 2;
+		(frag->code) = arena_push(bc_arena, __sizeof(deref(frag->code)) * (frag->code_cap));
+		__memcpy(frag->code, oldcode, __sizeof(deref(frag->code)) * oldcap);
 	}
-	deref((frag->data) at (frag->data_size)) = code;
-	(frag->data_size) = (frag->data_size) * 2;
+	deref((frag->code) at (frag->code_size)) = code;
+	(frag->code_size) = (frag->code_size) * 2;
 };
 
 bytecode_setup ::= func(a : arena mut&) -> v0
 {
-	byar = a;
+	bc_arena = a;
 };
 
 == build ==
