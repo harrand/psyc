@@ -65,6 +65,8 @@ scope ::= struct
 	type : scope_type;
 	scope_label : u8&;
 	scope_label_len : u64;
+
+	code : bc_fragment;
 };
 
 program ::= struct
@@ -271,6 +273,11 @@ scope_declare_struct ::= func(s : scope mut&, strct : structty, loc : srcloc) ->
 	tybox_add_struct(types, strct, loc);
 };
 
+scope_add_code ::= func(s : scope mut&, code : bc) -> v0
+{
+	frag_add_code(ref(s->code), code);
+};
+
 scope_get_parent_function ::= func(s : scope&) -> function&
 {
 	curscope : scope& mut := s;
@@ -361,6 +368,11 @@ program_declare_struct ::= func(prog : program mut&, strct : structty, loc : src
 {
 	glob : scope mut& := ref(prog->global);
 	scope_declare_struct(glob, strct, loc);
+};
+
+program_new_data ::= func(prog : program mut&, data : bcdata) -> u64
+{
+	return frag_new_data(ref(prog->code), data);
 };
 
 program_add_code ::= func(prog : program mut&, code : bc) -> v0
