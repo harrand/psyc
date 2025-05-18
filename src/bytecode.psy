@@ -1,40 +1,85 @@
-bytecode_type ::= enum
+byar : arena mut& mut;
+
+bval_type ::= enum
+{
+	.literal := 1;
+	.ptr := 2;
+};
+
+bval ::= struct
+{
+	type : bval_type;
+	literal : sval_literal;
+};
+
+bc_type ::= enum
 {
 	.builtin := 0;
 };
 
-bytecode ::= struct
+bc ::= struct
 {
-	type : bytecode_type;
+	type : bc_type;
 };
 
-bytecode_fragment ::= struct
+bc_fragment ::= struct
 {
-	data : bytecode mut&;
+	data : bc mut&;
 	data_size : u64;
 	data_cap : u64;
 };
 
-frag_add_code ::= func(frag : bytecode_fragment mut&, code : bytecode, a : arena mut&) -> v0
+bval_mem : bval mut& mut;
+bval_memsize : u64 mut;
+bval_memcap : u64 mut;
+
+bval_new ::= func(v : bval) -> u64
+{
+	ret ::= bval_memsize;
+	if(bval_memcap == 0)
+	{
+		bval_memcap = 1024;
+		bval_mem = arena_push(byar, __sizeof(deref bval_mem) * bval_memcap);
+	}
+	while(bval_memsize >= bval_memcap)
+	{
+		olddata ::= bval_mem;
+		oldcap ::= bval_memcap;
+		bval_memcap = bval_memcap * 2;
+		bval_mem = arena_push(byar, __sizeof(deref bval_mem) * bval_memcap);
+		__memcpy(bval_mem, olddata, __sizeof(deref bval_mem) * oldcap);
+	}
+	deref(bval_mem at ret) = v;
+	bval_memsize = bval_memsize + 1;
+	return ret;
+};
+
+frag_add_code ::= func(frag : bc_fragment mut&, code : bc) -> v0
 {
 	if((frag->data) == null)
 	{
 		(frag->data_cap) = 1024;
-		(frag->data) = arena_push(a, __sizeof(deref(frag->data)) * (frag->data_cap));
+		(frag->data) = arena_push(byar, __sizeof(deref(frag->data)) * (frag->data_cap));
 	}
 	while((frag->data_size) >= (frag->data_cap))
 	{
 		oldcap ::= frag->data_cap;
 		olddata ::= frag->data;
 		(frag->data_cap) = (frag->data_cap) * 2;
-		(frag->data) = arena_push(a, __sizeof(deref(frag->data)) * (frag->data_cap));
+		(frag->data) = arena_push(byar, __sizeof(deref(frag->data)) * (frag->data_cap));
 		__memcpy(frag->data, olddata, __sizeof(deref(frag->data)) * oldcap);
 	}
 	deref((frag->data) at (frag->data_size)) = code;
 	(frag->data_size) = (frag->data_size) * 2;
 };
 
+bytecode_setup ::= func(a : arena mut&) -> v0
+{
+	byar = a;
+};
+
 == build ==
 {
 	add_source_file("stdlib/arena.psy");
+	add_source_file("sval.psy");
 }
