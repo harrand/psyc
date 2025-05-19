@@ -20,7 +20,9 @@ macrodef ::= struct
 	node : ast&;
 	name : u8&;
 	name_len : u64;
-	type : ty;
+	yield_type : ty;
+	first_id : u64;
+	yield_id : u64;
 };
 
 macro_storage ::= struct
@@ -245,6 +247,51 @@ scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) ->
 	}
 	deref((funcs->data) at (funcs->size)) = f;
 	(funcs->size) = (funcs->size) + 1;
+};
+
+scope_find_macro ::= func(s : scope mut&, macname : u8&, macname_len: u64) -> macrodef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curmac : macrodef& mut;
+	while(curscope != null)
+	{
+		macros ::= ref(curscope->macros)@_;
+		for(i = 0, i < (macros->size), i = i + 1)
+		{
+			curmac = (macros->data) at i;
+			if(macname_len == (curmac->name_len))
+			{
+				if(cstreql_n(curmac->name, macname, macname_len))
+				{
+					return curmac;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_macro ::= func(s : scope mut&, a : arena mut&, m : macrodef) -> v0
+{
+	macros ::= ref(s->macros);
+	if((macros->data) == null)
+	{
+		(macros->cap) = 8;
+		(macros->data) = arena_push(a, __sizeof(deref (macros->data)) * (macros->cap));
+	}
+	while((macros->size) >= (macros->cap))
+	{
+		oldcap ::= macros->cap;
+		olddata ::= macros->data;
+		(macros->cap) = (macros->cap) * 2;
+		(macros->data) = arena_push(a, __sizeof(deref (macros->data)) * (macros->cap));
+		__memcpy(macros->data, olddata, oldcap * __sizeof(deref (macros->data)));
+	}
+	deref((macros->data) at (macros->size)) = m;
+	(macros->size) = (macros->size) + 1;
 };
 
 scope_find_struct ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&
