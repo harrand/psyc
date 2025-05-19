@@ -1450,9 +1450,7 @@ semal_ret_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&)
 semal_yield_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
-	puts("yield detected ");
-	print_srcloc(node->loc);
-	putchar(10);
+	// doesnt do anything. it is handled at the point of macro call.
 	return zero;
 };
 
@@ -1827,15 +1825,32 @@ semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 		}
 	}
 
-	for(i = 0, i < param_count, i = i + 1)
-	{
-		// todo: type-check params?
-	}
-
+	curstmt : ast_stmt mut;
 	for(i = beyond_param_idx, i < childcount, i = i + 1)
 	{
 		curchild ::= ast_get_child(node@_, i);
 		// todo: find yield_id and set it.
+		if((curchild->type) == (ast_type.stmt))
+		{
+			curstmt = (curchild->stmt);
+			if(curstmt == (ast_stmt.expr_stmt))
+			{
+				curexpr ::= curchild->expr;
+				if((curexpr.type) == (ast_expr_type.yld))
+				{
+					if(yield_id != -1)
+					{
+						previous_yield ::= ast_get_child(node@_, yield_id);
+						psyc_error_begin(curchild->loc);
+						puts("multiple 'yield' statements detected within the same macro, previously defined ");
+						print_srcloc(previous_yield->loc);
+						psyc_diag_end();
+						psyc_exit_failure();
+					}
+					yield_id = i;
+				}
+			}
+		}
 	}
 
 	scope_declare_macro(ctx.local, semar, macrodef
