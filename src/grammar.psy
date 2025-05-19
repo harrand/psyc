@@ -588,6 +588,29 @@ keywordretexpr2ret ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pa
 	(ret.nodes_size) = 1;
 };
 
+keywordyieldexpr2yield ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.expr;
+		.expr := ast_expr
+		{
+			.type := ast_expr_type.yld;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_add_child((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
+};
+
 expr2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1324,6 +1347,30 @@ grammar_ret_expr ::= macro(exp : ast_expr_type static) -> v0
 		null_lookahead,
 		null_stash,
 		rule(keywordretexpr2ret));
+};
+
+grammar_yield ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_yield)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+};
+
+grammar_yield_expr ::= macro(exp : ast_expr_type static) -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		token(lex_token.keyword_yield),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_yield), expr(exp)),
+		null_lookahead,
+		null_stash,
+		rule(keywordyieldexpr2yield));
 };
 
 grammar_parenthesised ::= macro() -> v0
@@ -2144,6 +2191,14 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_ret_expr(ast_expr_type.callfunc);
 	grammar_ret_expr(ast_expr_type.structinit);
 
+	grammar_yield();
+	grammar_yield_expr(ast_expr_type.symbol);
+	grammar_yield_expr(ast_expr_type.literal);
+	grammar_yield_expr(ast_expr_type.biop);
+	grammar_yield_expr(ast_expr_type.unop);
+	grammar_yield_expr(ast_expr_type.callfunc);
+	grammar_yield_expr(ast_expr_type.structinit);
+
 	grammar_parenthesised();
 	grammar_parenthesised_expr(ast_expr_type.symbol);
 	grammar_parenthesised_expr(ast_expr_type.literal);
@@ -2349,6 +2404,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(expr(ast_expr_type.unop), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.callfunc), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.ret), rule(expr2stmt));
+	grammar_stmtify(expr(ast_expr_type.yld), rule(expr2stmt));
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.mac), rule(mac2stmt));
