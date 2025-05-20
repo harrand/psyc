@@ -62,6 +62,20 @@ function_storage ::= struct
 	cap : u64;
 };
 
+region ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+};
+
+region_storage ::= struct
+{
+	data : region mut&;
+	size : u64;
+	cap : u64;
+};
+
 scope_type ::= enum
 {
 	.program := 0;
@@ -81,6 +95,7 @@ scope ::= struct
 	structs : structdef_storage;
 	funcs : function_storage;
 	macros : macro_storage;
+	regions : region_storage;
 	parent : v0&;
 	loc : srcloc;
 	type : scope_type;
@@ -354,6 +369,51 @@ scope_declare_macro ::= func(s : scope mut&, a : arena mut&, m : macrodef) -> v0
 	}
 	deref((macros->data) at (macros->size)) = m;
 	(macros->size) = (macros->size) + 1;
+};
+
+scope_find_region ::= func(s : scope mut&, name : u8&, name_len: u64) -> region&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : region& mut;
+	while(curscope != null)
+	{
+		regions ::= ref(curscope->regions)@_;
+		for(i = 0, i < (regions->size), i = i + 1)
+		{
+			cur = (regions->data) at i;
+			if(name_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, name, name_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_region ::= func(s : scope mut&, a : arena mut&, r : region) -> v0
+{
+	regions ::= ref(s->regions);
+	if((regions->data) == null)
+	{
+		(regions->cap) = 8;
+		(regions->data) = arena_push(a, __sizeof(deref (regions->data)) * (regions->cap));
+	}
+	while((regions->size) >= (regions->cap))
+	{
+		oldcap ::= regions->cap;
+		olddata ::= regions->data;
+		(regions->cap) = (regions->cap) * 2;
+		(regions->data) = arena_push(a, __sizeof(deref (regions->data)) * (regions->cap));
+		__memcpy(regions->data, olddata, oldcap * __sizeof(deref (regions->data)));
+	}
+	deref((regions->data) at (regions->size)) = r;
+	(regions->size) = (regions->size) + 1;
 };
 
 scope_find_struct2 ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&

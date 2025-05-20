@@ -69,6 +69,27 @@ progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
 	node ::= ctx.node;
 	reg ::= node->region;
 
+	already ::= scope_find_region(ctx.local, reg.name, reg.name_len);
+	if(already != null)
+	{
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("a region named ");
+		putchar('"');
+		putss(reg.name, reg.name_len);
+		putchar('"');
+		puts(" was already defined in the same file ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	scope_declare_region(ctx.local, semar, region
+	{
+		.node := node;
+		.name := reg.name;
+		.name_len := reg.name_len;
+	});
+
 	puts("region ");
 	putss(reg.name, reg.name_len);
 	puts(" ");
@@ -114,6 +135,21 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
+
+	already ::= scope_find_function(ctx.local, fn.fn_name, fn.fn_name_len);
+	if(already != null)
+	{
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("a function named ");
+		putchar('"');
+		putss(fn.fn_name, fn.fn_name_len);
+		putchar('"');
+		puts(" was already defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	ret_ty : ty mut := scope_parse_typename(ctx.local, fn.ret_typename, fn.ret_typename_len);
 	// so the param count is *not* just equal to the childcount if the function is not extern.
@@ -168,6 +204,21 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
+
+	already ::= scope_find_macro(ctx.local, mac.mac_name, mac.mac_name_len);
+	if(already != null)
+	{
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("a macro named ");
+		putchar('"');
+		putss(mac.mac_name, mac.mac_name_len);
+		putchar('"');
+		puts(" was already defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	yield_id : u64 mut := -1;
 
