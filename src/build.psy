@@ -1,3 +1,5 @@
+bar : arena mut& mut;
+
 build_inst ::= enum
 {
 	.add_source_file := 0;
@@ -12,14 +14,19 @@ build_instructions : build_fn mut#1;
 
 bi_add_source_file ::= func(node : ast&, prog : program mut&) -> v0
 {
-	puts("YOOO WE BE ADDING A SOURCE FILE!!!! CRAY");
-	putchar(10);
+	param_node ::= ast_get_child(node@_, 0);
+	param_expr ::= param_node->expr;
+	path ::= param_expr.literal;
+
+	fn ::= prog->on_add_source_file;
+	fn(prog, path.chars, path.chars_len, bar);
 };
 
 build_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
+	bar = a;
 };
 
 get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
@@ -60,12 +67,6 @@ interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
 	}
 	inst ::= deref(build_instructions at (instid@s64));
 	inst.fn(node, prog);
-
-	puts("build instruction ");
-	putss(callfunc.funcname, callfunc.funcname_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 };
 
 interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0

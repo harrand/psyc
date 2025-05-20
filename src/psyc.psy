@@ -16,6 +16,17 @@ setup_arenas ::= macro() -> v0
 // read a file path. allocates for the whole file data. returns null if file didnt exist.
 fully_read_file ::= func(path : u8&, a : arena mut&) -> u8 mut&
 {
+	if(!file_exists(path))
+	{
+		psyc_error_begin(zero);
+		puts("file ");
+		putchar('"');
+		puts(path);
+		putchar('"');
+		puts(" could not be located");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	len ::= file_size_bytes(path);
 	if(len == 0)
 	{
@@ -39,17 +50,20 @@ precompile_build_file ::= func(prog : program mut&, path : u8&, a : arena mut&) 
 	interpret_build_region(prog, region);
 };
 
-compile_added_source ::= func(prog : program mut&, path : u8&, source : u8&, a : arena mut&) -> v0
+add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0
 {
+	prog ::= progptr@program mut&;
 	args ::= ref(prog->compile_args);
-	l ::= lex(path, source, a, args->verbose_lex);
+	// unfortunately file will need the path as a null terminated string.
+	// alloc time
+	pathstr : u8 mut& := arena_push(a, len + 1);
+	__memcpy(pathstr, path, len);
+	deref(pathstr at (len)) = 0;
+
+	source ::= fully_read_file(pathstr, a);
+	l ::= lex(pathstr, source, a, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
 	progwalk_file(prog, ref(p.root));
-};
-
-compile_added_file ::= func(prog : program mut&, source_file : u8&, a : arena mut&) -> v0
-{
-	compile_added_source(prog, source_file, fully_read_file(source_file, a), a);
 };
 
 compile_program ::= func(prog : program mut&, a : arena mut&) -> v0
@@ -71,6 +85,7 @@ main ::= func() -> s32
 	build_setup(permanent_arena);
 
 	prog : program mut := zero;
+	(prog.on_add_source_file) = add_source_file;
 	args ::= ref(prog.compile_args);
 	deref(args) = psyc_parse_args(permanent_arena);
 	if(args->verbose_parse)
