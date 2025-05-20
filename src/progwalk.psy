@@ -74,6 +74,12 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 	puts(" ");
 	print_srcloc(node->loc);
 	putchar(10);
+	program_declare_variable(prog, semar, variable
+	{
+		.node := node;
+		.name := decl.name;
+		.name_len := decl.name_len;
+	});
 };
 
 progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -113,22 +119,7 @@ progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
-
-	already ::= scope_find_struct(ctx.local, def.structname, def.structname_len);
-	if(already != null)
-	{
-		already_node ::= already->node;
-		psyc_error_begin(node->loc);
-		puts("a struct named ");
-		putchar('"');
-		putss(def.structname, def.structname_len);
-		putchar('"');
-		puts(" was already defined ");
-		print_srcloc(already_node->loc);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	scope_declare_struct(ctx.local, semar, structdef
+	program_declare_struct(prog, semar, structdef
 	{
 		.node := node;
 		.name := def.structname;
@@ -148,22 +139,6 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 	node ::= ctx.node;
 	fn ::= node->fn;
 
-	already ::= scope_find_function(ctx.local, fn.fn_name, fn.fn_name_len);
-	if(already != null)
-	{
-		already_node ::= already->node;
-		psyc_error_begin(node->loc);
-		puts("a function named ");
-		putchar('"');
-		putss(fn.fn_name, fn.fn_name_len);
-		putchar('"');
-		puts(" was already defined ");
-		print_srcloc(already_node->loc);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	ret_ty : ty mut := scope_parse_typename(ctx.local, fn.ret_typename, fn.ret_typename_len);
 	// so the param count is *not* just equal to the childcount if the function is not extern.
 	// the statements within are also child nodes.
 	// however, all ast_fn children will start off as decls (all the params) and then the contents of the implementation will follow
@@ -189,7 +164,7 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
 	// this can be fixed by simply using program_declare_function, but i don't feel comfortable just doing that willy-nilly
-	scope_declare_function(ctx.local, semar,
+	program_declare_function(prog, semar,
 		function{
 			.node := ctx.node;
 			.name := fn.fn_name;
@@ -216,21 +191,6 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
-
-	already ::= scope_find_macro(ctx.local, mac.mac_name, mac.mac_name_len);
-	if(already != null)
-	{
-		already_node ::= already->node;
-		psyc_error_begin(node->loc);
-		puts("a macro named ");
-		putchar('"');
-		putss(mac.mac_name, mac.mac_name_len);
-		putchar('"');
-		puts(" was already defined ");
-		print_srcloc(already_node->loc);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
 
 	yield_id : u64 mut := -1;
 
@@ -284,7 +244,7 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 		}
 	}
 
-	scope_declare_macro(ctx.local, semar, macrodef
+	program_declare_macro(prog, semar, macrodef
 	{
 		.node := node;
 		.name := mac.mac_name;
