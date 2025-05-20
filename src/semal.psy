@@ -1,20 +1,3 @@
-builtin ::= enum
-{
-	.message := 0;
-	.warning := 1;
-	.dumptype := 2;
-	.add_source_file := 3;
-	.add_link_library := 4;
-};
-
-builtin_fn ::= struct
-{
-	fn : func(call : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> sval;
-	type : fnty;
-};
-
-builtins : builtin_fn mut#5;
-
 semal_function ::= struct
 {
 	fn : func(ctx : context mut, prog : program mut&) -> sval;
@@ -25,77 +8,6 @@ semal_jump_table : semal_function mut#4;
 stmt_jump_table : semal_function mut#9;
 
 literal_types : ty mut#5;
-
-node_get_idx_of_first_return ::= func(node : ast mut&) -> u64
-{
-	i : u64 mut;
-	for(i = 0, i < (node->childcount), i = i + 1)
-	{
-		if(ast_is_expr(ast_get_child(node, i), ast_expr_type.ret))
-		{
-			return i;
-		}
-	}
-	return i - 1;
-};
-
-
-// if the node is deferred, return the actual node as if it wasnt deferred. if the node isnt deferred at all, return null
-deferred_node_get ::= func(node : ast&) -> ast&
-{
-	if((node->type) != (ast_type.stmt))
-	{
-		return null;
-	}
-	stmt ::= node->stmt;
-	if(stmt != (ast_stmt.expr_stmt))
-	{
-		return null;
-	}
-	expr ::= node->expr;
-	if((expr.type) == (ast_expr_type.unop))
-	{
-		unop ::= expr.unop;
-		if((unop.type) == (ast_unop_type.op_defer))
-		{
-			// yes we are a deferred node.
-			// return our child
-			return ast_get_child(node@_, 0);
-		}
-	}
-	return null;
-};
-
-defer_children ::= func(node : ast mut&) -> v0
-{
-	if((node->childcount) == 0)
-	{
-		return;
-	}
-	// re-arrange children to deal with deferred nodes.
-	i : u64 mut := 0;
-	curchild : ast& mut;
-	cur_deferred : ast& mut;
-	cache : ast mut;
-	last_id ::= node_get_idx_of_first_return(node);
-	last ::= ast_get_child(node@_, last_id);
-	while(i < (node->childcount))
-	{
-		curchild = ast_get_child(node, i);
-		cur_deferred = deferred_node_get(curchild);
-		if(cur_deferred != null)
-		{
-			cache = (deref cur_deferred);
-			// move all subsequent children down to replace us
-			__memcpy(curchild, curchild at 1, __sizeof(ast) * (last_id));
-			(deref last) = cache;
-		}
-		if(cur_deferred == null)
-		{
-			i = i + 1;
-		}
-	}
-};
 
 semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
@@ -112,34 +24,12 @@ semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
-	defer_children(node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
 	for(i = 0, i < count, i = i + 1)
 	{
 		semal_node(context
-		{
-			.node := childrenptr at i;
-			.local := ctx.local;
-		}, prog);
-	}
-};
-
-semal_children_recursive ::= func(ctx : context mut, prog : program mut&) -> v0
-{
-	node ::= ctx.node;
-	childrenptr ::= (node->children)@ast&;
-	count ::= node->childcount;
-	i : u64 mut;
-	for(i = 0, i < count, i = i + 1)
-	{
-		semal_node(context
-		{
-			.node := childrenptr at i;
-			.local := ctx.local;
-		}, prog);
-		semal_children_recursive(context
 		{
 			.node := childrenptr at i;
 			.local := ctx.local;
@@ -309,9 +199,6 @@ semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
-	puts("macro detected: ");
-	putss(mac.mac_name, mac.mac_name_len);
-	putchar(10);
 
 	yield_id : u64 mut := -1;
 
