@@ -228,6 +228,12 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 		psyc_exit_failure();
 	}
 	scope_declare_struct(ctx.local, retstruct, node->loc);
+
+	puts("struct ");
+	putss(def.structname, def.structname_len);
+	puts(" ");
+	print_srcloc(node->loc);
+	putchar(10);
 	return zero;
 };
 
@@ -282,7 +288,6 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 			.name_len := fn.fn_name_len;
 			.type := type;
 		});
-	ret ::= just_type(type);
 
 	if(fn.is_extern)
 	{
@@ -290,22 +295,14 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 		{
 			psyc_panic(node->loc, "extern fn expected all children to be decls representing params, but that seems to not be the case.");
 		}
-		return ret;
 	}
-	// go through the implementation
-	impl_child_node : ast mut& mut;
-	fn_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
-	defer_children(node@_);
-	for(i = beyond_param_idx, i < childcount, i = i + 1)
-	{
-		impl_child_node = ast_get_child(node@_, i);
-		semal_node(context
-		{
-			.node := impl_child_node;
-			.local := fn_scope;
-		}, prog);
-	}
-	return ret;
+
+	puts("func ");
+	putss(fn.fn_name, fn.fn_name_len);
+	puts(" ");
+	print_srcloc(node->loc);
+	putchar(10);
+	return just_type(type);
 };
 
 semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
@@ -377,6 +374,11 @@ semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 		.first_id := beyond_param_idx;
 		.yield_id := yield_id;
 	});
+	puts("macro ");
+	putss(mac.mac_name, mac.mac_name_len);
+	puts(" ");
+	print_srcloc(node->loc);
+	putchar(10);
 	return zero;
 };
 
