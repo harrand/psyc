@@ -1,0 +1,48 @@
+build_setup ::= func(a : arena mut&) -> v0
+{
+};
+
+interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
+{
+	expr ::= node->expr;
+	callfunc ::= expr.callfunc;
+
+	hash ::= hashdata(callfunc.funcname, callfunc.funcname_len);
+
+	puts("build instruction ");
+	putss(callfunc.funcname, callfunc.funcname_len);
+	puts(" ");
+	print_srcloc(node->loc);
+	puts(", hash = ");
+	putuint(hash);
+	putchar(10);
+};
+
+interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
+{
+	if(reg == null)
+	{
+		psyc_warning_begin(zero);
+		puts("no build region for this config detected");
+		psyc_diag_end();
+		return;
+	}
+	node ::= reg->node;
+	i : u64 mut;
+	childrenptr ::= (node->children)@ast&;
+	for(i = 0, i < (node->childcount), i = i + 1)
+	{
+		cur ::= childrenptr at i;
+		if(ast_is_expr(cur, ast_expr_type.callfunc))
+		{
+			interpret_build_instruction(prog, cur);
+		}
+	}
+};
+
+ == build ==
+ {
+	add_source_file("stdlib/hash.psy");
+ 	add_source_file("ast.psy");
+ 	add_source_file("program.psy");
+ }
