@@ -1195,41 +1195,65 @@ semal_call_function_pointer ::= func(callfunc : ast_callfunc_expr, ctx : context
 {
 	node ::= ctx.node;
 	fnvar ::= scope_find_variable(ctx.local, callfunc.funcname, callfunc.funcname_len);
-	if(fnvar != null)
+	if(fnvar == null)
 	{
-		func_type ::= (fnvar->type);
-		if(!ty_is(func_type, tytag.fn))
-		{
-			psyc_error_begin(node->loc);
-			puts("cannot call ");
-			putchar('"');
-			putss(callfunc.funcname, callfunc.funcname_len);
-			putchar('"');
-			puts(" as it is of non-function-type ");
-			putchar('"');
-			putty(func_type);
-			putchar('"');
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		return func_type;
+		return zero;
 	}
-	return zero;
+	func_type ::= (fnvar->type);
+	if(!ty_is(func_type, tytag.fn))
+	{
+		psyc_error_begin(node->loc);
+		puts("cannot call ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		puts(" as it is of non-function-type ");
+		putchar('"');
+		putty(func_type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return func_type;
 };
 
 semal_call_normal_function ::= func(callfunc : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> ty
 {
 	fn ::= scope_find_function(ctx.local, callfunc.funcname, callfunc.funcname_len);
-	if(fn != null)
+	if(fn == null)
 	{
-		return fn->type;
+		return zero;
 	}
-	return zero;
+	return fn->type;
 };
 
 semal_call_macro ::= func(callfunc : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> ty
 {
-	return zero;
+	node ::= ctx.node;
+	mac ::= scope_find_macro(ctx.local, callfunc.funcname, callfunc.funcname_len);
+	if(mac == null)
+	{
+		return zero;
+	}
+	macro_scope ::= program_new_scope(prog, semar, ctx.local, scope_type.macrocall, node->loc, callfunc.funcname, callfunc.funcname_len);
+	// todo: go through every macro param.
+	// - error if the decl name will shadow an existing symbol
+	macnode ::= mac->node;
+
+	// so we now need to "invoke" the macro
+	// we have to be really careful in how we do this.
+	// if the macro for example has a defer statement, then that defer should take it all the way to the end of the calling scope
+	// proper solution: deep-copy all nodes to our position in our parents child list.
+	// problem: our architecture doesnt make that easy
+
+	// alternate solution: just start invoking the macro child nodes now
+	// problem: defers wont work as expected. will have to seek them out and deep copy them
+
+	// so we might aswell just figure out a clever way to deep-copy the whole thing.
+	psyc_warning_begin(node->loc);
+	puts("calling macros is NYI");
+	psyc_diag_end();
+	return mac->yield_type;
 };
 
 semal_callfunc_typecheck_signature ::= func(callfunc : ast_callfunc_expr, func_type : ty, ctx : context mut, prog : program mut&) -> ty
@@ -1344,7 +1368,8 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 	}
 	if(ty_isbad(func_type))
 	{
-		func_type = semal_call_macro(callfunc, ctx, prog);
+		// note: calling macros has its own, special, cursed behaviour. we shouldnt do the normal functionty bits after so early-out.
+		return just_type(semal_call_macro(callfunc, ctx, prog));
 	}
 
 	if(ty_isbad(func_type))
