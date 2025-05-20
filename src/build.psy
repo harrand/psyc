@@ -1,5 +1,44 @@
+build_inst ::= enum
+{
+	.add_source_file := 0;
+};
+
+build_fn ::= struct
+{
+	fn : func(node : ast&, prog : program mut&) -> v0;
+};
+
+build_instructions : build_fn mut#1;
+
+bi_add_source_file ::= func(node : ast&, prog : program mut&) -> v0
+{
+	puts("YOOO WE BE ADDING A SOURCE FILE!!!! CRAY");
+	putchar(10);
+};
+
 build_setup ::= func(a : arena mut&) -> v0
 {
+	psyc_timed(psyc_stage.setup);
+	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
+};
+
+get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
+{
+	i : u64 mut;
+	len ::= __sizeof(build_instructions) / __sizeof(deref(build_instructions at 0));
+	for(i = 0, i < len, i = i + 1)
+	{
+		curname : u8& := __enumname(i@build_inst);
+		curname_len ::= cstrlen(curname);
+		if(curname_len == name_len)
+		{
+			if(cstreql_n(name, curname, name_len))
+			{
+				return i@build_inst;
+			}
+		}
+	}
+	return (-1)@build_inst;
 };
 
 interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
@@ -7,19 +46,31 @@ interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
 
-	hash ::= hashdata(callfunc.funcname, callfunc.funcname_len);
+	instid ::= get_build_instruction(callfunc.funcname, callfunc.funcname_len);
+	if(instid == ((-1)@build_inst))
+	{
+		// real bad
+		psyc_error_begin(node->loc);
+		puts("unknown build instruction ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	inst ::= deref(build_instructions at (instid@s64));
+	inst.fn(node, prog);
 
 	puts("build instruction ");
 	putss(callfunc.funcname, callfunc.funcname_len);
 	puts(" ");
 	print_srcloc(node->loc);
-	puts(", hash = ");
-	putuint(hash);
 	putchar(10);
 };
 
 interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
 {
+	psyc_timed(psyc_stage.meta);
 	if(reg == null)
 	{
 		psyc_warning_begin(zero);
@@ -42,7 +93,6 @@ interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
 
  == build ==
  {
-	add_source_file("stdlib/hash.psy");
  	add_source_file("ast.psy");
  	add_source_file("program.psy");
  }
