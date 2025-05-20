@@ -1,15 +1,15 @@
-semal_function ::= struct
+progwalk_function ::= struct
 {
 	fn : func(ctx : context mut, prog : program mut&) -> sval;
 };
 
 semar : arena mut& mut;
-semal_jump_table : semal_function mut#4;
-stmt_jump_table : semal_function mut#9;
+node_jump_table : progwalk_function mut#4;
+stmt_jump_table : progwalk_function mut#9;
 
 literal_types : ty mut#5;
 
-semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 
@@ -17,11 +17,11 @@ semal_node ::= func(ctx : context mut, prog : program mut&) -> v0
 	subtraction ::= (ast_type.stmt)@s64;
 
 	idx ::= pre_transform_idx - subtraction;
-	jump ::= deref(semal_jump_table at idx);
+	jump ::= deref(node_jump_table at idx);
 	jump.fn(ctx, prog);
 };
 
-semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_children ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast&;
@@ -29,7 +29,7 @@ semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 	i : u64 mut;
 	for(i = 0, i < count, i = i + 1)
 	{
-		semal_node(context
+		progwalk_node(context
 		{
 			.node := childrenptr at i;
 			.local := ctx.local;
@@ -37,7 +37,7 @@ semal_children ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
-semal_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
@@ -48,7 +48,7 @@ semal_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
 	return jump.fn(ctx, prog);
 };
 
-semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
@@ -83,7 +83,7 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 	return zero;
 };
 
-semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
@@ -138,7 +138,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	return zero;
 };
 
-semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
@@ -212,33 +212,33 @@ semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 	return zero;
 };
 
-semal_noop ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_noop ::= func(ctx : context mut, prog : program mut&) -> sval
 {
 	return zero;
 };
 
-semal_setup ::= func(a : arena mut&) -> v0
+progwalk_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	semar = a;
 
-	deref(semal_jump_table at 0) = semal_function{.fn := semal_stmt;};
-	deref(semal_jump_table at 1) = semal_function{.fn := semal_noop;};
-	deref(semal_jump_table at 2) = semal_function{.fn := semal_noop;};
-	deref(semal_jump_table at 3) = semal_function{.fn := semal_noop;};
+	deref(node_jump_table at 0) = progwalk_function{.fn := progwalk_stmt;};
+	deref(node_jump_table at 1) = progwalk_function{.fn := progwalk_noop;};
+	deref(node_jump_table at 2) = progwalk_function{.fn := progwalk_noop;};
+	deref(node_jump_table at 3) = progwalk_function{.fn := progwalk_noop;};
 
-	deref(stmt_jump_table at 0) = semal_function{.fn := semal_noop;};
-	deref(stmt_jump_table at 1) = semal_function{.fn := semal_noop;};
-	deref(stmt_jump_table at 2) = semal_function{.fn := semal_noop;};
-	deref(stmt_jump_table at 3) = semal_function{.fn := semal_structdef;};
-	deref(stmt_jump_table at 4) = semal_function{.fn := semal_fn;};
-	deref(stmt_jump_table at 5) = semal_function{.fn := semal_mac;};
-	deref(stmt_jump_table at 6) = semal_function{.fn := semal_noop;};
-	deref(stmt_jump_table at 7) = semal_function{.fn := semal_noop;};
-	deref(stmt_jump_table at 8) = semal_function{.fn := semal_noop;};
+	deref(stmt_jump_table at 0) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 1) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 2) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 3) = progwalk_function{.fn := progwalk_structdef;};
+	deref(stmt_jump_table at 4) = progwalk_function{.fn := progwalk_fn;};
+	deref(stmt_jump_table at 5) = progwalk_function{.fn := progwalk_mac;};
+	deref(stmt_jump_table at 6) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 7) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 8) = progwalk_function{.fn := progwalk_noop;};
 };
 
-semal_file ::= func(prog : program mut&, source : ast&) -> v0
+progwalk_file ::= func(prog : program mut&, source : ast&) -> v0
 {
 	psyc_timed(psyc_stage.semal);
 	global ::= prog->global;
@@ -246,7 +246,7 @@ semal_file ::= func(prog : program mut&, source : ast&) -> v0
 	// file scope is a child of the program scope
 	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc, null, zero);
 
-	semal_children(context
+	progwalk_children(context
 	{
 		.node := source;
 		.local := file_scope;
