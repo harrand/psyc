@@ -53,71 +53,26 @@ semal_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 	node ::= ctx.node;
 	def ::= node->structdef;
 
-	childcount ::= node->childcount;
-	// todo: check if structname is already defined.
-	retstruct : structty mut := zero;
-	(retstruct.member_count) = childcount;
-	(retstruct.name) = (def.structname);
-	(retstruct.name_len) = (def.structname_len);
-
-	(retstruct.member_types) = arena_push(semar, __sizeof(ty) * childcount);
-	(retstruct.member_names) = arena_push(semar, __sizeof(u8&) * childcount);
-	(retstruct.member_name_lens) = arena_push(semar, __sizeof(u64) * childcount);
-
-	i : u64 mut;
-
-	cur_member_node : ast& mut;
-	cur_decl : ast_decl mut;
-	cur_member_type : ty mut;
-	for(i = 0, i < childcount, i = i + 1)
-	{
-		cur_member_node = ast_get_child(node@_, i);
-		cur_decl = (cur_member_node->decl);
-		cur_member_type = scope_parse_typename(ctx.local, cur_decl.typename, cur_decl.typename_len);
-		if(ty_isbad(cur_member_type))
-		{
-			psyc_error_begin(cur_member_node->loc);
-			if(cstreql_n(cur_decl.typename, def.structname, cur_decl.name_len))
-			{
-				putss(def.structname, def.structname_len);
-				puts("::");
-				putss(cur_decl.name, cur_decl.name_len);
-				puts(" was of type ");
-				putss(def.structname, def.structname_len);
-				puts(" - struct's data member cannot be itself");
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-			putss(def.structname, def.structname_len);
-			puts("::");
-			putss(cur_decl.name, cur_decl.name_len);
-			puts(" yielded badtype");
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		memty_ptr ::= (retstruct.member_types)@ty mut&;
-		deref(memty_ptr at i) = cur_member_type;
-		deref((retstruct.member_names) at i) = (cur_decl.name);
-		deref((retstruct.member_name_lens) at i) = (cur_decl.name_len);
-	}
-
-	// note: local scope is going to be (at the very most) file scope
-	// this means that other files will not currently be able to see this definition
-	// this can be fixed by simply using program_declare_struct, but i don't feel comfortable just doing that willy-nilly
 	already ::= scope_find_struct(ctx.local, def.structname, def.structname_len);
 	if(already != null)
 	{
+		already_node ::= already->node;
 		psyc_error_begin(node->loc);
 		puts("a struct named ");
 		putchar('"');
 		putss(def.structname, def.structname_len);
 		putchar('"');
 		puts(" was already defined ");
-		print_srcloc(already->defined_at);
+		print_srcloc(already_node->loc);
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	scope_declare_struct(ctx.local, retstruct, node->loc);
+	scope_declare_struct(ctx.local, semar, structdef
+	{
+		.node := node;
+		.name := def.structname;
+		.name_len := def.structname_len;
+	});
 
 	puts("struct ");
 	putss(def.structname, def.structname_len);
@@ -154,19 +109,6 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 			i = childcount;
 		}
 	}
-	type : ty mut := ty_getfn(ret_ty, param_count, zero);
-	for(i = 0, i < param_count, i = i + 1)
-	{
-		cur_param_node ::= ast_get_child(node@_, i);
-		cur_param_decl ::= cur_param_node->decl;
-
-		declty : ty mut := scope_parse_typename(ctx.local, cur_param_decl.typename, cur_param_decl.typename_len);
-		ty_fn_set_param(ref type, i, declty);
-	}
-	if(param_count > 8)
-	{
-		psyc_panic(node->loc, "function had too many arguments. more than 8 params is NYI");
-	}
 
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
@@ -176,7 +118,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 			.node := ctx.node;
 			.name := fn.fn_name;
 			.name_len := fn.fn_name_len;
-			.type := type;
+			.param_count := beyond_param_idx;
 		});
 
 	if(fn.is_extern)
@@ -192,7 +134,7 @@ semal_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	puts(" ");
 	print_srcloc(node->loc);
 	putchar(10);
-	return just_type(type);
+	return zero;
 };
 
 semal_mac ::= func(ctx : context mut, prog : program mut&) -> sval

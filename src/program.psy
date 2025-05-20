@@ -15,6 +15,20 @@ variable_storage ::= struct
 	cap : u64;
 };
 
+structdef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+};
+
+structdef_storage ::= struct
+{
+	data : structdef mut&;
+	size : u64;
+	cap : u64;
+};
+
 macrodef ::= struct
 {
 	node : ast&;
@@ -37,7 +51,7 @@ function ::= struct
 	node : ast&;
 	name : u8&;
 	name_len : u64;
-	type : ty;
+	param_count : u64;
 };
 
 function_storage ::= struct
@@ -63,6 +77,7 @@ scope ::= struct
 {
 	types : tybox;
 	vars : variable_storage;
+	structs : structdef_storage;
 	funcs : function_storage;
 	macros : macro_storage;
 	parent : v0&;
@@ -205,6 +220,51 @@ scope_declare_variable ::= func(s : scope mut&, a : arena mut&, v : variable) ->
 	(vars->size) = (vars->size) + 1;
 };
 
+scope_find_struct ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> structdef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : structdef& mut;
+	while(curscope != null)
+	{
+		structs ::= ref(curscope->structs)@_;
+		for(i = 0, i < (structs->size), i = i + 1)
+		{
+			cur = (structs->data) at i;
+			if(varname_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, varname, varname_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_struct ::= func(s : scope mut&, a : arena mut&, v : structdef) -> v0
+{
+	structs ::= ref(s->structs);
+	if((structs->data) == null)
+	{
+		(structs->cap) = 8;
+		(structs->data) = arena_push(a, __sizeof(deref (structs->data)) * (structs->cap));
+	}
+	while((structs->size) >= (structs->cap))
+	{
+		oldcap ::= structs->cap;
+		olddata ::= structs->data;
+		(structs->cap) = (structs->cap) * 2;
+		(structs->data) = arena_push(a, __sizeof(deref (structs->data)) * (structs->cap));
+		__memcpy(structs->data, olddata, oldcap * __sizeof(deref (structs->data)));
+	}
+	deref((structs->data) at (structs->size)) = v;
+	(structs->size) = (structs->size) + 1;
+};
+
 scope_find_function ::= func(s : scope mut&, funcname : u8&, funcname_len: u64) -> function&
 {
 	curscope : scope& mut := s;
@@ -295,7 +355,7 @@ scope_declare_macro ::= func(s : scope mut&, a : arena mut&, m : macrodef) -> v0
 	(macros->size) = (macros->size) + 1;
 };
 
-scope_find_struct ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&
+scope_find_struct2 ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&
 {
 	curscope : scope& mut := s;
 	while(curscope != null)
@@ -313,7 +373,7 @@ scope_find_struct ::= func(s : scope mut&, struct_name : u8&, struct_name_len : 
 	return null;
 };
 
-scope_declare_struct ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
+scope_declare_struct2 ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
 {
 	types ::= ref(s->types);
 	tybox_add_struct(types, strct, loc);
@@ -405,10 +465,10 @@ program_declare_function ::= func(prog : program mut&, a : arena mut&, f : funct
 	scope_declare_function(glob, a, f);
 };
 
-program_declare_struct ::= func(prog : program mut&, strct : structty, loc : srcloc) -> v0
+program_declare_struct ::= func(prog : program mut&, a : arena mut&, s : structdef) -> v0
 {
 	glob : scope mut& := ref(prog->global);
-	scope_declare_struct(glob, strct, loc);
+	scope_declare_struct(glob, a, s);
 };
 
 == build ==
