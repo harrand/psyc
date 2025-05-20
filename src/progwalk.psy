@@ -1,11 +1,11 @@
 progwalk_function ::= struct
 {
-	fn : func(ctx : context mut, prog : program mut&) -> sval;
+	fn : func(ctx : context mut, prog : program mut&) -> v0;
 };
 
 semar : arena mut& mut;
-node_jump_table : progwalk_function mut#4;
-stmt_jump_table : progwalk_function mut#9;
+node_jump_table : progwalk_function mut#1;
+stmt_jump_table : progwalk_function mut#3;
 
 literal_types : ty mut#5;
 
@@ -15,8 +15,16 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 
 	pre_transform_idx ::= (node->type)@s64;
 	subtraction ::= (ast_type.stmt)@s64;
+	if(pre_transform_idx < subtraction)
+	{
+		return;
+	}
 
 	idx ::= pre_transform_idx - subtraction;
+	if(idx >= (__sizeof(node_jump_table) / __sizeof(deref(node_jump_table at 0))))
+	{
+		return;
+	}
 	jump ::= deref(node_jump_table at idx);
 	jump.fn(ctx, prog);
 };
@@ -37,18 +45,26 @@ progwalk_children ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
-progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
-	subtraction ::= (ast_stmt.expr_stmt)@s64;
+	subtraction ::= (ast_stmt.struct_stmt)@s64;
+	if(pre_transform_idx < subtraction)
+	{
+		return;
+	}
 
 	idx ::= pre_transform_idx - subtraction;
+	if(idx >= (__sizeof(stmt_jump_table) / __sizeof(deref(stmt_jump_table at 0))))
+	{
+		return;
+	}
 	jump ::= deref(stmt_jump_table at idx);
-	return jump.fn(ctx, prog);
+	jump.fn(ctx, prog);
 };
 
-progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
@@ -80,10 +96,9 @@ progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> sval
 	puts(" ");
 	print_srcloc(node->loc);
 	putchar(10);
-	return zero;
 };
 
-progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
@@ -135,10 +150,9 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> sval
 	puts(" ");
 	print_srcloc(node->loc);
 	putchar(10);
-	return zero;
 };
 
-progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> sval
+progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
@@ -209,12 +223,6 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> sval
 	puts(" ");
 	print_srcloc(node->loc);
 	putchar(10);
-	return zero;
-};
-
-progwalk_noop ::= func(ctx : context mut, prog : program mut&) -> sval
-{
-	return zero;
 };
 
 progwalk_setup ::= func(a : arena mut&) -> v0
@@ -223,24 +231,15 @@ progwalk_setup ::= func(a : arena mut&) -> v0
 	semar = a;
 
 	deref(node_jump_table at 0) = progwalk_function{.fn := progwalk_stmt;};
-	deref(node_jump_table at 1) = progwalk_function{.fn := progwalk_noop;};
-	deref(node_jump_table at 2) = progwalk_function{.fn := progwalk_noop;};
-	deref(node_jump_table at 3) = progwalk_function{.fn := progwalk_noop;};
 
-	deref(stmt_jump_table at 0) = progwalk_function{.fn := progwalk_noop;};
-	deref(stmt_jump_table at 1) = progwalk_function{.fn := progwalk_noop;};
-	deref(stmt_jump_table at 2) = progwalk_function{.fn := progwalk_noop;};
-	deref(stmt_jump_table at 3) = progwalk_function{.fn := progwalk_structdef;};
-	deref(stmt_jump_table at 4) = progwalk_function{.fn := progwalk_fn;};
-	deref(stmt_jump_table at 5) = progwalk_function{.fn := progwalk_mac;};
-	deref(stmt_jump_table at 6) = progwalk_function{.fn := progwalk_noop;};
-	deref(stmt_jump_table at 7) = progwalk_function{.fn := progwalk_noop;};
-	deref(stmt_jump_table at 8) = progwalk_function{.fn := progwalk_noop;};
+	deref(stmt_jump_table at 0) = progwalk_function{.fn := progwalk_structdef;};
+	deref(stmt_jump_table at 1) = progwalk_function{.fn := progwalk_fn;};
+	deref(stmt_jump_table at 2) = progwalk_function{.fn := progwalk_mac;};
 };
 
 progwalk_file ::= func(prog : program mut&, source : ast&) -> v0
 {
-	psyc_timed(psyc_stage.semal);
+	psyc_timed(psyc_stage.meta);
 	global ::= prog->global;
 
 	// file scope is a child of the program scope
