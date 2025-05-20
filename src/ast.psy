@@ -648,6 +648,42 @@ ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64
 	return false;
 };
 
+ast_is_any_stmt ::= func(node : ast&) -> bool
+{
+	return (node->type) == (ast_type.stmt);
+};
+
+ast_is_stmt ::= func(node : ast&, t : ast_stmt) -> bool
+{
+	if(!ast_is_any_stmt(node))
+	{
+		return false;
+	}
+	return (node->stmt) == t;
+};
+
+ast_is_any_expr ::= func(node : ast&) -> bool
+{
+	nexpr ::= node->expr;
+	// plain old expr
+	if((node->type) == (ast_type.expr))
+	{
+		return true;
+	}
+	// expr stmt
+	return ast_is_stmt(node, ast_stmt.expr_stmt);
+};
+
+ast_is_expr ::= func(node : ast&, t : ast_expr_type) -> bool
+{
+	nexpr ::= node->expr;
+	if(ast_is_any_expr(node))
+	{
+		return (nexpr.type) == t;
+	}
+	return false;
+};
+
 == build ==
 {
 	add_source_file("stdlib/io.psy");
