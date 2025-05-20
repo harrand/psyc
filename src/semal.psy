@@ -1191,23 +1191,13 @@ semal_builtin ::= func(call : ast_callfunc_expr, ctx : context mut, prog : progr
 	return zero;
 };
 
-semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+semal_call_function_pointer ::= func(callfunc : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> ty
 {
 	node ::= ctx.node;
-	callfunc ::= expr.callfunc;
-
-	did_builtin : bool mut := false;
-	builtin_result ::= semal_builtin(callfunc, ctx, prog, ref did_builtin);
-	if(did_builtin)
-	{
-		return builtin_result;
-	}
-	func_type : ty mut := zero;
-
 	fnvar ::= scope_find_variable(ctx.local, callfunc.funcname, callfunc.funcname_len);
 	if(fnvar != null)
 	{
-		func_type = (fnvar->type);
+		func_type ::= (fnvar->type);
 		if(!ty_is(func_type, tytag.fn))
 		{
 			psyc_error_begin(node->loc);
@@ -1222,22 +1212,24 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
+		return func_type;
 	}
+	return zero;
+};
+
+semal_call_normal_function ::= func(callfunc : ast_callfunc_expr, ctx : context mut, prog : program mut&) -> ty
+{
 	fn ::= scope_find_function(ctx.local, callfunc.funcname, callfunc.funcname_len);
 	if(fn != null)
 	{
-		func_type = (fn->type);
+		return fn->type;
 	}
-	if(ty_isbad(func_type))
-	{
-		psyc_error_begin(node->loc);
-		puts("could not find a declared function named ");
-		putchar('"');
-		putss(callfunc.funcname, callfunc.funcname_len);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
+	return zero;
+};
+
+semal_callfunc_typecheck_signature ::= func(callfunc : ast_callfunc_expr, func_type : ty, ctx : context mut, prog : program mut&) -> ty
+{
+	node ::= ctx.node;
 	func_payload ::= func_type.fn;
 	return_type ::= deref((func_payload.return_type)@ty&);
 
@@ -1325,7 +1317,38 @@ semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program 
 		}
 	}
 	// type-check params.
-	return just_type(return_type);
+	return return_type;
+};
+
+semal_callfunc_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	callfunc ::= expr.callfunc;
+
+	did_builtin : bool mut := false;
+	builtin_result ::= semal_builtin(callfunc, ctx, prog, ref did_builtin);
+	if(did_builtin)
+	{
+		return builtin_result;
+	}
+	func_type : ty mut := semal_call_function_pointer(callfunc, ctx, prog);
+	if(ty_isbad(func_type))
+	{
+		func_type = semal_call_normal_function(callfunc, ctx, prog);
+	}
+
+	if(ty_isbad(func_type))
+	{
+		psyc_error_begin(node->loc);
+		puts("could not find a callable named ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	return just_type(semal_callfunc_typecheck_signature(callfunc, func_type, ctx, prog));
 };
 
 semal_ret_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
