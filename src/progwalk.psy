@@ -3,7 +3,7 @@ progwalk_function ::= struct
 	fn : func(ctx : context mut, prog : program mut&) -> v0;
 };
 
-semar : arena mut& mut;
+progar : arena mut& mut;
 node_jump_table : progwalk_function mut#1;
 stmt_jump_table : progwalk_function mut#5;
 
@@ -69,11 +69,12 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 	node ::= ctx.node;
 	decl ::= node->decl;
 
-	program_declare_variable(prog, semar, variable
+	program_declare_variable(prog, progar, variable
 	{
 		.node := node;
 		.name := decl.name;
 		.name_len := decl.name_len;
+		.type := zero;
 	});
 };
 
@@ -96,7 +97,7 @@ progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	scope_declare_region(ctx.local, semar, region
+	scope_declare_region(ctx.local, progar, region
 	{
 		.node := node;
 		.name := reg.name;
@@ -108,12 +109,13 @@ progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
-	program_declare_struct(prog, semar, structdef
+	program_declare_struct(prog, progar, structdef
 	{
 		.node := node;
 		.name := def.structname;
 		.name_len := def.structname_len;
 		.member_count := node->childcount;
+		.type := zero;
 	});
 };
 
@@ -147,12 +149,13 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
 	// this can be fixed by simply using program_declare_function, but i don't feel comfortable just doing that willy-nilly
-	program_declare_function(prog, semar,
+	program_declare_function(prog, progar,
 		function{
 			.node := ctx.node;
 			.name := fn.fn_name;
 			.name_len := fn.fn_name_len;
 			.param_count := beyond_param_idx;
+			.type := zero;
 		});
 
 	if(fn.is_extern)
@@ -221,12 +224,12 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 		}
 	}
 
-	program_declare_macro(prog, semar, macrodef
+	program_declare_macro(prog, progar, macrodef
 	{
 		.node := node;
 		.name := mac.mac_name;
 		.name_len := mac.mac_name_len;
-		.yield_type := scope_parse_typename(ctx.local, mac.yield_typename, mac.yield_typename_len);
+		.yield_type := zero;
 		.first_id := beyond_param_idx;
 		.yield_id := yield_id;
 	});
@@ -235,7 +238,7 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 progwalk_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
-	semar = a;
+	progar = a;
 
 	deref(node_jump_table at 0) = progwalk_function{.fn := progwalk_stmt;};
 
@@ -252,7 +255,7 @@ progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
 	global ::= prog->global;
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc, null, zero);
+	file_scope ::= program_new_scope(prog, progar, ref global, scope_type.file, source->loc, null, zero);
 
 	// remember these are direct children, not recursive children
 	// e.g top-level funcs/structs aswell as global variables

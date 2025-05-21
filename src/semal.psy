@@ -1,18 +1,99 @@
-semal_struct ::= func(s : structdef mut&) -> v0
+semar : arena mut& mut;
+
+semal_setup ::= func(a : arena mut&) -> v0
 {
-	puts("semal'ing struct ");
-	putss(s->name, s->name_len);
-	putchar(10);
+	semar = a;
 };
 
-semal_func ::= func(f : function mut&) -> v0
+decl_ty ::= func(node : ast&, s : scope mut&) -> ty
+{
+	return zero;
+};
+// semal struct is a bit complicated...
+// one of its data members could be another struct - one that we haven't semal'd yet either
+semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
+{
+	puts("semal'ing struct ");
+	putss(def->name, def->name_len);
+	putchar(10);
+
+	node ::= def->node;
+
+	retstruct : structty mut := zero;
+	(retstruct.member_count) = (def->member_count);
+	(retstruct.name) = (def->name);
+	(retstruct.name_len) = (def->name_len);
+
+	(retstruct.member_types) = arena_push(semar, __sizeof(ty) * (def->member_count));
+	(retstruct.member_names) = arena_push(semar, __sizeof(u8&) * (def->member_count));
+	(retstruct.member_name_lens) = arena_push(semar, __sizeof(u64) * (def->member_count));
+	memtypes ::= (retstruct.member_types)@ty mut&;
+
+	i : u64 mut;
+
+	for(i = 0, i < (def->member_count), i = i + 1)
+	{
+		memnode ::= ast_get_child(node@_, i);
+		memdecl ::= (memnode->decl);
+		maybe_struct_member ::= scope_find_struct(s, memdecl.typename, memdecl.typename_len);
+		memty ::= zero@ty mut;
+		
+		if(maybe_struct_member != null)
+		{
+			// if the current data members typename is a struct
+			// we have to be really careful
+			// a.) it could mean a recursive struct
+			if(maybe_struct_member == def)
+			{
+				psyc_error_begin(node->loc);
+				puts("recursive struct detected - data member ");
+				putss(def->name, def->name_len);
+				puts("::");
+				putss(memdecl.name, memdecl.name_len);
+				puts(" is itself of type ");
+				putchar('"');
+				putss(memdecl.typename, memdecl.typename_len);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			// b.) it could be another struct that we haven't semal'd yet
+			if(ty_isbad(maybe_struct_member->type))
+			{
+				// note: this has the potential to recurse forever if we have a circular dependency.
+				semal_struct(maybe_struct_member@_, s, prog);
+			}
+			memty = (maybe_struct_member->type);
+		}
+		if(maybe_struct_member == null)
+		{
+			memty = scope_parse_typename(s, memdecl.typename, memdecl.typename_len);
+		}
+		putss(def->name, def->name_len);
+		puts("::");
+		putss(memdecl.name, memdecl.name_len);
+		puts(" is of type ");
+		putty(memty);
+		putchar(10);
+		
+		deref(memtypes at i) = memty;
+		deref((retstruct.member_names) at i) = (memdecl.name);
+		deref((retstruct.member_name_lens) at i) = (memdecl.name_len);
+	}
+
+	retty ::= ref(def->type);
+	(retty->tag) = (tytag.strct);
+	(retty->strct) = retstruct;
+};
+
+semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v0
 {
 	puts("semal'ing func ");
 	putss(f->name, f->name_len);
 	putchar(10);
 };
 
-semal_macro ::= func(m : macrodef mut&) -> v0
+semal_macro ::= func(m : macrodef mut&, s : scope mut&, prog : program mut&) -> v0
 {
 	puts("semal'ing macro ");
 	putss(m->name, m->name_len);
@@ -29,17 +110,17 @@ semal ::= func(prog : program mut&) -> v0
 	i : u64 mut;
 	for(i = 0, i < (structs->size), i = i + 1)
 	{
-		semal_struct((structs->data) at i);
+		semal_struct((structs->data) at i, glob, prog);
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		semal_func((funcs->data) at i);
+		semal_func((funcs->data) at i, glob, prog);
 	}
 
 	for(i = 0, i < (macros->size), i = i + 1)
 	{
-		semal_macro((macros->data) at i);
+		semal_macro((macros->data) at i, glob, prog);
 	}
 };
 
