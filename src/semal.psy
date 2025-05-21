@@ -138,9 +138,53 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 
 semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v0
 {
-	puts("semal'ing func ");
-	putss(f->name, f->name_len);
-	putchar(10);
+	node ::= f->node;
+	fn ::= node->fn;
+	// start with the return type.
+	fn_retty ::= scope_parse_typename(s, fn.ret_typename, fn.ret_typename_len);
+	if(ty_isbad(fn_retty))
+	{
+		psyc_error_begin(node->loc);
+		puts("return-type ");
+		putchar('"');
+		putss(fn.ret_typename, fn.ret_typename_len);
+		putchar('"');
+		puts(" of function ");
+		putss(f->name, f->name_len);
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	fnty : ty mut := ty_getfn(fn_retty, f->param_count, zero);
+	// go through all params.
+	i : u64 mut;
+	for(i = 0, i < (f->param_count), i = i + 1)
+	{
+		cur_param_node ::= ast_get_child(node@_, i);
+		cur_param_decl ::= cur_param_node->decl;
+
+		declty ::= scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+		if(ty_isbad(declty))
+		{
+			psyc_error_begin(cur_param_node->loc);
+			puts("parameter ");
+			putuint(i);
+			puts(" of function ");
+			putchar('"');
+			putss(f->name, f->name_len);
+			putchar('"');
+			puts(" with typename: ");
+			putchar('"');
+			putss(cur_param_decl.typename, cur_param_decl.typename_len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		ty_fn_set_param(ref fnty, i, declty);
+	}
+
+	(f->type) = fnty;
 };
 
 semal_macro ::= func(m : macrodef mut&, s : scope mut&, prog : program mut&) -> v0
