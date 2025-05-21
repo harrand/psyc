@@ -131,6 +131,23 @@ typarse_ptr ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) ->
 	return 0;
 };
 
+typarse_extras ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
+{
+	offset : u64 mut := 0;
+	continue_parsing : bool mut := true;
+	while(continue_parsing)
+	{
+		tmpoff ::= offset;
+		offset = offset + typarse_quals(extraname at offset, extraname_len - offset, base_ty);
+		offset = offset + typarse_ptr(extraname at offset, extraname_len - offset, base_ty);
+		if(tmpoff == offset)
+		{
+			continue_parsing = false;
+		}
+	}
+	return offset;
+};
+
 == build ==
 {
 	add_source_file("type.psy");

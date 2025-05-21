@@ -179,18 +179,7 @@ scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
 	offset : u64 mut := zero;
 	extra_offset : u64 mut := zero;
 	ret : ty mut := impl_scope_try_parse_base_typename(s, tyname, tyname_len, ref offset);
-
-	continue_parsing : bool mut := true;
-	while(continue_parsing)
-	{
-		tmpoff ::= offset;
-		offset = offset + typarse_quals(tyname at offset, tyname_len - offset, ref ret);
-		offset = offset + typarse_ptr(tyname at offset, tyname_len - offset, ref ret);
-		if(tmpoff == offset)
-		{
-			continue_parsing = false;
-		}
-	}
+	typarse_extras(tyname at offset, tyname_len - offset, ref ret);
 	return ret;
 };
 
@@ -499,25 +488,7 @@ scope_declare_region ::= func(s : scope mut&, a : arena mut&, r : region) -> v0
 	(regions->size) = (regions->size) + 1;
 };
 
-scope_find_struct2 ::= func(s : scope mut&, struct_name : u8&, struct_name_len : u64) -> tybox_struct_info&
-{
-	curscope : scope& mut := s;
-	while(curscope != null)
-	{
-		types ::= ref(curscope->types)@_;
-		idx ::= tybox_find_struct(types, struct_name, struct_name_len);
-		if(idx != -1)
-		{
-			// found it!
-			return tybox_get_struct(types, idx);
-		}
-		// try its parent
-		curscope = ((curscope->parent)@scope&);
-	}
-	return null;
-};
-
-scope_declare_struct2 ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
+scope_declare_struct_type ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
 {
 	types ::= ref(s->types);
 	tybox_add_struct(types, strct, loc);

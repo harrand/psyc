@@ -9,6 +9,63 @@ decl_ty ::= func(node : ast&, s : scope mut&) -> ty
 {
 	return zero;
 };
+
+semal_resolve_typename_complex ::= func(tyname : u8&, tyname_len : u64, semal_struct_ptr : func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0, s : scope mut&, prog : program mut&, current_struct : structdef&, current_memname : u8&, current_memname_len : u64) -> ty
+{
+	// try to find the ty normally:
+	retty : ty mut := scope_parse_typename(s, tyname, tyname_len);
+	if(!ty_isbad(retty))
+	{
+		return retty;
+	}
+	// couldnt figure it out. its either an erroneous tyname *or* a struct that hasn't been semal'd yet.
+	base_end ::= typarse_basename_end(tyname, tyname_len);
+	maybe_struct ::= scope_find_struct(s, tyname, base_end);
+	if(maybe_struct == null)
+	{
+		// ok cant find it
+		return zero;
+	}
+	if(maybe_struct == current_struct)
+	{
+		node ::= maybe_struct->node;
+		psyc_error_begin(node->loc);
+		puts("recursive struct ");
+		putchar('"');
+		putss(maybe_struct->name, maybe_struct->name_len);
+		putchar('"');
+		puts(" detected - data member ");
+		putchar('"');
+		putss(current_memname, current_memname_len);
+		putchar('"');
+		puts(" is of type ");
+		putchar('"');
+		putss(tyname, tyname_len);
+		putchar('"');
+		puts(" which is based on the enclosing struct");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_isbad(maybe_struct->type))
+	{
+		// this shouldnt really happen coz scope_parse_typename should've worked
+		psyc_panic(zero, "waaaaaah");
+	}
+	if(maybe_struct->in_progress)
+	{
+		psyc_panic(zero, "ruh roh struct already in progress");
+	}
+	semal_struct_ptr(maybe_struct@_, s, prog);
+	retty = (maybe_struct->type);
+	typarse_extras(tyname at base_end, tyname_len - base_end, ref retty);
+	return retty;
+};
+
+semal_resolve_typename ::= func(tyname : u8&, tyname_len : u64, semal_struct_ptr : func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0, s : scope mut&, prog : program mut&) -> ty
+{
+	return semal_resolve_typename_complex(tyname, tyname_len, semal_struct_ptr, s, prog, null, null, 0);
+};
+
 // semal struct is a bit complicated...
 // one of its data members could be another struct - one that we haven't semal'd yet either
 semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
@@ -38,61 +95,8 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 	{
 		memnode ::= ast_get_child(node@_, i);
 		memdecl ::= (memnode->decl);
-		maybe_struct_member ::= scope_find_struct(s, memdecl.typename, memdecl.typename_len);
-		memty ::= zero@ty mut;
+		memty ::= semal_resolve_typename_complex(memdecl.typename, memdecl.typename_len, semal_struct, s, prog, def, memdecl.name, memdecl.name_len);
 		
-		if(maybe_struct_member != null)
-		{
-			// if the current data members typename is a struct
-			// we have to be really careful
-			// a.) it could mean a recursive struct
-			if(maybe_struct_member == def)
-			{
-				psyc_error_begin(node->loc);
-				puts("recursive struct detected - data member ");
-				putss(def->name, def->name_len);
-				puts("::");
-				putss(memdecl.name, memdecl.name_len);
-				puts(" is itself of type ");
-				putchar('"');
-				putss(memdecl.typename, memdecl.typename_len);
-				putchar('"');
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-			// b.) it could be another struct that we haven't semal'd yet
-			if(ty_isbad(maybe_struct_member->type))
-			{
-				// note: this has the potential to recurse forever if we have a circular dependency.
-				// so we check that it isn't already in progress
-				if(maybe_struct_member->in_progress)
-				{
-					psyc_error_begin(node->loc);
-					puts("struct circular dependency detected - data member ");
-					putchar('"');
-					putss(def->name, def->name_len);
-					puts("::");
-					putss(memdecl.name, memdecl.name_len);
-					putchar('"');
-					puts(" is of type ");
-					putchar('"');
-					putss(maybe_struct_member->name, maybe_struct_member->name_len);
-					putchar('"');
-					puts(" which itself appears to rely on the definition of ");
-					putchar('"');
-					putss(def->name, def->name_len);
-					putchar('"');
-					psyc_diag_end();
-					psyc_exit_failure();
-				}
-				semal_struct(maybe_struct_member@_, s, prog);
-			}
-			memty = (maybe_struct_member->type);
-		}
-		if(maybe_struct_member == null)
-		{
-			memty = scope_parse_typename(s, memdecl.typename, memdecl.typename_len);
-		}
 		if(ty_isbad(memty))
 		{
 			psyc_error_begin(node->loc);
@@ -125,6 +129,8 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 	retty ::= ref(def->type);
 	(retty->tag) = (tytag.strct);
 	(retty->strct) = retstruct;
+
+	scope_declare_struct_type(s, retstruct, node->loc);
 };
 
 semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v0
