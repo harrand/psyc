@@ -19,6 +19,13 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 
 	node ::= def->node;
 
+	if(!ty_isbad(def->type))
+	{
+		// we already did this earlier, probably due to it being a dependency of an earlier struct.
+		return;
+	}
+	(def->in_progress) = true;
+
 	retstruct : structty mut := zero;
 	(retstruct.member_count) = (def->member_count);
 	(retstruct.name) = (def->name);
@@ -61,6 +68,27 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 			if(ty_isbad(maybe_struct_member->type))
 			{
 				// note: this has the potential to recurse forever if we have a circular dependency.
+				// so we check that it isn't already in progress
+				if(maybe_struct_member->in_progress)
+				{
+					psyc_error_begin(node->loc);
+					puts("struct circular dependency detected - data member ");
+					putchar('"');
+					putss(def->name, def->name_len);
+					puts("::");
+					putss(memdecl.name, memdecl.name_len);
+					putchar('"');
+					puts(" is of type ");
+					putchar('"');
+					putss(maybe_struct_member->name, maybe_struct_member->name_len);
+					putchar('"');
+					puts(" which itself appears to rely on the definition of ");
+					putchar('"');
+					putss(def->name, def->name_len);
+					putchar('"');
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
 				semal_struct(maybe_struct_member@_, s, prog);
 			}
 			memty = (maybe_struct_member->type);
@@ -102,6 +130,7 @@ semal_macro ::= func(m : macrodef mut&, s : scope mut&, prog : program mut&) -> 
 
 semal ::= func(prog : program mut&) -> v0
 {
+	psyc_timed(psyc_stage.semal);
 	glob ::= ref(prog->global);
 	structs ::= ref(glob->structs);
 	funcs ::= ref(glob->funcs);
