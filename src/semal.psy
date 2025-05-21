@@ -13,10 +13,6 @@ decl_ty ::= func(node : ast&, s : scope mut&) -> ty
 // one of its data members could be another struct - one that we haven't semal'd yet either
 semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
 {
-	puts("semal'ing struct ");
-	putss(def->name, def->name_len);
-	putchar(10);
-
 	node ::= def->node;
 
 	if(!ty_isbad(def->type))
@@ -96,6 +92,23 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		if(maybe_struct_member == null)
 		{
 			memty = scope_parse_typename(s, memdecl.typename, memdecl.typename_len);
+		}
+		if(ty_isbad(memty))
+		{
+			psyc_error_begin(node->loc);
+			puts("struct data member ");
+			putchar('"');
+			putss(def->name, def->name_len);
+			puts("::");
+			putss(memdecl.name, memdecl.name_len);
+			putchar('"');
+			puts(" with typename ");
+			putchar('"');
+			putss(memdecl.typename, memdecl.typename_len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
 		}
 		putss(def->name, def->name_len);
 		puts("::");
