@@ -69,11 +69,6 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 	node ::= ctx.node;
 	decl ::= node->decl;
 
-	puts("decl ");
-	putss(decl.name, decl.name_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 	program_declare_variable(prog, semar, variable
 	{
 		.node := node;
@@ -107,12 +102,6 @@ progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
 		.name := reg.name;
 		.name_len := reg.name_len;
 	});
-
-	puts("region ");
-	putss(reg.name, reg.name_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 };
 
 progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -126,12 +115,6 @@ progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
 		.name_len := def.structname_len;
 		.member_count := node->childcount;
 	});
-
-	puts("struct ");
-	putss(def.structname, def.structname_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 };
 
 progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -179,12 +162,6 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 			psyc_panic(node->loc, "extern fn expected all children to be decls representing params, but that seems to not be the case.");
 		}
 	}
-
-	puts("func ");
-	putss(fn.fn_name, fn.fn_name_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 };
 
 progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -253,11 +230,6 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 		.first_id := beyond_param_idx;
 		.yield_id := yield_id;
 	});
-	puts("macro ");
-	putss(mac.mac_name, mac.mac_name_len);
-	puts(" ");
-	print_srcloc(node->loc);
-	putchar(10);
 };
 
 progwalk_setup ::= func(a : arena mut&) -> v0
@@ -282,6 +254,8 @@ progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
 	// file scope is a child of the program scope
 	file_scope ::= program_new_scope(prog, semar, ref global, scope_type.file, source->loc, null, zero);
 
+	// remember these are direct children, not recursive children
+	// e.g top-level funcs/structs aswell as global variables
 	progwalk_children(context
 	{
 		.node := source;
