@@ -2,6 +2,14 @@ cgar : arena mut& mut;
 mod : u64 mut;
 ir : u64 mut;
 
+str2cstr ::= func(str : u8&, len : u64, a : arena mut&) -> u8&
+{
+	cstr : u8 mut& := arena_push(a, len + 1);
+	__memcpy(cstr, str, len);
+	deref(cstr at len) = 0;
+	return cstr;
+};
+
 cg_finish ::= func() -> v0
 {
 	err : u8& mut;
@@ -76,6 +84,10 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 
 cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 {
+	if((def->codegen) != 0)
+	{
+		return;
+	}
 	node ::= def->node;
 	type ::= def->type;
 	if(ty_isbad(type))
@@ -83,20 +95,35 @@ cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 		psyc_panic(node->loc, "cg_struct structdef's type was badtype. semal should've sorted this - compiler bug.");
 	}
 	strct ::= type.strct;
+	memcount ::= strct.member_count;
 	// make an array for all the members.
-	memarr : u64 mut& := arena_push(cgar, __sizeof(u64) * (strct.member_count));
+	memarr : u64 mut& := arena_push(cgar, __sizeof(u64) * memcount);
 	memtys ::= (strct.member_types)@ty&;
 	i : u64 mut;
-	for(i = 0, i < (strct.member_count), i = i + 1)
+	for(i = 0, i < memcount, i = i + 1)
 	{
 		deref(memarr at i) = cg_type(deref(memtys at i), prog);
 	}
-	(def->codegen) = LLVMStructType(memarr, strct.member_count, false@s32);
+	(def->codegen) = LLVMStructType(memarr, memcount@u32, false@s32);
 };
 
 cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
 {
-	(fn->codegen) = 0;
+	type ::= fn->type;
+	fnty ::= type.fn;
+	param_count ::= (fn->param_count);
+	paramdata : u64 mut& := arena_push(cgar, __sizeof(u64) * param_count);
+	i : u64 mut;
+
+	ret_tycg ::= cg_type(deref((fnty.return_type)@ty&), prog);
+	param_tys ::= (fnty.param_types)@ty&;
+	for(i = 0, i < param_count, i = i + 1)
+	{
+		deref(paramdata at i) = cg_type(deref(param_tys at i), prog);
+	}
+
+	func_tycg ::= LLVMFunctionType(ret_tycg, paramdata, param_count@u32, false@s32);
+	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), func_tycg);
 };
 
 cg_verbose_print ::= func() -> v0
@@ -105,6 +132,7 @@ cg_verbose_print ::= func() -> v0
 	puts("Codegen: ");
 	putchar(10);
 	puts(str);
+	putchar(10);
 };
 
 codegen ::= func(prog : program mut&) -> v0
