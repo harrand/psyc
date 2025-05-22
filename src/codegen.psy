@@ -10,12 +10,42 @@ cg_finish ::= func() -> v0
 	putchar(10);
 };
 
-codegen ::= func(prog : program&) -> v0
+// convert psyc 'ty' to LLVMTypeRef
+cg_type ::= func(t : ty) -> u64
 {
-	puts("test");
+	return 0;
+};
+
+cg_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
+{
+	(def->codegen) = 0;
+};
+
+cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
+{
+	(fn->codegen) = 0;
+};
+
+codegen ::= func(prog : program mut&) -> v0
+{
 	psyc_timed(psyc_stage.codegen);
 	mod = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
+
+	glob ::= ref(prog->global);
+	structs ::= ref(glob->structs);
+	funcs ::= ref(glob->funcs);
+
+	i : u64 mut;
+	for(i = 0, i < (structs->size), i = i + 1)
+	{
+		cg_struct((structs->data) at i, glob, prog);
+	}
+
+	for(i = 0, i < (funcs->size), i = i + 1)
+	{
+		cg_func((funcs->data) at i, glob, prog);
+	}
 	
 	cg_finish();
 };
