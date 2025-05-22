@@ -32,8 +32,13 @@ cg_primty ::= func(p : primty) -> u64
 	return deref(arr at (p@s64));
 };
 
+cg_struct_ptr_t ::= struct
+{
+	fn : func(def : structdef mut&, prog : program mut&) -> v0;
+};
+cg_struct_ptr : cg_struct_ptr_t mut;
 // convert psyc 'ty' to LLVMTypeRef
-cg_type ::= func(t : ty) -> u64
+cg_type ::= func(t : ty, prog : program mut&) -> u64
 {
 	if(ty_isbad(t))
 	{
@@ -51,17 +56,25 @@ cg_type ::= func(t : ty) -> u64
 	{
 		ptr ::= t.ptr;
 		u ::= deref((ptr.underlying)@ty&);
-		return LLVMPointerType(cg_type(u), 0);
+		cg_u ::= cg_type(u, prog);
+		return LLVMPointerType(cg_u, 0);
 	}
 	if((t.tag) == (tytag.strct))
 	{
-		psyc_panic(zero, "cg_type(structty) is NYI");
+		strct ::= t.strct;
+		def ::= program_find_struct(prog, strct.name, strct.name_len);
+		if((def->codegen) == 0)
+		{
+			// todo: need to cg_struct here.
+			cg_struct_ptr.fn(def@_, prog);
+		}
+		return def->codegen;
 	}
 	psyc_panic(zero, "control flow reached end of cg_type - compiler bug.");
 	return 0;
 };
 
-cg_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
+cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 {
 	node ::= def->node;
 	type ::= def->type;
@@ -76,7 +89,7 @@ cg_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) ->
 	i : u64 mut;
 	for(i = 0, i < (strct.member_count), i = i + 1)
 	{
-		deref(memarr at i) = cg_type(deref(memtys at i));
+		deref(memarr at i) = cg_type(deref(memtys at i), prog);
 	}
 	(def->codegen) = LLVMStructType(memarr, strct.member_count, false@s32);
 };
@@ -99,7 +112,7 @@ codegen ::= func(prog : program mut&) -> v0
 	i : u64 mut;
 	for(i = 0, i < (structs->size), i = i + 1)
 	{
-		cg_struct((structs->data) at i, glob, prog);
+		cg_struct((structs->data) at i, prog);
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
@@ -113,6 +126,7 @@ codegen ::= func(prog : program mut&) -> v0
 codegen_setup ::= func(a : arena mut&) -> v0
 {
 	cgar = a;
+	cg_struct_ptr = cg_struct_ptr_t{.fn := cg_struct;};
 };
 
 == build ==
