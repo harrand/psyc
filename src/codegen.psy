@@ -10,9 +10,36 @@ cg_finish ::= func() -> v0
 	putchar(10);
 };
 
+cg_primty ::= func(p : primty) -> u64
+{
+	arr : u64 mut#13;
+	deref(arr at ((primty.s64)@s64)) = LLVMInt64Type();
+	deref(arr at ((primty.s32)@s64)) = LLVMInt32Type();
+	deref(arr at ((primty.s16)@s64)) = LLVMInt16Type();
+	deref(arr at ((primty.s8)@s64)) = LLVMInt8Type();
+
+	deref(arr at ((primty.u64)@s64)) = LLVMInt64Type();
+	deref(arr at ((primty.u32)@s64)) = LLVMInt32Type();
+	deref(arr at ((primty.u16)@s64)) = LLVMInt16Type();
+	deref(arr at ((primty.u8)@s64)) = LLVMInt8Type();
+
+	deref(arr at ((primty.bool)@s64)) = LLVMInt1Type();
+	deref(arr at ((primty.f64)@s64)) = LLVMDoubleType();
+	deref(arr at ((primty.f32)@s64)) = LLVMFloatType();
+	return deref(arr at (p@s64));
+};
+
 // convert psyc 'ty' to LLVMTypeRef
 cg_type ::= func(t : ty) -> u64
 {
+	if(ty_isbad(t))
+	{
+		psyc_panic(zero, "attempted to codegen cg_type(badtype). semal should've caught this. compiler bug.");
+	}
+	if((t.tag) == (tytag.prim))
+	{
+		return cg_primty(t.prim);
+	}
 	return 0;
 };
 
