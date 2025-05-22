@@ -27,6 +27,8 @@ cg_primty ::= func(p : primty) -> u64
 	deref(arr at ((primty.bool)@s64)) = LLVMInt1Type();
 	deref(arr at ((primty.f64)@s64)) = LLVMDoubleType();
 	deref(arr at ((primty.f32)@s64)) = LLVMFloatType();
+
+	deref(arr at ((primty.v0)@s64)) = LLVMVoidType();
 	return deref(arr at (p@s64));
 };
 
@@ -45,13 +47,38 @@ cg_type ::= func(t : ty) -> u64
 	{
 		return cg_primty(primty.s64);
 	}
+	if((t.tag) == (tytag.ptr))
+	{
+		ptr ::= t.ptr;
+		u ::= deref((ptr.underlying)@ty&);
+		return LLVMPointerType(cg_type(u), 0);
+	}
+	if((t.tag) == (tytag.strct))
+	{
+		psyc_panic(zero, "cg_type(structty) is NYI");
+	}
 	psyc_panic(zero, "control flow reached end of cg_type - compiler bug.");
 	return 0;
 };
 
 cg_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
 {
-	(def->codegen) = 0;
+	node ::= def->node;
+	type ::= def->type;
+	if(ty_isbad(type))
+	{
+		psyc_panic(node->loc, "cg_struct structdef's type was badtype. semal should've sorted this - compiler bug.");
+	}
+	strct ::= type.strct;
+	// make an array for all the members.
+	memarr : u64 mut& := arena_push(cgar, __sizeof(u64) * (strct.member_count));
+	memtys ::= (strct.member_types)@ty&;
+	i : u64 mut;
+	for(i = 0, i < (strct.member_count), i = i + 1)
+	{
+		deref(memarr at i) = cg_type(deref(memtys at i));
+	}
+	(def->codegen) = LLVMStructType(memarr, strct.member_count, false@s32);
 };
 
 cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
