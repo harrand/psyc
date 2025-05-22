@@ -99,11 +99,21 @@ cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
 	(fn->codegen) = 0;
 };
 
+cg_verbose_print ::= func() -> v0
+{
+	str ::= LLVMPrintModuleToString(mod);
+	puts("Codegen: ");
+	putchar(10);
+	puts(str);
+};
+
 codegen ::= func(prog : program mut&) -> v0
 {
 	psyc_timed(psyc_stage.codegen);
 	mod = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
+
+	args ::= ref(prog->compile_args);
 
 	glob ::= ref(prog->global);
 	structs ::= ref(glob->structs);
@@ -118,6 +128,11 @@ codegen ::= func(prog : program mut&) -> v0
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
 		cg_func((funcs->data) at i, glob, prog);
+	}
+
+	if(args->verbose_codegen)
+	{
+		cg_verbose_print();
 	}
 	
 	cg_finish();
