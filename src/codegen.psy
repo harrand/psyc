@@ -107,7 +107,7 @@ cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 	(def->codegen) = LLVMStructType(memarr, memcount@u32, false@s32);
 };
 
-cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
+cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
 {
 	type ::= fn->type;
 	fnty ::= type.fn;
@@ -124,12 +124,15 @@ cg_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
 
 	func_tycg ::= LLVMFunctionType(ret_tycg, paramdata, param_count@u32, false@s32);
 	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), func_tycg);
+};
 
-	if(!(fn->is_extern))
+cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
+{
+	if(fn->is_extern)
 	{
-		// make entry basic block if we expect an impl block.
-		LLVMAppendBasicBlock(fn->codegen, "entry");
+		return;
 	}
+	entry_bb ::= LLVMAppendBasicBlock(fn->codegen, "entry");
 };
 
 cg_verbose_print ::= func() -> v0
@@ -161,7 +164,12 @@ codegen ::= func(prog : program mut&) -> v0
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		cg_func((funcs->data) at i, glob, prog);
+		cg_declare_func((funcs->data) at i, glob, prog);
+	}
+
+	for(i = 0, i < (funcs->size), i = i + 1)
+	{
+		cg_define_func((funcs->data) at i, glob, prog);
 	}
 
 	if(args->verbose_codegen)
