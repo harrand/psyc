@@ -9,7 +9,7 @@ cg : cg_helper_functions mut;
 
 // LLVM IR CODE GENERATION BEGIN
 
-cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> v0
+cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	biop ::= expr.biop;
 	biop_ty ::= biop.type;
@@ -20,36 +20,38 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> v0
 	puts(__enumname(biop_ty));
 	psyc_diag_end();
 	putchar(10);
+
+	return zero;
 };
 
-cg_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> v0
+cg_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 	cg_func ::= deref(cg_expr_table at ((expr.type)@s64));
-	cg_func.fn(expr, ctx, prog);
+	return cg_func.fn(expr, ctx, prog);
 };
 
-cg_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
+cg_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
-	cg_expr(node->expr, ctx, prog);
+	return cg_expr(node->expr, ctx, prog);
 };
 
-cg_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
+cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 	stmt ::= node->stmt;
 
 	cg_func ::= deref(cg_stmt_table at (stmt@s64));
-	cg_func.fn(ctx, prog);
+	return cg_func.fn(ctx, prog);
 };
 
-cg_node ::= func(ctx : context mut, prog : program mut&) -> v0
+cg_node ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 
 	cg_func ::= deref(cg_node_table at ((node->type)@s64));
-	cg_func.fn(ctx, prog);
+	return cg_func.fn(ctx, prog);
 };
 
 // LLVM IR CODE GENERATION END
