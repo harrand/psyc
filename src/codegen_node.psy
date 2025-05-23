@@ -7,18 +7,46 @@ cg_helper_functions ::= struct
 };
 cg : cg_helper_functions mut;
 
-codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
+cg_fn ::= struct
 {
-	cgar = a;
-	cg = h;
+	fn : func(ctx : context mut, prog : program mut&) -> v0;
 };
+cgfn_default_impl ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	psyc_error_begin(node->loc);
+	puts("cgfn_default_impl invoked. compiler bug. caused by the following node:");
+	putchar(10);
+	ast_verbose_print(node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cgfn_default ::= cg_fn
+{
+	.fn := cgfn_default_impl;
+};
+
+cg_node_table : cg_fn mut#29;
 
 cg_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
-	puts("cg'ing node ");
-	print_srcloc(node->loc);
-	putchar(10);
+
+	cg_func ::= deref(cg_node_table at ((node->type)@s64));
+	cg_func.fn(ctx, prog);
+};
+
+codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
+{
+	cgar = a;
+	cg = h;
+
+	cg_node_table_size ::= __sizeof(cg_node_table) / __sizeof(deref(cg_node_table at 0));
+	i : u64 mut;
+	for(i = 0, i < cg_node_table_size, i = i + 1)
+	{
+		deref(cg_node_table at i) = cgfn_default;
+	}
 };
 
 == build ==
