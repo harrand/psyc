@@ -48,6 +48,30 @@ cg_stmtfn_error ::= func(ctx : context mut, prog : program mut&) -> v0
 };
 cg_stmt_table : cg_stmt_fn mut#10;
 
+// expr table
+cg_expr_fn ::= struct
+{
+	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> v0;
+};
+cg_exprfn_error ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous exprfn invoked for expr type ");
+	putchar('"');
+	puts(__enumname(expr.type));
+	puts(" (");
+	putuint((expr.type)@s64);
+	puts(")");
+	putchar('"');
+	puts(" -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_expr_table : cg_expr_fn mut#10;
+
 == build ==
 {
 	add_source_file("program.psy");
