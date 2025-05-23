@@ -1,4 +1,3 @@
-cgar : arena mut& mut;
 mod : u64 mut;
 ir : u64 mut;
 
@@ -80,10 +79,6 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 	}
 	psyc_panic(zero, "control flow reached end of cg_type - compiler bug.");
 	return 0;
-};
-
-cg_node ::= func(ctx : context mut, prog : program mut&) -> v0
-{
 };
 
 cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_offset : u64) -> v0
@@ -213,7 +208,11 @@ codegen ::= func(prog : program mut&) -> v0
 
 codegen_setup ::= func(a : arena mut&) -> v0
 {
-	cgar = a;
+	codegen_node_setup(a, cg_helper_functions
+	{
+		.children := cg_children;
+		.type := cg_type;
+	});
 	cg_struct_ptr = cg_struct_ptr_t{.fn := cg_struct;};
 };
 
@@ -221,4 +220,6 @@ codegen_setup ::= func(a : arena mut&) -> v0
 {
 	add_source_file("llvm.psy");
 	add_source_file("program.psy");
+
+	add_source_file("codegen_node.psy");
 }
