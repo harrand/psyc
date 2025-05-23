@@ -7,26 +7,49 @@ cg_helper_functions ::= struct
 };
 cg : cg_helper_functions mut;
 
-cg_fn ::= struct
+// node table
+cg_node_fn ::= struct
 {
 	fn : func(ctx : context mut, prog : program mut&) -> v0;
 };
-cgfn_default_impl ::= func(ctx : context mut, prog : program mut&) -> v0
+cg_nodefn_error ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	psyc_error_begin(node->loc);
-	puts("cgfn_default_impl invoked. compiler bug. caused by the following node:");
+	puts(__function());
+	puts("erroneous nodefn invoked. compiler bug. caused by the following node:");
 	putchar(10);
 	ast_verbose_print(node, 1);
 	psyc_diag_end();
 	psyc_exit_failure();
 };
-cgfn_default ::= cg_fn
-{
-	.fn := cgfn_default_impl;
-};
 
-cg_node_table : cg_fn mut#29;
+cg_node_table : cg_node_fn mut#29;
+// stmt table
+cg_stmt_fn ::= struct
+{
+	fn : func(ctx : context mut, prog : program mut&) -> v0;
+};
+cg_stmtfn_error ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	psyc_error_begin(node->loc);
+	puts("erroneous stmtfn invoked. compiler bug. caused by the following node:");
+	putchar(10);
+	ast_verbose_print(node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_stmt_table : cg_stmt_fn mut#10;
+
+cg_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+
+	cg_func ::= deref(cg_stmt_table at (stmt@s64));
+	cg_func.fn(ctx, prog);
+};
 
 cg_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
@@ -40,13 +63,23 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 {
 	cgar = a;
 	cg = h;
-
-	cg_node_table_size ::= __sizeof(cg_node_table) / __sizeof(deref(cg_node_table at 0));
 	i : u64 mut;
+
+
+	// populate tables
+	cg_node_table_size ::= __sizeof(cg_node_table) / __sizeof(deref(cg_node_table at 0));
 	for(i = 0, i < cg_node_table_size, i = i + 1)
 	{
-		deref(cg_node_table at i) = cgfn_default;
+		deref(cg_node_table at i) = cg_node_fn{.fn := cg_nodefn_error;};
 	}
+	deref(cg_node_table at ((ast_type.stmt)@s64)) = cg_node_fn{.fn := cg_stmt;};
+
+	cg_stmt_table_size ::= __sizeof(cg_stmt_table) / __sizeof(deref(cg_stmt_table at 0));
+	for(i = 0, i < cg_stmt_table_size, i = i + 1)
+	{
+		deref(cg_stmt_table at i) = cg_stmt_fn{.fn := cg_stmtfn_error;};
+	}
+	//deref(cg_stmt_table at ((ast_type.stmt)@s64)) = cg_stmt_fn{.fn := cg_stmt;};
 };
 
 == build ==
