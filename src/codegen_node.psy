@@ -2,19 +2,107 @@ cgar : arena mut& mut;
 
 // LLVM IR CODE GENERATION BEGIN
 
+cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop assign");
+	return zero;
+};
+
+cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop compare");
+	return zero;
+};
+
+cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop comparen");
+	return zero;
+};
+
+cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop plus");
+	return zero;
+};
+
+cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop minus");
+	return zero;
+};
+
+cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop multiply");
+	return zero;
+};
+
+cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop divide");
+	return zero;
+};
+
+cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop bitwise_or");
+	return zero;
+};
+
+cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop logical_or");
+	return zero;
+};
+
+cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop bitwise_and");
+	return zero;
+};
+
+cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop logical_and");
+	return zero;
+};
+
+cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop at");
+	return zero;
+};
+
+cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop field");
+	return zero;
+};
+
+cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop ptr_field");
+	return zero;
+};
+
+cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(lhs->loc, "todo: biop cast");
+	return zero;
+};
+
 cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	biop ::= expr.biop;
 	biop_ty ::= biop.type;
-
 	node ::= ctx.node;
-	psyc_error_begin(node->loc);
-	puts("TODO: biop ");
-	puts(__enumname(biop_ty));
-	psyc_diag_end();
-	putchar(10);
 
-	return zero;
+	lhs ::= ast_biop_get_lhs(deref node);
+	rhs ::= ast_biop_get_rhs(deref node);
+
+	cg_func ::= deref(cg_biop_table at (biop_ty@s64));
+	return cg_func.fn(lhs, rhs, ctx, prog);
 };
 
 cg_expr ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
@@ -76,6 +164,27 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 		deref(cg_expr_table at i) = cg_expr_fn{.fn := cg_exprfn_error;};
 	}
 	deref(cg_expr_table at ((ast_expr_type.biop)@s64)) = cg_expr_fn{.fn := cg_biop;};
+
+	cg_biop_table_size ::= __sizeof(cg_biop_table) / __sizeof(deref(cg_biop_table at 0));
+	for(i = 0, i < cg_biop_table_size, i = i + 1)
+	{
+		deref(cg_biop_table at i) = cg_biop_fn{.fn := cg_biopfn_error;};
+	}
+	deref(cg_biop_table at ((ast_biop_type.assign)@s64)) = cg_biop_fn{.fn := cg_biop_assign;};
+	deref(cg_biop_table at ((ast_biop_type.compare)@s64)) = cg_biop_fn{.fn := cg_biop_compare;};
+	deref(cg_biop_table at ((ast_biop_type.comparen)@s64)) = cg_biop_fn{.fn := cg_biop_comparen;};
+	deref(cg_biop_table at ((ast_biop_type.plus)@s64)) = cg_biop_fn{.fn := cg_biop_plus;};
+	deref(cg_biop_table at ((ast_biop_type.minus)@s64)) = cg_biop_fn{.fn := cg_biop_minus;};
+	deref(cg_biop_table at ((ast_biop_type.multiply)@s64)) = cg_biop_fn{.fn := cg_biop_multiply;};
+	deref(cg_biop_table at ((ast_biop_type.divide)@s64)) = cg_biop_fn{.fn := cg_biop_divide;};
+	deref(cg_biop_table at ((ast_biop_type.bitwise_or)@s64)) = cg_biop_fn{.fn := cg_biop_bitwise_or;};
+	deref(cg_biop_table at ((ast_biop_type.logical_or)@s64)) = cg_biop_fn{.fn := cg_biop_logical_or;};
+	deref(cg_biop_table at ((ast_biop_type.bitwise_and)@s64)) = cg_biop_fn{.fn := cg_biop_bitwise_and;};
+	deref(cg_biop_table at ((ast_biop_type.logical_and)@s64)) = cg_biop_fn{.fn := cg_biop_logical_and;};
+	deref(cg_biop_table at ((ast_biop_type.operator_at)@s64)) = cg_biop_fn{.fn := cg_biop_at;};
+	deref(cg_biop_table at ((ast_biop_type.field)@s64)) = cg_biop_fn{.fn := cg_biop_field;};
+	deref(cg_biop_table at ((ast_biop_type.ptr_field)@s64)) = cg_biop_fn{.fn := cg_biop_ptr_field;};
+	deref(cg_biop_table at ((ast_biop_type.cast)@s64)) = cg_biop_fn{.fn := cg_biop_cast;};
 };
 
 == build ==
