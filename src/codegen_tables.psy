@@ -93,6 +93,30 @@ cg_biopfn_error ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progr
 };
 cg_biop_table : cg_biop_fn mut#15;
 
+// literal table
+cg_literal_fn ::= struct
+{
+	fn : func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_literalfn_error ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous literalfn invoked for literal type ");
+	putchar('"');
+	puts(__enumname(lit.type));
+	puts(" (");
+	putuint((lit.type)@s64);
+	puts(")");
+	putchar('"');
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_literal_table : cg_literal_fn mut#7;
+
 == build ==
 {
 	add_source_file("program.psy");

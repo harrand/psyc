@@ -52,11 +52,8 @@ cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> 
 {
 	lit ::= expr.literal;
 
-	// todo: remove
-	// probably need *yet another* table. good thing i moved all table logic into its own source file coz its gonna growww
-	node ::= ctx.node;
-	psyc_panic(node->loc, "todo: codegen literals");
-	return zero;
+	cg_func ::= deref(cg_literal_table at ((lit.type)@s64));
+	return cg_func.fn(lit, ctx, prog);
 };
 
 // biop
@@ -241,6 +238,12 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_biop_table at ((ast_biop_type.field)@s64)) = cg_biop_fn{.fn := cg_biop_field;};
 	deref(cg_biop_table at ((ast_biop_type.ptr_field)@s64)) = cg_biop_fn{.fn := cg_biop_ptr_field;};
 	deref(cg_biop_table at ((ast_biop_type.cast)@s64)) = cg_biop_fn{.fn := cg_biop_cast;};
+
+	cg_literal_table_size ::= __sizeof(cg_literal_table) / __sizeof(deref(cg_literal_table at 0));
+	for(i = 0, i < cg_literal_table_size, i = i + 1)
+	{
+		deref(cg_literal_table at i) = cg_literal_fn{.fn := cg_literalfn_error;};
+	}
 };
 
 == build ==
