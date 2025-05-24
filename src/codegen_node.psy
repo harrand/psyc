@@ -208,6 +208,9 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	fnty ::= parentfn->type;
+	fnpayload ::= fnty.fn;
+	fn_retty ::= deref((fnpayload.return_type)@ty&);
 	// todo: get parent fn and ensure the return is suitable.
 	if((node->childcount) == 0)
 	{
@@ -215,11 +218,13 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	}
 	if((node->childcount) == 1)
 	{
-		retval ::= cg_node(context
+		retval : cgv mut := cg_node(context
 		{
 			.node := ast_get_child(node@_, 0);
 			.local := ctx.local;
 		}, prog);
+		retval = cgv_convert(retval, fn_retty, prog, node->loc);
+		// do a convert
 		LLVMBuildRet(ir, retval.ll);
 	}
 	if((node->childcount) > 1)
