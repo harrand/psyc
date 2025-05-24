@@ -152,12 +152,16 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	node ::= fn->node;
 	funcscope ::= program_new_scope(prog, cgar, s, scope_type.fn, node->loc, fn->name, fn->name_len);
 	(funcscope->codegen) = LLVMAppendBasicBlock(fn->codegen, "entry");
+	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
+	defer LLVMClearInsertionPosition(ir);
+
 	child_iterate_offset ::= fn->param_count;
 	cg_children(context
 	{
 		.node := node;
 		.local := funcscope;
 	}, prog, child_iterate_offset, 0);
+
 };
 
 cg_verbose_print ::= func() -> v0
