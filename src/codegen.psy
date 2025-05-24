@@ -217,6 +217,15 @@ codegen_setup ::= func(a : arena mut&) -> v0
 		.type := cg_type;
 	});
 	cg_struct_ptr = cg_struct_ptr_t{.fn := cg_struct;};
+
+	i : u64 mut;
+	// fill in cgv conv tables.
+	cgv_conv_table_size ::= __sizeof(cgv_conv_table) / __sizeof(deref(cgv_conv_table at 0));
+	for(i = 0, i < cgv_conv_table_size, i = i + 1)
+	{
+		deref(cgv_conv_table at i) = cgv_conv_fn{.fn := cgv_conv_undef;};
+	}
+	deref(cgv_conv_table at ((tyconv.i2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2i;};
 };
 
 == build ==
@@ -225,4 +234,5 @@ codegen_setup ::= func(a : arena mut&) -> v0
 	add_source_file("program.psy");
 
 	add_source_file("codegen_node.psy");
+	add_source_file("codegen_conv.psy");
 }

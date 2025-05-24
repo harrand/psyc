@@ -44,13 +44,20 @@ cgv_is_zero ::= func(v : cgv) -> bool
 	return sval_iszero(v.sv);
 };
 
-cgv_convert ::= func(v : cgv mut, to : ty) -> cgv
+cgv_conv_fn ::= struct
 {
-	sv ::= ref(v.sv);
-	deref(sv) = sval_convert(deref sv, to);
-	(v.tag) = (cgvtag.misc);
+	fn : func(v : cgv, to : ty) -> cgv;
+};
+cgv_conv_table : cgv_conv_fn mut#14;
 
-	return v;
+cgv_convert ::= func(v : cgv, to : ty) -> cgv
+{
+	sv ::= v.sv;
+	from ::= sv.type;
+	conv ::= ty_get_conv(from, to);
+
+	do_conv ::= deref(cgv_conv_table at (conv@s64));
+	return do_conv.fn(v, to);
 };
 
 cgv_load ::= func(v : cgv mut, prog : program mut&) -> cgv
