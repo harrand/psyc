@@ -68,26 +68,88 @@ cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pr
 
 cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(zero, "floating-point literal nyi");
-	return zero;
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.f64, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstReal(cg.type(type, prog), lit.integral);
+		.sv := sval
+		{
+			.type := type;
+			.tag := sval_tag.literal;
+			.literal := lit;
+		};
+	};
 };
 
 cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(zero, "char literal nyi");
-	return zero;
+	node ::= ctx.node;
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.s8, q);
+
+	chars ::= lit.chars;
+	len ::= lit.chars_len;
+	// todo: escape chars and len
+	if(len != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("char literal ");
+		puts("'");
+		putss(chars, len);
+		puts("'");
+		puts(" was of length ");
+		putuint(len);
+		puts(", but a char literal must have length exactly 1.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), deref(chars at 0), false@s32);
+		.sv := sval
+		{
+			.type := type;
+			.tag := sval_tag.literal;
+			.literal := lit;
+		};
+	};
 };
 
 cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(zero, "string literal nyi");
-	return zero;
+	chars ::= lit.chars;
+	len ::= lit.chars_len;
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstString(chars, len@_, false@s32); // let string literals be null terminated
+		.sv := sval
+		{
+			.type := ty_ref(ty_getprim(primty.u8, tyqual.static), zero);
+			.tag := sval_tag.literal;
+			.literal := lit;
+		};
+	};
 };
 
 cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(zero, "bool literal nyi");
-	return zero;
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.bool, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), lit.boolean, false@s32);
+		.sv := sval
+		{
+			.type := type;
+			.tag := sval_tag.literal;
+			.literal := lit;
+		};
+	};
 };
 
 cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
