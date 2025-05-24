@@ -218,8 +218,41 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 
 cg_biop_process_both ::= macro() -> v0
 {
-	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
+	lhs_sv ::= ref(lhs_val.sv);
 	rhs_val ::= cg_biop_process_param(rhs, ctx, prog);
+	rhs_sv ::= ref(rhs_val.sv);
+
+	conv ::= ty_get_conv(lhs_sv->type, rhs_sv->type);
+	if(conv == (tyconv.cant))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary operator is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_sv->type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_sv->type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.could_if_weak))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary operator is invalid because rhs type ");
+		putchar('"');
+		putty(rhs_sv->type);
+		putchar('"');
+		puts(" is not convertible to lhs type ");
+		putchar('"');
+		putty(lhs_sv->type);
+		putchar('"');
+		puts(" (but it could with a cast)");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 };
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
@@ -255,8 +288,20 @@ cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	cg_biop_process_both();
-	psyc_panic(lhs->loc, "todo: biop multiply");
-	return zero;
+	lhs_lit ::= ref(lhs_sv->literal);
+	rhs_lit ::= ref(rhs_sv->literal);
+	(lhs_lit->integral) = (lhs_lit->integral) * (rhs_lit->integral);
+	(lhs_lit->floating_point) = (lhs_lit->floating_point) * (rhs_lit->floating_point);
+	if(ty_is_integral(lhs_sv->type))
+	{
+		(lhs_val.ll) = LLVMBuildMul(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is_floating_point(lhs_sv->type))
+	{
+		(lhs_val.ll) = LLVMBuildFMul(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+
+	return lhs_val;
 };
 
 cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
