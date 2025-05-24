@@ -54,8 +54,22 @@ cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 
 cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
-	psyc_panic(loc, "this conversion is NYI");
-	return zero;
+	ret : cgv mut := v;
+	cgto ::= cg.type(to, prog);
+
+	sv ::= v.sv;
+	from ::= sv.type;
+
+	from_signed ::= ty_is_signed_integral(from);
+	if(from_signed)
+	{
+		(ret.ll) = LLVMBuildSIToFP(ir, v.ll, cgto, "");
+	}
+	if(!from_signed)
+	{
+		(ret.ll) = LLVMBuildUIToFP(ir, v.ll, cgto, "");
+	}
+	return ret;
 };
 
 cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
@@ -108,8 +122,19 @@ cgv_conv_fn2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> c
 
 cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
-	psyc_panic(loc, "this conversion is NYI");
-	return zero;
+	ret : cgv mut := v;
+	cgto ::= cg.type(to, prog);
+
+	to_signed ::= ty_is_signed_integral(to);
+	if(to_signed)
+	{
+		(ret.ll) = LLVMBuildFPToSI(ir, v.ll, cgto, "");
+	}
+	if(!to_signed)
+	{
+		(ret.ll) = LLVMBuildFPToUI(ir, v.ll, cgto, "");
+	}
+	return ret;
 };
 
 cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
