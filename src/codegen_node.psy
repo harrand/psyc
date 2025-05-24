@@ -196,6 +196,31 @@ cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> 
 	return cg_func.fn(lit, ctx, prog);
 };
 
+// ret
+cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	// todo: get parent fn and ensure the return is suitable.
+	if((node->childcount) == 0)
+	{
+		LLVMBuildRetVoid(ir);
+	}
+	if((node->childcount) == 1)
+	{
+		retval ::= cg_node(context
+		{
+			.node := ast_get_child(node@_, 0);
+			.local := ctx.local;
+		}, prog);
+		LLVMBuildRet(ir, retval.ll);
+	}
+	if((node->childcount) > 1)
+	{
+		psyc_panic(node->loc, "ret-expr had more than 1 child, which is wrong. compiler bug.");
+	}
+	return zero;
+};
+
 // biop
 
 cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program mut&) -> cgv
@@ -402,6 +427,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	}
 	deref(cg_expr_table at ((ast_expr_type.biop)@s64)) = cg_expr_fn{.fn := cg_biop;};
 	deref(cg_expr_table at ((ast_expr_type.literal)@s64)) = cg_expr_fn{.fn := cg_literal;};
+	deref(cg_expr_table at ((ast_expr_type.ret)@s64)) = cg_expr_fn{.fn := cg_ret;};
 
 	cg_biop_table_size ::= __sizeof(cg_biop_table) / __sizeof(deref(cg_biop_table at 0));
 	for(i = 0, i < cg_biop_table_size, i = i + 1)
