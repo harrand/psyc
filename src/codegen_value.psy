@@ -1,6 +1,19 @@
+// preamble
+ir : u64 mut;
+
+cg_helper_functions ::= struct
+{
+	children : func(ctx : context mut, prog : program mut&, offset : u64, back_offset : u64) -> v0;
+	type : func(t : ty, prog : program mut&) -> u64;
+};
+cg : cg_helper_functions mut;
+
+// cgv code begins here
+
 cgvtag ::= enum
 {
 	.misc := 1;
+	.var := 2;
 };
 
 cgv ::= struct
@@ -40,7 +53,22 @@ cgv_convert ::= func(v : cgv mut, to : ty) -> cgv
 	return v;
 };
 
+cgv_load ::= func(v : cgv mut, prog : program mut&) -> cgv
+{
+	(v.ll) = LLVMBuildLoad2(ir, cg.type(cgv_ty(v), prog), v.ll, "");
+	return v;
+};
+
+cgv_load_if_variable ::= func(v : cgv mut&, prog : program mut&) -> v0
+{
+	if((v->tag) == (cgvtag.var))
+	{
+		deref(v) = cgv_load(deref v, prog);
+	}
+};
+
 == build ==
 {
 	add_source_file("sval.psy");
+	add_source_file("llvm.psy");
 }
