@@ -51,8 +51,19 @@ cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(zero, "integer literal nyi");
-	return zero;
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.s64, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), lit.integral, false@s32);
+		.sv := sval
+		{
+			.type := type;
+			.tag := sval_tag.literal;
+			.literal := lit;
+		};
+	};
 };
 
 cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
