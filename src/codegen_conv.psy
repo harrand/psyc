@@ -16,8 +16,38 @@ cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut&) -> cgv
 
 cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&) -> cgv
 {
-	psyc_panic(srcloc_current(), "this conversion is NYI");
-	return zero;
+	ret : cgv mut := v;
+	cgto ::= cg.type(to, prog);
+
+	sv ::= v.sv;
+	from ::= sv.type;
+	from_signed ::= ty_is_signed_integral(from);
+	to_signed ::= ty_is_signed_integral(to);
+	from_size ::= ty_integral_size(from);
+	to_size ::= ty_integral_size(to);
+
+	if(from_size < to_size)
+	{
+		// expanding to larger size
+		if(from_signed)
+		{
+			(ret.ll) = LLVMBuildSExt(ir, v.ll, cgto, "");
+		}
+		if(!from_signed)
+		{
+			(ret.ll) = LLVMBuildZExt(ir, v.ll, cgto, "");
+		}
+	}
+	if(from_size > to_size)
+	{
+		// truncating to smaller size
+		(ret.ll) = LLVMBuildTrunc(ir, v.ll, cgto, "");
+	}
+	if(from_size == to_size)
+	{
+		(ret.ll) = LLVMBuildBitCast(ir, v.ll, cgto, "");
+	}
+	return ret;
 };
 
 cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&) -> cgv
