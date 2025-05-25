@@ -50,8 +50,40 @@ cgv_conv_fn ::= struct
 };
 cgv_conv_table : cgv_conv_fn mut#16;
 
+cgv_zero_as ::= func(type : ty, prog : program mut&) -> cgv
+{
+	ret : cgv mut := cgv
+	{
+		.tag := cgvtag.misc;
+		.sv := sval
+		{
+			.type := type;
+			.tag := sval_tag.val_zero;
+		};
+	};
+	if((type.tag) == (tytag.ptr))
+	{
+		ptr ::= type.ptr;
+		underlying ::= deref((ptr.underlying)@ty&);
+		cg_u ::= cg.type(underlying, prog);
+		(ret.ll) = LLVMConstPointerNull(cg_u);
+		return ret;
+	}
+	if((type.tag) == (tytag.arr))
+	{
+		psyc_panic(zero, "todo: zero_as array");
+	}
+	cg_t ::= cg.type(type, prog);
+	(ret.ll) = LLVMConstNull(cg_t);
+	return ret;
+};
+
 cgv_convert ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	if(cgv_is_zero(v))
+	{
+		return cgv_zero_as(to, prog);
+	}
 	sv ::= v.sv;
 	from ::= sv.type;
 	conv ::= ty_get_conv(from, to);
