@@ -68,7 +68,7 @@ cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, pr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstReal(cg.type(type, prog), lit.integral);
+		.ll := LLVMConstReal(cg.type(type, prog), lit.floating_point);
 		.type := type;
 	};
 };
@@ -210,38 +210,7 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 cg_biop_process_both ::= macro() -> v0
 {
 	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
-	rhs_val ::= cg_biop_process_param(rhs, ctx, prog);
-
-	conv ::= ty_get_conv(lhs_val.type, rhs_val.type);
-	if(conv == (tyconv.cant))
-	{
-		psyc_error_begin(rhs->loc);
-		puts("binary operator is invalid because rhs type ");
-		putchar('"');
-		putty(rhs_val.type);
-		putchar('"');
-		puts(" is not convertible to lhs type ");
-		putchar('"');
-		putty(lhs_val.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	if(conv == (tyconv.could_if_weak))
-	{
-		psyc_error_begin(rhs->loc);
-		puts("binary operator is invalid because rhs type ");
-		putchar('"');
-		putty(rhs_val.type);
-		putchar('"');
-		puts(" is not convertible to lhs type ");
-		putchar('"');
-		putty(lhs_val.type);
-		putchar('"');
-		puts(" (but it could with a cast)");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
+	rhs_val ::= cgv_convert(cg_biop_process_param(rhs, ctx, prog), lhs_val.type, prog, rhs->loc);
 };
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
