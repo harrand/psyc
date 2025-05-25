@@ -170,24 +170,6 @@ cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	};
 };
 
-cg_null_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
-{
-	node ::= ctx.node;
-	psyc_warning_begin(node->loc);
-	puts("null literals currently have .ll := 0");
-	psyc_diag_end();
-	return cgv
-	{
-		.tag := cgvtag.misc;
-		.ll := 0;
-		.sv := sval
-		{
-			.type := zero;
-			.tag := sval_tag.val_null;
-		};
-	};
-};
-
 cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	lit ::= expr.literal;
@@ -474,7 +456,6 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_literal_table at ((ast_literal_type.string_literal)@s64)) = cg_literal_fn{.fn := cg_string_literal;};
 	deref(cg_literal_table at ((ast_literal_type.bool_literal)@s64)) = cg_literal_fn{.fn := cg_bool_literal;};
 	deref(cg_literal_table at ((ast_literal_type.zero_literal)@s64)) = cg_literal_fn{.fn := cg_zero_literal;};
-	deref(cg_literal_table at ((ast_literal_type.null_literal)@s64)) = cg_literal_fn{.fn := cg_null_literal;};
 };
 
 == build ==
