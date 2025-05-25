@@ -11,10 +11,16 @@ str2cstr ::= func(str : u8&, len : u64, a : arena mut&) -> u8&
 cg_finish ::= func() -> v0
 {
 	err : u8& mut;
-	LLVMVerifyModule(mod, 2, ref err);
-	puts("verify says: ");
-	puts(err);
-	putchar(10);
+	if(LLVMVerifyModule(mod, 2, ref err) != 0)
+	{
+		psyc_error_begin(zero);
+		puts("LLVM Internal Codegen Failed:");
+		putchar(10);
+		puts(err);
+		putchar(10);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 };
 
 cg_primty ::= func(p : primty) -> u64
