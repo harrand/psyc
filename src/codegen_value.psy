@@ -14,34 +14,19 @@ cgvtag ::= enum
 {
 	.misc := 1;
 	.var := 2;
+	.valzero := 3;
 };
 
 cgv ::= struct
 {
 	tag : cgvtag;
 	ll : u64;
-	sv : sval;
-};
-
-cgv_ty ::= func(v : cgv) -> ty
-{
-	sv ::= v.sv;
-	return sv.type;
-};
-
-cgv_has_sv ::= func(v : cgv) -> bool
-{
-	return sval_hasval(v.sv);
-};
-
-cgv_is_null ::= func(v : cgv) -> bool
-{
-	return sval_isnull(v.sv);
+	type : ty;
 };
 
 cgv_is_zero ::= func(v : cgv) -> bool
 {
-	return sval_iszero(v.sv);
+	return (v.tag) == (cgvtag.valzero);
 };
 
 cgv_conv_fn ::= struct
@@ -55,11 +40,7 @@ cgv_zero_as ::= func(type : ty, prog : program mut&) -> cgv
 	ret : cgv mut := cgv
 	{
 		.tag := cgvtag.misc;
-		.sv := sval
-		{
-			.type := type;
-			.tag := sval_tag.val_zero;
-		};
+		.type := type;
 	};
 	if((type.tag) == (tytag.ptr))
 	{
@@ -84,20 +65,18 @@ cgv_convert ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 	{
 		return cgv_zero_as(to, prog);
 	}
-	sv ::= v.sv;
-	from ::= sv.type;
+	from ::= v.type;
 	conv ::= ty_get_conv(from, to);
 
 	do_conv ::= deref(cgv_conv_table at (conv@s64));
 	ret : cgv mut := do_conv.fn(v, to, prog, loc);
-	retsv ::= ref(ret.sv);
-	(retsv->type) = to;
+	(ret.type) = to;
 	return ret;
 };
 
 cgv_load ::= func(v : cgv mut, prog : program mut&) -> cgv
 {
-	(v.ll) = LLVMBuildLoad2(ir, cg.type(cgv_ty(v), prog), v.ll, "");
+	(v.ll) = LLVMBuildLoad2(ir, cg.type(v.type, prog), v.ll, "");
 	return v;
 };
 
@@ -111,6 +90,6 @@ cgv_load_if_variable ::= func(v : cgv mut&, prog : program mut&) -> v0
 
 == build ==
 {
-	add_source_file("sval.psy");
+	add_source_file("type.psy");
 	add_source_file("llvm.psy");
 }

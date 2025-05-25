@@ -57,12 +57,7 @@ cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pr
 	{
 		.tag := cgvtag.misc;
 		.ll := LLVMConstInt(cg.type(type, prog), lit.integral, false@s32);
-		.sv := sval
-		{
-			.type := type;
-			.tag := sval_tag.literal;
-			.literal := lit;
-		};
+		.type := type;
 	};
 };
 
@@ -74,12 +69,7 @@ cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, pr
 	{
 		.tag := cgvtag.misc;
 		.ll := LLVMConstReal(cg.type(type, prog), lit.integral);
-		.sv := sval
-		{
-			.type := type;
-			.tag := sval_tag.literal;
-			.literal := lit;
-		};
+		.type := type;
 	};
 };
 
@@ -109,12 +99,7 @@ cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	{
 		.tag := cgvtag.misc;
 		.ll := LLVMConstInt(cg.type(type, prog), deref(chars at 0), false@s32);
-		.sv := sval
-		{
-			.type := type;
-			.tag := sval_tag.literal;
-			.literal := lit;
-		};
+		.type := type;
 	};
 };
 
@@ -126,12 +111,7 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 	{
 		.tag := cgvtag.misc;
 		.ll := LLVMConstString(chars, len@_, false@s32); // let string literals be null terminated
-		.sv := sval
-		{
-			.type := ty_ref(ty_getprim(primty.u8, tyqual.static), zero);
-			.tag := sval_tag.literal;
-			.literal := lit;
-		};
+		.type := ty_ref(ty_getprim(primty.u8, tyqual.static), zero);
 	};
 };
 
@@ -143,12 +123,7 @@ cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	{
 		.tag := cgvtag.misc;
 		.ll := LLVMConstInt(cg.type(type, prog), lit.boolean, false@s32);
-		.sv := sval
-		{
-			.type := type;
-			.tag := sval_tag.literal;
-			.literal := lit;
-		};
+		.type := type;
 	};
 };
 
@@ -160,13 +135,9 @@ cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	psyc_diag_end();
 	return cgv
 	{
-		.tag := cgvtag.misc;
+		.tag := cgvtag.valzero;
 		.ll := 0;
-		.sv := sval
-		{
-			.type := zero;
-			.tag := sval_tag.val_zero;
-		};
+		.type := zero;
 	};
 };
 
@@ -239,21 +210,19 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 cg_biop_process_both ::= macro() -> v0
 {
 	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
-	lhs_sv ::= ref(lhs_val.sv);
 	rhs_val ::= cg_biop_process_param(rhs, ctx, prog);
-	rhs_sv ::= ref(rhs_val.sv);
 
-	conv ::= ty_get_conv(lhs_sv->type, rhs_sv->type);
+	conv ::= ty_get_conv(lhs_val.type, rhs_val.type);
 	if(conv == (tyconv.cant))
 	{
 		psyc_error_begin(rhs->loc);
 		puts("binary operator is invalid because rhs type ");
 		putchar('"');
-		putty(rhs_sv->type);
+		putty(rhs_val.type);
 		putchar('"');
 		puts(" is not convertible to lhs type ");
 		putchar('"');
-		putty(lhs_sv->type);
+		putty(lhs_val.type);
 		putchar('"');
 		psyc_diag_end();
 		psyc_exit_failure();
@@ -263,11 +232,11 @@ cg_biop_process_both ::= macro() -> v0
 		psyc_error_begin(rhs->loc);
 		puts("binary operator is invalid because rhs type ");
 		putchar('"');
-		putty(rhs_sv->type);
+		putty(rhs_val.type);
 		putchar('"');
 		puts(" is not convertible to lhs type ");
 		putchar('"');
-		putty(lhs_sv->type);
+		putty(lhs_val.type);
 		putchar('"');
 		puts(" (but it could with a cast)");
 		psyc_diag_end();
@@ -308,15 +277,11 @@ cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	cg_biop_process_both();
-	lhs_lit ::= ref(lhs_sv->literal);
-	rhs_lit ::= ref(rhs_sv->literal);
-	(lhs_lit->integral) = (lhs_lit->integral) * (rhs_lit->integral);
-	(lhs_lit->floating_point) = (lhs_lit->floating_point) * (rhs_lit->floating_point);
-	if(ty_is_integral(lhs_sv->type))
+	if(ty_is_integral(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildMul(ir, lhs_val.ll, rhs_val.ll, "");
 	}
-	if(ty_is_floating_point(lhs_sv->type))
+	if(ty_is_floating_point(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildFMul(ir, lhs_val.ll, rhs_val.ll, "");
 	}
