@@ -139,6 +139,31 @@ cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
+cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+{
+	ret : cgv mut := v;
+	cgto ::= cg.type(to, prog);
+
+	sv ::= v.sv;
+	from ::= sv.type;
+	from_size ::= ty_floating_point_size(from);
+	to_size ::= ty_floating_point_size(to);
+	if(from_size == to_size)
+	{
+		return ret;
+	}
+	if(from_size > to_size)
+	{
+		(ret.ll) = LLVMBuildFPTrunc(ir, v.ll, cgto, "");
+	}
+	if(from_size < to_size)
+	{
+		(ret.ll) = LLVMBuildFPExt(ir, v.ll, cgto, "");
+	}
+
+	return ret;
+};
+
 cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	// bool to another integral type
