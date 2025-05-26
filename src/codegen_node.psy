@@ -360,6 +360,24 @@ cg_biop_process_both ::= macro() -> v0
 	cgv_load_if_variable(ref rhs_val, prog);
 };
 
+cg_biop_arith_common ::= macro() -> vo
+{
+	cg_biop_process_both();
+	if(!ty_is_integral(lhs_val.type))
+	{
+		if(!ty_is_floating_point(lhs_val.type))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("operator invalid because the operands must be either an integral or floating-point type, but you have passed ");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+};
+
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	psyc_panic(lhs->loc, "todo: biop assign");
@@ -380,19 +398,38 @@ cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 
 cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop plus");
-	return zero;
+	cg_biop_arith_common();
+	if(ty_is_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildAdd(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFAdd(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
 };
 
 cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop minus");
-	return zero;
+	cg_biop_arith_common();
+	if(ty_is_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildSub(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFSub(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
 };
 
 cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	cg_biop_process_both();
+	cg_biop_arith_common();
 	if(ty_is_integral(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildMul(ir, lhs_val.ll, rhs_val.ll, "");
@@ -408,8 +445,25 @@ cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 
 cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop divide");
-	return zero;
+	cg_biop_arith_common();
+	if(ty_is_integral(lhs_val.type))
+	{
+		if(ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildSDiv(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(!ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildUDiv(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFDiv(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
 };
 
 cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
