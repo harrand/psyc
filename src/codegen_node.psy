@@ -359,6 +359,51 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 	return pval;
 };
 
+cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+{
+	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(lhs_val, prog);
+	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(rhs_val, prog);
+
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			if(!ty_is(lhsty, tytag.ptr))
+			{
+				psyc_error_begin(lhs->loc);
+				puts("operator invalid because the lhs must be either an integral, floating-point or pointer type, but you have passed ");
+				putchar('"');
+				putty(lhsty);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		if(!ty_is_floating_point(rhsty))
+		{
+			if(!ty_is(rhsty, tytag.ptr))
+			{
+				psyc_error_begin(rhs->loc);
+				puts("operator invalid because the rhs must be either an integral, floating-point or pointer type, but you have passed ");
+				putchar('"');
+				putty(rhsty);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+	}
+};
+
 cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
 {
 	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
@@ -453,14 +498,48 @@ cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 
 cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop compare");
-	return zero;
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(ty_is_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildICmp(ir, 32, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is(lhs_val.type, tytag.ptr))
+	{
+		(lhs_val.ll) = LLVMBuildICmp(ir, 32, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFCmp(ir, 9, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+
+	return lhs_val;
 };
 
 cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop comparen");
-	return zero;
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(ty_is_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildICmp(ir, 33, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is(lhs_val.type, tytag.ptr))
+	{
+		(lhs_val.ll) = LLVMBuildICmp(ir, 33, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFCmp(ir, 14, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+
+	return lhs_val;
 };
 
 cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
