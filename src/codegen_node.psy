@@ -290,6 +290,13 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> c
 			.type := maybe_var->type;
 		};
 	}
+	psyc_error_begin(node->loc);
+	puts("unknown symbol ");
+	putchar('"');
+	putss(sym.symbol, sym.len);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
@@ -435,8 +442,13 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop assign");
-	return zero;
+	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	rhs_val : cgv mut := cg_biop_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(ref rhs_val, prog);
+	rhs_val = cgv_convert(rhs_val, lhs_val.type, prog, rhs->loc);
+
+	LLVMBuildStore(ir, rhs_val.ll, lhs_val.ll);
+	return lhs_val;
 };
 
 cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
