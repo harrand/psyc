@@ -370,14 +370,72 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
-	var ::= scope_find_variable(ctx.local, decl.name, decl.name_len);
+
+	init_node : ast& mut;
+	init_node = null;
+	if((node->childcount) > 0)
+	{
+		init_node = ast_get_child(node@_, 0);
+	}
+
+	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
 	if(var == null)
 	{
 		psyc_panic(node->loc, "cg_decl could not verify that the decl actually existed. severe compiler bug.");
 	}
-	puts("cg_decl ");
-	putss(decl.name, decl.name_len);
-	putchar(10);
+
+	declty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+
+	init_val : cgv mut := zero;
+
+	if(init_node != null)
+	{
+		init_val = cg_expr(context
+		{
+			.node := init_node;
+			.local := ctx.local;
+		}, prog);
+	}
+
+	if((decl.typename_len) == cstrlen(psyc_deduced_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len))
+		{
+			// deduced typename
+			if(init_node == null)
+			{
+				psyc_error_begin(node->loc);
+				puts("deduced-decl ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" was missing an initialiser. decls with deduced-typenames must always have an initialiser");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			declty = (init_val.type);
+		}
+	}
+
+	(var->type) = declty;
+	cgty ::= cg.type(declty, prog);
+
+	if((init_val.tag) != zero)
+	{
+		init_val = cgv_convert(init_val, declty, prog, node->loc);
+	}
+	if(!(var->is_global))
+	{
+		// local variable. cg alloca.
+		name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
+		__memcpy(name_zstr, decl.name, decl.name_len);
+		deref(name_zstr at (decl.name_len)) = 0;
+		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
+	}
+	if(var->is_global)
+	{
+		// global variable. cg global.
+	}
 	return zero;
 };
 
