@@ -713,8 +713,58 @@ cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pro
 
 cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop cast");
-	return zero;
+	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(ref lhs_val, prog);
+	rhs_sym : ast_symbol_expr mut;
+	rhs_sym = zero;
+	if((rhs->type) == (ast_type.expr))
+	{
+		rhs_expr ::= rhs->expr;
+		if((rhs_expr.type) == (ast_expr_type.symbol))
+		{
+			rhs_sym = (rhs_expr.symbol);
+		}
+	}
+	if((rhs_sym.symbol) == null)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid cast - rhs must be a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// make lhs weak
+	lhs_ty : ty mut := lhs_val.type;
+	(lhs_ty.qual) = (lhs_ty.qual) | (tyqual.weak);
+	(lhs_val.type) = lhs_ty;
+	(lhs_val.tag) = (cgvtag.misc);
+
+	// is it the weakening idiom? then just return the weakened type
+	weakening_idiom ::= "_";
+	if((rhs_sym.len) == cstrlen(weakening_idiom))
+	{
+		if(cstreql_n(rhs_sym.symbol, weakening_idiom, rhs_sym.len))
+		{
+			// weakening idiom
+			// just return lhs_val but make its type weak
+			return lhs_val;
+		}
+	}
+
+	// else, do the conversion.
+	rhs_ty ::= scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
+	if(ty_isbad(rhs_ty))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("rhs of cast ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_val = cgv_convert(lhs_val, rhs_ty, prog, lhs->loc);
+	return lhs_val;
 };
 
 cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
