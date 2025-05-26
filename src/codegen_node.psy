@@ -149,6 +149,47 @@ cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> 
 	return cg_func.fn(lit, ctx, prog);
 };
 
+// symbol
+cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	sym ::= expr.symbol;
+	node ::= ctx.node;
+	// most obvious choice: a variable
+	maybe_var ::= scope_find_variable(ctx.local, sym.symbol, sym.len);
+	if(maybe_var != null)
+	{
+		if(ty_isbad(maybe_var->type))
+		{
+			psyc_error_begin(node->loc);
+			puts("type of decl ");
+			putchar('"');
+			putss(sym.symbol, sym.len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if((maybe_var->codegen) == 0)
+		{
+			psyc_error_begin(node->loc);
+			puts("internal cgv of decl ");
+			putchar('"');
+			putss(sym.symbol, sym.len);
+			putchar('"');
+			puts(" yielded .ll == 0");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return cgv
+		{
+			.tag := cgvtag.var;
+			.ll := maybe_var->codegen;
+			.type := maybe_var->type;
+		};
+	}
+	return zero;
+};
+
 // ret
 cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
@@ -354,6 +395,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	{
 		deref(cg_expr_table at i) = cg_expr_fn{.fn := cg_exprfn_error;};
 	}
+	deref(cg_expr_table at ((ast_expr_type.symbol)@s64)) = cg_expr_fn{.fn := cg_symbol;};
 	deref(cg_expr_table at ((ast_expr_type.biop)@s64)) = cg_expr_fn{.fn := cg_biop;};
 	deref(cg_expr_table at ((ast_expr_type.literal)@s64)) = cg_expr_fn{.fn := cg_literal;};
 	deref(cg_expr_table at ((ast_expr_type.ret)@s64)) = cg_expr_fn{.fn := cg_ret;};
