@@ -402,6 +402,55 @@ cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 			}
 		}
 	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_fs ::= ty_floating_point_size(rhsty);
+	lhs_fs ::= ty_floating_point_size(lhsty);
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_floating_point(rhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			conversion_direction = false;
+		}
+		if(ty_is_floating_point(lhsty))
+		{
+			if(rhs_fs > lhs_fs)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is(rhsty, tytag.ptr))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			conversion_direction = false;
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc);
+	}
 };
 
 cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
