@@ -45,6 +45,27 @@ progwalk_children ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
+progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	childrenptr ::= (node->children)@ast&;
+	count ::= node->childcount;
+	i : u64 mut;
+	for(i = 0, i < count, i = i + 1)
+	{
+		progwalk_node(context
+		{
+			.node := childrenptr at i;
+			.local := ctx.local;
+		}, prog);
+		progwalk_children_recursive(context
+		{
+			.node := childrenptr at i;
+			.local := ctx.local;
+		}, prog);
+	}
+};
+
 progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
@@ -69,7 +90,9 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 	node ::= ctx.node;
 	decl ::= node->decl;
 
-	program_declare_variable(prog, progar, variable
+	s ::= ctx.local;
+	is_top_level_decl ::= (s->type) == (scope_type.file);
+	var ::= variable
 	{
 		.node := node;
 		.name := decl.name;
@@ -77,7 +100,15 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 		.is_global := false; // note: this is set later on.
 		.type := zero;
 		.codegen := zero;
-	});
+	};
+	if(is_top_level_decl)
+	{
+		program_declare_variable(prog, progar, var);
+	}
+	if(!is_top_level_decl)
+	{
+		scope_declare_variable(s, progar, var);
+	}
 };
 
 progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -153,16 +184,6 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 	// note: local scope is going to be (at the very most) file scope
 	// this means that other files will not currently be able to see this definition
 	// this can be fixed by simply using program_declare_function, but i don't feel comfortable just doing that willy-nilly
-	program_declare_function(prog, progar,
-		function{
-			.node := ctx.node;
-			.name := fn.fn_name;
-			.name_len := fn.fn_name_len;
-			.param_count := beyond_param_idx;
-			.is_extern := fn.is_extern;
-			.type := zero;
-			.codegen := zero;
-		});
 
 	if(fn.is_extern)
 	{
@@ -171,6 +192,29 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 			psyc_panic(node->loc, "extern fn expected all children to be decls representing params, but that seems to not be the case.");
 		}
 	}
+	funcscope : scope mut& mut;
+	funcscope = null;
+	if(!(fn.is_extern))
+	{
+		funcscope = program_new_scope(prog, progar, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
+		progwalk_children_recursive(context
+		{
+			.node := node;
+			.local := funcscope;
+		}, prog);
+	}
+
+	program_declare_function(prog, progar,
+		function{
+			.node := ctx.node;
+			.name := fn.fn_name;
+			.name_len := fn.fn_name_len;
+			.param_count := beyond_param_idx;
+			.is_extern := fn.is_extern;
+			.impl_scope := funcscope@_;
+			.type := zero;
+			.codegen := zero;
+		});
 };
 
 progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
@@ -258,10 +302,10 @@ progwalk_setup ::= func(a : arena mut&) -> v0
 progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
 {
 	psyc_timed(psyc_stage.meta);
-	global ::= prog->global;
+	global ::= ref(prog->global);
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, progar, ref global, scope_type.file, source->loc, null, zero);
+	file_scope ::= program_new_scope(prog, progar, global, scope_type.file, source->loc, null, zero);
 
 	// remember these are direct children, not recursive children
 	// e.g top-level funcs/structs aswell as global variables

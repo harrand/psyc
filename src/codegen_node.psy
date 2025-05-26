@@ -29,12 +29,109 @@ cg_expr ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return cg_expr_common(node->expr, ctx, prog);
 };
 
+// decls 
+cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	decl ::= node->decl;
+
+	init_node : ast& mut;
+	init_node = null;
+	if((node->childcount) > 0)
+	{
+		init_node = ast_get_child(node@_, 0);
+	}
+
+	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
+	if(var == null)
+	{
+		psyc_panic(node->loc, "cg_decl could not verify that the decl actually existed. severe compiler bug.");
+	}
+
+	declty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+
+	init_val : cgv mut := zero;
+
+	if(init_node != null)
+	{
+		init_val = cg_expr(context
+		{
+			.node := init_node;
+			.local := ctx.local;
+		}, prog);
+	}
+
+	if((decl.typename_len) == cstrlen(psyc_deduced_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len))
+		{
+			// deduced typename
+			if(init_node == null)
+			{
+				psyc_error_begin(node->loc);
+				puts("deduced-decl ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" was missing an initialiser. decls with deduced-typenames must always have an initialiser");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			declty = (init_val.type);
+		}
+	}
+
+	(var->type) = declty;
+	cgty ::= cg.type(declty, prog);
+
+	if(init_node != null)
+	{
+		init_val = cgv_convert(init_val, declty, prog, node->loc);
+	}
+	name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
+	__memcpy(name_zstr, decl.name, decl.name_len);
+	deref(name_zstr at (decl.name_len)) = 0;
+	if(!(var->is_global))
+	{
+		// local variable. cg alloca.
+		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
+		if(init_node != null)
+		{
+			LLVMBuildStore(ir, init_val.ll, var->codegen);
+		}
+	}
+	if(var->is_global)
+	{
+		// global variable. cg global.
+		(var->codegen) = LLVMAddGlobal(mod, cgty, name_zstr);
+		LLVMSetLinkage(var->codegen, LLVMPrivateLinkage);
+		LLVMSetExternallyInitialized(var->codegen, 0);
+		LLVMSetGlobalConstant(var->codegen, ty_hasqual(declty, tyqual.mut)@s32);
+		if(init_node == null)
+		{
+			LLVMSetInitializer(var->codegen, LLVMGetUndef(cgty));
+		}
+		if(init_node != null)
+		{
+			LLVMSetInitializer(var->codegen, init_val.ll);
+		}
+	}
+	return zero;
+};
+
+
 // statements
 
 cg_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	// happens to be exactly the same code as ast_type.expr, so just re-use it.
 	return cg_expr(ctx, prog);
+};
+
+cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	// happens to be exactly the same code as ast_type.expr, so just re-use it.
+	return cg_decl(ctx, prog);
 };
 
 cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
@@ -195,7 +292,7 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> c
 cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
-	parentfn ::= scope_get_parent_function(ctx.local);
+	parentfn ::= scope_get_parent_function(ctx.local, prog);
 	if(parentfn == null)
 	{
 		psyc_error_begin(node->loc);
@@ -367,95 +464,6 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	return cg_func.fn(lhs, rhs, ctx, prog);
 };
 
-cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
-{
-	node ::= ctx.node;
-	decl ::= node->decl;
-
-	init_node : ast& mut;
-	init_node = null;
-	if((node->childcount) > 0)
-	{
-		init_node = ast_get_child(node@_, 0);
-	}
-
-	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
-	if(var == null)
-	{
-		psyc_panic(node->loc, "cg_decl could not verify that the decl actually existed. severe compiler bug.");
-	}
-
-	declty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
-
-	init_val : cgv mut := zero;
-
-	if(init_node != null)
-	{
-		init_val = cg_expr(context
-		{
-			.node := init_node;
-			.local := ctx.local;
-		}, prog);
-	}
-
-	if((decl.typename_len) == cstrlen(psyc_deduced_typename))
-	{
-		if(cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len))
-		{
-			// deduced typename
-			if(init_node == null)
-			{
-				psyc_error_begin(node->loc);
-				puts("deduced-decl ");
-				putchar('"');
-				putss(decl.name, decl.name_len);
-				putchar('"');
-				puts(" was missing an initialiser. decls with deduced-typenames must always have an initialiser");
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-			declty = (init_val.type);
-		}
-	}
-
-	(var->type) = declty;
-	cgty ::= cg.type(declty, prog);
-
-	if(init_node != null)
-	{
-		init_val = cgv_convert(init_val, declty, prog, node->loc);
-	}
-	name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
-	__memcpy(name_zstr, decl.name, decl.name_len);
-	deref(name_zstr at (decl.name_len)) = 0;
-	if(!(var->is_global))
-	{
-		// local variable. cg alloca.
-		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
-		if(init_node != null)
-		{
-			LLVMBuildStore(ir, init_val.ll, var->codegen);
-		}
-	}
-	if(var->is_global)
-	{
-		// global variable. cg global.
-		(var->codegen) = LLVMAddGlobal(mod, cgty, name_zstr);
-		LLVMSetLinkage(var->codegen, LLVMPrivateLinkage);
-		LLVMSetExternallyInitialized(var->codegen, 0);
-		LLVMSetGlobalConstant(var->codegen, ty_hasqual(declty, tyqual.mut)@s32);
-		if(init_node == null)
-		{
-			LLVMSetInitializer(var->codegen, LLVMGetUndef(cgty));
-		}
-		if(init_node != null)
-		{
-			LLVMSetInitializer(var->codegen, init_val.ll);
-		}
-	}
-	return zero;
-};
-
 // LLVM IR CODE GENERATION END
 
 codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
@@ -479,6 +487,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 		deref(cg_stmt_table at i) = cg_stmt_fn{.fn := cg_stmtfn_error;};
 	}
 	deref(cg_stmt_table at ((ast_stmt.expr_stmt)@s64)) = cg_stmt_fn{.fn := cg_expr_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.decl_stmt)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
 
 	cg_expr_table_size ::= __sizeof(cg_expr_table) / __sizeof(deref(cg_expr_table at 0));
 	for(i = 0, i < cg_expr_table_size, i = i + 1)

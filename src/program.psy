@@ -59,8 +59,9 @@ function ::= struct
 	name_len : u64;
 	param_count : u64;
 	is_extern : bool;
-	type : ty;
+	impl_scope : v0&;
 
+	type : ty;
 	codegen : u64;
 };
 
@@ -143,6 +144,13 @@ impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, 
 	curscope : scope& mut := s;
 	while(curscope != null)
 	{
+		putuint(curscope@u64);
+		putchar(9);
+		puts(__enumname(curscope->type));
+		putchar(9);
+		putuint((curscope->parent)@u64);
+		putchar(10);
+
 		types ::= ref(curscope->types)@_;
 		idx ::= tybox_find_struct(types, tyname, tyname_len);
 		if(idx != -1)
@@ -201,6 +209,10 @@ scope_find_variable ::= func(s : scope mut&, varname : u8&, varname_len : u64) -
 	while(curscope != null)
 	{
 		vars ::= ref(curscope->vars)@_;
+		if((vars->size) == 0)
+		{
+			return null;
+		}
 		for(i = 0, i < (vars->size), i = i + 1)
 		{
 			curvar = (vars->data) at i;
@@ -504,49 +516,6 @@ scope_declare_struct_type ::= func(s : scope mut&, strct : structty, loc : srclo
 	tybox_add_struct(types, strct, loc);
 };
 
-scope_get_parent_function ::= func(s : scope&) -> function&
-{
-	curscope : scope& mut := s;
-	i : u64 mut;
-	while(curscope != null)
-	{
-		if((curscope->type) == (scope_type.fn))
-		{
-			// the current scope is indeed the current function we're in
-			// get its name
-			parent_fnname ::= curscope->scope_label;
-			parent_fnname_len ::= curscope->scope_label_len;
-			parent_scope ::= (curscope->parent)@scope&;
-			parent_funcs ::= ref(parent_scope->funcs);
-			for(i = 0, i < (parent_funcs->size), i = i + 1)
-			{
-				curfunc ::= (parent_funcs->data) at i;
-				if((curfunc->name_len) == parent_fnname_len)
-				{
-					if(cstreql_n(curfunc->name, parent_fnname, parent_fnname_len))
-					{
-						return curfunc;
-					}
-				}
-			}
-			psyc_error_begin(s->loc);
-			puts("most recent enclosing function had label ");
-			putchar('"');
-			putss(parent_fnname, parent_fnname_len);
-			putchar('"');
-			puts(", but out of ");
-			putuint(parent_funcs->size);
-			puts(" total defined functions in its parent scope, none matched the name. this is likely a compiler bug.");
-			psyc_diag_end();
-			psyc_exit_failure();
-			psyc_panic(srcloc_current(), "");
-		}
-		// try its parent
-		curscope = ((curscope->parent)@scope&);
-	}
-	return null;
-};
-
 program_parse_typename ::= func(prog : program mut&, tyname : u8&, tyname_len : u64) -> ty
 {
 	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
@@ -626,6 +595,27 @@ program_declare_macro ::= func(prog : program mut&, a : arena mut&, m : macrodef
 	glob : scope mut& := ref(prog->global);
 	scope_declare_macro(glob, a, m);
 };
+
+scope_get_parent_function ::= func(s : scope&, prog : program mut&) -> function&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	while(curscope != null)
+	{
+		if((curscope->type) == (scope_type.fn))
+		{
+			// the current scope is indeed the current function we're in
+			// get its name
+			parent_fnname ::= curscope->scope_label;
+			parent_fnname_len ::= curscope->scope_label_len;
+			return program_find_function(prog, curscope->scope_label, curscope->scope_label_len);
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
 
 == build ==
 {
