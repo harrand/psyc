@@ -86,6 +86,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	if(init_node != null)
 	{
+		cgv_load_if_variable(ref init_val, prog);
 		init_val = cgv_convert(init_val, declty, prog, node->loc);
 	}
 	name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
@@ -319,6 +320,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 			.node := ast_get_child(node@_, 0);
 			.local := ctx.local;
 		}, prog);
+		cgv_load_if_variable(ref retval, prog);
 		retval = cgv_convert(retval, fn_retty, prog, node->loc);
 		// do a convert
 		LLVMBuildRet(ir, retval.ll);
@@ -353,7 +355,9 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 cg_biop_process_both ::= macro() -> v0
 {
 	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
-	rhs_val ::= cgv_convert(cg_biop_process_param(rhs, ctx, prog), lhs_val.type, prog, rhs->loc);
+	cgv_load_if_variable(ref lhs_val, prog);
+	rhs_val : cgv mut := cgv_convert(cg_biop_process_param(rhs, ctx, prog), lhs_val.type, prog, rhs->loc);
+	cgv_load_if_variable(ref rhs_val, prog);
 };
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
@@ -397,6 +401,7 @@ cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 	{
 		(lhs_val.ll) = LLVMBuildFMul(ir, lhs_val.ll, rhs_val.ll, "");
 	}
+	(lhs_val.tag) = (cgvtag.misc);
 
 	return lhs_val;
 };
