@@ -125,7 +125,11 @@ cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 	{
 		deref(memarr at i) = cg_type(deref(memtys at i), prog);
 	}
-	(def->codegen) = LLVMStructType(memarr, memcount@u32, false@s32);
+	name_zstr : u8 mut& := arena_push(cgar, 1 + (strct.name_len));
+	__memcpy(name_zstr, strct.name, strct.name_len);
+	deref(name_zstr at (strct.name_len)) = 0;
+	(def->codegen) = LLVMStructCreateNamed(LLVMGetGlobalContext(), name_zstr);
+	LLVMStructSetBody(def->codegen, memarr, memcount@u32, false@s32);
 };
 
 cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
