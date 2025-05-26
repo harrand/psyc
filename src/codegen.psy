@@ -163,6 +163,21 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
+	// assume this contains all vars (recursively iterated) in all subscopes
+	// a LLVM frontend should hoist (alloca all its local variables at function start), which is what we do here
+	// instead of alloca'ing them as we see them naturally as decl stmts.
+	i : u64 mut;
+	vars ::= ref(funcscope->vars);
+	for(i = 0, i < (vars->size), i = i + 1)
+	{
+		curvar ::= (vars->data) at i;
+		cg_decl(context
+		{
+			.node := curvar->node;
+			.local := funcscope;
+		}, prog);
+	}
+
 	child_iterate_offset ::= fn->param_count;
 	cg_children(context
 	{
