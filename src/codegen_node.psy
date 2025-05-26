@@ -1,3 +1,4 @@
+mod : u64 mut;
 cgar : arena mut& mut;
 
 // LLVM IR CODE GENERATION BEGIN
@@ -420,21 +421,37 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 	(var->type) = declty;
 	cgty ::= cg.type(declty, prog);
 
-	if((init_val.tag) != zero)
+	if(init_node != null)
 	{
 		init_val = cgv_convert(init_val, declty, prog, node->loc);
 	}
+	name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
+	__memcpy(name_zstr, decl.name, decl.name_len);
+	deref(name_zstr at (decl.name_len)) = 0;
 	if(!(var->is_global))
 	{
 		// local variable. cg alloca.
-		name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
-		__memcpy(name_zstr, decl.name, decl.name_len);
-		deref(name_zstr at (decl.name_len)) = 0;
 		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
+		if(init_node != null)
+		{
+			LLVMBuildStore(ir, init_val.ll, var->codegen);
+		}
 	}
 	if(var->is_global)
 	{
 		// global variable. cg global.
+		(var->codegen) = LLVMAddGlobal(mod, cgty, name_zstr);
+		LLVMSetLinkage(var->codegen, LLVMPrivateLinkage);
+		LLVMSetExternallyInitialized(var->codegen, 0);
+		LLVMSetGlobalConstant(var->codegen, ty_hasqual(declty, tyqual.mut)@s32);
+		if(init_node == null)
+		{
+			LLVMSetInitializer(var->codegen, LLVMGetUndef(cgty));
+		}
+		if(init_node != null)
+		{
+			LLVMSetInitializer(var->codegen, init_val.ll);
+		}
 	}
 	return zero;
 };
