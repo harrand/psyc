@@ -352,29 +352,84 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 	return pval;
 };
 
-cg_biop_process_both ::= macro() -> v0
+cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
 {
-	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
-	cgv_load_if_variable(ref lhs_val, prog);
-	rhs_val : cgv mut := cgv_convert(cg_biop_process_param(rhs, ctx, prog), lhs_val.type, prog, rhs->loc);
-	cgv_load_if_variable(ref rhs_val, prog);
-};
+	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(lhs_val, prog);
+	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(rhs_val, prog);
 
-cg_biop_arith_common ::= macro() -> vo
-{
-	cg_biop_process_both();
-	if(!ty_is_integral(lhs_val.type))
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
 	{
-		if(!ty_is_floating_point(lhs_val.type))
+		if(!ty_is_floating_point(lhsty))
 		{
 			psyc_error_begin(lhs->loc);
-			puts("operator invalid because the operands must be either an integral or floating-point type, but you have passed ");
+			puts("operator invalid because the lhs must be either an integral or floating-point type, but you have passed ");
 			putchar('"');
-			putty(lhs_val.type);
+			putty(lhsty);
 			putchar('"');
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		if(!ty_is_floating_point(rhsty))
+		{
+			psyc_error_begin(rhs->loc);
+			puts("operator invalid because the rhs must be either an integral or floating-point type, but you have passed ");
+			putchar('"');
+			putty(rhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_fs ::= ty_floating_point_size(rhsty);
+	lhs_fs ::= ty_floating_point_size(lhsty);
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_floating_point(rhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			conversion_direction = false;
+		}
+		if(ty_is_floating_point(lhsty))
+		{
+			if(rhs_fs > lhs_fs)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc);
 	}
 };
 
@@ -398,7 +453,9 @@ cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 
 cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	cg_biop_arith_common();
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
 	if(ty_is_integral(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildAdd(ir, lhs_val.ll, rhs_val.ll, "");
@@ -414,7 +471,9 @@ cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program 
 
 cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	cg_biop_arith_common();
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
 	if(ty_is_integral(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildSub(ir, lhs_val.ll, rhs_val.ll, "");
@@ -429,7 +488,9 @@ cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 
 cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	cg_biop_arith_common();
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
 	if(ty_is_integral(lhs_val.type))
 	{
 		(lhs_val.ll) = LLVMBuildMul(ir, lhs_val.ll, rhs_val.ll, "");
@@ -445,7 +506,9 @@ cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 
 cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	cg_biop_arith_common();
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
 	if(ty_is_integral(lhs_val.type))
 	{
 		if(ty_is_signed_integral(lhs_val.type))
