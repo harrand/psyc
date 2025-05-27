@@ -652,6 +652,16 @@ struct2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_val
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+enum2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.enum_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 init2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1163,12 +1173,45 @@ declstruct2wipstruct ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> 
 	(ret.nodes_size) = 1;
 };
 
+declenum2wipenum ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	decl ::= first.decl;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipenum;
+		.enumdef := ast_enum
+		{
+			.enumname := decl.name;
+			.enumname_len := decl.name_len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 wipstructcbrace2struct ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
 	setup_delete_tail(parse_action.reduce);
 
 	(firstptr->type) = (ast_type.structdef);
+	(firstptr->cursor_end) = last.cursor_end;
+};
+
+wipenumcbrace2enum ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.enumdef);
 	(firstptr->cursor_end) = last.cursor_end;
 };
 
@@ -2038,6 +2081,39 @@ grammar_struct ::= macro() -> v0
 		rule(wipstructcbrace2struct));
 };
 
+grammar_enum ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		token(lex_token.keyword_enum),
+		null_stash,
+		rule(shift2));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_enum), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(declenum2wipenum));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipenum)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		token(lex_token.semicol),
+		node(ast_type.wipenum),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipenum), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipenumcbrace2enum));
+};
+
 grammar_build_region ::= macro() -> v0
 {
 	grammar_install(
@@ -2438,6 +2514,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	// structs
 	grammar_struct();
+	grammar_enum();
 
 	// make stmts (largest building blocks in program)
 	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
@@ -2451,6 +2528,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.mac), rule(mac2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
+	grammar_stmtify(node(ast_type.enumdef), rule(enum2stmt));
 	grammar_stmtify(node(ast_type.init), rule(init2stmt));
 
 	// build regions
@@ -2478,6 +2556,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_commit_stmt(ast_stmt.decl_stmt);
 	grammar_commit_stmt(ast_stmt.region_stmt);
 	grammar_commit_stmt(ast_stmt.struct_stmt);
+	grammar_commit_stmt(ast_stmt.enum_stmt);
 	grammar_commit_stmt(ast_stmt.fn_stmt);
 	grammar_commit_stmt(ast_stmt.mac_stmt);
 	grammar_commit_stmt(ast_stmt.blk_stmt);
