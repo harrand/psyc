@@ -182,8 +182,8 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	// we dont back parameters with allocas unlike in the prototype.
 	// this means that store'ing into them is no longer allowed i.e they are always mutable
 	// to semal check this, we will make sure params are never marked as 'mut'
-	fnty ::= fn->type;
-	fnpayload ::= fnty.fn;
+	fntype ::= fn->type;
+	fnpayload ::= fntype.fn;
 	fnparamtys ::= (fnpayload.param_types)@ty&;
 	for(i = 0, i < (fn->param_count), i = i + 1)
 	{
@@ -223,6 +223,29 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		.node := node;
 		.local := funcscope;
 	}, prog, child_iterate_offset, 0);
+
+	fn_retty ::= deref((fnpayload.return_type)@ty&);
+	lastchildidx ::= (node->childcount) - 1;
+	if((funcscope->terminator) != (ast_get_child(node@_, lastchildidx)))
+	{
+		// need a terminator
+		if(ty_is_v0(fn_retty))
+		{
+			// add a retvoid here.
+			LLVMBuildRetVoid(ir);
+		}
+		if(!ty_is_v0(fn_retty))
+		{
+			psyc_error_begin(node->loc);
+			puts("function ");
+			putchar('"');
+			putss(fn->name, fn->name_len);
+			putchar('"');
+			puts(" is missing a final return value");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 };
 
 cg_verbose_print ::= func() -> v0
