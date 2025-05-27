@@ -527,7 +527,8 @@ parenthesise_expr ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> par
 		if((expr->type) == (ast_expr_type.biop))
 		{
 			biop ::= ref(expr->biop);
-			(biop->precedence) = 99999;
+			(biop->attack_precedence) = 0;
+			(biop->defence_precedence) = 99999;
 		}
  	}
 	(ret.nodes_size) = 1;
@@ -750,7 +751,7 @@ exprtok2halfbiop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 	deref((ret.nodes) at 0) = ast
 	{
 		.type := ast_type.wipbiop;
-		.expr := make_biop_expr(ast_biop_expr{.type := biop_ty; .precedence := ast_biop_precedence(biop_ty);});
+		.expr := make_biop_expr(ast_biop_expr{.type := biop_ty; .attack_precedence := ast_biop_attack_precedence(biop_ty); .defence_precedence := ast_biop_defence_precedence(biop_ty);});
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
@@ -790,7 +791,7 @@ wipbiop2biop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_va
 		{
 			lhsbiop ::= lhs_expr.biop;
 			lhs_biop_ty ::= lhsbiop.type;
-			if(ast_biop_precedence(biop_ty) > (lhsbiop.precedence))
+			if(ast_biop_attack_precedence(biop_ty) > (lhsbiop.defence_precedence))
 			{
 				// e.g multiplication has a higher precedence than addition
 				// 5 + 3 * 5
@@ -810,7 +811,7 @@ wipbiop2biop ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_va
 				deref(rhs) = ast
 				{
 					.type := ast_type.expr;
-					.expr := make_biop_expr(ast_biop_expr{.type := biop_ty; .precedence := ast_biop_precedence(biop_ty);});
+					.expr := make_biop_expr(ast_biop_expr{.type := biop_ty; .attack_precedence := ast_biop_attack_precedence(biop_ty); .defence_precedence := ast_biop_defence_precedence(biop_ty);});
 					.loc := lhs_rhs->loc;
 					.cursor_begin := lhs_rhs->cursor_begin;
 					.cursor_end := rhs->cursor_end;

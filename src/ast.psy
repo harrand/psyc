@@ -33,7 +33,8 @@ ast_biop_type ::= enum
 ast_biop_expr ::= struct
 {
 	type : ast_biop_type;
-	precedence : u64;
+	attack_precedence : u64;
+	defence_precedence : u64;
 };
 
 ast_unop_type ::= enum
@@ -629,16 +630,141 @@ ast_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
 	return -1@ast_biop_type;	
 };
 
-ast_biop_precedence ::= func(t : ast_biop_type) -> u64
+ast_biop_attack_precedence ::= func(t : ast_biop_type) -> u64
 {
-	if(t == (ast_biop_type.multiply))
+	if(t == (ast_biop_type.assign))
 	{
-		return 2;
+		// x + 5 = 5
+		// should remain (x + 5) = 5
+		// not x + (5 = 5)
+		return 0;
+	}
+	if(t == (ast_biop_type.compare))
+	{
+		// x.y == 5
+		// kepe it (x.y) == 5
+		// not x.(y == 5)
+		return 1;
+	}
+	if(t == (ast_biop_type.comparen))
+	{
+		return 1;
 	}
 	if(t == (ast_biop_type.plus))
 	{
 		return 1;
 	}
+	if(t == (ast_biop_type.minus))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.multiply))
+	{
+		return 2;
+	}
+	if(t == (ast_biop_type.divide))
+	{
+		return 2;
+	}
+	if(t == (ast_biop_type.bitwise_or))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.logical_or))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.bitwise_and))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.logical_and))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.operator_at))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.field))
+	{
+		return 0;
+	}
+	if(t == (ast_biop_type.ptr_field))
+	{
+		return 0;
+	}
+	if(t == (ast_biop_type.cast))
+	{
+		return 0;
+	}
+	psyc_panic(srcloc_current(), "unaccounted for biop type w.r.t attack precedence");
+	return 0;
+};
+
+ast_biop_defence_precedence ::= func(t : ast_biop_type) -> u64
+{
+	if(t == (ast_biop_type.assign))
+	{
+		return 0;
+	}
+	if(t == (ast_biop_type.compare))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.comparen))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.plus))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.minus))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.multiply))
+	{
+		return 2;
+	}
+	if(t == (ast_biop_type.divide))
+	{
+		return 2;
+	}
+	if(t == (ast_biop_type.bitwise_or))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.logical_or))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.bitwise_and))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.logical_and))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.operator_at))
+	{
+		return 1;
+	}
+	if(t == (ast_biop_type.field))
+	{
+		return 999;
+	}
+	if(t == (ast_biop_type.ptr_field))
+	{
+		return 999;
+	}
+	if(t == (ast_biop_type.cast))
+	{
+		return 999;
+	}
+	psyc_panic(srcloc_current(), "unaccounted for biop type w.r.t defence precedence");
 	return 0;
 };
 
