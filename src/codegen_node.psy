@@ -234,9 +234,6 @@ cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
-	psyc_warning_begin(node->loc);
-	puts("zero literals currently have .ll := 0");
-	psyc_diag_end();
 	return cgv
 	{
 		.tag := cgvtag.valzero;
@@ -773,8 +770,101 @@ cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mu
 
 cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop field");
-	return zero;
+	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of field expression must be a struct type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_ty.strct;
+
+	// rhs should be a symbol expr
+	rhs_sym : ast_symbol_expr mut;
+	rhs_sym = zero;
+	if((rhs->type) == (ast_type.expr))
+	{
+		rhs_expr ::= rhs->expr;
+		if((rhs_expr.type) == (ast_expr_type.symbol))
+		{
+			rhs_sym = (rhs_expr.symbol);
+		}
+	}
+	if((rhs_sym.symbol) == null)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid field expression - rhs must be a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// get the member id.
+	// if its a variable, we do a GEP to yield another variable
+	// otherwise, we do an extractvalue to yield a misc
+	memtypes ::= (lhs_strct.member_types)@ty&;
+	memnames ::= (lhs_strct.member_names);
+	memname_lens ::= (lhs_strct.member_name_lens);
+	selected_memidx : u64 mut := -1;
+	selected_memty : ty mut := zero;
+	selected_memname : u8& mut := null;
+	selected_memname_len : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
+	{
+		memty ::= deref(memtypes at i);
+		memname ::= deref(memnames at i);
+		memname_len ::= deref(memname_lens at i);
+		if((rhs_sym.len) == memname_len)
+		{
+			if(cstreql_n(rhs_sym.symbol, memname, memname_len))
+			{
+				// this is the member.
+				selected_memidx = i;
+				selected_memty = memty;
+				selected_memname = memname;
+				selected_memname_len = memname_len;
+			}
+		}
+	}
+
+	if(selected_memidx == -1)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("struct ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" had no such member named ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	if((lhs_val.tag) == (cgvtag.var))
+	{
+		// variable! ll should be an alloca or GEP'd alloca
+		// which means we should GEP that and return var
+		return cgv
+		{
+			.tag := cgvtag.var;
+			.ll := LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			.type := selected_memty;
+		};
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildExtractValue(ir, lhs_val.ll, selected_memidx@u32, "");
+		.type := selected_memty;
+	};
 };
 
 cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
