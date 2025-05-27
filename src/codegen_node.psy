@@ -537,6 +537,65 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&
 	}
 };
 
+cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+{
+	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(lhs_val, prog);
+	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(rhs_val, prog);
+
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("operator invalid because the lhs must be an integral type, but you have passed ");
+		putchar('"');
+		putty(lhsty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("operator invalid because the rhs must be an integral type, but you have passed ");
+		putchar('"');
+		putty(rhsty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc);
+	}
+};
+
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
@@ -674,8 +733,13 @@ cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 
 cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop bitwise_or");
-	return zero;
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
 };
 
 cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
@@ -686,8 +750,13 @@ cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pr
 
 cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop bitwise_and");
-	return zero;
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
 };
 
 cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
