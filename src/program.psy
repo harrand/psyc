@@ -35,6 +35,25 @@ structdef_storage ::= struct
 	cap : u64;
 };
 
+enumdef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	entry_count : u64;
+	type : ty;
+	in_progress : bool;
+
+	codegen : u64;
+};
+
+enumdef_storage ::= struct
+{
+	data : enumdef mut&;
+	size : u64;
+	cap : u64;
+};
+
 macrodef ::= struct
 {
 	node : ast&;
@@ -103,6 +122,7 @@ scope ::= struct
 	types : tybox;
 	vars : variable_storage;
 	structs : structdef_storage;
+	enums : enumdef_storage;
 	funcs : function_storage;
 	macros : macro_storage;
 	regions : region_storage;
@@ -319,6 +339,67 @@ scope_declare_struct ::= func(s : scope mut&, a : arena mut&, v : structdef) -> 
 	}
 	deref((structs->data) at (structs->size)) = v;
 	(structs->size) = (structs->size) + 1;
+};
+
+scope_find_enum ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> enumdef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : enumdef& mut;
+	while(curscope != null)
+	{
+		enums ::= ref(curscope->enums)@_;
+		for(i = 0, i < (enums->size), i = i + 1)
+		{
+			cur = (enums->data) at i;
+			if(varname_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, varname, varname_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_enum ::= func(s : scope mut&, a : arena mut&, v : enumdef) -> v0
+{
+	already ::= scope_find_enum(s, v.name, v.name_len);
+	if(already != null)
+	{
+		node ::= v.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("enum ");
+		putchar('"');
+		putss(v.name, v.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	enums ::= ref(s->enums);
+	if((enums->data) == null)
+	{
+		(enums->cap) = 8;
+		(enums->data) = arena_push(a, __sizeof(deref (enums->data)) * (enums->cap));
+	}
+	while((enums->size) >= (enums->cap))
+	{
+		oldcap ::= enums->cap;
+		olddata ::= enums->data;
+		(enums->cap) = (enums->cap) * 2;
+		(enums->data) = arena_push(a, __sizeof(deref (enums->data)) * (enums->cap));
+		__memcpy(enums->data, olddata, oldcap * __sizeof(deref (enums->data)));
+	}
+	deref((enums->data) at (enums->size)) = v;
+	(enums->size) = (enums->size) + 1;
 };
 
 scope_find_function ::= func(s : scope mut&, funcname : u8&, funcname_len: u64) -> function&
