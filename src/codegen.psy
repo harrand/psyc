@@ -150,14 +150,10 @@ cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&
 	func_tycg ::= LLVMFunctionType(ret_tycg, paramdata, param_count@u32, false@s32);
 	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), func_tycg);
 
-	param : u64 mut := -1;
+	param : u64 mut := LLVMGetFirstParam(fn->codegen);
 	fnnode ::= fn->node;
 	for(i = 0, i < param_count, i = i + 1)
 	{
-		if(i == 0)
-		{
-			param = LLVMGetFirstParam(fn->codegen);
-		}
 		param_node ::= ast_get_child(fnnode@_, i);
 		param_decl ::= param_node->decl;
 		param_zstr : u8 mut& := arena_push(cgar, 1 + (param_decl.name_len));
@@ -181,10 +177,35 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
+	i : u64 mut;
+
+	// we dont back parameters with allocas unlike in the prototype.
+	// this means that store'ing into them is no longer allowed i.e they are always mutable
+	// to semal check this, we will make sure params are never marked as 'mut'
+	fnty ::= fn->type;
+	fnpayload ::= fnty.fn;
+	fnparamtys ::= (fnpayload.param_types)@ty&;
+	for(i = 0, i < (fn->param_count), i = i + 1)
+	{
+		childnode ::= ast_get_child(node@_, i);
+		childdecl ::= childnode->decl;
+		childty ::= deref(fnparamtys at i);
+		if(ty_hasqual(childty, tyqual.mut))
+		{
+			psyc_error_begin(childnode->loc);
+			puts("parameter ");
+			putchar('"');
+			putss(childdecl.name, childdecl.name_len);
+			putchar('"');
+			puts(" has been marked as 'mut'. function parameters can never be mutable");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
 	// assume this contains all vars (recursively iterated) in all subscopes
 	// a LLVM frontend should hoist (alloca all its local variables at function start), which is what we do here
 	// instead of alloca'ing them as we see them naturally as decl stmts.
-	i : u64 mut;
 	vars ::= ref(funcscope->vars);
 	for(i = 0, i < (vars->size), i = i + 1)
 	{
