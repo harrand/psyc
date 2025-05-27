@@ -59,8 +59,9 @@ structty ::= struct
 enumty ::= struct
 {
 	entry_count : u64;
-	entry_values : u64&;
-	entry_names : u8&&;
+	entry_values : u64 mut&;
+	entry_names : u8& mut&;
+	entry_name_lens : u64 mut&;
 	name : u8&;
 	name_len : u64;
 };
@@ -696,12 +697,22 @@ tybox_struct_info ::= struct
 	defined_at : srcloc;
 };
 
+tybox_enum_info ::= struct
+{
+	ty : enumty;
+	defined_at : srcloc;
+};
+
 // box of types. used to store all types defined in a given lexical scope
 tybox ::= struct
 {
 	structs : tybox_struct_info mut&;
 	structs_size : u64;
 	structs_cap : u64;
+
+	enums : tybox_enum_info mut&;
+	enums_size : u64;
+	enums_cap : u64;
 };
 
 // create an empty tybox with some sensible preallocation of resources.
@@ -712,6 +723,11 @@ tybox_empty ::= func() -> tybox
 	structs_bytes ::= __sizeof(deref (ret.structs)) * (ret.structs_cap);
 	(ret.structs) = arena_push(tyar, structs_bytes);
 	__memset(ret.structs, 0, structs_bytes);
+
+	(ret.enums_cap) = 8;
+	enums_bytes ::= __sizeof(deref (ret.enums)) * (ret.enums_cap);
+	(ret.enums) = arena_push(tyar, enums_bytes);
+	__memset(ret.enums, 0, enums_bytes);
 	return ret;
 };
 
@@ -776,6 +792,70 @@ tybox_add_struct ::= func(box : tybox mut&, s : structty, loc : srcloc) -> v0
 tybox_get_struct ::= func(box : tybox mut&, id : u64) -> tybox_struct_info&
 {
 	ptr ::= box->structs;
+	return ptr at id;
+};
+
+// tell me if a enum already exists in this box with the same name.
+// returns the index of the enum in the array, or -1 if it couldnt find one.
+tybox_find_enum ::= func(box : tybox&, enumname : u8&, enumname_len : u64) -> u64
+{
+	n ::= box->enums_size;
+	i : u64 mut;
+	ptr ::= box->enums;
+	for(i = 0, i < n, i = i + 1)
+	{
+		curinfo ::= deref(ptr at i);
+		cur ::= curinfo.ty;
+		if((cur.name_len) == (enumname_len))
+		{
+			if(cstreql_n(cur.name, enumname, cur.name_len))
+			{
+				return i;
+			}
+		}
+	}
+	return -1;
+};
+
+[[private]]
+impl_tybox_increase_enum_capacity ::= func(box : tybox mut&) -> v0
+{
+	oldcap ::= box->enums_cap;
+	olddata ::= box->enums;
+	(box->enums_cap) = (box->enums_cap) * 2;
+	(box->enums) = arena_push(tyar, __sizeof(deref olddata) * (box->enums_cap));
+	__memcpy(box->enums, olddata, oldcap);
+};
+
+// this will not even try to see if a enum by that name already exists
+// dont add that functionality here - its complex, tangles with error messages and has a cost to it
+// let it be implemented deeper in semal and handle errors properly there
+tybox_add_enum ::= func(box : tybox mut&, s : enumty, loc : srcloc) -> v0
+{
+	if((box->enums_cap) == 0)
+	{
+		(box->enums_cap) = 8;
+		(box->enums) = arena_push(tyar, __sizeof(deref (box->enums)) * (box->enums_cap));
+	}
+	if((box->enums_size) >= (box->enums_cap))
+	{
+		impl_tybox_increase_enum_capacity(box);
+	}
+	id ::= (box->enums_size);
+	(box->enums_size) = (box->enums_size) + 1;
+	ptr ::= box->enums;
+	deref(ptr at id) = tybox_enum_info
+	{
+		.ty := s;
+		.defined_at := loc;
+	};
+};
+
+// get the enum info at a given index.
+// no bounds checking.
+tybox_get_enum ::= func(box : tybox mut&, id : u64) -> tybox_enum_info&
+{
+	ptr ::= box->enums;
 	return ptr at id;
 };
 
