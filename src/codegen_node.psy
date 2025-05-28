@@ -1230,8 +1230,20 @@ cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : progra
 
 cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(operand->loc, "unop ref NYI");
-	return zero;
+	// this ones really easy. get the operand, do *not* load it, but pretend you already have.
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if((opval.tag) != (cgvtag.var))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary ref is invalid - you can only retrieve the address of an lvalue");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// sneakily move the tag to misc even though i didnt load it.
+	(opval.tag) = (cgvtag.misc);
+	(opval.type) = ty_ref(opval.type, zero);
+
+	return opval;
 };
 
 cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
