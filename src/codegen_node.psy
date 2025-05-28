@@ -1278,6 +1278,79 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
+cg_for_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+
+	initnode ::= ast_get_child(node@_, 0);
+	// do the init a single time now.
+	cg_expr(context
+	{
+		.node := initnode;
+		.local := ctx.local;
+	}, prog);
+
+	// get the cond intially now
+	condnode ::= ast_get_child(node@_, 1);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc);
+
+	iternode ::= ast_get_child(node@_, 2);
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	for_scope_label ::= "for";
+	forscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, for_scope_label, cstrlen(for_scope_label));
+	(forscope->codegen) = LLVMAppendBasicBlock(fn->codegen, for_scope_label);
+
+	forcont ::= LLVMAppendBasicBlock(fn->codegen, "forcont");
+
+	// populate inside the for blk
+	LLVMPositionBuilderAtEnd(ir, forscope->codegen);
+	cg.children(context
+	{
+		.node := node;
+		.local := forscope;
+	}, prog, 3, 0);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((forscope->terminator) == null)
+	{
+		// remember - if the forscope contains a terminator return then there's no point doing the init anyway.
+		// do the iter
+		cg_expr(context
+		{
+			.node := iternode;
+			.local := forscope;
+		}, prog);
+		// conditional branch
+		// condition still true? back to for
+		// false? forcont
+		inner_condval : cgv mut := cg_expr(context
+		{
+			.node := condnode;
+			.local := ctx.local;
+		}, prog);
+		cgv_load_if_variable(ref inner_condval, prog);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc);
+		LLVMBuildCondBr(ir, inner_condval.ll, forscope->codegen, forcont);
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, forscope->codegen, forcont);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, forcont);
+	return zero;
+};
+
 // LLVM IR CODE GENERATION END
 
 codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
@@ -1304,6 +1377,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_stmt_table at ((ast_stmt.decl_stmt)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
 	deref(cg_stmt_table at ((ast_stmt.if_stmt)@s64)) = cg_stmt_fn{.fn := cg_if_stmt;};
 	deref(cg_stmt_table at ((ast_stmt.while_stmt)@s64)) = cg_stmt_fn{.fn := cg_while_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.for_stmt)@s64)) = cg_stmt_fn{.fn := cg_for_stmt;};
 
 	cg_expr_table_size ::= __sizeof(cg_expr_table) / __sizeof(deref(cg_expr_table at 0));
 	for(i = 0, i < cg_expr_table_size, i = i + 1)
