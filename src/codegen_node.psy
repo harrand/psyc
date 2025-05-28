@@ -602,6 +602,16 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	if(!ty_hasqual(lhs_val.type, tyqual.mut))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("invalid assignment to non-mut operand of type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	rhs_val : cgv mut := cg_biop_process_param(rhs, ctx, prog);
 	cgv_load_if_variable(ref rhs_val, prog);
 	rhs_val = cgv_convert(rhs_val, lhs_val.type, prog, rhs->loc);
@@ -819,7 +829,8 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 			{
 				// ok it *is* an enum
 				// find the entry
-				enumty ::= maybe_enum->type;
+				enumty : ty mut := maybe_enum->type;
+				(enumty.qual) = ((enumty.qual) | tyqual.static);
 				enumpayload ::= enumty.enm;
 				for(i = 0, i < (enumpayload.entry_count), i = i + 1)
 				{
@@ -915,6 +926,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	(selected_memty.qual) = (lhs_ty.qual);
 
 	if((lhs_val.tag) == (cgvtag.var))
 	{
@@ -966,7 +978,10 @@ cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program 
 	lhs_ty : ty mut := lhs_val.type;
 	(lhs_ty.qual) = (lhs_ty.qual) | (tyqual.weak);
 	(lhs_val.type) = lhs_ty;
-	(lhs_val.tag) = (cgvtag.misc);
+	if(!cgv_is_zero(lhs_val))
+	{
+		(lhs_val.tag) = (cgvtag.misc);
+	}
 
 	// is it the weakening idiom? then just return the weakened type
 	weakening_idiom ::= "_";
