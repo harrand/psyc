@@ -1087,6 +1087,18 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}
 	cgv_load_if_variable(ref condval, prog);
 
+	else_node : ast& mut;
+	else_node = null;
+	if(node->childcount > 1)
+	{
+		lastchildidx ::= (node->childcount) - 1;
+		last_child ::= ast_get_child(node@_, lastchildidx);
+		if((last_child->type) == (ast_type.elsedef))
+		{
+			else_node = last_child;
+		}
+	}
+
 	fn ::= scope_get_parent_function(ctx.local, prog);
 
 	oldblk ::= LLVMGetInsertBlock(ir);
@@ -1095,24 +1107,59 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	ifscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, if_scope_label, cstrlen(if_scope_label));
 	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
 
+	// populate the else blk if there is one
+	ifnt : u64 mut := 0;
+
+	else_scope_label ::= "else";
+	elsescope : scope mut& mut := null;
+	if(else_node != null)
+	{
+		elsescope = program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, else_scope_label, cstrlen(else_scope_label));
+		ifnt = LLVMAppendBasicBlock(fn->codegen, else_scope_label);
+	}
+
 	ifcont ::= LLVMAppendBasicBlock(fn->codegen, "ifcont");
+	if(else_node == null)
+	{
+		ifnt = ifcont;
+	}
 
 	// populate inside the if blk
 	LLVMPositionBuilderAtEnd(ir, ifscope->codegen);
+	ifscope_back_offset : u64 mut;
+	ifscope_back_offset = 0;
+	if(else_node != null)
+	{
+		ifscope_back_offset = 1;
+	}
 	cg.children(context
 	{
 		.node := node;
 		.local := ifscope;
-	}, prog, 1, 0);
+	}, prog, 1, ifscope_back_offset);
 	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
 	if((ifscope->terminator) == null)
 	{
 		LLVMBuildBr(ir, ifcont);
 	}
 
+	if(else_node != null)
+	{
+		LLVMPositionBuilderAtEnd(ir, ifnt);
+		cg.children(context
+		{
+			.node := else_node;
+			.local := elsescope;
+		}, prog, 0, 0);
+		if((elsescope->terminator) == null)
+		{
+			LLVMBuildBr(ir, ifcont);
+		}
+	}
+
 	// build the condbr
 	LLVMPositionBuilderAtEnd(ir, oldblk);
-	LLVMBuildCondBr(ir, condval.ll, ifscope->codegen, ifcont);
+	LLVMBuildCondBr(ir, condval.ll, ifscope->codegen, ifnt);
 
 	// rest of code...
 	LLVMPositionBuilderAtEnd(ir, ifcont);
