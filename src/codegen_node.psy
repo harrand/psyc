@@ -1061,6 +1061,65 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	return cg_func.fn(lhs, rhs, ctx, prog);
 };
 
+// callfunc
+cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	call ::= expr.callfunc;
+
+	fn ::= scope_find_function(ctx.local, call.funcname, call.funcname_len);
+	if(fn == null)
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid call to unknown function ");
+		putchar('"');
+		putss(call.funcname, call.funcname_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	call_param_count ::= node->childcount;
+
+	fnty ::= fn->type;
+	fnpayload ::= fnty.fn;
+	fnparamtys ::= (fnpayload.param_types)@ty&;
+	if(call_param_count != (fnpayload.param_count))
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid call to function ");
+		putchar('"');
+		putss(call.funcname, call.funcname_len);
+		putchar('"');
+		puts(" - you provided ");
+		putuint(call_param_count);
+		puts(" params, but it expected ");
+		putuint(fnpayload.param_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	i : u64 mut;
+	paramnode : ast& mut;
+	reqty : ty mut;
+	param_val : cgv mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		reqty = deref(fnparamtys at i);
+		paramnode = ast_get_child(node@_, i);
+		param_val = cg_expr(context
+		{
+			.node := paramnode;
+			.local := ctx.local;
+		}, prog);
+		cgv_load_if_variable(ref param_val, prog);
+		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc);
+	}
+
+	// todo: actually do the codegen
+	return zero;
+};
+
 cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
@@ -1248,6 +1307,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_expr_table at ((ast_expr_type.biop)@s64)) = cg_expr_fn{.fn := cg_biop;};
 	deref(cg_expr_table at ((ast_expr_type.literal)@s64)) = cg_expr_fn{.fn := cg_literal;};
 	deref(cg_expr_table at ((ast_expr_type.ret)@s64)) = cg_expr_fn{.fn := cg_ret;};
+	deref(cg_expr_table at ((ast_expr_type.callfunc)@s64)) = cg_expr_fn{.fn := cg_callfunc;};
 
 	cg_biop_table_size ::= __sizeof(cg_biop_table) / __sizeof(deref(cg_biop_table at 0));
 	for(i = 0, i < cg_biop_table_size, i = i + 1)
