@@ -34,6 +34,11 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
+	// bit complicated.
+	// if we are a global variable, we do the whole thing now.
+	// if we are a local variable - then we have likely been hoisted to be alloca'd earlier than when the programmer actually defined us
+	// in which case, we only do the alloca, and store the initialiser (if there is one) when we naturally come across it via cg_decl_stmt
+	// note: if the local is a type-deduced decl, then we have no choice but to compute the initialiser.
 
 	init_node : ast& mut;
 	init_node = null;
@@ -54,6 +59,9 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	if(init_node != null)
 	{
+		// note: if we are a local explicitly-type decl, then this is actually unnecessary and shouldnt be needed until cg_decl_stmt properly
+		// however, i cant think of a way to not do this work without significantly reducing the readability of this code.
+		// todo: refactor
 		init_val = cg_expr(context
 		{
 			.node := init_node;
@@ -96,10 +104,11 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 	{
 		// local variable. cg alloca.
 		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
-		if(init_node != null)
-		{
-			LLVMBuildStore(ir, init_val.ll, var->codegen);
-		}
+		// remember: dont do the store until its naturally come across via cg_decl_stmt
+		//if(init_node != null)
+		//{
+		//	LLVMBuildStore(ir, init_val.ll, var->codegen);
+		//}
 	}
 	if(var->is_global)
 	{
@@ -136,7 +145,34 @@ cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	// locals are also handled in a special way - all local vars in a function impl are hoisted to the very top and alloca'd all at once as required by an LLVM frontend
 	// for that reason, when we naturally happen across a decl stmt in the wild, we always assume the work is already done
 	// thus, we just do the store.
+	node ::= ctx.node;
+	decl ::= node->decl;
+	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
+	if(var->is_global)
+	{
+		return zero;
+	}
 
+	init_node : ast& mut;
+	init_node = null;
+	if((node->childcount) > 0)
+	{
+		init_node = ast_get_child(node@_, 0);
+	}
+
+	if(init_node == null)
+	{
+		return zero;
+	}
+
+	init_val : cgv mut := cg_expr(context
+	{
+		.node := init_node;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref init_val, prog);
+	init_val = cgv_convert(init_val, var->type, prog, init_node->loc);
+	LLVMBuildStore(ir, init_val.ll, var->codegen);
 	return zero;
 };
 
