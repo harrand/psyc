@@ -1166,6 +1166,69 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
+cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+
+	condnode ::= ast_get_child(node@_, 0);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+	}, prog);
+	if(!ty_is_boolean(condval.type))
+	{
+		psyc_error_begin(condnode->loc);
+		puts("condition of while-statement must be a boolean type, you have provided a ");
+		putchar('"');
+		putty(condval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	cgv_load_if_variable(ref condval, prog);
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	while_scope_label ::= "while";
+	whilescope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, while_scope_label, cstrlen(while_scope_label));
+	(whilescope->codegen) = LLVMAppendBasicBlock(fn->codegen, while_scope_label);
+
+	whilecont ::= LLVMAppendBasicBlock(fn->codegen, "whilecont");
+
+	// populate inside the while blk
+	LLVMPositionBuilderAtEnd(ir, whilescope->codegen);
+	cg.children(context
+	{
+		.node := node;
+		.local := whilescope;
+	}, prog, 1, 0);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((whilescope->terminator) == null)
+	{
+		// conditional branch
+		// condition still true? back to while
+		// false? whilecont
+		inner_condval : cgv mut := cg_expr(context
+		{
+			.node := condnode;
+			.local := ctx.local;
+		}, prog);
+		cgv_load_if_variable(ref inner_condval, prog);
+		LLVMBuildCondBr(ir, inner_condval.ll, whilescope->codegen, whilecont);
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, whilescope->codegen, whilecont);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, whilecont);
+	return zero;
+};
+
 // LLVM IR CODE GENERATION END
 
 codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
