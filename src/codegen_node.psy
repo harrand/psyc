@@ -737,8 +737,27 @@ cg_biop_less_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pro
 
 cg_biop_less_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "loreq NYI");
-	return zero;
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(ty_is_integral(lhs_val.type))
+	{
+		if(ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 41, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(!ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 37, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	if(ty_is_floating_point(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildFCmp(ir, 13, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+	return lhs_val;
 };
 
 cg_biop_greater_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
