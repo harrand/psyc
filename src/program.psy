@@ -148,6 +148,10 @@ program ::= struct
 	locals_cap : u64;
 
 	on_add_source_file : func(prog : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0;
+	link_libraries : u8& mut&;
+	link_library_lens : u64 mut&;
+	link_library_size : u64;
+	link_library_cap : u64;
 };
 
 context ::= struct
@@ -709,6 +713,30 @@ scope_get_parent_function ::= func(s : scope&, prog : program mut&) -> function&
 	return null;
 };
 
+program_add_link_library ::= func(prog : program mut&, libname : u8&, libname_len : u64, a : arena mut&) -> v0
+{
+	if((prog->link_libraries) == null)
+	{
+		(prog->link_library_cap) = 8;
+		(prog->link_libraries) = arena_push(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
+		(prog->link_library_lens) = arena_push(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
+	}
+	while((prog->link_library_size) > (prog->link_library_cap))
+	{
+		oldcap ::= prog->link_library_cap;
+		oldlibs ::= prog->link_libraries;
+		oldlens ::= prog->link_library_lens;
+		(prog->link_library_cap) = (prog->link_library_cap) * 2;
+		(prog->link_libraries) = arena_push(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
+		__memcpy(prog->link_libraries, oldlibs, oldcap * __sizeof(deref (prog->link_libraries)));
+		(prog->link_library_lens) = arena_push(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
+		__memcpy(prog->link_library_lens, oldlens, oldcap * __sizeof(deref (prog->link_library_lens)));
+	}
+	id ::= prog->link_library_size;
+	(prog->link_library_size) = (prog->link_library_size) + 1;
+	deref((prog->link_libraries) at id) = libname;
+	deref((prog->link_library_lens) at id) = libname_len;
+};
 
 == build ==
 {
