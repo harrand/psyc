@@ -24,6 +24,11 @@ typarse_basename_end ::= func(tyname : u8&, tyname_len : u64) -> u64
 			{
 				return i;
 			}
+
+			if(cstr_starts_with_n(newptr, "[", 1))
+			{
+				return i;
+			}
 		}
 		if(newlen >= 4)
 		{
@@ -131,6 +136,36 @@ typarse_ptr ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) ->
 	return 0;
 };
 
+typarse_arr ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
+{
+	arrlenstr : u8& mut;
+	firstchar ::= deref(extraname at 0);
+	if(firstchar == '[')
+	{
+		underlying ::= deref base_ty;
+		arrlenstr = extraname at 1;
+		arrlenstrlen : u64 mut := 0;
+		while(deref(extraname at (arrlenstrlen + 1)) != ']')
+		{
+			if(arrlenstrlen >= (extraname_len - 1))
+			{
+				psyc_panic(zero, "super dodgy typename detected (mismatch [ and ]). todo: better error");
+			}
+			arrlenstrlen = arrlenstrlen + 1;
+		}
+		// parse arrlenstr to get the value
+		arrlen : u64 mut := 0;
+		i : u64 mut;
+		for(i = 0, i < arrlenstrlen, i = i + 1)
+		{
+			arrlen = ((arrlen * 10) + (deref(arrlenstr at i) - '0'));
+		}
+		deref(base_ty) = ty_arr(underlying, arrlen, zero);
+		return 1;
+	}
+	return 0;
+};
+
 typarse_extras ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
 {
 	offset : u64 mut := 0;
@@ -140,6 +175,7 @@ typarse_extras ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&)
 		tmpoff ::= offset;
 		offset = offset + typarse_quals(extraname at offset, extraname_len - offset, base_ty);
 		offset = offset + typarse_ptr(extraname at offset, extraname_len - offset, base_ty);
+		offset = offset + typarse_arr(extraname at offset, extraname_len - offset, base_ty);
 		if(tmpoff == offset)
 		{
 			continue_parsing = false;
