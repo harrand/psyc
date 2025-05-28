@@ -1075,17 +1075,8 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 		.node := condnode;
 		.local := ctx.local;
 	}, prog);
-	if(!ty_is_boolean(condval.type))
-	{
-		psyc_error_begin(condnode->loc);
-		puts("condition of if-statement must be a boolean type, you have provided a ");
-		putchar('"');
-		putty(condval.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
 	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc);
 
 	else_node : ast& mut;
 	else_node = null;
@@ -1176,17 +1167,8 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 		.node := condnode;
 		.local := ctx.local;
 	}, prog);
-	if(!ty_is_boolean(condval.type))
-	{
-		psyc_error_begin(condnode->loc);
-		puts("condition of while-statement must be a boolean type, you have provided a ");
-		putchar('"');
-		putty(condval.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
 	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc);
 
 	fn ::= scope_get_parent_function(ctx.local, prog);
 
@@ -1217,6 +1199,7 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 			.local := ctx.local;
 		}, prog);
 		cgv_load_if_variable(ref inner_condval, prog);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc);
 		LLVMBuildCondBr(ir, inner_condval.ll, whilescope->codegen, whilecont);
 	}
 
