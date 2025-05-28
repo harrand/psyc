@@ -1192,14 +1192,40 @@ cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut&) -
 
 cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(operand->loc, "unop bitwise invert NYI");
-	return zero;
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	cgv_load_if_variable(ref opval, prog);
+	if(!ty_is_integral(opval.type))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary bitwise invert is invalid - operand must be an integral type. you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	(opval.tag) = (cgvtag.misc);
+	return opval;
 };
 
 cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(operand->loc, "unop logical invert NYI");
-	return zero;
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	cgv_load_if_variable(ref opval, prog);
+	if(!ty_is_boolean(opval.type))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary logical invert is invalid - operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	(opval.tag) = (cgvtag.misc);
+	return opval;
 };
 
 cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
