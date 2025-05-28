@@ -377,7 +377,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 
 // biop
 
-cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_common_process_param ::= func(param : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	pval ::= cg_node(context
 	{
@@ -397,9 +397,9 @@ cg_biop_process_param ::= func(param : ast&, ctx : context mut, prog : program m
 
 cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
 {
-	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	cgv_load_if_variable(lhs_val, prog);
-	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
 	cgv_load_if_variable(rhs_val, prog);
 
 	// select the return type.
@@ -497,9 +497,9 @@ cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 
 cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
 {
-	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	cgv_load_if_variable(lhs_val, prog);
-	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
 	cgv_load_if_variable(rhs_val, prog);
 
 	// select the return type.
@@ -578,9 +578,9 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&
 
 cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
 {
-	deref(lhs_val) = cg_biop_process_param(lhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	cgv_load_if_variable(lhs_val, prog);
-	deref(rhs_val) = cg_biop_process_param(rhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
 	cgv_load_if_variable(rhs_val, prog);
 
 	// select the return type.
@@ -637,7 +637,7 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
 	if(!ty_hasqual(lhs_val.type, tyqual.mut))
 	{
 		psyc_error_begin(lhs->loc);
@@ -648,7 +648,7 @@ cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_val : cgv mut := cg_biop_process_param(rhs, ctx, prog);
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
 	cgv_load_if_variable(ref rhs_val, prog);
 	rhs_val = cgv_convert(rhs_val, lhs_val.type, prog, rhs->loc);
 
@@ -1004,7 +1004,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 		}
 	}
 
-	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
 	// firstly ensure the lhs of struct type.
 	lhs_ty ::= lhs_val.type;
 	if(!ty_is(lhs_ty, tytag.strct))
@@ -1091,7 +1091,7 @@ cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pro
 
 cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	lhs_val : cgv mut := cg_biop_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
 	cgv_load_if_variable(ref lhs_val, prog);
 	rhs_sym : ast_symbol_expr mut;
 	rhs_sym = zero;
@@ -1163,8 +1163,31 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 
 cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(operand->loc, "unop minus NYI");
-	return zero;
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	cgv_load_if_variable(ref opval, prog);
+	if(!ty_is_integral(opval.type))
+	{
+		if(!ty_is_floating_point(opval.type))
+		{
+			psyc_error_begin(operand->loc);
+			puts("unary minus is invalid - operand must be either an integral or floating point type. you have provided a ");
+			putchar('"');
+			putty(opval.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	if(ty_is_integral(opval.type))
+	{
+		(opval.ll) = LLVMBuildNeg(ir, opval.ll, "");
+	}
+	if(ty_is_floating_point(opval.type))
+	{
+		(opval.ll) = LLVMBuildFNeg(ir, opval.ll, "");
+	}
+	(opval.tag) = (cgvtag.misc);
+	return opval;
 };
 
 cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
