@@ -1025,6 +1025,64 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	return cg_func.fn(lhs, rhs, ctx, prog);
 };
 
+cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	ifdef ::= node->ifdef;
+	if(ifdef.is_static)
+	{
+		return zero;
+	}
+	condnode ::= ast_get_child(node@_, 0);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+	}, prog);
+	if(!ty_is_boolean(condval.type))
+	{
+		psyc_error_begin(condnode->loc);
+		puts("condition of if-statement must be a boolean type, you have provided a ");
+		putchar('"');
+		putty(condval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	cgv_load_if_variable(ref condval, prog);
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	if_scope_label ::= "if";
+	ifscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, if_scope_label, cstrlen(if_scope_label));
+	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
+
+	ifcont ::= LLVMAppendBasicBlock(fn->codegen, "ifcont");
+
+	// populate inside the if blk
+	LLVMPositionBuilderAtEnd(ir, ifscope->codegen);
+	cg.children(context
+	{
+		.node := node;
+		.local := ifscope;
+	}, prog, 1, 0);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((ifscope->terminator) == null)
+	{
+		LLVMBuildBr(ir, ifcont);
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, ifscope->codegen, ifcont);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, ifcont);
+	return zero;
+};
+
 // LLVM IR CODE GENERATION END
 
 codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
@@ -1049,6 +1107,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	}
 	deref(cg_stmt_table at ((ast_stmt.expr_stmt)@s64)) = cg_stmt_fn{.fn := cg_expr_stmt;};
 	deref(cg_stmt_table at ((ast_stmt.decl_stmt)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.if_stmt)@s64)) = cg_stmt_fn{.fn := cg_if_stmt;};
 
 	cg_expr_table_size ::= __sizeof(cg_expr_table) / __sizeof(deref(cg_expr_table at 0));
 	for(i = 0, i < cg_expr_table_size, i = i + 1)
