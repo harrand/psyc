@@ -770,21 +770,7 @@ cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mu
 
 cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
-	// firstly ensure the lhs of struct type.
-	lhs_ty ::= lhs_val.type;
-	if(!ty_is(lhs_ty, tytag.strct))
-	{
-		psyc_error_begin(lhs->loc);
-		puts("lhs of field expression must be a struct type - you have provided a ");
-		putchar('"');
-		putty(lhs_ty);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	lhs_strct ::= lhs_ty.strct;
-
+	// firstly
 	// rhs should be a symbol expr
 	rhs_sym : ast_symbol_expr mut;
 	rhs_sym = zero;
@@ -804,6 +790,72 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 		psyc_exit_failure();
 	}
 
+	i : u64 mut;
+
+	// then: check if lhs is a symbol expr that matches an enum name.
+	// if so then we can early out as its an enum value.
+	if((lhs->type) == (ast_type.expr))
+	{
+		lhs_expr ::= lhs->expr;
+		if((lhs_expr.type) == (ast_expr_type.symbol))
+		{
+			lhs_sym ::= lhs_expr.symbol; 
+			maybe_enum ::= scope_find_enum(ctx.local, lhs_sym.symbol, lhs_sym.len);
+			if(maybe_enum != null)
+			{
+				// ok it *is* an enum
+				// find the entry
+				enumty ::= maybe_enum->type;
+				enumpayload ::= enumty.enm;
+				for(i = 0, i < (enumpayload.entry_count), i = i + 1)
+				{
+					curentryname ::= deref((enumpayload.entry_names) at i);
+					curentryname_len ::= deref((enumpayload.entry_name_lens) at i);
+					if(curentryname_len == (rhs_sym.len))
+					{
+						if(cstreql_n(curentryname, rhs_sym.symbol, rhs_sym.len))
+						{
+							// this is that exact enum!
+							value ::= deref((enumpayload.entry_values) at i);
+							// return this as a literal
+							return cg_literal(make_literal_expr(ast_literal_expr
+							{
+								.type := ast_literal_type.integral;
+								.integral := value@s64;
+							}), ctx, prog);
+						}
+					}
+				}
+				psyc_error_begin(rhs->loc);
+				puts("enum ");
+				putchar('"');
+				putty(enumty);
+				putchar('"');
+				puts(" has no entry named ");
+				putchar('"');
+				putss(rhs_sym.symbol, rhs_sym.len);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+	}
+
+	lhs_val ::= cg_biop_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of field expression must be a struct type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_ty.strct;
+
 	// get the member id.
 	// if its a variable, we do a GEP to yield another variable
 	// otherwise, we do an extractvalue to yield a misc
@@ -814,7 +866,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	selected_memty : ty mut := zero;
 	selected_memname : u8& mut := null;
 	selected_memname_len : u64 mut := 0;
-	i : u64 mut;
+
 	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
 	{
 		memty ::= deref(memtypes at i);
