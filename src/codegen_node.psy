@@ -1099,6 +1099,8 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 		psyc_exit_failure();
 	}
 
+	ll_args : u64 mut& := arena_push(cgar, __sizeof(u64) * call_param_count);
+
 	i : u64 mut;
 	paramnode : ast& mut;
 	reqty : ty mut;
@@ -1114,10 +1116,15 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 		}, prog);
 		cgv_load_if_variable(ref param_val, prog);
 		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc);
+		deref(ll_args at i) = (param_val.ll);
 	}
 
-	// todo: actually do the codegen
-	return zero;
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildCall2(ir, cg.type(fnty, prog), fn->codegen, ll_args, call_param_count@u32, "");
+		.type := deref((fnpayload.return_type)@ty&);
+	};
 };
 
 cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv

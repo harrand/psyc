@@ -80,6 +80,23 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 		}
 		return def->codegen;
 	}
+	if((t.tag) == (tytag.fn))
+	{
+		fn ::= t.fn;
+		paramdata : u64 mut& := arena_push(cgar, __sizeof(u64) * (fn.param_count));
+
+		ret_cg ::= cg_type(deref((fn.return_type)@ty&), prog);
+		param_tys ::= (fn.param_types)@ty&;
+
+		i : u64 mut;
+		for(i = 0, i < (fn.param_count), i = i + 1)
+		{
+			deref(paramdata at i) = cg_type(deref(param_tys at i), prog);
+		}
+
+		parcountu32 ::= (fn.param_count)@u32;
+		return LLVMFunctionType(ret_cg, paramdata, parcountu32, false@s32);
+	}
 	psyc_panic(zero, "control flow reached end of cg_type - compiler bug.");
 	return 0;
 };
@@ -137,21 +154,12 @@ cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&
 	type ::= fn->type;
 	fnty ::= type.fn;
 	param_count ::= (fn->param_count);
-	paramdata : u64 mut& := arena_push(cgar, __sizeof(u64) * param_count);
-	i : u64 mut;
-
-	ret_tycg ::= cg_type(deref((fnty.return_type)@ty&), prog);
-	param_tys ::= (fnty.param_types)@ty&;
-	for(i = 0, i < param_count, i = i + 1)
-	{
-		deref(paramdata at i) = cg_type(deref(param_tys at i), prog);
-	}
-
-	func_tycg ::= LLVMFunctionType(ret_tycg, paramdata, param_count@u32, false@s32);
+	func_tycg ::= cg_type(type, prog);
 	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), func_tycg);
 
 	param : u64 mut := LLVMGetFirstParam(fn->codegen);
 	fnnode ::= fn->node;
+	i : u64 mut;
 	for(i = 0, i < param_count, i = i + 1)
 	{
 		param_node ::= ast_get_child(fnnode@_, i);
