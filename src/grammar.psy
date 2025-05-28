@@ -692,6 +692,16 @@ while2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_valu
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+for2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.for_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 region2stmt ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -1104,6 +1114,47 @@ wipwhileredcbrace2while ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) 
 	setup_delete_tail(parse_action.reduce);
 	
 	(firstptr->type) = (ast_type.whiledef);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+keywordforparen2wipfor ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipfor_blue);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipforbluecomma2wipforred ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipfor_red);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipforredcomma2wipforyellow ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipfor_yellow);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipforyellowcparen2wipforgreen ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	(firstptr->type) = (ast_type.wipfor_green);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
+wipforgreencbrace2for ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+	
+	(firstptr->type) = (ast_type.fordef);
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
@@ -1683,6 +1734,23 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 		node(ast_type.wipwhile_blue),
 		rule(shift1));
 
+	// prevent for statement parts from eating unfinished biops
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		node(ast_type.wipfor_blue),
+		rule(shift1));
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		node(ast_type.wipfor_red),
+		rule(shift1));
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		token(tok),
+		node(ast_type.wipfor_yellow),
+		rule(shift1));
+
 	// prevent parenthesised exprs from eating unfinished biops
 	grammar_install(
 		__arrcpy(ast, my_nodes, expr(exp)),
@@ -2100,6 +2168,12 @@ grammar_while ::= macro() -> v0
 		null_lookahead,
 		null_stash,
 		rule(while2stmt));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fordef)),
+		null_lookahead,
+		null_stash,
+		rule(for2stmt));
 };
 
 grammar_while_cond ::= macro(exp : ast_expr_type static) -> v0
@@ -2113,11 +2187,122 @@ grammar_while_cond ::= macro(exp : ast_expr_type static) -> v0
 
 grammar_for ::= macro() -> v0
 {
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_for)),
+		null_lookahead,
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_for), token(lex_token.oparen)),
+		null_lookahead,
+		null_stash,
+		rule(keywordforparen2wipfor));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_blue)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		null_lookahead,
+		node(ast_type.wipfor_blue),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_blue), token(lex_token.comma)),
+		null_lookahead,
+		null_stash,
+		rule(wipforbluecomma2wipforred));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_red)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		null_lookahead,
+		node(ast_type.wipfor_red),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_red), token(lex_token.comma)),
+		null_lookahead,
+		null_stash,
+		rule(wipforredcomma2wipforyellow));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		null_lookahead,
+		node(ast_type.wipfor_yellow),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		null_lookahead,
+		node(ast_type.wipfor_yellow),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen)),
+		null_lookahead,
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen), token(lex_token.obrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipforyellowcparen2wipforgreen));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_green)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		null_lookahead,
+		node(ast_type.wipfor_green),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfor_green), token(lex_token.cbrace)),
+		null_lookahead,
+		null_stash,
+		rule(wipforgreencbrace2for));
 };
 
 grammar_for_cond ::= macro(exp : ast_expr_type static) -> v0
 {
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipfor_blue),
+		rule(commit_head));
 
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipfor_red),
+		rule(commit_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.wipfor_yellow),
+		rule(commit_head));
 };
 
 grammar_call ::= macro() -> v0
@@ -2700,6 +2885,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_commit_stmt(ast_stmt.blk_stmt);
 	grammar_commit_stmt(ast_stmt.if_stmt);
 	grammar_commit_stmt(ast_stmt.while_stmt);
+	grammar_commit_stmt(ast_stmt.for_stmt);
 	grammar_commit_stmt(ast_stmt.init_stmt);
 	grammar_commit_stmt(ast_stmt.structinit_stmt);
 };
