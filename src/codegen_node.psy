@@ -901,8 +901,35 @@ cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pr
 
 cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop logical_or");
-	return zero;
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(ref lhs_val, prog);
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("binary logical OR is invalid - lhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(ref rhs_val, prog);
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary logical OR is invalid - rhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
+	return lhs_val;
 };
 
 cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
@@ -918,8 +945,35 @@ cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : p
 
 cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop logical_and");
-	return zero;
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	cgv_load_if_variable(ref lhs_val, prog);
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("binary logical AND is invalid - lhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(ref rhs_val, prog);
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary logical AND is invalid - rhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
+	return lhs_val;
 };
 
 cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
