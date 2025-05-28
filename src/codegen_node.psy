@@ -978,8 +978,52 @@ cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : p
 
 cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(lhs->loc, "todo: biop at");
-	return zero;
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	if(!ty_is(lhs_val.type, tytag.arr))
+	{
+		if(!ty_is(lhs_val.type, tytag.ptr))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("invalid 'at' operator - lhs operand must be either an array or pointer type. you have provided a ");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	cgv_load_if_variable(ref rhs_val, prog);
+	if(!ty_is_integral(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid 'at' operator - rhs operand must be an integral type. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	index_list : u64 mut#2;
+	deref(index_list at 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+	deref(index_list at 1) = (rhs_val.ll);
+	elem_ty ::= ty_underlying(lhs_val.type);
+	if(ty_is(lhs_val.type, tytag.arr))
+	{
+		// do array things
+		(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(lhs_val.type, prog), lhs_val.ll, index_list at 0, 2, "");
+	}
+	if(ty_is(lhs_val.type, tytag.ptr))
+	{
+		// do pointer gep
+		cgv_load_if_variable(ref lhs_val, prog);
+		(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(elem_ty, prog), lhs_val.ll, index_list at 1, 1, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_ref(elem_ty, zero);
+	return lhs_val;
 };
 
 cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
