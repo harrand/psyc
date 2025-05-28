@@ -637,7 +637,37 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 
 cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut;
+	// special case here: lhs is a deref.
+	did_special_case : bool mut;
+	did_special_case = false;
+	if((lhs->type) == (ast_type.expr))
+	{
+		lhs_expr ::= lhs->expr;
+		if((lhs_expr.type) == (ast_expr_type.unop))
+		{
+			lhs_unop ::= lhs_expr.unop;
+			if((lhs_unop.type) == (ast_unop_type.op_deref))
+			{
+				// yes, this is the special case.
+				// overwrite lhs_val and let the function do the rest.
+				lhs_child ::= ast_get_child(lhs@_, 0);
+				lhs_val = cg_expr(context
+				{
+					.node := lhs_child;
+					.local := ctx.local;
+				}, prog);
+				cgv_load_if_variable(ref lhs_val, prog);
+				(lhs_val.type) = ty_deref(lhs_val.type);
+				did_special_case = true;
+			}
+		}
+	}
+	if(!did_special_case)
+	{
+		lhs_val = cg_common_process_param(lhs, ctx, prog);
+	}
+
 	if(!ty_hasqual(lhs_val.type, tyqual.mut))
 	{
 		psyc_error_begin(lhs->loc);
