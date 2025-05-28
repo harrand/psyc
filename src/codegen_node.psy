@@ -1248,8 +1248,22 @@ cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> 
 
 cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
-	psyc_panic(operand->loc, "unop deref NYI");
-	return zero;
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	cgv_load_if_variable(ref opval, prog);
+	if(!ty_is(opval.type, tytag.ptr))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary deref is invalid - you can only deref a pointer type, you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.tag) = (cgvtag.misc);
+	(opval.type) = ty_deref(opval.type);
+	(opval.ll) = LLVMBuildLoad2(ir, cg.type(opval.type, prog), opval.ll, "");
+	return opval;
 };
 
 cg_unop_defer ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
