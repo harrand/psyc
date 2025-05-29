@@ -621,6 +621,29 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			return tyconv.same;
 		}
 	}
+	if(ty_is(lhs, tytag.arr))
+	{
+		if(ty_is(rhs, tytag.arr))
+		{
+			// if the underlying types are exactly the same, then yes
+			lhsarr ::= lhs.arr;
+			rhsarr ::= rhs.arr;
+			lhslen ::= lhsarr.len;
+			rhslen ::= rhsarr.len;
+			if(lhslen != rhslen)
+			{
+				return tyconv.cant;
+			}
+			lhs_u : ty mut := deref((lhsarr.underlying)@ty&);
+			(lhs_u.qual) = zero;
+			rhs_u : ty mut := deref((rhsarr.underlying)@ty&);
+			(rhs_u.qual) = zero;
+			// this is subtle.
+			// i dont care if the underlyings are convertible, i want *exactly* the same
+			// so we force-remove all quals and then return if theyre convertible
+			return ty_get_conv(lhs_u, rhs_u);
+		}
+	}
 	if(ty_is_integral(lhs))
 	{
 		if(ty_is_integral(rhs))
@@ -671,6 +694,14 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 
 	if(ty_is_floating_point(lhs))
 	{
+		if(ty_is_floating_point(rhs))
+		{
+			if(either_is_weak)
+			{
+				return tyconv.f2f;
+			}
+			return tyconv.could_if_weak;
+		}
 		if(ty_is_integral(rhs))
 		{
 			if(either_is_weak)

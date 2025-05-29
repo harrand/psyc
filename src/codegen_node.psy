@@ -1556,7 +1556,46 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut&) ->
 {
 	node ::= ctx.node;
 	arrty ::= type.arr;
-	return zero;
+	inits ::= node->childcount;
+
+	element_ty ::= ty_underlying(type);
+
+	if((arrty.len) != inits)
+	{
+		psyc_error_begin(node->loc);
+		puts("array initialiser of type ");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		puts(" had ");
+		putuint(inits);
+		puts(" initialisers - expected ");
+		putuint(arrty.len);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	arr_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+	i : u64 mut;
+	childnode : ast& mut;
+	child_val : cgv mut;
+	for(i = 0, i < inits, i = i + 1)
+	{
+		childnode = ast_get_child(node@_, i);
+		child_val = cg_expr(context
+		{
+			.node := childnode;
+			.local := ctx.local;
+		}, prog);
+		cgv_load_if_variable(ref child_val, prog);
+		child_val = cgv_convert(child_val, element_ty, prog, childnode->loc);
+		arr_ll = LLVMBuildInsertValue(ir, arr_ll, child_val.ll, i@_, "");
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := arr_ll;
+		.type := type;
+	};
 };
 
 // structinit
