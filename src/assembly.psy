@@ -32,6 +32,26 @@ assemble ::= func(prog : program&) -> v0
 	codegen_level_aggressive ::= 3;
 	target_machine ::= LLVMCreateTargetMachine(target, triple, "generic", "", codegen_level_default, 0, 0);
 	LLVMSetTarget(prog->codegen, triple);
+
+	// optimisation passes
+	options ::= LLVMCreatePassBuilderOptions();
+	if(LLVMRunPasses(prog->codegen, "default<O0>", target_machine, options) != 0)
+	{
+		psyc_error_begin(zero);
+		puts("Unknown error running LLVM passes");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	args ::= ref(prog->compile_args);
+	if(args->verbose_codegen)
+	{
+		str ::= LLVMPrintModuleToString(mod);
+		puts("Codegen: ");
+		putchar(10);
+		puts(str);
+		putchar(10);
+	}
 };
 
 == build ==
