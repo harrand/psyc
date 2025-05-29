@@ -1,0 +1,40 @@
+assemble ::= func(prog : program&) -> v0
+{
+	psyc_timed(psyc_stage.assembly);
+	LLVMInitializeX86AsmParser();
+	LLVMInitializeX86AsmPrinter();
+	LLVMInitializeX86TargetInfo();
+	LLVMInitializeX86Target();
+	LLVMInitializeX86Disassembler();
+	LLVMInitializeX86TargetMC();
+
+	triple ::= LLVMGetDefaultTargetTriple();
+	target : u64 mut;
+	error : u8& mut := null;
+
+	if(LLVMGetTargetFromTriple(triple, ref target, ref error) != 0)
+	{
+		psyc_error_begin(zero);
+		puts("Error retrieving LLVM target from triple ");
+		putchar('"');
+		puts(triple);
+		putchar('"');
+		puts(": ");
+		puts(error);
+		// LLVMDisposeMessage(error);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	codegen_level_none ::= 0;
+	codegen_level_less ::= 1;
+	codegen_level_default ::= 2;
+	codegen_level_aggressive ::= 3;
+	target_machine ::= LLVMCreateTargetMachine(target, triple, "generic", "", codegen_level_default, 0, 0);
+	LLVMSetTarget(prog->codegen, triple);
+};
+
+== build ==
+{
+	add_source_file("program.psy");
+}
