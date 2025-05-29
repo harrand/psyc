@@ -1,3 +1,5 @@
+asar : arena mut& mut;
+
 assemble ::= func(prog : program&) -> v0
 {
 	psyc_timed(psyc_stage.assembly);
@@ -66,8 +68,18 @@ assemble ::= func(prog : program&) -> v0
 		putchar(10);
 	}
 
+	default_build_dir ::= "build/";
+	default_extension ::= ".o";
+	builddir_len ::= cstrlen(default_build_dir);
+	path_len ::= builddir_len + (prog->name_len) + cstrlen(default_extension);
+	path : u8 mut& := arena_push(asar, path_len + 1);
+	__memcpy(path, default_build_dir, builddir_len);
+	__memcpy(path at builddir_len, prog->name, prog->name_len);
+	__memcpy(path at (builddir_len + (prog->name_len)), default_extension, cstrlen(default_extension));
+	deref(path at path_len) = 0;
+
 	errmsg : u8& mut;
-	if(LLVMTargetMachineEmitToFile(target_machine, prog->codegen, prog->object_file_path, 1, ref errmsg) != 0)
+	if(LLVMTargetMachineEmitToFile(target_machine, prog->codegen, path, 1, ref errmsg) != 0)
 	{
 		psyc_error_begin(zero);
 		puts("Error while generating assembly: ");
@@ -75,6 +87,11 @@ assemble ::= func(prog : program&) -> v0
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+};
+
+assembly_setup ::= func(a : arena mut&) -> v0
+{
+	asar = a;
 };
 
 == build ==

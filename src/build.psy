@@ -5,6 +5,7 @@ build_inst ::= enum
 	.add_source_file := 0;
 	.add_link_library := 1;
 	.set_optimization := 2;
+	.set_name := 3;
 };
 
 build_fn ::= struct
@@ -12,7 +13,7 @@ build_fn ::= struct
 	fn : func(node : ast&, prog : program mut&) -> v0;
 };
 
-build_instructions : build_fn mut#3;
+build_instructions : build_fn mut#4;
 
 bi_add_source_file ::= func(node : ast&, prog : program mut&) -> v0
 {
@@ -42,12 +43,23 @@ bi_set_optimization ::= func(node : ast&, prog : program mut&) -> v0
 	(prog->opt) = (level.integral)@opt_level;
 };
 
+bi_set_name ::= func(node : ast&, prog : program mut&) -> v0
+{
+	param_node ::= ast_get_child(node@_, 0);
+	param_expr ::= param_node->expr;
+	path ::= param_expr.literal;
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+};
+
 build_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
 	deref(build_instructions at ((build_inst.add_link_library)@s64)) = build_fn{.fn := bi_add_link_library;};
 	deref(build_instructions at ((build_inst.set_optimization)@s64)) = build_fn{.fn := bi_set_optimization;};
+	deref(build_instructions at ((build_inst.set_name)@s64)) = build_fn{.fn := bi_set_name;};
 	bar = a;
 };
 
