@@ -26,16 +26,29 @@ assemble ::= func(prog : program&) -> v0
 		psyc_exit_failure();
 	}
 
+	// these represent backend codegen flags (e.g asm instructions used)
+	// they arent the same as O0-O3 but both offer increasing runtime perf
+	// for that reason i will directly re-use prog->opt
+	/*
 	codegen_level_none ::= 0;
 	codegen_level_less ::= 1;
 	codegen_level_default ::= 2;
 	codegen_level_aggressive ::= 3;
-	target_machine ::= LLVMCreateTargetMachine(target, triple, "generic", "", codegen_level_default, 0, 0);
+	*/
+	optval ::= (prog->opt)@s64@s32;
+	target_machine ::= LLVMCreateTargetMachine(target, triple, "generic", "", optval, 0, 0);
 	LLVMSetTarget(prog->codegen, triple);
 
 	// optimisation passes
 	options ::= LLVMCreatePassBuilderOptions();
-	if(LLVMRunPasses(prog->codegen, "default<O0>", target_machine, options) != 0)
+
+	opt_levels : u8& mut#4;
+	deref(opt_levels at 0) = "default<O0>";
+	deref(opt_levels at 1) = "default<O1>";
+	deref(opt_levels at 2) = "default<O2>";
+	deref(opt_levels at 3) = "default<O3>";
+
+	if(LLVMRunPasses(prog->codegen, deref(opt_levels at optval), target_machine, options) != 0)
 	{
 		psyc_error_begin(zero);
 		puts("Unknown error running LLVM passes");
