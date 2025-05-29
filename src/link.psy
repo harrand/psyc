@@ -1,5 +1,7 @@
 lar : arena mut& mut;
 
+ShellExecuteA ::= func(wnd : u64, operation : u8&, file : u8&, params : u8&, directory : u8&, showCmd : s32) -> u64 := extern;
+
 append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
 {
 	oldstr ::= deref str;
@@ -32,6 +34,55 @@ append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
 	deref(str) = newstr;
 };
 
+append_msvc_flags ::= func(str : u8 mut& mut&) -> v0
+{
+	oldstr ::= deref str;
+	oldlen ::= cstrlen(oldstr);
+
+	msvc_flags ::= " /NODEFAULTLIB /SUBSYTEM:CONSOLE /ENTRY:_psymain";
+	space_needed ::= cstrlen(msvc_flags);
+
+	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
+	__memcpy(newstr, oldstr, oldlen);
+	__memcpy(newstr at oldlen, msvc_flags, cstrlen(msvc_flags));
+	deref(newstr at (space_needed + oldlen)) = 0;
+	deref(str) = newstr;
+};
+
+append_output ::= func(prog : program&, str : u8 mut& mut&) -> v0
+{
+	oldstr ::= deref str;
+	oldlen ::= cstrlen(oldstr);
+
+	out_flags ::= " /OUT:";
+	out_name ::= prog->name;
+	extension ::= default_exe_extension;
+	space_needed ::= cstrlen(out_flags) + (prog->name_len) + cstrlen(extension);
+
+	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
+	__memcpy(newstr, oldstr, oldlen);
+	__memcpy(newstr at oldlen, out_flags, cstrlen(out_flags));
+	__memcpy(newstr at (oldlen + cstrlen(out_flags)), out_name, prog->name_len);
+	__memcpy(newstr at (oldlen + cstrlen(out_flags) + (prog->name_len)), extension, cstrlen(extension));
+	deref(newstr at (space_needed + oldlen)) = 0;
+	deref(str) = newstr;
+};
+
+prepend_linker_name ::= func(str : u8 mut& mut&) -> v0
+{
+	oldstr ::= deref str;
+	oldlen ::= cstrlen(oldstr);
+
+	lnkname ::= "lld-link ";
+	space_needed ::= cstrlen(lnkname);
+
+	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
+	__memcpy(newstr, lnkname, space_needed);
+	__memcpy(newstr at space_needed, oldstr, oldlen);
+	deref(newstr at (space_needed + oldlen)) = 0;
+	deref(str) = newstr;
+};
+
 link_executable ::= func(prog : program mut&) -> v0
 {
 };
@@ -44,23 +95,29 @@ link ::= func(prog : program mut&) -> v0
 {
 	psyc_timed(psyc_stage.link);	
 
-	initialbuf : u8 mut#7 := zero;
-	__memcpy(initialbuf at 0, "hello ", 6);
-	command : u8 mut& mut := initialbuf at 0;
+	path_len ::= (prog->name_len) + cstrlen(default_obj_extension);
+	cmd : u8 mut& mut := arena_push(lar, path_len + 2);
+	__memcpy(cmd at 0, prog->name, prog->name_len);
+	__memcpy(cmd at (prog->name_len), default_obj_extension, cstrlen(default_obj_extension));
+	deref(cmd at path_len) = ' ';
+	deref(cmd at (path_len + 1)) = 0;
 
-	puts("command before: ");
-	putchar('"');
-	puts(command);
-	putchar('"');
-	putchar(10);
+	append_link_library_string(prog, ref cmd);
+	append_msvc_flags(ref cmd);
+	prepend_linker_name(ref cmd);
+	append_output(prog, ref cmd);
 
-	append_link_library_string(prog, ref command);
+	args ::= ref(prog->compile_args);
+	if(args->verbose_link)
+	{
+		puts("Linker Command: ");
+		putchar(10);
+		puts(cmd);
+		putchar(10);
+	}
 
-	puts("command after: ");
-	putchar('"');
-	puts(command);
-	putchar('"');
-	putchar(10);
+	ShellExecuteA(0, "open", cmd, null, null, 5);
+
 	if((prog->type) == (program_type.executable))
 	{
 		link_executable(prog);
