@@ -5,7 +5,9 @@ build_inst ::= enum
 	.add_source_file := 0;
 	.add_link_library := 1;
 	.set_optimization := 2;
-	.set_name := 3;
+	.set_executable := 3;
+	.set_library := 4;
+	.set_object := 5;
 };
 
 build_fn ::= struct
@@ -13,7 +15,7 @@ build_fn ::= struct
 	fn : func(node : ast&, prog : program mut&) -> v0;
 };
 
-build_instructions : build_fn mut#4;
+build_instructions : build_fn mut#6;
 
 bi_add_source_file ::= func(node : ast&, prog : program mut&) -> v0
 {
@@ -43,7 +45,7 @@ bi_set_optimization ::= func(node : ast&, prog : program mut&) -> v0
 	(prog->opt) = (level.integral)@opt_level;
 };
 
-bi_set_name ::= func(node : ast&, prog : program mut&) -> v0
+bi_set_executable ::= func(node : ast&, prog : program mut&) -> v0
 {
 	param_node ::= ast_get_child(node@_, 0);
 	param_expr ::= param_node->expr;
@@ -51,6 +53,29 @@ bi_set_name ::= func(node : ast&, prog : program mut&) -> v0
 
 	(prog->name) = (path.chars);
 	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.executable);
+};
+
+bi_set_library ::= func(node : ast&, prog : program mut&) -> v0
+{
+	param_node ::= ast_get_child(node@_, 0);
+	param_expr ::= param_node->expr;
+	path ::= param_expr.literal;
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.library);
+};
+
+bi_set_object ::= func(node : ast&, prog : program mut&) -> v0
+{
+	param_node ::= ast_get_child(node@_, 0);
+	param_expr ::= param_node->expr;
+	path ::= param_expr.literal;
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.object);
 };
 
 build_setup ::= func(a : arena mut&) -> v0
@@ -59,7 +84,9 @@ build_setup ::= func(a : arena mut&) -> v0
 	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
 	deref(build_instructions at ((build_inst.add_link_library)@s64)) = build_fn{.fn := bi_add_link_library;};
 	deref(build_instructions at ((build_inst.set_optimization)@s64)) = build_fn{.fn := bi_set_optimization;};
-	deref(build_instructions at ((build_inst.set_name)@s64)) = build_fn{.fn := bi_set_name;};
+	deref(build_instructions at ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
+	deref(build_instructions at ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
+	deref(build_instructions at ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
 	bar = a;
 };
 
