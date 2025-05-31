@@ -196,6 +196,12 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		return;
 	}
 
+	// firstly, disable stack probes (NOCRT)
+	gctx ::= LLVMGetGlobalContext();
+	no_stack_probe_str ::= "no-stack-arg-probe";
+	no_stack_probe ::= LLVMCreateStringAttribute(gctx, no_stack_probe_str, cstrlen(no_stack_probe_str)@u32, "", 0);
+	LLVMAddAttributeAtIndex(fn->codegen, LLVMAttributeFunctionIndex, no_stack_probe);
+
 	node ::= fn->node;
 	funcscope ::= (fn->impl_scope)@scope mut&;
 	(funcscope->codegen) = LLVMAppendBasicBlock(fn->codegen, "entry");
@@ -312,6 +318,12 @@ codegen ::= func(prog : program mut&) -> v0
 	{
 		cg_define_func((funcs->data) at i, glob, prog);
 	}
+
+	fltused_cgty ::= cg_type(ty_getprim(primty.s64, zero), prog);
+	fltused ::= LLVMAddGlobal(mod, fltused_cgty, "_fltused");
+	LLVMSetLinkage(fltused, LLVMCommonLinkage);
+	LLVMSetExternallyInitialized(fltused, 0);
+	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
 	cg_finish();
 	(prog->codegen) = mod;
