@@ -36,6 +36,43 @@ PROCESS_INFORMATION ::= struct
 	dwThreadId : u32;
 };
 CreateProcessA ::= func(lpApplicationName : u8&, lpCommandLine : u8&, lpProcessAttributes : SECURITY_ATTRIBUTES&, lpThreadAttributes : SECURITY_ATTRIBUTES&, bInheritHandles : s32, dwCreationFlags : s32, lpEnvironment : v0&, lpCurrentDirectory : u8&, lpStartupInfo : STARTUPINFOA&, lpProcessInformation : PROCESS_INFORMATION&) -> s32 := extern;
+WaitForSingleObject ::= func(handle : u64, dwMilliSeconds : u32) -> u32 := extern;
+GetExitCodeProcess ::= func(hProcess : u64, lpExitCode : u32 mut&) -> s32 := extern;
+
+invoke_command ::= func(cmd : u8&) -> v0
+{
+	si : STARTUPINFOA mut := zero;
+	pi : PROCESS_INFORMATION mut := zero;
+	(si.cb) = __sizeof(STARTUPINFOA);
+	STARTF_USESTDHANDLES ::= 0x00000100;
+	(si.dwFlags) = STARTF_USESTDHANDLES;
+	STD_OUTPUT_HANDLE ::= -11@u32;
+	STD_ERROR_HANDLE ::= -12@u32;
+	(si.hStdOutput) = GetStdHandle(STD_OUTPUT_HANDLE);
+	(si.hStdError) = GetStdHandle(STD_ERROR_HANDLE);
+
+	if(CreateProcessA(null, cmd, null, null, true@s32, 0, null, null, ref si, ref pi) == 0)
+	{
+		psyc_error_begin(zero);
+		puts("Failed to invoke linker process for command: ");
+		putchar(10);
+		puts(cmd);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	WaitForSingleObject(pi.hProcess, -1);
+	exit_code : u32 mut := 0;
+	GetExitCodeProcess(pi.hProcess, ref exit_code);
+	if(exit_code != 0)
+	{
+		psyc_error_begin(zero);
+		puts("Detected non-zero return code from the linker command: ");
+		putchar(10);
+		psyc_diag_end();
+		puts(cmd);
+		psyc_exit_failure();
+	}
+};
 
 append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
 {
@@ -74,7 +111,7 @@ append_msvc_flags ::= func(str : u8 mut& mut&) -> v0
 	oldstr ::= deref str;
 	oldlen ::= cstrlen(oldstr);
 
-	msvc_flags ::= " /NODEFAULTLIB /SUBSYTEM:CONSOLE /ENTRY:_psymain";
+	msvc_flags ::= " /NODEFAULTLIB /SUBSYSTEM:CONSOLE /ENTRY:_psymain";
 	space_needed ::= cstrlen(msvc_flags);
 
 	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
@@ -155,7 +192,7 @@ link ::= func(prog : program mut&) -> v0
 		putchar(10);
 	}
 
-	ShellExecuteA(0, "open", cmd, null, null, 5);
+	invoke_command(cmd);
 
 	if((prog->type) == (program_type.executable))
 	{
