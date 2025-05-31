@@ -66,9 +66,18 @@ add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mu
 	progwalk_file(prog, ref(p.root));
 };
 
+add_preload ::= func(prog : program mut&, a : arena mut&) -> v0
+{
+	source ::= "ExitProcess ::= func(uExitCode : u32) -> v0 := extern; _psymain ::= func() -> v0{ExitProcess(main()@u32);};";
+	l ::= lex("preload.psy", source, a, false);
+	p ::= parse(ref l, false);
+	progwalk_file(prog, ref(p.root));
+};
+
 compile_program ::= func(prog : program mut&, a : arena mut&) -> v0
 {
 	args ::= ref(prog->compile_args);
+	add_preload(prog, a);
 	precompile_build_file(prog, args->build_file, a);
 	semal(prog);
 	codegen(prog);
