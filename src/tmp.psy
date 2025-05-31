@@ -1,82 +1,44 @@
-het ::= func() -> s64 weak
-{
-	z : s32;
-	z2 : s32 mut;
-
-	return 69;
-};
-zee ::= func(myparam : u64) -> u64
-{
-	myarr : f32 mut[3] mut := f32[3]{1.0; 2.0; 3.0;};
-	deref(myarr at 1) = 5.0;
-	myarr = f32[3]{3.0; 2.0; 1.0;};
-	myarr = zero;
-	mystr ::= "fee fi fo fum";
-
-	bigarr : u8[4096];
-	return myparam;
-};
-//__myfunc(myfoo2);
-//myfoo5 ::= __myfunc(5);
-
-mystruct ::= struct
-{
-	member : u64;
-	mem2 : u32;
-};
-vv : u8& := zero;
-
-/*
-myinstance : mystruct mut := mystruct
-{
-	.member := 50;
-};
-myref ::= ref myinstance;
-(myref->member) = null;
-goo ::= zero@u64;
-*/
-
-mycoolenum ::= enum
-{
-	.cool := 0;
-	.epic := 1;
-	.poggers := 2;
-};
-
 == build ==
 {
 	//fooey_glooey();
-	add_source_file("tmp2.psy");
 	add_link_library("Kernel32.lib");
 	set_optimization(0);
-	set_executable("cool_program");
+	set_executable("tmp");
 }
 
-fooey ::= macro() -> v0
+GetStdHandle ::= func(handle : u32) -> u64 := extern;
+WriteConsoleA ::= func(hConsoleOutput : u64, lpBuffer : u8&, write_count : u32, chars_written : u32 mut& weak, reserved : v0&) -> s32 := extern;
+
+putchar ::= func(chr : u8) -> v0
 {
-	x ::= 5;
-	y ::= 6;
-	yield x;
+	v ::= chr;
+	handle ::= GetStdHandle(4294967285@u32);
+	WriteConsoleA(handle, ref v, 1@u32, zero, zero);
 };
 
+putuint ::= func(v : u64 weak) -> v0
 {
-	x = false;
-	if static(false)
+	if(v > 9)
 	{
-		e();
+		putuint(v / 10);
 	}
-}
+	digit ::= v - ((v / 10) * 10);
+	putchar('0' + digit);
+};
 
-fooey();
-
-do_foo ::= func(x : u64, y : u32 mut& mut, z : mystruct mut weak static) -> v0 := extern;
-do_foo2 ::= func(a : u32) -> v0
+putsint ::= func(v : s64 weak) -> v0
 {
-	//x ::= 5;
-	//mynestedfunc ::= func(z : s8) -> v0 := extern;
+	val : s64 mut := v;
+	if(v < 0)
+	{
+		putchar('-');
+		val = -val;
+	}
+	putuint(val);
 };
 
 main ::= func() -> s64
 {
+	putuint(12345678910);
 	return 0;
 };
