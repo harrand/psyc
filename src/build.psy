@@ -12,66 +12,133 @@ build_inst ::= enum
 
 build_fn ::= struct
 {
-	fn : func(node : ast&, prog : program mut&) -> v0;
+	fn : func(s : scope mut&, node : ast&, prog : program mut&) -> v0;
+};
+
+build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut&) -> sval
+{
+	ret ::= sval_retrieve(node, s, prog);
+	if((ret.tag) == zero)
+	{
+		psyc_error_begin(node->loc);
+		puts("Value could not be resolved to a constant expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return ret;
 };
 
 build_instructions : build_fn mut#6;
 
-bi_add_source_file ::= func(node : ast&, prog : program mut&) -> v0
+bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	path ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_source_file must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	fn ::= prog->on_add_source_file;
 	fn(prog, path.chars, path.chars_len, bar);
 };
 
-bi_add_link_library ::= func(node : ast&, prog : program mut&) -> v0
+bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	path ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_link_library must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	program_add_link_library(prog, path.chars, path.chars_len, bar);
 };
 
-bi_set_optimization ::= func(node : ast&, prog : program mut&) -> v0
+bi_set_optimization ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	level ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	level ::= param.literal;
+	if((level.type) != (ast_literal_type.integral))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_optimization must be an integer literal, but you have passed a ");
+		puts(__enumname(level.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	(prog->opt) = (level.integral)@opt_level;
 };
 
-bi_set_executable ::= func(node : ast&, prog : program mut&) -> v0
+bi_set_executable ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	path ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_executable must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	(prog->name) = (path.chars);
 	(prog->name_len) = (path.chars_len);
 	(prog->type) = (program_type.executable);
 };
 
-bi_set_library ::= func(node : ast&, prog : program mut&) -> v0
+bi_set_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	path ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_library must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	(prog->name) = (path.chars);
 	(prog->name_len) = (path.chars_len);
 	(prog->type) = (program_type.library);
 };
 
-bi_set_object ::= func(node : ast&, prog : program mut&) -> v0
+bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
-	param_node ::= ast_get_child(node@_, 0);
-	param_expr ::= param_node->expr;
-	path ::= param_expr.literal;
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_object must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
 	(prog->name) = (path.chars);
 	(prog->name_len) = (path.chars_len);
@@ -109,7 +176,7 @@ get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
 	return (-1)@build_inst;
 };
 
-interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
+interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast&) -> v0
 {
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
@@ -127,7 +194,7 @@ interpret_build_instruction ::= func(prog : program mut&, node : ast&) -> v0
 		psyc_exit_failure();
 	}
 	inst ::= deref(build_instructions at (instid@s64));
-	inst.fn(node, prog);
+	inst.fn(s, node, prog);
 };
 
 interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
@@ -141,6 +208,7 @@ interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
 		return;
 	}
 	node ::= reg->node;
+	s ::= program_new_scope(prog, bar, ref(prog->global), scope_type.build_region, node->loc, "", 0);
 	i : u64 mut;
 	childrenptr ::= (node->children)@ast&;
 	for(i = 0, i < (node->childcount), i = i + 1)
@@ -148,7 +216,26 @@ interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
 		cur ::= childrenptr at i;
 		if(ast_is_expr(cur, ast_expr_type.callfunc))
 		{
-			interpret_build_instruction(prog, cur);
+			interpret_build_instruction(s, prog, cur);
+		}
+		if(ast_is_decl(cur))
+		{
+			init : sval mut := zero;
+			decl ::= cur->decl;
+			if((cur->childcount) > 0)
+			{
+				init = sval_retrieve(ast_get_child(cur@_, 0), s, prog);
+			}
+			scope_declare_variable(s, bar, variable
+			{
+				.node := node;
+				.name := decl.name;
+				.name_len := decl.name_len;
+				.is_global := false;
+				.type := zero;
+				.initialiser := init;
+				.codegen := zero;
+			});
 		}
 	}
 };
