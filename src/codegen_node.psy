@@ -247,10 +247,13 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 {
 	chars ::= lit.chars;
 	len ::= lit.chars_len;
+	zstr : u8 mut& := arena_push(cgar, len + 1);
+	__memcpy(zstr, chars, len);
+	deref(zstr at len) = 0;
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstString(chars, len@_, false@s32); // let string literals be null terminated
+		.ll := LLVMBuildGlobalString(ir, zstr, "");
 		.type := ty_ref(ty_getprim(primty.u8, tyqual.static), zero);
 	};
 };
