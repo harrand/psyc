@@ -1,31 +1,81 @@
-sval_node ::= func(node : ast&, s : scope mut&, prog : program mut&) -> sval
+sval_expr_fn ::= struct
 {
-	if((node->type) == (ast_type.expr))
+	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval;
+};
+sval_exprfn_error ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous sval-exprfn invoked for expr type ");
+	putchar('"');
+	puts(__enumname(expr.type));
+	puts(" (");
+	putuint((expr.type)@s64);
+	puts(")");
+	putchar('"');
+	puts(" -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+sval_expr_table : sval_expr_fn mut#10;
+
+sval_node ::= func(ctx : context mut, prog : program mut&) -> sval
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	fn ::= deref(sval_expr_table at ((expr.type)@s64));
+	return fn.fn(expr, ctx, prog);
+};
+
+sval_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	sym ::= expr.symbol;
+	var ::= scope_find_variable(ctx.local, sym.symbol, sym.len);
+	if(var == null)
 	{
-		expr ::= node->expr;
-		if((expr.type) == (ast_expr_type.literal))
-		{
-			return sval
-			{
-				.tag := sval_tag.literal;
-				.literal := expr.literal;
-			};
-		}
-		if((expr.type) == (ast_expr_type.symbol))
-		{
-			sym ::= expr.symbol;
-			var ::= scope_find_variable(s, sym.symbol, sym.len);
-			if(var == null)
-			{
-				return zero;
-			}
-			return var->initialiser;
-		}
+		return zero;
 	}
+	return var->initialiser;
+};
+
+sval_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := expr.literal;
+	};
+};
+
+sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	puts("sval biop NYI");
 	return zero;
 };
 
+sval_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
+{
+	puts("sval unop NYI");
+	return zero;
+};
 
+sval_setup ::= func() -> v0
+{
+	sval_expr_table_size ::= __sizeof(sval_expr_table) / __sizeof(deref(sval_expr_table at 0));
+	i : u64 mut;
+	for(i = 0, i < sval_expr_table_size, i = i + 1)
+	{
+		deref(sval_expr_table at i) = sval_expr_fn{.fn := sval_exprfn_error;};
+	}
+	deref(sval_expr_table at ((ast_expr_type.symbol)@s64)) = sval_expr_fn{.fn := sval_symbol;};
+	deref(sval_expr_table at ((ast_expr_type.biop)@s64)) = sval_expr_fn{.fn := sval_biop;};
+	deref(sval_expr_table at ((ast_expr_type.unop)@s64)) = sval_expr_fn{.fn := sval_unop;};
+	deref(sval_expr_table at ((ast_expr_type.literal)@s64)) = sval_expr_fn{.fn := sval_literal;};
+
+};
 
 == build ==
 {
