@@ -10,6 +10,62 @@ decl_ty ::= func(node : ast&, s : scope mut&) -> ty
 	return zero;
 };
 
+semal_fnptrnode ::= func(node : ast&, s : scope mut&) -> ty
+{
+	decl ::= node->decl;
+	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
+		{
+			// function placeholder typename detected.
+			wipfn_node ::= ast_get_child(node@_, 0);
+			wipfn ::= wipfn_node->fn;
+			fn_retty ::= scope_parse_typename(s, wipfn.ret_typename, wipfn.ret_typename_len);
+			if(ty_isbad(fn_retty))
+			{
+				psyc_error_begin(wipfn_node->loc);
+				puts("return-type ");
+				putchar('"');
+				putss(wipfn.ret_typename, wipfn.ret_typename_len);
+				putchar('"');
+				puts(" of function-pointer ");
+				putss(decl.name, decl.name_len);
+				puts(" yielded badtype");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			fnty : ty mut := ty_getfn(fn_retty, wipfn_node->childcount, zero);
+			i : u64 mut;
+			for(i = 0, i < (wipfn_node->childcount), i = i + 1)
+			{
+				cur_param_node ::= ast_get_child(wipfn_node@_, i);
+				cur_param_decl ::= cur_param_node->decl;
+				paramty ::= scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+				if(ty_isbad(paramty))
+				{
+					psyc_error_begin(cur_param_node->loc);
+					puts("parameter ");
+					putuint(i);
+					puts(" of function-pointer ");
+					putchar('"');
+					putss(decl.name, decl.name_len);
+					putchar('"');
+					puts(" with typename: ");
+					putchar('"');
+					putss(cur_param_decl.typename, cur_param_decl.typename_len);
+					putchar('"');
+					puts(" yielded badtype");
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				ty_fn_set_param(ref fnty, i, paramty);
+			}
+			return ty_ref(fnty, zero);
+		}
+	}
+	return zero;
+};
+
 // semal struct is a bit complicated...
 // one of its data members could be another struct - one that we haven't semal'd yet either
 semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
@@ -99,6 +155,10 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		if(maybe_struct_member == null)
 		{
 			memty = scope_parse_typename(s, memdecl.typename, memdecl.typename_len);
+		}
+		if(ty_isbad(memty))
+		{
+			memty = semal_fnptrnode(memnode, s);
 		}
 		if(ty_isbad(memty))
 		{
@@ -192,6 +252,10 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 		cur_param_decl ::= cur_param_node->decl;
 
 		declty ::= scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+		if(ty_isbad(declty))
+		{
+			declty = semal_fnptrnode(cur_param_node, s);
+		}
 		if(ty_isbad(declty))
 		{
 			psyc_error_begin(cur_param_node->loc);

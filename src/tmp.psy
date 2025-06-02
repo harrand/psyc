@@ -58,14 +58,29 @@ putsz ::= func(zstr : u8& -> v0)
 	putss(zstr, zstrlen(zstr));
 };
 
+fntable ::= struct
+{
+	print_null_terminated : func(zstr : u8& -> v0);
+};
+
+indirect ::= func(fn : func(zstr : u8& -> v0), actual_zstr : u8& -> v0)
+{
+	fn(actual_zstr);
+};
+
 main ::= func(-> s64)
 {
 	putuint(12345678910);
 	putchar(10);
 	putsz("hello there i am a big number");
+	putchar(10);
 
-	myfn ::= putsz;
+	tbl : fntable mut;
+	tbl.print_null_terminated = putsz;
+
+	myfn ::= tbl.print_null_terminated;
 	myfn("it worked!");
 	putchar(10);
+	indirect(putsz, "this also worked!");
 	return 0;
 };

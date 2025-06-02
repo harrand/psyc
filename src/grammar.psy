@@ -927,6 +927,56 @@ symcrap2deduceddecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> p
 	(ret.nodes_size) = 1;
 };
 
+symcrap2functionptrdecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	// var name
+	first_utok ::= first.utok;
+	first_tok ::= first_utok.tok;
+	first_lex ::= first_tok.lexeme;
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipdecl;
+		.decl := ast_decl
+		{
+			.name := src at (first_lex.off);
+			.name_len := first_lex.len;
+			.typename := psyc_function_placeholder_typename;
+			.typename_len := cstrlen(psyc_function_placeholder_typename);
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+wipdeclwipfnred2fnptrdecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.fnptrdecl;
+		.decl := first.decl;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_add_child((ret.nodes) at 0, last, ar);
+	(ret.nodes_size) = 1;
+};
+
 declinitfunc2wipfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -939,6 +989,29 @@ declinitfunc2wipfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pa
 		{
 			.fn_name := decl.name;
 			.fn_name_len := decl.name_len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := null;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+keywordfuncoparen2wipfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_all(parse_action.reduce);
+	decl ::= first.decl;
+	deref((ret.nodes) at 0) = ast
+	{
+		.type := ast_type.wipfn_blue;
+		.fn := ast_fn
+		{
+			.fn_name := psyc_function_placeholder_typename;
+			.fn_name_len := cstrlen(psyc_function_placeholder_typename);
 		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -1610,6 +1683,45 @@ grammar_deduced_decl ::= macro() -> v0
 		rule(symcrap2deduceddecl));
 };
 
+grammar_function_pointer_decl ::= macro() -> v0
+{
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		token(lex_token.keyword_func),
+		null_stash,
+		rule(symcrap2functionptrdecl));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipdecl)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_func)),
+		token(lex_token.oparen),
+		node(ast_type.wipdecl),
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.keyword_func), token(lex_token.oparen)),
+		null_lookahead,
+		node(ast_type.wipdecl),
+		rule(keywordfuncoparen2wipfn));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		null_lookahead,
+		node(ast_type.wipdecl),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.wipdecl), node(ast_type.wipfn_red)),
+		null_lookahead,
+		null_stash,
+		rule(wipdeclwipfnred2fnptrdecl));
+};
+
 grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 {
 	grammar_install(
@@ -1637,6 +1749,33 @@ grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
 		null_lookahead,
 		node(ast_type.decl),
+		rule(unstash_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		token(lex_token.initialiser),
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.initialiser)),
+		null_lookahead,
+		null_stash,
+		rule(stash_head_delete_all));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, expr(exp)),
+		null_lookahead,
+		node(ast_type.fnptrdecl),
+		rule(commit_head));
+
+	// when should we unstash the fnptrdecl?
+	// when we see the following tokens:
+	// ;
+	grammar_install(
+		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
+		null_lookahead,
+		node(ast_type.fnptrdecl),
 		rule(unstash_head));
 };
 
@@ -1799,6 +1938,12 @@ grammar_wipfn ::= macro() -> v0
 	// push decl as new function param
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		null_lookahead,
+		node(ast_type.wipfn_blue),
+		rule(commit_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(commit_head));
@@ -2636,6 +2781,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
+	grammar_function_pointer_decl();
 	// note: you are going to want to add more reductions to decl_init
 	// this is because they are going to break apart biops (and probably callfuncs)
 	grammar_decl_init(ast_expr_type.symbol);
@@ -2877,6 +3023,7 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_stmtify(expr(ast_expr_type.ret), rule(expr2stmt));
 	grammar_stmtify(expr(ast_expr_type.yld), rule(expr2stmt));
 	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
+	grammar_stmtify(node(ast_type.fnptrdecl), rule(decl2stmt));
 	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
 	grammar_stmtify(node(ast_type.mac), rule(mac2stmt));
 	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));

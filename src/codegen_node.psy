@@ -34,6 +34,64 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
+	declty : ty mut := zero;
+	initialiser_child_idx : u64 mut := 0;
+	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
+		{
+			// function placeholder typename detected.
+			// this is a function pointer
+			// first child is actually a wipfn_red with the function signature inside.
+			// initialiser is the next child along:
+			initialiser_child_idx = 1;
+			// now get the function type from the wipfn child the parser left for us:
+			wipfn_node ::= ast_get_child(node@_, 0);
+			wipfn ::= wipfn_node->fn;
+			fn_retty ::= scope_parse_typename(ctx.local, wipfn.ret_typename, wipfn.ret_typename_len);
+			if(ty_isbad(fn_retty))
+			{
+				psyc_error_begin(wipfn_node->loc);
+				puts("return-type ");
+				putchar('"');
+				putss(wipfn.ret_typename, wipfn.ret_typename_len);
+				putchar('"');
+				puts(" of function-pointer ");
+				putss(decl.name, decl.name_len);
+				puts(" yielded badtype");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			fnty : ty mut := ty_getfn(fn_retty, wipfn_node->childcount, zero);
+			i : u64 mut;
+			for(i = 0, i < (wipfn_node->childcount), i = i + 1)
+			{
+				cur_param_node ::= ast_get_child(wipfn_node@_, i);
+				cur_param_decl ::= cur_param_node->decl;
+				paramty ::= scope_parse_typename(ctx.local, cur_param_decl.typename, cur_param_decl.typename_len);
+				if(ty_isbad(paramty))
+				{
+					psyc_error_begin(cur_param_node->loc);
+					puts("parameter ");
+					putuint(i);
+					puts(" of function-pointer ");
+					putchar('"');
+					putss(decl.name, decl.name_len);
+					putchar('"');
+					puts(" with typename: ");
+					putchar('"');
+					putss(cur_param_decl.typename, cur_param_decl.typename_len);
+					putchar('"');
+					puts(" yielded badtype");
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				ty_fn_set_param(ref fnty, i, paramty);
+			}
+			declty = ty_ref(fnty, zero);
+		}
+	}
+
 	// bit complicated.
 	// if we are a global variable, we do the whole thing now.
 	// if we are a local variable - then we have likely been hoisted to be alloca'd earlier than when the programmer actually defined us
@@ -42,9 +100,9 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	init_node : ast& mut;
 	init_node = null;
-	if((node->childcount) > 0)
+	if((node->childcount) > initialiser_child_idx)
 	{
-		init_node = ast_get_child(node@_, 0);
+		init_node = ast_get_child(node@_, initialiser_child_idx);
 	}
 
 	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
@@ -53,7 +111,10 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 		psyc_panic(node->loc, "cg_decl could not verify that the decl actually existed. severe compiler bug.");
 	}
 
-	declty : ty mut := scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+	if(ty_isbad(declty))
+	{
+		declty = scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+	}
 
 	init_val : cgv mut := zero;
 
@@ -153,11 +214,22 @@ cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 		return zero;
 	}
 
+	initialiser_child_idx : u64 mut := 0;
+	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
+		{
+			// function placeholder typename detected.
+			// this is a function pointer
+			initialiser_child_idx = 1;
+		}
+	}
+
 	init_node : ast& mut;
 	init_node = null;
-	if((node->childcount) > 0)
+	if((node->childcount) > initialiser_child_idx)
 	{
-		init_node = ast_get_child(node@_, 0);
+		init_node = ast_get_child(node@_, initialiser_child_idx);
 	}
 
 	if(init_node == null)
