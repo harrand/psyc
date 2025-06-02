@@ -58,7 +58,35 @@ sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> s
 
 sval_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
-	puts("sval unop NYI");
+	node ::= ctx.node;
+	operand ::= ast_get_child(node@_, 0);
+	val : sval mut := sval_node(context
+	{
+		.node := operand;
+		.local := ctx.local;
+	}, prog);
+	lit ::= ref(val.literal);
+
+	u ::= expr.unop;
+	t ::= u.type;
+	if(t == (ast_unop_type.minus))
+	{
+		lit->integral = (-(lit->integral));
+		lit->floating_point = (-(lit->floating_point));
+		return val;
+	}
+	psyc_error_begin(node->loc);
+	puts("unary operator ");
+	putchar('"');
+	puts(__enumname(t));
+	puts(" (");
+	putuint(t@s64);
+	puts(")");
+	putchar('"');
+	puts(" is invalid in a build region.");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
