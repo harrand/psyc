@@ -1180,10 +1180,178 @@ cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mu
 	return lhs_val;
 };
 
+cg_biop_field_callfunc ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	if((lhs->type) != (ast_type.expr))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("invalid field expression - if the rhs is a callfunc, then the lhs must be a symbol expression. in your case, the lhs is not an expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_expr ::= lhs->expr;
+	if((lhs_expr.type) != (ast_expr_type.symbol))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("invalid field expression - if the rhs is a callfunc, then the lhs must be a symbol expression. in your case, the lhs is a ");
+		puts(__enumname(lhs_expr.type));
+		puts(" expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhs_expr ::= rhs->expr;
+	callfunc ::= rhs_expr.callfunc;
+	rhs_sym ::= ast_symbol_expr
+	{
+		.symbol := callfunc.funcname;
+		.len := callfunc.funcname_len;
+	};
+
+	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of field expression with a rhs callfunc must be a struct type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_ty.strct;
+
+	// get the member id.
+	// if its a variable, we do a GEP to yield another variable
+	// otherwise, we do an extractvalue to yield a misc
+	memtypes ::= (lhs_strct.member_types)@ty&;
+	memnames ::= (lhs_strct.member_names);
+	memname_lens ::= (lhs_strct.member_name_lens);
+	selected_memidx : u64 mut := -1;
+	selected_memty : ty mut := zero;
+	selected_memname : u8& mut := null;
+	selected_memname_len : u64 mut := 0;
+
+	i : u64 mut;
+
+	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
+	{
+		memty ::= deref(memtypes at i);
+		memname ::= deref(memnames at i);
+		memname_len ::= deref(memname_lens at i);
+		if((rhs_sym.len) == memname_len)
+		{
+			if(cstreql_n(rhs_sym.symbol, memname, memname_len))
+			{
+				// this is the member.
+				selected_memidx = i;
+				selected_memty = memty;
+				selected_memname = memname;
+				selected_memname_len = memname_len;
+			}
+		}
+	}
+
+	if(selected_memidx == -1)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("struct ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" had no such member named ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(selected_memty.qual) = (lhs_ty.qual);
+	selected_memty = ty_deref(selected_memty);
+
+	if(!ty_is(selected_memty, tytag.fn))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("data member ");
+		putchar('"');
+		putss(lhs_strct.name, lhs_strct.name_len);
+		puts("::");
+		putss(selected_memname, selected_memname_len);
+		putchar('"');
+		puts(" is of non-callable type ");
+		putty(selected_memty);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	member_ll : u64 mut := zero;
+	if((lhs_val.tag) == (cgvtag.var))
+	{
+		// variable! ll should be an alloca or GEP'd alloca
+		member_ll = LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+		// we need the function itself to call it, so we force a load directly afterwards too
+		member_ll = LLVMBuildLoad2(ir, cg.type(ty_ref(selected_memty, zero), prog), member_ll, "");
+	}
+	if((lhs_val.tag) != (cgvtag.var))
+	{
+		member_ll = LLVMBuildExtractValue(ir, lhs_val.ll, selected_memidx@u32, "");
+	}
+
+	// now we call it.
+	call_param_count ::= rhs->childcount;
+
+	fnpayload ::= selected_memty.fn;
+	fnparamtys ::= (fnpayload.param_types)@ty&;
+	if(call_param_count != (fnpayload.param_count))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid call to data member ");
+		putchar('"');
+		putss(lhs_strct.name, lhs_strct.name_len);
+		puts("::");
+		putss(selected_memname, selected_memname_len);
+		puts(" - you provided ");
+		putuint(call_param_count);
+		puts(" params, but it expected ");
+		putuint(fnpayload.param_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	ll_args : u64 mut& := arena_push(cgar, __sizeof(u64) * call_param_count);
+
+	paramnode : ast& mut;
+	reqty : ty mut;
+	param_val : cgv mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		reqty = deref(fnparamtys at i);
+		paramnode = ast_get_child(rhs@_, i);
+		param_val = cg_expr(context
+		{
+			.node := paramnode;
+			.local := ctx.local;
+		}, prog);
+		cgv_load_if_variable(ref param_val, prog);
+		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc);
+		deref(ll_args at i) = (param_val.ll);
+	}
+
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildCall2(ir, cg.type(selected_memty, prog), member_ll, ll_args, call_param_count@u32, "");
+		.type := deref((fnpayload.return_type)@ty&);
+	};
+};
+
 cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	// firstly
-	// rhs should be a symbol expr
+	// rhs should be a symbol expr (or a callfunc)
+
 	rhs_sym : ast_symbol_expr mut;
 	rhs_sym = zero;
 	if((rhs->type) == (ast_type.expr))
@@ -1192,6 +1360,11 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 		if((rhs_expr.type) == (ast_expr_type.symbol))
 		{
 			rhs_sym = (rhs_expr.symbol);
+		}
+		if((rhs_expr.type) == (ast_expr_type.callfunc))
+		{
+			// callfuncs are a special case, do it in its own function
+			return cg_biop_field_callfunc(lhs, rhs, ctx, prog);
 		}
 	}
 	if((rhs_sym.symbol) == null)
@@ -1262,7 +1435,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	if(!ty_is(lhs_ty, tytag.strct))
 	{
 		psyc_error_begin(lhs->loc);
-		puts("lhs of field expression must be a struct type - you have provided a ");
+		puts("lhs of field expression must be a struct or enum type - you have provided a ");
 		putchar('"');
 		putty(lhs_ty);
 		putchar('"');
