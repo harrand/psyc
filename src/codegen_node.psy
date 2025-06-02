@@ -365,6 +365,17 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> c
 		}
 	}
 
+	maybe_function_ref ::= scope_find_function(ctx.local, sym.symbol, sym.len);
+	if(maybe_function_ref != null)
+	{
+		return cgv
+		{
+			.tag := cgvtag.misc;
+			.type := ty_ref(maybe_function_ref->type, tyqual.static);
+			.ll := maybe_function_ref->codegen;
+		};
+	}
+
 	psyc_error_begin(node->loc);
 	puts("unknown symbol ");
 	putchar('"');
@@ -1459,21 +1470,61 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 	node ::= ctx.node;
 	call ::= expr.callfunc;
 
+	fnty : ty mut := zero;
+
 	fn ::= scope_find_function(ctx.local, call.funcname, call.funcname_len);
+	ll : u64 mut := zero;
+	if(fn != null)
+	{
+		fnty = (fn->type);
+		ll = (fn->codegen);
+	}
 	if(fn == null)
 	{
-		psyc_error_begin(node->loc);
-		puts("invalid call to unknown function ");
-		putchar('"');
-		putss(call.funcname, call.funcname_len);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
+		// try treating it as a symbol
+		val : cgv mut := cg_expr_common(make_symbol_expr(ast_symbol_expr
+		{
+			.symbol := call.funcname;
+			.len := call.funcname_len;
+		}), ctx, prog);
+		cgv_load_if_variable(ref val, prog);
+		if(!ty_is(val.type, tytag.ptr))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to non-function ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			puts(", the symbol is of type ");
+			putchar('"');
+			putty(val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		valfnty ::= ty_underlying(val.type);
+		if(!ty_is(valfnty, tytag.fn))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to non-function ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			puts(", the symbol is of type ");
+			putchar('"');
+			putty(val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		fnty = valfnty;
+		ll = (val.ll);
 	}
 
 	call_param_count ::= node->childcount;
 
-	fnty ::= fn->type;
 	fnpayload ::= fnty.fn;
 	fnparamtys ::= (fnpayload.param_types)@ty&;
 	if(call_param_count != (fnpayload.param_count))
@@ -1514,7 +1565,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMBuildCall2(ir, cg.type(fnty, prog), fn->codegen, ll_args, call_param_count@u32, "");
+		.ll := LLVMBuildCall2(ir, cg.type(fnty, prog), ll, ll_args, call_param_count@u32, "");
 		.type := deref((fnpayload.return_type)@ty&);
 	};
 };
