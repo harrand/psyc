@@ -1699,6 +1699,35 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 
 	fnty : ty mut := zero;
 
+	if((call.funcname_len) > 2)
+	{
+		if(cstr_starts_with_n(call.funcname, "__", 2))
+		{
+			rest ::= (call.funcname) at 2;
+			rest_len ::= (call.funcname_len) - 2;
+			i : u64 mut;
+			cg_builtin_table_size ::= __sizeof(cg_builtin_table) / __sizeof(deref(cg_builtin_table at 0));
+			for(i = 0, i < cg_builtin_table_size, i = i + 1)
+			{
+				name ::= __enumname(i@builtin);
+				if(cstrlen(name) == rest_len)
+				{
+					if(cstreql_n(name, rest, rest_len))
+					{
+						cg_func ::= deref(cg_builtin_table at i);
+						return cg_func.fn(ctx, prog);
+					}
+				}
+			}
+			psyc_error_begin(node->loc);
+			puts("unknown builtin ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 	fn ::= scope_find_function(ctx.local, call.funcname, call.funcname_len);
 	ll : u64 mut := zero;
 	if(fn != null)
