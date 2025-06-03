@@ -886,6 +886,8 @@ symcolsym2decl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_
 			.name_len := first_lex.len;
 			.typename := src at (last_lex.off);
 			.typename_len := last_lex.len;
+			.extras := null;
+			.extras_size := 0;
 		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -916,6 +918,8 @@ symcrap2deduceddecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> p
 			.name_len := first_lex.len;
 			.typename := psyc_deduced_typename;
 			.typename_len := cstrlen(psyc_deduced_typename);
+			.extras := null;
+			.extras_size := 0;
 		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -946,6 +950,8 @@ symcrap2functionptrdecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) 
 			.name_len := first_lex.len;
 			.typename := psyc_function_placeholder_typename;
 			.typename_len := cstrlen(psyc_function_placeholder_typename);
+			.extras := null;
+			.extras_size := 0;
 		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
@@ -975,6 +981,25 @@ wipdeclwipfnred2fnptrdecl ::= func(src : u8&, nodes : ast mut&, nodes_size : u64
 	};
 	ast_add_child((ret.nodes) at 0, last, ar);
 	(ret.nodes_size) = 1;
+};
+
+fnptrdecl_appendsymbol ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
+{
+	setup_decls();
+	setup_delete_tail(parse_action.reduce);
+
+	utok ::= last.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	declptr ::= ref(firstptr->decl);
+	if((declptr->extras) == null)
+	{
+		off ::= src at (lex.off);
+		// go back one because a proceeding symbol naturally skips a space, which we dont want to skip
+		(declptr->extras) = (off at -1);
+	}
+	(declptr->extras_size) = ((declptr->extras_size) + (lex.len) + 1);
 };
 
 declinitfunc2wipfn ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
@@ -1720,6 +1745,19 @@ grammar_function_pointer_decl ::= macro() -> v0
 		null_lookahead,
 		null_stash,
 		rule(wipdeclwipfnred2fnptrdecl));
+
+	// append extras to the end
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		token(lex_token.symbol),
+		null_stash,
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
+		null_lookahead,
+		null_stash,
+		rule(fnptrdecl_appendsymbol));
 };
 
 grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
@@ -1941,6 +1979,18 @@ grammar_wipfn ::= macro() -> v0
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(commit_head));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		token(lex_token.symbol),
+		node(ast_type.wipfn_blue),
+		rule(shift1));
+
+	grammar_install(
+		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
+		null_lookahead,
+		node(ast_type.wipfn_blue),
+		rule(fnptrdecl_appendsymbol));
 
 	grammar_install(
 		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),

@@ -160,6 +160,20 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		{
 			memty = semal_fnptrnode(memnode, s);
 		}
+		if(typarse_extras(memdecl.extras, memdecl.extras_size, ref memty) < (memdecl.extras_size))
+		{
+			psyc_error_begin(node->loc);
+			puts("struct data member ");
+			putchar('"');
+			putss(def->name, def->name_len);
+			puts("::");
+			putss(memdecl.name, memdecl.name_len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+			memty = zero;
+		}
 		if(ty_isbad(memty))
 		{
 			psyc_error_begin(node->loc);
@@ -251,10 +265,24 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 		cur_param_node ::= ast_get_child(node@_, i);
 		cur_param_decl ::= cur_param_node->decl;
 
-		declty ::= scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+		declty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
 		if(ty_isbad(declty))
 		{
 			declty = semal_fnptrnode(cur_param_node, s);
+		}
+		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
+		{
+			psyc_error_begin(cur_param_node->loc);
+			puts("parameter ");
+			putuint(i);
+			puts(" of function ");
+			putchar('"');
+			putss(f->name, f->name_len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+			declty = zero;
 		}
 		if(ty_isbad(declty))
 		{
@@ -268,6 +296,11 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 			puts(" with typename: ");
 			putchar('"');
 			putss(cur_param_decl.typename, cur_param_decl.typename_len);
+			if((cur_param_decl.extras) != null)
+			{
+				putchar(' ');
+				putss(cur_param_decl.extras, cur_param_decl.extras_size);
+			}
 			putchar('"');
 			puts(" yielded badtype");
 			psyc_diag_end();
