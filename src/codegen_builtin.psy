@@ -8,6 +8,72 @@ cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
+cg_builtin_memcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	dstnode ::= ast_get_child(node@_, 0);
+	dst : cgv mut := cg_expr(context
+	{
+		.node := dstnode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref dst, prog);
+	if(!ty_is(dst.type, tytag.ptr))
+	{
+		psyc_error_begin(dstnode->loc);
+		puts("Invalid call to builtin - param 0 must be a pointer type, you provided ");
+		putchar('"');
+		putty(dst.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	srcnode ::= ast_get_child(node@_, 1);
+	src : cgv mut := cg_expr(context
+	{
+		.node := srcnode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref src, prog);
+	if(!ty_is(src.type, tytag.ptr))
+	{
+		psyc_error_begin(srcnode->loc);
+		puts("Invalid call to builtin - param 1 must be a pointer type, you provided ");
+		putchar('"');
+		putty(src.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	lennode ::= ast_get_child(node@_, 2);
+	len : cgv mut := cg_expr(context
+	{
+		.node := lennode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref len, prog);
+	len = cgv_convert(len, ty_getprim(primty.u64, tyqual.weak), prog, lennode->loc);
+
+	param_tys : u64 mut#4;
+	deref(param_tys at 0) = (cg.type(dst.type, prog));
+	deref(param_tys at 1) = (cg.type(src.type, prog));
+	deref(param_tys at 2) = (cg.type(len.type, prog));
+	deref(param_tys at 3) = (cg.type(ty_getprim(primty.bool, zero), prog));
+
+	val_lls : u64 mut#4;
+	deref(val_lls at 0) = (dst.ll);
+	deref(val_lls at 1) = (src.ll);
+	deref(val_lls at 2) = (len.ll);
+	deref(val_lls at 3) = LLVMConstNull(deref(param_tys at 3));
+
+	fn_type ::= LLVMFunctionType(LLVMVoidType(), param_tys at 0, 4, false@s32);
+	fn ::= LLVMAddFunction(mod, "llvm.memcpy.inline.p0.p0.i64", fn_type);
+	LLVMBuildCall2(ir, fn_type, fn, val_lls at 0, 4, "");
+	return zero;
+};
+
 == build ==
 {
 	add_source_file("codegen_node.psy");
