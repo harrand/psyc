@@ -118,6 +118,57 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 	return 0;
 };
 
+cgu_is_defer ::= func(node : ast&) -> bool
+{
+	if(ast_is_expr(node, ast_expr_type.unop))
+	{
+		expr ::= node->expr;
+		unop ::= expr.unop;
+		if((unop.type) == (ast_unop_type.op_defer))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+cgu_is_ret ::= func(node : ast&) -> bool
+{
+	return ast_is_expr(node, ast_expr_type.ret);
+};
+
+cg_handle_defer ::= func(node : ast mut&, offset : u64, back_offset : u64) -> v0
+{
+	childcount ::= node->childcount;
+	pivot : u64 mut := childcount - back_offset - 1;
+	// initially put pivot as the last node
+
+	while(cgu_is_ret(ast_get_child(node, pivot)))
+	{
+		pivot = pivot - 1;
+	}
+
+	i : u64 mut;
+	childptr ::= (node->children)@ast mut&;
+	for(i = 0, i <= pivot, i = i)
+	{
+		child ::= ast_get_child(node, i);
+		if(!cgu_is_defer(child))
+		{
+			i = i + 1;
+		}
+		if(cgu_is_defer(child))
+		{
+			// cache the defer'd thing and just remove the defer
+			cache ::= deref ast_get_child(child@_, 0);
+			// move range i+1-(pivot-1) left once, then copy cache just before pivot
+			copy_len ::= pivot - i;
+			__memcpy(childptr at i, childptr at (i + 1), copy_len * __sizeof(ast));
+			deref(childptr at pivot) = cache;
+		}
+	}
+};
+
 cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_offset : u64) -> v0
 {
 	node ::= ctx.node;
@@ -127,6 +178,7 @@ cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_
 	{
 		return;
 	}
+	cg_handle_defer(node@_, offset, back_offset);
 	for(i = offset, i < (childcount - back_offset), i = i + 1)
 	{
 		cg_node(context
