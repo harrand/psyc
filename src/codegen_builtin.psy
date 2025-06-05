@@ -131,6 +131,64 @@ cg_builtin_memset ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
+cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	type : ty mut := zero;
+
+	dstnode ::= ast_get_child((ctx.node)@_, 0);
+	if(ast_is_expr(dstnode, ast_expr_type.symbol))
+	{
+		expr ::= dstnode->expr;
+		sym ::= expr.symbol;
+		type = scope_parse_typename(ctx.local, sym.symbol, sym.len);
+	}
+	if(ty_isbad(type))
+	{
+		val : cgv mut := cg_expr(context
+		{
+			.node := dstnode;
+			.local := ctx.local;
+		}, prog);
+		type = (val.type);
+	}
+
+	dl ::= LLVMGetModuleDataLayout(mod);
+	return cg_literal(make_literal_expr(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := LLVMABISizeOfType(dl, cg.type(type, prog))@_;
+	}), ctx, prog);
+};
+
+cg_builtin_alignof ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	type : ty mut := zero;
+
+	dstnode ::= ast_get_child((ctx.node)@_, 0);
+	if(ast_is_expr(dstnode, ast_expr_type.symbol))
+	{
+		expr ::= dstnode->expr;
+		sym ::= expr.symbol;
+		type = scope_parse_typename(ctx.local, sym.symbol, sym.len);
+	}
+	if(ty_isbad(type))
+	{
+		val : cgv mut := cg_expr(context
+		{
+			.node := dstnode;
+			.local := ctx.local;
+		}, prog);
+		type = (val.type);
+	}
+
+	dl ::= LLVMGetModuleDataLayout(mod);
+	return cg_literal(make_literal_expr(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := LLVMABIAlignmentOfType(dl, cg.type(type, prog))@_;
+	}), ctx, prog);
+};
+
 == build ==
 {
 	add_source_file("codegen_node.psy");
