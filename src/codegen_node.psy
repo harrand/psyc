@@ -1130,6 +1130,33 @@ cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : p
 	return lhs_val;
 };
 
+cg_biop_bitleft ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	(lhs_val.ll) = LLVMBuildShl(ir, lhs_val.ll, rhs_val.ll, "");
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
+};
+
+cg_biop_bitright ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(ty_is_signed_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildAShr(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	if(!ty_is_signed_integral(lhs_val.type))
+	{
+		(lhs_val.ll) = LLVMBuildLShr(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
+};
+
 cg_biop_modulo ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
 {
 	lhs_val : cgv mut;
@@ -2295,6 +2322,8 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_biop_table at ((ast_biop_type.logical_or)@s64)) = cg_biop_fn{.fn := cg_biop_logical_or;};
 	deref(cg_biop_table at ((ast_biop_type.bitwise_and)@s64)) = cg_biop_fn{.fn := cg_biop_bitwise_and;};
 	deref(cg_biop_table at ((ast_biop_type.logical_and)@s64)) = cg_biop_fn{.fn := cg_biop_logical_and;};
+	deref(cg_biop_table at ((ast_biop_type.bitleft)@s64)) = cg_biop_fn{.fn := cg_biop_bitleft;};
+	deref(cg_biop_table at ((ast_biop_type.bitright)@s64)) = cg_biop_fn{.fn := cg_biop_bitright;};
 	deref(cg_biop_table at ((ast_biop_type.modulo)@s64)) = cg_biop_fn{.fn := cg_biop_modulo;};
 	deref(cg_biop_table at ((ast_biop_type.operator_at)@s64)) = cg_biop_fn{.fn := cg_biop_at;};
 	deref(cg_biop_table at ((ast_biop_type.field)@s64)) = cg_biop_fn{.fn := cg_biop_field;};
