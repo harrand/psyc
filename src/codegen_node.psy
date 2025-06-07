@@ -177,10 +177,22 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 		(var->codegen) = LLVMAddGlobal(mod, cgty, name_zstr);
 		LLVMSetLinkage(var->codegen, LLVMPrivateLinkage);
 		LLVMSetExternallyInitialized(var->codegen, 0);
-		LLVMSetGlobalConstant(var->codegen, ty_hasqual(declty, tyqual.mut)@s32);
+		is_const ::= !ty_hasqual(declty, tyqual.mut);
+		LLVMSetGlobalConstant(var->codegen, is_const@s32);
 		if(init_node == null)
 		{
 			LLVMSetInitializer(var->codegen, LLVMGetUndef(cgty));
+			if(is_const)
+			{
+				psyc_error_begin(node->loc);
+				puts("Global variable ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" both lacks an initialiser and is marked as const (not mut). Why would you want a global of undefined const?");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 		}
 		if(init_node != null)
 		{
