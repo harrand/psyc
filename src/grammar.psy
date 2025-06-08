@@ -1437,15 +1437,6 @@ wipregion2region ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> pars
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
-obracecbrace2blk ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
-{
-	setup_decls();
-	setup_delete_tail(parse_action.reduce);
-	(firstptr->type) = (ast_type.stmt);
-	(firstptr->stmt) = (ast_stmt.blk_stmt);
-	(firstptr->cursor_end) = (last.cursor_end);
-};
-
 dotsymbolinit2wipinit ::= func(src : u8&, nodes : ast mut&, nodes_size : u64) -> parse_value
 {
 	setup_decls();
@@ -2662,27 +2653,6 @@ grammar_build_region ::= macro() -> v0
 		rule(commit_head));
 };
 
-grammar_block ::= macro() -> v0
-{
-	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.obrace)),
-		null_lookahead,
-		null_stash,
-		rule(stash_head));
-
-	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
-		null_lookahead,
-		token(lex_token.obrace),
-		rule(unstash_head));
-
-	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.obrace), token(lex_token.cbrace)),
-		null_lookahead,
-		null_stash,
-		rule(obracecbrace2blk));
-};
-
 grammar_defer ::= macro() -> v0
 {
 	grammar_install(
@@ -3103,8 +3073,6 @@ grammar_setup ::= func(a : arena mut&) -> v0
 
 	// build regions
 	grammar_build_region();
-	// block statements
-	grammar_block();
 
 	// defer
 	grammar_defer();
@@ -3129,7 +3097,6 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	grammar_commit_stmt(ast_stmt.enum_stmt);
 	grammar_commit_stmt(ast_stmt.fn_stmt);
 	grammar_commit_stmt(ast_stmt.mac_stmt);
-	grammar_commit_stmt(ast_stmt.blk_stmt);
 	grammar_commit_stmt(ast_stmt.if_stmt);
 	grammar_commit_stmt(ast_stmt.while_stmt);
 	grammar_commit_stmt(ast_stmt.for_stmt);

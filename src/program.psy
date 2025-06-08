@@ -214,6 +214,36 @@ impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, 
 	return zero;
 };
 
+impl_scope_try_find_enum ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
+{
+	if(s == null)
+	{
+		return zero;
+	}
+	curscope : scope& mut := s;
+	while(curscope != null)
+	{
+		types ::= ref(curscope->types)@_;
+		idx ::= tybox_find_enum(types, tyname, tyname_len);
+		if(idx != -1)
+		{
+			// found it!
+			result_info ::= tybox_get_enum(types, idx);
+			result_ty ::= result_info->ty;
+			deref(len) = (deref(len) + (result_ty.name_len));
+			return ty
+			{
+				.tag := tytag.enm;
+				.qual := zero;
+				.enm := result_ty;
+			};
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return zero;
+};
+
 impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
 {
 	// assume tyname starts with a valid base name. all we care about is the best name
@@ -228,6 +258,11 @@ impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len
 	if(!ty_isbad(maybe_struct))
 	{
 		return maybe_struct;
+	}
+	maybe_enum : ty mut := impl_scope_try_find_enum(s, tyname, typarse_basename_end(tyname, tyname_len), len);
+	if(!ty_isbad(maybe_enum))
+	{
+		return maybe_enum;
 	}
 
 	return zero;
