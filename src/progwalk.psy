@@ -5,7 +5,7 @@ progwalk_function ::= struct
 
 progar : arena mut& mut;
 node_jump_table : progwalk_function mut#1;
-stmt_jump_table : progwalk_function mut#6;
+stmt_jump_table : progwalk_function mut#7;
 
 literal_types : ty mut#5;
 
@@ -29,13 +29,13 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 	jump.fn(ctx, prog);
 };
 
-progwalk_children ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64) -> v0
 {
 	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
-	for(i = 0, i < count, i = i + 1)
+	for(i = front_offset, i < count, i = i + 1)
 	{
 		progwalk_node(context
 		{
@@ -309,6 +309,45 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 	});
 };
 
+progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	ifdef ::= node->ifdef;
+	if(!(ifdef.is_static))
+	{
+		return;
+	}
+	cond_node ::= ast_get_child(node@_, 0);
+	sv ::= sval_node(context
+	{
+		.node := cond_node;
+		.local := ctx.local;
+	}, prog);
+	if((sv.tag) != (sval_tag.literal))
+	{
+		psyc_error_begin(cond_node->loc);
+		puts("could not interpret static-if condition as a literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lit ::= sv.literal;
+	if((lit.type) != (ast_literal_type.bool_literal))
+	{
+		psyc_error_begin(cond_node->loc);
+		puts("could not interpret static-if condition as a bool literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(lit.boolean)
+	{
+		progwalk_children(context
+		{
+			.node := node@_;
+			.local := ctx.local;
+		}, prog, 1);
+	}
+};
+
 progwalk_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
@@ -322,6 +361,7 @@ progwalk_setup ::= func(a : arena mut&) -> v0
 	deref(stmt_jump_table at 3) = progwalk_function{.fn := progwalk_enumdef;};
 	deref(stmt_jump_table at 4) = progwalk_function{.fn := progwalk_fn;};
 	deref(stmt_jump_table at 5) = progwalk_function{.fn := progwalk_mac;};
+	deref(stmt_jump_table at 6) = progwalk_function{.fn := progwalk_if;};
 };
 
 progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
@@ -338,12 +378,13 @@ progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
 	{
 		.node := source;
 		.local := file_scope;
-	}, prog);
+	}, prog, 0);
 	return file_scope;
 };
 
 == build ==
 {
 	add_source_file("program.psy");
+	add_source_file("sval_node.psy");
 	add_source_file("diag.psy");
 }
