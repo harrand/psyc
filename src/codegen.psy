@@ -12,10 +12,19 @@ cg_finish ::= func() -> v0
 	if(LLVMVerifyModule(mod, 2, ref err) != 0)
 	{
 		psyc_error_begin(zero);
+
+		str ::= LLVMPrintModuleToString(mod);
+		puts("Codegen: ");
+		putchar(10);
+		puts(str);
+		putchar(10);
+		putchar(10);
+
 		puts("LLVM Internal Codegen Failed:");
 		putchar(10);
 		puts(err);
 		putchar(10);
+
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -192,6 +201,7 @@ cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_
 		{
 			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
+			.typecheck_only := ctx.typecheck_only;
 		}, prog);
 	}
 };
@@ -315,6 +325,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		{
 			.node := curvar->node;
 			.local := funcscope;
+			.typecheck_only := false;
 		}, prog);
 	}
 
@@ -323,6 +334,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	{
 		.node := node;
 		.local := funcscope;
+		.typecheck_only := false;
 	}, prog, child_iterate_offset, 0);
 
 	fn_retty ::= deref((fnpayload.return_type)@ty&);
@@ -381,6 +393,7 @@ codegen ::= func(prog : program mut&) -> v0
 		{
 			.node := gvar->node;
 			.local := glob;
+			.typecheck_only := false;
 		}, prog);
 	}
 
