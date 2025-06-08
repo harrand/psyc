@@ -311,7 +311,7 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 
 progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
 {
-	node ::= ctx.node;
+	node ::= (ctx.node)@ast mut&;
 	ifdef ::= node->ifdef;
 	if(!(ifdef.is_static))
 	{
@@ -339,34 +339,61 @@ progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
 		psyc_exit_failure();
 	}
 	lastchildidx ::= (node->childcount) - 1;
-	back_offset : u64 mut := 1;
 	else_node : ast mut& mut := ast_get_child(node@_, lastchildidx);
 	if((else_node->type) != (ast_type.elsedef))
 	{
 		else_node = zero;
-		back_offset = 0;
 	}
 	if(lit.boolean)
 	{
-		// do the if contents (exclude the elsedef)
-		progwalk_children(context
+		// turn it into an alive node and get rid of the first child (cond)
+		childrenptr ::= (node->children)@ast mut&;
+		__memcpy(childrenptr, childrenptr at 1, __sizeof(ast) * ((node->childcount) - 1));
+		(node->type) = (ast_type.composite);
+		(node->childcount) = (node->childcount) - 1;
+
+		// pretend the else node doesnt exist
+		if(else_node != null)
 		{
-			.node := node@_;
-			.local := ctx.local;
-		}, prog, 1, back_offset);
+			(node->childcount) = (node->childcount) - 1;
+		}
 	}
 	if(!(lit.boolean))
 	{
 		// is there an elsedef?
 		if(else_node != null)
 		{
-			// yes, progwalk those children instead
-			progwalk_children(context
-			{
-				.node := else_node@_;
-				.local := ctx.local;
-			}, prog, 0, 0);
+			deref(node) = deref(else_node);
+			(node->type) = (ast_type.composite);
 		}
+		// if theres no else, then set our node type to quarantine so codegen skips us
+		if(else_node == null)
+		{
+			(node->type) = (ast_type.composite);
+			(node->childcount) = 0;
+		}
+	}
+
+	// if we're within a function then we dont need to recurse children (as it does progwalk_children_recursive)
+	// however in all other cases, we do
+	are_we_in_a_func : bool mut := false;
+	s : scope mut& mut := ctx.local;
+	while(s != null)
+	{
+		if((s->type) == (scope_type.fn))
+		{
+			are_we_in_a_func = true;
+		}
+		s = ((s->parent)@scope mut&);
+	}
+	
+	if(!are_we_in_a_func)
+	{
+		progwalk_children(context
+		{
+			.node := node;
+			.local := ctx.local;
+		}, prog, 0, 0);
 	}
 };
 

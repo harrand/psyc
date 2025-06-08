@@ -266,6 +266,22 @@ cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
+cg_composite ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	// just do the children
+	// if the children changes the terminator
+	// then pretend *we* are the terminator instead (last-children-terminator-checking magic for LLVM)
+	s ::= ctx.local;
+	oldterm ::= s->terminator;
+	cg.children(ctx, prog, 0, 0);
+	if((s->terminator) != oldterm)
+	{
+		// yes, new terminator
+		(s->terminator) = (ctx.node);
+	}
+	return zero;
+};
+
 cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
@@ -2580,6 +2596,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	}
 	deref(cg_node_table at ((ast_type.stmt)@s64)) = cg_node_fn{.fn := cg_stmt;};
 	deref(cg_node_table at ((ast_type.expr)@s64)) = cg_node_fn{.fn := cg_expr;};
+	deref(cg_node_table at ((ast_type.composite)@s64)) = cg_node_fn{.fn := cg_composite;};
 
 	cg_stmt_table_size ::= __sizeof(cg_stmt_table) / __sizeof(deref(cg_stmt_table at 0));
 	for(i = 0, i < cg_stmt_table_size, i = i + 1)
