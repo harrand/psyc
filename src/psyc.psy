@@ -68,7 +68,14 @@ add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mu
 
 add_preload ::= func(prog : program mut&, a : arena mut&) -> v0
 {
-	source ::= "ExitProcess ::= func(uExitCode : u32 -> v0) := extern; _psymain ::= func(-> v0) {ExitProcess(main()@u32);};";
+	if static(__is_windows)
+	{
+		source ::= "_win32 ::= true; _linux ::= false; ExitProcess ::= func(uExitCode : u32 -> v0) := extern; _psymain ::= func(-> v0) {ExitProcess(main()@u32);};";
+	}
+	if static(__is_linux)
+	{
+		source ::= "_win32 ::= false; _linux ::= true; fixmee";
+	}
 	l ::= lex("preload.psy", source, a, false);
 	p ::= parse(ref l, false);
 	progwalk_file(prog, ref(p.root));

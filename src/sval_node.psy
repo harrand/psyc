@@ -32,13 +32,30 @@ sval_node ::= func(ctx : context mut, prog : program mut&) -> sval
 
 sval_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
+	node ::= ctx.node;
 	sym ::= expr.symbol;
 	var ::= scope_find_variable(ctx.local, sym.symbol, sym.len);
 	if(var == null)
 	{
 		return zero;
 	}
-	return var->initialiser;
+	declnode ::= var->node;
+	if((declnode->childcount) == 0)
+	{
+		psyc_error_begin(node->loc);
+		puts("variable ");
+		putchar('"');
+		putss(var->name, var->name_len);
+		putchar('"');
+		puts(" does not yield a constant-expression because it has no initialiser");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return sval_node(context
+	{
+		.node := ast_get_child(declnode@_, 0);
+		.local := ctx.local;
+	}, prog);
 };
 
 sval_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
