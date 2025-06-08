@@ -29,13 +29,13 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 	jump.fn(ctx, prog);
 };
 
-progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64) -> v0
+progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64, back_offset : u64) -> v0
 {
 	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
-	for(i = front_offset, i < count, i = i + 1)
+	for(i = front_offset, i < (count - back_offset), i = i + 1)
 	{
 		progwalk_node(context
 		{
@@ -338,13 +338,35 @@ progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	lastchildidx ::= (node->childcount) - 1;
+	back_offset : u64 mut := 1;
+	else_node : ast mut& mut := ast_get_child(node@_, lastchildidx);
+	if((else_node->type) != (ast_type.elsedef))
+	{
+		else_node = zero;
+		back_offset = 0;
+	}
 	if(lit.boolean)
 	{
+		// do the if contents (exclude the elsedef)
 		progwalk_children(context
 		{
 			.node := node@_;
 			.local := ctx.local;
-		}, prog, 1);
+		}, prog, 1, back_offset);
+	}
+	if(!(lit.boolean))
+	{
+		// is there an elsedef?
+		if(else_node != null)
+		{
+			// yes, progwalk those children instead
+			progwalk_children(context
+			{
+				.node := else_node@_;
+				.local := ctx.local;
+			}, prog, 0, 0);
+		}
 	}
 };
 
@@ -378,7 +400,7 @@ progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
 	{
 		.node := source;
 		.local := file_scope;
-	}, prog, 0);
+	}, prog, 0, 0);
 	return file_scope;
 };
 
