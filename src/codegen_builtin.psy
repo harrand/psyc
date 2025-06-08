@@ -189,6 +189,41 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}), ctx, prog);
 };
 
+cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	msgnode ::= ast_get_child(node@_, 0);
+	msg ::= sval_node(context
+	{
+		.node := msgnode;
+		.local := ctx.local;
+	}, prog);
+	if((msg.tag) != (sval_tag.literal))
+	{
+		psyc_error_begin(node->loc);
+		puts("Invalid call to builtin - param 0 must be a literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lit ::= msg.literal;
+	if((lit.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(node->loc);
+		puts("Invalid call to builtin - param 0 must be a string literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	psyc_colour_red();
+	puts("custom");
+	puts(" error ");
+	print_srcloc(node->loc);
+	puts(": ");
+	putss(lit.chars, lit.chars_len);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 == build ==
 {
 	add_source_file("codegen_node.psy");
