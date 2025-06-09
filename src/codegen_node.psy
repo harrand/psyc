@@ -353,14 +353,30 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 {
 	chars ::= lit.chars;
 	len ::= lit.chars_len;
-	zstr : u8 mut& := arena_push(cgar, len + 1);
-	__memcpy(zstr, chars, len);
-	deref(zstr at len) = 0;
+	//zstr : u8 mut& := arena_push(cgar, len + 1);
+	//__memcpy(zstr, chars, len);
+	//deref(zstr at len) = 0;
 
 	ll : u64 mut := 0;
 	if(!(ctx.typecheck_only))
 	{
-		ll = LLVMBuildGlobalString(ir, zstr, "");
+		// so LLVMBuildGlobalString is the golden solution
+		// however, due to how its implemented, it always passes nullptr to the C++ IRBuilderBase::CreateGlobalString which means it derives it from the current basic block
+		// because of that, LLVMBuildGlobalString will crash if you're not in a function i.e global string literals will crash
+		//ll = LLVMBuildGlobalString(ir, zstr, "");
+
+		// so we have to do it ourselves...
+		// first create a const string
+		strval ::= LLVMConstString(chars, len@u32, false@s32);
+		// then create a new global variable of
+		// initialiser = strval
+		// privatelinkage
+		glob ::= LLVMAddGlobal(mod, LLVMTypeOf(strval), "");
+		LLVMSetLinkage(glob, LLVMPrivateLinkage);
+		LLVMSetExternallyInitialized(glob, 0);
+		LLVMSetGlobalConstant(glob, true@s32);
+		LLVMSetInitializer(glob, strval);
+		ll = glob;
 	}
 	return cgv
 	{
