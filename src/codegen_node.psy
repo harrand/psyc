@@ -586,6 +586,10 @@ cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 		cgv_load_if_variable(lhs_val, prog);
 		cgv_load_if_variable(rhs_val, prog);
 	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
 
 	// select the return type.
 	lhsty ::= lhs_val->type;
@@ -689,6 +693,10 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&
 		cgv_load_if_variable(lhs_val, prog);
 		cgv_load_if_variable(rhs_val, prog);
 	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
 
 	// select the return type.
 	lhsty ::= lhs_val->type;
@@ -774,30 +782,40 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 		cgv_load_if_variable(lhs_val, prog);
 		cgv_load_if_variable(rhs_val, prog);
 	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
 
 	// select the return type.
 	lhsty ::= lhs_val->type;
 	if(!ty_is_integral(lhsty))
 	{
-		psyc_error_begin(lhs->loc);
-		puts("operator invalid because the lhs must be an integral type, but you have passed ");
-		putchar('"');
-		putty(lhsty);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
+		if(!ty_is(lhsty, tytag.enm))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("operator invalid because the lhs must be an integral or enum type, but you have passed ");
+			putchar('"');
+			putty(lhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 	}
 
 	rhsty ::= rhs_val->type;
 	if(!ty_is_integral(rhsty))
 	{
-		psyc_error_begin(rhs->loc);
-		puts("operator invalid because the rhs must be an integral type, but you have passed ");
-		putchar('"');
-		putty(rhsty);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
+		if(!ty_is(rhsty, tytag.enm))
+		{
+			psyc_error_begin(rhs->loc);
+			puts("operator invalid because the rhs must be an integral or enum type, but you have passed ");
+			putchar('"');
+			putty(rhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 	}
 
 	// true  => rhs converts to lhs
