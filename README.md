@@ -1,6 +1,7 @@
 # Psy Language Cheatsheet
 
 # Table of Contents
+0. [Programs](#programs)
 1. [Functions](#functions)
 	- [Defining basic functions](#basic_functions)
 2. [Types](#types)
@@ -30,7 +31,12 @@
    	- [Designator Statements](#stmt_decl)
    	- [Metaregion Statements](#stmt_metaregion)
 
-		
+## Programs <a name="programs"></a>
+
+There are no concept of translation units in Psy. Your project, and all the files it comprises, are a part of a single program. The Psy compiler is designed in such a way to analyse in multiple passes. This means:
+- Order of declarations is unimportant. You can call a function, and not declare it until later - so long as the declaration is ultimately in the program somewhere.
+  	- This is also the case for structs and enums.
+- Due to the previous point, there is no concept of forward-declarations. Feel free to just... write code without metagaming it. I promise you, the compiler performance cost of allowing this is almost negligible.
 
 ## Functions <a name="functions"></a>
 
@@ -40,9 +46,9 @@ Exactly what you'd expect from other systems languages. A function consists of:
 - A return type.
 
 ### Defining basic functions <a name="basic_functions"></a>
-The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C).
+The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C). Note that the return type is within the parentheses - this is a syntactical choice that seems odd at first. In actuality, it removes the necessity for arcane syntax for function pointers, but more on that later.
 ```
-my_function_name ::= func() -> v0
+my_function_name ::= func(-> v0)
 {
 	// code goes here
 };
@@ -56,7 +62,7 @@ In a function that returns `v0`, there is no need to return at the end of the fu
 
 The following code defines a function named `double_value`. It takes a single parameter, doubles it, and returns the result.
 ```
-double_value ::= func(number : s32) -> s32
+double_value ::= func(number : s32 -> s32)
 {
 	return number + number;
 };
@@ -69,7 +75,7 @@ result ::= double_value(5);
 
 ## Types <a name="types"></a>
 Psy is a statically-typed and strongly-typed language. This means that:
-- The type of all variables are known at compile-time.
+- The type of all variables are known by the compiler at compile-time.
 - Typing rules are strict. Unlike languages such as C, implicit conversions are disabled by default - you must explicitly opt-into this.
   	- This means for example that a `u32` is not implicitly convertible to a `s64` or even a `s32`.
 
@@ -109,13 +115,14 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 ### Pointer Types <a name="type_ptr"></a>
 Pointers work almost identically to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
 ```
-main ::= func() -> v0
+main ::= func(-> s32)
 {
 	my_value : s64 mut := 5;
 	my_pointer : s64 mut& := ref my_value;
 
 	// equivalent to: my_value = 0;
 	(deref my_pointer) = 0;
+	return 0;
 };
 ```
 Within a typename, pointer-ness is represented by the ampersand `&` symbol. It directly proceeds the base type representing the pointee.
@@ -124,10 +131,10 @@ Within a typename, pointer-ness is represented by the ampersand `&` symbol. It d
 - Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
 - Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
 
-Like C, you can also have function pointers. Also like C, the syntax is a little (albeit less) arcane. A quick example is below, but I will go into detail later:
+Like C, you can also have function pointers:
 ```
 // normal function definition
-my_cool_function ::= func() -> v0
+my_cool_function ::= func(-> v0)
 {
 	// code...
 };
@@ -136,7 +143,7 @@ my_cool_function ::= func() -> v0
 main ::= func() -> s32 weak
 {
 	// function pointer variable.
-	my_function_pointer : func() -> v0 := my_cool_function;
+	my_function_pointer : func(-> v0) := my_cool_function;
 	// you can let the compiler determine the type for you:
 	the_same_function_pointer ::= my_cool_function;
 	my_function_pointer(); // calls my_cool_function.
@@ -146,8 +153,8 @@ main ::= func() -> s32 weak
 ### Array Types <a name="type_array"></a>
 I consider arrays in C to be highly error-prone, particularly around its implicit conversion to a pointer (decay). Here's how it works in Psy:
 ```
-// array of three u64s. initial values are undefined.
-my_favourite_numbers : u64#3;
+// mutable array of three mutable u64s. initial values are undefined.
+my_favourite_numbers : u64 mut[3] mut;
 // pointer to first number (note that this does *not* perform a load, unlike dereferencing in C. this is pointer arithmetic)
 pointer : u64& := my_favourite_numbers at 0;
 
@@ -157,9 +164,15 @@ pointer : u64& := my_favourite_numbers at 0;
 // populate each value.
 (deref pointer) = 7; // equivalent to (deref (my_favourite_numbers at 0)) = 7;
 (deref (my_favourite_numbers at 1)) = 69;
-(deref (my_favourite_numbers at 12)) = 420;
+(deref (my_favourite_numbers at 2)) = 420;
+(deref (my_favourite_numbers at 0)) = zero;
+// Array is now: 0, 69, 420
 
-// Array is now: 7, 69, 420.
+// write directly to the array.
+my_favourite_numbers = u64[3]{0; 1; 2;};
+// Array is now: 0, 1, 2
+my_favourite_numbers = zero;
+// Array is now: 0, 0, 0
 ```
 
 ### Enum Types <a name="type_enum"></a>
@@ -176,6 +189,7 @@ window_flags ::= enum
 my_flag : window_flags := window_flags.opengl;
 value ::= my_flag@s64; // 1
 ```
+Enums can convert *only* to `s64` to mitigate loss of precision. Two convert to different integer types you will have to convert to `s64` initially i.e `window_flags.opengl@s64@u8`
 
 ### Struct Types <a name="type_struct"></a>
 Structs in Psy are virtually identical to that of C. Structs must be defined as new types, and then can be used as a type for variables. A syntax very similar to C/C++20 designated initialisers can be used to initialise a struct value.
@@ -188,7 +202,8 @@ my_struct ::= struct
 	my_data_member : s32;
 };
 ```
-You cannot pre-declare structs, and structs cannot be used before they are defined.
+- You cannot pre-declare structs, as there is no need to do so.
+- Recursive-structs are illegal. That is, `mystruct::data_member` can never be of type `mystruct`, including arrays and pointers.
 
 The syntax for creating a variable of a struct type is intuitive and similar to that of C:
 ```
@@ -217,14 +232,14 @@ my_int2 : s64 := my_int; // error.
 If either type `A` or `B` are `weak`, then the following type conversion rules are in effect:
 #### Primitive Conversions <a name="type_conv_prim"></a>
 - If A and B are *numeric primitives*, conversion is allowed.
+- If A and B are `s64` and an *enum* respectively, then conversion is allowed (and vice-versa).
 - If A is a `bool` and B is a *numeric primitive*, conversion is allowed. The same is true in reverse.
 - If A is a `v0`, no form of type conversion is allowed.
 #### Struct Conversions <a name="type_conv_struct"></a>
-- If A and B are both two differing struct types, then they cannot be converted unless they have the exact same members.
 - Struct types do not convert to anything else.
 #### Enum Conversions <a name="type_conv_enum"></a>
-- If A and B are both enum types and their underlying types are implicitly convertible, conversion is allowed.
-- If A is an enum type, it is implicitly convertible to its underlying type, and vice-versa.
+- If A is an enum type and B is `s64`, then conversion is allowed.
+- Enums do not convert to anything else.
 #### Pointer Conversions <a name="type_conv_ptr"></a>
 - Pointer types can be freely converted to other pointer types, with the following restriction:
 	- You cannot apply mutability with a cast. `T&` cannot be converted to `T mut&`
@@ -312,27 +327,7 @@ Global variables are variables whose memory is not automatically reserved - the 
 Global variables are visible across the whole of the source file, aswell as any source files that add the containing source file in its *build metaregion*.
 
 # Local Variables <a name="var_loc"></a>
-Local variables are variables that are limited to a function's scope. The lifetime of a variable's memory begins when its declaration is executed, and ends when the function returns.
-
-Do not be misled - this is not how variables work in C. In C, the variable's lifetime ends when it reaches the end of its current scope (in most cases a curly brace). See the following example:
-```
-while(true)
-{
-	int x;
-	// do stuff
-}
-```
-In this case, the lifetime of variable `x` begins and ends within each iteration of the while-loop. The Psy equivalent is quite different:
-```
-while(true)
-{
-	x : s32;
-}
-```
-The lifetime of variable `x` starts *once* on the first iteration of the loop. Attempting to provide an initialiser to this example will yield an error - on subsequent iterations an assignment is needed, which can't be done as `x` is not a `s32 mut`.
-
-This might seem highly misleading. The moral of the story is: Declare your local variables at once, ahead-of-time.
-TODO: edit this. is this really what i want?
+Local variables are variables that are limited to a scope. Their lifetime semantics exactly match that of C.
 
 # Statements <a name="stmt"></a>
 Statements represent the main building blocks of a Psy program. Each statement compiles down to a sequential list of zero or more instructions.
@@ -383,7 +378,7 @@ Both (4) and (5) are only used to declare *functions*.
 (4) Declares a function, and provides an implementation block for the function.
 Example:
 ```
-main ::= func() -> s32 weak
+main ::= func(-> s32 weak)
 {
 	hello_world();
 	return 0;
@@ -393,5 +388,5 @@ main ::= func() -> s32 weak
 (5) Declares a function, but indicates that the implementation of the function lives elsewhere. The linker is expected to locate this implementation after compilation. You should use this to declare functions from other libraries (.lib/.o) that you wish to link against and call in your program.
 Example:
 ```
-wglGetProcAddress ::= func(unnamedParam1 : u8&) -> u64 weak := extern;
+wglGetProcAddress ::= func(unnamedParam1 : u8& -> u64 weak) := extern;
 ```
