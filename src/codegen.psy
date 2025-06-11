@@ -294,30 +294,27 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		childnode ::= ast_get_child(node@_, i);
 		childdecl ::= childnode->decl;
 		childty ::= deref(fnparamtys at i);
-		if(ty_is(childty, tytag.arr))
+		// yes, back this.
+		scope_declare_variable(funcscope, cgar, variable
 		{
-			// yes, back this.
-			scope_declare_variable(funcscope, cgar, variable
-			{
-				.node := childnode;
-				.name := childdecl.name;
-				.name_len := childdecl.name_len;
-				.is_global := false;
-				.type := childty;
-				.internal := true;
-				.initialiser := zero;
-				.codegen := zero;
-			});
-			cg_decl(context
-			{
-				.node := childnode;
-				.local := funcscope;
-			}, prog);
-			// now actually store into it.
-			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
-			paramval ::= LLVMGetParam(fn->codegen, i@_);
-			LLVMBuildStore(ir, paramval, backed_array_var->codegen);
-		}
+			.node := childnode;
+			.name := childdecl.name;
+			.name_len := childdecl.name_len;
+			.is_global := false;
+			.type := childty;
+			.internal := true;
+			.initialiser := zero;
+			.codegen := zero;
+		});
+		cg_decl(context
+		{
+			.node := childnode;
+			.local := funcscope;
+		}, prog);
+		// now actually store into it.
+		backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+		paramval ::= LLVMGetParam(fn->codegen, i@_);
+		LLVMBuildStore(ir, paramval, backed_array_var->codegen);
 		if(ty_isbad(childty))
 		{
 			psyc_error_begin(childnode->loc);
@@ -326,17 +323,6 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 			putss(childdecl.name, childdecl.name_len);
 			putchar('"');
 			puts(" yielded badtype");
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		if(ty_hasqual(childty, tyqual.mut))
-		{
-			psyc_error_begin(childnode->loc);
-			puts("parameter ");
-			putchar('"');
-			putss(childdecl.name, childdecl.name_len);
-			putchar('"');
-			puts(" has been marked as 'mut'. function parameters can never be mutable");
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
