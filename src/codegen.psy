@@ -92,7 +92,7 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 	if((t.tag) == (tytag.strct))
 	{
 		strct ::= t.strct;
-		def ::= program_find_struct(prog, strct.name, strct.name_len);
+def ::= program_find_struct(prog, strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
 			// todo: need to cg_struct here.
@@ -282,14 +282,42 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	// we dont back parameters with allocas unlike in the prototype.
 	// this means that store'ing into them is no longer allowed i.e they are always mutable
 	// to semal check this, we will make sure params are never marked as 'mut'
+	
+	// note: array parameters are an exception to this. extractvalue takes a constexpr index so you cant index into an array in a register dynamically
+	// for that reason we want to back array parameters in variables so we can use a dynamic GEP instead
 	fntype ::= fn->type;
 	fnpayload ::= fntype.fn;
 	fnparamtys ::= (fnpayload.param_types)@ty&;
+
 	for(i = 0, i < (fn->param_count), i = i + 1)
 	{
 		childnode ::= ast_get_child(node@_, i);
 		childdecl ::= childnode->decl;
 		childty ::= deref(fnparamtys at i);
+		if(ty_is(childty, tytag.arr))
+		{
+			// yes, back this.
+			scope_declare_variable(funcscope, cgar, variable
+			{
+				.node := childnode;
+				.name := childdecl.name;
+				.name_len := childdecl.name_len;
+				.is_global := false;
+				.type := childty;
+				.internal := true;
+				.initialiser := zero;
+				.codegen := zero;
+			});
+			cg_decl(context
+			{
+				.node := childnode;
+				.local := funcscope;
+			}, prog);
+			// now actually store into it.
+			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+			paramval ::= LLVMGetParam(fn->codegen, i@_);
+			LLVMBuildStore(ir, paramval, backed_array_var->codegen);
+		}
 		if(ty_isbad(childty))
 		{
 			psyc_error_begin(childnode->loc);
@@ -321,12 +349,15 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	for(i = 0, i < (vars->size), i = i + 1)
 	{
 		curvar ::= (vars->data) at i;
-		cg_decl(context
+		if(!(curvar->internal))
 		{
-			.node := curvar->node;
-			.local := funcscope;
-			.typecheck_only := false;
-		}, prog);
+			cg_decl(context
+			{
+				.node := curvar->node;
+				.local := funcscope;
+				.typecheck_only := false;
+			}, prog);
+		}
 	}
 
 	child_iterate_offset ::= fn->param_count;
