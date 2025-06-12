@@ -13,10 +13,10 @@ build_inst ::= enum
 
 build_fn ::= struct
 {
-	fn : func(s : scope mut&, node : ast&, prog : program mut&) -> v0;
+	fn : func(s : scope mut&, node : ast&, prog : program mut& -> v0);
 };
 
-build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut&) -> sval
+build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut& -> sval)
 {
 	ret ::= sval_node(context
 	{
@@ -33,9 +33,9 @@ build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut
 	return ret;
 };
 
-build_instructions : build_fn mut#7;
+build_instructions : build_fn mut[7];
 
-bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -56,7 +56,7 @@ bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut&) ->
 
 bi_util_prog : program mut& mut;
 bi_util_dir : u8& mut;
-bi_util_addsrc ::= func(path : u8&) -> v0
+bi_util_addsrc ::= func(path : u8& -> v0)
 {
 	fn ::= bi_util_prog->on_add_source_file;
 	full_path : u8 mut& := arena_push(bar, cstrlen(path) + cstrlen(bi_util_dir) + 2);
@@ -67,7 +67,7 @@ bi_util_addsrc ::= func(path : u8&) -> v0
 	fn(bi_util_prog, full_path, cstrlen(full_path), bar);
 };
 
-bi_add_source_directory ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_add_source_directory ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -91,7 +91,7 @@ bi_add_source_directory ::= func(s : scope mut&, node : ast&, prog : program mut
 	directory_iterate(path_zstr, bi_util_addsrc, bar);
 };
 
-bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -109,7 +109,7 @@ bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -
 	program_add_link_library(prog, path.chars, path.chars_len, bar);
 };
 
-bi_set_optimization ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_set_optimization ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -135,7 +135,7 @@ bi_set_optimization ::= func(s : scope mut&, node : ast&, prog : program mut&) -
 	(prog->opt) = (level.integral)@opt_level;
 };
 
-bi_set_executable ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_set_executable ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -155,7 +155,7 @@ bi_set_executable ::= func(s : scope mut&, node : ast&, prog : program mut&) -> 
 	(prog->type) = (program_type.executable);
 };
 
-bi_set_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_set_library ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -175,7 +175,7 @@ bi_set_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 	(prog->type) = (program_type.library);
 };
 
-bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut& -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
 	param ::= build_resolve_constexpr(s, child, prog);
@@ -195,7 +195,7 @@ bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 	(prog->type) = (program_type.object);
 };
 
-build_setup ::= func(a : arena mut&) -> v0
+build_setup ::= func(a : arena mut& -> v0)
 {
 	psyc_timed(psyc_stage.setup);
 	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
@@ -208,7 +208,7 @@ build_setup ::= func(a : arena mut&) -> v0
 	bar = a;
 };
 
-get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
+get_build_instruction ::= func(name : u8&, name_len : u64 -> build_inst)
 {
 	i : u64 mut;
 	len ::= __sizeof(build_instructions) / __sizeof(deref(build_instructions at 0));
@@ -227,19 +227,19 @@ get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
 	return (-1)@build_inst;
 };
 
-interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast&) -> v0
+interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast& -> v0)
 {
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
 
-	instid ::= get_build_instruction(callfunc.funcname, callfunc.funcname_len);
+	instid ::= get_build_instruction(callfunc.fnname, callfunc.fnname_len);
 	if(instid == ((-1)@build_inst))
 	{
 		// real bad
 		psyc_error_begin(node->loc);
 		puts("unknown build instruction ");
 		putchar('"');
-		putss(callfunc.funcname, callfunc.funcname_len);
+		putss(callfunc.fnname, callfunc.fnname_len);
 		putchar('"');
 		psyc_diag_end();
 		psyc_exit_failure();
@@ -248,7 +248,7 @@ interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node :
 	inst.fn(s, node, prog);
 };
 
-interpret_node ::= func(prog : program mut&, node : ast&) -> v0
+interpret_node ::= func(prog : program mut&, node : ast& -> v0)
 {
 	s ::= program_new_scope(prog, bar, ref(prog->global), scope_type.build_region, node->loc, "", 0);
 	i : u64 mut;
@@ -290,7 +290,7 @@ interpret_node ::= func(prog : program mut&, node : ast&) -> v0
 	}
 };
 
-interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
+interpret_build_region ::= func(prog : program mut&, reg : region& -> v0)
 {
 	if(reg == null)
 	{
