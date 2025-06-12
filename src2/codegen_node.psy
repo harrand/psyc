@@ -7,7 +7,7 @@ cgar : arena mut& mut;
 // and then make our way down to the simplest bits.
 
 // node
-cg_node ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_node ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 
@@ -16,21 +16,21 @@ cg_node ::= func(ctx : context mut, prog : program mut&) -> cgv
 };
 
 // expressions
-cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	cg_func ::= deref(cg_expr_table at ((expr.type)@s64));
 	return cg_func.fn(expr, ctx, prog);
 };
 
-cg_expr ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_expr ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	return cg_expr_common(node->expr, ctx, prog);
 };
 
 // decls 
-cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_decl ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
@@ -210,13 +210,13 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 // statements
 
-cg_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_expr_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	// happens to be exactly the same code as ast_type.expr, so just re-use it.
 	return cg_expr(ctx, prog);
 };
 
-cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_decl_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	// note: decl stmts are always either global/local variables and nothing else.
 	// globals are handled in a special way (see top-level codegen gvars)
@@ -266,7 +266,7 @@ cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
-cg_composite ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_composite ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	// just do the children
 	// if the children changes the terminator
@@ -282,7 +282,7 @@ cg_composite ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
-cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	stmt ::= node->stmt;
@@ -295,7 +295,7 @@ cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 // literal
 
-cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.s64, q);
@@ -307,7 +307,7 @@ cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pr
 	};
 };
 
-cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.f64, q);
@@ -319,7 +319,7 @@ cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, pr
 	};
 };
 
-cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	q ::= (tyqual.static) | (tyqual.weak);
@@ -349,7 +349,7 @@ cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	};
 };
 
-cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	chars ::= lit.chars;
 	len ::= lit.chars_len;
@@ -386,7 +386,7 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 	};
 };
 
-cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.bool, q);
@@ -398,7 +398,7 @@ cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	};
 };
 
-cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	return cgv
@@ -409,7 +409,7 @@ cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	};
 };
 
-cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	lit ::= expr.literal;
 
@@ -418,7 +418,7 @@ cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> 
 };
 
 // symbol
-cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	sym ::= expr.symbol;
 	node ::= ctx.node;
@@ -515,7 +515,7 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> c
 };
 
 // ret
-cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	parentfn ::= scope_get_parent_function(ctx.local, prog);
@@ -528,7 +528,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	}
 	fnty ::= parentfn->type;
 	fnpayload ::= fnty.fn;
-	fn_retty ::= deref((fnpayload.return_type)@ty&);
+	fn_retty ::= deref((fnpayload.ret_type)@ty&);
 	// todo: get parent fn and ensure the return is suitable.
 	if((node->childcount) == 0)
 	{
@@ -558,7 +558,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 
 // biop
 
-cg_common_process_param ::= func(param : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_common_process_param ::= func(param : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	pval ::= cg_node(context
 	{
@@ -577,7 +577,7 @@ cg_common_process_param ::= func(param : ast&, ctx : context mut, prog : program
 	return pval;
 };
 
-cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> v0)
 {
 	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
@@ -684,7 +684,7 @@ cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 	}
 };
 
-cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> v0)
 {
 	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
@@ -772,7 +772,7 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&
 	}
 };
 
-cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> v0)
 {
 	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
 	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
@@ -845,7 +845,7 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : as
 	}
 };
 
-cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	// special case here: lhs is a deref.
@@ -906,7 +906,7 @@ cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -937,7 +937,7 @@ cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progr
 	return lhs_val;
 };
 
-cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -967,7 +967,7 @@ cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_less_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_less_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -995,7 +995,7 @@ cg_biop_less_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pro
 	return lhs_val;
 };
 
-cg_biop_less_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_less_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1024,7 +1024,7 @@ cg_biop_less_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog
 	return lhs_val;
 };
 
-cg_biop_greater_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_greater_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1053,7 +1053,7 @@ cg_biop_greater_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : 
 	return lhs_val;
 };
 
-cg_biop_greater_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_greater_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1082,7 +1082,7 @@ cg_biop_greater_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, p
 	return lhs_val;
 };
 
-cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1103,7 +1103,7 @@ cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program 
 	return lhs_val;
 };
 
-cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1124,7 +1124,7 @@ cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	return lhs_val;
 };
 
-cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1146,7 +1146,7 @@ cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1174,7 +1174,7 @@ cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1188,7 +1188,7 @@ cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pr
 	return lhs_val;
 };
 
-cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
 	if(!ty_is_boolean(lhs_val.type))
@@ -1225,7 +1225,7 @@ cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pr
 	return lhs_val;
 };
 
-cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1239,7 +1239,7 @@ cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : p
 	return lhs_val;
 };
 
-cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
 	if(!ty_is_boolean(lhs_val.type))
@@ -1276,7 +1276,7 @@ cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : p
 	return lhs_val;
 };
 
-cg_biop_bitleft ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_bitleft ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1289,7 +1289,7 @@ cg_biop_bitleft ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progr
 	return lhs_val;
 };
 
-cg_biop_bitright ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_bitright ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1309,7 +1309,7 @@ cg_biop_bitright ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_modulo ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_modulo ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
@@ -1330,7 +1330,7 @@ cg_biop_modulo ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
 	if(!ty_is(lhs_val.type, tytag.arr))
@@ -1363,7 +1363,7 @@ cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mu
 		psyc_exit_failure();
 	}
 
-	index_list : u64 mut#2;
+	index_list : u64 mut[2];
 	if(!(ctx.typecheck_only))
 	{
 		deref(index_list at 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
@@ -1389,14 +1389,14 @@ cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mu
 	return lhs_val;
 };
 
-cg_biop_field_callfunc ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_field_callfunc ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	rhs_expr ::= rhs->expr;
 	callfunc ::= rhs_expr.callfunc;
 	rhs_sym ::= ast_symbol_expr
 	{
-		.symbol := callfunc.funcname;
-		.len := callfunc.funcname_len;
+		.symbol := callfunc.fnname;
+		.len := callfunc.fnname_len;
 	};
 
 	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
@@ -1547,11 +1547,11 @@ cg_biop_field_callfunc ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog 
 	{
 		.tag := cgvtag.misc;
 		.ll := ret_ll;
-		.type := deref((fnpayload.return_type)@ty&);
+		.type := deref((fnpayload.ret_type)@ty&);
 	};
 };
 
-cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	// firstly
 	// rhs should be a symbol expr (or a callfunc)
@@ -1580,6 +1580,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	}
 
 	i : u64 mut;
+	ret : cgv mut;
 
 	// then: check if lhs is a symbol expr that matches an enum name.
 	// if so then we can early out as its an enum value.
@@ -1594,26 +1595,26 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 			{
 				// ok it *is* an enum
 				// find the entry
-				enumty : ty mut := maybe_enum->type;
-				(enumty.qual) = ((enumty.qual) | tyqual.static);
-				enumpayload ::= enumty.enm;
-				for(i = 0, i < (enumpayload.entry_count), i = i + 1)
+				enmty : ty mut := maybe_enum->type;
+				(enmty.qual) = ((enmty.qual) | tyqual.static);
+				enmpayload ::= enmty.enm;
+				for(i = 0, i < (enmpayload.entry_count), i = i + 1)
 				{
-					curentryname ::= deref((enumpayload.entry_names) at i);
-					curentryname_len ::= deref((enumpayload.entry_name_lens) at i);
+					curentryname ::= deref((enmpayload.entry_names) at i);
+					curentryname_len ::= deref((enmpayload.entry_name_lens) at i);
 					if(curentryname_len == (rhs_sym.len))
 					{
 						if(cstreql_n(curentryname, rhs_sym.symbol, rhs_sym.len))
 						{
 							// this is that exact enum!
-							value ::= deref((enumpayload.entry_values) at i);
+							value ::= deref((enmpayload.entry_values) at i);
 							// return this as a literal
-							ret : cgv mut := cg_literal(make_literal_expr(ast_literal_expr
+							ret = cg_literal(make_literal_expr(ast_literal_expr
 							{
 								.type := ast_literal_type.integral;
 								.integral := value@s64;
 							}), ctx, prog);
-							(ret.type) = enumty;
+							(ret.type) = enmty;
 							return ret;
 						}
 					}
@@ -1621,7 +1622,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 				psyc_error_begin(rhs->loc);
 				puts("enum ");
 				putchar('"');
-				putty(enumty);
+				putty(enmty);
 				putchar('"');
 				puts(" has no entry named ");
 				putchar('"');
@@ -1697,7 +1698,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	{
 		// variable! ll should be an alloca or GEP'd alloca
 		// which means we should GEP that and return var
-		ret : cgv mut := cgv
+		ret = cgv
 		{
 			.tag := cgvtag.var;
 			.ll := 0;
@@ -1710,7 +1711,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 
 		return ret;
 	}
-	ret : cgv mut := cgv
+	ret = cgv
 	{
 		.tag := cgvtag.misc;
 		.ll := 0;
@@ -1723,7 +1724,7 @@ cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program
 	return ret;
 };
 
-cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	// firstly
 	// rhs should be a symbol expr (or a callfunc)
@@ -1842,7 +1843,7 @@ cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : pro
 	return ret;
 };
 
-cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
 	if(!(ctx.typecheck_only))
@@ -1904,7 +1905,7 @@ cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program 
 	return lhs_val;
 };
 
-cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	biop ::= expr.biop;
 	biop_ty ::= biop.type;
@@ -1917,7 +1918,7 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 	return cg_func.fn(lhs, rhs, ctx, prog);
 };
 
-cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
 	if(!(ctx.typecheck_only))
@@ -1949,7 +1950,7 @@ cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut&) -
 	return opval;
 };
 
-cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
 	if(!(ctx.typecheck_only))
@@ -1971,7 +1972,7 @@ cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : progra
 	return opval;
 };
 
-cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
 	if(!(ctx.typecheck_only))
@@ -1993,7 +1994,7 @@ cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : progra
 	return opval;
 };
 
-cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	// this ones really easy. get the operand, do *not* load it, but pretend you already have.
 	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
@@ -2011,7 +2012,7 @@ cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> 
 	return opval;
 };
 
-cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
 	if(!(ctx.typecheck_only))
@@ -2034,13 +2035,13 @@ cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -
 	return opval;
 };
 
-cg_unop_defer ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+cg_unop_defer ::= func(operand : ast&, ctx : context mut, prog : program mut& -> cgv)
 {
 	psyc_panic(operand->loc, "unop defer NYI");
 	return zero;
 };
 
-cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	unop ::= expr.unop;
 	unop_ty ::= unop.type;
@@ -2053,20 +2054,20 @@ cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
 };
 
 // callfunc
-cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	call ::= expr.callfunc;
 
 	fnty : ty mut := zero;
+	i : u64 mut;
 
-	if((call.funcname_len) > 2)
+	if((call.fnname_len) > 2)
 	{
-		if(cstr_starts_with_n(call.funcname, "__", 2))
+		if(cstr_starts_with_n(call.fnname, "__", 2))
 		{
-			rest ::= (call.funcname) at 2;
-			rest_len ::= (call.funcname_len) - 2;
-			i : u64 mut;
+			rest ::= (call.fnname) at 2;
+			rest_len ::= (call.fnname_len) - 2;
 			cg_builtin_table_size ::= __sizeof(cg_builtin_table) / __sizeof(deref(cg_builtin_table at 0));
 			for(i = 0, i < cg_builtin_table_size, i = i + 1)
 			{
@@ -2083,13 +2084,13 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 			psyc_error_begin(node->loc);
 			puts("unknown builtin ");
 			putchar('"');
-			putss(call.funcname, call.funcname_len);
+			putss(call.fnname, call.fnname_len);
 			putchar('"');
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
 	}
-	fn ::= scope_find_function(ctx.local, call.funcname, call.funcname_len);
+	fn ::= scope_find_function(ctx.local, call.fnname, call.fnname_len);
 	ll : u64 mut := zero;
 	if(fn != null)
 	{
@@ -2101,8 +2102,8 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 		// try treating it as a symbol
 		val : cgv mut := cg_expr_common(make_symbol_expr(ast_symbol_expr
 		{
-			.symbol := call.funcname;
-			.len := call.funcname_len;
+			.symbol := call.fnname;
+			.len := call.fnname_len;
 		}), ctx, prog);
 		if(!(ctx.typecheck_only))
 		{
@@ -2113,7 +2114,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 			psyc_error_begin(node->loc);
 			puts("invalid call to non-function ");
 			putchar('"');
-			putss(call.funcname, call.funcname_len);
+			putss(call.fnname, call.fnname_len);
 			putchar('"');
 			puts(", the symbol is of type ");
 			putchar('"');
@@ -2129,7 +2130,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 			psyc_error_begin(node->loc);
 			puts("invalid call to non-function ");
 			putchar('"');
-			putss(call.funcname, call.funcname_len);
+			putss(call.fnname, call.fnname_len);
 			putchar('"');
 			puts(", the symbol is of type ");
 			putchar('"');
@@ -2152,7 +2153,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 		psyc_error_begin(node->loc);
 		puts("invalid call to function ");
 		putchar('"');
-		putss(call.funcname, call.funcname_len);
+		putss(call.fnname, call.fnname_len);
 		putchar('"');
 		puts(" - you provided ");
 		putuint(call_param_count);
@@ -2164,7 +2165,6 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 
 	ll_args : u64 mut& := arena_push(cgar, __sizeof(u64) * call_param_count);
 
-	i : u64 mut;
 	paramnode : ast& mut;
 	reqty : ty mut;
 	param_val : cgv mut;
@@ -2195,19 +2195,19 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) ->
 	{
 		.tag := cgvtag.misc;
 		.ll := ret_ll;
-		.type := deref((fnpayload.return_type)@ty&);
+		.type := deref((fnpayload.ret_type)@ty&);
 	};
 };
 
-cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut&) -> cgv
+cg_strctinit_struct ::= func(type : ty, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	inits ::= node->childcount;
-	structty ::= type.strct;
+	strctty ::= type.strct;
 
-	struct_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+	strct_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
 
-	memtys ::= (structty.member_types)@ty&;
+	memtys ::= (strctty.member_types)@ty&;
 	// write in the inits
 	i : u64 mut;
 	j : u64 mut;
@@ -2237,8 +2237,8 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut&)
 		continue_searching : bool mut := true;
 		while(continue_searching)
 		{
-			memname ::= deref((structty.member_names) at j);
-			memname_len ::= deref((structty.member_name_lens) at j);
+			memname ::= deref((strctty.member_names) at j);
+			memname_len ::= deref((strctty.member_name_lens) at j);
 			if(memname_len == (childinit.name_len))
 			{
 				if(cstreql_n(memname, childinit.name, memname_len))
@@ -2249,7 +2249,7 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut&)
 			}
 			if(continue_searching)
 			{
-				if(j >= (structty.member_count))
+				if(j >= (strctty.member_count))
 				{
 					psyc_error_begin(childnode->loc);
 					puts("struct type ");
@@ -2265,22 +2265,22 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut&)
 			}
 		}
 		// write the value in there.
-		//deref(structinit_ll at j) = (childval.ll);
+		//deref(strctinit_ll at j) = (childval.ll);
 		if(!(ctx.typecheck_only))
 		{
-			struct_ll = LLVMBuildInsertValue(ir, struct_ll, childval.ll, j@_, "");
+			strct_ll = LLVMBuildInsertValue(ir, strct_ll, childval.ll, j@_, "");
 		}
 	}
 
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := struct_ll;
+		.ll := strct_ll;
 		.type := type;
 	};
 };
 
-cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut&) -> cgv
+cg_strctinit_arr ::= func(type : ty, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	arrty ::= type.arr;
@@ -2333,8 +2333,8 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut&) ->
 	};
 };
 
-// structinit
-cg_structinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+// strctinit
+cg_strctinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 	init ::= node->init;
@@ -2369,21 +2369,21 @@ cg_structinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) 
 
 	if(ty_is(result_type, tytag.strct))
 	{
-		return cg_structinit_struct(result_type, ctx, prog);
+		return cg_strctinit_struct(result_type, ctx, prog);
 	}
 	if(ty_is(result_type, tytag.arr))
 	{
-		return cg_structinit_arr(result_type, ctx, prog);
+		return cg_strctinit_arr(result_type, ctx, prog);
 	}
-	psyc_panic(node->loc, "control reached end of cg_structinit. compiler bug.");
+	psyc_panic(node->loc, "control reached end of cg_strctinit. compiler bug.");
 	return zero;
 };
 
-cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_if_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
-	ifdef ::= node->ifdef;
-	if(ifdef.is_static)
+	defif ::= node->defif;
+	if(defif.is_static)
 	{
 		psyc_panic(node->loc, "static-if made it to codegen without being reduced by the progwalk into a composite - you have probably put a static-if somewhere unexpected. report this as a bug anyway though please");
 		return zero;
@@ -2398,15 +2398,15 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 	cgv_load_if_variable(ref condval, prog);
 	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
 
-	else_node : ast& mut;
-	else_node = null;
+	el_node : ast& mut;
+	el_node = null;
 	if(node->childcount > 1)
 	{
 		lastchildidx ::= (node->childcount) - 1;
 		last_child ::= ast_get_child(node@_, lastchildidx);
-		if((last_child->type) == (ast_type.elsedef))
+		if((last_child->type) == (ast_type.defelse))
 		{
-			else_node = last_child;
+			el_node = last_child;
 		}
 	}
 
@@ -2414,72 +2414,72 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
-	if_scope_label ::= "if";
-	ifscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, if_scope_label, cstrlen(if_scope_label));
-	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
+	scope_label ::= "if";
+	scope_if ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, scope_label, cstrlen(scope_label));
+	(scope_if->codegen) = LLVMAppendBasicBlock(fn->codegen, scope_label);
 
 	// populate the else blk if there is one
-	ifnt : u64 mut := 0;
+	not_if : u64 mut := 0;
 
-	else_scope_label ::= "else";
-	elsescope : scope mut& mut := null;
-	if(else_node != null)
+	scope_else_label ::= "else";
+	scopeelse : scope mut& mut := null;
+	if(el_node != null)
 	{
-		elsescope = program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, else_scope_label, cstrlen(else_scope_label));
-		ifnt = LLVMAppendBasicBlock(fn->codegen, else_scope_label);
+		scopeelse = program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, scope_else_label, cstrlen(scope_label));
+		not_if = LLVMAppendBasicBlock(fn->codegen, scope_else_label);
 	}
 
-	ifcont ::= LLVMAppendBasicBlock(fn->codegen, "ifcont");
-	if(else_node == null)
+	contif ::= LLVMAppendBasicBlock(fn->codegen, "contif");
+	if(el_node == null)
 	{
-		ifnt = ifcont;
+		not_if = contif;
 	}
 
 	// populate inside the if blk
-	LLVMPositionBuilderAtEnd(ir, ifscope->codegen);
-	ifscope_back_offset : u64 mut;
-	ifscope_back_offset = 0;
-	if(else_node != null)
+	LLVMPositionBuilderAtEnd(ir, scope_if->codegen);
+	scope_if_back_offset : u64 mut;
+	scope_if_back_offset = 0;
+	if(el_node != null)
 	{
-		ifscope_back_offset = 1;
+		scope_if_back_offset = 1;
 	}
 	cg.children(context
 	{
 		.node := node;
-		.local := ifscope;
+		.local := scope_if;
 		.typecheck_only := false;
-	}, prog, 1, ifscope_back_offset);
-	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
-	if((ifscope->terminator) == null)
+	}, prog, 1, scope_if_back_offset);
+	// note: only branch to contif if the if blk didnt contain a terminator (e.g early return)
+	if((scope_if->terminator) == null)
 	{
-		LLVMBuildBr(ir, ifcont);
+		LLVMBuildBr(ir, contif);
 	}
 
-	if(else_node != null)
+	if(el_node != null)
 	{
-		LLVMPositionBuilderAtEnd(ir, ifnt);
+		LLVMPositionBuilderAtEnd(ir, not_if);
 		cg.children(context
 		{
-			.node := else_node;
-			.local := elsescope;
+			.node := el_node;
+			.local := scopeelse;
 			.typecheck_only := false;
 		}, prog, 0, 0);
-		if((elsescope->terminator) == null)
+		if((scopeelse->terminator) == null)
 		{
-			LLVMBuildBr(ir, ifcont);
+			LLVMBuildBr(ir, contif);
 		}
 	}
 
 	// build the condbr
 	LLVMPositionBuilderAtEnd(ir, oldblk);
-	LLVMBuildCondBr(ir, condval.ll, ifscope->codegen, ifnt);
+	LLVMBuildCondBr(ir, condval.ll, scope_if->codegen, not_if);
 
 	// rest of code...
-	LLVMPositionBuilderAtEnd(ir, ifcont);
+	LLVMPositionBuilderAtEnd(ir, contif);
 	return zero;
 };
 
-cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_while_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 
@@ -2497,26 +2497,26 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
-	while_scope_label ::= "while";
-	whilescope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, while_scope_label, cstrlen(while_scope_label));
-	(whilescope->codegen) = LLVMAppendBasicBlock(fn->codegen, while_scope_label);
+	scope_label ::= "while";
+	scopewhile ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, scope_label, cstrlen(scope_label));
+	(scopewhile->codegen) = LLVMAppendBasicBlock(fn->codegen, scope_label);
 
-	whilecont ::= LLVMAppendBasicBlock(fn->codegen, "whilecont");
+	contwhile ::= LLVMAppendBasicBlock(fn->codegen, "contwhile");
 
 	// populate inside the while blk
-	LLVMPositionBuilderAtEnd(ir, whilescope->codegen);
+	LLVMPositionBuilderAtEnd(ir, scopewhile->codegen);
 	cg.children(context
 	{
 		.node := node;
-		.local := whilescope;
+		.local := scopewhile;
 		.typecheck_only := false;
 	}, prog, 1, 0);
-	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
-	if((whilescope->terminator) == null)
+	// note: only branch to contif if the if blk didnt contain a terminator (e.g early return)
+	if((scopewhile->terminator) == null)
 	{
 		// conditional branch
 		// condition still true? back to while
-		// false? whilecont
+		// false? contwhile
 		inner_condval : cgv mut := cg_expr(context
 		{
 			.node := condnode;
@@ -2525,19 +2525,19 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 		}, prog);
 		cgv_load_if_variable(ref inner_condval, prog);
 		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
-		LLVMBuildCondBr(ir, inner_condval.ll, whilescope->codegen, whilecont);
+		LLVMBuildCondBr(ir, inner_condval.ll, scopewhile->codegen, contwhile);
 	}
 
 	// build the condbr
 	LLVMPositionBuilderAtEnd(ir, oldblk);
-	LLVMBuildCondBr(ir, condval.ll, whilescope->codegen, whilecont);
+	LLVMBuildCondBr(ir, condval.ll, scopewhile->codegen, contwhile);
 
 	// rest of code...
-	LLVMPositionBuilderAtEnd(ir, whilecont);
+	LLVMPositionBuilderAtEnd(ir, contwhile);
 	return zero;
 };
 
-cg_for_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_for_stmt ::= func(ctx : context mut, prog : program mut& -> cgv)
 {
 	node ::= ctx.node;
 
@@ -2567,34 +2567,34 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
-	for_scope_label ::= "for";
-	forscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, for_scope_label, cstrlen(for_scope_label));
-	(forscope->codegen) = LLVMAppendBasicBlock(fn->codegen, for_scope_label);
+	scope_label ::= "for";
+	scopefor ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, scope_label, cstrlen(scope_label));
+	(scopefor->codegen) = LLVMAppendBasicBlock(fn->codegen, scope_label);
 
-	forcont ::= LLVMAppendBasicBlock(fn->codegen, "forcont");
+	contfor ::= LLVMAppendBasicBlock(fn->codegen, "contfor");
 
 	// populate inside the for blk
-	LLVMPositionBuilderAtEnd(ir, forscope->codegen);
+	LLVMPositionBuilderAtEnd(ir, scopefor->codegen);
 	cg.children(context
 	{
 		.node := node;
-		.local := forscope;
+		.local := scopefor;
 		.typecheck_only := false;
 	}, prog, 3, 0);
-	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
-	if((forscope->terminator) == null)
+	// note: only branch to contif if the if blk didnt contain a terminator (e.g early return)
+	if((scopefor->terminator) == null)
 	{
-		// remember - if the forscope contains a terminator return then there's no point doing the init anyway.
+		// remember - if the scopefor contains a terminator return then there's no point doing the init anyway.
 		// do the iter
 		cg_expr(context
 		{
 			.node := iternode;
-			.local := forscope;
+			.local := scopefor;
 			.typecheck_only := false;
 		}, prog);
 		// conditional branch
 		// condition still true? back to for
-		// false? forcont
+		// false? contfor
 		inner_condval : cgv mut := cg_expr(context
 		{
 			.node := condnode;
@@ -2603,21 +2603,21 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
 		}, prog);
 		cgv_load_if_variable(ref inner_condval, prog);
 		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
-		LLVMBuildCondBr(ir, inner_condval.ll, forscope->codegen, forcont);
+		LLVMBuildCondBr(ir, inner_condval.ll, scopefor->codegen, contfor);
 	}
 
 	// build the condbr
 	LLVMPositionBuilderAtEnd(ir, oldblk);
-	LLVMBuildCondBr(ir, condval.ll, forscope->codegen, forcont);
+	LLVMBuildCondBr(ir, condval.ll, scopefor->codegen, contfor);
 
 	// rest of code...
-	LLVMPositionBuilderAtEnd(ir, forcont);
+	LLVMPositionBuilderAtEnd(ir, contfor);
 	return zero;
 };
 
 // LLVM IR CODE GENERATION END
 
-codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
+codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions -> v0)
 {
 	cgar = a;
 	cg = h;
@@ -2638,11 +2638,11 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	{
 		deref(cg_stmt_table at i) = cg_stmt_fn{.fn := cg_stmtfn_error;};
 	}
-	deref(cg_stmt_table at ((ast_stmt.expr_stmt)@s64)) = cg_stmt_fn{.fn := cg_expr_stmt;};
-	deref(cg_stmt_table at ((ast_stmt.decl_stmt)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
-	deref(cg_stmt_table at ((ast_stmt.if_stmt)@s64)) = cg_stmt_fn{.fn := cg_if_stmt;};
-	deref(cg_stmt_table at ((ast_stmt.while_stmt)@s64)) = cg_stmt_fn{.fn := cg_while_stmt;};
-	deref(cg_stmt_table at ((ast_stmt.for_stmt)@s64)) = cg_stmt_fn{.fn := cg_for_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.stmt_expr)@s64)) = cg_stmt_fn{.fn := cg_expr_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.stmt_decl)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.stmt_if)@s64)) = cg_stmt_fn{.fn := cg_if_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.stmt_while)@s64)) = cg_stmt_fn{.fn := cg_while_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.stmt_for)@s64)) = cg_stmt_fn{.fn := cg_for_stmt;};
 
 	cg_expr_table_size ::= __sizeof(cg_expr_table) / __sizeof(deref(cg_expr_table at 0));
 	for(i = 0, i < cg_expr_table_size, i = i + 1)
@@ -2655,7 +2655,7 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	deref(cg_expr_table at ((ast_expr_type.literal)@s64)) = cg_expr_fn{.fn := cg_literal;};
 	deref(cg_expr_table at ((ast_expr_type.ret)@s64)) = cg_expr_fn{.fn := cg_ret;};
 	deref(cg_expr_table at ((ast_expr_type.callfunc)@s64)) = cg_expr_fn{.fn := cg_callfunc;};
-	deref(cg_expr_table at ((ast_expr_type.structinit)@s64)) = cg_expr_fn{.fn := cg_structinit;};
+	deref(cg_expr_table at ((ast_expr_type.strctinit)@s64)) = cg_expr_fn{.fn := cg_strctinit;};
 
 	cg_biop_table_size ::= __sizeof(cg_biop_table) / __sizeof(deref(cg_biop_table at 0));
 	for(i = 0, i < cg_biop_table_size, i = i + 1)
@@ -2702,17 +2702,10 @@ codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
 	{
 		deref(cg_literal_table at i) = cg_literal_fn{.fn := cg_literalfn_error;};
 	}
-	deref(cg_literal_table at ((ast_literal_type.integral)@s64)) = cg_literal_fn{.fn := cg_integer_literal;};
-	deref(cg_literal_table at ((ast_literal_type.floating_point)@s64)) = cg_literal_fn{.fn := cg_floating_point_literal;};
-	deref(cg_literal_table at ((ast_literal_type.char_literal)@s64)) = cg_literal_fn{.fn := cg_char_literal;};
-	deref(cg_literal_table at ((ast_literal_type.string_literal)@s64)) = cg_literal_fn{.fn := cg_string_literal;};
-	deref(cg_literal_table at ((ast_literal_type.bool_literal)@s64)) = cg_literal_fn{.fn := cg_bool_literal;};
-	deref(cg_literal_table at ((ast_literal_type.zero_literal)@s64)) = cg_literal_fn{.fn := cg_zero_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_integral)@s64)) = cg_literal_fn{.fn := cg_integer_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_floating_point)@s64)) = cg_literal_fn{.fn := cg_floating_point_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_char)@s64)) = cg_literal_fn{.fn := cg_char_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_string)@s64)) = cg_literal_fn{.fn := cg_string_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_bool)@s64)) = cg_literal_fn{.fn := cg_bool_literal;};
+	deref(cg_literal_table at ((ast_literal_type.lit_zero)@s64)) = cg_literal_fn{.fn := cg_zero_literal;};
 };
-
-== build ==
-{
-	add_source_file("codegen_tables.psy");
-	add_source_file("llvm.psy");
-	add_source_file("program.psy");
-}
