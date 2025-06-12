@@ -289,32 +289,66 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	fnpayload ::= fntype.fn;
 	fnparamtys ::= (fnpayload.param_types)@ty&;
 
+	should_back : bool mut;
 	for(i = 0, i < (fn->param_count), i = i + 1)
 	{
 		childnode ::= ast_get_child(node@_, i);
 		childdecl ::= childnode->decl;
 		childty ::= deref(fnparamtys at i);
+
+		maybe_shadowing_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+		if(maybe_shadowing_var != null)
+		{
+			varnode ::= maybe_shadowing_var->node;
+			psyc_error_begin(varnode->loc);
+			puts("local variable ");
+			putchar('"');
+			putss(childdecl.name, childdecl.name_len);
+			putchar('"');
+			puts(" would shadow enclosing function ");
+			putchar('"');
+			putss(fn->name, fn->name_len);
+			putchar('"');
+			puts("'s parameter ");
+			putuint(i);
+			putchar(' ');
+			print_srcloc(childnode->loc);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		// yes, back this.
-		scope_declare_variable(funcscope, cgar, variable
+		should_back = false;
+		if(ty_is(childty, tytag.arr))
 		{
-			.node := childnode;
-			.name := childdecl.name;
-			.name_len := childdecl.name_len;
-			.is_global := false;
-			.type := childty;
-			.internal := true;
-			.initialiser := zero;
-			.codegen := zero;
-		});
-		cg_decl(context
+			should_back = true;
+		}
+		if(ty_hasqual(childty, tyqual.mut))
 		{
-			.node := childnode;
-			.local := funcscope;
-		}, prog);
-		// now actually store into it.
-		backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
-		paramval ::= LLVMGetParam(fn->codegen, i@_);
-		LLVMBuildStore(ir, paramval, backed_array_var->codegen);
+			should_back = true;
+		}
+		if(should_back)
+		{
+			scope_declare_variable(funcscope, cgar, variable
+			{
+				.node := childnode;
+				.name := childdecl.name;
+				.name_len := childdecl.name_len;
+				.is_global := false;
+				.type := childty;
+				.internal := true;
+				.initialiser := zero;
+				.codegen := zero;
+			});
+			cg_decl(context
+			{
+				.node := childnode;
+				.local := funcscope;
+			}, prog);
+			// now actually store into it.
+			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+			paramval ::= LLVMGetParam(fn->codegen, i@_);
+			LLVMBuildStore(ir, paramval, backed_array_var->codegen);
+		}
 		if(ty_isbad(childty))
 		{
 			psyc_error_begin(childnode->loc);
