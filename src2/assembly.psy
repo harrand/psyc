@@ -1,8 +1,6 @@
-asar : arena mut& mut;
+SetCurrentDirectoryA ::= func(lpPathName : u8& -> s32) := extern;
 
-SetCurrentDirectoryA ::= func(lpPathName : u8&) -> s32 := extern;
-
-assemble ::= func(prog : program&) -> v0
+assemble ::= func(prog : program& -> v0)
 {
 	psyc_timed(psyc_stage.assembly);
 	LLVMInitializeX86AsmParser();
@@ -46,7 +44,7 @@ assemble ::= func(prog : program&) -> v0
 	// optimisation passes
 	options ::= LLVMCreatePassBuilderOptions();
 
-	opt_levels : u8& mut#4;
+	opt_levels : u8& mut[4];
 	deref(opt_levels at 0) = "default<O0>";
 	deref(opt_levels at 1) = "default<O1>";
 	deref(opt_levels at 2) = "default<O2>";
@@ -72,7 +70,7 @@ assemble ::= func(prog : program&) -> v0
 
 	SetCurrentDirectoryA(default_build_dir);
 	path_len ::= (prog->name_len) + cstrlen(default_obj_extension);
-	path : u8 mut& := arena_push(asar, path_len + 1);
+	path : u8 mut& := arena_push(global_arena, path_len + 1);
 	__memcpy(path at 0, prog->name, prog->name_len);
 	__memcpy(path at (prog->name_len), default_obj_extension, cstrlen(default_obj_extension));
 	deref(path at path_len) = 0;
@@ -87,14 +85,3 @@ assemble ::= func(prog : program&) -> v0
 		psyc_exit_failure();
 	}
 };
-
-assembly_setup ::= func(a : arena mut&) -> v0
-{
-	asar = a;
-};
-
-== build ==
-{
-	add_source_file("program.psy");
-	add_source_file("build.psy");
-}

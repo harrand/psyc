@@ -8,7 +8,7 @@ ast_expr_type ::= enum
 	.callfunc := 5;
 	.ret := 6;
 	.yld := 7;
-	.structinit := 8;
+	.strctinit := 8;
 };
 
 ast_biop_type ::= enum
@@ -40,8 +40,8 @@ ast_biop_type ::= enum
 ast_biop_expr ::= struct
 {
 	type : ast_biop_type;
-	attack_precedence : u64;
-	defence_precedence : u64;
+	ak_precedence : u64;
+	def_precedence : u64;
 };
 
 ast_unop_type ::= enum
@@ -61,12 +61,12 @@ ast_unop_expr ::= struct
 
 ast_literal_type ::= enum
 {
-	.integral := 0;
-	.floating_point := 1;
-	.char_literal := 2;
-	.string_literal := 3;
-	.bool_literal := 4;
-	.zero_literal := 5;
+	.lit_integral := 0;
+	.lit_floating_point := 1;
+	.lit_char := 2;
+	.lit_string := 3;
+	.lit_bool := 4;
+	.lit_zero := 5;
 };
 
 ast_literal_expr ::= struct
@@ -87,8 +87,8 @@ ast_symbol_expr ::= struct
 
 ast_callfunc_expr ::= struct
 {
-	funcname : u8&;
-	funcname_len : u64;
+	fnname : u8&;
+	fnname_len : u64;
 };
 
 ast_expr ::= struct
@@ -114,18 +114,18 @@ ast_decl ::= struct
 ast_stmt ::= enum
 {
 	.unknown := 0;
-	.expr_stmt := 1;
-	.decl_stmt := 2;
-	.region_stmt := 3;
-	.struct_stmt := 4;
-	.enum_stmt := 5;
-	.fn_stmt := 6;
-	.mac_stmt := 7;
-	.if_stmt := 8;
-	.while_stmt := 9;
-	.for_stmt := 10;
-	.init_stmt := 11;
-	.structinit_stmt := 12;
+	.stmt_expr := 1;
+	.stmt_decl := 2;
+	.stmt_region := 3;
+	.stmt_struct := 4;
+	.stmt_enum := 5;
+	.stmt_fn := 6;
+	.stmt_mac := 7;
+	.stmt_if := 8;
+	.stmt_while := 9;
+	.stmt_for := 10;
+	.stmt_init := 11;
+	.stmt_strctinit := 12;
 };
 
 ast_region_stmt ::= struct
@@ -167,20 +167,20 @@ ast_type ::= enum
 	.wipfor_green := 24;
 	.wipelse := 25;
 	.wipinit := 26;
-	.wipstructinit := 27;
+	.wipstrctinit := 27;
 	.stmt := 28;
 	.expr := 29;
 	.decl := 30;
 	.fnptrdecl := 31;
-	.structdef := 32;
-	.enumdef := 33;
+	.defstruct := 32;
+	.defenum := 33;
 	.region := 34;
 	.fn := 35;
 	.mac := 36;
-	.ifdef := 37;
-	.elsedef := 38;
-	.whiledef := 39;
-	.fordef := 40;
+	.defif := 37;
+	.defelse := 38;
+	.defwhile := 39;
+	.deffor := 40;
 	.init := 41;
 	.composite := 42;
 };
@@ -198,26 +198,26 @@ ast_macro ::= struct
 {
 	mac_name : u8&;
 	mac_name_len : u64;
-	yield_typename : u8&;
-	yield_typename_len : u64;
+	yld_typename : u8&;
+	yld_typename_len : u64;
 };
 
 ast_wipcall ::= struct
 {
-	funcname : u8&;
-	funcname_len : u64;
+	fnname : u8&;
+	fnname_len : u64;
 };
 
 ast_struct ::= struct
 {
-	structname : u8&;
-	structname_len : u64;
+	strctname : u8&;
+	strctname_len : u64;
 };
 
 ast_enum ::= struct
 {
-	enumname : u8&;
-	enumname_len : u64;
+	enmname : u8&;
+	enmname_len : u64;
 };
 
 ast_if ::= struct
@@ -238,14 +238,14 @@ ast ::= struct
 	stmt : ast_stmt;
 	expr : ast_expr;
 	decl : ast_decl;
-	structdef : ast_struct;
-	enumdef : ast_enum;
+	defstruct : ast_struct;
+	defenum : ast_enum;
 	wipcall : ast_wipcall;
 	region : ast_region_stmt;
 	init : ast_init;
 	fn : ast_fn;
 	mac : ast_macro;
-	ifdef : ast_if;
+	defif : ast_if;
 	loc : srcloc;
 	cursor_begin : u64;
 	cursor_end : u64;
@@ -255,13 +255,13 @@ ast ::= struct
 	children : v0 mut&;
 };
 
-ast_get_child ::= func(a : ast mut&, cid : u64) -> ast mut&
+ast_get_child ::= func(a : ast mut&, cid : u64 -> ast mut&)
 {
 	childrenptr ::= ((a->children)@ast mut&);
 	return childrenptr at cid;
 };
 
-ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
+ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut& -> u64)
 {
 	if((a->children) == null)
 	{
@@ -285,13 +285,13 @@ ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
 	return childid;
 };
 
-ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> ast mut&
+ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut& -> ast mut&)
 {
 	cid ::= ast_add_child(a, child, ar);
 	return ast_get_child(a, cid);
 };
 
-ast_biop_get_lhs ::= func(a : ast) -> ast mut&
+ast_biop_get_lhs ::= func(a : ast -> ast mut&)
 {
 	if((a.childcount) < 1)
 	{
@@ -301,7 +301,7 @@ ast_biop_get_lhs ::= func(a : ast) -> ast mut&
 	return childrenptr at 0;
 };
 
-ast_biop_get_rhs ::= func(a : ast) -> ast mut&
+ast_biop_get_rhs ::= func(a : ast -> ast mut&)
 {
 	if((a.childcount) < 2)
 	{
@@ -311,12 +311,12 @@ ast_biop_get_rhs ::= func(a : ast) -> ast mut&
 	return childrenptr at 1;
 };
 
-ast_unop_get_operand ::= func(a : ast) -> ast mut&
+ast_unop_get_operand ::= func(a : ast -> ast mut&)
 {
 	return ast_biop_get_lhs(a);
 };
 
-ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut&) -> v0
+ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut& -> v0)
 {
 	childrenptr ::= ((a->children)@ast mut&);
 	c ::= a->childcount;
@@ -330,7 +330,7 @@ ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut&) -> v0
 	}
 };
 
-ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut&) -> v0
+ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut& -> v0)
 {
 	childrenptr ::= ((a->children)@ast mut&);
 	c ::= a->childcount;
@@ -349,12 +349,12 @@ ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut&) -> v0
 	}
 };
 
-ast_unop_set_operand ::= func(a : ast mut&, operand : ast, ar : arena mut&) -> v0
+ast_unop_set_operand ::= func(a : ast mut&, operand : ast, ar : arena mut& -> v0)
 {
 	ast_biop_set_lhs(a, operand, ar);
 };
 
-make_biop_expr ::= func(biop : ast_biop_expr) -> ast_expr
+make_biop_expr ::= func(biop : ast_biop_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -363,7 +363,7 @@ make_biop_expr ::= func(biop : ast_biop_expr) -> ast_expr
 	};
 };
 
-make_unop_expr ::= func(unop : ast_unop_expr) -> ast_expr
+make_unop_expr ::= func(unop : ast_unop_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -372,7 +372,7 @@ make_unop_expr ::= func(unop : ast_unop_expr) -> ast_expr
 	};
 };
 
-make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
+make_literal_expr ::= func(lit : ast_literal_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -381,7 +381,7 @@ make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
 	};
 };
 
-make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
+make_symbol_expr ::= func(symbol : ast_symbol_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -390,7 +390,7 @@ make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
 	};
 };
 
-make_callfunc_expr ::= func(call : ast_callfunc_expr) -> ast_expr
+make_callfunc_expr ::= func(call : ast_callfunc_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -399,7 +399,7 @@ make_callfunc_expr ::= func(call : ast_callfunc_expr) -> ast_expr
 	};
 };
 
-make_unparsed_token_ast ::= func(tok : token_data) -> ast
+make_unparsed_token_ast ::= func(tok : token_data -> ast)
 {
 	lexeme ::= tok.lexeme;
 	return ast
@@ -418,7 +418,7 @@ make_unparsed_token_ast ::= func(tok : token_data) -> ast
 	};
 };
 
-ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
+ast_verbose_print ::= func(a : ast&, tabcount : u64 -> v0)
 {
 	i : u64 mut;
 	for(i = 0, i < tabcount, i = i + 1)
@@ -427,27 +427,27 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 	}
 	if((a->type) != (ast_type.unparsed_token))
 	{
-		puts(__enumname(a->type));
+		puts(__enmname(a->type));
 	}
 	if((a->type) == (ast_type.unparsed_token))
 	{
 		utok ::= a->utok;
 		tokdata ::= utok.tok;
 		puts("token.");
-		puts(__enumname(tokdata.tok));
+		puts(__enmname(tokdata.tok));
 	}
 	if((a->type) == (ast_type.expr))
 	{
 		puts("(");
 		expr ::= a->expr;
-		puts(__enumname(expr.type));
+		puts(__enmname(expr.type));
 		puts(")");
 	}
 	if((a->type) == (ast_type.stmt))
 	{
 		puts("(");
 		stmt ::= a->stmt;
-		puts(__enumname(stmt));
+		puts(__enmname(stmt));
 		puts(")");
 	}
 	putchar(' ');
@@ -462,7 +462,7 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 	}
 };
 
-interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal_expr
+interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice -> ast_literal_expr)
 {
 	src_begin : u8& mut := src at (lexeme.off);
 	begin_cpy ::= src_begin;
@@ -475,12 +475,13 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 		src_begin = src_begin at 1;
 		i = i + 1;
 	}
+	ch : u8 mut;
 
 	base : s64 mut := 10;
 	if(deref(src_begin) == '0')
 	{
 		src_begin = src_begin at 1;
-		ch ::= deref(src_begin);
+		ch = deref(src_begin);
 		if(ch == 'x')
 		{
 			base = 16;
@@ -504,7 +505,7 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 	is_integral : bool mut := true;
 	while(i < (lexeme.len))
 	{
-		ch ::= deref(begin_cpy at i);
+		ch = deref(begin_cpy at i);
 		if(ch == '.')
 		{
 			is_integral = false;
@@ -559,7 +560,7 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 	return ret;
 };
 
-ast_child_find_if ::= func(node : ast&, predicate : func(n : ast&) -> bool) -> u64
+ast_child_find_if ::= func(node : ast&, predicate : func(n : ast& -> bool) -> u64)
 {
 	// iterate over all children
 	ccount ::= node->childcount;
@@ -574,7 +575,7 @@ ast_child_find_if ::= func(node : ast&, predicate : func(n : ast&) -> bool) -> u
 	return -1@_;
 };
 
-ast_unop_type_from_token ::= func(t : lex_token) -> ast_unop_type
+ast_unop_type_from_token ::= func(t : lex_token -> ast_unop_type)
 {
 	if(t == (lex_token.dash))
 	{
@@ -599,7 +600,7 @@ ast_unop_type_from_token ::= func(t : lex_token) -> ast_unop_type
 	return -1@ast_unop_type;	
 };
 
-ast_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
+ast_biop_type_from_token ::= func(t : lex_token -> ast_biop_type)
 {
 	if(t == (lex_token.assign))
 	{
@@ -692,7 +693,7 @@ ast_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
 	return -1@ast_biop_type;	
 };
 
-ast_biop_precedence ::= func(t : ast_biop_type) -> u64
+ast_biop_precedence ::= func(t : ast_biop_type -> u64)
 {
 	if(t == (ast_biop_type.assign))
 	{
@@ -792,7 +793,7 @@ ast_biop_precedence ::= func(t : ast_biop_type) -> u64
 	return 0;
 };
 
-ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64 mut&) -> bool
+ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64 mut& -> bool)
 {
 	if((expr.type) == (ast_expr_type.symbol))
 	{
@@ -804,19 +805,19 @@ ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64
 	if((expr.type) == (ast_expr_type.callfunc))
 	{
 		callfuncexpr ::= expr.callfunc;
-		deref(sym) = (callfuncexpr.funcname);
-		deref(len) = (callfuncexpr.funcname_len);
+		deref(sym) = (callfuncexpr.fnname);
+		deref(len) = (callfuncexpr.fnname_len);
 		return true;
 	}
 	return false;
 };
 
-ast_is_any_stmt ::= func(node : ast&) -> bool
+ast_is_any_stmt ::= func(node : ast& -> bool)
 {
 	return (node->type) == (ast_type.stmt);
 };
 
-ast_is_stmt ::= func(node : ast&, t : ast_stmt) -> bool
+ast_is_stmt ::= func(node : ast&, t : ast_stmt -> bool)
 {
 	if(!ast_is_any_stmt(node))
 	{
@@ -825,7 +826,7 @@ ast_is_stmt ::= func(node : ast&, t : ast_stmt) -> bool
 	return (node->stmt) == t;
 };
 
-ast_is_any_expr ::= func(node : ast&) -> bool
+ast_is_any_expr ::= func(node : ast& -> bool)
 {
 	nexpr ::= node->expr;
 	// plain old expr
@@ -834,10 +835,10 @@ ast_is_any_expr ::= func(node : ast&) -> bool
 		return true;
 	}
 	// expr stmt
-	return ast_is_stmt(node, ast_stmt.expr_stmt);
+	return ast_is_stmt(node, ast_stmt.stmt_expr);
 };
 
-ast_is_expr ::= func(node : ast&, t : ast_expr_type) -> bool
+ast_is_expr ::= func(node : ast&, t : ast_expr_type -> bool)
 {
 	nexpr ::= node->expr;
 	if(ast_is_any_expr(node))
@@ -847,18 +848,11 @@ ast_is_expr ::= func(node : ast&, t : ast_expr_type) -> bool
 	return false;
 };
 
-ast_is_decl ::= func(node : ast&) -> bool
+ast_is_decl ::= func(node : ast& -> bool)
 {
-	if(ast_is_stmt(node, ast_stmt.decl_stmt))
+	if(ast_is_stmt(node, ast_stmt.stmt_decl))
 	{
 		return true;
 	}
 	return (node->type) == (ast_type.decl);
 };
-
-== build ==
-{
-	add_source_file("stdlib/io.psy");
-
-	add_source_file("lex.psy");
-}
