@@ -1,4 +1,4 @@
-str2cstr ::= func(str : u8&, len : u64, a : arena mut&) -> u8&
+str2cstr ::= func(str : u8&, len : u64, a : arena mut& -> u8&)
 {
 	cstr : u8 mut& := arena_push(a, len + 1);
 	__memcpy(cstr, str, len);
@@ -6,7 +6,7 @@ str2cstr ::= func(str : u8&, len : u64, a : arena mut&) -> u8&
 	return cstr;
 };
 
-cg_finish ::= func() -> v0
+cg_finish ::= func( -> v0)
 {
 	err : u8& mut;
 	if(LLVMVerifyModule(mod, 2, ref err) != 0)
@@ -41,9 +41,9 @@ cg_finish ::= func() -> v0
 	*/
 };
 
-cg_primty ::= func(p : primty) -> u64
+cg_primty ::= func(p : primty -> u64)
 {
-	arr : u64 mut#13;
+	arr : u64 mut[13];
 	deref(arr at ((primty.s64)@s64)) = LLVMInt64Type();
 	deref(arr at ((primty.s32)@s64)) = LLVMInt32Type();
 	deref(arr at ((primty.s16)@s64)) = LLVMInt16Type();
@@ -64,11 +64,11 @@ cg_primty ::= func(p : primty) -> u64
 
 cg_struct_ptr_t ::= struct
 {
-	fn : func(def : structdef mut&, prog : program mut&) -> v0;
+	fn : func(def : defstruct mut&, prog : program mut& -> v0);
 };
 cg_struct_ptr : cg_struct_ptr_t mut;
 // convert psyc 'ty' to LLVMTypeRef
-cg_type ::= func(t : ty, prog : program mut&) -> u64
+cg_type ::= func(t : ty, prog : program mut& -> u64)
 {
 	if(ty_isbad(t))
 	{
@@ -92,7 +92,7 @@ cg_type ::= func(t : ty, prog : program mut&) -> u64
 	if((t.tag) == (tytag.strct))
 	{
 		strct ::= t.strct;
-def ::= program_find_struct(prog, strct.name, strct.name_len);
+		def ::= program_find_struct(prog, strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
 			// todo: need to cg_struct here.
@@ -105,7 +105,7 @@ def ::= program_find_struct(prog, strct.name, strct.name_len);
 		fn ::= t.fn;
 		paramdata : u64 mut& := arena_push(cgar, __sizeof(u64) * (fn.param_count));
 
-		ret_cg ::= cg_type(deref((fn.return_type)@ty&), prog);
+		ret_cg ::= cg_type(deref((fn.ret_type)@ty&), prog);
 		param_tys ::= (fn.param_types)@ty&;
 
 		i : u64 mut;
@@ -127,7 +127,7 @@ def ::= program_find_struct(prog, strct.name, strct.name_len);
 	return 0;
 };
 
-cgu_is_defer ::= func(node : ast&) -> bool
+cgu_is_defer ::= func(node : ast& -> bool)
 {
 	if(ast_is_expr(node, ast_expr_type.unop))
 	{
@@ -141,12 +141,12 @@ cgu_is_defer ::= func(node : ast&) -> bool
 	return false;
 };
 
-cgu_is_ret ::= func(node : ast&) -> bool
+cgu_is_ret ::= func(node : ast& -> bool)
 {
 	return ast_is_expr(node, ast_expr_type.ret);
 };
 
-cg_handle_defer ::= func(node : ast mut&, offset : u64, back_offset : u64) -> v0
+cg_handle_defer ::= func(node : ast mut&, offset : u64, back_offset : u64 -> v0)
 {
 	childcount ::= node->childcount;
 	pivot : u64 mut := childcount - back_offset - 1;
@@ -185,7 +185,7 @@ cg_handle_defer ::= func(node : ast mut&, offset : u64, back_offset : u64) -> v0
 	}
 };
 
-cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_offset : u64) -> v0
+cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_offset : u64 -> v0)
 {
 	node ::= ctx.node;
 	i : u64 mut;
@@ -206,7 +206,7 @@ cg_children ::= func(ctx : context mut, prog : program mut&, offset : u64, back_
 	}
 };
 
-cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
+cg_struct ::= func(def : defstruct mut&, prog : program mut& -> v0)
 {
 	if((def->codegen) != 0)
 	{
@@ -216,7 +216,7 @@ cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 	type ::= def->type;
 	if(ty_isbad(type))
 	{
-		psyc_panic(node->loc, "cg_struct structdef's type was badtype. semal should've sorted this - compiler bug.");
+		psyc_panic(node->loc, "cg_struct defstruct's type was badtype. semal should've sorted this - compiler bug.");
 	}
 	strct ::= type.strct;
 	memcount ::= strct.member_count;
@@ -235,13 +235,13 @@ cg_struct ::= func(def : structdef mut&, prog : program mut&) -> v0
 	LLVMStructSetBody(def->codegen, memarr, memcount@u32, false@s32);
 };
 
-cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
+cg_declare_func ::= func(fn : metafunction mut&, s : scope mut&, prog : program mut& -> v0)
 {
 	type ::= fn->type;
 	fnty ::= type.fn;
 	param_count ::= (fn->param_count);
-	func_tycg ::= cg_type(type, prog);
-	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), func_tycg);
+	fn_tycg ::= cg_type(type, prog);
+	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, cgar), fn_tycg);
 
 	param : u64 mut := LLVMGetFirstParam(fn->codegen);
 	fnnode ::= fn->node;
@@ -258,7 +258,7 @@ cg_declare_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&
 	}
 };
 
-cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&) -> v0
+cg_define_func ::= func(fn : metafunction mut&, s : scope mut&, prog : program mut& -> v0)
 {
 	if(fn->is_extern)
 	{
@@ -272,9 +272,9 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	LLVMAddAttributeAtIndex(fn->codegen, LLVMAttributeFunctionIndex, no_stack_probe);
 
 	node ::= fn->node;
-	funcscope ::= (fn->impl_scope)@scope mut&;
-	(funcscope->codegen) = LLVMAppendBasicBlock(fn->codegen, "entry");
-	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
+	fnscope ::= (fn->impl_scope)@scope mut&;
+	(fnscope->codegen) = LLVMAppendBasicBlock(fn->codegen, "entry");
+	LLVMPositionBuilderAtEnd(ir, fnscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
 	i : u64 mut;
@@ -296,7 +296,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		childdecl ::= childnode->decl;
 		childty ::= deref(fnparamtys at i);
 
-		maybe_shadowing_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+		maybe_shadowing_var ::= scope_find_variable(fnscope, childdecl.name, childdecl.name_len);
 		if(maybe_shadowing_var != null)
 		{
 			varnode ::= maybe_shadowing_var->node;
@@ -328,7 +328,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 		}
 		if(should_back)
 		{
-			scope_declare_variable(funcscope, cgar, variable
+			scope_declare_variable(fnscope, cgar, variable
 			{
 				.node := childnode;
 				.name := childdecl.name;
@@ -342,10 +342,10 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 			cg_decl(context
 			{
 				.node := childnode;
-				.local := funcscope;
+				.local := fnscope;
 			}, prog);
 			// now actually store into it.
-			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+			backed_array_var ::= scope_find_variable(fnscope, childdecl.name, childdecl.name_len);
 			paramval ::= LLVMGetParam(fn->codegen, i@_);
 			LLVMBuildStore(ir, paramval, backed_array_var->codegen);
 		}
@@ -365,7 +365,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	// assume this contains all vars (recursively iterated) in all subscopes
 	// a LLVM frontend should hoist (alloca all its local variables at function start), which is what we do here
 	// instead of alloca'ing them as we see them naturally as decl stmts.
-	vars ::= ref(funcscope->vars);
+	vars ::= ref(fnscope->vars);
 	for(i = 0, i < (vars->size), i = i + 1)
 	{
 		curvar ::= (vars->data) at i;
@@ -374,7 +374,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 			cg_decl(context
 			{
 				.node := curvar->node;
-				.local := funcscope;
+				.local := fnscope;
 				.typecheck_only := false;
 			}, prog);
 		}
@@ -384,13 +384,13 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	cg_children(context
 	{
 		.node := node;
-		.local := funcscope;
+		.local := fnscope;
 		.typecheck_only := false;
 	}, prog, child_iterate_offset, 0);
 
-	fn_retty ::= deref((fnpayload.return_type)@ty&);
+	fn_retty ::= deref((fnpayload.ret_type)@ty&);
 	lastchildidx ::= (node->childcount) - 1;
-	if((funcscope->terminator) != (ast_get_child(node@_, lastchildidx)))
+	if((fnscope->terminator) != (ast_get_child(node@_, lastchildidx)))
 	{
 		// need a terminator
 		if(ty_is_v0(fn_retty))
@@ -412,7 +412,7 @@ cg_define_func ::= func(fn : function mut&, s : scope mut&, prog : program mut&)
 	}
 };
 
-codegen ::= func(prog : program mut&) -> v0
+codegen ::= func(prog : program mut& -> v0)
 {
 	psyc_timed(psyc_stage.codegen);
 	mod = LLVMModuleCreateWithName("Psy Program");
@@ -421,19 +421,19 @@ codegen ::= func(prog : program mut&) -> v0
 	args ::= ref(prog->compile_args);
 
 	glob ::= ref(prog->global);
-	structs ::= ref(glob->structs);
-	funcs ::= ref(glob->funcs);
+	strcts ::= ref(glob->strcts);
+	fns ::= ref(glob->fns);
 	gvars ::= ref(glob->vars);
 
 	i : u64 mut;
-	for(i = 0, i < (structs->size), i = i + 1)
+	for(i = 0, i < (strcts->size), i = i + 1)
 	{
-		cg_struct((structs->data) at i, prog);
+		cg_struct((strcts->data) at i, prog);
 	}
 
-	for(i = 0, i < (funcs->size), i = i + 1)
+	for(i = 0, i < (fns->size), i = i + 1)
 	{
-		cg_declare_func((funcs->data) at i, glob, prog);
+		cg_declare_func((fns->data) at i, glob, prog);
 	}
 
 	for(i = 0, i < (gvars->size), i = i + 1)
@@ -448,9 +448,9 @@ codegen ::= func(prog : program mut&) -> v0
 		}, prog);
 	}
 
-	for(i = 0, i < (funcs->size), i = i + 1)
+	for(i = 0, i < (fns->size), i = i + 1)
 	{
-		cg_define_func((funcs->data) at i, glob, prog);
+		cg_define_func((fns->data) at i, glob, prog);
 	}
 
 	fltused_cgty ::= cg_type(ty_getprim(primty.s64, zero), prog);
@@ -463,7 +463,7 @@ codegen ::= func(prog : program mut&) -> v0
 	(prog->codegen) = mod;
 };
 
-codegen_setup ::= func(a : arena mut&) -> v0
+codegen_setup ::= func(a : arena mut& -> v0)
 {
 	codegen_node_setup(a, cg_helper_functions
 	{
@@ -508,13 +508,3 @@ codegen_setup ::= func(a : arena mut&) -> v0
 	deref(cg_builtin_table at ((builtin.alignof)@s64)) = cg_builtin_fn{.fn := cg_builtin_alignof;};
 	deref(cg_builtin_table at ((builtin.error)@s64)) = cg_builtin_fn{.fn := cg_builtin_error;};
 };
-
-== build ==
-{
-	add_source_file("llvm.psy");
-	add_source_file("program.psy");
-
-	add_source_file("codegen_node.psy");
-	add_source_file("codegen_conv.psy");
-	add_source_file("codegen_builtin.psy");
-}
