@@ -1,0 +1,2718 @@
+mod : u64 mut;
+cgar : arena mut& mut;
+
+// LLVM IR CODE GENERATION BEGIN
+
+// start with the absolute top-level stuff, as they rely on tables only
+// and then make our way down to the simplest bits.
+
+// node
+cg_node ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+
+	cg_func ::= deref(cg_node_table at ((node->type)@s64));
+	return cg_func.fn(ctx, prog);
+};
+
+// expressions
+cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	cg_func ::= deref(cg_expr_table at ((expr.type)@s64));
+	return cg_func.fn(expr, ctx, prog);
+};
+
+cg_expr ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	return cg_expr_common(node->expr, ctx, prog);
+};
+
+// decls 
+cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	decl ::= node->decl;
+	declty : ty mut := zero;
+	initialiser_child_idx : u64 mut := 0;
+	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
+		{
+			// function placeholder typename detected.
+			// this is a function pointer
+			// first child is actually a wipfn_red with the function signature inside.
+			// initialiser is the next child along:
+			initialiser_child_idx = 1;
+			// now get the function type from the wipfn child the parser left for us:
+			wipfn_node ::= ast_get_child(node@_, 0);
+			wipfn ::= wipfn_node->fn;
+			fn_retty ::= scope_parse_typename(ctx.local, wipfn.ret_typename, wipfn.ret_typename_len);
+			if(ty_isbad(fn_retty))
+			{
+				psyc_error_begin(wipfn_node->loc);
+				puts("return-type ");
+				putchar('"');
+				putss(wipfn.ret_typename, wipfn.ret_typename_len);
+				putchar('"');
+				puts(" of function-pointer ");
+				putss(decl.name, decl.name_len);
+				puts(" yielded badtype");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			fnty : ty mut := ty_getfn(fn_retty, wipfn_node->childcount, zero);
+			i : u64 mut;
+			for(i = 0, i < (wipfn_node->childcount), i = i + 1)
+			{
+				cur_param_node ::= ast_get_child(wipfn_node@_, i);
+				cur_param_decl ::= cur_param_node->decl;
+				paramty ::= scope_parse_typename(ctx.local, cur_param_decl.typename, cur_param_decl.typename_len);
+				if(ty_isbad(paramty))
+				{
+					psyc_error_begin(cur_param_node->loc);
+					puts("parameter ");
+					putuint(i);
+					puts(" of function-pointer ");
+					putchar('"');
+					putss(decl.name, decl.name_len);
+					putchar('"');
+					puts(" with typename: ");
+					putchar('"');
+					putss(cur_param_decl.typename, cur_param_decl.typename_len);
+					putchar('"');
+					puts(" yielded badtype");
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				ty_fn_set_param(ref fnty, i, paramty);
+			}
+			declty = ty_ref(fnty, zero);
+		}
+	}
+
+	// bit complicated.
+	// if we are a global variable, we do the whole thing now.
+	// if we are a local variable - then we have likely been hoisted to be alloca'd earlier than when the programmer actually defined us
+	// in which case, we only do the alloca, and store the initialiser (if there is one) when we naturally come across it via cg_decl_stmt
+	// note: if the local is a type-deduced decl, then we have no choice but to compute the initialiser.
+
+	init_node : ast& mut;
+	init_node = null;
+	if((node->childcount) > initialiser_child_idx)
+	{
+		init_node = ast_get_child(node@_, initialiser_child_idx);
+	}
+
+	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
+	if(var == null)
+	{
+		psyc_panic(node->loc, "cg_decl could not verify that the decl actually existed. severe compiler bug.");
+	}
+
+	if(ty_isbad(declty))
+	{
+		declty = scope_parse_typename(ctx.local, decl.typename, decl.typename_len);
+	}
+
+	init_val : cgv mut := zero;
+
+	care_about_init_ll ::= var->is_global;
+	if(init_node != null)
+	{
+		// note: if we are a local explicitly-type decl, then this is actually unnecessary and shouldnt be needed until cg_decl_stmt properly
+		// however, i cant think of a way to not do this work without significantly reducing the readability of this code.
+		// todo: refactor
+		init_val = cg_expr(context
+		{
+			.node := init_node;
+			.local := ctx.local;
+			.typecheck_only := !care_about_init_ll;
+		}, prog);
+	}
+
+	if((decl.typename_len) == cstrlen(psyc_deduced_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_deduced_typename, decl.typename_len))
+		{
+			// deduced typename
+			if(init_node == null)
+			{
+				psyc_error_begin(node->loc);
+				puts("deduced-decl ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" was missing an initialiser. decls with deduced-typenames must always have an initialiser");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			declty = (init_val.type);
+		}
+	}
+
+	(var->type) = declty;
+	cgty ::= cg.type(declty, prog);
+
+	if(init_node != null)
+	{
+		if(care_about_init_ll)
+		{
+			cgv_load_if_variable(ref init_val, prog);
+		}
+		init_val = cgv_convert(init_val, declty, prog, node->loc, !care_about_init_ll);
+	}
+	name_zstr : u8 mut& := arena_push(cgar, 1 + (decl.name_len));
+	__memcpy(name_zstr, decl.name, decl.name_len);
+	deref(name_zstr at (decl.name_len)) = 0;
+	if(!(var->is_global))
+	{
+		// local variable. cg alloca.
+		(var->codegen) = LLVMBuildAlloca(ir, cgty, name_zstr);
+		// remember: dont do the store until its naturally come across via cg_decl_stmt
+		//if(init_node != null)
+		//{
+		//	LLVMBuildStore(ir, init_val.ll, var->codegen);
+		//}
+	}
+	if(var->is_global)
+	{
+		// global variable. cg global.
+		(var->codegen) = LLVMAddGlobal(mod, cgty, name_zstr);
+		LLVMSetLinkage(var->codegen, LLVMPrivateLinkage);
+		LLVMSetExternallyInitialized(var->codegen, 0);
+		is_const ::= !ty_hasqual(declty, tyqual.mut);
+		LLVMSetGlobalConstant(var->codegen, is_const@s32);
+		if(init_node == null)
+		{
+			LLVMSetInitializer(var->codegen, LLVMGetUndef(cgty));
+			if(is_const)
+			{
+				psyc_error_begin(node->loc);
+				puts("Global variable ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" both lacks an initialiser and is marked as const (not mut). Why would you want a global of undefined const?");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+		if(init_node != null)
+		{
+			LLVMSetInitializer(var->codegen, init_val.ll);
+		}
+	}
+	return zero;
+};
+
+
+// statements
+
+cg_expr_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	// happens to be exactly the same code as ast_type.expr, so just re-use it.
+	return cg_expr(ctx, prog);
+};
+
+cg_decl_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	// note: decl stmts are always either global/local variables and nothing else.
+	// globals are handled in a special way (see top-level codegen gvars)
+	// locals are also handled in a special way - all local vars in a function impl are hoisted to the very top and alloca'd all at once as required by an LLVM frontend
+	// for that reason, when we naturally happen across a decl stmt in the wild, we always assume the work is already done
+	// thus, we just do the store.
+	node ::= ctx.node;
+	decl ::= node->decl;
+	var : variable mut& := scope_find_variable(ctx.local, decl.name, decl.name_len)@_;
+	if(var->is_global)
+	{
+		return zero;
+	}
+
+	initialiser_child_idx : u64 mut := 0;
+	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	{
+		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
+		{
+			// function placeholder typename detected.
+			// this is a function pointer
+			initialiser_child_idx = 1;
+		}
+	}
+
+	init_node : ast& mut;
+	init_node = null;
+	if((node->childcount) > initialiser_child_idx)
+	{
+		init_node = ast_get_child(node@_, initialiser_child_idx);
+	}
+
+	if(init_node == null)
+	{
+		return zero;
+	}
+
+	init_val : cgv mut := cg_expr(context
+	{
+		.node := init_node;
+		.local := ctx.local;
+		.typecheck_only := false;
+	}, prog);
+	cgv_load_if_variable(ref init_val, prog);
+	init_val = cgv_convert(init_val, var->type, prog, init_node->loc, false);
+	LLVMBuildStore(ir, init_val.ll, var->codegen);
+	return zero;
+};
+
+cg_composite ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	// just do the children
+	// if the children changes the terminator
+	// then pretend *we* are the terminator instead (last-children-terminator-checking magic for LLVM)
+	s ::= ctx.local;
+	oldterm ::= s->terminator;
+	cg.children(ctx, prog, 0, 0);
+	if((s->terminator) != oldterm)
+	{
+		// yes, new terminator
+		(s->terminator) = (ctx.node);
+	}
+	return zero;
+};
+
+cg_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+
+	cg_func ::= deref(cg_stmt_table at (stmt@s64));
+	return cg_func.fn(ctx, prog);
+};
+
+// now onto the lower level bits.
+
+// literal
+
+cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.s64, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), lit.integral, false@s32);
+		.type := type;
+	};
+};
+
+cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.f64, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstReal(cg.type(type, prog), lit.floating_point);
+		.type := type;
+	};
+};
+
+cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.s8, q);
+
+	chars ::= lit.chars;
+	len ::= lit.chars_len;
+	// todo: escape chars and len
+	if(len != 1)
+	{
+		psyc_error_begin(node->loc);
+		puts("char literal ");
+		puts("'");
+		putss(chars, len);
+		puts("'");
+		puts(" was of length ");
+		putuint(len);
+		puts(", but a char literal must have length exactly 1.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), deref(chars at 0), false@s32);
+		.type := type;
+	};
+};
+
+cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	chars ::= lit.chars;
+	len ::= lit.chars_len;
+	//zstr : u8 mut& := arena_push(cgar, len + 1);
+	//__memcpy(zstr, chars, len);
+	//deref(zstr at len) = 0;
+
+	ll : u64 mut := 0;
+	if(!(ctx.typecheck_only))
+	{
+		// so LLVMBuildGlobalString is the golden solution
+		// however, due to how its implemented, it always passes nullptr to the C++ IRBuilderBase::CreateGlobalString which means it derives it from the current basic block
+		// because of that, LLVMBuildGlobalString will crash if you're not in a function i.e global string literals will crash
+		//ll = LLVMBuildGlobalString(ir, zstr, "");
+
+		// so we have to do it ourselves...
+		// first create a const string
+		strval ::= LLVMConstString(chars, len@u32, false@s32);
+		// then create a new global variable of
+		// initialiser = strval
+		// privatelinkage
+		glob ::= LLVMAddGlobal(mod, LLVMTypeOf(strval), "");
+		LLVMSetLinkage(glob, LLVMPrivateLinkage);
+		LLVMSetExternallyInitialized(glob, 0);
+		LLVMSetGlobalConstant(glob, true@s32);
+		LLVMSetInitializer(glob, strval);
+		ll = glob;
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := ll;
+		.type := ty_ref(ty_getprim(primty.u8, tyqual.static), zero);
+	};
+};
+
+cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	q ::= (tyqual.static) | (tyqual.weak);
+	type ::= ty_getprim(primty.bool, q);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMConstInt(cg.type(type, prog), lit.boolean, false@s32);
+		.type := type;
+	};
+};
+
+cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	return cgv
+	{
+		.tag := cgvtag.valzero;
+		.ll := 0;
+		.type := zero;
+	};
+};
+
+cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	lit ::= expr.literal;
+
+	cg_func ::= deref(cg_literal_table at ((lit.type)@s64));
+	return cg_func.fn(lit, ctx, prog);
+};
+
+// symbol
+cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	sym ::= expr.symbol;
+	node ::= ctx.node;
+	// most obvious choice: a variable
+	maybe_var ::= scope_find_variable(ctx.local, sym.symbol, sym.len);
+	if(maybe_var != null)
+	{
+		if(ty_isbad(maybe_var->type))
+		{
+			psyc_error_begin(node->loc);
+			puts("type of decl ");
+			putchar('"');
+			putss(sym.symbol, sym.len);
+			putchar('"');
+			puts(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if((maybe_var->codegen) == 0)
+		{
+			psyc_error_begin(node->loc);
+			puts("internal cgv of decl ");
+			putchar('"');
+			putss(sym.symbol, sym.len);
+			putchar('"');
+			puts(" yielded .ll == 0");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return cgv
+		{
+			.tag := cgvtag.var;
+			.ll := maybe_var->codegen;
+			.type := maybe_var->type;
+		};
+	}
+
+	// perhaps a function param?
+	maybe_parent_fn ::= scope_get_parent_function(ctx.local, prog);
+	if(maybe_parent_fn != null)
+	{
+		fnty ::= maybe_parent_fn->type;
+		fnpayload ::= fnty.fn;
+		fnparamtys ::= (fnpayload.param_types)@ty&;
+		parentnode ::= maybe_parent_fn->node;
+
+		paramidx : u64 mut := -1;
+		i : u64 mut;
+		paramnode : ast& mut;
+		paramdecl : ast_decl mut;
+		for(i = 0, i < (maybe_parent_fn->param_count), i = i + 1)
+		{
+			paramnode = ast_get_child(parentnode@_, i);
+			paramdecl = (paramnode->decl);
+			if((paramdecl.name_len) == (sym.len))
+			{
+				if(cstreql_n(paramdecl.name, sym.symbol, sym.len))
+				{
+					paramidx = i;
+				}
+			}
+		}
+		if(paramidx != -1)
+		{
+			// yep
+			return cgv
+			{
+				.tag := cgvtag.misc;
+				.type := deref(fnparamtys at paramidx);
+				.ll := LLVMGetParam(maybe_parent_fn->codegen, paramidx@_);
+			};
+		}
+	}
+
+	maybe_function_ref ::= scope_find_function(ctx.local, sym.symbol, sym.len);
+	if(maybe_function_ref != null)
+	{
+		return cgv
+		{
+			.tag := cgvtag.misc;
+			.type := ty_ref(maybe_function_ref->type, tyqual.static);
+			.ll := maybe_function_ref->codegen;
+		};
+	}
+
+	psyc_error_begin(node->loc);
+	puts("unknown symbol ");
+	putchar('"');
+	putss(sym.symbol, sym.len);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+// ret
+cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	parentfn ::= scope_get_parent_function(ctx.local, prog);
+	if(parentfn == null)
+	{
+		psyc_error_begin(node->loc);
+		puts("return statements are only valid within a function implementation block");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	fnty ::= parentfn->type;
+	fnpayload ::= fnty.fn;
+	fn_retty ::= deref((fnpayload.return_type)@ty&);
+	// todo: get parent fn and ensure the return is suitable.
+	if((node->childcount) == 0)
+	{
+		LLVMBuildRetVoid(ir);
+	}
+	if((node->childcount) == 1)
+	{
+		retval : cgv mut := cg_node(context
+		{
+			.node := ast_get_child(node@_, 0);
+			.local := ctx.local;
+			.typecheck_only := false;
+		}, prog);
+		cgv_load_if_variable(ref retval, prog);
+		retval = cgv_convert(retval, fn_retty, prog, node->loc, false);
+		// do a convert
+		LLVMBuildRet(ir, retval.ll);
+	}
+	if((node->childcount) > 1)
+	{
+		psyc_panic(node->loc, "ret-expr had more than 1 child, which is wrong. compiler bug.");
+	}
+	s ::= ctx.local;
+	(s->terminator) = node;
+	return zero;
+};
+
+// biop
+
+cg_common_process_param ::= func(param : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	pval ::= cg_node(context
+	{
+		.node := param;
+		.local := ctx.local;
+		.typecheck_only := ctx.typecheck_only;
+	}, prog);
+	if((pval.tag) == zero)
+	{
+		// invalid
+		psyc_error_begin(param->loc);
+		puts("failed to process operand - yielded invalid value");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return pval;
+};
+
+cg_biop_compare_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+{
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(lhs_val, prog);
+		cgv_load_if_variable(rhs_val, prog);
+	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
+
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			if(!ty_is(lhsty, tytag.ptr))
+			{
+				if(!ty_is(lhsty, tytag.enm))
+				{
+					psyc_error_begin(lhs->loc);
+					puts("operator invalid because the lhs must be either an integral, floating-point, pointer or enum type, but you have passed ");
+					putchar('"');
+					putty(lhsty);
+					putchar('"');
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+			}
+		}
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		if(!ty_is_floating_point(rhsty))
+		{
+			if(!ty_is(rhsty, tytag.ptr))
+			{
+				if(!ty_is(rhsty, tytag.enm))
+				{
+					psyc_error_begin(rhs->loc);
+					puts("operator invalid because the rhs must be either an integral, floating-point, pointer or enum type, but you have passed ");
+					putchar('"');
+					putty(rhsty);
+					putchar('"');
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+			}
+		}
+	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_fs ::= ty_floating_point_size(rhsty);
+	lhs_fs ::= ty_floating_point_size(lhsty);
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_floating_point(rhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			conversion_direction = false;
+		}
+		if(ty_is_floating_point(lhsty))
+		{
+			if(rhs_fs > lhs_fs)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is(rhsty, tytag.ptr))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			conversion_direction = false;
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+};
+
+cg_biop_arith_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+{
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(lhs_val, prog);
+		cgv_load_if_variable(rhs_val, prog);
+	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
+
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("operator invalid because the lhs must be either an integral or floating-point type, but you have passed ");
+			putchar('"');
+			putty(lhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		if(!ty_is_floating_point(rhsty))
+		{
+			psyc_error_begin(rhs->loc);
+			puts("operator invalid because the rhs must be either an integral or floating-point type, but you have passed ");
+			putchar('"');
+			putty(rhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_fs ::= ty_floating_point_size(rhsty);
+	lhs_fs ::= ty_floating_point_size(lhsty);
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_floating_point(rhsty))
+	{
+		if(!ty_is_floating_point(lhsty))
+		{
+			conversion_direction = false;
+		}
+		if(ty_is_floating_point(lhsty))
+		{
+			if(rhs_fs > lhs_fs)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+};
+
+cg_biop_bitwise_common ::= func(lhs_val : cgv mut&, rhs_val : cgv mut&, lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> v0
+{
+	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(lhs_val, prog);
+		cgv_load_if_variable(rhs_val, prog);
+	}
+	if(cgv_is_zero(deref rhs_val))
+	{
+		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+	}
+
+	// select the return type.
+	lhsty ::= lhs_val->type;
+	if(!ty_is_integral(lhsty))
+	{
+		if(!ty_is(lhsty, tytag.enm))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("operator invalid because the lhs must be an integral or enum type, but you have passed ");
+			putchar('"');
+			putty(lhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	rhsty ::= rhs_val->type;
+	if(!ty_is_integral(rhsty))
+	{
+		if(!ty_is(rhsty, tytag.enm))
+		{
+			psyc_error_begin(rhs->loc);
+			puts("operator invalid because the rhs must be an integral or enum type, but you have passed ");
+			putchar('"');
+			putty(rhsty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	// true  => rhs converts to lhs
+	// false => lhs converts to rhs
+	conversion_direction : bool mut := true;
+
+	rhs_is ::= ty_integral_size(rhsty);
+	lhs_is ::= ty_integral_size(lhsty);
+	if(ty_is_integral(rhsty))
+	{
+		if(ty_is_integral(lhsty))
+		{
+			if(rhs_is > lhs_is)
+			{
+				conversion_direction = false;
+			}
+		}
+	}
+
+	if(conversion_direction)
+	{
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+	if(!conversion_direction)
+	{
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+	}
+};
+
+cg_biop_assign ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	// special case here: lhs is a deref.
+	did_special_case : bool mut;
+	did_special_case = false;
+	if((lhs->type) == (ast_type.expr))
+	{
+		lhs_expr ::= lhs->expr;
+		if((lhs_expr.type) == (ast_expr_type.unop))
+		{
+			lhs_unop ::= lhs_expr.unop;
+			if((lhs_unop.type) == (ast_unop_type.op_deref))
+			{
+				// yes, this is the special case.
+				// overwrite lhs_val and let the function do the rest.
+				lhs_child ::= ast_get_child(lhs@_, 0);
+				lhs_val = cg_expr(context
+				{
+					.node := lhs_child;
+					.local := ctx.local;
+					.typecheck_only := ctx.typecheck_only;
+				}, prog);
+				if(!(ctx.typecheck_only))
+				{
+					cgv_load_if_variable(ref lhs_val, prog);
+				}
+				(lhs_val.type) = ty_deref(lhs_val.type);
+				did_special_case = true;
+			}
+		}
+	}
+	if(!did_special_case)
+	{
+		lhs_val = cg_common_process_param(lhs, ctx, prog);
+	}
+
+	if(!ty_hasqual(lhs_val.type, tyqual.mut))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("invalid assignment to non-mut operand of type ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref rhs_val, prog);
+	}
+	rhs_val = cgv_convert(rhs_val, lhs_val.type, prog, rhs->loc, ctx.typecheck_only);
+
+	if(!(ctx.typecheck_only))
+	{
+		LLVMBuildStore(ir, rhs_val.ll, lhs_val.ll);
+	}
+	return lhs_val;
+};
+
+cg_biop_compare ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 32, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is(lhs_val.type, tytag.ptr))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 32, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is(lhs_val.type, tytag.enm))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 32, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 9, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+
+	return lhs_val;
+};
+
+cg_biop_comparen ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 33, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is(lhs_val.type, tytag.ptr))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 33, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is(lhs_val.type, tytag.enm))
+		{
+			(lhs_val.ll) = LLVMBuildICmp(ir, 33, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 14, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+
+	return lhs_val;
+};
+
+cg_biop_less_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			if(ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 40, lhs_val.ll, rhs_val.ll, "");
+			}
+			if(!ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 36, lhs_val.ll, rhs_val.ll, "");
+			}
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 12, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+	return lhs_val;
+};
+
+cg_biop_less_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			if(ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 41, lhs_val.ll, rhs_val.ll, "");
+			}
+			if(!ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 37, lhs_val.ll, rhs_val.ll, "");
+			}
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 13, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+	return lhs_val;
+};
+
+cg_biop_greater_than ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			if(ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 38, lhs_val.ll, rhs_val.ll, "");
+			}
+			if(!ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 34, lhs_val.ll, rhs_val.ll, "");
+			}
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 10, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+	return lhs_val;
+};
+
+cg_biop_greater_than_equal ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			if(ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 39, lhs_val.ll, rhs_val.ll, "");
+			}
+			if(!ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildICmp(ir, 35, lhs_val.ll, rhs_val.ll, "");
+			}
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFCmp(ir, 11, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_getprim(primty.bool, zero);
+	return lhs_val;
+};
+
+cg_biop_plus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildAdd(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFAdd(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_minus ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildSub(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFSub(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
+};
+
+cg_biop_multiply ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildMul(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFMul(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_divide ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_integral(lhs_val.type))
+		{
+			if(ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildSDiv(ir, lhs_val.ll, rhs_val.ll, "");
+			}
+			if(!ty_is_signed_integral(lhs_val.type))
+			{
+				(lhs_val.ll) = LLVMBuildUDiv(ir, lhs_val.ll, rhs_val.ll, "");
+			}
+		}
+		if(ty_is_floating_point(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildFDiv(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_bitwise_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_logical_or ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("binary logical OR is invalid - lhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary logical OR is invalid - rhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref lhs_val, prog);
+		cgv_load_if_variable(ref rhs_val, prog);
+
+		(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	return lhs_val;
+};
+
+cg_biop_bitwise_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_logical_and ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	if(!ty_is_boolean(lhs_val.type))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("binary logical AND is invalid - lhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(lhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	if(!ty_is_boolean(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("binary logical AND is invalid - rhs operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(lhs_val.tag) = (cgvtag.misc);
+
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref lhs_val, prog);
+		cgv_load_if_variable(ref rhs_val, prog);
+		(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	return lhs_val;
+};
+
+cg_biop_bitleft ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		(lhs_val.ll) = LLVMBuildShl(ir, lhs_val.ll, rhs_val.ll, "");
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
+};
+
+cg_biop_bitright ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildAShr(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(!ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildLShr(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	return lhs_val;
+};
+
+cg_biop_modulo ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut;
+	rhs_val : cgv mut;
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildSRem(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+		if(!ty_is_signed_integral(lhs_val.type))
+		{
+			(lhs_val.ll) = LLVMBuildURem(ir, lhs_val.ll, rhs_val.ll, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+
+	return lhs_val;
+};
+
+cg_biop_at ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	if(!ty_is(lhs_val.type, tytag.arr))
+	{
+		if(!ty_is(lhs_val.type, tytag.ptr))
+		{
+			psyc_error_begin(lhs->loc);
+			puts("invalid 'at' operator - lhs operand must be either an array or pointer type. you have provided a ");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref rhs_val, prog);
+	}
+	if(!ty_is_integral(rhs_val.type))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid 'at' operator - rhs operand must be an integral type. you have provided a ");
+		putchar('"');
+		putty(rhs_val.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	index_list : u64 mut#2;
+	if(!(ctx.typecheck_only))
+	{
+		deref(index_list at 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+		deref(index_list at 1) = (rhs_val.ll);
+	}
+	elem_ty ::= ty_underlying(lhs_val.type);
+	if(!(ctx.typecheck_only))
+	{
+		if(ty_is(lhs_val.type, tytag.arr))
+		{
+			// do array things
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(lhs_val.type, prog), lhs_val.ll, index_list at 0, 2, "");
+		}
+		if(ty_is(lhs_val.type, tytag.ptr))
+		{
+			// do pointer gep
+			cgv_load_if_variable(ref lhs_val, prog);
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(elem_ty, prog), lhs_val.ll, index_list at 1, 1, "");
+		}
+	}
+	(lhs_val.tag) = (cgvtag.misc);
+	(lhs_val.type) = ty_ref(elem_ty, zero);
+	return lhs_val;
+};
+
+cg_biop_field_callfunc ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	rhs_expr ::= rhs->expr;
+	callfunc ::= rhs_expr.callfunc;
+	rhs_sym ::= ast_symbol_expr
+	{
+		.symbol := callfunc.funcname;
+		.len := callfunc.funcname_len;
+	};
+
+	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of field expression with a rhs callfunc must be a struct type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_ty.strct;
+
+	// get the member id.
+	// if its a variable, we do a GEP to yield another variable
+	// otherwise, we do an extractvalue to yield a misc
+	memtypes ::= (lhs_strct.member_types)@ty&;
+	memnames ::= (lhs_strct.member_names);
+	memname_lens ::= (lhs_strct.member_name_lens);
+	selected_memidx : u64 mut := -1;
+	selected_memty : ty mut := zero;
+	selected_memname : u8& mut := null;
+	selected_memname_len : u64 mut := 0;
+
+	i : u64 mut;
+
+	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
+	{
+		memty ::= deref(memtypes at i);
+		memname ::= deref(memnames at i);
+		memname_len ::= deref(memname_lens at i);
+		if((rhs_sym.len) == memname_len)
+		{
+			if(cstreql_n(rhs_sym.symbol, memname, memname_len))
+			{
+				// this is the member.
+				selected_memidx = i;
+				selected_memty = memty;
+				selected_memname = memname;
+				selected_memname_len = memname_len;
+			}
+		}
+	}
+
+	if(selected_memidx == -1)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("struct ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" had no such member named ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(selected_memty.qual) = ((selected_memty.qual) | (lhs_ty.qual));
+	selected_memty = ty_deref(selected_memty);
+
+	if(!ty_is(selected_memty, tytag.fn))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("data member ");
+		putchar('"');
+		putss(lhs_strct.name, lhs_strct.name_len);
+		puts("::");
+		putss(selected_memname, selected_memname_len);
+		putchar('"');
+		puts(" is of non-callable type ");
+		putty(selected_memty);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	member_ll : u64 mut := zero;
+
+	if(!(ctx.typecheck_only))
+	{
+		if((lhs_val.tag) == (cgvtag.var))
+		{
+			// variable! ll should be an alloca or GEP'd alloca
+			member_ll = LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			// we need the function itself to call it, so we force a load directly afterwards too
+			member_ll = LLVMBuildLoad2(ir, cg.type(ty_ref(selected_memty, zero), prog), member_ll, "");
+		}
+		if((lhs_val.tag) != (cgvtag.var))
+		{
+			member_ll = LLVMBuildExtractValue(ir, lhs_val.ll, selected_memidx@u32, "");
+		}
+	}
+
+	// now we call it.
+	call_param_count ::= rhs->childcount;
+
+	fnpayload ::= selected_memty.fn;
+	fnparamtys ::= (fnpayload.param_types)@ty&;
+	if(call_param_count != (fnpayload.param_count))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid call to data member ");
+		putchar('"');
+		putss(lhs_strct.name, lhs_strct.name_len);
+		puts("::");
+		putss(selected_memname, selected_memname_len);
+		puts(" - you provided ");
+		putuint(call_param_count);
+		puts(" params, but it expected ");
+		putuint(fnpayload.param_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	ll_args : u64 mut& := arena_push(cgar, __sizeof(u64) * call_param_count);
+
+	paramnode : ast& mut;
+	reqty : ty mut;
+	param_val : cgv mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		reqty = deref(fnparamtys at i);
+		paramnode = ast_get_child(rhs@_, i);
+		param_val = cg_expr(context
+		{
+			.node := paramnode;
+			.local := ctx.local;
+			.typecheck_only := ctx.typecheck_only;
+		}, prog);
+		if(!(ctx.typecheck_only))
+		{
+			cgv_load_if_variable(ref param_val, prog);
+		}
+		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc, ctx.typecheck_only);
+		deref(ll_args at i) = (param_val.ll);
+	}
+
+	ret_ll : u64 mut := 0;
+	if(!(ctx.typecheck_only))
+	{
+		ret_ll = LLVMBuildCall2(ir, cg.type(selected_memty, prog), member_ll, ll_args, call_param_count@u32, "");
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := ret_ll;
+		.type := deref((fnpayload.return_type)@ty&);
+	};
+};
+
+cg_biop_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	// firstly
+	// rhs should be a symbol expr (or a callfunc)
+
+	rhs_sym : ast_symbol_expr mut;
+	rhs_sym = zero;
+	if((rhs->type) == (ast_type.expr))
+	{
+		rhs_expr ::= rhs->expr;
+		if((rhs_expr.type) == (ast_expr_type.symbol))
+		{
+			rhs_sym = (rhs_expr.symbol);
+		}
+		if((rhs_expr.type) == (ast_expr_type.callfunc))
+		{
+			// callfuncs are a special case, do it in its own function
+			return cg_biop_field_callfunc(lhs, rhs, ctx, prog);
+		}
+	}
+	if((rhs_sym.symbol) == null)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid field expression - rhs must be a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	i : u64 mut;
+
+	// then: check if lhs is a symbol expr that matches an enum name.
+	// if so then we can early out as its an enum value.
+	if((lhs->type) == (ast_type.expr))
+	{
+		lhs_expr ::= lhs->expr;
+		if((lhs_expr.type) == (ast_expr_type.symbol))
+		{
+			lhs_sym ::= lhs_expr.symbol; 
+			maybe_enum ::= scope_find_enum(ctx.local, lhs_sym.symbol, lhs_sym.len);
+			if(maybe_enum != null)
+			{
+				// ok it *is* an enum
+				// find the entry
+				enumty : ty mut := maybe_enum->type;
+				(enumty.qual) = ((enumty.qual) | tyqual.static);
+				enumpayload ::= enumty.enm;
+				for(i = 0, i < (enumpayload.entry_count), i = i + 1)
+				{
+					curentryname ::= deref((enumpayload.entry_names) at i);
+					curentryname_len ::= deref((enumpayload.entry_name_lens) at i);
+					if(curentryname_len == (rhs_sym.len))
+					{
+						if(cstreql_n(curentryname, rhs_sym.symbol, rhs_sym.len))
+						{
+							// this is that exact enum!
+							value ::= deref((enumpayload.entry_values) at i);
+							// return this as a literal
+							ret : cgv mut := cg_literal(make_literal_expr(ast_literal_expr
+							{
+								.type := ast_literal_type.integral;
+								.integral := value@s64;
+							}), ctx, prog);
+							(ret.type) = enumty;
+							return ret;
+						}
+					}
+				}
+				psyc_error_begin(rhs->loc);
+				puts("enum ");
+				putchar('"');
+				putty(enumty);
+				putchar('"');
+				puts(" has no entry named ");
+				putchar('"');
+				putss(rhs_sym.symbol, rhs_sym.len);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+	}
+
+	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of field expression must be a struct or enum type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_ty.strct;
+
+	// get the member id.
+	// if its a variable, we do a GEP to yield another variable
+	// otherwise, we do an extractvalue to yield a misc
+	memtypes ::= (lhs_strct.member_types)@ty&;
+	memnames ::= (lhs_strct.member_names);
+	memname_lens ::= (lhs_strct.member_name_lens);
+	selected_memidx : u64 mut := -1;
+	selected_memty : ty mut := zero;
+	selected_memname : u8& mut := null;
+	selected_memname_len : u64 mut := 0;
+
+	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
+	{
+		memty ::= deref(memtypes at i);
+		memname ::= deref(memnames at i);
+		memname_len ::= deref(memname_lens at i);
+		if((rhs_sym.len) == memname_len)
+		{
+			if(cstreql_n(rhs_sym.symbol, memname, memname_len))
+			{
+				// this is the member.
+				selected_memidx = i;
+				selected_memty = memty;
+				selected_memname = memname;
+				selected_memname_len = memname_len;
+			}
+		}
+	}
+
+	if(selected_memidx == -1)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("struct ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		puts(" had no such member named ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(selected_memty.qual) = ((selected_memty.qual) | (lhs_ty.qual));
+
+	if((lhs_val.tag) == (cgvtag.var))
+	{
+		// variable! ll should be an alloca or GEP'd alloca
+		// which means we should GEP that and return var
+		ret : cgv mut := cgv
+		{
+			.tag := cgvtag.var;
+			.ll := 0;
+			.type := selected_memty;
+		};
+		if(!(ctx.typecheck_only))
+		{
+			(ret.ll) = LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+		}
+
+		return ret;
+	}
+	ret : cgv mut := cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := 0;
+		.type := selected_memty;
+	};
+	if(!(ctx.typecheck_only))
+	{
+		(ret.ll) = LLVMBuildExtractValue(ir, lhs_val.ll, selected_memidx@u32, "");
+	}
+	return ret;
+};
+
+cg_biop_ptr_field ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	// firstly
+	// rhs should be a symbol expr (or a callfunc)
+
+	rhs_sym : ast_symbol_expr mut;
+	rhs_sym = zero;
+	if((rhs->type) == (ast_type.expr))
+	{
+		rhs_expr ::= rhs->expr;
+		if((rhs_expr.type) == (ast_expr_type.symbol))
+		{
+			rhs_sym = (rhs_expr.symbol);
+		}
+		if((rhs_expr.type) == (ast_expr_type.callfunc))
+		{
+			// callfuncs are a special case, do it in its own function
+			return cg_biop_field_callfunc(lhs, rhs, ctx, prog);
+		}
+	}
+	if((rhs_sym.symbol) == null)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid field expression - rhs must be a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	i : u64 mut;
+
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	// firstly ensure the lhs of struct type.
+	lhs_ty ::= lhs_val.type;
+	if(!ty_is(lhs_ty, tytag.ptr))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of ptr-field expression must be a pointer type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_uty ::= ty_underlying(lhs_ty);
+	underlying_cgv : cgv mut;
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref lhs_val, prog);
+	}
+	if(!ty_is(lhs_uty, tytag.strct))
+	{
+		psyc_error_begin(lhs->loc);
+		puts("lhs of ptr-field expression must be a pointer-to-struct type - you have provided a ");
+		putchar('"');
+		putty(lhs_ty);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_strct ::= lhs_uty.strct;
+
+	// get the member id.
+	// if its a variable, we do a GEP to yield another variable
+	// otherwise, we do an extractvalue to yield a misc
+	memtypes ::= (lhs_strct.member_types)@ty&;
+	memnames ::= (lhs_strct.member_names);
+	memname_lens ::= (lhs_strct.member_name_lens);
+	selected_memidx : u64 mut := -1;
+	selected_memty : ty mut := zero;
+	selected_memname : u8& mut := null;
+	selected_memname_len : u64 mut := 0;
+
+	for(i = 0, i < (lhs_strct.member_count), i = i + 1)
+	{
+		memty ::= deref(memtypes at i);
+		memname ::= deref(memnames at i);
+		memname_len ::= deref(memname_lens at i);
+		if((rhs_sym.len) == memname_len)
+		{
+			if(cstreql_n(rhs_sym.symbol, memname, memname_len))
+			{
+				// this is the member.
+				selected_memidx = i;
+				selected_memty = memty;
+				selected_memname = memname;
+				selected_memname_len = memname_len;
+			}
+		}
+	}
+
+	if(selected_memidx == -1)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("struct ");
+		putchar('"');
+		putty(lhs_uty);
+		putchar('"');
+		puts(" had no such member named ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(selected_memty.qual) = ((selected_memty.qual) | (lhs_uty.qual));
+
+	ret : cgv mut := cgv
+	{
+		.tag := cgvtag.var;
+		.ll := 0;
+		.type := selected_memty;
+	};
+	if(!(ctx.typecheck_only))
+	{
+		(ret.ll) = LLVMBuildStructGEP2(ir, cg.type(lhs_uty, prog), lhs_val.ll, selected_memidx@u32, "");
+	}
+	return ret;
+};
+
+cg_biop_cast ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref lhs_val, prog);
+	}
+	rhs_sym : ast_symbol_expr mut;
+	rhs_sym = zero;
+	if((rhs->type) == (ast_type.expr))
+	{
+		rhs_expr ::= rhs->expr;
+		if((rhs_expr.type) == (ast_expr_type.symbol))
+		{
+			rhs_sym = (rhs_expr.symbol);
+		}
+	}
+	if((rhs_sym.symbol) == null)
+	{
+		psyc_error_begin(rhs->loc);
+		puts("invalid cast - rhs must be a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// make lhs weak
+	lhs_ty : ty mut := lhs_val.type;
+	(lhs_ty.qual) = (lhs_ty.qual) | (tyqual.weak);
+	(lhs_val.type) = lhs_ty;
+	if(!cgv_is_zero(lhs_val))
+	{
+		(lhs_val.tag) = (cgvtag.misc);
+	}
+
+	// is it the weakening idiom? then just return the weakened type
+	weakening_idiom ::= "_";
+	if((rhs_sym.len) == cstrlen(weakening_idiom))
+	{
+		if(cstreql_n(rhs_sym.symbol, weakening_idiom, rhs_sym.len))
+		{
+			// weakening idiom
+			// just return lhs_val but make its type weak
+			return lhs_val;
+		}
+	}
+
+	// else, do the conversion.
+	rhs_ty ::= scope_parse_typename(ctx.local, rhs_sym.symbol, rhs_sym.len);
+	if(ty_isbad(rhs_ty))
+	{
+		psyc_error_begin(rhs->loc);
+		puts("rhs of cast ");
+		putchar('"');
+		putss(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lhs_val = cgv_convert(lhs_val, rhs_ty, prog, lhs->loc, ctx.typecheck_only);
+	return lhs_val;
+};
+
+cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	biop ::= expr.biop;
+	biop_ty ::= biop.type;
+	node ::= ctx.node;
+
+	lhs ::= ast_biop_get_lhs(deref node);
+	rhs ::= ast_biop_get_rhs(deref node);
+
+	cg_func ::= deref(cg_biop_table at (biop_ty@s64));
+	return cg_func.fn(lhs, rhs, ctx, prog);
+};
+
+cg_unop_minus ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref opval, prog);
+	}
+	if(!ty_is_integral(opval.type))
+	{
+		if(!ty_is_floating_point(opval.type))
+		{
+			psyc_error_begin(operand->loc);
+			puts("unary minus is invalid - operand must be either an integral or floating point type. you have provided a ");
+			putchar('"');
+			putty(opval.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	if(ty_is_integral(opval.type))
+	{
+		(opval.ll) = LLVMBuildNeg(ir, opval.ll, "");
+	}
+	if(ty_is_floating_point(opval.type))
+	{
+		(opval.ll) = LLVMBuildFNeg(ir, opval.ll, "");
+	}
+	(opval.tag) = (cgvtag.misc);
+	return opval;
+};
+
+cg_unop_bitwise_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref opval, prog);
+	}
+	if(!ty_is_integral(opval.type))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary bitwise invert is invalid - operand must be an integral type. you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	(opval.tag) = (cgvtag.misc);
+	return opval;
+};
+
+cg_unop_logical_invert ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref opval, prog);
+	}
+	if(!ty_is_boolean(opval.type))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary logical invert is invalid - operand must be a bool. you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	(opval.tag) = (cgvtag.misc);
+	return opval;
+};
+
+cg_unop_ref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	// this ones really easy. get the operand, do *not* load it, but pretend you already have.
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if((opval.tag) != (cgvtag.var))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary ref is invalid - you can only retrieve the address of an lvalue");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// sneakily move the tag to misc even though i didnt load it.
+	(opval.tag) = (cgvtag.misc);
+	(opval.type) = ty_ref(opval.type, zero);
+
+	return opval;
+};
+
+cg_unop_deref ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	if(!(ctx.typecheck_only))
+	{
+		cgv_load_if_variable(ref opval, prog);
+	}
+	if(!ty_is(opval.type, tytag.ptr))
+	{
+		psyc_error_begin(operand->loc);
+		puts("unary deref is invalid - you can only deref a pointer type, you have provided a ");
+		putchar('"');
+		putty(opval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(opval.tag) = (cgvtag.misc);
+	(opval.type) = ty_deref(opval.type);
+	(opval.ll) = LLVMBuildLoad2(ir, cg.type(opval.type, prog), opval.ll, "");
+	return opval;
+};
+
+cg_unop_defer ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	psyc_panic(operand->loc, "unop defer NYI");
+	return zero;
+};
+
+cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	unop ::= expr.unop;
+	unop_ty ::= unop.type;
+	node ::= ctx.node;
+
+	operand ::= ast_unop_get_operand(deref node);
+
+	cg_func ::= deref(cg_unop_table at (unop_ty@s64));
+	return cg_func.fn(operand, ctx, prog);
+};
+
+// callfunc
+cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	call ::= expr.callfunc;
+
+	fnty : ty mut := zero;
+
+	if((call.funcname_len) > 2)
+	{
+		if(cstr_starts_with_n(call.funcname, "__", 2))
+		{
+			rest ::= (call.funcname) at 2;
+			rest_len ::= (call.funcname_len) - 2;
+			i : u64 mut;
+			cg_builtin_table_size ::= __sizeof(cg_builtin_table) / __sizeof(deref(cg_builtin_table at 0));
+			for(i = 0, i < cg_builtin_table_size, i = i + 1)
+			{
+				name ::= __enumname(i@builtin);
+				if(cstrlen(name) == rest_len)
+				{
+					if(cstreql_n(name, rest, rest_len))
+					{
+						cg_func ::= deref(cg_builtin_table at i);
+						return cg_func.fn(ctx, prog);
+					}
+				}
+			}
+			psyc_error_begin(node->loc);
+			puts("unknown builtin ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	fn ::= scope_find_function(ctx.local, call.funcname, call.funcname_len);
+	ll : u64 mut := zero;
+	if(fn != null)
+	{
+		fnty = (fn->type);
+		ll = (fn->codegen);
+	}
+	if(fn == null)
+	{
+		// try treating it as a symbol
+		val : cgv mut := cg_expr_common(make_symbol_expr(ast_symbol_expr
+		{
+			.symbol := call.funcname;
+			.len := call.funcname_len;
+		}), ctx, prog);
+		if(!(ctx.typecheck_only))
+		{
+			cgv_load_if_variable(ref val, prog);
+		}
+		if(!ty_is(val.type, tytag.ptr))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to non-function ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			puts(", the symbol is of type ");
+			putchar('"');
+			putty(val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		valfnty ::= ty_underlying(val.type);
+		if(!ty_is(valfnty, tytag.fn))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid call to non-function ");
+			putchar('"');
+			putss(call.funcname, call.funcname_len);
+			putchar('"');
+			puts(", the symbol is of type ");
+			putchar('"');
+			putty(val.type);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		fnty = valfnty;
+		ll = (val.ll);
+	}
+
+	call_param_count ::= node->childcount;
+
+	fnpayload ::= fnty.fn;
+	fnparamtys ::= (fnpayload.param_types)@ty&;
+	if(call_param_count != (fnpayload.param_count))
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid call to function ");
+		putchar('"');
+		putss(call.funcname, call.funcname_len);
+		putchar('"');
+		puts(" - you provided ");
+		putuint(call_param_count);
+		puts(" params, but it expected ");
+		putuint(fnpayload.param_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	ll_args : u64 mut& := arena_push(cgar, __sizeof(u64) * call_param_count);
+
+	i : u64 mut;
+	paramnode : ast& mut;
+	reqty : ty mut;
+	param_val : cgv mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		reqty = deref(fnparamtys at i);
+		paramnode = ast_get_child(node@_, i);
+		param_val = cg_expr(context
+		{
+			.node := paramnode;
+			.local := ctx.local;
+			.typecheck_only := ctx.typecheck_only;
+		}, prog);
+		if(!(ctx.typecheck_only))
+		{
+			cgv_load_if_variable(ref param_val, prog);
+		}
+		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc, ctx.typecheck_only);
+		deref(ll_args at i) = (param_val.ll);
+	}
+
+	ret_ll : u64 mut := 0;
+	if(!(ctx.typecheck_only))
+	{
+		ret_ll = LLVMBuildCall2(ir, cg.type(fnty, prog), ll, ll_args, call_param_count@u32, "");
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := ret_ll;
+		.type := deref((fnpayload.return_type)@ty&);
+	};
+};
+
+cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	inits ::= node->childcount;
+	structty ::= type.strct;
+
+	struct_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+
+	memtys ::= (structty.member_types)@ty&;
+	// write in the inits
+	i : u64 mut;
+	j : u64 mut;
+	childnode : ast& mut;
+	childinit : ast_init mut;
+	childvalnode : ast& mut;
+	childval : cgv mut;
+	for(i = 0, i < inits, i = i + 1)
+	{
+		childnode = ast_get_child(node@_, i);
+		childinit = (childnode->init);
+		childvalnode = ast_get_child(childnode@_, 0);
+		childval = cg_expr(context
+		{
+			.node := childvalnode;
+			.local := ctx.local;
+			.typecheck_only := ctx.typecheck_only;
+		}, prog);
+		if(!(ctx.typecheck_only))
+		{
+			cgv_load_if_variable(ref childval, prog);
+		}
+		childval = cgv_convert(childval, deref(memtys at i), prog, childnode->loc, ctx.typecheck_only);
+
+		// find the member idx of this init
+		j = 0;
+		continue_searching : bool mut := true;
+		while(continue_searching)
+		{
+			memname ::= deref((structty.member_names) at j);
+			memname_len ::= deref((structty.member_name_lens) at j);
+			if(memname_len == (childinit.name_len))
+			{
+				if(cstreql_n(memname, childinit.name, memname_len))
+				{
+					// this is it
+					continue_searching = false;
+				}
+			}
+			if(continue_searching)
+			{
+				if(j >= (structty.member_count))
+				{
+					psyc_error_begin(childnode->loc);
+					puts("struct type ");
+					putty(type);
+					puts(" had no such member ");
+					putchar('"');
+					putss(childinit.name, childinit.name_len);
+					putchar('"');
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				j = j + 1;
+			}
+		}
+		// write the value in there.
+		//deref(structinit_ll at j) = (childval.ll);
+		if(!(ctx.typecheck_only))
+		{
+			struct_ll = LLVMBuildInsertValue(ir, struct_ll, childval.ll, j@_, "");
+		}
+	}
+
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := struct_ll;
+		.type := type;
+	};
+};
+
+cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	arrty ::= type.arr;
+	inits ::= node->childcount;
+
+	element_ty ::= ty_underlying(type);
+
+	if((arrty.len) != inits)
+	{
+		psyc_error_begin(node->loc);
+		puts("array initialiser of type ");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		puts(" had ");
+		putuint(inits);
+		puts(" initialisers - expected ");
+		putuint(arrty.len);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	arr_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+	i : u64 mut;
+	childnode : ast& mut;
+	child_val : cgv mut;
+	for(i = 0, i < inits, i = i + 1)
+	{
+		childnode = ast_get_child(node@_, i);
+		child_val = cg_expr(context
+		{
+			.node := childnode;
+			.local := ctx.local;
+			.typecheck_only := ctx.typecheck_only;
+		}, prog);
+		if(!(ctx.typecheck_only))
+		{
+			cgv_load_if_variable(ref child_val, prog);
+		}
+		child_val = cgv_convert(child_val, element_ty, prog, childnode->loc, ctx.typecheck_only);
+		if(!(ctx.typecheck_only))
+		{
+			arr_ll = LLVMBuildInsertValue(ir, arr_ll, child_val.ll, i@_, "");
+		}
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := arr_ll;
+		.type := type;
+	};
+};
+
+// structinit
+cg_structinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	init ::= node->init;
+	initialiser_count ::= node->childcount;
+
+	result_type ::= scope_parse_typename(ctx.local, init.name, init.name_len);
+	if(ty_isbad(result_type))
+	{
+		psyc_error_begin(node->loc);
+		puts("invalid blkinit - type ");
+		putchar('"');
+		putss(init.name, init.name_len);
+		putchar('"');
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	
+	if(!ty_is(result_type, tytag.strct))
+	{
+		if(!ty_is(result_type, tytag.arr))
+		{
+			psyc_error_begin(node->loc);
+			puts("invalid blkinit - type must be either an array or struct type - you have passed a ");
+			putchar('"');
+			putss(init.name, init.name_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	if(ty_is(result_type, tytag.strct))
+	{
+		return cg_structinit_struct(result_type, ctx, prog);
+	}
+	if(ty_is(result_type, tytag.arr))
+	{
+		return cg_structinit_arr(result_type, ctx, prog);
+	}
+	psyc_panic(node->loc, "control reached end of cg_structinit. compiler bug.");
+	return zero;
+};
+
+cg_if_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	ifdef ::= node->ifdef;
+	if(ifdef.is_static)
+	{
+		psyc_panic(node->loc, "static-if made it to codegen without being reduced by the progwalk into a composite - you have probably put a static-if somewhere unexpected. report this as a bug anyway though please");
+		return zero;
+	}
+	condnode ::= ast_get_child(node@_, 0);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	}, prog);
+	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+
+	else_node : ast& mut;
+	else_node = null;
+	if(node->childcount > 1)
+	{
+		lastchildidx ::= (node->childcount) - 1;
+		last_child ::= ast_get_child(node@_, lastchildidx);
+		if((last_child->type) == (ast_type.elsedef))
+		{
+			else_node = last_child;
+		}
+	}
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	if_scope_label ::= "if";
+	ifscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, if_scope_label, cstrlen(if_scope_label));
+	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
+
+	// populate the else blk if there is one
+	ifnt : u64 mut := 0;
+
+	else_scope_label ::= "else";
+	elsescope : scope mut& mut := null;
+	if(else_node != null)
+	{
+		elsescope = program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, else_scope_label, cstrlen(else_scope_label));
+		ifnt = LLVMAppendBasicBlock(fn->codegen, else_scope_label);
+	}
+
+	ifcont ::= LLVMAppendBasicBlock(fn->codegen, "ifcont");
+	if(else_node == null)
+	{
+		ifnt = ifcont;
+	}
+
+	// populate inside the if blk
+	LLVMPositionBuilderAtEnd(ir, ifscope->codegen);
+	ifscope_back_offset : u64 mut;
+	ifscope_back_offset = 0;
+	if(else_node != null)
+	{
+		ifscope_back_offset = 1;
+	}
+	cg.children(context
+	{
+		.node := node;
+		.local := ifscope;
+		.typecheck_only := false;
+	}, prog, 1, ifscope_back_offset);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((ifscope->terminator) == null)
+	{
+		LLVMBuildBr(ir, ifcont);
+	}
+
+	if(else_node != null)
+	{
+		LLVMPositionBuilderAtEnd(ir, ifnt);
+		cg.children(context
+		{
+			.node := else_node;
+			.local := elsescope;
+			.typecheck_only := false;
+		}, prog, 0, 0);
+		if((elsescope->terminator) == null)
+		{
+			LLVMBuildBr(ir, ifcont);
+		}
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, ifscope->codegen, ifnt);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, ifcont);
+	return zero;
+};
+
+cg_while_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+
+	condnode ::= ast_get_child(node@_, 0);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	}, prog);
+	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	while_scope_label ::= "while";
+	whilescope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, while_scope_label, cstrlen(while_scope_label));
+	(whilescope->codegen) = LLVMAppendBasicBlock(fn->codegen, while_scope_label);
+
+	whilecont ::= LLVMAppendBasicBlock(fn->codegen, "whilecont");
+
+	// populate inside the while blk
+	LLVMPositionBuilderAtEnd(ir, whilescope->codegen);
+	cg.children(context
+	{
+		.node := node;
+		.local := whilescope;
+		.typecheck_only := false;
+	}, prog, 1, 0);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((whilescope->terminator) == null)
+	{
+		// conditional branch
+		// condition still true? back to while
+		// false? whilecont
+		inner_condval : cgv mut := cg_expr(context
+		{
+			.node := condnode;
+			.local := ctx.local;
+			.typecheck_only := false;
+		}, prog);
+		cgv_load_if_variable(ref inner_condval, prog);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+		LLVMBuildCondBr(ir, inner_condval.ll, whilescope->codegen, whilecont);
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, whilescope->codegen, whilecont);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, whilecont);
+	return zero;
+};
+
+cg_for_stmt ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+
+	initnode ::= ast_get_child(node@_, 0);
+	// do the init a single time now.
+	cg_expr(context
+	{
+		.node := initnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	}, prog);
+
+	// get the cond intially now
+	condnode ::= ast_get_child(node@_, 1);
+	condval : cgv mut := cg_expr(context
+	{
+		.node := condnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	}, prog);
+	cgv_load_if_variable(ref condval, prog);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+
+	iternode ::= ast_get_child(node@_, 2);
+
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	oldblk ::= LLVMGetInsertBlock(ir);
+
+	for_scope_label ::= "for";
+	forscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, for_scope_label, cstrlen(for_scope_label));
+	(forscope->codegen) = LLVMAppendBasicBlock(fn->codegen, for_scope_label);
+
+	forcont ::= LLVMAppendBasicBlock(fn->codegen, "forcont");
+
+	// populate inside the for blk
+	LLVMPositionBuilderAtEnd(ir, forscope->codegen);
+	cg.children(context
+	{
+		.node := node;
+		.local := forscope;
+		.typecheck_only := false;
+	}, prog, 3, 0);
+	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
+	if((forscope->terminator) == null)
+	{
+		// remember - if the forscope contains a terminator return then there's no point doing the init anyway.
+		// do the iter
+		cg_expr(context
+		{
+			.node := iternode;
+			.local := forscope;
+			.typecheck_only := false;
+		}, prog);
+		// conditional branch
+		// condition still true? back to for
+		// false? forcont
+		inner_condval : cgv mut := cg_expr(context
+		{
+			.node := condnode;
+			.local := ctx.local;
+			.typecheck_only := false;
+		}, prog);
+		cgv_load_if_variable(ref inner_condval, prog);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+		LLVMBuildCondBr(ir, inner_condval.ll, forscope->codegen, forcont);
+	}
+
+	// build the condbr
+	LLVMPositionBuilderAtEnd(ir, oldblk);
+	LLVMBuildCondBr(ir, condval.ll, forscope->codegen, forcont);
+
+	// rest of code...
+	LLVMPositionBuilderAtEnd(ir, forcont);
+	return zero;
+};
+
+// LLVM IR CODE GENERATION END
+
+codegen_node_setup ::= func(a : arena mut&, h : cg_helper_functions) -> v0
+{
+	cgar = a;
+	cg = h;
+	i : u64 mut;
+
+	// populate tables
+	cg_node_table_size ::= __sizeof(cg_node_table) / __sizeof(deref(cg_node_table at 0));
+	for(i = 0, i < cg_node_table_size, i = i + 1)
+	{
+		deref(cg_node_table at i) = cg_node_fn{.fn := cg_nodefn_error;};
+	}
+	deref(cg_node_table at ((ast_type.stmt)@s64)) = cg_node_fn{.fn := cg_stmt;};
+	deref(cg_node_table at ((ast_type.expr)@s64)) = cg_node_fn{.fn := cg_expr;};
+	deref(cg_node_table at ((ast_type.composite)@s64)) = cg_node_fn{.fn := cg_composite;};
+
+	cg_stmt_table_size ::= __sizeof(cg_stmt_table) / __sizeof(deref(cg_stmt_table at 0));
+	for(i = 0, i < cg_stmt_table_size, i = i + 1)
+	{
+		deref(cg_stmt_table at i) = cg_stmt_fn{.fn := cg_stmtfn_error;};
+	}
+	deref(cg_stmt_table at ((ast_stmt.expr_stmt)@s64)) = cg_stmt_fn{.fn := cg_expr_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.decl_stmt)@s64)) = cg_stmt_fn{.fn := cg_decl_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.if_stmt)@s64)) = cg_stmt_fn{.fn := cg_if_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.while_stmt)@s64)) = cg_stmt_fn{.fn := cg_while_stmt;};
+	deref(cg_stmt_table at ((ast_stmt.for_stmt)@s64)) = cg_stmt_fn{.fn := cg_for_stmt;};
+
+	cg_expr_table_size ::= __sizeof(cg_expr_table) / __sizeof(deref(cg_expr_table at 0));
+	for(i = 0, i < cg_expr_table_size, i = i + 1)
+	{
+		deref(cg_expr_table at i) = cg_expr_fn{.fn := cg_exprfn_error;};
+	}
+	deref(cg_expr_table at ((ast_expr_type.symbol)@s64)) = cg_expr_fn{.fn := cg_symbol;};
+	deref(cg_expr_table at ((ast_expr_type.biop)@s64)) = cg_expr_fn{.fn := cg_biop;};
+	deref(cg_expr_table at ((ast_expr_type.unop)@s64)) = cg_expr_fn{.fn := cg_unop;};
+	deref(cg_expr_table at ((ast_expr_type.literal)@s64)) = cg_expr_fn{.fn := cg_literal;};
+	deref(cg_expr_table at ((ast_expr_type.ret)@s64)) = cg_expr_fn{.fn := cg_ret;};
+	deref(cg_expr_table at ((ast_expr_type.callfunc)@s64)) = cg_expr_fn{.fn := cg_callfunc;};
+	deref(cg_expr_table at ((ast_expr_type.structinit)@s64)) = cg_expr_fn{.fn := cg_structinit;};
+
+	cg_biop_table_size ::= __sizeof(cg_biop_table) / __sizeof(deref(cg_biop_table at 0));
+	for(i = 0, i < cg_biop_table_size, i = i + 1)
+	{
+		deref(cg_biop_table at i) = cg_biop_fn{.fn := cg_biopfn_error;};
+	}
+	deref(cg_biop_table at ((ast_biop_type.assign)@s64)) = cg_biop_fn{.fn := cg_biop_assign;};
+	deref(cg_biop_table at ((ast_biop_type.compare)@s64)) = cg_biop_fn{.fn := cg_biop_compare;};
+	deref(cg_biop_table at ((ast_biop_type.comparen)@s64)) = cg_biop_fn{.fn := cg_biop_comparen;};
+	deref(cg_biop_table at ((ast_biop_type.less_than)@s64)) = cg_biop_fn{.fn := cg_biop_less_than;};
+	deref(cg_biop_table at ((ast_biop_type.less_than_equal)@s64)) = cg_biop_fn{.fn := cg_biop_less_than_equal;};
+	deref(cg_biop_table at ((ast_biop_type.greater_than)@s64)) = cg_biop_fn{.fn := cg_biop_greater_than;};
+	deref(cg_biop_table at ((ast_biop_type.greater_than_equal)@s64)) = cg_biop_fn{.fn := cg_biop_greater_than_equal;};
+	deref(cg_biop_table at ((ast_biop_type.plus)@s64)) = cg_biop_fn{.fn := cg_biop_plus;};
+	deref(cg_biop_table at ((ast_biop_type.minus)@s64)) = cg_biop_fn{.fn := cg_biop_minus;};
+	deref(cg_biop_table at ((ast_biop_type.multiply)@s64)) = cg_biop_fn{.fn := cg_biop_multiply;};
+	deref(cg_biop_table at ((ast_biop_type.divide)@s64)) = cg_biop_fn{.fn := cg_biop_divide;};
+	deref(cg_biop_table at ((ast_biop_type.bitwise_or)@s64)) = cg_biop_fn{.fn := cg_biop_bitwise_or;};
+	deref(cg_biop_table at ((ast_biop_type.logical_or)@s64)) = cg_biop_fn{.fn := cg_biop_logical_or;};
+	deref(cg_biop_table at ((ast_biop_type.bitwise_and)@s64)) = cg_biop_fn{.fn := cg_biop_bitwise_and;};
+	deref(cg_biop_table at ((ast_biop_type.logical_and)@s64)) = cg_biop_fn{.fn := cg_biop_logical_and;};
+	deref(cg_biop_table at ((ast_biop_type.bitleft)@s64)) = cg_biop_fn{.fn := cg_biop_bitleft;};
+	deref(cg_biop_table at ((ast_biop_type.bitright)@s64)) = cg_biop_fn{.fn := cg_biop_bitright;};
+	deref(cg_biop_table at ((ast_biop_type.modulo)@s64)) = cg_biop_fn{.fn := cg_biop_modulo;};
+	deref(cg_biop_table at ((ast_biop_type.operator_at)@s64)) = cg_biop_fn{.fn := cg_biop_at;};
+	deref(cg_biop_table at ((ast_biop_type.field)@s64)) = cg_biop_fn{.fn := cg_biop_field;};
+	deref(cg_biop_table at ((ast_biop_type.ptr_field)@s64)) = cg_biop_fn{.fn := cg_biop_ptr_field;};
+	deref(cg_biop_table at ((ast_biop_type.cast)@s64)) = cg_biop_fn{.fn := cg_biop_cast;};
+
+	cg_unop_table_size ::= __sizeof(cg_unop_table) / __sizeof(deref(cg_unop_table at 0));
+	for(i = 0, i < cg_unop_table_size, i = i + 1)
+	{
+		deref(cg_unop_table at i) = cg_unop_fn{.fn := cg_unopfn_error;};
+	}
+	deref(cg_unop_table at ((ast_unop_type.minus)@s64)) = cg_unop_fn{.fn := cg_unop_minus;};
+	deref(cg_unop_table at ((ast_unop_type.bitwise_invert)@s64)) = cg_unop_fn{.fn := cg_unop_bitwise_invert;};
+	deref(cg_unop_table at ((ast_unop_type.logical_invert)@s64)) = cg_unop_fn{.fn := cg_unop_logical_invert;};
+	deref(cg_unop_table at ((ast_unop_type.op_ref)@s64)) = cg_unop_fn{.fn := cg_unop_ref;};
+	deref(cg_unop_table at ((ast_unop_type.op_deref)@s64)) = cg_unop_fn{.fn := cg_unop_deref;};
+	deref(cg_unop_table at ((ast_unop_type.op_defer)@s64)) = cg_unop_fn{.fn := cg_unop_defer;};
+
+	cg_literal_table_size ::= __sizeof(cg_literal_table) / __sizeof(deref(cg_literal_table at 0));
+	for(i = 0, i < cg_literal_table_size, i = i + 1)
+	{
+		deref(cg_literal_table at i) = cg_literal_fn{.fn := cg_literalfn_error;};
+	}
+	deref(cg_literal_table at ((ast_literal_type.integral)@s64)) = cg_literal_fn{.fn := cg_integer_literal;};
+	deref(cg_literal_table at ((ast_literal_type.floating_point)@s64)) = cg_literal_fn{.fn := cg_floating_point_literal;};
+	deref(cg_literal_table at ((ast_literal_type.char_literal)@s64)) = cg_literal_fn{.fn := cg_char_literal;};
+	deref(cg_literal_table at ((ast_literal_type.string_literal)@s64)) = cg_literal_fn{.fn := cg_string_literal;};
+	deref(cg_literal_table at ((ast_literal_type.bool_literal)@s64)) = cg_literal_fn{.fn := cg_bool_literal;};
+	deref(cg_literal_table at ((ast_literal_type.zero_literal)@s64)) = cg_literal_fn{.fn := cg_zero_literal;};
+};
+
+== build ==
+{
+	add_source_file("codegen_tables.psy");
+	add_source_file("llvm.psy");
+	add_source_file("program.psy");
+}

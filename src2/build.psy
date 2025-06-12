@@ -1,0 +1,314 @@
+bar : arena mut& mut;
+
+build_inst ::= enum
+{
+	.add_source_file := 0;
+	.add_source_directory := 1;
+	.add_link_library := 2;
+	.set_optimization := 3;
+	.set_executable := 4;
+	.set_library := 5;
+	.set_object := 6;
+};
+
+build_fn ::= struct
+{
+	fn : func(s : scope mut&, node : ast&, prog : program mut&) -> v0;
+};
+
+build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut&) -> sval
+{
+	ret ::= sval_node(context
+	{
+		.node := node;
+		.local := s;
+	}, prog);
+	if((ret.tag) == zero)
+	{
+		psyc_error_begin(node->loc);
+		puts("Value could not be resolved to a constant expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return ret;
+};
+
+build_instructions : build_fn mut#7;
+
+bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_source_file must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	fn ::= prog->on_add_source_file;
+	fn(prog, path.chars, path.chars_len, bar);
+};
+
+bi_util_prog : program mut& mut;
+bi_util_dir : u8& mut;
+bi_util_addsrc ::= func(path : u8&) -> v0
+{
+	fn ::= bi_util_prog->on_add_source_file;
+	full_path : u8 mut& := arena_push(bar, cstrlen(path) + cstrlen(bi_util_dir) + 2);
+	__memcpy(full_path, bi_util_dir, cstrlen(bi_util_dir));
+	deref(full_path at cstrlen(bi_util_dir)) = '/';
+	__memcpy(full_path at (1 + cstrlen(bi_util_dir)), path, cstrlen(path));
+	deref(full_path at (1 + cstrlen(bi_util_dir) + cstrlen(path))) = 0;
+	fn(bi_util_prog, full_path, cstrlen(full_path), bar);
+};
+
+bi_add_source_directory ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_source_file must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	path_zstr : u8 mut& := arena_push(bar, 1 + (path.chars_len));
+	__memcpy(path_zstr, path.chars, path.chars_len);
+	deref(path_zstr at (path.chars_len)) = 0;
+
+	bi_util_prog = prog;
+	bi_util_dir = path_zstr;
+	directory_iterate(path_zstr, bi_util_addsrc, bar);
+};
+
+bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_link_library must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	program_add_link_library(prog, path.chars, path.chars_len, bar);
+};
+
+bi_set_optimization ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	level ::= param.literal;
+	if((level.type) != (ast_literal_type.integral))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_optimization must be an integer literal, but you have passed a ");
+		puts(__enumname(level.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if((level.integral) > 3)
+	{
+		psyc_error_begin(child->loc);
+		puts("Integer literal provided to set_optimization must be between 0-3, but you have provided ");
+		putuint(level.integral);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(prog->opt) = (level.integral)@opt_level;
+};
+
+bi_set_executable ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_executable must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.executable);
+};
+
+bi_set_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_library must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.library);
+};
+
+bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to set_object must be a string literal, but you have passed a ");
+		puts(__enumname(path.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(prog->name) = (path.chars);
+	(prog->name_len) = (path.chars_len);
+	(prog->type) = (program_type.object);
+};
+
+build_setup ::= func(a : arena mut&) -> v0
+{
+	psyc_timed(psyc_stage.setup);
+	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
+	deref(build_instructions at ((build_inst.add_source_directory)@s64)) = build_fn{.fn := bi_add_source_directory;};
+	deref(build_instructions at ((build_inst.add_link_library)@s64)) = build_fn{.fn := bi_add_link_library;};
+	deref(build_instructions at ((build_inst.set_optimization)@s64)) = build_fn{.fn := bi_set_optimization;};
+	deref(build_instructions at ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
+	deref(build_instructions at ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
+	deref(build_instructions at ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
+	bar = a;
+};
+
+get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
+{
+	i : u64 mut;
+	len ::= __sizeof(build_instructions) / __sizeof(deref(build_instructions at 0));
+	for(i = 0, i < len, i = i + 1)
+	{
+		curname : u8& := __enumname(i@build_inst);
+		curname_len ::= cstrlen(curname);
+		if(curname_len == name_len)
+		{
+			if(cstreql_n(name, curname, name_len))
+			{
+				return i@build_inst;
+			}
+		}
+	}
+	return (-1)@build_inst;
+};
+
+interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast&) -> v0
+{
+	expr ::= node->expr;
+	callfunc ::= expr.callfunc;
+
+	instid ::= get_build_instruction(callfunc.funcname, callfunc.funcname_len);
+	if(instid == ((-1)@build_inst))
+	{
+		// real bad
+		psyc_error_begin(node->loc);
+		puts("unknown build instruction ");
+		putchar('"');
+		putss(callfunc.funcname, callfunc.funcname_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	inst ::= deref(build_instructions at (instid@s64));
+	inst.fn(s, node, prog);
+};
+
+interpret_node ::= func(prog : program mut&, node : ast&) -> v0
+{
+	s ::= program_new_scope(prog, bar, ref(prog->global), scope_type.build_region, node->loc, "", 0);
+	i : u64 mut;
+	childrenptr ::= (node->children)@ast&;
+	for(i = 0, i < (node->childcount), i = i + 1)
+	{
+		cur ::= childrenptr at i;
+		if(ast_is_expr(cur, ast_expr_type.callfunc))
+		{
+			interpret_build_instruction(s, prog, cur);
+		}
+		if((cur->type) == (ast_type.composite))
+		{
+			interpret_node(prog, cur);
+		}
+		if(ast_is_decl(cur))
+		{
+			init : sval mut := zero;
+			decl ::= cur->decl;
+			if((cur->childcount) > 0)
+			{
+				init = sval_node(context
+				{
+					.node := ast_get_child(cur@_, 0);
+					.local := s;
+				}, prog);
+			}
+			scope_declare_variable(s, bar, variable
+			{
+				.node := node;
+				.name := decl.name;
+				.name_len := decl.name_len;
+				.is_global := false;
+				.type := zero;
+				.initialiser := init;
+				.codegen := zero;
+			});
+		}
+	}
+};
+
+interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
+{
+	if(reg == null)
+	{
+		psyc_warning_begin(zero);
+		puts("no build region for this config detected");
+		psyc_diag_end();
+		return;
+	}
+	interpret_node(prog, reg->node);
+};
+
+default_build_dir ::= "build";
+default_obj_extension ::= ".o";
+default_exe_extension ::= ".exe";
+
+ == build ==
+ {
+ 	add_source_file("ast.psy");
+ 	add_source_file("program.psy");
+	add_source_file("sval_node.psy");
+ }

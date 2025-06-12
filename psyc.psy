@@ -1,0 +1,147 @@
+== build ==
+{
+	set_executable("psyc2");
+	add_source_directory("src2");
+}
+
+permanent_arena_val : arena mut;
+permanent_arena : arena mut& mut := zero;
+setup_arenas ::= func(-> v0)
+{
+	permanent_arena_val = arena_create(4096 * 1024);
+	permanent_arena = ref permanent_arena_val;
+};
+
+destroy_arenas ::= func(-> v0)
+{
+	putzstr("arena free: ");
+	putuint(permanent_arena_val.cur);
+	putchar('B');
+	putchar(10);
+	arena_destroy(permanent_arena_val);
+};
+
+// read a file path. allocates for the whole file data. returns null if file didnt exist.
+fully_read_file ::= func(path : u8&, a : arena mut& -> u8 mut&)
+{
+	if(!file_exists(path))
+	{
+		psyc_error_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" could not be located");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	len ::= file_size_bytes(path);
+	if(len == 0)
+	{
+		return null;
+	}
+	data : u8 mut& := arena_push(a, len + 1);
+	file_read(path, data, len);
+	deref(data at len) = 0;
+	return data;
+};
+
+precompile_build_file ::= func(prog : program mut&, path : u8&, a : arena mut& -> v0)
+{
+	source ::= fully_read_file(path, a);
+	args ::= ref(prog->compile_args);
+	l ::= lex(path, source, a, args->verbose_lex);
+	p ::= parse(ref l, args->verbose_parse);
+	file_scope ::= progwalk_file(prog, ref(p.root));
+
+	region ::= scope_find_region(file_scope, args->build_config, cstrlen(args->build_config));
+	interpret_build_region(prog, region);
+};
+
+add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut& -> v0)
+{
+	prog ::= progptr@program mut&;
+	args ::= ref(prog->compile_args);
+	// unfortunately file will need the path as a null terminated string.
+	// alloc time
+	pathstr : u8 mut& := arena_push(a, len + 1);
+	__memcpy(pathstr, path, len);
+	deref(pathstr at (len)) = 0;
+
+	source ::= fully_read_file(pathstr, a);
+	l ::= lex(pathstr, source, a, args->verbose_lex);
+	p ::= parse(ref l, args->verbose_parse);
+	progwalk_file(prog, ref(p.root));
+};
+
+add_preload ::= func(prog : program mut&, a : arena mut& -> v0)
+{
+	if static(_win32)
+	{
+		source ::= "_win32 ::= true; _linux ::= false; ExitProcess ::= func(uExitCode : u32 -> v0) := extern; _psymain ::= func(-> v0) {ExitProcess(main()@u32);};";
+	}
+	if static(_linux)
+	{
+		source ::= "_win32 ::= false; _linux ::= true; fixmee";
+	}
+	l ::= lex("preload.psy", source, a, false);
+	p ::= parse(ref l, false);
+	progwalk_file(prog, ref(p.root));
+};
+
+compile_program ::= func(prog : program mut&, a : arena mut& -> v0)
+{
+	args ::= ref(prog->compile_args);
+	add_preload(prog, a);
+	precompile_build_file(prog, args->build_file, a);
+	semal(prog);
+	codegen(prog);
+	assemble(prog);
+	link(prog);
+};
+
+main ::= func(-> s32)
+{
+	setup_arenas();
+	defer destroy_arenas();
+
+	lex_setup();
+	grammar_setup(permanent_arena);
+	type_setup(permanent_arena);
+	progwalk_setup(permanent_arena);
+	build_setup(permanent_arena);
+	sval_setup();
+	semal_setup(permanent_arena);
+	codegen_setup(permanent_arena);
+	assembly_setup(permanent_arena);
+	link_setup(permanent_arena);
+
+	prog : program mut := zero;
+	default_progname ::= "program";
+	prog.name = default_progname;
+	prog.name_len = cstrlen(default_progname);
+	prog.on_add_source_file = add_source_file;
+	args ::= ref(prog.compile_args);
+	deref args = psyc_parse_args(permanent_arena);
+	if(args->verbose_parse)
+	{
+		putzstr("grammar size: ");
+		putuint(grammar_install_count);
+		putchar(10);
+	}
+	defer psyc_report_timings();
+
+	if(!file_exists(args->build_file))
+	{
+		psyc_error_begin(zero);
+		putzstr("build file ");
+		putchar('"');
+		putzstr(args->build_file);
+		putchar('"');
+		putzstr(" could not be located");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	compile_program(ref prog, permanent_arena);
+	return 0;
+};

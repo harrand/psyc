@@ -1,0 +1,813 @@
+variable ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	is_global : bool;
+	type : ty;
+	internal : bool;
+
+	initialiser : sval;
+	codegen : u64;
+};
+
+variable_storage ::= struct
+{
+	data : variable mut&;
+	size : u64;
+	cap : u64;
+};
+
+structdef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	member_count : u64;
+	type : ty;
+	in_progress : bool;
+
+	codegen : u64;
+};
+
+structdef_storage ::= struct
+{
+	data : structdef mut&;
+	size : u64;
+	cap : u64;
+};
+
+enumdef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	entry_count : u64;
+	type : ty;
+
+	codegen : u64;
+};
+
+enumdef_storage ::= struct
+{
+	data : enumdef mut&;
+	size : u64;
+	cap : u64;
+};
+
+macrodef ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	yield_type : ty;
+	first_id : u64;
+	yield_id : u64;
+};
+
+macro_storage ::= struct
+{
+	data : macrodef mut&;
+	size : u64;
+	cap : u64;
+};
+
+function ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+	param_count : u64;
+	is_extern : bool;
+	impl_scope : v0&;
+
+	type : ty;
+	codegen : u64;
+	codegen2 : u64;
+};
+
+function_storage ::= struct
+{
+	data : function mut&;
+	size : u64;
+	cap : u64;
+};
+
+region ::= struct
+{
+	node : ast&;
+	name : u8&;
+	name_len : u64;
+};
+
+region_storage ::= struct
+{
+	data : region mut&;
+	size : u64;
+	cap : u64;
+};
+
+scope_type ::= enum
+{
+	.program := 0;
+	.file := 1;
+	.build_region := 2;
+	.fn := 3;
+	.strct := 4;
+	.structinit := 5;
+	.code := 6;
+	.macrocall := 7;
+};
+
+scope ::= struct
+{
+	types : tybox;
+	vars : variable_storage;
+	structs : structdef_storage;
+	enums : enumdef_storage;
+	funcs : function_storage;
+	macros : macro_storage;
+	regions : region_storage;
+	parent : v0&;
+	loc : srcloc;
+	type : scope_type;
+	scope_label : u8&;
+	scope_label_len : u64;
+
+	codegen : u64;
+	terminator : ast&;
+};
+
+opt_level ::= enum
+{
+	.none := 0;
+	.low := 1;
+	.med := 2;
+	.high := 3;
+};
+
+program_type ::= enum
+{
+	.executable := 0;
+	.library := 1;
+	.object := 2;
+};
+
+program ::= struct
+{
+	root : ast&;
+	compile_args : psyc_compile_args;
+	in_metaregion : bool;
+	global : scope;
+
+	locals : scope mut&;
+	locals_size : u64;
+	locals_cap : u64;
+
+	on_add_source_file : func(prog : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0;
+	link_libraries : u8& mut&;
+	link_library_lens : u64 mut&;
+	link_library_size : u64;
+	link_library_cap : u64;
+
+	opt : opt_level;
+	codegen : u64;
+
+	name : u8&;
+	name_len : u64;
+	type : program_type;
+};
+
+context ::= struct
+{
+	node : ast&;
+	local : scope mut&;
+	typecheck_only : bool;
+};
+
+impl_scope_try_find_struct ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
+{
+	if(s == null)
+	{
+		return zero;
+	}
+	curscope : scope& mut := s;
+	while(curscope != null)
+	{
+		types ::= ref(curscope->types)@_;
+		idx ::= tybox_find_struct(types, tyname, tyname_len);
+		if(idx != -1)
+		{
+			// found it!
+			result_info ::= tybox_get_struct(types, idx);
+			result_ty ::= result_info->ty;
+			deref(len) = (deref(len) + (result_ty.name_len));
+			return ty
+			{
+				.tag := tytag.strct;
+				.qual := zero;
+				.strct := result_ty;
+			};
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return zero;
+};
+
+impl_scope_try_find_enum ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
+{
+	if(s == null)
+	{
+		return zero;
+	}
+	curscope : scope& mut := s;
+	while(curscope != null)
+	{
+		types ::= ref(curscope->types)@_;
+		idx ::= tybox_find_enum(types, tyname, tyname_len);
+		if(idx != -1)
+		{
+			// found it!
+			result_info ::= tybox_get_enum(types, idx);
+			result_ty ::= result_info->ty;
+			deref(len) = (deref(len) + (result_ty.name_len));
+			return ty
+			{
+				.tag := tytag.enm;
+				.qual := zero;
+				.enm := result_ty;
+			};
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return zero;
+};
+
+impl_scope_try_parse_base_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64, len : u64 mut&) -> ty
+{
+	// assume tyname starts with a valid base name. all we care about is the best name
+	// try to parse the base typename (and write the length of the name in len). if we succeed, return it. otherwise return badtype.
+	// is it a prim?
+	maybe_prim ::= typarse_primty(tyname, tyname_len, len);
+	if(maybe_prim != zero)
+	{
+		return ty_getprim(maybe_prim, zero);
+	}
+	maybe_struct : ty mut := impl_scope_try_find_struct(s, tyname, typarse_basename_end(tyname, tyname_len), len);
+	if(!ty_isbad(maybe_struct))
+	{
+		return maybe_struct;
+	}
+	maybe_enum : ty mut := impl_scope_try_find_enum(s, tyname, typarse_basename_end(tyname, tyname_len), len);
+	if(!ty_isbad(maybe_enum))
+	{
+		return maybe_enum;
+	}
+
+	return zero;
+};
+
+scope_parse_typename ::= func(s : scope&, tyname : u8&, tyname_len : u64) -> ty
+{
+	// fully parse a typename.
+	offset : u64 mut := zero;
+	extra_offset : u64 mut := zero;
+	ret : ty mut := impl_scope_try_parse_base_typename(s, tyname, tyname_len, ref offset);
+	extras_offset ::= typarse_extras(tyname at offset, tyname_len - offset, ref ret);
+	if(extras_offset < (tyname_len - offset))
+	{
+		// didnt parse the whole typename. return zero
+		return zero;
+	}
+	return ret;
+};
+
+scope_find_variable ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> variable&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curvar : variable& mut;
+	while(curscope != null)
+	{
+		vars ::= ref(curscope->vars)@_;
+		if((vars->size) > 0)
+		{
+			for(i = 0, i < (vars->size), i = i + 1)
+			{
+				curvar = (vars->data) at i;
+				if(varname_len == (curvar->name_len))
+				{
+					if(cstreql_n(curvar->name, varname, varname_len))
+					{
+						return curvar;
+					}
+				}
+			}
+		}
+		
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_variable ::= func(s : scope mut&, a : arena mut&, v : variable) -> v0
+{
+	already ::= scope_find_variable(s, v.name, v.name_len);
+	if(already != null)
+	{
+		node ::= v.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("variable ");
+		putchar('"');
+		putss(v.name, v.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	vars ::= ref(s->vars);
+	if((vars->data) == null)
+	{
+		(vars->cap) = 8;
+		(vars->data) = arena_push(a, __sizeof(deref (vars->data)) * (vars->cap));
+	}
+	while((vars->size) >= (vars->cap))
+	{
+		oldcap ::= vars->cap;
+		olddata ::= vars->data;
+		(vars->cap) = (vars->cap) * 2;
+		(vars->data) = arena_push(a, __sizeof(deref (vars->data)) * (vars->cap));
+		__memcpy(vars->data, olddata, oldcap * __sizeof(deref (vars->data)));
+	}
+	deref((vars->data) at (vars->size)) = v;
+	(vars->size) = (vars->size) + 1;
+};
+
+scope_find_struct ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> structdef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : structdef& mut;
+	while(curscope != null)
+	{
+		structs ::= ref(curscope->structs)@_;
+		for(i = 0, i < (structs->size), i = i + 1)
+		{
+			cur = (structs->data) at i;
+			if(varname_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, varname, varname_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_struct ::= func(s : scope mut&, a : arena mut&, v : structdef) -> v0
+{
+	already ::= scope_find_struct(s, v.name, v.name_len);
+	if(already != null)
+	{
+		node ::= v.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("struct ");
+		putchar('"');
+		putss(v.name, v.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	structs ::= ref(s->structs);
+	if((structs->data) == null)
+	{
+		(structs->cap) = 8;
+		(structs->data) = arena_push(a, __sizeof(deref (structs->data)) * (structs->cap));
+	}
+	while((structs->size) >= (structs->cap))
+	{
+		oldcap ::= structs->cap;
+		olddata ::= structs->data;
+		(structs->cap) = (structs->cap) * 2;
+		(structs->data) = arena_push(a, __sizeof(deref (structs->data)) * (structs->cap));
+		__memcpy(structs->data, olddata, oldcap * __sizeof(deref (structs->data)));
+	}
+	deref((structs->data) at (structs->size)) = v;
+	(structs->size) = (structs->size) + 1;
+};
+
+scope_find_enum ::= func(s : scope mut&, varname : u8&, varname_len : u64) -> enumdef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : enumdef& mut;
+	while(curscope != null)
+	{
+		enums ::= ref(curscope->enums)@_;
+		for(i = 0, i < (enums->size), i = i + 1)
+		{
+			cur = (enums->data) at i;
+			if(varname_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, varname, varname_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_enum ::= func(s : scope mut&, a : arena mut&, v : enumdef) -> v0
+{
+	already ::= scope_find_enum(s, v.name, v.name_len);
+	if(already != null)
+	{
+		node ::= v.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("enum ");
+		putchar('"');
+		putss(v.name, v.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	enums ::= ref(s->enums);
+	if((enums->data) == null)
+	{
+		(enums->cap) = 8;
+		(enums->data) = arena_push(a, __sizeof(deref (enums->data)) * (enums->cap));
+	}
+	while((enums->size) >= (enums->cap))
+	{
+		oldcap ::= enums->cap;
+		olddata ::= enums->data;
+		(enums->cap) = (enums->cap) * 2;
+		(enums->data) = arena_push(a, __sizeof(deref (enums->data)) * (enums->cap));
+		__memcpy(enums->data, olddata, oldcap * __sizeof(deref (enums->data)));
+	}
+	deref((enums->data) at (enums->size)) = v;
+	(enums->size) = (enums->size) + 1;
+};
+
+scope_find_function ::= func(s : scope mut&, funcname : u8&, funcname_len: u64) -> function&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curfunc : function& mut;
+	while(curscope != null)
+	{
+		funcs ::= ref(curscope->funcs)@_;
+		for(i = 0, i < (funcs->size), i = i + 1)
+		{
+			curfunc = (funcs->data) at i;
+			if(funcname_len == (curfunc->name_len))
+			{
+				if(cstreql_n(curfunc->name, funcname, funcname_len))
+				{
+					return curfunc;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_function ::= func(s : scope mut&, a : arena mut&, f : function) -> v0
+{
+	already ::= scope_find_function(s, f.name, f.name_len);
+	if(already != null)
+	{
+		node ::= f.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("function ");
+		putchar('"');
+		putss(f.name, f.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	funcs ::= ref(s->funcs);
+	if((funcs->data) == null)
+	{
+		(funcs->cap) = 8;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+	}
+	while((funcs->size) >= (funcs->cap))
+	{
+		oldcap ::= funcs->cap;
+		olddata ::= funcs->data;
+		(funcs->cap) = (funcs->cap) * 2;
+		(funcs->data) = arena_push(a, __sizeof(deref (funcs->data)) * (funcs->cap));
+		__memcpy(funcs->data, olddata, oldcap * __sizeof(deref (funcs->data)));
+	}
+	deref((funcs->data) at (funcs->size)) = f;
+	(funcs->size) = (funcs->size) + 1;
+};
+
+scope_find_macro ::= func(s : scope mut&, macname : u8&, macname_len: u64) -> macrodef&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	curmac : macrodef& mut;
+	while(curscope != null)
+	{
+		macros ::= ref(curscope->macros)@_;
+		for(i = 0, i < (macros->size), i = i + 1)
+		{
+			curmac = (macros->data) at i;
+			if(macname_len == (curmac->name_len))
+			{
+				if(cstreql_n(curmac->name, macname, macname_len))
+				{
+					return curmac;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_macro ::= func(s : scope mut&, a : arena mut&, m : macrodef) -> v0
+{
+	already ::= scope_find_macro(s, m.name, m.name_len);
+	if(already != null)
+	{
+		node ::= m.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("macro ");
+		putchar('"');
+		putss(m.name, m.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	macros ::= ref(s->macros);
+	if((macros->data) == null)
+	{
+		(macros->cap) = 8;
+		(macros->data) = arena_push(a, __sizeof(deref (macros->data)) * (macros->cap));
+	}
+	while((macros->size) >= (macros->cap))
+	{
+		oldcap ::= macros->cap;
+		olddata ::= macros->data;
+		(macros->cap) = (macros->cap) * 2;
+		(macros->data) = arena_push(a, __sizeof(deref (macros->data)) * (macros->cap));
+		__memcpy(macros->data, olddata, oldcap * __sizeof(deref (macros->data)));
+	}
+	deref((macros->data) at (macros->size)) = m;
+	(macros->size) = (macros->size) + 1;
+};
+
+scope_find_region ::= func(s : scope mut&, name : u8&, name_len: u64) -> region&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	cur : region& mut;
+	while(curscope != null)
+	{
+		regions ::= ref(curscope->regions)@_;
+		for(i = 0, i < (regions->size), i = i + 1)
+		{
+			cur = (regions->data) at i;
+			if(name_len == (cur->name_len))
+			{
+				if(cstreql_n(cur->name, name, name_len))
+				{
+					return cur;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+scope_declare_region ::= func(s : scope mut&, a : arena mut&, r : region) -> v0
+{
+	already ::= scope_find_region(s, r.name, r.name_len);
+	if(already != null)
+	{
+		node ::= r.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		puts("region ");
+		putchar('"');
+		putss(r.name, r.name_len);
+		putchar('"');
+		puts(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	regions ::= ref(s->regions);
+	if((regions->data) == null)
+	{
+		(regions->cap) = 8;
+		(regions->data) = arena_push(a, __sizeof(deref (regions->data)) * (regions->cap));
+	}
+	while((regions->size) >= (regions->cap))
+	{
+		oldcap ::= regions->cap;
+		olddata ::= regions->data;
+		(regions->cap) = (regions->cap) * 2;
+		(regions->data) = arena_push(a, __sizeof(deref (regions->data)) * (regions->cap));
+		__memcpy(regions->data, olddata, oldcap * __sizeof(deref (regions->data)));
+	}
+	deref((regions->data) at (regions->size)) = r;
+	(regions->size) = (regions->size) + 1;
+};
+
+scope_declare_struct_type ::= func(s : scope mut&, strct : structty, loc : srcloc) -> v0
+{
+	types ::= ref(s->types);
+	tybox_add_struct(types, strct, loc);
+};
+
+scope_declare_enum_type ::= func(s : scope mut&, strct : enumty, loc : srcloc) -> v0
+{
+	types ::= ref(s->types);
+	tybox_add_enum(types, strct, loc);
+};
+
+program_parse_typename ::= func(prog : program mut&, tyname : u8&, tyname_len : u64) -> ty
+{
+	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
+};
+
+program_new_scope ::= func(prog : program mut&, a : arena mut&, parent : scope mut&, type : scope_type, loc : srcloc, label : u8&, label_len : u64) -> scope mut&
+{
+	if((prog->locals_cap) == 0)
+	{
+		(prog->locals_cap) = 8;
+		(prog->locals) = arena_push(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
+	}
+	while((prog->locals_size) >= (prog->locals_cap))
+	{
+		oldcap ::= (prog->locals_cap);
+		olddata ::= (prog->locals);
+		(prog->locals_cap) = (oldcap * 2);
+		(prog->locals) = arena_push(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
+		__memcpy(prog->locals, olddata, oldcap);
+	}
+	id ::= prog->locals_size;
+	(prog->locals_size) = (prog->locals_size) + 1;
+	ptr ::= (prog->locals) at id;
+	deref(ptr) = zero;
+	(ptr->parent) = (parent@_);
+	(ptr->type) = type;
+	(ptr->scope_label) = label;
+	(ptr->scope_label_len) = label_len;
+	(ptr->codegen) = 0;
+	return ptr;
+};
+
+program_find_variable ::= func(prog : program mut&, name : u8&, name_len : u64) -> variable&
+{
+	glob : scope mut& := ref(prog->global);
+	return scope_find_variable(glob, name, name_len);
+};
+
+program_declare_variable ::= func(prog : program mut&, a : arena mut&, v : variable) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_variable(glob, a, v);
+};
+
+program_find_function ::= func(prog : program mut&, name : u8&, name_len : u64) -> function&
+{
+	glob : scope mut& := ref(prog->global);
+	return scope_find_function(glob, name, name_len);
+};
+
+program_declare_function ::= func(prog : program mut&, a : arena mut&, f : function) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_function(glob, a, f);
+};
+
+program_find_struct ::= func(prog : program mut&, name : u8&, name_len : u64) -> structdef&
+{
+	glob : scope mut& := ref(prog->global);
+	return scope_find_struct(glob, name, name_len);
+};
+
+program_declare_struct ::= func(prog : program mut&, a : arena mut&, s : structdef) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_struct(glob, a, s);
+};
+
+program_find_enum ::= func(prog : program mut&, name : u8&, name_len : u64) -> enumdef&
+{
+	glob : scope mut& := ref(prog->global);
+	return scope_find_enum(glob, name, name_len);
+};
+
+program_declare_enum ::= func(prog : program mut&, a : arena mut&, e : enumdef) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_enum(glob, a, e);
+};
+
+program_find_macro ::= func(prog : program mut&, name : u8&, name_len : u64) -> macrodef&
+{
+	glob : scope mut& := ref(prog->global);
+	return scope_find_macro(glob, name, name_len);
+};
+
+program_declare_macro ::= func(prog : program mut&, a : arena mut&, m : macrodef) -> v0
+{
+	glob : scope mut& := ref(prog->global);
+	scope_declare_macro(glob, a, m);
+};
+
+scope_get_parent_function ::= func(s : scope&, prog : program mut&) -> function&
+{
+	curscope : scope& mut := s;
+	i : u64 mut;
+	while(curscope != null)
+	{
+		if((curscope->type) == (scope_type.fn))
+		{
+			// the current scope is indeed the current function we're in
+			// get its name
+			parent_fnname ::= curscope->scope_label;
+			parent_fnname_len ::= curscope->scope_label_len;
+			return program_find_function(prog, curscope->scope_label, curscope->scope_label_len);
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope&);
+	}
+	return null;
+};
+
+program_add_link_library ::= func(prog : program mut&, libname : u8&, libname_len : u64, a : arena mut&) -> v0
+{
+	if((prog->link_libraries) == null)
+	{
+		(prog->link_library_cap) = 8;
+		(prog->link_libraries) = arena_push(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
+		(prog->link_library_lens) = arena_push(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
+	}
+	while((prog->link_library_size) > (prog->link_library_cap))
+	{
+		oldcap ::= prog->link_library_cap;
+		oldlibs ::= prog->link_libraries;
+		oldlens ::= prog->link_library_lens;
+		(prog->link_library_cap) = (prog->link_library_cap) * 2;
+		(prog->link_libraries) = arena_push(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
+		__memcpy(prog->link_libraries, oldlibs, oldcap * __sizeof(deref (prog->link_libraries)));
+		(prog->link_library_lens) = arena_push(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
+		__memcpy(prog->link_library_lens, oldlens, oldcap * __sizeof(deref (prog->link_library_lens)));
+	}
+	id ::= prog->link_library_size;
+	(prog->link_library_size) = (prog->link_library_size) + 1;
+	deref((prog->link_libraries) at id) = libname;
+	deref((prog->link_library_lens) at id) = libname_len;
+};
+
+== build ==
+{
+	add_source_file("args.psy");
+	add_source_file("sval.psy");
+	add_source_file("ast.psy");
+	add_source_file("type.psy");
+	add_source_file("type_parse.psy");
+}

@@ -1,0 +1,170 @@
+// node table
+cg_node_fn ::= struct
+{
+	fn : func(ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_nodefn_error ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+	psyc_error_begin(node->loc);
+	puts(__function());
+	puts("erroneous nodefn invoked for node type ");
+	putchar('"');
+	puts(__enumname(node->type));
+	puts(" (");
+	putuint((node->type)@s64);
+	puts(")");
+	putchar('"');
+	puts(" -- please report this as a compiler bug");
+	putchar(10);
+	ast_verbose_print(node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+cg_node_table : cg_node_fn mut#43;
+// stmt table
+cg_stmt_fn ::= struct
+{
+	fn : func(ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_stmtfn_error ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+	stmt ::= node->stmt;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous stmtfn invoked for stmt type ");
+	putchar('"');
+	puts(__enumname(stmt));
+	puts(" (");
+	putuint(stmt@s64);
+	puts(")");
+	putchar('"');
+	puts(" -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_stmt_table : cg_stmt_fn mut#12;
+
+// expr table
+cg_expr_fn ::= struct
+{
+	fn : func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_exprfn_error ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous exprfn invoked for expr type ");
+	putchar('"');
+	puts(__enumname(expr.type));
+	puts(" (");
+	putuint((expr.type)@s64);
+	puts(")");
+	putchar('"');
+	puts(" -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_expr_table : cg_expr_fn mut#10;
+
+// biop table
+cg_biop_fn ::= struct
+{
+	fn : func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_biopfn_error ::= func(lhs : ast&, rhs : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous biopfn invoked -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_biop_table : cg_biop_fn mut#22;
+
+// unop table
+cg_unop_fn ::= struct
+{
+	fn : func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_unopfn_error ::= func(operand : ast&, ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous unopfn invoked -- please report this as a compiler bug");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_unop_table : cg_unop_fn mut#6;
+
+// literal table
+cg_literal_fn ::= struct
+{
+	fn : func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_literalfn_error ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("erroneous literalfn invoked for literal type ");
+	putchar('"');
+	puts(__enumname(lit.type));
+	puts(" (");
+	putuint((lit.type)@s64);
+	puts(")");
+	putchar('"');
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_literal_table : cg_literal_fn mut#7;
+
+// builtin table
+builtin ::= enum
+{
+	.debugbreak := 0;
+	.memcpy := 1;
+	.memset := 2;
+	.sizeof := 3;
+	.alignof := 4;
+	.error := 5;
+};
+
+cg_builtin_fn ::= struct
+{
+	fn : func(ctx : context mut, prog : program mut&) -> cgv;
+};
+cg_builtinfn_error ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	defer return zero;
+	node ::= ctx.node;
+
+	psyc_error_begin(node->loc);
+	puts("unknown builtin invoked");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+cg_builtin_table : cg_builtin_fn mut#7;
+
+== build ==
+{
+	add_source_file("program.psy");
+	add_source_file("codegen_value.psy");
+}
