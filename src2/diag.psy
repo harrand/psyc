@@ -9,12 +9,11 @@ psyc_stage ::= enum
 	.link := 6;
 };
 
-[[private]]
 current_stage : psyc_stage mut;
 
-psyc_stage_times : f32 mut#7;
+psyc_stage_times : f32 mut[7];
 
-psyc_colour_red ::= func() -> v0
+psyc_colour_red ::= func(-> v0)
 {
 	putchar(27); // esc character
 	putchar('[');
@@ -23,7 +22,7 @@ psyc_colour_red ::= func() -> v0
     putchar('m');
 };
 
-psyc_colour_yellow ::= func() -> v0
+psyc_colour_yellow ::= func(-> v0)
 {
 	putchar(27); // esc character
 	putchar('[');
@@ -32,7 +31,7 @@ psyc_colour_yellow ::= func() -> v0
     putchar('m');
 };
 
-psyc_colour_blue ::= func() -> v0
+psyc_colour_blue ::= func(-> v0)
 {
 	putchar(27); // esc character
 	putchar('[');
@@ -41,7 +40,7 @@ psyc_colour_blue ::= func() -> v0
     putchar('m');
 };
 
-psyc_colour_reset ::= func() -> v0
+psyc_colour_reset ::= func(-> v0)
 {
 	putchar(27); // esc character
 	putchar('[');
@@ -49,14 +48,14 @@ psyc_colour_reset ::= func() -> v0
     putchar('m');
 };
 
-print_srcloc ::= func(l : srcloc) -> v0
+print_srcloc ::= func(l : srcloc -> v0)
 {
 	if((l.file) != zero)
 	{
 		puts("at ");
 		puts(l.file);
 		putchar(' ');
-		puts(l.function);
+		puts(l.fn);
 		putchar('(');
 		putuint(l.line);
 		putchar(':');
@@ -65,12 +64,12 @@ print_srcloc ::= func(l : srcloc) -> v0
 	}
 };
 
-psyc_exit_failure ::= func() -> v0
+psyc_exit_failure ::= func(-> v0)
 {
 	__debugbreak();
 };
 
-psyc_panic_begin ::= func(my_srcloc : srcloc) -> v0
+psyc_panic_begin ::= func(my_srcloc : srcloc -> v0)
 {
 	psyc_colour_red();
 	puts("panic ");
@@ -79,13 +78,13 @@ psyc_panic_begin ::= func(my_srcloc : srcloc) -> v0
 	putchar(' ');
 };
 
-psyc_diag_end ::= func() -> v0
+psyc_diag_end ::= func(-> v0)
 {
 	putchar(10);
 	psyc_colour_reset();
 };
 
-psyc_error_begin ::= func(loc : srcloc) -> v0
+psyc_error_begin ::= func(loc : srcloc -> v0)
 {
 	psyc_colour_red();
 	puts(__enumname(current_stage));
@@ -94,7 +93,7 @@ psyc_error_begin ::= func(loc : srcloc) -> v0
 	puts(": ");
 };
 
-psyc_warning_begin ::= func(loc : srcloc) -> v0
+psyc_warning_begin ::= func(loc : srcloc -> v0)
 {
 	psyc_colour_yellow();
 	puts("warning ");
@@ -102,7 +101,7 @@ psyc_warning_begin ::= func(loc : srcloc) -> v0
 	puts(": ");
 };
 
-psyc_message_begin ::= func(loc : srcloc) -> v0
+psyc_message_begin ::= func(loc : srcloc -> v0)
 {
 	psyc_colour_blue();
 	puts("message ");
@@ -110,7 +109,7 @@ psyc_message_begin ::= func(loc : srcloc) -> v0
 	puts(": ");
 };
 
-psyc_panic ::= func(my_srcloc : srcloc, msg : u8&) -> v0
+psyc_panic ::= func(my_srcloc : srcloc, msg : u8& -> v0)
 {
 	psyc_panic_begin(my_srcloc);
 	puts(msg);
@@ -119,15 +118,15 @@ psyc_panic ::= func(my_srcloc : srcloc, msg : u8&) -> v0
 };
 
 
-if static(__is_windows)
+if static(_win32)
 {
-	QueryPerformanceCounter ::= func(lpPerformanceCount : s64 mut&) -> s32 := extern;
-	QueryPerformanceFrequency ::= func(lpPerformanceCount : s64 mut&) -> s32 := extern;
+	QueryPerformanceCounter ::= func(lpPerformanceCount : s64 mut& -> s32) := extern;
+	QueryPerformanceFrequency ::= func(lpPerformanceCount : s64 mut& -> s32) := extern;
 }
 
-psyc_gettime ::= func() -> s64
+psyc_gettime ::= func(-> s64)
 {
-	if static(__is_windows)
+	if static(_win32)
 	{
 		ret : s64 mut;
 		QueryPerformanceCounter(ref ret);
@@ -135,12 +134,13 @@ psyc_gettime ::= func() -> s64
 	}
 };
 
-psyc_set_stage ::= func(stage : psyc_stage) -> v0
+psyc_set_stage ::= func(stage : psyc_stage -> v0)
 {
 	current_stage = stage;
 };
 
-psyc_timed ::= macro(stage : psyc_stage) -> v0
+/*
+psyc_timed ::= macro(stage : psyc_stage -> v0)
 {
 	psyc_set_stage(stage);
 	defer psyc_set_stage(psyc_stage.setup);
@@ -152,8 +152,9 @@ psyc_timed ::= macro(stage : psyc_stage) -> v0
 	defer _diff_f32 ::= _diff / 1000000.0;
 	defer(deref(psyc_stage_times at _s) = (deref(psyc_stage_times at _s) + _diff_f32));
 };
+*/
 
-psyc_report_a_timing ::= func(stage : psyc_stage) -> v0
+psyc_report_a_timing ::= func(stage : psyc_stage -> v0)
 {
 	puts(__enumname(stage));
 	puts(": ");
@@ -162,7 +163,7 @@ psyc_report_a_timing ::= func(stage : psyc_stage) -> v0
 	putchar(10);
 };
 
-psyc_report_timings ::= func() -> v0
+psyc_report_timings ::= func(-> v0)
 {
 	count ::= __sizeof(psyc_stage_times) / __sizeof(deref(psyc_stage_times at 0));
 	i : u32 mut;
@@ -178,8 +179,3 @@ psyc_report_timings ::= func() -> v0
 	putchar('s');
 	putchar(10);
 };
-
-== build ==
-{
-	add_source_file("stdlib/io.psy");
-}
