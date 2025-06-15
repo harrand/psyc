@@ -1,5 +1,35 @@
 lexar : arena mut& mut;
 
+impl_is_whitespace ::= func(char : u8) -> bool
+{
+	if(char == 0x20) // ' '
+	{
+		return true;
+	}
+	if(char == 0x0c) // '\f'
+	{
+		return true;
+	}
+	if(char == 0x0a) // '\n'
+	{
+		return true;
+	}
+	if(char == 0x0d) // '\r'
+	{
+		return true;
+	}
+	if(char == 0x09) // '/t'
+	{
+		return true;
+	}
+	if(char == 0x0b) // '/v'
+	{
+		return true;
+	}
+	return false;
+};
+
+
 impl_starts_symbol ::= func(char : u8) -> bool
 {
 
@@ -180,6 +210,8 @@ lex_entry_tag ::= enum
 	.tbl := 2;
 	// data is the token type you have just found.
 	.success := 3;
+	// forget what you're doing, dont backtrack and start again (you've lexed a comment most likely)
+	.discard := 4;
 };
 
 lex_entry ::= struct
@@ -281,6 +313,16 @@ ls_table_inject_symbol_continuation ::= func(tbl : lex_trivial_table mut&) -> v0
 		}
 		if(!cansym)
 		{
+			if(i == ' ')
+			{
+				deref((tbl->tbl) at i) = lex_entry
+				{
+					.tag := lex_entry_tag.success;
+					.data := (lex_token.symbol)@s64@u64;
+					.metadata := false;
+					.name := "symbol terminate";
+				};
+			}
 			if(impl_is_punctuation(i@u8))
 			{
 				deref((tbl->tbl) at i) = lex_entry
@@ -398,10 +440,22 @@ lex_setup ::= func(a : arena mut&) -> v0
 				.data := (ref symbol_continuation_table)@u64;
 			};
 		}
+		if(impl_is_whitespace(i@u8))
+		{
+			deref((lex_table.tbl) at i) = lex_entry
+			{
+				.tag := lex_entry_tag.discard;
+			};
+		}
 	}
 
 	//ls_table_set_fn(ref lex_table, '_', testfn);
 	trivial_setup(lex_token.semicol, ";", false);
+	trivial_setup(lex_token.colon, ":=", false);
+	trivial_setup(lex_token.initialiser, ":=", false);
+	trivial_setup(lex_token.keyword_func, "func", true);
+	trivial_setup(lex_token.arrow, "->", false);
+	trivial_setup(lex_token.keyword_extern, "extern", false);
 	trivial_setup(lex_token.keyword_true, "true", true);
 };
 
@@ -447,35 +501,6 @@ token_affects_code ::= func(tok : lex_token) -> bool
 	return true;
 };
 
-impl_is_whitespace ::= func(char : u8) -> bool
-{
-	if(char == 0x20) // ' '
-	{
-		return true;
-	}
-	if(char == 0x0c) // '\f'
-	{
-		return true;
-	}
-	if(char == 0x0a) // '\n'
-	{
-		return true;
-	}
-	if(char == 0x0d) // '\r'
-	{
-		return true;
-	}
-	if(char == 0x09) // '/t'
-	{
-		return true;
-	}
-	if(char == 0x0b) // '/v'
-	{
-		return true;
-	}
-	return false;
-};
-
 impl_is_alpha ::= func(char : u8) -> bool
 {
 	if(char >= 'a')
@@ -495,28 +520,9 @@ impl_is_alpha ::= func(char : u8) -> bool
 	return false;
 };
 
-lex_onwards ::= func(s : lex_state mut&) -> bool
-{
-	while(impl_is_whitespace(deref((s->src) at (s->cursor))))
-	{
-		is_newline ::= deref((s->src) at (s->cursor)) == 10;
-		if(is_newline)
-		{
-			(s->line) = (s->line) + 1;
-			(s->col) = 1;
-		}
-		if(!is_newline)
-		{
-			(s->col) = (s->col) + 1;
-		}
-		(s->cursor) = (s->cursor) + 1;
-	}
-	return (s->cursor) < cstrlen(s->src);
-};
-
 lex_advance ::= func(s : lex_state mut&) -> v0
 {
-	whitespace ::= impl_is_whitespace(deref((s->src) at (s->cursor)));
+	whitespace ::= deref((s->src) at (s->cursor)) == 10;
 	if(whitespace)
 	{
 		(s->line) = (s->line) + 1;
@@ -549,10 +555,6 @@ lex_get ::= func(tbl : lex_trivial_table& mut, s : lex_state mut&) -> lex_entry
 lex_next ::= func(s : lex_state mut&) -> v0
 {
 	int ::= ref(s->internal);
-	if(!lex_onwards(s))
-	{
-		return;
-	}
 	started ::= int->started;
 	if(started)
 	{
@@ -605,6 +607,13 @@ lex_next ::= func(s : lex_state mut&) -> v0
 	{
 		fn : func(s : lex_state mut&) -> v0 := (ent.data)@_;
 		fn(s);
+		lex_advance(s);
+		return;
+	}
+	if((ent.tag) == (lex_entry_tag.discard))
+	{
+		// reset the internal state
+		(deref int) = zero;
 		lex_advance(s);
 		return;
 	}
