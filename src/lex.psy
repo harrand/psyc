@@ -99,7 +99,6 @@ lex_entry ::= struct
 lex_trivial_table ::= struct
 {
 	tbl : lex_entry mut&;
-	len : u64;
 	cap : u64;
 };
 
@@ -107,7 +106,11 @@ tables : lex_trivial_table mut#8;
 
 lex_internal_state ::= struct
 {
+	begin_cursor : u64;
+	begin : srcloc;
+	started : bool;
 	curlen : u64;
+	ent : lex_entry mut;
 };
 
 lex_state ::= struct
@@ -141,14 +144,108 @@ td_print ::= func(s : lex_state&, tok : token_data) -> v0
 	putchar(10);
 };
 
+ls_current_loc ::= func(s : lex_state&) -> srcloc
+{
+	return srcloc
+	{
+		.file := (s->path);
+		.function := "";
+		.line := (s->line);
+		.column := (s->col);
+	};
+};
+
+
+ls_newtable ::= func() -> lex_trivial_table
+{
+	cap ::= 255;
+	ptr ::= arena_push(lexar, cap * __sizeof(lex_entry));
+	__memset(ptr, 0, cap * __sizeof(lex_entry));
+	return lex_trivial_table
+	{
+		.tbl := ptr;
+		.cap := cap;
+	};
+};
+
+ls_table_set_table ::= func(tbl : lex_trivial_table mut&, idx : u64, valtbl : lex_trivial_table&) -> v0
+{
+	ptr ::= (tbl->tbl) at idx;
+	(deref ptr) = lex_entry
+	{
+		.tag := lex_entry_tag.tbl;
+		.data := valtbl@u64;
+	};
+};
+
+ls_table_set_fn ::= func(tbl : lex_trivial_table mut&, idx : u64, valfn : func(s : lex_state mut&) -> v0) -> v0
+{
+	ptr ::= (tbl->tbl) at idx;
+	(deref ptr) = lex_entry
+	{
+		.tag := lex_entry_tag.fn;
+		.data := valfn@u64;
+	};
+};
+
+testfn ::= func(s : lex_state mut&) -> v0
+{
+	psyc_panic(ls_current_loc(s), "testfn hit!");
+};
+
+trivial_setup ::= func(t : lex_token, front_identifier : u8&) -> v0
+{
+	len ::= cstrlen(front_identifier);
+	tbl : lex_trivial_table& mut := tables at 0;
+	i : u64 mut;
+	for(i = 0, i < (len - 1), i = i + 1)
+	{
+		ch ::= deref(front_identifier at i);
+		entryptr ::= (tbl->tbl) at ch;
+		if((entryptr->tag) == (lex_entry_tag.tbl))
+		{
+			// sick just re-use it
+			tbl = ((entryptr->data)@lex_trivial_table&);
+		}
+		if((entryptr->tag) == (lex_entry_tag.fn))
+		{
+			psyc_panic(zero, "waahfn");
+		}
+		if((entryptr->tag) == (lex_entry_tag.success))
+		{
+			psyc_panic(zero, "waahsucc");
+		}
+		if((entryptr->tag) == zero)
+		{
+			// make a new table.
+			newtblptr : lex_trivial_table mut& := arena_push(lexar, __sizeof(lex_trivial_table));
+			deref(newtblptr) = ls_newtable();
+			(deref entryptr) = lex_entry
+			{
+				.tag := lex_entry_tag.tbl;
+				.data := newtblptr@u64;
+			};
+			tbl = newtblptr;
+		}
+	}
+
+	last ::= deref(front_identifier at (len - 1));
+	deref((tbl->tbl) at last) = lex_entry
+	{
+		.tag := lex_entry_tag.success;
+		.data := t@s64@u64;
+	};
+};
+
 lex_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	lexar = a;
 
-	deref(tables at 0) = lex_trivial_table
-	{
-	};
+	deref(tables at 0) = ls_newtable();
+	//ls_table_set_fn(tables at 0, '_', testfn);
+	trivial_setup(lex_token.semicol, ";");
+	trivial_setup(lex_token.keyword_true, "true");
 };
 
 ls_verbose_print ::= func(s : lex_state&) -> v0
@@ -169,9 +266,199 @@ ls_verbose_print ::= func(s : lex_state&) -> v0
 	putchar(10);
 };
 
+ls_push_token ::= func(state : lex_state mut&, token : token_data) -> v0
+{
+	if((state->tokens) == null)
+	{
+		psyc_panic(srcloc_current(), "lex_state did not initialise its token list correctly. it was null.");
+	}
+	if((state->tokens_size) >= (state->tokens_cap))
+	{
+		oldcap ::= state->tokens_cap;
+		old_tokens ::= state->tokens;
+
+		(state->tokens_cap) = (state->tokens_cap) * 2;
+		(state->tokens) = arena_push(lexar, __sizeof(deref (state->tokens)) * (state->tokens_cap));
+		__memcpy(state->tokens, old_tokens, __sizeof(deref (state->tokens)) * oldcap);
+	}
+	deref((state->tokens) at (state->tokens_size)) = token;
+	(state->tokens_size) = (state->tokens_size) + 1;
+};
+
 token_affects_code ::= func(tok : lex_token) -> bool
 {
 	return true;
+};
+
+impl_is_whitespace ::= func(char : u8) -> bool
+{
+	if(char == 0x20) // ' '
+	{
+		return true;
+	}
+	if(char == 0x0c) // '\f'
+	{
+		return true;
+	}
+	if(char == 0x0a) // '\n'
+	{
+		return true;
+	}
+	if(char == 0x0d) // '\r'
+	{
+		return true;
+	}
+	if(char == 0x09) // '/t'
+	{
+		return true;
+	}
+	if(char == 0x0b) // '/v'
+	{
+		return true;
+	}
+	return false;
+};
+
+impl_is_alpha ::= func(char : u8) -> bool
+{
+	if(char >= 'a')
+	{
+		if(char <= 'z')
+		{
+			return true;
+		}
+	}
+	if(char >= 'A')
+	{
+		if(char <= 'Z')
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+lex_onwards ::= func(s : lex_state mut&) -> bool
+{
+	while(impl_is_whitespace(deref((s->src) at (s->cursor))))
+	{
+		is_newline ::= deref((s->src) at (s->cursor)) == 10;
+		if(is_newline)
+		{
+			(s->line) = (s->line) + 1;
+			(s->col) = 1;
+		}
+		if(!is_newline)
+		{
+			(s->col) = (s->col) + 1;
+		}
+		(s->cursor) = (s->cursor) + 1;
+	}
+	return (s->cursor) < cstrlen(s->src);
+};
+
+lex_advance ::= func(s : lex_state mut&) -> v0
+{
+	whitespace ::= impl_is_whitespace(deref((s->src) at (s->cursor)));
+	if(whitespace)
+	{
+		(s->line) = (s->line) + 1;
+		(s->col) = 1;
+	}
+	if(!whitespace)
+	{
+		(s->col) = (s->col) + 1;
+	}
+	(s->cursor) = (s->cursor) + 1;
+};
+
+lex_get ::= func(tbl : lex_trivial_table& mut, s : lex_state mut&) -> lex_entry
+{
+	char ::= deref((s->src) at (s->cursor))@u64;
+	if(tbl == null)
+	{
+		// probably the first time. just get the first table.
+		tbl = (tables at 0);
+	}
+	// so how do we index into the table?
+	// just index into it for now
+	if(char >= (tbl->cap))
+	{
+		psyc_panic(ls_current_loc(s), "lex table index is out of range");
+	}
+	return deref ((tbl->tbl) at char);
+};
+
+lex_next ::= func(s : lex_state mut&) -> v0
+{
+	int ::= ref(s->internal);
+	if(!lex_onwards(s))
+	{
+		return;
+	}
+	started ::= int->started;
+	if(started)
+	{
+		oldent ::= int->ent;
+		tbl ::= (oldent.data)@lex_trivial_table&;
+		(int->ent) = lex_get(tbl, s);
+		(int->curlen) = (int->curlen) + 1;
+	}
+	if(!started)
+	{
+		(int->started) = true;
+		(int->ent) = lex_get(null, s);
+		(int->begin_cursor) = (s->cursor);
+		(int->begin) = ls_current_loc(s);
+	}
+
+	// check int->ent
+	// if its success, then pop a token out
+	// else, continue;
+	ent ::= (int->ent);
+	if((ent.tag) == (lex_entry_tag.success))
+	{
+		// hooray! new token.
+		lex_advance(s);
+		ls_push_token(s, token_data
+		{
+			.tok := (ent.data)@lex_token;
+			.lexeme := lex_slice{.off := (int->begin_cursor); .len := (s->cursor) - (int->begin_cursor);};
+			.begin := int->begin;
+			.end := ls_current_loc(s);
+		});
+		// reset the internal state
+		(deref int) = zero;
+		return;
+	}
+	if((ent.tag) == (lex_entry_tag.tbl))
+	{
+		tbl ::= (ent.data)@lex_trivial_table&;
+		//(int->ent) = lex_get(tbl, s);
+		lex_advance(s);
+		return;
+	}
+	if((ent.tag) == (lex_entry_tag.fn))
+	{
+		fn : func(s : lex_state mut&) -> v0 := (ent.data)@_;
+		fn(s);
+		lex_advance(s);
+		return;
+	}
+	//if((ent.tag) == zero)
+	//{
+		// this didnt give us anything useful.
+		// todo: proper tokenise_fn like the old ways? for comments/symbols etc
+	//}
+	ls_verbose_print(s);
+	psyc_panic_begin(ls_current_loc(s));
+	puts("got lex entry tag: ");
+	puts(__enumname(ent.tag));
+	puts(" (");
+	putsint((ent.tag)@s64);
+	puts(")");
+	psyc_diag_end();
+	psyc_exit_failure();
 };
 
 lex ::= func(path : u8&, src : u8&, verbose_lex : bool) -> lex_state
@@ -185,6 +472,11 @@ lex ::= func(path : u8&, src : u8&, verbose_lex : bool) -> lex_state
 	(ret.tokens_cap) = 1024;
 	(ret.tokens) = arena_push(lexar, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
 	len ::= cstrlen(src);
+
+	while((ret.cursor) < len@_)
+	{
+		lex_next(ref ret);
+	}
 
 	if(verbose_lex)
 	{
