@@ -223,8 +223,21 @@ lex_table ::= struct
 };
 
 main_table : lex_table mut;
-
 symbol_continuation_table : lex_table mut;
+
+main_table_setup ::= func(t : lex_table mut&) -> v0
+{
+	// 32 = ' '
+	// the prototype compiler crashes if you use a char literal here for mysterious reasons.
+	deref((t->tbl) at 32) = lex_entry
+	{
+		.tag := lex_entry_tag.discard;
+		.data := zero;
+		.metadata := zero;
+		.name := zero;
+		.next := zero;
+	};
+};
 
 lex_internal_state ::= struct
 {
@@ -284,31 +297,64 @@ lex_newtable ::= func() -> lex_table mut&
 
 lex_break_type ::= enum
 {
-	.punctuation := 1;
-	.whitespace := 2;
-	.not_equals_symbol := 4;
+	.punctuation_or_whitespace := 1;
+	.not_equals_symbol := 2;
+	.not_canglebrack := 4;
+	.not_oanglebrack := 8;
+	.not_ampersand := 16;
+	.not_bar := 32;
+	.everything := 64;
 };
 
 matches_break_type ::= func(break : lex_break_type, ch : u8) -> bool
 {
 	matches : bool mut := false;
-	if((break & (lex_break_type.punctuation)) != zero)
+	if((break & (lex_break_type.punctuation_or_whitespace)) != zero)
 	{
 		if(impl_is_punctuation(ch))
 		{
 			matches = true;
 		}
-	}
-	if((break & (lex_break_type.whitespace)) != zero)
-	{
 		if(impl_is_whitespace(ch))
 		{
 			matches = true;
 		}
 	}
+	if((break & (lex_break_type.everything)) != zero)
+	{
+		matches = true;
+	}
 	if((break & (lex_break_type.not_equals_symbol)) != zero)
 	{
 		if(ch == '=')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_canglebrack)) != zero)
+	{
+		if(ch == '>')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_oanglebrack)) != zero)
+	{
+		if(ch == '<')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_ampersand)) != zero)
+	{
+		if(ch == '&')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_bar)) != zero)
+	{
+		if(ch == '|')
 		{
 			matches = false;
 		}
@@ -434,16 +480,65 @@ lex_setup ::= func(a : arena mut&) -> v0
 	psyc_timed(psyc_stage.setup);
 	lexar = a;
 
-	whitespace ::= (lex_break_type.whitespace);
-	whitespace_and_punctuation ::= (lex_break_type.whitespace) | (lex_break_type.punctuation);
+	main_table_setup(ref main_table);
+
+	everything ::= (lex_break_type.everything);
 	//ls_table_set_fn(ref main_table, '_', testfn);
 	lex_install(lex_token.semicol, ";", zero);
 	lex_install(lex_token.initialiser, ":=", zero);
-	lex_install(lex_token.colon, ":", whitespace_and_punctuation | (lex_break_type.not_equals_symbol));
-	lex_install(lex_token.keyword_func, "func", whitespace_and_punctuation);
+	lex_install(lex_token.colon, ":", everything | (lex_break_type.not_equals_symbol));
+	lex_install(lex_token.comma, ",", zero);
+	lex_install(lex_token.dot, ".", zero);
+	lex_install(lex_token.compare, "==", zero);
+	lex_install(lex_token.comparen, "!=", zero);
+	lex_install(lex_token.assign, "=", everything | (lex_break_type.not_equals_symbol));
 	lex_install(lex_token.arrow, "->", zero);
-	lex_install(lex_token.keyword_extern, "extern", whitespace_and_punctuation);
-	lex_install(lex_token.keyword_true, "true", whitespace_and_punctuation);
+	lex_install(lex_token.oparen, "(", zero);
+	lex_install(lex_token.cparen, ")", zero);
+	lex_install(lex_token.obrace, "{", zero);
+	lex_install(lex_token.cbrace, "}", zero);
+	lex_install(lex_token.obrack, "[", zero);
+	lex_install(lex_token.cbrack, "]", zero);
+	lex_install(lex_token.plus, "+", zero);
+	lex_install(lex_token.dash, "-", everything | (lex_break_type.not_canglebrack));
+	lex_install(lex_token.asterisk, "*", zero);
+	lex_install(lex_token.fslash, "/", zero);
+	lex_install(lex_token.cast, "@", zero);
+	lex_install(lex_token.logical_and, "&&", zero);
+	lex_install(lex_token.bitwise_and, "&", everything | (lex_break_type.not_ampersand));
+	lex_install(lex_token.logical_or, "||", zero);
+	lex_install(lex_token.bitwise_or, "|", everything | (lex_break_type.not_bar));
+	lex_install(lex_token.bitwise_exor, "^", zero);
+	lex_install(lex_token.modulo, "%", zero);
+	lex_install(lex_token.bitwise_invert, "~", zero);
+	lex_install(lex_token.logical_invert, "!", everything | (lex_break_type.not_equals_symbol));
+	lex_install(lex_token.loreq, "<=", zero);
+	lex_install(lex_token.goreq, ">=", zero);
+	lex_install(lex_token.oanglebrack2, "<<", zero);
+	lex_install(lex_token.canglebrack2, ">>", zero);
+	lex_install(lex_token.oanglebrack, "<", everything | (lex_break_type.not_equals_symbol) | (lex_break_type.not_oanglebrack));
+	lex_install(lex_token.canglebrack, ">", everything | (lex_break_type.not_equals_symbol) | (lex_break_type.not_canglebrack));
+	lex_install(lex_token.keyword_static_if, "static if", zero);
+	lex_install(lex_token.keyword_if, "if", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_else, "else", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_while, "while", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_for, "for", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_return, "return", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_yield, "yield", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_func, "func", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_macro, "macro", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_extern, "extern", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_struct, "struct", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_enum, "enum", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_ref, "ref", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_deref, "deref", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_atomic_deref, "atomic deref", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_defer, "defer", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_alias, "alias", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_at, "at", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_true, "true", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_false, "false", lex_break_type.punctuation_or_whitespace);
+	lex_install(lex_token.keyword_zero, "zero", lex_break_type.punctuation_or_whitespace);
 };
 
 ls_verbose_print ::= func(s : lex_state&) -> v0
