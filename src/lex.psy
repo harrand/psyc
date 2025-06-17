@@ -223,6 +223,7 @@ lex_table ::= struct
 
 main_table : lex_table mut;
 symbol_continuation_table : lex_table mut;
+string_literal_table : lex_table mut;
 
 main_table_setup ::= func(t : lex_table mut&) -> v0
 {
@@ -294,6 +295,39 @@ symbol_continuation_setup ::= func(t : lex_table mut&) -> v0
 			};
 		}
 	}
+};
+
+string_table_setup ::= func() -> v0
+{
+	deref((main_table.tbl) at 34) = lex_entry
+	{
+		.tag := lex_entry_tag.none;
+		.data := zero;
+		.metadata := zero;
+		.name := zero;
+		.next := (ref string_literal_table)@v0&;
+	};
+
+	i : u64 mut;
+	for(i = 0, i < 255, i = i + 1)
+	{
+		deref((string_literal_table.tbl) at i) = lex_entry
+		{
+			.tag := lex_entry_tag.none;
+			.data := zero;
+			.metadata := zero;
+			.name := zero;
+			.next := (ref string_literal_table)@v0&;
+		};
+	}
+	deref((string_literal_table.tbl) at 34) = lex_entry
+	{
+		.tag := lex_entry_tag.success;
+		.data := (lex_token.string_literal)@s64@u64;
+		.metadata := false;
+		.name := zero;
+		.next := zero;
+	};
 };
 
 lex_internal_state ::= struct
@@ -555,6 +589,7 @@ lex_setup ::= func(a : arena mut&) -> v0
 	lexar = a;
 
 	main_table_setup(ref main_table);
+	string_table_setup();
 	symbol_continuation_setup(ref symbol_continuation_table);
 
 	everything ::= (lex_break_type.everything);
