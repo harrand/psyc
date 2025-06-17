@@ -29,7 +29,6 @@ impl_is_whitespace ::= func(char : u8) -> bool
 	return false;
 };
 
-
 impl_starts_symbol ::= func(char : u8) -> bool
 {
 
@@ -124,8 +123,6 @@ impl_is_punctuation ::= func(ch : u8) -> bool
 
 lex_token ::= enum
 {
-	.comment := 0;
-	.multicomment := 1;
 	.numeric_literal := 2;
 	.char_literal := 3;
 	.string_literal := 4;
@@ -204,14 +201,11 @@ token_data ::= struct
 
 lex_entry_tag ::= enum
 {
-	// data is a pointer to a function
-	.fn := 1;
-	// data is a pointer to the next lex_trivial_table
-	.tbl := 2;
+	.none := 1;
 	// data is the token type you have just found.
-	.success := 3;
+	.success := 2;
 	// forget what you're doing, dont backtrack and start again (you've lexed a comment most likely)
-	.discard := 4;
+	.discard := 3;
 };
 
 lex_entry ::= struct
@@ -220,24 +214,23 @@ lex_entry ::= struct
 	data : u64;
 	metadata : u64 weak;
 	name : u8&;
+	next : v0&;
 };
 
-lex_trivial_table ::= struct
+lex_table ::= struct
 {
-	tbl : lex_entry mut&;
-	cap : u64;
+	tbl : lex_entry mut#255;
 };
 
-lex_table : lex_trivial_table mut;
-symbol_continuation_table : lex_trivial_table mut;
+main_table : lex_table mut;
+
+symbol_continuation_table : lex_table mut;
 
 lex_internal_state ::= struct
 {
 	begin_cursor : u64;
-	begin : srcloc;
-	started : bool;
-	curlen : u64;
-	ent : lex_entry mut;
+	begin_loc : srcloc;
+	tbl : lex_table&;
 };
 
 lex_state ::= struct
@@ -282,138 +275,155 @@ ls_current_loc ::= func(s : lex_state&) -> srcloc
 	};
 };
 
-
-ls_newtable ::= func() -> lex_trivial_table
+lex_newtable ::= func() -> lex_table mut&
 {
-	cap ::= 255;
-	ptr ::= arena_push(lexar, cap * __sizeof(lex_entry));
-	__memset(ptr, 0, cap * __sizeof(lex_entry));
-	return lex_trivial_table
-	{
-		.tbl := ptr;
-		.cap := cap;
-	};
+	ret : lex_table mut& := arena_push(lexar, __sizeof(lex_table));
+	__memset(ret, 0, __sizeof(lex_table));
+	return ret;
 };
 
-ls_table_inject_symbol_continuation ::= func(tbl : lex_trivial_table mut&) -> v0
+lex_break_type ::= enum
 {
-	i : u64 mut;
-	cansym : bool mut;
-	for(i = 0, i < 255, i = i + 1)
+	.punctuation := 1;
+	.whitespace := 2;
+	.not_equals_symbol := 4;
+};
+
+matches_break_type ::= func(break : lex_break_type, ch : u8) -> bool
+{
+	matches : bool mut := false;
+	if((break & (lex_break_type.punctuation)) != zero)
 	{
-		cansym = impl_could_continue_symbol(i@u8);
-		if(cansym)
+		if(impl_is_punctuation(ch))
 		{
-			deref((tbl->tbl) at i) = lex_entry
-			{
-				.tag := lex_entry_tag.tbl;
-				.data := (ref symbol_continuation_table)@u64;
-				.name := "symbol continue";
-			};
-		}
-		if(!cansym)
-		{
-			if(i == ' ')
-			{
-				deref((tbl->tbl) at i) = lex_entry
-				{
-					.tag := lex_entry_tag.success;
-					.data := (lex_token.symbol)@s64@u64;
-					.metadata := false;
-					.name := "symbol terminate";
-				};
-			}
-			if(impl_is_punctuation(i@u8))
-			{
-				deref((tbl->tbl) at i) = lex_entry
-				{
-					.tag := lex_entry_tag.success;
-					.data := (lex_token.symbol)@s64@u64;
-					.metadata := false;
-					.name := "symbol terminate";
-				};
-			}
+			matches = true;
 		}
 	}
-};
-
-ls_table_set_table ::= func(tbl : lex_trivial_table mut&, idx : u64, valtbl : lex_trivial_table&) -> v0
-{
-	ptr ::= (tbl->tbl) at idx;
-	(deref ptr) = lex_entry
+	if((break & (lex_break_type.whitespace)) != zero)
 	{
-		.tag := lex_entry_tag.tbl;
-		.data := valtbl@u64;
-	};
-};
-
-ls_table_set_fn ::= func(tbl : lex_trivial_table mut&, idx : u64, valfn : func(s : lex_state mut&) -> v0) -> v0
-{
-	ptr ::= (tbl->tbl) at idx;
-	(deref ptr) = lex_entry
+		if(impl_is_whitespace(ch))
+		{
+			matches = true;
+		}
+	}
+	if((break & (lex_break_type.not_equals_symbol)) != zero)
 	{
-		.tag := lex_entry_tag.fn;
-		.data := valfn@u64;
-	};
+		if(ch == '=')
+		{
+			matches = false;
+		}
+	}
+	return matches;
 };
 
-testfn ::= func(s : lex_state mut&) -> v0
+lex_install ::= func(t : lex_token, front_identifier : u8&, break : lex_break_type) -> v0
 {
-	psyc_panic(ls_current_loc(s), "testfn hit!");
-};
+	// for each char 'c' in the front identifier:
+	// take entry 'e' from index 'c' at the current table and look at its tag
+	//		- if its 'zero', then overwrite it to .none and create a new table and point e->next to it.
+	//		- if its .none, then it redirects to another table already, we just move on
+	//		- if its .success, then we move on, unless it doesnt have a ->next in which case we make one and then move on.
+	//		- if its .discard, then overwrite it to .none and create a new table and point e->next to it.
+	//	e = e->next
+	// when we run out of chars, we are left with the final entry of e
+	// if 'need_punc_next' is false, then we look at e again.
+	//		- if its .success, we probably have duplicate lex rules and we should assert
+	//		- in all other cases, overwrite it to .success with the data being the given lex token.
 
-trivial_setup ::= func(t : lex_token, front_identifier : u8&, require_proceeding_whitespace : bool) -> v0
-{
-	name ::= __enumname(t);
 	len : u64 mut := cstrlen(front_identifier);
-	if(!require_proceeding_whitespace)
+	if(break == zero)
 	{
 		len = len - 1;
 	}
-	tbl : lex_trivial_table& mut := ref lex_table;
-	i : u64 mut := 0;
+	tbl : lex_table mut& mut := ref main_table;
+	i : u64 mut;
+	c : u8 mut;
+	e : lex_entry mut& mut;
+	newtbl : lex_table mut& mut;
 	for(i = 0, i < len, i = i + 1)
 	{
-		ch ::= deref(front_identifier at i);
-		entryptr ::= (tbl->tbl) at ch;
-		// make a new table.
-		newtblptr : lex_trivial_table mut& := arena_push(lexar, __sizeof(lex_trivial_table));
-		deref(newtblptr) = ls_newtable();
-		ls_table_inject_symbol_continuation(newtblptr);
-		(deref entryptr) = lex_entry
+		c = deref(front_identifier at i);
+		e = ((tbl->tbl) at c);
+		if((e->tag) == (lex_entry_tag.success))
 		{
-			.tag := lex_entry_tag.tbl;
-			.data := newtblptr@u64;
-			.name := "trivial continuation";
-		};
-		tbl = newtblptr;
+			newtbl = lex_newtable();
+			if((e->next) == zero)
+			{
+				(e->next) = (newtbl@v0&);
+			}
+		}
+		if((e->tag) == (lex_entry_tag.none))
+		{
+		}
+		if((e->tag) == (lex_entry_tag.discard))
+		{
+			newtbl = lex_newtable();
+			(deref e) = lex_entry
+			{
+				.tag := lex_entry_tag.none;
+				.data := zero;
+				.metadata := zero;
+				.name := "";
+				.next := newtbl@v0&;
+			};
+		}
+		if((e->tag) == zero)
+		{
+			newtbl = lex_newtable();
+			(deref e) = lex_entry
+			{
+				.tag := lex_entry_tag.none;
+				.data := zero;
+				.metadata := zero;
+				.name := "";
+				.next := newtbl@v0&;
+			};
+		}
+		tbl = ((e->next)@lex_table mut&);
 	}
 
-	if(!require_proceeding_whitespace)
+	if(break == zero)
 	{
 		last ::= deref(front_identifier at len);
-		deref((tbl->tbl) at last) = lex_entry
+		e = ((tbl->tbl) at last);
+		if((e->tag) == (lex_entry_tag.success))
+		{
+			psyc_error_begin(zero);
+			puts(".success entry for lex_token.");
+			puts(__enumname(t));
+			puts(" steps on the .success entry for lex_token.");
+			puts(__enumname((e->data)@lex_token));
+			puts(" - do they have the exact same front identifier?");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		(deref e) = lex_entry
+		{
+			.tag := lex_entry_tag.success;
+			.data := t@s64@u64;
+			.metadata := false;
+			.name := "";
+			.next := zero;
+		};
+	}
+	if(break != zero)
+	{
+		winning_entry ::= lex_entry
 		{
 			.tag := lex_entry_tag.success;
 			.data := t@s64@u64;
 			.metadata := true;
-			.name := name;
+			.name := "";
+			.next := zero;
 		};
-	}
-	if(require_proceeding_whitespace)
-	{
 		for(i = 0, i < 255, i = i + 1)
 		{
-			char ::= i@u8;
-			if(impl_is_punctuation(char))
+			final ::= (tbl->tbl) at i;
+			fnext ::= final->next;
+			if(matches_break_type(break, i@u8))
 			{
-				deref((tbl->tbl) at i) = lex_entry
-				{
-					.tag := lex_entry_tag.success;
-					.data := t@s64@u64;
-					.metadata := false;
-					.name := name;
-				};
+				(deref final) = winning_entry;
+				(final->next) = fnext;
 			}
 		}
 	}
@@ -423,40 +433,17 @@ lex_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
 	lexar = a;
-	i : u64 mut;
 
-	symbol_continuation_table = ls_newtable();
-	ls_table_inject_symbol_continuation(ref symbol_continuation_table);
-
-	lex_table = ls_newtable();
-
-	for(i = 0, i < 255, i = i + 1)
-	{
-		if(impl_starts_symbol(i@u8))
-		{
-			deref((lex_table.tbl) at i) = lex_entry
-			{
-				.tag := lex_entry_tag.tbl;
-				.data := (ref symbol_continuation_table)@u64;
-			};
-		}
-		if(impl_is_whitespace(i@u8))
-		{
-			deref((lex_table.tbl) at i) = lex_entry
-			{
-				.tag := lex_entry_tag.discard;
-			};
-		}
-	}
-
-	//ls_table_set_fn(ref lex_table, '_', testfn);
-	trivial_setup(lex_token.semicol, ";", false);
-	trivial_setup(lex_token.colon, ":=", false);
-	trivial_setup(lex_token.initialiser, ":=", false);
-	trivial_setup(lex_token.keyword_func, "func", true);
-	trivial_setup(lex_token.arrow, "->", false);
-	trivial_setup(lex_token.keyword_extern, "extern", false);
-	trivial_setup(lex_token.keyword_true, "true", true);
+	whitespace ::= (lex_break_type.whitespace);
+	whitespace_and_punctuation ::= (lex_break_type.whitespace) | (lex_break_type.punctuation);
+	//ls_table_set_fn(ref main_table, '_', testfn);
+	lex_install(lex_token.semicol, ";", zero);
+	lex_install(lex_token.initialiser, ":=", zero);
+	lex_install(lex_token.colon, ":", whitespace_and_punctuation | (lex_break_type.not_equals_symbol));
+	lex_install(lex_token.keyword_func, "func", whitespace_and_punctuation);
+	lex_install(lex_token.arrow, "->", zero);
+	lex_install(lex_token.keyword_extern, "extern", whitespace_and_punctuation);
+	lex_install(lex_token.keyword_true, "true", whitespace_and_punctuation);
 };
 
 ls_verbose_print ::= func(s : lex_state&) -> v0
@@ -496,30 +483,6 @@ ls_push_token ::= func(state : lex_state mut&, token : token_data) -> v0
 	(state->tokens_size) = (state->tokens_size) + 1;
 };
 
-token_affects_code ::= func(tok : lex_token) -> bool
-{
-	return true;
-};
-
-impl_is_alpha ::= func(char : u8) -> bool
-{
-	if(char >= 'a')
-	{
-		if(char <= 'z')
-		{
-			return true;
-		}
-	}
-	if(char >= 'A')
-	{
-		if(char <= 'Z')
-		{
-			return true;
-		}
-	}
-	return false;
-};
-
 lex_advance ::= func(s : lex_state mut&) -> v0
 {
 	whitespace ::= deref((s->src) at (s->cursor)) == 10;
@@ -535,102 +498,81 @@ lex_advance ::= func(s : lex_state mut&) -> v0
 	(s->cursor) = (s->cursor) + 1;
 };
 
-lex_get ::= func(tbl : lex_trivial_table& mut, s : lex_state mut&) -> lex_entry
+lex_get ::= func(s : lex_state mut&) -> lex_entry mut&
 {
-	char ::= deref((s->src) at (s->cursor))@u64;
-	if(tbl == null)
+	// get the next char
+	char ::= deref ((s->src) at (s->cursor));
+
+	internal ::= ref(s->internal);
+	if((internal->tbl) == zero)
 	{
-		// probably the first time. just get the first table.
-		tbl = (ref lex_table);
+		// we are starting again
+		(internal->tbl) = (ref main_table);
+		(internal->begin_cursor) = (s->cursor);
+		(internal->begin_loc) = ls_current_loc(s);
 	}
-	// so how do we index into the table?
-	// just index into it for now
-	if(char >= (tbl->cap))
-	{
-		psyc_panic(ls_current_loc(s), "lex table index is out of range");
-	}
-	return deref ((tbl->tbl) at char);
+	tbl ::= (internal->tbl);
+	return (tbl->tbl) at char;
+};
+
+lex_discard ::= func(s : lex_state mut&) -> v0
+{
+	(s->internal) = zero;
 };
 
 lex_next ::= func(s : lex_state mut&) -> v0
 {
-	int ::= ref(s->internal);
-	started ::= int->started;
-	if(started)
-	{
-		oldent ::= int->ent;
-		tbl ::= (oldent.data)@lex_trivial_table&;
-		(int->ent) = lex_get(tbl, s);
-		(int->curlen) = 1;
-	}
-	if(!started)
-	{
-		(int->started) = true;
-		(int->ent) = lex_get(null, s);
-		(int->begin_cursor) = (s->cursor);
-		(int->begin) = ls_current_loc(s);
-		(int->curlen) = (int->curlen) + 1;
-	}
+	entry ::= lex_get(s);
+	should_advance : bool mut;
+	should_advance = true;
+	internal ::= ref(s->internal);
 
-	// check int->ent
-	// if its success, then pop a token out
-	// else, continue;
-	ent ::= (int->ent);
-	//puts(" => ");
-	//puts(ent.name);
-	//putchar(10);
-	if((ent.tag) == (lex_entry_tag.success))
+	(internal->tbl) = ((entry->next)@lex_table&);
+	if((entry->tag) == zero)
 	{
-		// hooray! new token.
-		if((ent.metadata)@bool)
+		// invalid operation
+		psyc_error_begin(internal->begin_loc);
+		puts("failed to lex ");
+		putchar('"');
+		ptr ::= (s->src) at (internal->begin_cursor);
+		cur ::= (s->cursor) + 1;
+		putss(ptr, cur - (internal->begin_cursor));
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+		return;
+	}
+	if((entry->tag) == (lex_entry_tag.none))
+	{
+		// valid operation, but we dont do anything.
+	}
+	if((entry->tag) == (lex_entry_tag.success))
+	{
+		if((entry->metadata)@bool)
 		{
-			lex_advance(s);
+			should_advance = false;
 		}
 		ls_push_token(s, token_data
 		{
-			.tok := (ent.data)@lex_token;
-			.lexeme := lex_slice{.off := (int->begin_cursor); .len := (s->cursor) - (int->begin_cursor);};
-			.begin := int->begin;
+			.tok := (entry->data)@lex_token;
+			.lexeme := lex_slice{.off := (internal->begin_cursor); .len := (s->cursor) - (internal->begin_cursor);};
+			.begin := (internal->begin_loc);
 			.end := ls_current_loc(s);
-		});
-		// reset the internal state
-		(deref int) = zero;
-		return;
+		});	
+		puts("found token ");
+		puts(__enumname((entry->data)@lex_token));
+		putchar(10);
+		lex_discard(s);
 	}
-	if((ent.tag) == (lex_entry_tag.tbl))
+	if((entry->tag) == (lex_entry_tag.discard))
 	{
-		tbl ::= (ent.data)@lex_trivial_table&;
-		lex_advance(s);
-		return;
+		lex_discard(s);
 	}
-	if((ent.tag) == (lex_entry_tag.fn))
+
+	if(should_advance)
 	{
-		fn : func(s : lex_state mut&) -> v0 := (ent.data)@_;
-		fn(s);
 		lex_advance(s);
-		return;
 	}
-	if((ent.tag) == (lex_entry_tag.discard))
-	{
-		// reset the internal state
-		(deref int) = zero;
-		lex_advance(s);
-		return;
-	}
-	//if((ent.tag) == zero)
-	//{
-		// this didnt give us anything useful.
-		// todo: proper tokenise_fn like the old ways? for comments/symbols etc
-	//}
-	ls_verbose_print(s);
-	psyc_panic_begin(ls_current_loc(s));
-	puts("got lex entry tag: ");
-	puts(__enumname(ent.tag));
-	puts(" (");
-	putsint((ent.tag)@s64);
-	puts(")");
-	psyc_diag_end();
-	psyc_exit_failure();
 };
 
 lex ::= func(path : u8&, src : u8&, verbose_lex : bool) -> lex_state
