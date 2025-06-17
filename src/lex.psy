@@ -240,17 +240,18 @@ main_table_setup ::= func(t : lex_table mut&) -> v0
 				.next := (ref symbol_continuation_table)@v0&;
 			};
 		}
+		if(impl_is_whitespace(i@u8))
+		{
+			deref((t->tbl) at i) = lex_entry
+			{
+				.tag := lex_entry_tag.discard;
+				.data := zero;
+				.metadata := zero;
+				.name := zero;
+				.next := zero;
+			};
+		}
 	}
-	// 32 = ' '
-	// the prototype compiler crashes if you use a char literal here for mysterious reasons.
-	deref((t->tbl) at 32) = lex_entry
-	{
-		.tag := lex_entry_tag.discard;
-		.data := zero;
-		.metadata := zero;
-		.name := zero;
-		.next := zero;
-	};
 };
 
 symbol_continuation_setup ::= func(t : lex_table mut&) -> v0
@@ -288,7 +289,7 @@ symbol_continuation_setup ::= func(t : lex_table mut&) -> v0
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.symbol)@s64@u64;
 				.metadata := true;
-				.name := zero;
+				.name := "symbol";
 				.next := e->next;
 			};
 		}
@@ -348,6 +349,7 @@ lex_newtable ::= func() -> lex_table mut&
 {
 	ret : lex_table mut& := arena_push(lexar, __sizeof(lex_table));
 	__memset(ret, 0, __sizeof(lex_table));
+	symbol_continuation_setup(ret);
 	return ret;
 };
 
@@ -503,14 +505,17 @@ lex_install ::= func(t : lex_token, front_identifier : u8&, break : lex_break_ty
 		e = ((tbl->tbl) at last);
 		if((e->tag) == (lex_entry_tag.success))
 		{
-			psyc_error_begin(zero);
-			puts(".success entry for lex_token.");
-			puts(__enumname(t));
-			puts(" steps on the .success entry for lex_token.");
-			puts(__enumname((e->data)@lex_token));
-			puts(" - do they have the exact same front identifier?");
-			psyc_diag_end();
-			psyc_exit_failure();
+			if(!cstreql(e->name, "symbol"))
+			{
+				psyc_error_begin(zero);
+				puts(".success entry for lex_token.");
+				puts(__enumname(t));
+				puts(" steps on the .success entry for lex_token.");
+				puts(__enumname((e->data)@lex_token));
+				puts(" - do they have the exact same front identifier?");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 		}
 		(deref e) = lex_entry
 		{
