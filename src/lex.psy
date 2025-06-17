@@ -224,6 +224,7 @@ lex_table ::= struct
 main_table : lex_table mut;
 symbol_continuation_table : lex_table mut;
 string_literal_table : lex_table mut;
+decimal_table : lex_table mut;
 
 main_table_setup ::= func(t : lex_table mut&) -> v0
 {
@@ -328,6 +329,59 @@ string_table_setup ::= func() -> v0
 		.name := zero;
 		.next := zero;
 	};
+};
+
+decimal_table_setup ::= func() -> v0
+{
+	i : u64 mut;
+	for(i = '0', i < '9', i = i + 1)
+	{
+		deref((main_table.tbl) at i) = lex_entry
+		{
+			.tag := lex_entry_tag.none;
+			.data := zero;
+			.metadata := zero;
+			.name := zero;
+			.next := (ref decimal_table)@v0&;
+		};
+	}
+
+	for(i = 0, i < 255, i = i + 1)
+	{
+		if(impl_is_whitespace(i@u8))
+		{
+			deref((decimal_table.tbl) at i) = lex_entry
+			{
+				.tag := lex_entry_tag.success;
+				.data := (lex_token.numeric_literal)@s64@u64;
+				.metadata := true;
+				.name := zero;
+				.next := zero;
+			};
+		}
+		if(impl_is_punctuation(i@u8))
+		{
+			deref((decimal_table.tbl) at i) = lex_entry
+			{
+				.tag := lex_entry_tag.success;
+				.data := (lex_token.numeric_literal)@s64@u64;
+				.metadata := true;
+				.name := zero;
+				.next := zero;
+			};
+		}
+	}
+	for(i = '0', i < '9', i = i + 1)
+	{
+		deref((decimal_table.tbl) at i) = lex_entry
+		{
+			.tag := lex_entry_tag.none;
+			.data := zero;
+			.metadata := zero;
+			.name := zero;
+			.next := (ref decimal_table)@v0&;
+		};
+	}
 };
 
 lex_internal_state ::= struct
@@ -590,6 +644,7 @@ lex_setup ::= func(a : arena mut&) -> v0
 
 	main_table_setup(ref main_table);
 	string_table_setup();
+	decimal_table_setup();
 	symbol_continuation_setup(ref symbol_continuation_table);
 
 	everything ::= (lex_break_type.everything);
