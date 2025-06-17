@@ -91,6 +91,10 @@ impl_could_continue_symbol ::= func(ch : u8) -> bool
 	{
 		return true;
 	}
+	if(ch == ' ')
+	{
+		return true;
+	}
 	return false;
 };
 
@@ -224,6 +228,7 @@ lex_table ::= struct
 main_table : lex_table mut;
 symbol_continuation_table : lex_table mut;
 string_literal_table : lex_table mut;
+char_literal_table : lex_table mut;
 decimal_table : lex_table mut;
 
 main_table_setup ::= func(t : lex_table mut&) -> v0
@@ -325,6 +330,39 @@ string_table_setup ::= func() -> v0
 	{
 		.tag := lex_entry_tag.success;
 		.data := (lex_token.string_literal)@s64@u64;
+		.metadata := false;
+		.name := zero;
+		.next := zero;
+	};
+};
+
+char_table_setup ::= func() -> v0
+{
+	deref((main_table.tbl) at 39) = lex_entry
+	{
+		.tag := lex_entry_tag.none;
+		.data := zero;
+		.metadata := zero;
+		.name := zero;
+		.next := (ref char_literal_table)@v0&;
+	};
+
+	i : u64 mut;
+	for(i = 0, i < 255, i = i + 1)
+	{
+		deref((char_literal_table.tbl) at i) = lex_entry
+		{
+			.tag := lex_entry_tag.none;
+			.data := zero;
+			.metadata := zero;
+			.name := zero;
+			.next := (ref char_literal_table)@v0&;
+		};
+	}
+	deref((char_literal_table.tbl) at 39) = lex_entry
+	{
+		.tag := lex_entry_tag.success;
+		.data := (lex_token.char_literal)@s64@u64;
 		.metadata := false;
 		.name := zero;
 		.next := zero;
@@ -644,6 +682,7 @@ lex_setup ::= func(a : arena mut&) -> v0
 
 	main_table_setup(ref main_table);
 	string_table_setup();
+	char_table_setup();
 	decimal_table_setup();
 	symbol_continuation_setup(ref symbol_continuation_table);
 
@@ -814,13 +853,22 @@ lex_next ::= func(s : lex_state mut&) -> v0
 			should_advance = false;
 			offset = 0;
 		}
-		tok ::= token_data
+		tok ::= token_data mut
 		{
 			.tok := (entry->data)@lex_token;
 			.lexeme := lex_slice{.off := (internal->begin_cursor); .len := offset + (s->cursor) - (internal->begin_cursor);};
 			.begin := (internal->begin_loc);
 			.end := ls_current_loc(s);
 		};
+		if((tok.tok) == (lex_token.symbol))
+		{
+			lex ::= ref(tok.lexeme);
+			off ::= (lex->off) + (lex->len);
+			if(impl_is_whitespace(deref((s->src) at (off - 1))))
+			{
+				(lex->len) = ((lex->len) - 1);
+			}
+		}
 		ls_push_token(s, tok);	
 		td_print(s, tok);
 		putchar(10);
