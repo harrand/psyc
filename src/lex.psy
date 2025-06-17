@@ -230,6 +230,8 @@ char_literal_table : lex_table mut;
 decimal_table : lex_table mut;
 char0_pretable : lex_table mut;
 hex_table : lex_table mut;
+precomment_table : lex_table mut;
+comment_table : lex_table mut;
 
 main_table_setup ::= func(t : lex_table mut&) -> v0
 {
@@ -363,6 +365,43 @@ char_table_setup ::= func() -> v0
 	{
 		.tag := lex_entry_tag.success;
 		.data := (lex_token.char_literal)@s64@u64;
+		.metadata := false;
+		.name := zero;
+		.next := zero;
+	};
+};
+
+comment_table_setup ::= func() -> v0
+{
+	// the '/' char in main table will yield operator_fslash
+	// we need to point that entry's next to the comment table
+	slash_entry ::= (main_table.tbl) at 47;
+	nexttbl ::= (slash_entry->next)@lex_table&;
+	deref((nexttbl->tbl) at 47) = lex_entry
+	{
+		.tag := lex_entry_tag.none;
+		.data := zero;
+		.metadata := zero;
+		.name := zero;
+		.next := (ref comment_table)@v0&;
+	};
+
+	i : u64 mut;
+	for(i = 0, i < 255, i = i + 1)
+	{
+		deref((comment_table.tbl) at i) = lex_entry
+		{
+			.tag := lex_entry_tag.none;
+			.data := zero;
+			.metadata := zero;
+			.name := zero;
+			.next := (ref comment_table)@v0&;
+		};
+	}
+	deref((comment_table.tbl) at 10) = lex_entry
+	{
+		.tag := lex_entry_tag.discard;
+		.data := zero;
 		.metadata := false;
 		.name := zero;
 		.next := zero;
@@ -618,7 +657,8 @@ lex_break_type ::= enum
 	.not_oanglebrack := 8;
 	.not_ampersand := 16;
 	.not_bar := 32;
-	.everything := 64;
+	.not_fslash := 64;
+	.everything := 128;
 };
 
 matches_break_type ::= func(break : lex_break_type, ch : u8) -> bool
@@ -670,6 +710,13 @@ matches_break_type ::= func(break : lex_break_type, ch : u8) -> bool
 	if((break & (lex_break_type.not_bar)) != zero)
 	{
 		if(ch == '|')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_fslash)) != zero)
+	{
+		if(ch == '/')
 		{
 			matches = false;
 		}
@@ -838,7 +885,7 @@ lex_setup ::= func(a : arena mut&) -> v0
 	lex_install(lex_token.plus, "+", zero);
 	lex_install(lex_token.dash, "-", everything | (lex_break_type.not_canglebrack));
 	lex_install(lex_token.asterisk, "*", zero);
-	lex_install(lex_token.fslash, "/", zero);
+	lex_install(lex_token.fslash, "/", everything | (lex_break_type.not_fslash));
 	lex_install(lex_token.cast, "@", zero);
 	lex_install(lex_token.logical_and, "&&", zero);
 	lex_install(lex_token.bitwise_and, "&", everything | (lex_break_type.not_ampersand));
@@ -873,6 +920,8 @@ lex_setup ::= func(a : arena mut&) -> v0
 	lex_install(lex_token.keyword_true, "true", lex_break_type.punctuation_or_whitespace);
 	lex_install(lex_token.keyword_false, "false", lex_break_type.punctuation_or_whitespace);
 	lex_install(lex_token.keyword_zero, "zero", lex_break_type.punctuation_or_whitespace);
+
+	comment_table_setup();
 };
 
 ls_verbose_print ::= func(s : lex_state&) -> v0
