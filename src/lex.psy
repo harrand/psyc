@@ -372,7 +372,7 @@ char_table_setup ::= func() -> v0
 decimal_table_setup ::= func() -> v0
 {
 	i : u64 mut;
-	for(i = '0', i < '9', i = i + 1)
+	for(i = '0', i <= '9', i = i + 1)
 	{
 		deref((main_table.tbl) at i) = lex_entry
 		{
@@ -409,7 +409,7 @@ decimal_table_setup ::= func() -> v0
 			};
 		}
 	}
-	for(i = '0', i < '9', i = i + 1)
+	for(i = '0', i <= '9', i = i + 1)
 	{
 		deref((decimal_table.tbl) at i) = lex_entry
 		{
@@ -860,9 +860,19 @@ lex_next ::= func(s : lex_state mut&) -> v0
 			.begin := (internal->begin_loc);
 			.end := ls_current_loc(s);
 		};
+		lex ::= ref(tok.lexeme);
+		if((tok.tok) == (lex_token.char_literal))
+		{
+			(lex->off) = (lex->off) + 1;
+			(lex->len) = (lex->len) - 2;
+		}
+		if((tok.tok) == (lex_token.string_literal))
+		{
+			(lex->off) = (lex->off) + 1;
+			(lex->len) = (lex->len) - 2;
+		}
 		if((tok.tok) == (lex_token.symbol))
 		{
-			lex ::= ref(tok.lexeme);
 			off ::= (lex->off) + (lex->len);
 			if(impl_is_whitespace(deref((s->src) at (off - 1))))
 			{
@@ -870,8 +880,6 @@ lex_next ::= func(s : lex_state mut&) -> v0
 			}
 		}
 		ls_push_token(s, tok);	
-		td_print(s, tok);
-		putchar(10);
 		lex_discard(s);
 	}
 	if((entry->tag) == (lex_entry_tag.discard))
