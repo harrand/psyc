@@ -54,10 +54,39 @@ bi_add_source_file ::= func(s : scope mut&, node : ast&, prog : program mut&) ->
 	fn(prog, path.chars, path.chars_len, bar);
 };
 
+bi_util_extension_is_psy ::= func(path : u8&) -> bool
+{
+	len ::= cstrlen(path);
+	dot_position : u64 mut := -1;
+	i : u64 mut;
+	for(i = 0, i < len, i = i + 1)
+	{
+		ch ::= deref(path at i);
+		if(ch == '.')
+		{
+			dot_position = i;
+		}
+	}
+	if(dot_position == -1)
+	{
+		return false;
+	}
+	extension ::= "psy";
+	if((len - dot_position) != (cstrlen(extension) + 1))
+	{
+		return false;
+	}
+	return cstreql_n(path at (dot_position + 1), extension, cstrlen(extension));
+};
+
 bi_util_prog : program mut& mut;
 bi_util_dir : u8& mut;
 bi_util_addsrc ::= func(path : u8&) -> v0
 {
+	if(!bi_util_extension_is_psy(path))
+	{
+		return;
+	}
 	fn ::= bi_util_prog->on_add_source_file;
 	full_path : u8 mut& := arena_push(bar, cstrlen(path) + cstrlen(bi_util_dir) + 2);
 	__memcpy(full_path, bi_util_dir, cstrlen(bi_util_dir));
