@@ -194,6 +194,95 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}), ctx, prog);
 };
 
+cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	if(ctx.typecheck_only)
+	{
+		return zero;
+	}
+	node ::= ctx.node;
+	if((node->childcount) < 2)
+	{
+		psyc_error_begin(node->loc);
+		puts("__arrcpy requires at least 2 parameters");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	arrlen ::= (node->childcount) - 2;
+	// first param is a pointer to something mutable
+	// second param is a typename representing a type of the array
+	// rest are the array values to copy...
+	firstnode ::= ast_get_child(node@_, 0);
+	ptr : cgv mut := cg_expr(context
+	{
+		.node := firstnode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref ptr, prog);
+	if(!ty_is(ptr.type, tytag.ptr))
+	{
+		psyc_error_begin(firstnode->loc);
+		puts("parameter 0 to __arrcpy must be a pointer type, you have passed a ");
+		putchar('"');
+		putty(ptr.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	secondnode ::= ast_get_child(node@_, 1);
+	if(!ast_is_expr(secondnode, ast_expr_type.symbol))
+	{
+		psyc_error_begin(firstnode->loc);
+		puts("parameter 1 to __arrcpy must be a valid typename represented as a symbol expression");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	expr ::= secondnode->expr;
+	sym ::= expr.symbol;
+	type : ty mut := scope_parse_typename(ctx.local, sym.symbol, sym.len);
+	if(ty_isbad(type))
+	{
+		psyc_error_begin(firstnode->loc);
+		puts("parameter 1 to __arrcpy must be a valid typename - ");
+		putchar('"');
+		putss(sym.symbol, sym.len);
+		putchar('"');
+		puts(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	(type.qual) = (type.qual) | (tyqual.mut);
+
+	index_list : u64 mut#2;
+	deref(index_list at 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+	i : u64 mut;
+	offset_ll : u64 mut;
+	curnode : ast mut& mut;
+	curval : cgv mut;
+	for(i = 0, i < arrlen, i = i + 1)
+	{
+		deref(index_list at 1) = LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), i, false@s32);
+		offset_ll = LLVMBuildGEP2(ir, cg.type(type, prog), ptr.ll, index_list at 1, 1, "");
+
+		curnode = ast_get_child(node@_, 2 + i);
+		
+		curval = cg_expr(context
+		{
+			.node := curnode;
+			.local := ctx.local;
+		}, prog);
+		
+		curval = cgv_convert(curval, type, prog, curnode->loc, false);
+		LLVMBuildStore(ir, curval.ll, offset_ll);
+	}
+	return cg_literal(make_literal_expr(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := arrlen;
+	}), ctx, prog);
+};
+
 cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	node ::= ctx.node;
