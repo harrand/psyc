@@ -66,17 +66,51 @@ add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mu
 	progwalk_file(prog, ref(p.root));
 };
 
+add_build_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0
+{
+	prog ::= progptr@program mut&;
+	args ::= ref(prog->compile_args);
+	// unfortunately file will need the path as a null terminated string.
+	// alloc time
+	pathstr : u8 mut& := arena_push(a, len + 1);
+	__memcpy(pathstr, path, len);
+	deref(pathstr at (len)) = 0;
+
+	source ::= fully_read_file(pathstr, a);
+	l ::= lex(pathstr, source, args->verbose_lex);
+	p ::= parse(ref l, args->verbose_parse);
+	file_scope ::= progwalk_file(prog, ref(p.root));
+
+	region ::= scope_find_region(file_scope, args->build_config, cstrlen(args->build_config));
+	interpret_build_region(prog, region);
+};
+
 add_preload ::= func(prog : program mut&, a : arena mut&) -> v0
 {
 	if static(__is_windows)
 	{
-		source ::= "_win32 ::= true; _linux ::= false; ExitProcess ::= func(uExitCode : u32 -> v0) := extern; _psymain ::= func(-> v0) {ExitProcess(main()@u32);};";
+		source ::= "_win32 ::= true; _linux ::= false;";
 	}
 	if static(__is_linux)
 	{
-		source ::= "_win32 ::= false; _linux ::= true; fixmee";
+		source ::= "_win32 ::= false; _linux ::= true;";
 	}
 	l ::= lex("preload.psy", source, false);
+	p ::= parse(ref l, false);
+	progwalk_file(prog, ref(p.root));
+};
+
+add_entrypoint ::= func(prog : program mut&) -> v0
+{
+	if static(__is_windows)
+	{
+		source ::= "ExitProcess ::= func(uExitCode : u32 -> v0) := extern; _psymain ::= func(-> v0) {ExitProcess(main()@u32);};";
+	}
+	if static(__is_linux)
+	{
+		source ::= "_psymain ::= func(-> v0){main();};";
+	}
+	l ::= lex("entrypoint.psy", source, false);
 	p ::= parse(ref l, false);
 	progwalk_file(prog, ref(p.root));
 };
@@ -86,6 +120,10 @@ compile_program ::= func(prog : program mut&, a : arena mut&) -> v0
 	args ::= ref(prog->compile_args);
 	add_preload(prog, a);
 	precompile_build_file(prog, args->build_file, a);
+	if((prog->type) == (program_type.executable))
+	{
+		add_entrypoint(prog);
+	}
 	semal(prog);
 	codegen(prog);
 	assemble(prog);
@@ -113,6 +151,7 @@ main ::= func() -> s32
 	(prog.name) = default_progname;
 	(prog.name_len) = cstrlen(default_progname);
 	(prog.on_add_source_file) = add_source_file;
+	(prog.on_add_build_file) = add_build_file;
 	args ::= ref(prog.compile_args);
 	deref(args) = psyc_parse_args(permanent_arena);
 	if(args->verbose_parse)

@@ -1,79 +1,5 @@
 lar : arena mut& mut;
 
-ShellExecuteA ::= func(wnd : u64, operation : u8&, file : u8&, params : u8&, directory : u8&, showCmd : s32) -> u64 := extern;
-SECURITY_ATTRIBUTES ::= struct
-{
-	nLength : u32;
-	lpSecurityDescriptor : v0&;
-	bInheritHandle : s32;
-};
-STARTUPINFOA ::= struct
-{
-	cb : u32;
-	lpReserved : u8&;
-	lpDesktop : u8&;
-	lpTitle : u8&;
-	dwX : u32;
-	dwY : u32;
-	dwXSize : u32;
-	dwYSize : u32;
-	dwXCountChars : u32;
-	dwYCountChars : u32;
-	dwFillAttribute : u32;
-	dwFlags : u32;
-	wShowWindow : u16;
-	cbReserved2 : u16;
-	lpReserved2 : u8&;
-	hStdInput : u64;
-	hStdOutput : u64;
-	hStdError : u64;
-};
-PROCESS_INFORMATION ::= struct
-{
-	hProcess : u64;
-	hThread : u64;
-	dwProcessId : u32;
-	dwThreadId : u32;
-};
-CreateProcessA ::= func(lpApplicationName : u8&, lpCommandLine : u8&, lpProcessAttributes : SECURITY_ATTRIBUTES&, lpThreadAttributes : SECURITY_ATTRIBUTES&, bInheritHandles : s32, dwCreationFlags : s32, lpEnvironment : v0&, lpCurrentDirectory : u8&, lpStartupInfo : STARTUPINFOA&, lpProcessInformation : PROCESS_INFORMATION&) -> s32 := extern;
-WaitForSingleObject ::= func(handle : u64, dwMilliSeconds : u32) -> u32 := extern;
-GetExitCodeProcess ::= func(hProcess : u64, lpExitCode : u32 mut&) -> s32 := extern;
-
-invoke_command ::= func(cmd : u8&) -> v0
-{
-	si : STARTUPINFOA mut := zero;
-	pi : PROCESS_INFORMATION mut := zero;
-	(si.cb) = __sizeof(STARTUPINFOA);
-	STARTF_USESTDHANDLES ::= 0x00000100;
-	(si.dwFlags) = STARTF_USESTDHANDLES;
-	STD_OUTPUT_HANDLE ::= -11@u32;
-	STD_ERROR_HANDLE ::= -12@u32;
-	(si.hStdOutput) = GetStdHandle(STD_OUTPUT_HANDLE);
-	(si.hStdError) = GetStdHandle(STD_ERROR_HANDLE);
-
-	if(CreateProcessA(null, cmd, null, null, true@s32, 0, null, null, ref si, ref pi) == 0)
-	{
-		psyc_error_begin(zero);
-		puts("Failed to invoke linker process for command: ");
-		putchar(10);
-		puts(cmd);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	WaitForSingleObject(pi.hProcess, -1);
-	exit_code : u32 mut := 0;
-	GetExitCodeProcess(pi.hProcess, ref exit_code);
-	if(exit_code != 0)
-	{
-		psyc_error_begin(zero);
-		puts("Detected non-zero return code from the linker command: ");
-		putchar(10);
-		psyc_diag_end();
-		puts(cmd);
-		psyc_exit_failure();
-	}
-};
-
 append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
 {
 	oldstr ::= deref str;
@@ -155,12 +81,19 @@ prepend_linker_name ::= func(str : u8 mut& mut&) -> v0
 	deref(str) = newstr;
 };
 
-link_executable ::= func(prog : program mut&) -> v0
+prepend_archiver_name ::= func(str : u8 mut& mut&) -> v0
 {
-};
+	oldstr ::= deref str;
+	oldlen ::= cstrlen(oldstr);
 
-link_library ::= func(prog : program mut&) -> v0
-{
+	lnkname ::= "llvm-lib ";
+	space_needed ::= cstrlen(lnkname);
+
+	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
+	__memcpy(newstr, lnkname, space_needed);
+	__memcpy(newstr at space_needed, oldstr, oldlen);
+	deref(newstr at (space_needed + oldlen)) = 0;
+	deref(str) = newstr;
 };
 
 link ::= func(prog : program mut&) -> v0
@@ -178,10 +111,18 @@ link ::= func(prog : program mut&) -> v0
 	deref(cmd at path_len) = ' ';
 	deref(cmd at (path_len + 1)) = 0;
 
-	append_link_library_string(prog, ref cmd);
-	append_msvc_flags(ref cmd);
-	prepend_linker_name(ref cmd);
-	append_output(prog, ref cmd);
+	if((prog->type) == (program_type.executable))
+	{
+		append_link_library_string(prog, ref cmd);
+		append_msvc_flags(ref cmd);
+		prepend_linker_name(ref cmd);
+		append_output(prog, ref cmd);
+	}
+
+	if((prog->type) == (program_type.library))
+	{
+		prepend_archiver_name(ref cmd);
+	}
 
 	args ::= ref(prog->compile_args);
 	if(args->verbose_link)
@@ -193,15 +134,6 @@ link ::= func(prog : program mut&) -> v0
 	}
 
 	invoke_command(cmd);
-
-	if((prog->type) == (program_type.executable))
-	{
-		link_executable(prog);
-	}
-	if((prog->type) == (program_type.library))
-	{
-		link_library(prog);
-	}
 };
 
 link_setup ::= func(a : arena mut&) -> v0
