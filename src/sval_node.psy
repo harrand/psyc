@@ -69,7 +69,83 @@ sval_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -
 
 sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> sval
 {
-	puts("sval biop NYI");
+	node ::= ctx.node;
+	lhsnode ::= ast_get_child(node@_, 0);
+	lhs : sval mut := sval_node(context{.node := lhsnode; .local := ctx.local;}, prog);
+	rhsnode ::= ast_get_child(node@_, 1);
+	rhs : sval mut := sval_node(context{.node := rhsnode; .local := ctx.local;}, prog);
+
+	llit ::= ref(lhs.literal);
+	rlit ::= ref(rhs.literal);
+
+	b ::= expr.biop;
+	t ::= b.type;
+	if(t == (ast_biop_type.plus))
+	{
+		(llit->integral) = (llit->integral) + (rlit->integral);
+		(llit->floating_point) = (llit->floating_point) + (rlit->floating_point);
+		return lhs;
+	}
+	if(t == (ast_biop_type.minus))
+	{
+		(llit->integral) = (llit->integral) - (rlit->integral);
+		(llit->floating_point) = (llit->floating_point) - (rlit->floating_point);
+		return lhs;
+	}
+	if(t == (ast_biop_type.multiply))
+	{
+		(llit->integral) = (llit->integral) * (rlit->integral);
+		(llit->floating_point) = (llit->floating_point) * (rlit->floating_point);
+		return lhs;
+	}
+	if(t == (ast_biop_type.divide))
+	{
+		(llit->integral) = (llit->integral) / (rlit->integral);
+		(llit->floating_point) = (llit->floating_point) / (rlit->floating_point);
+		return lhs;
+	}
+	if(t == (ast_biop_type.bitwise_or))
+	{
+		(llit->integral) = (llit->integral) | (rlit->integral);
+		return lhs;
+	}
+	if(t == (ast_biop_type.bitwise_and))
+	{
+		(llit->integral) = (llit->integral) | (rlit->integral);
+		return lhs;
+	}
+	if(t == (ast_biop_type.exor))
+	{
+		(llit->integral) = (llit->integral) ^ (rlit->integral);
+		return lhs;
+	}
+	if(t == (ast_biop_type.bitleft))
+	{
+		//(llit->integral) = (llit->integral) << (rlit->integral);
+		// todo: implement
+	}
+	if(t == (ast_biop_type.bitright))
+	{
+		//(llit->integral) = (llit->integral) << (rlit->integral);
+		// todo: implement
+	}
+	if(t == (ast_biop_type.modulo))
+	{
+		(llit->integral) = (llit->integral) % (rlit->integral);
+		return lhs;
+	}
+	psyc_error_begin(node->loc);
+	puts("binary operator ");
+	putchar('"');
+	puts(__enumname(t));
+	puts(" (");
+	putuint(t@s64);
+	puts(")");
+	putchar('"');
+	puts(" is invalid (or NYI) within a static context.");
+	putchar(10);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
@@ -110,7 +186,7 @@ sval_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> s
 	putuint(t@s64);
 	puts(")");
 	putchar('"');
-	puts(" is invalid in a build region.");
+	puts(" is invalid (or NYI) within a static context.");
 	putchar(10);
 	psyc_diag_end();
 	psyc_exit_failure();
