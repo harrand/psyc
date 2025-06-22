@@ -246,6 +246,17 @@ cg_decl ::= func(ctx : context mut, prog : program mut&) -> cgv
 		}
 		if(init_node != null)
 		{
+			if(!(LLVMIsConstant(init_val.ll)@bool))
+			{
+				psyc_error_begin(node->loc);
+				puts("Global variable ");
+				putchar('"');
+				putss(decl.name, decl.name_len);
+				putchar('"');
+				puts(" has an initialiser but it is not a constant expression");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 			LLVMSetInitializer(var->codegen, init_val.ll);
 		}
 	}
