@@ -1,4 +1,4 @@
-cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	psyc_error_begin(loc);
 	puts("conversion logic not setup properly for conversion from ");
@@ -15,7 +15,7 @@ cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, con
 	return zero;
 };
 
-cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	from ::= v.type;
 
@@ -33,7 +33,7 @@ cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, cons
 	return zero;
 };
 
-cgv_conv_could_if_weak ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_could_if_weak ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	from ::= v.type;
 
@@ -52,8 +52,9 @@ cgv_conv_could_if_weak ::= func(v : cgv, to : ty, prog : program mut&, loc : src
 	return zero;
 };
 
-cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	cgto ::= cg.type(to, prog);
 
@@ -105,8 +106,9 @@ cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	cgto ::= cg.type(to, prog);
 
@@ -129,8 +131,9 @@ cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	if(constant)
 	{
@@ -141,16 +144,17 @@ cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_i2e ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_i2e ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	// i.e is trivial
-	transformed : cgv mut := cgv_conv_i2i(v, ty_getprim(primty.s64, tyqual.weak), prog, loc, constant);
+	transformed : cgv mut := cgv_conv_i2i(v, ty_getprim(primty.s64, tyqual.weak), prog, loc);
 	(transformed.type) = to;
 	return transformed;
 };
 
-cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	// always trunc
 	ret : cgv mut := v;
 	if(constant)
@@ -162,17 +166,18 @@ cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_e2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_e2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	// pretend enumty is an s64
 	transformed : cgv mut := v;
 	tty ::= v.type;
 	(transformed.type) = ty_getprim(primty.s64, tty.qual);
-	return cgv_conv_i2i(transformed, to, prog, loc, constant);
+	return cgv_conv_i2i(transformed, to, prog, loc);
 };
 
-cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	if(constant)
 	{
@@ -183,35 +188,41 @@ cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_p2fn ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_p2fn ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_p2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_p2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_fn2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_fn2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	cgto ::= cg.type(to, prog);
+	loses_info : s32 mut;
 
 	if(constant)
 	{
-		(ret.ll) = LLVMConstInt(cgto, LLVMConstRealGetDouble(v.ll, zero)@_, true@s32);
+		(ret.ll) = LLVMConstInt(cgto, LLVMConstRealGetDouble(v.ll, ref loses_info)@_, true@s32);
+		if(loses_info != 0)
+		{
+			psyc_panic(loc, "loss-of-double precision");
+		}
 		return ret;
 	}
 	to_signed ::= ty_is_signed_integral(to);
@@ -226,14 +237,20 @@ cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
 	cgto ::= cg.type(to, prog);
+	loses_info : s32 mut;
 
 	if(constant)
 	{
-		(ret.ll) = LLVMConstReal(cgto, LLVMConstRealGetDouble(v.ll, zero)@_);
+		(ret.ll) = LLVMConstReal(cgto, LLVMConstRealGetDouble(v.ll, ref loses_info)@_);
+		if(loses_info != 0)
+		{
+			psyc_panic(loc, "loss-of-double precision");
+		}
 		return ret;
 	}
 	from ::= v.type;
@@ -255,8 +272,9 @@ cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
+	constant ::= LLVMIsConstant(v.ll)@bool;
 	// bool to another integral type
 	// bool is guaranteed to be smaller, so its always zext
 	ret : cgv mut := v;
@@ -269,7 +287,7 @@ cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, const
 	return ret;
 };
 
-cgv_conv_same ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc, constant : bool) -> cgv
+cgv_conv_same ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
 {
 	return v;
 };
