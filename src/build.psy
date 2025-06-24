@@ -156,8 +156,21 @@ bi_add_build_file ::= func(s : scope mut&, node : ast&, prog : program mut&) -> 
 		psyc_exit_failure();
 	}
 
+	child2 ::= ast_get_child(node@_, 1);
+	param2 ::= build_resolve_constexpr(s, child2, prog);
+	build_config ::= param2.literal;
+	if((build_config.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to add_source_file must be a string literal, but you have passed a ");
+		puts(__enumname(build_config.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
 	fn ::= prog->on_add_build_file;
-	fn(prog, path.chars, path.chars_len, bar);
+	fn(prog, path.chars, path.chars_len, build_config.chars, build_config.chars_len, bar);
 };
 
 bi_add_link_library ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
@@ -269,20 +282,11 @@ bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 	(prog->type) = (program_type.object);
 };
 
-build_setup ::= func(a : arena mut&) -> v0
+buildimpl_interpret_build_region_t ::= struct
 {
-	psyc_timed(psyc_stage.setup);
-	deref(build_instructions at ((build_inst.run_command)@s64)) = build_fn{.fn := bi_run_command;};
-	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
-	deref(build_instructions at ((build_inst.add_source_directory)@s64)) = build_fn{.fn := bi_add_source_directory;};
-	deref(build_instructions at ((build_inst.add_build_file)@s64)) = build_fn{.fn := bi_add_build_file;};
-	deref(build_instructions at ((build_inst.add_link_library)@s64)) = build_fn{.fn := bi_add_link_library;};
-	deref(build_instructions at ((build_inst.set_optimization)@s64)) = build_fn{.fn := bi_set_optimization;};
-	deref(build_instructions at ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
-	deref(build_instructions at ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
-	deref(build_instructions at ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
-	bar = a;
+	fn : func(prog : program mut&, reg : region&, file_scope : scope&) -> v0;
 };
+buildimpl_interpret_build_region : buildimpl_interpret_build_region_t mut;
 
 get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
 {
@@ -303,7 +307,7 @@ get_build_instruction ::= func(name : u8&, name_len : u64) -> build_inst
 	return (-1)@build_inst;
 };
 
-interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast&) -> v0
+interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node : ast&, file_scope : scope&) -> v0
 {
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
@@ -311,20 +315,32 @@ interpret_build_instruction ::= func(s : scope mut&, prog : program mut&, node :
 	instid ::= get_build_instruction(callfunc.funcname, callfunc.funcname_len);
 	if(instid == ((-1)@build_inst))
 	{
+		// not a build instruction.
+		// assume instead its meant to be another build region to run.
 		// real bad
-		psyc_error_begin(node->loc);
-		puts("unknown build instruction ");
-		putchar('"');
-		putss(callfunc.funcname, callfunc.funcname_len);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
+		region ::= scope_find_region(file_scope@_, callfunc.funcname, callfunc.funcname_len);
+		if(region != null)
+		{
+			rgn ::= buildimpl_interpret_build_region.fn;
+			rgn(prog, region, file_scope);
+		}
+		if(region == null)
+		{
+			psyc_error_begin(node->loc);
+			puts("unknown build instruction ");
+			putchar('"');
+			putss(callfunc.funcname, callfunc.funcname_len);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return;
 	}
 	inst ::= deref(build_instructions at (instid@s64));
 	inst.fn(s, node, prog);
 };
 
-interpret_node ::= func(prog : program mut&, ctx : context mut) -> v0
+interpret_node ::= func(prog : program mut&, ctx : context mut, file_scope : scope&) -> v0
 {
 	node ::= ctx.node;
 	s ::= ctx.local;
@@ -336,7 +352,7 @@ interpret_node ::= func(prog : program mut&, ctx : context mut) -> v0
 		cur ::= childrenptr at i;
 		if(ast_is_expr(cur, ast_expr_type.callfunc))
 		{
-			interpret_build_instruction(s, prog, cur);
+			interpret_build_instruction(s, prog, cur, file_scope);
 		}
 		if((cur->type) == (ast_type.composite))
 		{
@@ -344,7 +360,7 @@ interpret_node ::= func(prog : program mut&, ctx : context mut) -> v0
 			{
 				.node := cur;
 				.local := ctx.local;
-			});
+			}, file_scope);
 		}
 		if(ast_is_decl(cur))
 		{
@@ -372,20 +388,40 @@ interpret_node ::= func(prog : program mut&, ctx : context mut) -> v0
 	}
 };
 
-interpret_build_region ::= func(prog : program mut&, reg : region&) -> v0
+interpret_build_region ::= func(prog : program mut&, reg : region&, file_scope : scope&) -> v0
 {
 	node ::= reg->node;
 	interpret_node(prog, context
 	{
 		.node := node;
 		.local := program_new_scope(prog, bar, ref(prog->global), scope_type.build_region, node->loc, "", 0);
-	});
+	}, file_scope);
 };
 
 default_build_dir ::= "build";
 default_obj_extension ::= ".o";
 default_exe_extension ::= ".exe";
 default_lib_extension ::= ".lib";
+
+build_setup ::= func(a : arena mut&) -> v0
+{
+	psyc_timed(psyc_stage.setup);
+	deref(build_instructions at ((build_inst.run_command)@s64)) = build_fn{.fn := bi_run_command;};
+	deref(build_instructions at ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
+	deref(build_instructions at ((build_inst.add_source_directory)@s64)) = build_fn{.fn := bi_add_source_directory;};
+	deref(build_instructions at ((build_inst.add_build_file)@s64)) = build_fn{.fn := bi_add_build_file;};
+	deref(build_instructions at ((build_inst.add_link_library)@s64)) = build_fn{.fn := bi_add_link_library;};
+	deref(build_instructions at ((build_inst.set_optimization)@s64)) = build_fn{.fn := bi_set_optimization;};
+	deref(build_instructions at ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
+	deref(build_instructions at ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
+	deref(build_instructions at ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
+	bar = a;
+
+	buildimpl_interpret_build_region = buildimpl_interpret_build_region_t
+	{
+		.fn := interpret_build_region;
+	};
+};
 
  == build ==
  {

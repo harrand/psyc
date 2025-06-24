@@ -61,7 +61,7 @@ precompile_build_file ::= func(prog : program mut&, path : u8&, a : arena mut&) 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	interpret_build_region(prog, region);
+	interpret_build_region(prog, region, file_scope);
 };
 
 add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0
@@ -80,7 +80,7 @@ add_source_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mu
 	progwalk_file(prog, ref(p.root));
 };
 
-add_build_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut&) -> v0
+add_build_file ::= func(progptr : v0& weak, path : u8&, len : u64, build_config : u8&, build_config_len : u64, a : arena mut&) -> v0
 {
 	prog ::= progptr@program mut&;
 	args ::= ref(prog->compile_args);
@@ -95,22 +95,22 @@ add_build_file ::= func(progptr : v0& weak, path : u8&, len : u64, a : arena mut
 	p ::= parse(ref l, args->verbose_parse);
 	file_scope ::= progwalk_file(prog, ref(p.root));
 
-	region ::= scope_find_region(file_scope, args->build_config, cstrlen(args->build_config));
+	region ::= scope_find_region(file_scope, build_config, build_config_len);
 	if(region == null)
 	{
 		psyc_error_begin(zero);
 		puts("build file ");
 		putchar('"');
-		puts(path);
+		puts(pathstr);
 		putchar('"');
 		puts(" had no build region named ");
 		putchar('"');
-		puts(args->build_config);
+		putss(build_config, build_config_len);
 		putchar('"');
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	interpret_build_region(prog, region);
+	interpret_build_region(prog, region, file_scope);
 };
 
 add_preload ::= func(prog : program mut&, a : arena mut&) -> v0
@@ -126,6 +126,23 @@ add_preload ::= func(prog : program mut&, a : arena mut&) -> v0
 	l ::= lex("preload.psy", source, false);
 	p ::= parse(ref l, false);
 	progwalk_file(prog, ref(p.root));
+
+	args ::= prog->compile_args;
+
+	config_bit ::= "_config ::= ";
+	len1 ::= cstrlen(config_bit);
+	len2 ::= cstrlen(args.build_config);
+	src2 : u8 mut& mut := arena_push(a, len1 + len2 + 4);
+	__memcpy(src2, config_bit, len1);
+	deref(src2 at len1) = '"';
+	__memcpy(src2 at (len1 + 1), args.build_config, len2);
+	deref(src2 at (len1 + 1 + len2)) = '"';
+	deref(src2 at (len1 + 1 + len2 + 1)) = ';';
+	deref(src2 at (len1 + 1 + len2 + 2)) = 0;
+
+	l2 ::= lex("preconfig.psy", src2, false);
+	p2 ::= parse(ref l2, false);
+	progwalk_file(prog, ref(p2.root));
 };
 
 add_entrypoint ::= func(prog : program mut&) -> v0
