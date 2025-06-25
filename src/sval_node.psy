@@ -80,6 +80,67 @@ sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut&) -> s
 
 	b ::= expr.biop;
 	t ::= b.type;
+	if(t == (ast_biop_type.compare))
+	{
+		if((llit->type) != (rlit->type))
+		{
+			psyc_error_begin(node->loc);
+			puts("comparison between ");
+			putchar('"');
+			puts(__enumname(llit->type));
+			putchar('"');
+			puts(" and ");
+			putchar('"');
+			puts(__enumname(rlit->type));
+			putchar('"');
+			puts(" is either invalid or NYI in a static context");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if((llit->type) == (ast_literal_type.string_literal))
+		{
+			(llit->type) = (ast_literal_type.bool_literal);
+			if((llit->chars_len) == (rlit->chars_len))
+			{
+				(llit->boolean) = cstreql_n(llit->chars, rlit->chars, llit->chars_len);
+			}
+			if((llit->chars_len) != (rlit->chars_len))
+			{
+				(llit->boolean) = false;
+			}
+			return lhs;
+		}
+		if((llit->type) == (ast_literal_type.integral))
+		{
+			(llit->boolean) = ((llit->integral) == (rlit->integral));
+			(llit->type) = (ast_literal_type.bool_literal);
+			return lhs;
+		}
+		if((llit->type) == (ast_literal_type.floating_point))
+		{
+			(llit->boolean) = ((llit->integral) == (rlit->integral));
+			(llit->type) = (ast_literal_type.bool_literal);
+			return lhs;
+		}
+		if((llit->type) == (ast_literal_type.bool_literal))
+		{
+			(llit->boolean) = ((llit->boolean) == (rlit->boolean));
+			return lhs;
+		}
+		if((llit->type) == (ast_literal_type.char_literal))
+		{
+			(llit->type) = (ast_literal_type.bool_literal);
+			if((llit->chars_len) == (rlit->chars_len))
+			{
+				(llit->boolean) = cstreql_n(llit->chars, rlit->chars, llit->chars_len);
+			}
+			if((llit->chars_len) != (rlit->chars_len))
+			{
+				(llit->boolean) = false;
+			}
+			return lhs;
+		}
+	}
 	if(t == (ast_biop_type.plus))
 	{
 		(llit->integral) = (llit->integral) + (rlit->integral);

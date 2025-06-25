@@ -11,6 +11,7 @@ build_inst ::= enum
 	.set_executable := 6;
 	.set_library := 7;
 	.set_object := 8;
+	.warning := 9;
 };
 
 build_fn ::= struct
@@ -35,7 +36,7 @@ build_resolve_constexpr ::= func(s : scope mut&, node : ast&, prog : program mut
 	return ret;
 };
 
-build_instructions : build_fn mut#9;
+build_instructions : build_fn mut#10;
 
 bi_run_command ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 {
@@ -282,6 +283,28 @@ bi_set_object ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
 	(prog->type) = (program_type.object);
 };
 
+bi_warning ::= func(s : scope mut&, node : ast&, prog : program mut&) -> v0
+{
+	psyc_timed(psyc_stage.build);
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	msg ::= param.literal;
+	if((msg.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		puts("Argument to warning must be a string literal, but you have passed a ");
+		puts(__enumname(msg.type));
+		puts(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	psyc_warning_begin(node->loc);
+	putss(msg.chars, msg.chars_len);
+	psyc_diag_end();
+};
+
+
 buildimpl_interpret_build_region_t ::= struct
 {
 	fn : func(prog : program mut&, reg : region&, file_scope : scope&) -> v0;
@@ -415,6 +438,7 @@ build_setup ::= func(a : arena mut&) -> v0
 	deref(build_instructions at ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
 	deref(build_instructions at ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
 	deref(build_instructions at ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
+	deref(build_instructions at ((build_inst.warning)@s64)) = build_fn{.fn := bi_warning;};
 	bar = a;
 
 	buildimpl_interpret_build_region = buildimpl_interpret_build_region_t
