@@ -16,6 +16,49 @@ expr_jump_table : progwalk_function mut#1;
 
 literal_types : ty mut#5;
 
+progwalk_flatten ::= func(call : callcontext, front_index : u64, back_index : u64) -> v0
+{
+	// so we have
+	// parent children: [lhs..., node, rhs...]
+	// node children:   [children...]
+	// what we want is:
+	// parent children: [lhs..., children..., rhs...]
+	parent ::= call.parent;
+	node ::= deref ast_get_child(parent@_, call.idx);
+	rhslen ::= (parent->childcount) - (call.idx) - 1;
+	// step 1: add 'n' new nodes
+	// n = child count - front_index - back_index
+	n ::= (node.childcount) - front_index - back_index;
+	i : u64 mut;
+	for(i = 0, i < n, i = i + 1)
+	{
+		ast_add_child(parent@_, zero, progar);
+	}
+	// parent children: [lhs..., node, rhs..., zero*n]
+	// move the rhs bits to the right 'n' times
+	// a memcpy will stomp on itself coz the regions could overlap
+	// so we create a buffer
+	buffer ::= arena_push(progar, rhslen * __sizeof(ast));
+	// copy rhs... into it
+	__memcpy(buffer, ast_get_child(parent@_, 1 + (call.idx)), rhslen * __sizeof(ast));
+	// now copy rhs... back in the buffer but a bit more forward
+	__memcpy(ast_get_child(parent@_, n + (call.idx)), buffer, rhslen * __sizeof(ast));
+	// parent children: [lhs..., node, rhs... cutoff after 'n', rhs...]
+	// finally copy the children in
+	nodechildrenptr ::= (node.children)@ast&;
+	__memcpy(ast_get_child(parent@_, i), nodechildrenptr at front_index, n * __sizeof(ast));
+	// done!
+};
+
+progwalk_delete_node ::= func(call : callcontext) -> v0
+{
+	parent ::= (call.parent)@ast mut&;
+	idx ::= call.idx;
+	len ::= (parent->childcount) - idx - 1;
+	__memcpy(ast_get_child(parent, idx), ast_get_child(parent, idx + 1), len * __sizeof(ast));
+	(parent->childcount) = (parent->childcount) - 1;
+};
+
 progwalk_node ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
@@ -409,11 +452,10 @@ progwalk_if ::= func(ctx : context mut, call : callcontext, prog : program mut&)
 			deref(node) = deref(else_node);
 			(node->type) = (ast_type.composite);
 		}
-		// if theres no else, then set our node type to quarantine so codegen skips us
+		// if theres no else, then we basically want to delete this node
 		if(else_node == null)
 		{
-			(node->type) = (ast_type.composite);
-			(node->childcount) = 0;
+			progwalk_delete_node(call);
 		}
 	}
 

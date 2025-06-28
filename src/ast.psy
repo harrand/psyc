@@ -886,6 +886,28 @@ ast_is_decl ::= func(node : ast&) -> bool
 	return (node->type) == (ast_type.decl);
 };
 
+ast_shift_children_right ::= func(node : ast mut&, pivot : u64, shift_amount : u64, a : arena mut&) -> v0
+{
+	oldsize ::= (node->childcount);
+	newsize ::= oldsize + shift_amount;
+	if(newsize >= (node->childcap))
+	{
+		// dont technically need to double it but lets try to amortise this edge-case away.
+		oldcap ::= node->childcap;
+		olddata ::= node->children;
+		(node->childcap) = (oldcap * 2);
+		(node->children) = arena_push(a, __sizeof(ast) * (node->childcap));
+		__memcpy(node->children, olddata, __sizeof(ast) * oldcap);
+	}
+
+	childrenptr ::= (node->children)@ast&;
+	copy_src ::= childrenptr at pivot;
+	copy_dst ::= copy_src at shift_amount;
+	__memcpy(copy_dst@_, copy_src@_, __sizeof(ast) * shift_amount);
+	// gap is left uninitialised.
+	(node->childcount) = newsize;
+};
+
 == build ==
 {
 	add_source_file("stdlib/io.psy");
