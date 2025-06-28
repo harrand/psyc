@@ -5,9 +5,55 @@ progwalk_function ::= struct
 
 progar : arena mut& mut;
 node_jump_table : progwalk_function mut#1;
-stmt_jump_table : progwalk_function mut#7;
+stmt_jump_table : progwalk_function mut#8;
+expr_jump_table : progwalk_function mut#1;
 
 literal_types : ty mut#5;
+
+progwalk_flatten_composites ::= func(prog : program mut&, source : ast mut&) -> v0
+{
+	//i : u64 mut := 0;
+	//j : u64 mut;
+	//while(i < (source->childcount))
+	//{
+		//child : ast mut& mut := ast_get_child(source, i);
+		//// [lhs..., child, rhs...]
+		//// move rhs... n-1 slots to the right (where n is the number of children of child)
+		//// then copy the children into child
+		//// firstly we need space.
+		//n ::= child->childcount;
+		//ptr ::= child->children;
+		//did_flatten : bool mut := false;
+		//if(n > 0)
+		//{
+			//if((child->type) == (ast_type.composite))
+			//{
+				//// add n new nodes.
+				//oldlen ::= source->childcount;
+				//for(j = 0, j < (n - 1), j = j + 1)
+				//{
+					//ast_add_child(source, zero, progar);
+				//}
+				//// copy i+1-oldlen n spaces forward
+				//// however we will memcpy into ourselves by doing this.
+				//// going to have to allocate
+				//copylen ::= __sizeof(ast) * (oldlen - (i + 1));
+				//scratch ::= arena_push(progar, copylen);
+				//__memcpy(scratch, ast_get_child(source, i + 1), copylen);
+				//__memcpy(ast_get_child(source, i + n), scratch, copylen);
+				//newchild ::= ast_get_child(source, i);
+				//__memcpy(newchild, newchild->children, n * __sizeof(ast));
+				//did_flatten = true;
+			//}
+		//}
+		//if(!did_flatten)
+		//{
+			//progwalk_flatten_composites(prog, ast_get_child(source, i));
+			//i = i + 1;
+		//}
+	//}
+};
+
 
 progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
@@ -32,6 +78,7 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64, back_offset : u64) -> v0
 {
 	node ::= ctx.node;
+	progwalk_flatten_composites(prog, node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
@@ -43,11 +90,13 @@ progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset 
 			.local := ctx.local;
 		}, prog);
 	}
+	progwalk_flatten_composites(prog, node@_);
 };
 
 progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
+	progwalk_flatten_composites(prog, node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
@@ -64,13 +113,14 @@ progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> 
 			.local := ctx.local;
 		}, prog);
 	}
+	progwalk_flatten_composites(prog, node@_);
 };
 
 progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
-	subtraction ::= (ast_stmt.decl_stmt)@s64;
+	subtraction ::= (ast_stmt.expr_stmt)@s64;
 	if(pre_transform_idx < subtraction)
 	{
 		return;
@@ -82,6 +132,26 @@ progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
 		return;
 	}
 	jump ::= deref(stmt_jump_table at idx);
+	jump.fn(ctx, prog);
+};
+
+progwalk_expr ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	node ::= ctx.node;
+	expr ::= node->expr;
+	pre_transform_idx ::= (expr.type)@s64;
+	subtraction ::= (ast_expr_type.callfunc)@s64;
+	if(pre_transform_idx < subtraction)
+	{
+		return;
+	}
+
+	idx ::= pre_transform_idx - subtraction;
+	if(idx >= (__sizeof(expr_jump_table) / __sizeof(deref(expr_jump_table at 0))))
+	{
+		return;
+	}
+	jump ::= deref(expr_jump_table at idx);
 	jump.fn(ctx, prog);
 };
 
@@ -403,6 +473,25 @@ progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
+progwalk_call ::= func(ctx : context mut, prog : program mut&) -> v0
+{
+	// if the callfunc name is a macro, then we do something.
+	// otherwise, there's nothing to do...
+	node ::= (ctx.node)@ast mut&;
+	expr ::= node->expr;
+	call ::= expr.callfunc;
+	mac ::= program_find_macro(prog, call.funcname, call.funcname_len);
+	if(mac == null)
+	{
+		return;
+	}
+	// its definitely a macro
+	// turn our node into a composite
+	macnode ::= mac->node;
+	deref(node) = deref(macnode);
+	(node->type) = (ast_type.composite);
+};
+
 progwalk_setup ::= func(a : arena mut&) -> v0
 {
 	psyc_timed(psyc_stage.setup);
@@ -410,13 +499,16 @@ progwalk_setup ::= func(a : arena mut&) -> v0
 
 	deref(node_jump_table at 0) = progwalk_function{.fn := progwalk_stmt;};
 
-	deref(stmt_jump_table at 0) = progwalk_function{.fn := progwalk_decl;};
-	deref(stmt_jump_table at 1) = progwalk_function{.fn := progwalk_region;};
-	deref(stmt_jump_table at 2) = progwalk_function{.fn := progwalk_structdef;};
-	deref(stmt_jump_table at 3) = progwalk_function{.fn := progwalk_enumdef;};
-	deref(stmt_jump_table at 4) = progwalk_function{.fn := progwalk_fn;};
-	deref(stmt_jump_table at 5) = progwalk_function{.fn := progwalk_mac;};
-	deref(stmt_jump_table at 6) = progwalk_function{.fn := progwalk_if;};
+	deref(stmt_jump_table at 0) = progwalk_function{.fn := progwalk_expr;};
+	deref(stmt_jump_table at 1) = progwalk_function{.fn := progwalk_decl;};
+	deref(stmt_jump_table at 2) = progwalk_function{.fn := progwalk_region;};
+	deref(stmt_jump_table at 3) = progwalk_function{.fn := progwalk_structdef;};
+	deref(stmt_jump_table at 4) = progwalk_function{.fn := progwalk_enumdef;};
+	deref(stmt_jump_table at 5) = progwalk_function{.fn := progwalk_fn;};
+	deref(stmt_jump_table at 6) = progwalk_function{.fn := progwalk_mac;};
+	deref(stmt_jump_table at 7) = progwalk_function{.fn := progwalk_if;};
+
+	deref(expr_jump_table at 0) = progwalk_function{.fn := progwalk_call;};
 };
 
 progwalk_file ::= func(prog : program mut&, source : ast&) -> scope mut&
