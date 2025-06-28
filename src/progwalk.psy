@@ -10,51 +10,6 @@ expr_jump_table : progwalk_function mut#1;
 
 literal_types : ty mut#5;
 
-progwalk_flatten_composites ::= func(prog : program mut&, source : ast mut&) -> v0
-{
-	//i : u64 mut := 0;
-	//j : u64 mut;
-	//while(i < (source->childcount))
-	//{
-		//child : ast mut& mut := ast_get_child(source, i);
-		//// [lhs..., child, rhs...]
-		//// move rhs... n-1 slots to the right (where n is the number of children of child)
-		//// then copy the children into child
-		//// firstly we need space.
-		//n ::= child->childcount;
-		//ptr ::= child->children;
-		//did_flatten : bool mut := false;
-		//if(n > 0)
-		//{
-			//if((child->type) == (ast_type.composite))
-			//{
-				//// add n new nodes.
-				//oldlen ::= source->childcount;
-				//for(j = 0, j < (n - 1), j = j + 1)
-				//{
-					//ast_add_child(source, zero, progar);
-				//}
-				//// copy i+1-oldlen n spaces forward
-				//// however we will memcpy into ourselves by doing this.
-				//// going to have to allocate
-				//copylen ::= __sizeof(ast) * (oldlen - (i + 1));
-				//scratch ::= arena_push(progar, copylen);
-				//__memcpy(scratch, ast_get_child(source, i + 1), copylen);
-				//__memcpy(ast_get_child(source, i + n), scratch, copylen);
-				//newchild ::= ast_get_child(source, i);
-				//__memcpy(newchild, newchild->children, n * __sizeof(ast));
-				//did_flatten = true;
-			//}
-		//}
-		//if(!did_flatten)
-		//{
-			//progwalk_flatten_composites(prog, ast_get_child(source, i));
-			//i = i + 1;
-		//}
-	//}
-};
-
-
 progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
@@ -78,7 +33,6 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64, back_offset : u64) -> v0
 {
 	node ::= ctx.node;
-	progwalk_flatten_composites(prog, node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
@@ -86,17 +40,15 @@ progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset 
 	{
 		progwalk_node(context
 		{
-			.node := childrenptr at i;
+			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
 		}, prog);
 	}
-	progwalk_flatten_composites(prog, node@_);
 };
 
 progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
-	progwalk_flatten_composites(prog, node@_);
 	childrenptr ::= (node->children)@ast&;
 	count ::= node->childcount;
 	i : u64 mut;
@@ -104,16 +56,15 @@ progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> 
 	{
 		progwalk_node(context
 		{
-			.node := childrenptr at i;
+			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
 		}, prog);
 		progwalk_children_recursive(context
 		{
-			.node := childrenptr at i;
+			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
 		}, prog);
 	}
-	progwalk_flatten_composites(prog, node@_);
 };
 
 progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
