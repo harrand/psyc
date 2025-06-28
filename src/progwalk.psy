@@ -1,6 +1,12 @@
+callcontext ::= struct
+{
+	parent : ast&;
+	idx : u64;
+};
+
 progwalk_function ::= struct
 {
-	fn : func(ctx : context mut, prog : program mut&) -> v0;
+	fn : func(ctx : context mut, call : callcontext, prog : program mut&) -> v0;
 };
 
 progar : arena mut& mut;
@@ -10,7 +16,7 @@ expr_jump_table : progwalk_function mut#1;
 
 literal_types : ty mut#5;
 
-progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_node ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 
@@ -27,7 +33,7 @@ progwalk_node ::= func(ctx : context mut, prog : program mut&) -> v0
 		return;
 	}
 	jump ::= deref(node_jump_table at idx);
-	jump.fn(ctx, prog);
+	jump.fn(ctx, call, prog);
 };
 
 progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset : u64, back_offset : u64) -> v0
@@ -42,6 +48,11 @@ progwalk_children ::= func(ctx : context mut, prog : program mut&, front_offset 
 		{
 			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
+		},
+		callcontext
+		{
+			.parent := node;
+			.idx := i;
 		}, prog);
 	}
 };
@@ -58,6 +69,11 @@ progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> 
 		{
 			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
+		},
+		callcontext
+		{
+			.parent := node;
+			.idx := i;
 		}, prog);
 		progwalk_children_recursive(context
 		{
@@ -67,7 +83,7 @@ progwalk_children_recursive ::= func(ctx : context mut, prog : program mut&) -> 
 	}
 };
 
-progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_stmt ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
@@ -83,10 +99,10 @@ progwalk_stmt ::= func(ctx : context mut, prog : program mut&) -> v0
 		return;
 	}
 	jump ::= deref(stmt_jump_table at idx);
-	jump.fn(ctx, prog);
+	jump.fn(ctx, call, prog);
 };
 
-progwalk_expr ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_expr ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	expr ::= node->expr;
@@ -103,10 +119,10 @@ progwalk_expr ::= func(ctx : context mut, prog : program mut&) -> v0
 		return;
 	}
 	jump ::= deref(expr_jump_table at idx);
-	jump.fn(ctx, prog);
+	jump.fn(ctx, call, prog);
 };
 
-progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
@@ -134,7 +150,7 @@ progwalk_decl ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
-progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_region ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	reg ::= node->region;
@@ -166,7 +182,7 @@ progwalk_region ::= func(ctx : context mut, prog : program mut&) -> v0
 	}, prog, 0, 0);
 };
 
-progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_structdef ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
@@ -182,7 +198,7 @@ progwalk_structdef ::= func(ctx : context mut, prog : program mut&) -> v0
 	});
 };
 
-progwalk_enumdef ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_enumdef ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	def ::= node->enumdef;
@@ -197,7 +213,7 @@ progwalk_enumdef ::= func(ctx : context mut, prog : program mut&) -> v0
 	});
 };
 
-progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
@@ -268,7 +284,7 @@ progwalk_fn ::= func(ctx : context mut, prog : program mut&) -> v0
 		});
 };
 
-progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_mac ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
@@ -336,7 +352,7 @@ progwalk_mac ::= func(ctx : context mut, prog : program mut&) -> v0
 	});
 };
 
-progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_if ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	node ::= (ctx.node)@ast mut&;
 	ifdef ::= node->ifdef;
@@ -424,14 +440,14 @@ progwalk_if ::= func(ctx : context mut, prog : program mut&) -> v0
 	}
 };
 
-progwalk_call ::= func(ctx : context mut, prog : program mut&) -> v0
+progwalk_call ::= func(ctx : context mut, call : callcontext, prog : program mut&) -> v0
 {
 	// if the callfunc name is a macro, then we do something.
 	// otherwise, there's nothing to do...
 	node ::= (ctx.node)@ast mut&;
 	expr ::= node->expr;
-	call ::= expr.callfunc;
-	mac ::= program_find_macro(prog, call.funcname, call.funcname_len);
+	callfunc ::= expr.callfunc;
+	mac ::= program_find_macro(prog, callfunc.funcname, callfunc.funcname_len);
 	if(mac == null)
 	{
 		return;
