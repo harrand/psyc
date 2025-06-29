@@ -111,11 +111,11 @@ null_lookahead ::= zero@ast;
 null_stash ::= zero@ast;
 grammar_install_count : u64 mut;
 
-grammar_install_impl ::= func(my_nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, stash_node : ast, rule : grammar_rule) -> v0
+grammar_install_impl ::= func(nodes : ast mut&, my_nodes_size : u64, nodes_count : u64, lookahead_node : ast, stash_node : ast, rule : grammar_rule) -> v0
 {
 	grammar_install_count = grammar_install_count + 1;
-	hash : u64 mut := hash_state(my_nodes at 0, nodes_count);
-	__memset(my_nodes at 0, 0, my_nodes_size);
+	hash : u64 mut := hash_state(nodes at 0, nodes_count);
+	__memset(nodes at 0, 0, my_nodes_size);
 	la ::= lookahead_node;
 	la_hash : u64 mut := zero;
 	if((la.type) != (ast_type.unknown))
@@ -147,12 +147,12 @@ grammar_install_impl ::= func(my_nodes : ast mut&, my_nodes_size : u64, nodes_co
 	(ptr->hash) = hash;
 };
 
-grammar_install ::= macro(nc : u64, la : ast, st : ast, r : grammar_rule) -> v0
+grammar_install ::= func(nodes : ast mut&, nc : u64, la : ast, st : ast, r : grammar_rule) -> v0
 {
-	grammar_install_impl(my_nodes at 0, __sizeof(my_nodes), nc, la, st, r);
+	grammar_install_impl(nodes at 0, 16 * __sizeof(ast), nc, la, st, r);
 };
 
-token ::= macro(t : lex_token) -> ast static
+token ::= macro(tokty : lex_token) -> ast static
 {
 	yield ast
 	{
@@ -161,35 +161,35 @@ token ::= macro(t : lex_token) -> ast static
 		{
 			.tok := token_data
 			{
-				.tok := t;
+				.tok := tokty;
 			};
 		};
 	};
 };
 
-node ::= macro(t : ast_type) -> ast static
+node ::= macro(ty : ast_type) -> ast static
 {
 	yield ast
 	{
-		.type := t;
+		.type := ty;
 	};
 };
 
-expr ::= macro(t : ast_expr_type) -> ast static
+expr ::= macro(ty : ast_expr_type) -> ast static
 {
 	yield ast
 	{
 		.type := ast_type.expr;
-		.expr := ast_expr{.type := t;};
+		.expr := ast_expr{.type := ty;};
 	};
 };
 
-stmt ::= macro(t : ast_stmt) -> ast static
+stmt ::= macro(ty : ast_stmt) -> ast static
 {
 	yield ast
 	{
 		.type := ast_type.stmt;
-		.stmt := t;
+		.stmt := ty;
 	};
 };
 
@@ -1503,270 +1503,305 @@ wipstructinitcbrace2structinit ::= func(src : u8&, nodes : ast mut&, nodes_size 
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
-grammar_stmtify ::= macro(nod : ast static, ru : grammar_rule) -> v0
+grammar_stmtify ::= func(nodes : ast mut&, nod : ast, ru : grammar_rule) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, nod),
+		nodes,
+		__arrcpy(ast, nodes, nod),
 		token(lex_token.semicol),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, nod, token(lex_token.semicol)),
+		nodes,
+		__arrcpy(ast, nodes, nod, token(lex_token.semicol)),
 		null_lookahead,
 		null_stash,
 		ru);
 };
 
-grammar_numeric_literal ::= macro() -> v0
+grammar_numeric_literal ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.numeric_literal)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.numeric_literal)),
 		null_lookahead,
 		null_stash,
 		rule(num2expr));
 };
 
-grammar_symbol ::= macro() -> v0
+grammar_symbol ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
 		rule(sym2expr));
 };
 
-grammar_char_literal ::= macro() -> v0
+grammar_char_literal ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.char_literal)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.char_literal)),
 		null_lookahead,
 		null_stash,
 		rule(char2expr));
 };
 
-grammar_string_literal ::= macro() -> v0
+grammar_string_literal ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.string_literal)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.string_literal)),
 		null_lookahead,
 		null_stash,
 		rule(str2expr));
 };
 
-grammar_bool_literal ::= macro() -> v0
+grammar_bool_literal ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_true)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_true)),
 		null_lookahead,
 		null_stash,
 		rule(true2expr));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_false)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_false)),
 		null_lookahead,
 		null_stash,
 		rule(false2expr));
 };
 
-grammar_zero_literal ::= macro() -> v0
+grammar_zero_literal ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_zero)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_zero)),
 		null_lookahead,
 		null_stash,
 		rule(zero2expr));
 };
 
-grammar_retvoid ::= macro() -> v0
+grammar_retvoid ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_return)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_return)),
 		token(lex_token.semicol),
 		null_stash,
 		rule(keywordret2retvoid));
 };
 
-grammar_ret ::= macro() -> v0
+grammar_ret ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_return)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_return)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_ret_expr ::= macro(exp : ast_expr_type static) -> v0
+grammar_ret_expr ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		token(lex_token.keyword_return),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_return), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_return), expr(exp)),
 		null_lookahead,
 		null_stash,
 		rule(keywordretexpr2ret));
 };
 
-grammar_yield ::= macro() -> v0
+grammar_yield ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_yield)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_yield)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_yield_expr ::= macro(exp : ast_expr_type static) -> v0
+grammar_yield_expr ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		token(lex_token.keyword_yield),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_yield), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_yield), expr(exp)),
 		null_lookahead,
 		null_stash,
 		rule(keywordyieldexpr2yield));
 };
 
-grammar_parenthesised ::= macro() -> v0
+grammar_parenthesised ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_parenthesised_expr ::= macro(exp : ast_expr_type static) -> v0
+grammar_parenthesised_expr ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		token(lex_token.oparen),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.oparen), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.oparen), expr(exp)),
 		token(lex_token.cparen),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.oparen), expr(exp), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.oparen), expr(exp), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(parenthesise_expr));
 };
 
-grammar_basic_decl ::= macro() -> v0
+grammar_basic_decl ::= func(nodes : ast mut&) -> v0
 {
 	// if a symbol is directly followed by a colon, its probably the start of a decl, so override before we exprify it.
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol)),
 		token(lex_token.colon),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.colon)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon), token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.colon), token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
 		rule(symcolsym2decl));
 };
 
-grammar_deduced_decl ::= macro() -> v0
+grammar_deduced_decl ::= func(nodes : ast mut&) -> v0
 {
 	// name ::=
 	// instantly becomes a decl with deduced typename
 	// that way, the grammar rules with this initialiser and the normal decl initialiser can be shared.
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.colon)),
 		token(lex_token.initialiser),
 		null_stash,
 		rule(symcrap2deduceddecl));
 };
 
-grammar_function_pointer_decl ::= macro() -> v0
+grammar_function_pointer_decl ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.colon)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.colon)),
 		token(lex_token.keyword_func),
 		null_stash,
 		rule(symcrap2functionptrdecl));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipdecl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipdecl)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_func)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_func)),
 		token(lex_token.oparen),
 		node(ast_type.wipdecl),
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_func), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_func), token(lex_token.oparen)),
 		null_lookahead,
 		node(ast_type.wipdecl),
 		rule(keywordfuncoparen2wipfn));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_red)),
 		null_lookahead,
 		node(ast_type.wipdecl),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipdecl), node(ast_type.wipfn_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipdecl), node(ast_type.wipfn_red)),
 		null_lookahead,
 		null_stash,
 		rule(wipdeclwipfnred2fnptrdecl));
 
 	// append extras to the end
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl)),
 		token(lex_token.symbol),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
 		rule(fnptrdecl_appendsymbol));
 };
 
-grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
+grammar_decl_init ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl)),
 		token(lex_token.initialiser),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head_delete_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.decl),
 		rule(commit_head));
@@ -1775,25 +1810,29 @@ grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 	// when we see the following tokens:
 	// ;
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.semicol)),
 		null_lookahead,
 		node(ast_type.decl),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl)),
 		token(lex_token.initialiser),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl), token(lex_token.initialiser)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head_delete_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.fnptrdecl),
 		rule(commit_head));
@@ -1802,73 +1841,82 @@ grammar_decl_init ::= macro(exp : ast_expr_type static) -> v0
 	// when we see the following tokens:
 	// ;
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.semicol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.semicol)),
 		null_lookahead,
 		node(ast_type.fnptrdecl),
 		rule(unstash_head));
 };
 
-grammar_unop ::= macro(t : lex_token static) -> v0
+grammar_unop ::= func(nodes : ast mut&, t : lex_token) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(t)),
+		nodes,
+		__arrcpy(ast, nodes, token(t)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_unop_expr ::= macro(tok : lex_token static, exp : ast_expr_type static) -> v0
+grammar_unop_expr ::= func(nodes : ast mut&, tok : lex_token, exp : ast_expr_type) -> v0
 {
 	// note: we unstash *as soon as* we see a valid expr.
 	// this means that:
 	// -5 + 12 => (-5) + 12
 	// and not => -(5 + 12):
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		token(tok),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(tok), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, token(tok), expr(exp)),
 		null_lookahead,
 		null_stash,
 		rule(tokenexpr2unop));
 };
 
-grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
+grammar_biop ::= func(nodes : ast mut&, exp : ast_expr_type, tok : lex_token) -> v0
 {
 	// basic setup
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		null_stash,
 		rule(shift1));
 	
 	// make halk biop
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp), token(tok)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp), token(tok)),
 		null_lookahead,
 		null_stash,
 		rule(exprtok2halfbiop));
 
 	// stash half biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipbiop)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipbiop)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	// unstash a half biop if an expression is ready
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipbiop),
 		rule(unstash_head));
 	
 	// half biop + expr => full biop
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipbiop), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipbiop), expr(exp)),
 		null_lookahead,
 		null_stash,
 		rule(wipbiop2biop));
@@ -1876,7 +1924,8 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 	// prevent decl initialisers from eating unfinished biops
 	// shift instead of committing.
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.decl),
 		rule(shift1));
@@ -1884,630 +1933,726 @@ grammar_biop ::= macro(exp : ast_expr_type static, tok : lex_token static) -> v0
 	// prevent return statements from eating unfinished biops
 	// shift instead of unstashing
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		token(lex_token.keyword_return),
 		rule(shift1));
 
 	// prevent if statement conditions from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipif_blue),
 		rule(shift1));
 
 	// prevent while statement conditions from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipwhile_blue),
 		rule(shift1));
 
 	// prevent for statement parts from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipfor_blue),
 		rule(shift1));
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipfor_red),
 		rule(shift1));
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipfor_yellow),
 		rule(shift1));
 
 	// prevent parenthesised exprs from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		token(lex_token.oparen),
 		rule(shift1));
 
 	// prevent initialisers from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipinit),
 		rule(shift1));
 
 	// prevent wipcalls from eating unfinished biops
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		token(tok),
 		node(ast_type.wipcall),
 		rule(shift1));
 };
 
-grammar_wipfn ::= macro() -> v0
+grammar_wipfn ::= func(nodes : ast mut&) -> v0
 {
 	// decl initialiser is func(...)
 	// dont let it be stashed
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		token(lex_token.keyword_func),
 		null_stash,
 		rule(shift2));
 	
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_func), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_func), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(declinitfunc2wipfn));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_blue)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	// push decl as new function param
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(commit_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl)),
 		token(lex_token.symbol),
 		node(ast_type.wipfn_blue),
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl), token(lex_token.symbol)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(fnptrdecl_appendsymbol));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fnptrdecl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fnptrdecl)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(commit_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(swallow_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.arrow)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.arrow)),
 		null_lookahead,
 		node(ast_type.wipfn_blue),
 		rule(unstash_head));
 
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.arrow)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_blue), token(lex_token.arrow)),
 		null_lookahead,
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_blue), token(lex_token.arrow), token(lex_token.symbol), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_blue), token(lex_token.arrow), token(lex_token.symbol), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(wipfn_givereturn));
 };
 
-grammar_fn_extern ::= macro() -> v0
+grammar_fn_extern ::= func(nodes : ast mut&) -> v0
 {
 	// wipfn_red has the whole signature now, and is followed by either:
 	// (1) := extern (in which we will just set the function as extern and declare it complete)
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_red)),
 		token(lex_token.initialiser),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.initialiser), token(lex_token.keyword_extern)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_red), token(lex_token.initialiser), token(lex_token.keyword_extern)),
 		null_lookahead,
 		null_stash,
 		rule(wipfn2externfn));
 };
 
-grammar_fn ::= macro() -> v0
+grammar_fn ::= func(nodes : ast mut&) -> v0
 {
 	// (2) a obrace (in which case we have an implemention block incoming)
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_red)),
 		token(lex_token.obrace),
 		null_stash,
 		rule(shift1));
 	
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_red), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_red), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipfn_awaitimplblock));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_green)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipfn_green),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfn_green), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfn_green), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipfn2fn));
 };
 
-grammar_wipmacro ::= macro() -> v0
+grammar_wipmacro ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		token(lex_token.keyword_macro),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_macro), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_macro), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(declinitmacro2wipmacro));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_blue)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	// push decl as new macro param
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl)),
 		null_lookahead,
 		node(ast_type.wipmacro_blue),
 		rule(commit_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipmacro_blue),
 		rule(swallow_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cparen)),
 		token(lex_token.arrow),
 		node(ast_type.wipmacro_blue),
 		rule(unstash_head));
 
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen)),
 		token(lex_token.arrow),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen), token(lex_token.arrow), token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_blue), token(lex_token.cparen), token(lex_token.arrow), token(lex_token.symbol)),
 		null_lookahead,
 		null_stash,
 		rule(wipmacro_givereturn));
 };
 
-grammar_macro ::= macro() -> v0
+grammar_macro ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_red)),
 		token(lex_token.obrace),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_red), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_red), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipmacro_awaitimplblock));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_green)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_green)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipmacro_green),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipmacro_green), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipmacro_green), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipmacro2macro));
 };
 
-grammar_if ::= macro() -> v0
+grammar_if ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_static_if)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_static_if)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_static_if), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_static_if), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(keywordstaticifparen2wipifstatic));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_if)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_if)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_if), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_if), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(keywordifparen2wipif));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipif_blue)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 	
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cparen)),
 		null_lookahead,
 		node(ast_type.wipif_blue),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipif_blue), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipif_blue), token(lex_token.cparen), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipif_blue), token(lex_token.cparen), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipifcparen2wipifred));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipif_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipif_red)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipif_red),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipif_red), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipif_red), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipifredcbrace2if));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.ifdef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.ifdef)),
 		null_lookahead,
 		null_stash,
 		rule(if2stmt));
 };
 
-grammar_if_cond ::= macro(exp : ast_expr_type static) -> v0
+grammar_if_cond ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipif_blue),
 		rule(commit_head));
 };
 
-grammar_if_else ::= macro() -> v0
+grammar_if_else ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.ifdef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.ifdef)),
 		token(lex_token.keyword_else),
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_else)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_else)),
 		null_lookahead,
 		null_stash,
 		rule(err_else_no_preceding_if));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_else)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_else)),
 		null_lookahead,
 		node(ast_type.ifdef),
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_else), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_else), token(lex_token.obrace)),
 		null_lookahead,
 		node(ast_type.ifdef),
 		rule(keywordelseobrace2wipelse));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipelse)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipelse)),
 		null_lookahead,
 		node(ast_type.ifdef),
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipelse),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipelse), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipelse), token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.ifdef),
 		rule(wipelsecbrace2else));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.elsedef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.elsedef)),
 		null_lookahead,
 		node(ast_type.ifdef),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.ifdef), node(ast_type.elsedef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.ifdef), node(ast_type.elsedef)),
 		null_lookahead,
 		null_stash,
 		rule(ifelse2if));
 };
 
-grammar_while ::= macro() -> v0
+grammar_while ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_while)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_while)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_while), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_while), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(keywordwhileparen2wipwhile));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipwhile_blue)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipwhile_blue)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 	
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cparen)),
 		null_lookahead,
 		node(ast_type.wipwhile_blue),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipwhile_blue), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipwhile_blue), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipwhile_blue), token(lex_token.cparen), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipwhile_blue), token(lex_token.cparen), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipwhilecparen2wipwhilered));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipwhile_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipwhile_red)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipwhile_red),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipwhile_red), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipwhile_red), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipwhileredcbrace2while));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.whiledef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.whiledef)),
 		null_lookahead,
 		null_stash,
 		rule(while2stmt));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.fordef)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.fordef)),
 		null_lookahead,
 		null_stash,
 		rule(for2stmt));
 };
 
-grammar_while_cond ::= macro(exp : ast_expr_type static) -> v0
+grammar_while_cond ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipwhile_blue),
 		rule(commit_head));
 };
 
-grammar_for ::= macro() -> v0
+grammar_for ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_for)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_for)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_for), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_for), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(keywordforparen2wipfor));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_blue)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_blue)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipfor_blue),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_blue), token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_blue), token(lex_token.comma)),
 		null_lookahead,
 		null_stash,
 		rule(wipforbluecomma2wipforred));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_red)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_red)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipfor_red),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_red), token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_red), token(lex_token.comma)),
 		null_lookahead,
 		null_stash,
 		rule(wipforredcomma2wipforyellow));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_yellow)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipfor_yellow),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cparen)),
 		null_lookahead,
 		node(ast_type.wipfor_yellow),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_yellow), token(lex_token.cparen), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipforyellowcparen2wipforgreen));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_green)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_green)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipfor_green),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipfor_green), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipfor_green), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipforgreencbrace2for));
 };
 
-grammar_for_cond ::= macro(exp : ast_expr_type static) -> v0
+grammar_for_cond ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipfor_blue),
 		rule(commit_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipfor_red),
 		rule(commit_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipfor_yellow),
 		rule(commit_head));
 };
 
-grammar_call ::= macro() -> v0
+grammar_call ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol)),
 		token(lex_token.oparen),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.oparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.oparen)),
 		null_lookahead,
 		null_stash,
 		rule(symoparen2wipcall));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipcall)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipcall)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
@@ -2515,241 +2660,276 @@ grammar_call ::= macro() -> v0
 	// take exprs as params in grammar_call_param
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.comma)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.comma)),
 		null_lookahead,
 		node(ast_type.wipcall),
 		rule(swallow_all));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cparen)),
 		null_lookahead,
 		node(ast_type.wipcall),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipcall), token(lex_token.cparen)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipcall), token(lex_token.cparen)),
 		null_lookahead,
 		null_stash,
 		rule(wipcallcparen2call));
 };
 
-grammar_call_param ::= macro(exp : ast_expr_type static) -> v0
+grammar_call_param ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipcall),
 		rule(commit_head));
 };
 
-grammar_struct ::= macro() -> v0
+grammar_struct ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		token(lex_token.keyword_struct),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_struct), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_struct), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(declstruct2wipstruct));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipstruct)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipstruct)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		token(lex_token.semicol),
 		node(ast_type.wipstruct),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipstruct), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipstruct), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipstructcbrace2struct));
 };
 
-grammar_enum ::= macro() -> v0
+grammar_enum ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser)),
 		token(lex_token.keyword_enum),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_enum), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_enum), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(declenum2wipenum));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipenum)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipenum)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		token(lex_token.semicol),
 		node(ast_type.wipenum),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipenum), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipenum), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipenumcbrace2enum));
 };
 
-grammar_build_region ::= macro() -> v0
+grammar_build_region ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.compare)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.compare)),
 		null_lookahead,
 		null_stash,
 		rule(shift3));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.compare), token(lex_token.symbol), token(lex_token.compare), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.compare), token(lex_token.symbol), token(lex_token.compare), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(cmpsymcmp2wipregion));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipregion)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipregion)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipregion),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipregion), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipregion), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipregion2region));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.region)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.region)),
 		null_lookahead,
 		null_stash,
 		rule(region2stmt));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, stmt(ast_stmt.region_stmt)),
+		nodes,
+		__arrcpy(ast, nodes, stmt(ast_stmt.region_stmt)),
 		null_lookahead,
 		null_stash,
 		rule(commit_head));
 };
 
-grammar_defer ::= macro() -> v0
+grammar_defer ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_defer)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_defer)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_defer_stmt ::= macro(s : ast_stmt static) -> v0
+grammar_defer_stmt ::= func(nodes : ast mut&, s : ast_stmt) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, stmt(s)),
+		nodes,
+		__arrcpy(ast, nodes, stmt(s)),
 		null_lookahead,
 		token(lex_token.keyword_defer),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.keyword_defer), stmt(s)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.keyword_defer), stmt(s)),
 		null_lookahead,
 		null_stash,
 		rule(deferstmt2unop));
 };
 
-grammar_initialiser ::= macro() -> v0
+grammar_initialiser ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.dot)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.dot)),
 		token(lex_token.symbol),
 		null_stash,
 		rule(shift2));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.dot), token(lex_token.symbol), token(lex_token.initialiser)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.dot), token(lex_token.symbol), token(lex_token.initialiser)),
 		null_lookahead,
 		null_stash,
 		rule(dotsymbolinit2wipinit));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipinit)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipinit)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 };
 
-grammar_initialiser_expr ::= macro(exp : ast_expr_type static) -> v0
+grammar_initialiser_expr ::= func(nodes : ast mut&, exp : ast_expr_type) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, expr(exp)),
 		null_lookahead,
 		node(ast_type.wipinit),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipinit), expr(exp)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipinit), expr(exp)),
 		null_lookahead,
 		null_stash,
 		rule(wipinitexpr2init));
 };
 
-grammar_structinit ::= macro() -> v0
+grammar_structinit ::= func(nodes : ast mut&) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol)),
 		token(lex_token.obrace),
 		null_stash,
 		rule(shift1));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.symbol), token(lex_token.obrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.symbol), token(lex_token.obrace)),
 		null_lookahead,
 		null_stash,
 		rule(symbolobrace2wipstructinit));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipstructinit)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipstructinit)),
 		null_lookahead,
 		null_stash,
 		rule(stash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, token(lex_token.cbrace)),
 		null_lookahead,
 		node(ast_type.wipstructinit),
 		rule(unstash_head));
 
 	grammar_install(
-		__arrcpy(ast, my_nodes, node(ast_type.wipstructinit), token(lex_token.cbrace)),
+		nodes,
+		__arrcpy(ast, nodes, node(ast_type.wipstructinit), token(lex_token.cbrace)),
 		null_lookahead,
 		null_stash,
 		rule(wipstructinitcbrace2structinit));
 };
 
-grammar_commit_stmt ::= macro(s : ast_stmt static) -> v0
+grammar_commit_stmt ::= func(nodes : ast mut&, s : ast_stmt) -> v0
 {
 	grammar_install(
-		__arrcpy(ast, my_nodes, stmt(s)),
+		nodes,
+		__arrcpy(ast, nodes, stmt(s)),
 		null_lookahead,
 		null_stash,
 		rule(commit_head));
@@ -2764,352 +2944,352 @@ grammar_setup ::= func(a : arena mut&) -> v0
 	parse_table = arena_push(a, __sizeof(deref parse_table) * parse_table_cap);
 	__memset(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
-	my_nodes : ast mut#16;
+	nodes : ast mut#16;
 
-	grammar_numeric_literal();
-	grammar_symbol();
-	grammar_char_literal();
-	grammar_string_literal();
-	grammar_bool_literal();
+	grammar_numeric_literal(nodes at 0);
+	grammar_symbol(nodes at 0);
+	grammar_char_literal(nodes at 0);
+	grammar_string_literal(nodes at 0);
+	grammar_bool_literal(nodes at 0);
 
-	grammar_zero_literal();
+	grammar_zero_literal(nodes at 0);
 
-	grammar_retvoid();
-	grammar_ret();
-	grammar_ret_expr(ast_expr_type.symbol);
-	grammar_ret_expr(ast_expr_type.literal);
-	grammar_ret_expr(ast_expr_type.biop);
-	grammar_ret_expr(ast_expr_type.unop);
-	grammar_ret_expr(ast_expr_type.callfunc);
-	grammar_ret_expr(ast_expr_type.structinit);
+	grammar_retvoid(nodes at 0);
+	grammar_ret(nodes at 0);
+	grammar_ret_expr(nodes at 0, ast_expr_type.symbol);
+	grammar_ret_expr(nodes at 0, ast_expr_type.literal);
+	grammar_ret_expr(nodes at 0, ast_expr_type.biop);
+	grammar_ret_expr(nodes at 0, ast_expr_type.unop);
+	grammar_ret_expr(nodes at 0, ast_expr_type.callfunc);
+	grammar_ret_expr(nodes at 0, ast_expr_type.structinit);
 
-	grammar_yield();
-	grammar_yield_expr(ast_expr_type.symbol);
-	grammar_yield_expr(ast_expr_type.literal);
-	grammar_yield_expr(ast_expr_type.biop);
-	grammar_yield_expr(ast_expr_type.unop);
-	grammar_yield_expr(ast_expr_type.callfunc);
-	grammar_yield_expr(ast_expr_type.structinit);
+	grammar_yield(nodes at 0);
+	grammar_yield_expr(nodes at 0, ast_expr_type.symbol);
+	grammar_yield_expr(nodes at 0, ast_expr_type.literal);
+	grammar_yield_expr(nodes at 0, ast_expr_type.biop);
+	grammar_yield_expr(nodes at 0, ast_expr_type.unop);
+	grammar_yield_expr(nodes at 0, ast_expr_type.callfunc);
+	grammar_yield_expr(nodes at 0, ast_expr_type.structinit);
 
-	grammar_parenthesised();
-	grammar_parenthesised_expr(ast_expr_type.symbol);
-	grammar_parenthesised_expr(ast_expr_type.literal);
-	grammar_parenthesised_expr(ast_expr_type.biop);
-	grammar_parenthesised_expr(ast_expr_type.unop);
-	grammar_parenthesised_expr(ast_expr_type.callfunc);
-	grammar_parenthesised_expr(ast_expr_type.ret);
-	grammar_parenthesised_expr(ast_expr_type.structinit);
+	grammar_parenthesised(nodes at 0);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.symbol);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.literal);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.biop);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.unop);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.callfunc);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.ret);
+	grammar_parenthesised_expr(nodes at 0, ast_expr_type.structinit);
 
-	grammar_basic_decl();
-	grammar_deduced_decl();
-	grammar_function_pointer_decl();
+	grammar_basic_decl(nodes at 0);
+	grammar_deduced_decl(nodes at 0);
+	grammar_function_pointer_decl(nodes at 0);
 	// note: you are going to want to add more reductions to decl_init
 	// this is because they are going to break apart biops (and probably callfuncs)
-	grammar_decl_init(ast_expr_type.symbol);
-	grammar_decl_init(ast_expr_type.literal);
-	grammar_decl_init(ast_expr_type.biop);
-	grammar_decl_init(ast_expr_type.unop);
-	grammar_decl_init(ast_expr_type.callfunc);
-	grammar_decl_init(ast_expr_type.structinit);
+	grammar_decl_init(nodes at 0, ast_expr_type.symbol);
+	grammar_decl_init(nodes at 0, ast_expr_type.literal);
+	grammar_decl_init(nodes at 0, ast_expr_type.biop);
+	grammar_decl_init(nodes at 0, ast_expr_type.unop);
+	grammar_decl_init(nodes at 0, ast_expr_type.callfunc);
+	grammar_decl_init(nodes at 0, ast_expr_type.structinit);
 
 	// unary operators
-	grammar_unop(lex_token.dash);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.symbol);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.literal);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.biop);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.unop);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.callfunc);
-	grammar_unop_expr(lex_token.dash, ast_expr_type.structinit);
+	grammar_unop(nodes at 0, lex_token.dash);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.symbol);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.literal);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.biop);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.unop);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.callfunc);
+	grammar_unop_expr(nodes at 0, lex_token.dash, ast_expr_type.structinit);
 
-	grammar_unop(lex_token.bitwise_invert);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.symbol);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.literal);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.biop);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.unop);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.callfunc);
-	grammar_unop_expr(lex_token.bitwise_invert, ast_expr_type.structinit);
+	grammar_unop(nodes at 0, lex_token.bitwise_invert);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.symbol);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.literal);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.biop);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.unop);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.callfunc);
+	grammar_unop_expr(nodes at 0, lex_token.bitwise_invert, ast_expr_type.structinit);
 
-	grammar_unop(lex_token.logical_invert);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.symbol);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.literal);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.biop);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.unop);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.callfunc);
-	grammar_unop_expr(lex_token.logical_invert, ast_expr_type.structinit);
+	grammar_unop(nodes at 0, lex_token.logical_invert);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.symbol);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.literal);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.biop);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.unop);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.callfunc);
+	grammar_unop_expr(nodes at 0, lex_token.logical_invert, ast_expr_type.structinit);
 
-	grammar_unop(lex_token.keyword_ref);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.symbol);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.literal);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.biop);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.unop);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.callfunc);
-	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.structinit);
+	grammar_unop(nodes at 0, lex_token.keyword_ref);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.symbol);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.literal);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.biop);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.unop);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.callfunc);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_ref, ast_expr_type.structinit);
 
-	grammar_unop(lex_token.keyword_deref);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.symbol);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.literal);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.biop);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.unop);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.callfunc);
-	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.structinit);
+	grammar_unop(nodes at 0, lex_token.keyword_deref);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.symbol);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.literal);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.biop);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.unop);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.callfunc);
+	grammar_unop_expr(nodes at 0, lex_token.keyword_deref, ast_expr_type.structinit);
 
 	// binary operators
-	grammar_biop(ast_expr_type.symbol, lex_token.assign);
-	grammar_biop(ast_expr_type.literal, lex_token.assign);
-	grammar_biop(ast_expr_type.biop, lex_token.assign);
-	grammar_biop(ast_expr_type.unop, lex_token.assign);
-	grammar_biop(ast_expr_type.callfunc, lex_token.assign);
-	grammar_biop(ast_expr_type.structinit, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.assign);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.assign);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.compare);
-	grammar_biop(ast_expr_type.literal, lex_token.compare);
-	grammar_biop(ast_expr_type.biop, lex_token.compare);
-	grammar_biop(ast_expr_type.unop, lex_token.compare);
-	grammar_biop(ast_expr_type.callfunc, lex_token.compare);
-	grammar_biop(ast_expr_type.structinit, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.compare);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.compare);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.comparen);
-	grammar_biop(ast_expr_type.literal, lex_token.comparen);
-	grammar_biop(ast_expr_type.biop, lex_token.comparen);
-	grammar_biop(ast_expr_type.unop, lex_token.comparen);
-	grammar_biop(ast_expr_type.callfunc, lex_token.comparen);
-	grammar_biop(ast_expr_type.structinit, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.comparen);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.comparen);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.oanglebrack);
-	grammar_biop(ast_expr_type.literal, lex_token.oanglebrack);
-	grammar_biop(ast_expr_type.biop, lex_token.oanglebrack);
-	grammar_biop(ast_expr_type.unop, lex_token.oanglebrack);
-	grammar_biop(ast_expr_type.callfunc, lex_token.oanglebrack);
-	grammar_biop(ast_expr_type.structinit, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.oanglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.oanglebrack);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.loreq);
-	grammar_biop(ast_expr_type.literal, lex_token.loreq);
-	grammar_biop(ast_expr_type.biop, lex_token.loreq);
-	grammar_biop(ast_expr_type.unop, lex_token.loreq);
-	grammar_biop(ast_expr_type.callfunc, lex_token.loreq);
-	grammar_biop(ast_expr_type.structinit, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.loreq);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.loreq);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.canglebrack);
-	grammar_biop(ast_expr_type.literal, lex_token.canglebrack);
-	grammar_biop(ast_expr_type.biop, lex_token.canglebrack);
-	grammar_biop(ast_expr_type.unop, lex_token.canglebrack);
-	grammar_biop(ast_expr_type.callfunc, lex_token.canglebrack);
-	grammar_biop(ast_expr_type.structinit, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.canglebrack);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.canglebrack);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.goreq);
-	grammar_biop(ast_expr_type.literal, lex_token.goreq);
-	grammar_biop(ast_expr_type.biop, lex_token.goreq);
-	grammar_biop(ast_expr_type.unop, lex_token.goreq);
-	grammar_biop(ast_expr_type.callfunc, lex_token.goreq);
-	grammar_biop(ast_expr_type.structinit, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.goreq);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.goreq);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.plus);
-	grammar_biop(ast_expr_type.literal, lex_token.plus);
-	grammar_biop(ast_expr_type.biop, lex_token.plus);
-	grammar_biop(ast_expr_type.unop, lex_token.plus);
-	grammar_biop(ast_expr_type.callfunc, lex_token.plus);
-	grammar_biop(ast_expr_type.structinit, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.plus);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.plus);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.dash);
-	grammar_biop(ast_expr_type.literal, lex_token.dash);
-	grammar_biop(ast_expr_type.biop, lex_token.dash);
-	grammar_biop(ast_expr_type.unop, lex_token.dash);
-	grammar_biop(ast_expr_type.callfunc, lex_token.dash);
-	grammar_biop(ast_expr_type.structinit, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.dash);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.dash);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.asterisk);
-	grammar_biop(ast_expr_type.literal, lex_token.asterisk);
-	grammar_biop(ast_expr_type.biop, lex_token.asterisk);
-	grammar_biop(ast_expr_type.unop, lex_token.asterisk);
-	grammar_biop(ast_expr_type.callfunc, lex_token.asterisk);
-	grammar_biop(ast_expr_type.structinit, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.asterisk);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.asterisk);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.fslash);
-	grammar_biop(ast_expr_type.literal, lex_token.fslash);
-	grammar_biop(ast_expr_type.biop, lex_token.fslash);
-	grammar_biop(ast_expr_type.unop, lex_token.fslash);
-	grammar_biop(ast_expr_type.callfunc, lex_token.fslash);
-	grammar_biop(ast_expr_type.structinit, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.fslash);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.fslash);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.bitwise_or);
-	grammar_biop(ast_expr_type.literal, lex_token.bitwise_or);
-	grammar_biop(ast_expr_type.biop, lex_token.bitwise_or);
-	grammar_biop(ast_expr_type.unop, lex_token.bitwise_or);
-	grammar_biop(ast_expr_type.callfunc, lex_token.bitwise_or);
-	grammar_biop(ast_expr_type.structinit, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.bitwise_or);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.bitwise_or);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.logical_or);
-	grammar_biop(ast_expr_type.literal, lex_token.logical_or);
-	grammar_biop(ast_expr_type.biop, lex_token.logical_or);
-	grammar_biop(ast_expr_type.unop, lex_token.logical_or);
-	grammar_biop(ast_expr_type.callfunc, lex_token.logical_or);
-	grammar_biop(ast_expr_type.structinit, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.logical_or);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.logical_or);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.bitwise_and);
-	grammar_biop(ast_expr_type.literal, lex_token.bitwise_and);
-	grammar_biop(ast_expr_type.biop, lex_token.bitwise_and);
-	grammar_biop(ast_expr_type.unop, lex_token.bitwise_and);
-	grammar_biop(ast_expr_type.callfunc, lex_token.bitwise_and);
-	grammar_biop(ast_expr_type.structinit, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.bitwise_and);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.bitwise_and);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.logical_and);
-	grammar_biop(ast_expr_type.literal, lex_token.logical_and);
-	grammar_biop(ast_expr_type.biop, lex_token.logical_and);
-	grammar_biop(ast_expr_type.unop, lex_token.logical_and);
-	grammar_biop(ast_expr_type.callfunc, lex_token.logical_and);
-	grammar_biop(ast_expr_type.structinit, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.logical_and);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.logical_and);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.bitwise_exor);
-	grammar_biop(ast_expr_type.literal, lex_token.bitwise_exor);
-	grammar_biop(ast_expr_type.biop, lex_token.bitwise_exor);
-	grammar_biop(ast_expr_type.unop, lex_token.bitwise_exor);
-	grammar_biop(ast_expr_type.callfunc, lex_token.bitwise_exor);
-	grammar_biop(ast_expr_type.structinit, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.bitwise_exor);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.bitwise_exor);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.oanglebrack2);
-	grammar_biop(ast_expr_type.literal, lex_token.oanglebrack2);
-	grammar_biop(ast_expr_type.biop, lex_token.oanglebrack2);
-	grammar_biop(ast_expr_type.unop, lex_token.oanglebrack2);
-	grammar_biop(ast_expr_type.callfunc, lex_token.oanglebrack2);
-	grammar_biop(ast_expr_type.structinit, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.oanglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.oanglebrack2);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.canglebrack2);
-	grammar_biop(ast_expr_type.literal, lex_token.canglebrack2);
-	grammar_biop(ast_expr_type.biop, lex_token.canglebrack2);
-	grammar_biop(ast_expr_type.unop, lex_token.canglebrack2);
-	grammar_biop(ast_expr_type.callfunc, lex_token.canglebrack2);
-	grammar_biop(ast_expr_type.structinit, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.canglebrack2);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.canglebrack2);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.modulo);
-	grammar_biop(ast_expr_type.literal, lex_token.modulo);
-	grammar_biop(ast_expr_type.biop, lex_token.modulo);
-	grammar_biop(ast_expr_type.unop, lex_token.modulo);
-	grammar_biop(ast_expr_type.callfunc, lex_token.modulo);
-	grammar_biop(ast_expr_type.structinit, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.modulo);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.modulo);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.keyword_at);
-	grammar_biop(ast_expr_type.literal, lex_token.keyword_at);
-	grammar_biop(ast_expr_type.biop, lex_token.keyword_at);
-	grammar_biop(ast_expr_type.unop, lex_token.keyword_at);
-	grammar_biop(ast_expr_type.callfunc, lex_token.keyword_at);
-	grammar_biop(ast_expr_type.structinit, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.keyword_at);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.keyword_at);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.cast);
-	grammar_biop(ast_expr_type.literal, lex_token.cast);
-	grammar_biop(ast_expr_type.biop, lex_token.cast);
-	grammar_biop(ast_expr_type.unop, lex_token.cast);
-	grammar_biop(ast_expr_type.callfunc, lex_token.cast);
-	grammar_biop(ast_expr_type.structinit, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.cast);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.cast);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.dot);
-	grammar_biop(ast_expr_type.literal, lex_token.dot);
-	grammar_biop(ast_expr_type.biop, lex_token.dot);
-	grammar_biop(ast_expr_type.unop, lex_token.dot);
-	grammar_biop(ast_expr_type.callfunc, lex_token.dot);
-	grammar_biop(ast_expr_type.structinit, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.dot);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.dot);
 
-	grammar_biop(ast_expr_type.symbol, lex_token.arrow);
-	grammar_biop(ast_expr_type.literal, lex_token.arrow);
-	grammar_biop(ast_expr_type.biop, lex_token.arrow);
-	grammar_biop(ast_expr_type.unop, lex_token.arrow);
-	grammar_biop(ast_expr_type.callfunc, lex_token.arrow);
-	grammar_biop(ast_expr_type.structinit, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.symbol, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.literal, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.biop, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.unop, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.callfunc, lex_token.arrow);
+	grammar_biop(nodes at 0, ast_expr_type.structinit, lex_token.arrow);
 
 	// functions
-	grammar_wipfn();
-	grammar_fn_extern();
-	grammar_fn();
+	grammar_wipfn(nodes at 0);
+	grammar_fn_extern(nodes at 0);
+	grammar_fn(nodes at 0);
 
 	// macros
-	grammar_wipmacro();
-	grammar_macro();
+	grammar_wipmacro(nodes at 0);
+	grammar_macro(nodes at 0);
 
-	grammar_if();
-	grammar_if_cond(ast_expr_type.symbol);
-	grammar_if_cond(ast_expr_type.literal);
-	grammar_if_cond(ast_expr_type.biop);
-	grammar_if_cond(ast_expr_type.unop);
-	grammar_if_cond(ast_expr_type.callfunc);
-	grammar_if_cond(ast_expr_type.structinit);
+	grammar_if(nodes at 0);
+	grammar_if_cond(nodes at 0, ast_expr_type.symbol);
+	grammar_if_cond(nodes at 0, ast_expr_type.literal);
+	grammar_if_cond(nodes at 0, ast_expr_type.biop);
+	grammar_if_cond(nodes at 0, ast_expr_type.unop);
+	grammar_if_cond(nodes at 0, ast_expr_type.callfunc);
+	grammar_if_cond(nodes at 0, ast_expr_type.structinit);
 
-	grammar_if_else();
+	grammar_if_else(nodes at 0);
 
-	grammar_while();
-	grammar_while_cond(ast_expr_type.symbol);
-	grammar_while_cond(ast_expr_type.literal);
-	grammar_while_cond(ast_expr_type.biop);
-	grammar_while_cond(ast_expr_type.unop);
-	grammar_while_cond(ast_expr_type.callfunc);
-	grammar_while_cond(ast_expr_type.structinit);
+	grammar_while(nodes at 0);
+	grammar_while_cond(nodes at 0, ast_expr_type.symbol);
+	grammar_while_cond(nodes at 0, ast_expr_type.literal);
+	grammar_while_cond(nodes at 0, ast_expr_type.biop);
+	grammar_while_cond(nodes at 0, ast_expr_type.unop);
+	grammar_while_cond(nodes at 0, ast_expr_type.callfunc);
+	grammar_while_cond(nodes at 0, ast_expr_type.structinit);
 
-	grammar_for();
-	grammar_for_cond(ast_expr_type.symbol);
-	grammar_for_cond(ast_expr_type.literal);
-	grammar_for_cond(ast_expr_type.biop);
-	grammar_for_cond(ast_expr_type.unop);
-	grammar_for_cond(ast_expr_type.callfunc);
-	grammar_for_cond(ast_expr_type.structinit);
+	grammar_for(nodes at 0);
+	grammar_for_cond(nodes at 0, ast_expr_type.symbol);
+	grammar_for_cond(nodes at 0, ast_expr_type.literal);
+	grammar_for_cond(nodes at 0, ast_expr_type.biop);
+	grammar_for_cond(nodes at 0, ast_expr_type.unop);
+	grammar_for_cond(nodes at 0, ast_expr_type.callfunc);
+	grammar_for_cond(nodes at 0, ast_expr_type.structinit);
 
 	// callfuncs
-	grammar_call();
-	grammar_call_param(ast_expr_type.symbol);
-	grammar_call_param(ast_expr_type.literal);
-	grammar_call_param(ast_expr_type.biop);
-	grammar_call_param(ast_expr_type.unop);
-	grammar_call_param(ast_expr_type.callfunc);
-	grammar_call_param(ast_expr_type.structinit);
+	grammar_call(nodes at 0);
+	grammar_call_param(nodes at 0, ast_expr_type.symbol);
+	grammar_call_param(nodes at 0, ast_expr_type.literal);
+	grammar_call_param(nodes at 0, ast_expr_type.biop);
+	grammar_call_param(nodes at 0, ast_expr_type.unop);
+	grammar_call_param(nodes at 0, ast_expr_type.callfunc);
+	grammar_call_param(nodes at 0, ast_expr_type.structinit);
 
 	// structs
-	grammar_struct();
-	grammar_enum();
+	grammar_struct(nodes at 0);
+	grammar_enum(nodes at 0);
 
 	// make stmts (largest building blocks in program)
-	grammar_stmtify(expr(ast_expr_type.symbol), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.literal), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.biop), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.unop), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.callfunc), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.ret), rule(expr2stmt));
-	grammar_stmtify(expr(ast_expr_type.yld), rule(expr2stmt));
-	grammar_stmtify(node(ast_type.decl), rule(decl2stmt));
-	grammar_stmtify(node(ast_type.fnptrdecl), rule(decl2stmt));
-	grammar_stmtify(node(ast_type.fn), rule(fn2stmt));
-	grammar_stmtify(node(ast_type.mac), rule(mac2stmt));
-	grammar_stmtify(node(ast_type.structdef), rule(struct2stmt));
-	grammar_stmtify(node(ast_type.enumdef), rule(enum2stmt));
-	grammar_stmtify(node(ast_type.init), rule(init2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.symbol), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.literal), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.biop), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.unop), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.callfunc), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.ret), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, expr(ast_expr_type.yld), rule(expr2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.decl), rule(decl2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.fnptrdecl), rule(decl2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.fn), rule(fn2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.mac), rule(mac2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.structdef), rule(struct2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.enumdef), rule(enum2stmt));
+	grammar_stmtify(nodes at 0, node(ast_type.init), rule(init2stmt));
 
 	// build regions
-	grammar_build_region();
+	grammar_build_region(nodes at 0);
 
 	// defer
-	grammar_defer();
-	grammar_defer_stmt(ast_stmt.expr_stmt);
+	grammar_defer(nodes at 0);
+	grammar_defer_stmt(nodes at 0, ast_stmt.expr_stmt);
 
-	grammar_initialiser();
-	grammar_initialiser_expr(ast_expr_type.symbol);
-	grammar_initialiser_expr(ast_expr_type.literal);
-	grammar_initialiser_expr(ast_expr_type.biop);
-	grammar_initialiser_expr(ast_expr_type.unop);
-	grammar_initialiser_expr(ast_expr_type.callfunc);
-	grammar_initialiser_expr(ast_expr_type.ret);
-	grammar_initialiser_expr(ast_expr_type.structinit);
+	grammar_initialiser(nodes at 0);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.symbol);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.literal);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.biop);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.unop);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.callfunc);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.ret);
+	grammar_initialiser_expr(nodes at 0, ast_expr_type.structinit);
 
-	grammar_structinit();
+	grammar_structinit(nodes at 0);
 
 	// commit all the statements to the final result (or a stashed node)
-	grammar_commit_stmt(ast_stmt.expr_stmt);
-	grammar_commit_stmt(ast_stmt.decl_stmt);
-	grammar_commit_stmt(ast_stmt.region_stmt);
-	grammar_commit_stmt(ast_stmt.struct_stmt);
-	grammar_commit_stmt(ast_stmt.enum_stmt);
-	grammar_commit_stmt(ast_stmt.fn_stmt);
-	grammar_commit_stmt(ast_stmt.mac_stmt);
-	grammar_commit_stmt(ast_stmt.if_stmt);
-	grammar_commit_stmt(ast_stmt.while_stmt);
-	grammar_commit_stmt(ast_stmt.for_stmt);
-	grammar_commit_stmt(ast_stmt.init_stmt);
-	grammar_commit_stmt(ast_stmt.structinit_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.expr_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.decl_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.region_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.struct_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.enum_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.fn_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.mac_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.if_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.while_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.for_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.init_stmt);
+	grammar_commit_stmt(nodes at 0, ast_stmt.structinit_stmt);
 };
 
 == build ==
