@@ -75,20 +75,20 @@ ast_literal_expr ::= struct
 	type : ast_literal_type;
 	integral : s64;
 	floating_point : f64;
-	chars : u8&;
+	chars : u8?;
 	chars_len : u64;
 	boolean : bool;
 };
 
 ast_symbol_expr ::= struct
 {
-	symbol : u8&;
+	symbol : u8?;
 	len : u64;
 };
 
 ast_callfunc_expr ::= struct
 {
-	funcname : u8&;
+	funcname : u8?;
 	funcname_len : u64;
 };
 
@@ -104,11 +104,11 @@ ast_expr ::= struct
 
 ast_decl ::= struct
 {
-	name : u8&;
+	name : u8?;
 	name_len : u64;
-	typename : u8&;
+	typename : u8?;
 	typename_len : u64;
-	extras : u8&;
+	extras : u8?;
 	extras_size : u64;
 };
 
@@ -131,7 +131,7 @@ ast_stmt ::= enum
 
 ast_region_stmt ::= struct
 {
-	name : u8&;
+	name : u8?;
 	name_len : u64;
 };
 
@@ -188,36 +188,36 @@ ast_type ::= enum
 
 ast_fn ::= struct
 {
-	fn_name : u8&;
+	fn_name : u8?;
 	fn_name_len : u64;
-	ret_typename : u8&;
+	ret_typename : u8?;
 	ret_typename_len : u64;
 	is_extern : bool;
 };
 
 ast_macro ::= struct
 {
-	mac_name : u8&;
+	mac_name : u8?;
 	mac_name_len : u64;
-	yield_typename : u8&;
+	yield_typename : u8?;
 	yield_typename_len : u64;
 };
 
 ast_wipcall ::= struct
 {
-	funcname : u8&;
+	funcname : u8?;
 	funcname_len : u64;
 };
 
 ast_struct ::= struct
 {
-	structname : u8&;
+	structname : u8?;
 	structname_len : u64;
 };
 
 ast_enum ::= struct
 {
-	enumname : u8&;
+	enumname : u8?;
 	enumname_len : u64;
 };
 
@@ -228,7 +228,7 @@ ast_if ::= struct
 
 ast_init ::= struct
 {
-	name : u8&;
+	name : u8?;
 	name_len : u64;
 };
 
@@ -253,21 +253,21 @@ ast ::= struct
 
 	childcount : u64;
 	childcap : u64;
-	children : v0 mut&;
+	children : v0 mut?;
 };
 
-ast_get_child ::= func(a : ast mut&, cid : u64) -> ast mut&
+ast_get_child ::= func(a : ast mut?, cid : u64 -> ast mut?)
 {
-	childrenptr ::= ((a->children)@ast mut&);
-	return childrenptr at cid;
+	childrenptr ::= ((a->children)@ast mut?);
+	return childrenptr # cid;
 };
 
-ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
+ast_add_child ::= func(a : ast mut?, child : ast, ar : arena mut? -> u64)
 {
-	if((a->children) == null)
+	if((a->children) == zero)
 	{
 		(a->childcap) = 8;
-		(a->children) = arena_push(ar, __sizeof(ast) * (a->childcap));
+		(a->children) = arena_alloc(ar, __sizeof(ast) * (a->childcap));
 	}
 	while((a->childcount) >= (a->childcap))
 	{
@@ -275,55 +275,55 @@ ast_add_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> u64
 		oldcap ::= (a->childcap);
 
 		(a->childcap) = ((a->childcap) * 2);
-		(a->children) = arena_push(ar, __sizeof(ast) * (a->childcap));
-		__memcpy(a->children, olddata, __sizeof(ast) * oldcap);
+		(a->children) = arena_alloc(ar, __sizeof(ast) * (a->childcap));
+		memcopy(a->children, olddata, __sizeof(ast) * oldcap);
 	}
 
-	childrenptr ::= ((a->children)@ast mut&);
-	deref(childrenptr at (a->childcount)) = child;
+	childrenptr ::= ((a->children)@ast mut?);
+	deref(childrenptr # (a->childcount)) = child;
 	childid ::= a->childcount;
 	(a->childcount) = (a->childcount) + 1;
 	return childid;
 };
 
-ast_emplace_child ::= func(a : ast mut&, child : ast, ar : arena mut&) -> ast mut&
+ast_emplace_child ::= func(a : ast mut?, child : ast, ar : arena mut? -> ast mut?)
 {
 	cid ::= ast_add_child(a, child, ar);
 	return ast_get_child(a, cid);
 };
 
-ast_biop_get_lhs ::= func(a : ast) -> ast mut&
+ast_biop_get_lhs ::= func(a : ast -> ast mut?)
 {
 	if((a.childcount) < 1)
 	{
 		return zero;
 	}
-	childrenptr ::= ((a.children)@ast mut&);
-	return childrenptr at 0;
+	childrenptr ::= ((a.children)@ast mut?);
+	return childrenptr # 0;
 };
 
-ast_biop_get_rhs ::= func(a : ast) -> ast mut&
+ast_biop_get_rhs ::= func(a : ast -> ast mut?)
 {
 	if((a.childcount) < 2)
 	{
 		return zero;
 	}
-	childrenptr ::= ((a.children)@ast mut&);
-	return childrenptr at 1;
+	childrenptr ::= ((a.children)@ast mut?);
+	return childrenptr # 1;
 };
 
-ast_unop_get_operand ::= func(a : ast) -> ast mut&
+ast_unop_get_operand ::= func(a : ast -> ast mut?)
 {
 	return ast_biop_get_lhs(a);
 };
 
-ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut&) -> v0
+ast_biop_set_lhs ::= func(a : ast mut?, lhs : ast, ar : arena mut? -> v0)
 {
-	childrenptr ::= ((a->children)@ast mut&);
+	childrenptr ::= ((a->children)@ast mut?);
 	c ::= a->childcount;
 	if(c >= 1)
 	{
-		deref(childrenptr at 0) = lhs;
+		deref(childrenptr # 0) = lhs;
 	}
 	if(c == 0)
 	{
@@ -331,13 +331,13 @@ ast_biop_set_lhs ::= func(a : ast mut&, lhs : ast, ar : arena mut&) -> v0
 	}
 };
 
-ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut&) -> v0
+ast_biop_set_rhs ::= func(a : ast mut?, rhs : ast, ar : arena mut? -> v0)
 {
-	childrenptr ::= ((a->children)@ast mut&);
+	childrenptr ::= ((a->children)@ast mut?);
 	c ::= a->childcount;
 	if(c >= 2)
 	{
-		deref(childrenptr at 1) = rhs;
+		deref(childrenptr # 1) = rhs;
 	}
 	if(c == 1)
 	{
@@ -350,12 +350,12 @@ ast_biop_set_rhs ::= func(a : ast mut&, rhs : ast, ar : arena mut&) -> v0
 	}
 };
 
-ast_unop_set_operand ::= func(a : ast mut&, operand : ast, ar : arena mut&) -> v0
+ast_unop_set_operand ::= func(a : ast mut?, operand : ast, ar : arena mut? -> v0)
 {
 	ast_biop_set_lhs(a, operand, ar);
 };
 
-make_biop_expr ::= func(biop : ast_biop_expr) -> ast_expr
+make_biop_expr ::= func(biop : ast_biop_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -364,7 +364,7 @@ make_biop_expr ::= func(biop : ast_biop_expr) -> ast_expr
 	};
 };
 
-make_unop_expr ::= func(unop : ast_unop_expr) -> ast_expr
+make_unop_expr ::= func(unop : ast_unop_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -373,7 +373,7 @@ make_unop_expr ::= func(unop : ast_unop_expr) -> ast_expr
 	};
 };
 
-make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
+make_literal_expr ::= func(lit : ast_literal_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -382,7 +382,7 @@ make_literal_expr ::= func(lit : ast_literal_expr) -> ast_expr
 	};
 };
 
-make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
+make_symbol_expr ::= func(symbol : ast_symbol_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -391,7 +391,7 @@ make_symbol_expr ::= func(symbol : ast_symbol_expr) -> ast_expr
 	};
 };
 
-make_callfunc_expr ::= func(call : ast_callfunc_expr) -> ast_expr
+make_callfunc_expr ::= func(call : ast_callfunc_expr -> ast_expr)
 {
 	return ast_expr
 	{
@@ -400,7 +400,7 @@ make_callfunc_expr ::= func(call : ast_callfunc_expr) -> ast_expr
 	};
 };
 
-make_unparsed_token_ast ::= func(tok : token_data) -> ast
+make_unparsed_token_ast ::= func(tok : token_data -> ast)
 {
 	lexeme ::= tok.lexeme;
 	return ast
@@ -419,7 +419,7 @@ make_unparsed_token_ast ::= func(tok : token_data) -> ast
 	};
 };
 
-ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
+ast_verbose_print ::= func(a : ast?, tabcount : u64 -> v0)
 {
 	i : u64 mut;
 	for(i = 0, i < tabcount, i = i + 1)
@@ -428,42 +428,42 @@ ast_verbose_print ::= func(a : ast&, tabcount : u64) -> v0
 	}
 	if((a->type) != (ast_type.unparsed_token))
 	{
-		puts(__enumname(a->type));
+		putzstr(__enumname(a->type));
 	}
 	if((a->type) == (ast_type.unparsed_token))
 	{
 		utok ::= a->utok;
 		tokdata ::= utok.tok;
-		puts("token.");
-		puts(__enumname(tokdata.tok));
+		putzstr("token.");
+		putzstr(__enumname(tokdata.tok));
 	}
 	if((a->type) == (ast_type.expr))
 	{
-		puts("(");
+		putzstr("(");
 		expr ::= a->expr;
-		puts(__enumname(expr.type));
-		puts(")");
+		putzstr(__enumname(expr.type));
+		putzstr(")");
 	}
 	if((a->type) == (ast_type.stmt))
 	{
-		puts("(");
+		putzstr("(");
 		stmt ::= a->stmt;
-		puts(__enumname(stmt));
-		puts(")");
+		putzstr(__enumname(stmt));
+		putzstr(")");
 	}
 	putchar(' ');
 	print_srcloc(a->loc);
 	putchar(10);
 
-	childrenptr ::= ((a->children)@ast mut&);
+	childrenptr ::= ((a->children)@ast mut?);
 
 	for(i = 0, i < (a->childcount), i = i + 1)
 	{
-		ast_verbose_print(childrenptr at i, tabcount + 1);
+		ast_verbose_print(childrenptr # i, tabcount + 1);
 	}
 };
 
-isdigit ::= func(ch : u8) -> bool
+isdigit ::= func(ch : u8 -> bool)
 {
 	if(ch >= '0')
 	{
@@ -475,9 +475,9 @@ isdigit ::= func(ch : u8) -> bool
 	return false;
 };
 
-interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal_expr
+interpret_numeric_literal ::= func(src : u8?, lexeme : lex_slice -> ast_literal_expr)
 {
-	src_begin : u8& mut := src at (lexeme.off);
+	src_begin : u8? mut := src # (lexeme.off);
 	begin_cpy ::= src_begin;
 	i : u64 mut := 0;
 
@@ -485,25 +485,26 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 	if(deref(src_begin) == '-')
 	{
 		sign = -1;
-		src_begin = src_begin at 1;
+		src_begin = src_begin # 1;
 		i = i + 1;
 	}
 
 	base : s64 mut := 10;
+	ch : u8 mut;
 	if(deref(src_begin) == '0')
 	{
-		src_begin = src_begin at 1;
-		ch ::= deref(src_begin);
+		src_begin = src_begin # 1;
+		ch = deref(src_begin);
 		if(ch == 'x')
 		{
 			base = 16;
-			src_begin = src_begin at 1;
+			src_begin = src_begin # 1;
 			i = i + 2;
 		}
 		if(ch == 'b')
 		{
 			base = 2;
-			src_begin = src_begin at 1;
+			src_begin = src_begin # 1;
 			i = i + 2;
 		}
 	}
@@ -517,7 +518,7 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 	is_integral : bool mut := true;
 	while(i < (lexeme.len))
 	{
-		ch ::= deref(begin_cpy at i);
+		ch = deref(begin_cpy # i);
 		if(ch == '.')
 		{
 			is_integral = false;
@@ -581,7 +582,7 @@ interpret_numeric_literal ::= func(src : u8&, lexeme : lex_slice) -> ast_literal
 	return ret;
 };
 
-ast_child_find_if ::= func(node : ast&, predicate : func(n : ast&) -> bool) -> u64
+ast_child_find_if ::= func(node : ast?, predicate : func(n : ast? -> bool) -> u64)
 {
 	// iterate over all children
 	ccount ::= node->childcount;
@@ -596,7 +597,7 @@ ast_child_find_if ::= func(node : ast&, predicate : func(n : ast&) -> bool) -> u
 	return -1@_;
 };
 
-ast_unop_type_from_token ::= func(t : lex_token) -> ast_unop_type
+ast_unop_type_from_token ::= func(t : lex_token -> ast_unop_type)
 {
 	if(t == (lex_token.dash))
 	{
@@ -621,7 +622,7 @@ ast_unop_type_from_token ::= func(t : lex_token) -> ast_unop_type
 	return -1@ast_unop_type;	
 };
 
-ast_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
+ast_biop_type_from_token ::= func(t : lex_token -> ast_biop_type)
 {
 	if(t == (lex_token.assign))
 	{
@@ -718,7 +719,7 @@ ast_biop_type_from_token ::= func(t : lex_token) -> ast_biop_type
 	return -1@ast_biop_type;	
 };
 
-ast_biop_precedence ::= func(t : ast_biop_type) -> u64
+ast_biop_precedence ::= func(t : ast_biop_type -> u64)
 {
 	if(t == (ast_biop_type.assign))
 	{
@@ -822,7 +823,7 @@ ast_biop_precedence ::= func(t : ast_biop_type) -> u64
 	return 0;
 };
 
-ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64 mut&) -> bool
+ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8? mut?, len : u64 mut? -> bool)
 {
 	if((expr.type) == (ast_expr_type.symbol))
 	{
@@ -841,12 +842,12 @@ ast_try_get_symbol_from_expr ::= func(expr : ast_expr, sym : u8& mut&, len : u64
 	return false;
 };
 
-ast_is_any_stmt ::= func(node : ast&) -> bool
+ast_is_any_stmt ::= func(node : ast? -> bool)
 {
 	return (node->type) == (ast_type.stmt);
 };
 
-ast_is_stmt ::= func(node : ast&, t : ast_stmt) -> bool
+ast_is_stmt ::= func(node : ast?, t : ast_stmt -> bool)
 {
 	if(!ast_is_any_stmt(node))
 	{
@@ -855,7 +856,7 @@ ast_is_stmt ::= func(node : ast&, t : ast_stmt) -> bool
 	return (node->stmt) == t;
 };
 
-ast_is_any_expr ::= func(node : ast&) -> bool
+ast_is_any_expr ::= func(node : ast? -> bool)
 {
 	nexpr ::= node->expr;
 	// plain old expr
@@ -867,7 +868,7 @@ ast_is_any_expr ::= func(node : ast&) -> bool
 	return ast_is_stmt(node, ast_stmt.expr_stmt);
 };
 
-ast_is_expr ::= func(node : ast&, t : ast_expr_type) -> bool
+ast_is_expr ::= func(node : ast?, t : ast_expr_type -> bool)
 {
 	nexpr ::= node->expr;
 	if(ast_is_any_expr(node))
@@ -877,7 +878,7 @@ ast_is_expr ::= func(node : ast&, t : ast_expr_type) -> bool
 	return false;
 };
 
-ast_is_decl ::= func(node : ast&) -> bool
+ast_is_decl ::= func(node : ast? -> bool)
 {
 	if(ast_is_stmt(node, ast_stmt.decl_stmt))
 	{
@@ -886,7 +887,7 @@ ast_is_decl ::= func(node : ast&) -> bool
 	return (node->type) == (ast_type.decl);
 };
 
-ast_shift_children_right ::= func(node : ast mut&, pivot : u64, shift_amount : u64, a : arena mut&) -> v0
+ast_shift_children_right ::= func(node : ast mut?, pivot : u64, shift_amount : u64, a : arena mut? -> v0)
 {
 	oldsize ::= (node->childcount);
 	newsize ::= oldsize + shift_amount;
@@ -896,14 +897,14 @@ ast_shift_children_right ::= func(node : ast mut&, pivot : u64, shift_amount : u
 		oldcap ::= node->childcap;
 		olddata ::= node->children;
 		(node->childcap) = (oldcap * 2);
-		(node->children) = arena_push(a, __sizeof(ast) * (node->childcap));
-		__memcpy(node->children, olddata, __sizeof(ast) * oldcap);
+		(node->children) = arena_alloc(a, __sizeof(ast) * (node->childcap));
+		memcopy(node->children, olddata, __sizeof(ast) * oldcap);
 	}
 
-	childrenptr ::= (node->children)@ast&;
-	copy_src ::= childrenptr at pivot;
-	copy_dst ::= copy_src at shift_amount;
-	__memcpy(copy_dst@_, copy_src@_, __sizeof(ast) * shift_amount);
+	childrenptr ::= (node->children)@ast?;
+	copy_src ::= childrenptr # pivot;
+	copy_dst ::= copy_src # shift_amount;
+	memcopy(copy_dst@_, copy_src@_, __sizeof(ast) * shift_amount);
 	// gap is left uninitialised.
 	(node->childcount) = newsize;
 };

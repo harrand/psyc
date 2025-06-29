@@ -1,19 +1,19 @@
-semar : arena mut& mut;
+semar : arena mut? mut;
 
-semal_setup ::= func(a : arena mut&) -> v0
+semal_setup ::= func(a : arena mut? -> v0)
 {
 	semar = a;
 };
 
-decl_ty ::= func(node : ast&, s : scope mut&) -> ty
+decl_ty ::= func(node : ast?, s : scope mut? -> ty)
 {
 	return zero;
 };
 
-semal_fnptrnode ::= func(node : ast&, s : scope mut&) -> ty
+semal_fnptrnode ::= func(node : ast?, s : scope mut? -> ty)
 {
 	decl ::= node->decl;
-	if((decl.typename_len) == cstrlen(psyc_function_placeholder_typename))
+	if((decl.typename_len) == zstrlen(psyc_function_placeholder_typename))
 	{
 		if(cstreql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
 		{
@@ -24,13 +24,13 @@ semal_fnptrnode ::= func(node : ast&, s : scope mut&) -> ty
 			if(ty_isbad(fn_retty))
 			{
 				psyc_error_begin(wipfn_node->loc);
-				puts("return-type ");
+				putzstr("return-type ");
 				putchar('"');
-				putss(wipfn.ret_typename, wipfn.ret_typename_len);
+				putbytes(wipfn.ret_typename, wipfn.ret_typename_len);
 				putchar('"');
-				puts(" of function-pointer ");
-				putss(decl.name, decl.name_len);
-				puts(" yielded badtype");
+				putzstr(" of function-pointer ");
+				putbytes(decl.name, decl.name_len);
+				putzstr(" yielded badtype");
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
@@ -44,17 +44,17 @@ semal_fnptrnode ::= func(node : ast&, s : scope mut&) -> ty
 				if(ty_isbad(paramty))
 				{
 					psyc_error_begin(cur_param_node->loc);
-					puts("parameter ");
+					putzstr("parameter ");
 					putuint(i);
-					puts(" of function-pointer ");
+					putzstr(" of function-pointer ");
 					putchar('"');
-					putss(decl.name, decl.name_len);
+					putbytes(decl.name, decl.name_len);
 					putchar('"');
-					puts(" with typename: ");
+					putzstr(" with typename: ");
 					putchar('"');
-					putss(cur_param_decl.typename, cur_param_decl.typename_len);
+					putbytes(cur_param_decl.typename, cur_param_decl.typename_len);
 					putchar('"');
-					puts(" yielded badtype");
+					putzstr(" yielded badtype");
 					psyc_diag_end();
 					psyc_exit_failure();
 				}
@@ -68,7 +68,7 @@ semal_fnptrnode ::= func(node : ast&, s : scope mut&) -> ty
 
 // semal struct is a bit complicated...
 // one of its data members could be another struct - one that we haven't semal'd yet either
-semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&) -> v0
+semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? -> v0)
 {
 	node ::= def->node;
 
@@ -84,10 +84,10 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 	(retstruct.name) = (def->name);
 	(retstruct.name_len) = (def->name_len);
 
-	(retstruct.member_types) = arena_push(semar, __sizeof(ty) * (def->member_count));
-	(retstruct.member_names) = arena_push(semar, __sizeof(u8&) * (def->member_count));
-	(retstruct.member_name_lens) = arena_push(semar, __sizeof(u64) * (def->member_count));
-	memtypes ::= (retstruct.member_types)@ty mut&;
+	(retstruct.member_types) = arena_alloc(semar, __sizeof(ty) * (def->member_count));
+	(retstruct.member_names) = arena_alloc(semar, __sizeof(u8?) * (def->member_count));
+	(retstruct.member_name_lens) = arena_alloc(semar, __sizeof(u64) * (def->member_count));
+	memtypes ::= (retstruct.member_types)@ty mut?;
 
 	i : u64 mut;
 
@@ -99,7 +99,7 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		maybe_struct_member ::= scope_find_struct(s, memdecl.typename, base_end);
 		memty ::= zero@ty mut;
 		
-		if(maybe_struct_member != null)
+		if(maybe_struct_member != zero)
 		{
 			// if the current data members typename is a struct
 			// we have to be really careful
@@ -107,15 +107,15 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 			if(maybe_struct_member == def)
 			{
 				psyc_error_begin(node->loc);
-				puts("recursive struct detected - data member ");
+				putzstr("recursive struct detected - data member ");
 				putchar('"');
-				putss(def->name, def->name_len);
+				putbytes(def->name, def->name_len);
 				putchar('"');
-				puts("::");
-				putss(memdecl.name, memdecl.name_len);
-				puts(" is itself of type ");
+				putzstr("::");
+				putbytes(memdecl.name, memdecl.name_len);
+				putzstr(" is itself of type ");
 				putchar('"');
-				putss(memdecl.typename, memdecl.typename_len);
+				putbytes(memdecl.typename, memdecl.typename_len);
 				putchar('"');
 				psyc_diag_end();
 				psyc_exit_failure();
@@ -128,19 +128,19 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 				if(maybe_struct_member->in_progress)
 				{
 					psyc_error_begin(node->loc);
-					puts("struct circular dependency detected - data member ");
+					putzstr("struct circular dependency detected - data member ");
 					putchar('"');
-					putss(def->name, def->name_len);
-					puts("::");
-					putss(memdecl.name, memdecl.name_len);
+					putbytes(def->name, def->name_len);
+					putzstr("::");
+					putbytes(memdecl.name, memdecl.name_len);
 					putchar('"');
-					puts(" is of type ");
+					putzstr(" is of type ");
 					putchar('"');
-					putss(maybe_struct_member->name, maybe_struct_member->name_len);
+					putbytes(maybe_struct_member->name, maybe_struct_member->name_len);
 					putchar('"');
-					puts(" which itself appears to rely on the definition of ");
+					putzstr(" which itself appears to rely on the definition of ");
 					putchar('"');
-					putss(def->name, def->name_len);
+					putbytes(def->name, def->name_len);
 					putchar('"');
 					psyc_diag_end();
 					psyc_exit_failure();
@@ -148,11 +148,11 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 				semal_struct(maybe_struct_member@_, s, prog);
 			}
 			memty = (maybe_struct_member->type);
-			mem_tyname_extras ::= (memdecl.typename) at base_end;
+			mem_tyname_extras ::= (memdecl.typename) # base_end;
 			mem_tyname_extras_len ::= (memdecl.typename_len) - base_end;
 			typarse_extras(mem_tyname_extras, mem_tyname_extras_len, ref memty);
 		}
-		if(maybe_struct_member == null)
+		if(maybe_struct_member == zero)
 		{
 			memty = scope_parse_typename(s, memdecl.typename, memdecl.typename_len);
 		}
@@ -163,13 +163,13 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		if(typarse_extras(memdecl.extras, memdecl.extras_size, ref memty) < (memdecl.extras_size))
 		{
 			psyc_error_begin(node->loc);
-			puts("struct data member ");
+			putzstr("struct data member ");
 			putchar('"');
-			putss(def->name, def->name_len);
-			puts("::");
-			putss(memdecl.name, memdecl.name_len);
+			putbytes(def->name, def->name_len);
+			putzstr("::");
+			putbytes(memdecl.name, memdecl.name_len);
 			putchar('"');
-			puts(" yielded badtype");
+			putzstr(" yielded badtype");
 			psyc_diag_end();
 			psyc_exit_failure();
 			memty = zero;
@@ -177,23 +177,23 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 		if(ty_isbad(memty))
 		{
 			psyc_error_begin(node->loc);
-			puts("struct data member ");
+			putzstr("struct data member ");
 			putchar('"');
-			putss(def->name, def->name_len);
-			puts("::");
-			putss(memdecl.name, memdecl.name_len);
+			putbytes(def->name, def->name_len);
+			putzstr("::");
+			putbytes(memdecl.name, memdecl.name_len);
 			putchar('"');
-			puts(" with typename ");
+			putzstr(" with typename ");
 			putchar('"');
-			putss(memdecl.typename, memdecl.typename_len);
+			putbytes(memdecl.typename, memdecl.typename_len);
 			putchar('"');
-			puts(" yielded badtype");
+			putzstr(" yielded badtype");
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		deref(memtypes at i) = memty;
-		deref((retstruct.member_names) at i) = (memdecl.name);
-		deref((retstruct.member_name_lens) at i) = (memdecl.name_len);
+		deref(memtypes # i) = memty;
+		deref((retstruct.member_names) # i) = (memdecl.name);
+		deref((retstruct.member_name_lens) # i) = (memdecl.name_len);
 	}
 
 	retty ::= ref(def->type);
@@ -203,16 +203,16 @@ semal_struct ::= func(def : structdef mut&, s : scope mut&, prog : program mut&)
 	scope_declare_struct_type(s, retstruct, node->loc);
 };
 
-semal_enum ::= func(def : enumdef mut&, s : scope mut&, prog : program mut&) -> v0
+semal_enum ::= func(def : enumdef mut?, s : scope mut?, prog : program mut? -> v0)
 {
 	node ::= def->node;
 	enumdata ::= node->enumdef;
 
 	retenum : enumty mut := zero;
 	(retenum.entry_count) = (def->entry_count);
-	(retenum.entry_values) = arena_push(semar, __sizeof(deref (retenum.entry_values)) * (def->entry_count));
-	(retenum.entry_names) = arena_push(semar, __sizeof(deref (retenum.entry_names)) * (def->entry_count));
-	(retenum.entry_name_lens) = arena_push(semar, __sizeof(deref (retenum.entry_name_lens)) * (def->entry_count));
+	(retenum.entry_values) = arena_alloc(semar, __sizeof(deref (retenum.entry_values)) * (def->entry_count));
+	(retenum.entry_names) = arena_alloc(semar, __sizeof(deref (retenum.entry_names)) * (def->entry_count));
+	(retenum.entry_name_lens) = arena_alloc(semar, __sizeof(deref (retenum.entry_name_lens)) * (def->entry_count));
 	(retenum.name) = (enumdata.enumname);
 	(retenum.name_len) = (enumdata.enumname_len);
 
@@ -225,9 +225,9 @@ semal_enum ::= func(def : enumdef mut&, s : scope mut&, prog : program mut&) -> 
 		entinitexpr ::= entval->expr;
 		entinitlit ::= entinitexpr.literal;
 
-		deref((retenum.entry_names) at i) = (entinit.name);
-		deref((retenum.entry_name_lens) at i) = (entinit.name_len);
-		deref((retenum.entry_values) at i) = ((entinitlit.integral)@_);
+		deref((retenum.entry_names) # i) = (entinit.name);
+		deref((retenum.entry_name_lens) # i) = (entinit.name_len);
+		deref((retenum.entry_values) # i) = ((entinitlit.integral)@_);
 	}
 
 	(def->type) = ty
@@ -238,7 +238,7 @@ semal_enum ::= func(def : enumdef mut&, s : scope mut&, prog : program mut&) -> 
 	scope_declare_enum_type(s, retenum, node->loc);
 };
 
-semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v0
+semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0)
 {
 	node ::= f->node;
 	fn ::= node->fn;
@@ -247,13 +247,13 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 	if(ty_isbad(fn_retty))
 	{
 		psyc_error_begin(node->loc);
-		puts("return-type ");
+		putzstr("return-type ");
 		putchar('"');
-		putss(fn.ret_typename, fn.ret_typename_len);
+		putbytes(fn.ret_typename, fn.ret_typename_len);
 		putchar('"');
-		puts(" of function ");
-		putss(f->name, f->name_len);
-		puts(" yielded badtype");
+		putzstr(" of function ");
+		putbytes(f->name, f->name_len);
+		putzstr(" yielded badtype");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -273,13 +273,13 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
 		{
 			psyc_error_begin(cur_param_node->loc);
-			puts("parameter ");
+			putzstr("parameter ");
 			putuint(i);
-			puts(" of function ");
+			putzstr(" of function ");
 			putchar('"');
-			putss(f->name, f->name_len);
+			putbytes(f->name, f->name_len);
 			putchar('"');
-			puts(" yielded badtype");
+			putzstr(" yielded badtype");
 			psyc_diag_end();
 			psyc_exit_failure();
 			declty = zero;
@@ -287,22 +287,22 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 		if(ty_isbad(declty))
 		{
 			psyc_error_begin(cur_param_node->loc);
-			puts("parameter ");
+			putzstr("parameter ");
 			putuint(i);
-			puts(" of function ");
+			putzstr(" of function ");
 			putchar('"');
-			putss(f->name, f->name_len);
+			putbytes(f->name, f->name_len);
 			putchar('"');
-			puts(" with typename: ");
+			putzstr(" with typename: ");
 			putchar('"');
-			putss(cur_param_decl.typename, cur_param_decl.typename_len);
-			if((cur_param_decl.extras) != null)
+			putbytes(cur_param_decl.typename, cur_param_decl.typename_len);
+			if((cur_param_decl.extras) != zero)
 			{
 				putchar(' ');
-				putss(cur_param_decl.extras, cur_param_decl.extras_size);
+				putbytes(cur_param_decl.extras, cur_param_decl.extras_size);
 			}
 			putchar('"');
-			puts(" yielded badtype");
+			putzstr(" yielded badtype");
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
@@ -312,14 +312,14 @@ semal_func ::= func(f : function mut&, s : scope mut&, prog : program mut&) -> v
 	(f->type) = fnty;
 };
 
-semal_macro ::= func(m : macrodef mut&, s : scope mut&, prog : program mut&) -> v0
+semal_macro ::= func(m : macrodef mut?, s : scope mut?, prog : program mut? -> v0)
 {
-	puts("semal'ing macro ");
-	putss(m->name, m->name_len);
+	putzstr("semal'ing macro ");
+	putbytes(m->name, m->name_len);
 	putchar(10);
 };
 
-semal ::= func(prog : program mut&) -> v0
+semal ::= func(prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.semal);
 	defer psyc_timed_end();
@@ -333,22 +333,22 @@ semal ::= func(prog : program mut&) -> v0
 
 	for(i = 0, i < (enums->size), i = i + 1)
 	{
-		semal_enum((enums->data) at i, glob, prog);
+		semal_enum((enums->data) # i, glob, prog);
 	}
 
 	for(i = 0, i < (structs->size), i = i + 1)
 	{
-		semal_struct((structs->data) at i, glob, prog);
+		semal_struct((structs->data) # i, glob, prog);
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		semal_func((funcs->data) at i, glob, prog);
+		semal_func((funcs->data) # i, glob, prog);
 	}
 
 	for(i = 0, i < (macros->size), i = i + 1)
 	{
-		semal_macro((macros->data) at i, glob, prog);
+		semal_macro((macros->data) # i, glob, prog);
 	}
 };
 

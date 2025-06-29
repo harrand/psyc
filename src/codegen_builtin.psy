@@ -1,19 +1,19 @@
 debugtrap_fn : u64 mut;
 
-cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
 	
-	fn_type ::= LLVMFunctionType(LLVMVoidType(), null, 0, false@s32);
+	fn_type ::= LLVMFunctionType(LLVMVoidType(), zero, 0, false@s32);
 	if(debugtrap_fn == 0)
 	{
 		debugtrap_fn = LLVMAddFunction(mod, "llvm.debugtrap", fn_type);
 	}
-	LLVMBuildCall2(ir, fn_type, debugtrap_fn, null, 0, "");
+	LLVMBuildCall2(ir, fn_type, debugtrap_fn, zero, 0, "");
 	return zero;
 };
 
-cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	type : ty mut := zero;
 
@@ -42,7 +42,7 @@ cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}), ctx, prog);
 };
 
-cg_builtin_alignof ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_alignof ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	type : ty mut := zero;
 
@@ -71,7 +71,7 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}), ctx, prog);
 };
 
-cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	if(ctx.typecheck_only)
 	{
@@ -81,7 +81,7 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if((node->childcount) < 2)
 	{
 		psyc_error_begin(node->loc);
-		puts("__arrcpy requires at least 2 parameters");
+		putzstr("__arrcpy requires # least 2 parameters");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -99,7 +99,7 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if(!ty_is(ptr.type, tytag.ptr))
 	{
 		psyc_error_begin(firstnode->loc);
-		puts("parameter 0 to __arrcpy must be a pointer type, you have passed a ");
+		putzstr("parameter 0 to __arrcpy must be a pointer type, you have passed a ");
 		putchar('"');
 		putty(ptr.type);
 		putchar('"');
@@ -111,7 +111,7 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if(!ast_is_expr(secondnode, ast_expr_type.symbol))
 	{
 		psyc_error_begin(firstnode->loc);
-		puts("parameter 1 to __arrcpy must be a valid typename represented as a symbol expression");
+		putzstr("parameter 1 to __arrcpy must be a valid typename represented as a symbol expression");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -121,26 +121,26 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if(ty_isbad(type))
 	{
 		psyc_error_begin(firstnode->loc);
-		puts("parameter 1 to __arrcpy must be a valid typename - ");
+		putzstr("parameter 1 to __arrcpy must be a valid typename - ");
 		putchar('"');
-		putss(sym.symbol, sym.len);
+		putbytes(sym.symbol, sym.len);
 		putchar('"');
-		puts(" yielded badtype");
+		putzstr(" yielded badtype");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
 	(type.qual) = (type.qual) | (tyqual.mut);
 
-	index_list : u64 mut#2;
-	deref(index_list at 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+	index_list : u64 mut[2];
+	deref(index_list # 0) = LLVMConstInt(LLVMInt64Type(), 0, false@s32);
 	i : u64 mut;
 	offset_ll : u64 mut;
-	curnode : ast mut& mut;
+	curnode : ast mut? mut;
 	curval : cgv mut;
 	for(i = 0, i < arrlen, i = i + 1)
 	{
-		deref(index_list at 1) = LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), i, false@s32);
-		offset_ll = LLVMBuildGEP2(ir, cg.type(type, prog), ptr.ll, index_list at 1, 1, "");
+		deref(index_list # 1) = LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), i, false@s32);
+		offset_ll = LLVMBuildGEP2(ir, cg.type(type, prog), ptr.ll, index_list # 1, 1, "");
 
 		curnode = ast_get_child(node@_, 2 + i);
 		
@@ -160,7 +160,7 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 	}), ctx, prog);
 };
 
-cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
 	enumnode ::= ast_get_child(node@_, 0);
@@ -173,7 +173,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if(!ty_is(enumval.type, tytag.enm))
 	{
 		psyc_error_begin(enumnode->loc);
-		puts("parameter to __enumname must be an enum type, you have provided a ");
+		putzstr("parameter to __enumname must be an enum type, you have provided a ");
 		putchar('"');
 		putty(enumval.type);
 		putchar('"');
@@ -192,9 +192,9 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
 	i : u64 mut;
 	for(i = 0, i < (enm.entry_count), i = i + 1)
 	{
-		val ::= deref((enm.entry_values) at i);
-		name ::= deref((enm.entry_names) at i);
-		name_len ::= deref((enm.entry_name_lens) at i);
+		val ::= deref((enm.entry_values) # i);
+		name ::= deref((enm.entry_names) # i);
+		name_len ::= deref((enm.entry_name_lens) # i);
 		val_ll ::= LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), val, false@s32);
 		cond ::= LLVMBuildICmp(ir, 32, val_ll, enumval.ll, "");
 
@@ -204,9 +204,9 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
 		LLVMBuildCondBr(ir, cond, cond_blk, cont_blk);
 		LLVMPositionBuilderAtEnd(ir, cond_blk);
 		// store this value into the alloca
-		zstr : u8 mut& mut := arena_push(cgar, name_len + 1);
-		__memcpy(zstr, name, name_len);
-		deref(zstr at name_len) = 0;
+		zstr : u8 mut? mut := arena_alloc(cgar, name_len + 1);
+		memcopy(zstr, name, name_len);
+		deref(zstr # name_len) = 0;
 		strval ::= LLVMBuildGlobalString(ir, zstr, "");
 		LLVMBuildStore(ir, strval, ll);
 		LLVMBuildBr(ir, cont_blk);
@@ -220,7 +220,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
 	};
 };
 
-cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
+cg_builtin_error ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
 	msgnode ::= ast_get_child(node@_, 0);
@@ -232,7 +232,7 @@ cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if((msg.tag) != (sval_tag.literal))
 	{
 		psyc_error_begin(node->loc);
-		puts("Invalid call to builtin - param 0 must be a literal");
+		putzstr("Invalid call to builtin - param 0 must be a literal");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -240,16 +240,16 @@ cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
 	if((lit.type) != (ast_literal_type.string_literal))
 	{
 		psyc_error_begin(node->loc);
-		puts("Invalid call to builtin - param 0 must be a string literal");
+		putzstr("Invalid call to builtin - param 0 must be a string literal");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
 	psyc_colour_red();
-	puts("custom");
-	puts(" error ");
+	putzstr("custom");
+	putzstr(" error ");
 	print_srcloc(node->loc);
-	puts(": ");
-	putss(lit.chars, lit.chars_len);
+	putzstr(": ");
+	putbytes(lit.chars, lit.chars_len);
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;

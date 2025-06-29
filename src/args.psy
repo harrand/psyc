@@ -1,32 +1,31 @@
-[[private]]
-impl_win32_get_args ::= func(argc : s32 mut&, argv : u8&& mut&, a : arena mut&) -> v0
+impl_win32_get_args ::= func(argc : s32 mut?, argv : u8?? mut?, a : arena mut? -> v0)
 {
-	GetCommandLineW ::= func() -> u16& := extern;
-	CommandLineToArgvW ::= func(lpCmdLine : u16&, pNumArgs : s32 mut&) -> u16&& := extern;
-	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16&, cchWideChar : s32, lpMultiByteStr : u8 mut&, cbMultiByte : s32, lpDefaultChar : u16&, lpUsedDefaultChar : s32 mut&) -> s32 := extern;
-	LocalFree ::= func(hMem : u64) -> u64 := extern;
+	GetCommandLineW ::= func( -> u16? ):= extern;
+	CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
+	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
+	LocalFree ::= func(hMem : u64 -> u64 ):= extern;
 
 	cmd_line ::= GetCommandLineW();
 	wide_argc : s32 mut;
 	wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
 
-	if(wide_argv == null)
+	if(wide_argv == zero)
 	{
 		deref(argc) = 0;
 	}
 
 	args_cap : u64 mut := wide_argc@_;
-	args : u8 mut& mut& mut := arena_push(a, __sizeof(u8&) * wide_argc);
+	args : u8 mut? mut? mut := arena_alloc(a, __sizeof(u8?) * wide_argc);
 	args_size : u64 mut := 0;
 
 	i : s32 mut;
 	for(i = 0, i < wide_argc, i = i + 1)
 	{
-		size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv at i), -1, null, 0, null, null);
+		size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
 		if(size_needed > 0)
 		{
-			deref(args at args_size) = arena_push(a, __sizeof(u8) * size_needed);
-			WideCharToMultiByte(0, 0, deref(wide_argv at i), -1, deref(args at args_size), size_needed, null, null);
+			deref(args # args_size) = arena_alloc(a, __sizeof(u8) * size_needed);
+			WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
 			args_size = args_size + 1;
 		}
 	}
@@ -46,10 +45,10 @@ psyc_build_target ::= enum
 
 psyc_compile_args ::= struct
 {
-	build_file : u8&;
-	build_config : u8&;
-	output_dir : u8&;
-	output_name : u8&;
+	build_file : u8?;
+	build_config : u8?;
+	output_dir : u8?;
+	output_name : u8?;
 	output_name_len : u64;
 	verbose_lex : bool;
 	verbose_parse : bool;
@@ -57,14 +56,14 @@ psyc_compile_args ::= struct
 	verbose_link : bool;
 };
 
-psyc_parse_args ::= func(a : arena mut&) -> psyc_compile_args
+psyc_parse_args ::= func(a : arena mut? -> psyc_compile_args)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
 
 	argc : s32 mut;
-	argv : u8&& mut;
-	if static(__is_windows)
+	argv : u8?? mut;
+	static if(_win32)
 	{
 		impl_win32_get_args(ref argc, ref argv, a);
 	}
@@ -75,23 +74,23 @@ psyc_parse_args ::= func(a : arena mut&) -> psyc_compile_args
 	i : s32 mut;
 	for(i = 1, i < argc, i = i + 1)
 	{
-		curarg ::= deref(argv at i);
+		curarg ::= deref(argv # i);
 		isopt ::= cstr_starts_with(curarg, "-");
 		if(!isopt)
 		{
 			// must be a build file then.
-			if((ret.build_file) != null)
+			if((ret.build_file) != zero)
 			{
 				psyc_error_begin(zero);
-				puts("specified second build file ");
+				putzstr("specified second build file ");
 				putchar('"');
-				puts(curarg);
+				putzstr(curarg);
 				putchar('"');
-				puts(" after initial build file ");
+				putzstr(" after initial build file ");
 				putchar('"');
-				puts(ret.build_file);
+				putzstr(ret.build_file);
 				putchar('"');
-				puts(". you can only specify a single build file");
+				putzstr(". you can only specify a single build file");
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
@@ -99,7 +98,7 @@ psyc_parse_args ::= func(a : arena mut&) -> psyc_compile_args
 		}
 		if(isopt)
 		{
-			nextarg ::= argv at (i + 1);
+			nextarg ::= argv # (i + 1);
 			if(cstreql(curarg, "--verbose-lex"))
 			{
 				(ret.verbose_lex) = true;

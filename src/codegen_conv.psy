@@ -1,30 +1,30 @@
-cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_undef ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	psyc_error_begin(loc);
-	puts("conversion logic not setup properly for conversion from ");
+	putzstr("conversion logic not setup properly for conversion from ");
 	putchar('"');
 	putty(v.type);
 	putchar('"');
-	puts(" to ");
+	putzstr(" to ");
 	putchar('"');
 	putty(to);
 	putchar('"');
-	puts(" - please report this as a compiler bug.");
+	putzstr(" - please report this as a compiler bug.");
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
 };
 
-cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	from ::= v.type;
 
 	psyc_error_begin(loc);
-	puts("no valid conversion from ");
+	putzstr("no valid conversion from ");
 	putchar('"');
 	putty(from);
 	putchar('"');
-	puts(" to ");
+	putzstr(" to ");
 	putchar('"');
 	putty(to);
 	putchar('"');
@@ -33,26 +33,26 @@ cgv_conv_cant ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> c
 	return zero;
 };
 
-cgv_conv_could_if_weak ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_could_if_weak ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	from ::= v.type;
 
 	psyc_error_begin(loc);
-	puts("no valid conversion from ");
+	putzstr("no valid conversion from ");
 	putchar('"');
 	putty(from);
 	putchar('"');
-	puts(" to ");
+	putzstr(" to ");
 	putchar('"');
 	putty(to);
 	putchar('"');
-	puts(" (but there could be if you casted it)");
+	putzstr(" (but there could be if you casted it)");
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
 };
 
-cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -106,7 +106,7 @@ cgv_conv_i2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -131,7 +131,7 @@ cgv_conv_i2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -144,7 +144,7 @@ cgv_conv_i2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_i2e ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_i2e ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	// i.e is trivial
 	transformed : cgv mut := cgv_conv_i2i(v, ty_getprim(primty.s64, tyqual.weak), prog, loc);
@@ -152,7 +152,7 @@ cgv_conv_i2e ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return transformed;
 };
 
-cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	// always trunc
@@ -166,7 +166,7 @@ cgv_conv_i2b ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_e2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_e2i ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	// pretend enumty is an s64
 	transformed : cgv mut := v;
@@ -175,7 +175,7 @@ cgv_conv_e2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return cgv_conv_i2i(transformed, to, prog, loc);
 };
 
-cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -188,28 +188,28 @@ cgv_conv_p2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_p2fn ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_p2fn ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_p2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_p2p ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_fn2p ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_fn2p ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	ret : cgv mut := v;
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -237,7 +237,7 @@ cgv_conv_f2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	ret : cgv mut := v;
@@ -272,7 +272,7 @@ cgv_conv_f2f ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	constant ::= LLVMIsConstant(v.ll)@bool;
 	// bool to another integral type
@@ -287,7 +287,7 @@ cgv_conv_b2i ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cg
 	return ret;
 };
 
-cgv_conv_same ::= func(v : cgv, to : ty, prog : program mut&, loc : srcloc) -> cgv
+cgv_conv_same ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv)
 {
 	return v;
 };

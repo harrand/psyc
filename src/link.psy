@@ -1,6 +1,6 @@
-lar : arena mut& mut;
+lar : arena mut? mut;
 
-append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
+append_link_library_string ::= func(prog : program?, str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
 	if((prog->link_library_size) == 0)
@@ -12,91 +12,91 @@ append_link_library_string ::= func(prog : program&, str : u8 mut& mut&) -> v0
 	i : u64 mut;
 	for(i = 0, i < (prog->link_library_size), i = i + 1)
 	{
-		space_needed = (space_needed + (deref((prog->link_library_lens) at i)) + 1);
+		space_needed = (space_needed + (deref((prog->link_library_lens) # i)) + 1);
 	}
-	oldlen ::= cstrlen(oldstr);
-	newstr : u8 mut& := arena_push(lar, space_needed + oldlen);
-	__memcpy(newstr, oldstr, oldlen);
-	// turn the null terminator in the old string to a space
-	deref(newstr at oldlen) = ' ';
+	oldlen ::= zstrlen(oldstr);
+	newstr : u8 mut? := arena_alloc(lar, space_needed + oldlen);
+	memcopy(newstr, oldstr, oldlen);
+	// turn the zero terminator in the old string to a space
+	deref(newstr # oldlen) = ' ';
 	offset : u64 mut := 0;
 	for(i = 0, i < (prog->link_library_size), i = i + 1)
 	{
-		curstr ::= deref((prog->link_libraries) at i);
-		curlen ::= deref((prog->link_library_lens) at i);
-		__memcpy(newstr at (oldlen + offset), curstr, curlen);
-		deref(newstr at (oldlen + offset + curlen)) = ' ';
+		curstr ::= deref((prog->link_libraries) # i);
+		curlen ::= deref((prog->link_library_lens) # i);
+		memcopy(newstr # (oldlen + offset), curstr, curlen);
+		deref(newstr # (oldlen + offset + curlen)) = ' ';
 		offset = (offset + curlen + 1);
 	}
-	deref(newstr at (space_needed + oldlen - 1)) = 0;
+	deref(newstr # (space_needed + oldlen - 1)) = 0;
 	deref(str) = newstr;
 };
 
-append_msvc_flags ::= func(str : u8 mut& mut&) -> v0
+append_msvc_flags ::= func(str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
-	oldlen ::= cstrlen(oldstr);
+	oldlen ::= zstrlen(oldstr);
 
 	msvc_flags ::= " /NODEFAULTLIB /SUBSYSTEM:CONSOLE /ENTRY:_psymain /STACK:8000000,8000000 Kernel32.lib";
-	space_needed ::= cstrlen(msvc_flags);
+	space_needed ::= zstrlen(msvc_flags);
 
-	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
-	__memcpy(newstr, oldstr, oldlen);
-	__memcpy(newstr at oldlen, msvc_flags, cstrlen(msvc_flags));
-	deref(newstr at (space_needed + oldlen)) = 0;
+	newstr : u8 mut? := arena_alloc(lar, space_needed + oldlen + 1);
+	memcopy(newstr, oldstr, oldlen);
+	memcopy(newstr # oldlen, msvc_flags, zstrlen(msvc_flags));
+	deref(newstr # (space_needed + oldlen)) = 0;
 	deref(str) = newstr;
 };
 
-append_output ::= func(prog : program&, str : u8 mut& mut&) -> v0
+append_output ::= func(prog : program?, str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
-	oldlen ::= cstrlen(oldstr);
+	oldlen ::= zstrlen(oldstr);
 
 	out_flags ::= " /OUT:";
 	out_name ::= prog->name;
 	extension ::= default_exe_extension;
-	space_needed ::= cstrlen(out_flags) + (prog->name_len) + cstrlen(extension);
+	space_needed ::= zstrlen(out_flags) + (prog->name_len) + zstrlen(extension);
 
-	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
-	__memcpy(newstr, oldstr, oldlen);
-	__memcpy(newstr at oldlen, out_flags, cstrlen(out_flags));
-	__memcpy(newstr at (oldlen + cstrlen(out_flags)), out_name, prog->name_len);
-	__memcpy(newstr at (oldlen + cstrlen(out_flags) + (prog->name_len)), extension, cstrlen(extension));
-	deref(newstr at (space_needed + oldlen)) = 0;
+	newstr : u8 mut? := arena_alloc(lar, space_needed + oldlen + 1);
+	memcopy(newstr, oldstr, oldlen);
+	memcopy(newstr # oldlen, out_flags, zstrlen(out_flags));
+	memcopy(newstr # (oldlen + zstrlen(out_flags)), out_name, prog->name_len);
+	memcopy(newstr # (oldlen + zstrlen(out_flags) + (prog->name_len)), extension, zstrlen(extension));
+	deref(newstr # (space_needed + oldlen)) = 0;
 	deref(str) = newstr;
 };
 
-prepend_linker_name ::= func(str : u8 mut& mut&) -> v0
+prepend_linker_name ::= func(str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
-	oldlen ::= cstrlen(oldstr);
+	oldlen ::= zstrlen(oldstr);
 
 	lnkname ::= "lld-link ";
-	space_needed ::= cstrlen(lnkname);
+	space_needed ::= zstrlen(lnkname);
 
-	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
-	__memcpy(newstr, lnkname, space_needed);
-	__memcpy(newstr at space_needed, oldstr, oldlen);
-	deref(newstr at (space_needed + oldlen)) = 0;
+	newstr : u8 mut? := arena_alloc(lar, space_needed + oldlen + 1);
+	memcopy(newstr, lnkname, space_needed);
+	memcopy(newstr # space_needed, oldstr, oldlen);
+	deref(newstr # (space_needed + oldlen)) = 0;
 	deref(str) = newstr;
 };
 
-prepend_archiver_name ::= func(str : u8 mut& mut&) -> v0
+prepend_archiver_name ::= func(str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
-	oldlen ::= cstrlen(oldstr);
+	oldlen ::= zstrlen(oldstr);
 
 	lnkname ::= "llvm-lib ";
-	space_needed ::= cstrlen(lnkname);
+	space_needed ::= zstrlen(lnkname);
 
-	newstr : u8 mut& := arena_push(lar, space_needed + oldlen + 1);
-	__memcpy(newstr, lnkname, space_needed);
-	__memcpy(newstr at space_needed, oldstr, oldlen);
-	deref(newstr at (space_needed + oldlen)) = 0;
+	newstr : u8 mut? := arena_alloc(lar, space_needed + oldlen + 1);
+	memcopy(newstr, lnkname, space_needed);
+	memcopy(newstr # space_needed, oldstr, oldlen);
+	deref(newstr # (space_needed + oldlen)) = 0;
 	deref(str) = newstr;
 };
 
-link ::= func(prog : program mut&) -> v0
+link ::= func(prog : program mut? -> v0)
 {
 	if((prog->type) == (program_type.object))
 	{
@@ -105,12 +105,12 @@ link ::= func(prog : program mut&) -> v0
 	psyc_timed_begin(psyc_stage.link);	
 	defer psyc_timed_end();
 
-	path_len ::= (prog->name_len) + cstrlen(default_obj_extension);
-	cmd : u8 mut& mut := arena_push(lar, path_len + 2);
-	__memcpy(cmd at 0, prog->name, prog->name_len);
-	__memcpy(cmd at (prog->name_len), default_obj_extension, cstrlen(default_obj_extension));
-	deref(cmd at path_len) = ' ';
-	deref(cmd at (path_len + 1)) = 0;
+	path_len ::= (prog->name_len) + zstrlen(default_obj_extension);
+	cmd : u8 mut? mut := arena_alloc(lar, path_len + 2);
+	memcopy(cmd # 0, prog->name, prog->name_len);
+	memcopy(cmd # (prog->name_len), default_obj_extension, zstrlen(default_obj_extension));
+	deref(cmd # path_len) = ' ';
+	deref(cmd # (path_len + 1)) = 0;
 
 	if((prog->type) == (program_type.executable))
 	{
@@ -128,16 +128,16 @@ link ::= func(prog : program mut&) -> v0
 	args ::= ref(prog->compile_args);
 	if(args->verbose_link)
 	{
-		puts("Linker Command: ");
+		putzstr("Linker Command: ");
 		putchar(10);
-		puts(cmd);
+		putzstr(cmd);
 		putchar(10);
 	}
 
 	invoke_command(cmd);
 };
 
-link_setup ::= func(a : arena mut&) -> v0
+link_setup ::= func(a : arena mut? -> v0)
 {
 	lar = a;
 };

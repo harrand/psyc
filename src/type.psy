@@ -2,10 +2,10 @@ psyc_deduced_typename ::= "auto";
 psyc_function_placeholder_typename ::= "___fn";
 
 // global arena used by the type system.
-tyar : arena mut& mut;
+tyar : arena mut? mut;
 
 // tell me which arena im using on startup
-type_setup ::= func(a : arena mut&) -> v0
+type_setup ::= func(a : arena mut? -> v0)
 {
 	tyar = a;
 };
@@ -38,40 +38,40 @@ primty ::= enum
 
 ptrty ::= struct
 {
-	underlying : v0&;
+	underlying : v0?;
 };
 
 arrty ::= struct
 {
-	underlying : v0&;
+	underlying : v0?;
 	len : u64;
 };
 
 structty ::= struct
 {
 	member_count : u64;
-	member_types : v0 mut&;
-	member_names : u8& mut&;
-	member_name_lens : u64 mut&;
-	name : u8&;
+	member_types : v0 mut?;
+	member_names : u8? mut?;
+	member_name_lens : u64 mut?;
+	name : u8?;
 	name_len : u64;
 };
 
 enumty ::= struct
 {
 	entry_count : u64;
-	entry_values : u64 mut&;
-	entry_names : u8& mut&;
-	entry_name_lens : u64 mut&;
-	name : u8&;
+	entry_values : u64 mut?;
+	entry_names : u8? mut?;
+	entry_name_lens : u64 mut?;
+	name : u8?;
 	name_len : u64;
 };
 
 fnty ::= struct
 {
-	return_type : v0&;
+	return_type : v0?;
 	param_count : u64;
-	param_types : v0 mut&;
+	param_types : v0 mut?;
 };
 
 tytag ::= enum
@@ -97,12 +97,12 @@ ty ::= struct
 	fn : fnty;
 };
 
-ty_isbad ::= func(t : ty) -> bool
+ty_isbad ::= func(t : ty -> bool)
 {
 	return (t.tag) == zero;
 };
 
-putqual ::= func(q : tyqual) -> v0
+putqual ::= func(q : tyqual -> v0)
 {
 	if(q == zero)
 	{
@@ -111,40 +111,42 @@ putqual ::= func(q : tyqual) -> v0
 	if(q & (tyqual.static))
 	{
 		putchar(' ');
-		puts(__enumname(tyqual.static));
+		putzstr(__enumname(tyqual.static));
 	}
 	if(q & (tyqual.weak))
 	{
 		putchar(' ');
-		puts(__enumname(tyqual.weak));
+		putzstr(__enumname(tyqual.weak));
 	}
 	if(q & (tyqual.mut))
 	{
 		putchar(' ');
-		puts(__enumname(tyqual.mut));
+		putzstr(__enumname(tyqual.mut));
 	}
 };
 
-putprim ::= func(t : primty) -> v0
+putprim ::= func(t : primty -> v0)
 {
-	puts(__enumname(t));
+	putzstr(__enumname(t));
 };
 
-putty ::= func(t : ty) -> v0
+putty ::= func(t : ty -> v0)
 {
 	if(ty_isbad(t))
 	{
-		puts("badtype");
+		putzstr("badtype");
 	}
 	tag ::= t.tag;
 	if(tag == (tytag.prim))
 	{
 		putprim(t.prim);
 	}
+	underlying : ty? mut;
+	ptr : ty? mut;
 	if(tag == (tytag.ptr))
 	{
-		ptr ::= t.ptr;
-		underlying ::= (ptr.underlying)@ty&;
+		ptr = t.ptr;
+		underlying = (ptr.underlying)@ty?;
 		putty(deref underlying);
 		// weird special case - dont print the proceeding & with function pointers as function types are infact function pointers
 		if((underlying->tag) != (tytag.fn))
@@ -155,7 +157,7 @@ putty ::= func(t : ty) -> v0
 	if(tag == (tytag.arr))
 	{
 		arr ::= t.arr;
-		underlying ::= (arr.underlying)@ty&;
+		underlying = (arr.underlying)@ty?;
 		putty(deref underlying);
 		putchar('[');
 		putuint(arr.len);
@@ -164,29 +166,29 @@ putty ::= func(t : ty) -> v0
 	if(tag == (tytag.strct))
 	{
 		str ::= t.strct;
-		putss(str.name, str.name_len);
+		putbytes(str.name, str.name_len);
 	}
 	if(tag == (tytag.enm))
 	{
 		en ::= t.enm;
-		putss(en.name, en.name_len);
+		putbytes(en.name, en.name_len);
 	}
 	if(tag == (tytag.fn))
 	{
-		puts("func(");
+		putzstr("func(");
 		fn ::= t.fn;
 		i : u64 mut;
-		ptr ::= (fn.param_types)@ty&;
+		ptr = (fn.param_types)@ty?;
 		for(i = 0, i < (fn.param_count), i = i + 1)
 		{
-			putty(deref(ptr at i));
+			putty(deref(ptr # i));
 			if(i != ((fn.param_count) - 1))
 			{
-				puts(", ");
+				putzstr(", ");
 			}
 		}
-		puts(" -> ");
-		retty ::= (fn.return_type)@ty&;
+		putzstr(" -> ");
+		retty ::= (fn.return_type)@ty?;
 		putty(deref retty);
 		putchar(')');
 	}
@@ -194,10 +196,10 @@ putty ::= func(t : ty) -> v0
 };
 
 // make a pointer to an existing type
-ty_ref ::= func(t : ty, q : tyqual) -> ty
+ty_ref ::= func(t : ty, q : tyqual -> ty)
 {
-	underlying_data ::= arena_push(tyar, __sizeof(ty));
-	__memcpy(underlying_data, ref t, __sizeof(ty));
+	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	memcopy(underlying_data, ref t, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.ptr;
@@ -210,17 +212,17 @@ ty_ref ::= func(t : ty, q : tyqual) -> ty
 };
 
 // deref a pointer. must be a pointer type
-ty_deref ::= func(t : ty) -> ty
+ty_deref ::= func(t : ty -> ty)
 {
 	ptr ::= t.ptr;
-	u ::= (ptr.underlying)@ty&;
+	u ::= (ptr.underlying)@ty?;
 	return deref u;
 };
 
-ty_arr ::= func(t : ty, len : u64, q : tyqual) -> ty
+ty_arr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
-	underlying_data ::= arena_push(tyar, __sizeof(ty));
-	__memcpy(underlying_data, ref t, __sizeof(ty));
+	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	memcopy(underlying_data, ref t, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.arr;
@@ -234,25 +236,25 @@ ty_arr ::= func(t : ty, len : u64, q : tyqual) -> ty
 };
 
 // get the underlying type. must be a pointer or array type
-ty_underlying ::= func(t : ty) -> ty
+ty_underlying ::= func(t : ty -> ty)
 {
 	tag ::= t.tag;
 	if(tag == (tytag.ptr))
 	{
 		ptr ::= t.ptr;
-		return deref((ptr.underlying)@ty&);
+		return deref((ptr.underlying)@ty?);
 	}
 	if(tag == (tytag.arr))
 	{
 		arr ::= t.arr;
-		return deref((arr.underlying)@ty&);
+		return deref((arr.underlying)@ty?);
 	}
 	psyc_panic(srcloc_current(), "failed get underlying type, you probably called ty_underlying on a type that doesnt have one");
 	return zero;
 };
 
 // retrieve a primitive type that matches specifications. zero = no quals
-ty_getprim ::= func(p : primty, q : tyqual) -> ty
+ty_getprim ::= func(p : primty, q : tyqual -> ty)
 {
 	return ty
 	{
@@ -263,10 +265,10 @@ ty_getprim ::= func(p : primty, q : tyqual) -> ty
 };
 
 // retrieve an array type t#len. zero = no quals
-ty_getarr ::= func(t : ty, len : u64, q : tyqual) -> ty
+ty_getarr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
-	underlying_data ::= arena_push(tyar, __sizeof(ty));
-	__memcpy(underlying_data, ref t, __sizeof(ty));
+	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	memcopy(underlying_data, ref t, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.arr;
@@ -279,16 +281,16 @@ ty_getarr ::= func(t : ty, len : u64, q : tyqual) -> ty
 	};
 };
 
-ty_getfn ::= func(retty : ty, param_count : u64, q : tyqual) -> ty
+ty_getfn ::= func(retty : ty, param_count : u64, q : tyqual -> ty)
 {
-	retty_alloc : ty mut& := arena_push(tyar, __sizeof(ty));
+	retty_alloc : ty mut? := arena_alloc(tyar, __sizeof(ty));
 	deref(retty_alloc) = retty;
-	params_alloc : ty mut& := arena_push(tyar, __sizeof(ty) * param_count);
+	params_alloc : ty mut? := arena_alloc(tyar, __sizeof(ty) * param_count);
 	// note: this zero'ing out is not strictly necessary. todo: debug only?
 	i : u64 mut;
 	for(i = 0, i < param_count, i = i + 1)
 	{
-		deref(params_alloc at i) = zero@ty;
+		deref(params_alloc # i) = zero@ty;
 	}
 	return ty
 	{
@@ -303,30 +305,30 @@ ty_getfn ::= func(retty : ty, param_count : u64, q : tyqual) -> ty
 	};
 };
 
-ty_fn_set_param ::= func(t : ty mut&, param_idx : u64, param_ty : ty) -> v0
+ty_fn_set_param ::= func(t : ty mut?, param_idx : u64, param_ty : ty -> v0)
 {
 	fn ::= ref(t->fn);
-	ptr ::= (fn->param_types)@ty mut&;
-	deref(ptr at param_idx) = param_ty;
+	ptr ::= (fn->param_types)@ty mut?;
+	deref(ptr # param_idx) = param_ty;
 };
 
-ty_noquals ::= func(t : ty) -> bool
+ty_noquals ::= func(t : ty -> bool)
 {
 	return (t.qual) == zero;
 };
 
 // query as to whether a type has a given qualifier.
-ty_hasqual ::= func(t : ty, q : tyqual) -> bool
+ty_hasqual ::= func(t : ty, q : tyqual -> bool)
 {
 	return ((t.qual) & q) != 0;
 };
 
-ty_is ::= func(t : ty, tag : tytag) -> bool
+ty_is ::= func(t : ty, tag : tytag -> bool)
 {
 	return (t.tag) == tag;
 };
 
-ty_is_boolean ::= func(t : ty) -> bool
+ty_is_boolean ::= func(t : ty -> bool)
 {
 	if(!ty_is(t, tytag.prim))
 	{
@@ -336,7 +338,7 @@ ty_is_boolean ::= func(t : ty) -> bool
 	return prim == (primty.bool);
 };
 
-ty_is_floating_point ::= func(t : ty) -> bool
+ty_is_floating_point ::= func(t : ty -> bool)
 {
 	if(!ty_is(t, tytag.prim))
 	{
@@ -354,7 +356,7 @@ ty_is_floating_point ::= func(t : ty) -> bool
 	return false;
 };
 
-ty_is_v0 ::= func(t : ty) -> bool
+ty_is_v0 ::= func(t : ty -> bool)
 {
 	if(!ty_is(t, tytag.prim))
 	{
@@ -364,7 +366,7 @@ ty_is_v0 ::= func(t : ty) -> bool
 	return prim == (primty.v0);
 };
 
-ty_is_integral ::= func(t : ty) -> bool
+ty_is_integral ::= func(t : ty -> bool)
 {
 	if(!ty_is(t, tytag.prim))
 	{
@@ -385,7 +387,7 @@ ty_is_integral ::= func(t : ty) -> bool
 	return true;
 };
 
-ty_is_signed_integral ::= func(t : ty) -> bool
+ty_is_signed_integral ::= func(t : ty -> bool)
 {
 	p ::= t.prim;
 	if(p == (primty.s64))
@@ -407,7 +409,7 @@ ty_is_signed_integral ::= func(t : ty) -> bool
 	return false;
 };
 
-ty_integral_size ::= func(t : ty) -> u64
+ty_integral_size ::= func(t : ty -> u64)
 {
 	p ::= t.prim;
 	if(p == (primty.s64))
@@ -449,7 +451,7 @@ ty_integral_size ::= func(t : ty) -> u64
 	return 0;
 };
 
-ty_floating_point_size ::= func(t : ty) -> u64
+ty_floating_point_size ::= func(t : ty -> u64)
 {
 	p ::= t.prim;
 	if(p == (primty.f64))
@@ -483,11 +485,14 @@ tyconv ::= enum
 	.same := 15; // conversion is unnecessary as the types are the same
 };
 
-ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
+ty_get_conv ::= func(lhs : ty, rhs : ty -> tyconv)
 {
 	lhs_weak ::= ty_hasqual(lhs, tyqual.weak);
 	rhs_weak ::= ty_hasqual(rhs, tyqual.weak);
 	either_is_weak : bool mut := lhs_weak;
+
+	lhs_u : ty mut;
+	rhs_u : ty mut;
 	if(rhs_weak)
 	{
 		either_is_weak = true;
@@ -519,7 +524,7 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 				}
 			}
 		}
-		// structs dont convert to anything at all. only the very same struct can tyconv.same.
+		// structs dont convert to anything # all. only the very same struct can tyconv.same.
 		return tyconv.cant;
 	}
 	if(ty_is(lhs, tytag.ptr))
@@ -546,8 +551,8 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			// what if theyre the exact same pointer? ugh.
 			lhs_ptr ::= lhs.ptr;
 			rhs_ptr ::= rhs.ptr;
-			lhs_u ::= deref (lhs_ptr.underlying@ty&);
-			rhs_u ::= deref (rhs_ptr.underlying@ty&);
+			lhs_u = deref (lhs_ptr.underlying@ty?);
+			rhs_u = deref (rhs_ptr.underlying@ty?);
 			if(ty_get_conv(lhs_u, rhs_u) == (tyconv.same))
 			{
 				// they point to the same thing.
@@ -602,8 +607,8 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			// true iff they're the same exact signature
 			lhs_fn ::= lhs.fn;
 			rhs_fn ::= rhs.fn;
-			lhs_ret ::= deref((lhs_fn.return_type)@ty&);
-			rhs_ret ::= deref((rhs_fn.return_type)@ty&);
+			lhs_ret ::= deref((lhs_fn.return_type)@ty?);
+			rhs_ret ::= deref((rhs_fn.return_type)@ty?);
 			if(ty_get_conv(lhs_ret, rhs_ret) != (tyconv.same))
 			{
 				return tyconv.cant;
@@ -612,12 +617,12 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			if((lhs_fn.param_count) == (rhs_fn.param_count))
 			{
 				i : u64 mut;
-				lhs_params ::= (lhs_fn.param_types)@ty&;
-				rhs_params ::= (rhs_fn.param_types)@ty&;
+				lhs_params ::= (lhs_fn.param_types)@ty?;
+				rhs_params ::= (rhs_fn.param_types)@ty?;
 				for(i = 0, i < (lhs_fn.param_count), i = i + 1)
 				{
-					lhs_param ::= deref(lhs_params at i);
-					rhs_param ::= deref(rhs_params at i);
+					lhs_param ::= deref(lhs_params # i);
+					rhs_param ::= deref(rhs_params # i);
 					if(ty_get_conv(lhs_param, rhs_param) != (tyconv.same))
 					{
 						return tyconv.cant;
@@ -640,9 +645,9 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			{
 				return tyconv.cant;
 			}
-			lhs_u : ty mut := deref((lhsarr.underlying)@ty&);
+			lhs_u = deref((lhsarr.underlying)@ty?);
 			(lhs_u.qual) = zero;
-			rhs_u : ty mut := deref((rhsarr.underlying)@ty&);
+			rhs_u = deref((rhsarr.underlying)@ty?);
 			(rhs_u.qual) = zero;
 			// this is subtle.
 			// i dont care if the underlyings are convertible, i want *exactly* the same
@@ -737,8 +742,8 @@ ty_get_conv ::= func(lhs : ty, rhs : ty) -> tyconv
 			// convertible iff they're the exact same array
 			lhs_arr ::= lhs.arr;
 			rhs_arr ::= rhs.arr;
-			lhs_underlying ::= deref((lhs_arr.underlying)@ty&);
-			rhs_underlying ::= deref((rhs_arr.underlying)@ty&);
+			lhs_underlying ::= deref((lhs_arr.underlying)@ty?);
+			rhs_underlying ::= deref((rhs_arr.underlying)@ty?);
 			if(ty_get_conv(lhs_underlying, rhs_underlying) != (tyconv.same))
 			{
 				if((lhs_arr.len) == (rhs_arr.len))
@@ -766,41 +771,41 @@ tybox_enum_info ::= struct
 // box of types. used to store all types defined in a given lexical scope
 tybox ::= struct
 {
-	structs : tybox_struct_info mut&;
+	structs : tybox_struct_info mut?;
 	structs_size : u64;
 	structs_cap : u64;
 
-	enums : tybox_enum_info mut&;
+	enums : tybox_enum_info mut?;
 	enums_size : u64;
 	enums_cap : u64;
 };
 
 // create an empty tybox with some sensible preallocation of resources.
-tybox_empty ::= func() -> tybox
+tybox_empty ::= func( -> tybox)
 {
 	ret : tybox mut := zero;
 	(ret.structs_cap) = 8;
 	structs_bytes ::= __sizeof(deref (ret.structs)) * (ret.structs_cap);
-	(ret.structs) = arena_push(tyar, structs_bytes);
+	(ret.structs) = arena_alloc(tyar, structs_bytes);
 	__memset(ret.structs, 0, structs_bytes);
 
 	(ret.enums_cap) = 8;
 	enums_bytes ::= __sizeof(deref (ret.enums)) * (ret.enums_cap);
-	(ret.enums) = arena_push(tyar, enums_bytes);
+	(ret.enums) = arena_alloc(tyar, enums_bytes);
 	__memset(ret.enums, 0, enums_bytes);
 	return ret;
 };
 
 // tell me if a struct already exists in this box with the same name.
 // returns the index of the struct in the array, or -1 if it couldnt find one.
-tybox_find_struct ::= func(box : tybox&, structname : u8&, structname_len : u64) -> u64
+tybox_find_struct ::= func(box : tybox?, structname : u8?, structname_len : u64 -> u64)
 {
 	n ::= box->structs_size;
 	i : u64 mut;
 	ptr ::= box->structs;
 	for(i = 0, i < n, i = i + 1)
 	{
-		curinfo ::= deref(ptr at i);
+		curinfo ::= deref(ptr # i);
 		cur ::= curinfo.ty;
 		if((cur.name_len) == (structname_len))
 		{
@@ -813,25 +818,25 @@ tybox_find_struct ::= func(box : tybox&, structname : u8&, structname_len : u64)
 	return -1;
 };
 
-[[private]]
-impl_tybox_increase_struct_capacity ::= func(box : tybox mut&) -> v0
+
+impl_tybox_increase_struct_capacity ::= func(box : tybox mut? -> v0)
 {
 	oldcap ::= box->structs_cap;
 	olddata ::= box->structs;
 	(box->structs_cap) = (box->structs_cap) * 2;
-	(box->structs) = arena_push(tyar, __sizeof(deref olddata) * (box->structs_cap));
-	__memcpy(box->structs, olddata, oldcap * __sizeof(deref olddata));
+	(box->structs) = arena_alloc(tyar, __sizeof(deref olddata) * (box->structs_cap));
+	memcopy(box->structs, olddata, oldcap * __sizeof(deref olddata));
 };
 
 // this will not even try to see if a struct by that name already exists
 // dont add that functionality here - its complex, tangles with error messages and has a cost to it
 // let it be implemented deeper in semal and handle errors properly there
-tybox_add_struct ::= func(box : tybox mut&, s : structty, loc : srcloc) -> v0
+tybox_add_struct ::= func(box : tybox mut?, s : structty, loc : srcloc -> v0)
 {
 	if((box->structs_cap) == 0)
 	{
 		(box->structs_cap) = 8;
-		(box->structs) = arena_push(tyar, __sizeof(deref (box->structs)) * (box->structs_cap));
+		(box->structs) = arena_alloc(tyar, __sizeof(deref (box->structs)) * (box->structs_cap));
 	}
 	if((box->structs_size) >= (box->structs_cap))
 	{
@@ -840,31 +845,31 @@ tybox_add_struct ::= func(box : tybox mut&, s : structty, loc : srcloc) -> v0
 	id ::= (box->structs_size);
 	(box->structs_size) = (box->structs_size) + 1;
 	ptr ::= box->structs;
-	deref(ptr at id) = tybox_struct_info
+	deref(ptr # id) = tybox_struct_info
 	{
 		.ty := s;
 		.defined_at := loc;
 	};
 };
 
-// get the struct info at a given index.
+// get the struct info # a given index.
 // no bounds checking.
-tybox_get_struct ::= func(box : tybox mut&, id : u64) -> tybox_struct_info&
+tybox_get_struct ::= func(box : tybox mut?, id : u64 -> tybox_struct_info?)
 {
 	ptr ::= box->structs;
-	return ptr at id;
+	return ptr # id;
 };
 
 // tell me if a enum already exists in this box with the same name.
 // returns the index of the enum in the array, or -1 if it couldnt find one.
-tybox_find_enum ::= func(box : tybox&, enumname : u8&, enumname_len : u64) -> u64
+tybox_find_enum ::= func(box : tybox?, enumname : u8?, enumname_len : u64 -> u64)
 {
 	n ::= box->enums_size;
 	i : u64 mut;
 	ptr ::= box->enums;
 	for(i = 0, i < n, i = i + 1)
 	{
-		curinfo ::= deref(ptr at i);
+		curinfo ::= deref(ptr # i);
 		cur ::= curinfo.ty;
 		if((cur.name_len) == (enumname_len))
 		{
@@ -877,25 +882,25 @@ tybox_find_enum ::= func(box : tybox&, enumname : u8&, enumname_len : u64) -> u6
 	return -1;
 };
 
-[[private]]
-impl_tybox_increase_enum_capacity ::= func(box : tybox mut&) -> v0
+
+impl_tybox_increase_enum_capacity ::= func(box : tybox mut? -> v0)
 {
 	oldcap ::= box->enums_cap;
 	olddata ::= box->enums;
 	(box->enums_cap) = (box->enums_cap) * 2;
-	(box->enums) = arena_push(tyar, __sizeof(deref olddata) * (box->enums_cap));
-	__memcpy(box->enums, olddata, oldcap * __sizeof(deref olddata));
+	(box->enums) = arena_alloc(tyar, __sizeof(deref olddata) * (box->enums_cap));
+	memcopy(box->enums, olddata, oldcap * __sizeof(deref olddata));
 };
 
 // this will not even try to see if a enum by that name already exists
 // dont add that functionality here - its complex, tangles with error messages and has a cost to it
 // let it be implemented deeper in semal and handle errors properly there
-tybox_add_enum ::= func(box : tybox mut&, s : enumty, loc : srcloc) -> v0
+tybox_add_enum ::= func(box : tybox mut?, s : enumty, loc : srcloc -> v0)
 {
 	if((box->enums_cap) == 0)
 	{
 		(box->enums_cap) = 8;
-		(box->enums) = arena_push(tyar, __sizeof(deref (box->enums)) * (box->enums_cap));
+		(box->enums) = arena_alloc(tyar, __sizeof(deref (box->enums)) * (box->enums_cap));
 	}
 	if((box->enums_size) >= (box->enums_cap))
 	{
@@ -904,19 +909,19 @@ tybox_add_enum ::= func(box : tybox mut&, s : enumty, loc : srcloc) -> v0
 	id ::= (box->enums_size);
 	(box->enums_size) = (box->enums_size) + 1;
 	ptr ::= box->enums;
-	deref(ptr at id) = tybox_enum_info
+	deref(ptr # id) = tybox_enum_info
 	{
 		.ty := s;
 		.defined_at := loc;
 	};
 };
 
-// get the enum info at a given index.
+// get the enum info # a given index.
 // no bounds checking.
-tybox_get_enum ::= func(box : tybox mut&, id : u64) -> tybox_enum_info&
+tybox_get_enum ::= func(box : tybox mut?, id : u64 -> tybox_enum_info?)
 {
 	ptr ::= box->enums;
-	return ptr at id;
+	return ptr # id;
 };
 
 == build ==

@@ -1,24 +1,24 @@
-par : arena mut& mut;
+par : arena mut? mut;
 
 parse_state ::= struct
 {
-	lex : lex_state&;
+	lex : lex_state?;
 	lex_cursor : u64 mut;
 
 	lookahead : ast mut;
 
-	node_array : ast mut&;
+	node_array : ast mut?;
 	node_array_cap : u64;
 	node_array_size : u64;
 
-	node_stash : ast mut#64;
+	node_stash : ast mut[64];
 	node_stash_cursor : u64;
 
 	root : ast mut;
 };
 
-[[private]]
-node_array_reserve ::= func(s : parse_state mut&, cap : u64) -> v0
+
+node_array_reserve ::= func(s : parse_state mut?, cap : u64 -> v0)
 {
 	lex ::= s->lex;
 
@@ -26,15 +26,15 @@ node_array_reserve ::= func(s : parse_state mut&, cap : u64) -> v0
 	oldcap ::= s->node_array_cap;
 
 	(s->node_array_cap) = cap;
-	(s->node_array) = arena_push(par, __sizeof(deref (s->node_array)) * (s->node_array_cap));
-	if(oldptr != null)
+	(s->node_array) = arena_alloc(par, __sizeof(deref (s->node_array)) * (s->node_array_cap));
+	if(oldptr != zero)
 	{
-		__memcpy(s->node_array, oldptr, oldcap);
+		memcopy(s->node_array, oldptr, oldcap);
 	}
 };
 
-[[private]]
-node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
+
+node_array_add ::= func(s : parse_state mut?, node : ast -> v0)
 {
 	cap ::= s->node_array_cap;
 	if((s->node_array_size) >= cap)
@@ -42,11 +42,11 @@ node_array_add ::= func(s : parse_state mut&, node : ast) -> v0
 		node_array_reserve(s, cap * 2);
 	}
 
-	deref((s->node_array) at (s->node_array_size)) = node;
+	deref((s->node_array) # (s->node_array_size)) = node;
 	(s->node_array_size) = (s->node_array_size) + 1;
 };
 
-parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
+parse_get_lookahead ::= func(s : parse_state?, cursor_delta : u64 mut? -> ast)
 {
 	lex ::= s->lex;
 	delta : u64 mut := 0;
@@ -54,8 +54,8 @@ parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 	if(cursor < (lex->tokens_size))
 	{
 		// just get the next token and convert it to an unparsed ast
-		tokdata : token_data mut := deref((lex->tokens) at ((s->lex_cursor) + delta));
-		if(cursor_delta != null)
+		tokdata : token_data mut := deref((lex->tokens) # ((s->lex_cursor) + delta));
+		if(cursor_delta != zero)
 		{
 			deref(cursor_delta) = delta;
 		}
@@ -64,9 +64,9 @@ parse_get_lookahead ::= func(s : parse_state&, cursor_delta : u64 mut&) -> ast
 	return zero;
 };
 
-parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, include_stash : bool) -> u64
+parse_state_hash ::= func(s : parse_state mut?, include_lookahead : bool, include_stash : bool -> u64)
 {
-	array_start ::= (s->node_array) at 0;
+	array_start ::= (s->node_array) # 0;
 	array_len ::= s->node_array_size;
 	hash : u64 mut := hash_state(array_start, array_len);
 
@@ -75,19 +75,19 @@ parse_state_hash ::= func(s : parse_state mut&, include_lookahead : bool, includ
 	{
 		hash = hash ^ ((!hash_state(ref la, 1) ^ (202020202 * hash)));
 	}
-	st : ast& mut;
+	st : ast? mut;
 	if(include_stash)
 	{
 		if((s->node_stash_cursor) != 0)
 		{
-			st = (s->node_stash) at (s->node_stash_cursor - 1);
+			st = (s->node_stash) # (s->node_stash_cursor - 1);
 			hash = hash ^ (!(hash_state(st, 1) ^ (101010101 * hash)));
 		}
 	}
 	return hash;
 };
 
-parse_state_print ::= func(s : parse_state mut&) -> v0
+parse_state_print ::= func(s : parse_state mut? -> v0)
 {
 	i : u64 mut;
 	j : u64 mut;
@@ -95,24 +95,24 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 	putchar(10);
 	for(i = 0, i < (s->node_array_size), i = i + 1)
 	{
-		cur_node ::= (s->node_array) at i;
+		cur_node ::= (s->node_array) # i;
 		ast_verbose_print(cur_node, 1);
 	}
 	la ::= s->lookahead;
 	if((la.type) != (ast_type.unknown))
 	{
 		putchar(9);
-		puts("lookahead: ");
+		putzstr("lookahead: ");
 		ast_verbose_print(ref la, 1);
 	}
 	if((s->node_stash_cursor) > 0)
 	{
 		putchar(9);
-		puts("stash:");
+		putzstr("stash:");
 		putchar(10);
 		for(j = 0, j < (s->node_stash_cursor), j = j + 1)
 		{
-			ast_verbose_print((s->node_stash) at j, 2);
+			ast_verbose_print((s->node_stash) # j, 2);
 			putchar(10);
 		}
 	}
@@ -120,9 +120,13 @@ parse_state_print ::= func(s : parse_state mut&) -> v0
 	putchar(10);
 };
 
-parse_slice ::= alias lex_slice;
+parse_slice ::= struct
+{
+	off : u64;
+	len : u64;
+};
 
-shift ::= func(s : parse_state mut&) -> v0
+shift ::= func(s : parse_state mut? -> v0)
 {
 	// make unparsed token.
 	delta : u64 mut;
@@ -134,13 +138,13 @@ shift ::= func(s : parse_state mut&) -> v0
 	}
 };
 
-[[private]]
-impl_shift_nodes_right ::= func(s : parse_state mut&, pivot : u64, shift_amount : u64) -> v0
+
+impl_shift_nodes_right ::= func(s : parse_state mut?, pivot : u64, shift_amount : u64 -> v0)
 {
 	// say our nodes are:
 	// 0, 1, 2, 3, 4
 	// the pivot represents some index in this list
-	// the shift_amount will shift all elements at and rightwards of the pivot by that amount, adding extra space which will be zero'd out.
+	// the shift_amount will shift all elements # and rightwards of the pivot by that amount, adding extra space which will be zero'd out.
 	// so: impl_shift_nodes_right(nodes, 3, 2) =>
 	// 0, 1, 2, 0, 0, 3, 4
 	newsize ::= (s->node_array_size) + shift_amount;
@@ -152,32 +156,32 @@ impl_shift_nodes_right ::= func(s : parse_state mut&, pivot : u64, shift_amount 
 
 	// shift stuff to the right. because we're shifting to the right we could overwrite overlapping regions
 	// so we do it in backwards order.
-	copy_src ::= (s->node_array) at pivot;
-	copy_dst ::= copy_src at shift_amount;
-	__memcpy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * (shift_amount));
+	copy_src ::= (s->node_array) # pivot;
+	copy_dst ::= copy_src # shift_amount;
+	memcopy(copy_dst@_, copy_src@_, __sizeof(deref (s->node_array)) * (shift_amount));
 	// zero out the gap
 	__memset(copy_src, 0, __sizeof(deref (s->node_array)) * shift_amount);
 	(s->node_array_size) = (s->node_array_size) + shift_amount;
 };
 
-[[private]]
-impl_shift_nodes_left ::= func(s : parse_state mut&, pivot : u64, shift_amount : u64) -> v0
+
+impl_shift_nodes_left ::= func(s : parse_state mut?, pivot : u64, shift_amount : u64 -> v0)
 {
 	// say our nodes are:
 	// 0, 1, 2, 3, 4, 5, 6
 	// the pivot represents some index in this list
-	// we overwrite 'shift_amount' elements at and rightwards of the pivot by the same number of proceeding elements
+	// we overwrite 'shift_amount' elements # and rightwards of the pivot by the same number of proceeding elements
 	// so: impl_shift_nodes_left(nodes, 3, 2) =>
 	// 0, 1, 2, 5, 6
-	copydst ::= (s->node_array) at pivot;
-	copysrc ::= copydst at shift_amount;
+	copydst ::= (s->node_array) # pivot;
+	copysrc ::= copydst # shift_amount;
 	// we're going leftwards so memcpy is safe.
 	count ::= (s->node_array_size) - (pivot + shift_amount);
-	__memcpy(copydst, copysrc, __sizeof(deref (s->node_array)) * count);
+	memcopy(copydst, copysrc, __sizeof(deref (s->node_array)) * count);
 	(s->node_array_size) = (s->node_array_size) - shift_amount;
 };
 
-reduce ::= func(s : parse_state mut&, destroy : parse_slice, new_nodes : ast&, new_nodes_size : u64) -> v0
+reduce ::= func(s : parse_state mut?, destroy : parse_slice, new_nodes : ast?, new_nodes_size : u64 -> v0)
 {
 	off ::= (destroy.off);
 	// remove children
@@ -188,43 +192,43 @@ reduce ::= func(s : parse_state mut&, destroy : parse_slice, new_nodes : ast&, n
 		posdiff ::= -nodes_diff;
 		impl_shift_nodes_right(s, off, posdiff@u64);
 		// do the whole copy, i allow the new data to stomp over the old.
-		__memcpy((s->node_array) at off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
+		memcopy((s->node_array) # off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
 	}
 	if(nodes_diff == 0)
 	{
 		// do the whole copy, i allow the new data to stomp over the old.
-		__memcpy((s->node_array) at off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
+		memcopy((s->node_array) # off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
 	}
 	if(nodes_diff > 0)
 	{
 		// destroying more nodes than we're adding.
 		impl_shift_nodes_left(s, off, nodes_diff@u64);
-		__memcpy((s->node_array) at off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
+		memcopy((s->node_array) # off, new_nodes, __sizeof(deref (s->node_array)) * new_nodes_size);
 	}
 };
 
-[[private]]
-impl_remove_nodes ::= func(s : parse_state mut&, nodes_to_remove : parse_slice) -> v0
+
+impl_remove_nodes ::= func(s : parse_state mut?, nodes_to_remove : parse_slice -> v0)
 {
 	// remove children.
 	(s->node_array_size) = (s->node_array_size) - (nodes_to_remove.len);
-	offsetted_nodes_begin ::= (s->node_array) at (nodes_to_remove.off);
-	offsetted_nodes_end ::= (s->node_array) at ((nodes_to_remove.off) + (nodes_to_remove.len));
-	__memcpy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_remove.len));
+	offsetted_nodes_begin ::= (s->node_array) # (nodes_to_remove.off);
+	offsetted_nodes_end ::= (s->node_array) # ((nodes_to_remove.off) + (nodes_to_remove.len));
+	memcopy(offsetted_nodes_begin, offsetted_nodes_end, __sizeof(ast) * (nodes_to_remove.len));
 };
 
-[[private]]
-impl_has_stash ::= func(s : parse_state&) -> bool
+
+impl_has_stash ::= func(s : parse_state? -> bool)
 {
 	return (s->node_stash_cursor) != 0;
 };
 
-commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
+commit ::= func(s : parse_state mut?, nodes_to_commit : parse_slice -> v0)
 {
-	parent : ast mut& mut := ref(s->root);
+	parent : ast mut? mut := ref(s->root);
 	if(impl_has_stash(s))
 	{
-		parent = (s->node_stash) at ((s->node_stash_cursor) - 1);
+		parent = (s->node_stash) # ((s->node_stash_cursor) - 1);
 	}
 
 	lex ::= s->lex;
@@ -232,7 +236,7 @@ commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
 	for(i = 0, i < (nodes_to_commit.len), i = i + 1)
 	{
 		off ::= (nodes_to_commit.off) + i;
-		cur ::= ((s->node_array) at off);
+		cur ::= ((s->node_array) # off);
 
 		ast_add_child(parent, deref cur, par);
 	}
@@ -245,17 +249,17 @@ commit ::= func(s : parse_state mut&, nodes_to_commit : parse_slice) -> v0
 	}
 };
 
-stash ::= func(s : parse_state mut&, node_offset : u64) -> v0
+stash ::= func(s : parse_state mut?, node_offset : u64 -> v0)
 {
-	stashptr ::= (s->node_stash) at (s->node_stash_cursor);
+	stashptr ::= (s->node_stash) # (s->node_stash_cursor);
 	(s->node_stash_cursor) = (s->node_stash_cursor) + 1;
 
-	node ::= deref((s->node_array) at node_offset);
+	node ::= deref((s->node_array) # node_offset);
 	deref(stashptr) = node;
 	(s->node_array_size) = (s->node_array_size) - 1;
 };
 
-unstash ::= func(s : parse_state mut&, node_offset : u64) -> v0
+unstash ::= func(s : parse_state mut?, node_offset : u64 -> v0)
 {
 	if((s->node_stash_cursor) == 0)
 	{
@@ -263,13 +267,13 @@ unstash ::= func(s : parse_state mut&, node_offset : u64) -> v0
 	}
 	(s->node_stash_cursor) = (s->node_stash_cursor) - 1;
 
-	stashed_ptr ::= (s->node_stash) at (s->node_stash_cursor);
+	stashed_ptr ::= (s->node_stash) # (s->node_stash_cursor);
 	impl_shift_nodes_right(s, node_offset, 1);
-	deref((s->node_array) at node_offset) = deref(stashed_ptr);
+	deref((s->node_array) # node_offset) = deref(stashed_ptr);
 	deref(stashed_ptr) = zero;
 };
 
-parse_complete ::= func(p : parse_state&) -> bool
+parse_complete ::= func(p : parse_state? -> bool)
 {
 	lex ::= p->lex;
 	out_of_tokens ::= (p->lex_cursor) >= (lex->tokens_size);
@@ -286,39 +290,39 @@ parse_complete ::= func(p : parse_state&) -> bool
 
 sized_string ::= struct
 {
-	str : u8&;
+	str : u8?;
 	len : u64;
 };
 
-quote_source_from_indices ::= func(p : parse_state&, begin : u64, end : u64) -> sized_string
+quote_source_from_indices ::= func(p : parse_state?, begin : u64, end : u64 -> sized_string)
 {
 	lex ::= p->lex;
 	return sized_string
 	{
-		.str := (lex->src) at begin;
+		.str := (lex->src) # begin;
 		.len := (end - begin);
 	};
 };
 
-quote_source_from_nodes ::= func(p : parse_state&, nodes : ast&, nodes_size : u64) -> sized_string
+quote_source_from_nodes ::= func(p : parse_state?, nodes : ast?, nodes_size : u64 -> sized_string)
 {
 	if(nodes_size == 0)
 	{
 		return zero;
 	}
-	begin_node ::= deref(nodes at 0);
-	end_node ::= deref(nodes at (nodes_size - 1));
+	begin_node ::= deref(nodes # 0);
+	end_node ::= deref(nodes # (nodes_size - 1));
 
 	return quote_source_from_indices(p, begin_node.cursor_begin, end_node.cursor_end);
 };
 
-print_source_line ::= func(loc : srcloc) -> v0
+print_source_line ::= func(loc : srcloc -> v0)
 {
 	putuint(loc.line);
-	puts(" | ");
+	putzstr(" | ");
 };
 
-decimal_digit_count ::= func(n : u64) -> u64
+decimal_digit_count ::= func(n : u64 -> u64)
 {
 	if(n < 10)
 	{
@@ -327,13 +331,13 @@ decimal_digit_count ::= func(n : u64) -> u64
 	return 1 + decimal_digit_count(n / 10);
 };
 
-parser_find_rule ::= func(s : parse_state mut&) -> grammar_rule
+parser_find_rule ::= func(s : parse_state mut? -> grammar_rule)
 {
 	// firstly try with both lookahead and stash
 	hash : u64 mut := parse_state_hash(s, true, true);
 	rule : grammar_rule mut := grammar_get_rule(hash);
 
-	if((rule.fn) != null)
+	if((rule.fn) != zero)
 	{
 		return rule;
 	}
@@ -341,7 +345,7 @@ parser_find_rule ::= func(s : parse_state mut&) -> grammar_rule
 	hash = parse_state_hash(s, false, true);
 	rule = grammar_get_rule(hash);
 
-	if((rule.fn) != null)
+	if((rule.fn) != zero)
 	{
 		return rule;
 	}
@@ -349,7 +353,7 @@ parser_find_rule ::= func(s : parse_state mut&) -> grammar_rule
 	hash = parse_state_hash(s, true, false);
 	rule = grammar_get_rule(hash);
 
-	if((rule.fn) != null)
+	if((rule.fn) != zero)
 	{
 		return rule;
 	}
@@ -359,7 +363,7 @@ parser_find_rule ::= func(s : parse_state mut&) -> grammar_rule
 	return rule;
 };
 
-parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
+parse ::= func(lex : lex_state?, verbose_parse : bool -> parse_state)
 {
 	psyc_timed_begin(psyc_stage.parse);
 	defer psyc_timed_end();
@@ -372,7 +376,7 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	(root.loc) = srcloc
 	{
 		.file := lex->path;
-		.function := null;
+		.function := zero;
 		.line := 0;
 		.column := 0;
 	};
@@ -383,40 +387,41 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 
 	while(!parse_complete(ref state))
 	{
-		first_node ::= deref((state.node_array) at 0);
+		first_node ::= deref((state.node_array) # 0);
 		begin_loc ::= first_node.loc;
-		state.lookahead = parse_get_lookahead(ref state, null);
+		state.lookahead = parse_get_lookahead(ref state, zero);
 
 		rule ::= parser_find_rule(ref state);
+		i : u64 mut;
 
-		if((rule.fn) == null)
+		srcmsg : sized_string mut;
+		if((rule.fn) == zero)
 		{
 			psyc_error_begin(begin_loc);
-			puts("invalid syntax: ");
+			putzstr("invalid syntax: ");
 			print_source_line(first_node.loc);
-			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
-			i : u64 mut;
+			srcmsg = quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
 			for(i = 0, i < (srcmsg.len), i = i + 1)
 			{
-				putchar(deref((srcmsg.str) at i));
+				putchar(deref((srcmsg.str) # i));
 			}
 			putchar(10);
 			psyc_colour_yellow();
 			parse_state_print(ref state);
 			if(verbose_parse)
 			{
-				puts("verbose parse : current ast");
+				putzstr("verbose parse : current ast");
 				putchar(10);
 				ast_verbose_print(ref (state.root), 0);
 			}
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		result ::= rule.fn(lex->src, state.node_array at 0, state.node_array_size);
+		result ::= rule.fn(lex->src, state.node_array # 0, state.node_array_size);
 		if((result.action) == (parse_action.reduce))
 		{
 			//psyc_panic(srcloc_current(), "todo: reduce");
-			replacement_begin ::= (result.nodes) at 0;
+			replacement_begin ::= (result.nodes) # 0;
 			reduce(ref state, parse_slice{.off := result.offset; .len := result.len;}, replacement_begin, result.nodes_size);
 
 			tmp ::= state.node_array_size;
@@ -431,7 +436,6 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		}
 		if((result.action) == (parse_action.shift))
 		{
-			i : u64 mut;
 			for(i = 0, i < (result.len), i = i + 1)
 			{
 				shift(ref state);
@@ -440,13 +444,12 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 		if((result.action) == (parse_action.error))
 		{
 			psyc_error_begin(begin_loc);
-			puts(result.errmsg);
+			putzstr(result.errmsg);
 			print_source_line(first_node.loc);
-			srcmsg ::= quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
-			i : u64 mut;
+			srcmsg = quote_source_from_nodes(ref state, state.node_array, state.node_array_size);
 			for(i = 0, i < (srcmsg.len), i = i + 1)
 			{
-				putchar(deref((srcmsg.str) at i));
+				putchar(deref((srcmsg.str) # i));
 			}
 			putchar(10);
 			psyc_colour_yellow();
@@ -476,7 +479,7 @@ parse ::= func(lex : lex_state&, verbose_parse : bool) -> parse_state
 	return state;
 };
 
-parse_setup ::= func(a : arena mut&) -> v0
+parse_setup ::= func(a : arena mut? -> v0)
 {
 	par = a;
 };

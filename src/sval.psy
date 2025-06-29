@@ -6,7 +6,7 @@ sval_tag ::= enum
 
 sval_struct ::= struct
 {
-	data : v0&;
+	data : v0?;
 	size : u64;
 	cap : u64;
 };
@@ -18,24 +18,24 @@ sval ::= struct
 	strct : sval_struct;
 };
 
-sval_struct_add_member ::= func(v : sval mut&, mem : sval, a : arena mut&) -> v0
+sval_struct_add_member ::= func(v : sval mut?, mem : sval, a : arena mut? -> v0)
 {
 	strct ::= ref(v->strct);
-	if((strct->data) == null)
+	if((strct->data) == zero)
 	{
 		(strct->cap) = 8;
-		(strct->data) = arena_push(a, __sizeof(sval) * (strct->cap));
+		(strct->data) = arena_alloc(a, __sizeof(sval) * (strct->cap));
 	}
 	while((strct->size) >= (strct->cap))
 	{
 		oldcap ::= strct->cap;
 		olddata ::= strct->data;
 		(strct->cap) = (strct->cap) * 2;
-		(strct->data) = arena_push(a, __sizeof(sval) * (strct->cap));
-		__memcpy(strct->data, olddata, __sizeof(sval) * oldcap);
+		(strct->data) = arena_alloc(a, __sizeof(sval) * (strct->cap));
+		memcopy(strct->data, olddata, __sizeof(sval) * oldcap);
 	}
-	data ::= (strct->data)@sval mut&;
-	deref(data at (strct->size)) = mem;
+	data ::= (strct->data)@sval mut?;
+	deref(data # (strct->size)) = mem;
 	(strct->size) = (strct->size) + 1;
 };
 
