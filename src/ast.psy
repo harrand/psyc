@@ -262,34 +262,34 @@ ast_get_child ::= func(a : ast mut?, cid : u64 -> ast mut?)
 	return childrenptr # cid;
 };
 
-ast_add_child ::= func(a : ast mut?, child : ast, ar : arena mut? -> u64)
+ast_add_child ::= func(node : ast mut?, child : ast, a : arena mut? -> u64)
 {
-	if((a->children) == zero)
+	if((node->children) == zero)
 	{
-		(a->childcap) = 8;
-		(a->children) = arena_alloc(ar, __sizeof(ast) * (a->childcap));
+		(node->childcap) = 8;
+		(node->children) = arena_alloc(a, __sizeof(ast) * (node->childcap));
 	}
-	while((a->childcount) >= (a->childcap))
+	while((node->childcount) >= (node->childcap))
 	{
-		olddata ::= (a->children);
-		oldcap ::= (a->childcap);
+		olddata ::= (node->children);
+		oldcap ::= (node->childcap);
 
-		(a->childcap) = ((a->childcap) * 2);
-		(a->children) = arena_alloc(ar, __sizeof(ast) * (a->childcap));
-		memcopy(a->children, olddata, __sizeof(ast) * oldcap);
+		(node->childcap) = ((node->childcap) * 2);
+		(node->children) = arena_alloc(a, __sizeof(ast) * (node->childcap));
+		memcopy(node->children, olddata, __sizeof(ast) * oldcap);
 	}
 
-	childrenptr ::= ((a->children)@ast mut?);
-	deref(childrenptr # (a->childcount)) = child;
-	childid ::= a->childcount;
-	(a->childcount) = (a->childcount) + 1;
+	childrenptr ::= ((node->children)@ast mut?);
+	deref(childrenptr # (node->childcount)) = child;
+	childid ::= node->childcount;
+	(node->childcount) = (node->childcount) + 1;
 	return childid;
 };
 
-ast_emplace_child ::= func(a : ast mut?, child : ast, ar : arena mut? -> ast mut?)
+ast_emplace_child ::= func(node : ast mut?, child : ast, a : arena mut? -> ast mut?)
 {
-	cid ::= ast_add_child(a, child, ar);
-	return ast_get_child(a, cid);
+	cid ::= ast_add_child(node, child, a);
+	return ast_get_child(node, cid);
 };
 
 ast_biop_get_lhs ::= func(a : ast -> ast mut?)
@@ -317,42 +317,42 @@ ast_unop_get_operand ::= func(a : ast -> ast mut?)
 	return ast_biop_get_lhs(a);
 };
 
-ast_biop_set_lhs ::= func(a : ast mut?, lhs : ast, ar : arena mut? -> v0)
+ast_biop_set_lhs ::= func(node : ast mut?, lhs : ast, a : arena mut? -> v0)
 {
-	childrenptr ::= ((a->children)@ast mut?);
-	c ::= a->childcount;
+	childrenptr ::= ((node->children)@ast mut?);
+	c ::= node->childcount;
 	if(c >= 1)
 	{
 		deref(childrenptr # 0) = lhs;
 	}
 	if(c == 0)
 	{
-		ast_add_child(a, lhs, ar);
+		ast_add_child(node, lhs, a);
 	}
 };
 
-ast_biop_set_rhs ::= func(a : ast mut?, rhs : ast, ar : arena mut? -> v0)
+ast_biop_set_rhs ::= func(node : ast mut?, rhs : ast, a : arena mut? -> v0)
 {
-	childrenptr ::= ((a->children)@ast mut?);
-	c ::= a->childcount;
+	childrenptr ::= ((node->children)@ast mut?);
+	c ::= node->childcount;
 	if(c >= 2)
 	{
 		deref(childrenptr # 1) = rhs;
 	}
 	if(c == 1)
 	{
-		ast_add_child(a, rhs, ar);
+		ast_add_child(node, rhs, a);
 	}
 	if(c == 0)
 	{
-		ast_add_child(a, zero, ar);
-		ast_add_child(a, rhs, ar);
+		ast_add_child(node, zero, a);
+		ast_add_child(node, rhs, a);
 	}
 };
 
-ast_unop_set_operand ::= func(a : ast mut?, operand : ast, ar : arena mut? -> v0)
+ast_unop_set_operand ::= func(node : ast mut?, operand : ast, a : arena mut? -> v0)
 {
-	ast_biop_set_lhs(a, operand, ar);
+	ast_biop_set_lhs(node, operand, a);
 };
 
 make_biop_expr ::= func(biop : ast_biop_expr -> ast_expr)
@@ -525,7 +525,7 @@ interpret_numeric_literal ::= func(src : u8?, lexeme : lex_slice -> ast_literal_
 		}
 		if(isdigit(ch))
 		{
-			digit_val = (ch - '0');
+			digit_val = (ch - '0')@_;
 		}
 		if(ch >= 'a')
 		{

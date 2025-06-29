@@ -1,10 +1,13 @@
-impl_win32_get_args ::= func(argc : s32 mut?, argv : u8?? mut?, a : arena mut? -> v0)
+static if(_win32)
 {
 	GetCommandLineW ::= func( -> u16? ):= extern;
 	CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
 	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
 	LocalFree ::= func(hMem : u64 -> u64 ):= extern;
+}
 
+impl_win32_get_args ::= func(argc : s32 mut?, argv : u8?? mut?, a : arena mut? -> v0)
+{
 	cmd_line ::= GetCommandLineW();
 	wide_argc : s32 mut;
 	wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
@@ -75,7 +78,7 @@ psyc_parse_args ::= func(a : arena mut? -> psyc_compile_args)
 	for(i = 1, i < argc, i = i + 1)
 	{
 		curarg ::= deref(argv # i);
-		isopt ::= cstr_starts_with(curarg, "-");
+		isopt ::= zstr_starts_with(curarg, "-");
 		if(!isopt)
 		{
 			// must be a build file then.
@@ -99,23 +102,23 @@ psyc_parse_args ::= func(a : arena mut? -> psyc_compile_args)
 		if(isopt)
 		{
 			nextarg ::= argv # (i + 1);
-			if(cstreql(curarg, "--verbose-lex"))
+			if(zstreql(curarg, "--verbose-lex"))
 			{
 				(ret.verbose_lex) = true;
 			}
-			if(cstreql(curarg, "--verbose-parse"))
+			if(zstreql(curarg, "--verbose-parse"))
 			{
 				(ret.verbose_parse) = true;
 			}
-			if(cstreql(curarg, "--verbose-codegen"))
+			if(zstreql(curarg, "--verbose-codegen"))
 			{
 				(ret.verbose_codegen) = true;
 			}
-			if(cstreql(curarg, "--verbose-link"))
+			if(zstreql(curarg, "--verbose-link"))
 			{
 				(ret.verbose_link) = true;
 			}
-			if(cstreql(curarg, "-b"))
+			if(zstreql(curarg, "-b"))
 			{
 				(ret.build_config) = (deref nextarg);
 				i = i + 1;
