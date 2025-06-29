@@ -130,9 +130,11 @@ psyc_gettime ::= func() -> s64
 {
 	if static(__is_windows)
 	{
-		ret : s64 mut;
-		QueryPerformanceCounter(ref ret);
-		return ret;
+		t : s64 mut;
+		QueryPerformanceCounter(ref t);
+		f : s64 mut;
+		QueryPerformanceFrequency(ref f);
+		return t * 1000000 / f;
 	}
 };
 
@@ -141,17 +143,22 @@ psyc_set_stage ::= func(stage : psyc_stage) -> v0
 	current_stage = stage;
 };
 
-psyc_timed ::= macro(stage : psyc_stage) -> v0
+_t : s64 mut;
+
+psyc_timed_begin ::= func(stage : psyc_stage) -> v0
 {
 	psyc_set_stage(stage);
-	defer psyc_set_stage(psyc_stage.setup);
-	_f : s64 mut;
-	QueryPerformanceFrequency(ref _f);
-	_t ::= psyc_gettime();
-	_s ::= stage@s64;
-	defer _diff ::= ((psyc_gettime() - _t) * 1000000) / _f;
-	defer _diff_f32 ::= _diff / 1000000.0;
-	defer(deref(psyc_stage_times at _s) = (deref(psyc_stage_times at _s) + _diff_f32));
+	//defer psyc_set_stage(psyc_stage.setup);
+	_t = psyc_gettime();
+};
+
+psyc_timed_end ::= func() -> v0
+{
+	s ::= current_stage@s64;
+	_diff ::= (psyc_gettime() - _t)@f32 weak;
+	_diff_f32 ::= _diff / (1000000.0@f32);
+	deref(psyc_stage_times at s) = (deref(psyc_stage_times at s) + _diff_f32);
+	psyc_set_stage(zero);
 };
 
 psyc_report_a_timing ::= func(stage : psyc_stage) -> v0
