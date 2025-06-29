@@ -108,17 +108,17 @@ putqual ::= func(q : tyqual -> v0)
 	{
 		return;
 	}
-	if(q & (tyqual.static))
+	if(q & (tyqual.static) != zero)
 	{
 		putchar(' ');
 		putzstr(__enumname(tyqual.static));
 	}
-	if(q & (tyqual.weak))
+	if(q & (tyqual.weak) != zero)
 	{
 		putchar(' ');
 		putzstr(__enumname(tyqual.weak));
 	}
-	if(q & (tyqual.mut))
+	if(q & (tyqual.mut) != zero)
 	{
 		putchar(' ');
 		putzstr(__enumname(tyqual.mut));
@@ -142,11 +142,10 @@ putty ::= func(t : ty -> v0)
 		putprim(t.prim);
 	}
 	underlying : ty? mut;
-	ptr : ty? mut;
 	if(tag == (tytag.ptr))
 	{
-		ptr = t.ptr;
-		underlying = (ptr.underlying)@ty?;
+		ptrt ::= t.ptr;
+		underlying = (ptrt.underlying)@ty?;
 		putty(deref underlying);
 		// weird special case - dont print the proceeding & with function pointers as function types are infact function pointers
 		if((underlying->tag) != (tytag.fn))
@@ -178,7 +177,7 @@ putty ::= func(t : ty -> v0)
 		putzstr("func(");
 		fn ::= t.fn;
 		i : u64 mut;
-		ptr = (fn.param_types)@ty?;
+		ptr ::= (fn.param_types)@ty?;
 		for(i = 0, i < (fn.param_count), i = i + 1)
 		{
 			putty(deref(ptr # i));
@@ -198,8 +197,9 @@ putty ::= func(t : ty -> v0)
 // make a pointer to an existing type
 ty_ref ::= func(t : ty, q : tyqual -> ty)
 {
+	t2 ::= t;
 	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
-	memcopy(underlying_data, ref t, __sizeof(ty));
+	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.ptr;
@@ -221,8 +221,9 @@ ty_deref ::= func(t : ty -> ty)
 
 ty_arr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
+	t2 ::= t;
 	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
-	memcopy(underlying_data, ref t, __sizeof(ty));
+	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.arr;
@@ -267,8 +268,9 @@ ty_getprim ::= func(p : primty, q : tyqual -> ty)
 // retrieve an array type t#len. zero = no quals
 ty_getarr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
+	t2 ::= t;
 	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
-	memcopy(underlying_data, ref t, __sizeof(ty));
+	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
 		.tag := tytag.arr;
@@ -787,12 +789,12 @@ tybox_empty ::= func( -> tybox)
 	(ret.structs_cap) = 8;
 	structs_bytes ::= __sizeof(deref (ret.structs)) * (ret.structs_cap);
 	(ret.structs) = arena_alloc(tyar, structs_bytes);
-	__memset(ret.structs, 0, structs_bytes);
+	memfill(ret.structs, 0, structs_bytes);
 
 	(ret.enums_cap) = 8;
 	enums_bytes ::= __sizeof(deref (ret.enums)) * (ret.enums_cap);
 	(ret.enums) = arena_alloc(tyar, enums_bytes);
-	__memset(ret.enums, 0, enums_bytes);
+	memfill(ret.enums, 0, enums_bytes);
 	return ret;
 };
 
