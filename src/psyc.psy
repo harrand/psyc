@@ -1,16 +1,26 @@
-setup_arenas ::= macro() -> v0
-{
-	permanent_arena_val : arena mut := arena_create(4096 * 1024);
-	permanent_arena ::= ref permanent_arena_val;
-	defer puts("arena free: ");
-	defer putuint(permanent_arena_val.cursor);
-	defer puts("B");
-	defer putchar(10);
-	defer arena_destroy(permanent_arena_val);
+permanent_arena_val : arena mut;
+permanent_arena : arena mut& mut;
 
-	frame_arena_val : arena mut := arena_create(4096 * 1024);
-	frame_arena ::= ref frame_arena_val;
-	defer arena_destroy(frame_arena_val);
+frame_arena_val : arena mut;
+frame_arena : arena mut& mut;
+
+setup_arenas ::= func() -> v0
+{
+	permanent_arena_val = arena_create(4096 * 1024);
+	permanent_arena = ref permanent_arena_val;
+
+	frame_arena_val = arena_create(4096 * 1024);
+	frame_arena = ref frame_arena_val;
+};
+
+destroy_arenas ::= func() -> v0
+{
+	puts("arena free: ");
+	putuint(permanent_arena_val.cursor);
+	puts("B");
+	putchar(10);
+	arena_destroy(permanent_arena_val);
+	arena_destroy(frame_arena_val);
 };
 
 // read a file path. allocates for the whole file data. returns null if file didnt exist.
@@ -178,6 +188,7 @@ compile_program ::= func(prog : program mut&, a : arena mut&) -> v0
 main ::= func() -> s32
 {
 	setup_arenas();
+	defer destroy_arenas();
 
 	lex_setup(permanent_arena);
 	grammar_setup(permanent_arena);

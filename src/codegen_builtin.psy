@@ -13,129 +13,6 @@ cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut&) -> cgv
 	return zero;
 };
 
-cg_builtin_memcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
-{
-	node ::= ctx.node;
-	dstnode ::= ast_get_child(node@_, 0);
-	dst : cgv mut := cg_expr(context
-	{
-		.node := dstnode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref dst, prog);
-	if(!ty_is(dst.type, tytag.ptr))
-	{
-		psyc_error_begin(dstnode->loc);
-		puts("Invalid call to builtin - param 0 must be a pointer type, you provided ");
-		putchar('"');
-		putty(dst.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	srcnode ::= ast_get_child(node@_, 1);
-	src : cgv mut := cg_expr(context
-	{
-		.node := srcnode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref src, prog);
-	if(!ty_is(src.type, tytag.ptr))
-	{
-		psyc_error_begin(srcnode->loc);
-		puts("Invalid call to builtin - param 1 must be a pointer type, you provided ");
-		putchar('"');
-		putty(src.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	lennode ::= ast_get_child(node@_, 2);
-	len : cgv mut := cg_expr(context
-	{
-		.node := lennode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref len, prog);
-	len = cgv_convert(len, ty_getprim(primty.u64, tyqual.weak), prog, lennode->loc, ctx.typecheck_only);
-
-	param_tys : u64 mut#4;
-	deref(param_tys at 0) = (cg.type(dst.type, prog));
-	deref(param_tys at 1) = (cg.type(src.type, prog));
-	deref(param_tys at 2) = (cg.type(len.type, prog));
-	deref(param_tys at 3) = (cg.type(ty_getprim(primty.bool, zero), prog));
-
-	val_lls : u64 mut#4;
-	deref(val_lls at 0) = (dst.ll);
-	deref(val_lls at 1) = (src.ll);
-	deref(val_lls at 2) = (len.ll);
-	deref(val_lls at 3) = LLVMConstNull(deref(param_tys at 3));
-
-	fn_type ::= LLVMFunctionType(LLVMVoidType(), param_tys at 0, 4, false@s32);
-	fn ::= LLVMAddFunction(mod, "llvm.memcpy.p0.p0.i64", fn_type);
-	LLVMBuildCall2(ir, fn_type, fn, val_lls at 0, 4, "");
-	return zero;
-};
-
-cg_builtin_memset ::= func(ctx : context mut, prog : program mut&) -> cgv
-{
-	node ::= ctx.node;
-	dstnode ::= ast_get_child(node@_, 0);
-	dst : cgv mut := cg_expr(context
-	{
-		.node := dstnode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref dst, prog);
-	if(!ty_is(dst.type, tytag.ptr))
-	{
-		psyc_error_begin(dstnode->loc);
-		puts("Invalid call to builtin - param 0 must be a pointer type, you provided ");
-		putchar('"');
-		putty(dst.type);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	valnode ::= ast_get_child(node@_, 1);
-	val : cgv mut := cg_expr(context
-	{
-		.node := valnode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref val, prog);
-	val = cgv_convert(val, ty_getprim(primty.u8, tyqual.weak), prog, valnode->loc, ctx.typecheck_only);
-
-	lennode ::= ast_get_child(node@_, 2);
-	len : cgv mut := cg_expr(context
-	{
-		.node := lennode;
-		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref len, prog);
-	len = cgv_convert(len, ty_getprim(primty.u64, tyqual.weak), prog, lennode->loc, ctx.typecheck_only);
-
-	param_tys : u64 mut#4;
-	deref(param_tys at 0) = (cg.type(dst.type, prog));
-	deref(param_tys at 1) = (cg.type(val.type, prog));
-	deref(param_tys at 2) = (cg.type(len.type, prog));
-	deref(param_tys at 3) = (cg.type(ty_getprim(primty.bool, zero), prog));
-
-	val_lls : u64 mut#4;
-	deref(val_lls at 0) = (dst.ll);
-	deref(val_lls at 1) = (val.ll);
-	deref(val_lls at 2) = (len.ll);
-	deref(val_lls at 3) = LLVMConstNull(deref(param_tys at 3));
-
-	fn_type ::= LLVMFunctionType(LLVMVoidType(), param_tys at 0, 4, false@s32);
-	fn ::= LLVMAddFunction(mod, "llvm.memset.inline.p0.i64", fn_type);
-	LLVMBuildCall2(ir, fn_type, fn, val_lls at 0, 4, "");
-	return zero;
-};
-
 cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut&) -> cgv
 {
 	type : ty mut := zero;
@@ -281,6 +158,66 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut&) -> cgv
 		.type := ast_literal_type.integral;
 		.integral := arrlen;
 	}), ctx, prog);
+};
+
+cg_builtin_enumname ::= func(ctx : context mut, prog : program mut&) -> cgv
+{
+	node ::= ctx.node;
+	enumnode ::= ast_get_child(node@_, 0);
+	enumval : cgv mut := cg_expr(context
+	{
+		.node := enumnode;
+		.local := ctx.local;
+	}, prog);
+	cgv_load_if_variable(ref enumval, prog);
+	if(!ty_is(enumval.type, tytag.enm))
+	{
+		psyc_error_begin(enumnode->loc);
+		puts("parameter to __enumname must be an enum type, you have provided a ");
+		putchar('"');
+		putty(enumval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	fn ::= scope_get_parent_function(ctx.local, prog);
+
+	type ::= enumval.type;
+	enm ::= type.enm;
+	retty ::= ty_ref(ty_getprim(primty.u8, zero), zero);
+	llty ::= cg.type(retty, prog);
+	ll ::= LLVMBuildAlloca(ir, llty, "__enumname_dynamic");
+	badenumval ::= LLVMBuildGlobalString(ir, "badenum", "badenum");
+	LLVMBuildStore(ir, badenumval, ll);
+	i : u64 mut;
+	for(i = 0, i < (enm.entry_count), i = i + 1)
+	{
+		val ::= deref((enm.entry_values) at i);
+		name ::= deref((enm.entry_names) at i);
+		name_len ::= deref((enm.entry_name_lens) at i);
+		val_ll ::= LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), val, false@s32);
+		cond ::= LLVMBuildICmp(ir, 32, val_ll, enumval.ll, "");
+
+		cond_blk ::= LLVMAppendBasicBlock(fn->codegen, "enumname_if");
+		cont_blk ::= LLVMAppendBasicBlock(fn->codegen, "__enumname cont");
+
+		LLVMBuildCondBr(ir, cond, cond_blk, cont_blk);
+		LLVMPositionBuilderAtEnd(ir, cond_blk);
+		// store this value into the alloca
+		zstr : u8 mut& mut := arena_push(cgar, name_len + 1);
+		__memcpy(zstr, name, name_len);
+		deref(zstr at name_len) = 0;
+		strval ::= LLVMBuildGlobalString(ir, zstr, "");
+		LLVMBuildStore(ir, strval, ll);
+		LLVMBuildBr(ir, cont_blk);
+		LLVMPositionBuilderAtEnd(ir, cont_blk);
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildLoad2(ir, llty, ll, "");
+		.type := retty;
+	};
 };
 
 cg_builtin_error ::= func(ctx : context mut, prog : program mut&) -> cgv
