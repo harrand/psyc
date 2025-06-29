@@ -79,12 +79,16 @@ typarse_primty ::= func(tyname : u8&, tyname_len : u64, len : u64 mut&) -> primt
 	return zero;
 };
 
-impl_typarse_qual_match ::= macro(ename : u8&, ename_len : u64, q : tyqual static, o : u64 mut&) -> bool
+impl_typarse_qual_match ::= func(ename : u8&, ename_len : u64, q : tyqual, o : u64 mut&) -> bool
 {
 	// ok this shit is kinda wild ngl
-	[[__force_mutable]] qual_name ::= __concat(" ", __enumname(q));
-	deref(o) = cstrlen(qual_name);
-	yield cstr_starts_with_n(qual_name, ename, deref(o));
+	qname ::= __enumname(q);
+	if(deref(ename at 0) != ' ')
+	{
+		return false;
+	}
+	deref(o) = (cstrlen(qname) + 1);
+	return cstr_starts_with_n(qname, ename at 1, deref(o) - 1);
 };
 
 typarse_quals ::= func(extraname : u8&, extraname_len : u64, base_ty : ty mut&) -> u64
