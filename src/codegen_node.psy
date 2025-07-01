@@ -2012,13 +2012,16 @@ cg_unop_minus ::= func(operand : ast?, ctx : context mut, prog : program mut? ->
 			psyc_exit_failure();
 		}
 	}
-	if(ty_is_integral(opval.type))
+	if(!(ctx.typecheck_only))
 	{
-		(opval.ll) = LLVMBuildNeg(ir, opval.ll, "");
-	}
-	if(ty_is_floating_point(opval.type))
-	{
-		(opval.ll) = LLVMBuildFNeg(ir, opval.ll, "");
+		if(ty_is_integral(opval.type))
+		{
+			(opval.ll) = LLVMBuildNeg(ir, opval.ll, "");
+		}
+		if(ty_is_floating_point(opval.type))
+		{
+			(opval.ll) = LLVMBuildFNeg(ir, opval.ll, "");
+		}
 	}
 	(opval.tag) = (cgvtag.misc);
 	return opval;
@@ -2041,7 +2044,10 @@ cg_unop_bitwise_invert ::= func(operand : ast?, ctx : context mut, prog : progra
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	if(!(ctx.typecheck_only))
+	{
+		(opval.ll) = LLVMBuildNot(ir, opval.ll, "");
+	}
 	(opval.tag) = (cgvtag.misc);
 	return opval;
 };
