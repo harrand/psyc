@@ -10,9 +10,11 @@ decl_ty ::= func(node : ast?, s : scope mut? -> ty)
 	return zero;
 };
 
-semal_fnptrnode ::= func(node : ast?, s : scope mut? -> ty)
+semal_fnptrnode ::= func(node : ast?, s : scope mut?, prog : program mut? -> ty)
 {
 	decl ::= node->decl;
+	bn_end : u64 mut;
+	maybe_struct : structdef? mut;
 	if((decl.typename_len) == zstrlen(psyc_function_placeholder_typename))
 	{
 		if(streql_n(decl.typename, psyc_function_placeholder_typename, decl.typename_len))
@@ -20,7 +22,17 @@ semal_fnptrnode ::= func(node : ast?, s : scope mut? -> ty)
 			// function placeholder typename detected.
 			wipfn_node ::= ast_get_child(node@_, 0);
 			wipfn ::= wipfn_node->fn;
-			fn_retty ::= scope_parse_typename(s, wipfn.ret_typename, wipfn.ret_typename_len);
+			fn_retty : ty mut := scope_parse_typename(s, wipfn.ret_typename, wipfn.ret_typename_len);
+			if(ty_isbad(fn_retty))
+			{
+				bn_end = typarse_basename_end(wipfn.ret_typename, wipfn.ret_typename_len);
+				maybe_struct = scope_find_struct(s, wipfn.ret_typename, bn_end);
+				if(maybe_struct != zero)
+				{
+					semal_struct(maybe_struct@_, ref(prog->global), prog);
+					fn_retty = scope_parse_typename(s, wipfn.ret_typename, wipfn.ret_typename_len);
+				}
+			}
 			if(ty_isbad(fn_retty))
 			{
 				psyc_error_begin(wipfn_node->loc);
@@ -40,7 +52,21 @@ semal_fnptrnode ::= func(node : ast?, s : scope mut? -> ty)
 			{
 				cur_param_node ::= ast_get_child(wipfn_node@_, i);
 				cur_param_decl ::= cur_param_node->decl;
-				paramty ::= scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+				paramty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+				if(ty_isbad(paramty))
+				{
+					bn_end = typarse_basename_end(cur_param_decl.typename, cur_param_decl.typename_len);
+					maybe_struct = scope_find_struct(s, cur_param_decl.typename, bn_end);
+					putbytes(cur_param_decl.typename, bn_end);
+					putchar(10);
+					if(maybe_struct != zero)
+					{
+						putzstr("doing a delayed semal_struct...");
+						putchar(10);
+						semal_struct(maybe_struct@_, ref(prog->global), prog);
+						paramty = scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+					}
+				}
 				if(ty_isbad(paramty))
 				{
 					psyc_error_begin(cur_param_node->loc);
@@ -158,7 +184,7 @@ semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? 
 		}
 		if(ty_isbad(memty))
 		{
-			memty = semal_fnptrnode(memnode, s);
+			memty = semal_fnptrnode(memnode, s, prog);
 		}
 		if(typarse_extras(memdecl.extras, memdecl.extras_size, ref memty) < (memdecl.extras_size))
 		{
@@ -273,7 +299,7 @@ semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0
 		declty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
 		if(ty_isbad(declty))
 		{
-			declty = semal_fnptrnode(cur_param_node, s);
+			declty = semal_fnptrnode(cur_param_node, s, prog);
 		}
 		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
 		{
