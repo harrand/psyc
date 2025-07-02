@@ -311,13 +311,6 @@ bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	psyc_diag_end();
 };
 
-
-buildimpl_interpret_build_region_t ::= struct
-{
-	fn : func(prog : program mut?, reg : region?, file_scope : scope? -> v0);
-};
-buildimpl_interpret_build_region : buildimpl_interpret_build_region_t mut;
-
 get_build_instruction ::= func(name : u8?, name_len : u64 -> build_inst)
 {
 	i : u64 mut;
@@ -351,8 +344,7 @@ interpret_build_instruction ::= func(s : scope mut?, prog : program mut?, node :
 		region ::= scope_find_region(file_scope@_, callfunc.funcname, callfunc.funcname_len);
 		if(region != zero)
 		{
-			rgn ::= buildimpl_interpret_build_region.fn;
-			rgn(prog, region, file_scope);
+			interpret_build_region(prog, region, file_scope);
 		}
 		if(region == zero)
 		{
@@ -448,11 +440,6 @@ build_setup ::= func(a : arena mut? -> v0)
 	deref(build_instructions # ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
 	deref(build_instructions # ((build_inst.warning)@s64)) = build_fn{.fn := bi_warning;};
 	bar = a;
-
-	buildimpl_interpret_build_region = buildimpl_interpret_build_region_t
-	{
-		.fn := interpret_build_region;
-	};
 };
 
  == build ==
