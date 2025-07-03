@@ -1,5 +1,4 @@
 mod : u64 mut;
-cgar : arena mut? mut;
 
 // LLVM IR CODE GENERATION BEGIN
 
@@ -210,7 +209,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 		}
 		init_val = cgv_convert(init_val, declty, prog, node->loc, !care_about_init_ll);
 	}
-	name_zstr : u8 mut? := arena_alloc(cgar, 1 + (decl.name_len));
+	name_zstr : u8 mut? := arena_alloc(global_arena, 1 + (decl.name_len));
 	memcopy(name_zstr, decl.name, decl.name_len);
 	deref(name_zstr # (decl.name_len)) = 0;
 	if(!(var->is_global))
@@ -411,7 +410,7 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 {
 	chars ::= lit.chars;
 	len ::= lit.chars_len;
-	//zstr : u8 mut? := arena_alloc(cgar, len + 1);
+	//zstr : u8 mut? := arena_alloc(global_arena, len + 1);
 	//memcopy(zstr, chars, len);
 	//deref(zstr # len) = 0;
 
@@ -1589,7 +1588,7 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 		psyc_exit_failure();
 	}
 
-	ll_args : u64 mut? := arena_alloc(cgar, __sizeof(u64) * call_param_count);
+	ll_args : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * call_param_count);
 
 	paramnode : ast? mut;
 	reqty : ty mut;
@@ -2249,7 +2248,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 		psyc_exit_failure();
 	}
 
-	ll_args : u64 mut? := arena_alloc(cgar, __sizeof(u64) * call_param_count);
+	ll_args : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * call_param_count);
 
 	paramnode : ast? mut;
 	reqty : ty mut;
@@ -2501,7 +2500,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	if_scope_label ::= "if";
-	ifscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, if_scope_label, zstrlen(if_scope_label));
+	ifscope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, if_scope_label, zstrlen(if_scope_label));
 	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
 
 	// populate the else blk if there is one
@@ -2511,7 +2510,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	elsescope : scope mut? mut := zero;
 	if(else_node != zero)
 	{
-		elsescope = program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, else_scope_label, zstrlen(else_scope_label));
+		elsescope = program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, else_scope_label, zstrlen(else_scope_label));
 		ifnt = LLVMAppendBasicBlock(fn->codegen, else_scope_label);
 	}
 
@@ -2584,7 +2583,7 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	while_scope_label ::= "while";
-	whilescope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, while_scope_label, zstrlen(while_scope_label));
+	whilescope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, while_scope_label, zstrlen(while_scope_label));
 	(whilescope->codegen) = LLVMAppendBasicBlock(fn->codegen, while_scope_label);
 
 	whilecont ::= LLVMAppendBasicBlock(fn->codegen, "whilecont");
@@ -2654,7 +2653,7 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	for_scope_label ::= "for";
-	forscope ::= program_new_scope(prog, cgar, ctx.local, scope_type.code, node->loc, for_scope_label, zstrlen(for_scope_label));
+	forscope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, for_scope_label, zstrlen(for_scope_label));
 	(forscope->codegen) = LLVMAppendBasicBlock(fn->codegen, for_scope_label);
 
 	forcont ::= LLVMAppendBasicBlock(fn->codegen, "forcont");
@@ -2705,7 +2704,6 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 codegen_node_setup ::= func(a : arena mut?, h : cg_helper_functions -> v0)
 {
-	cgar = a;
 	cg = h;
 	i : u64 mut;
 
