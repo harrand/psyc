@@ -1,13 +1,13 @@
-permanent_arena_val : arena mut;
-permanent_arena : arena mut? mut;
+global_arena_val : arena mut;
+global_arena : arena mut? mut;
 
 frame_arena_val : arena mut;
 frame_arena : arena mut? mut;
 
 setup_arenas ::= func( -> v0)
 {
-	permanent_arena_val = arena_create(4096 * 1024);
-	permanent_arena = ref permanent_arena_val;
+	global_arena_val = arena_create(4096 * 1024);
+	global_arena = ref global_arena_val;
 
 	frame_arena_val = arena_create(4096 * 1024);
 	frame_arena = ref frame_arena_val;
@@ -16,10 +16,10 @@ setup_arenas ::= func( -> v0)
 destroy_arenas ::= func( -> v0)
 {
 	putzstr("arena free: ");
-	putuint(permanent_arena_val.cur);
+	putuint(global_arena_val.cur);
 	putzstr("B");
 	putchar(10);
-	arena_destroy(ref permanent_arena_val);
+	arena_destroy(ref global_arena_val);
 	arena_destroy(ref frame_arena_val);
 };
 
@@ -190,17 +190,17 @@ main ::= func( -> s32)
 	setup_arenas();
 	defer destroy_arenas();
 
-	lex_setup(permanent_arena);
-	grammar_setup(permanent_arena);
-	parse_setup(permanent_arena);
-	type_setup(permanent_arena);
-	progwalk_setup(permanent_arena);
-	build_setup(permanent_arena);
+	lex_setup(global_arena);
+	grammar_setup(global_arena);
+	parse_setup(global_arena);
+	type_setup(global_arena);
+	progwalk_setup(global_arena);
+	build_setup(global_arena);
 	sval_setup();
-	semal_setup(permanent_arena);
-	codegen_setup(permanent_arena);
-	assembly_setup(permanent_arena);
-	link_setup(permanent_arena);
+	semal_setup(global_arena);
+	codegen_setup(global_arena);
+	assembly_setup(global_arena);
+	link_setup(global_arena);
 
 	prog : program mut := zero;
 	default_progname ::= "program";
@@ -209,7 +209,7 @@ main ::= func( -> s32)
 	(prog.on_add_source_file) = add_source_file;
 	(prog.on_add_build_file) = add_build_file;
 	args ::= ref(prog.compile_args);
-	deref(args) = psyc_parse_args(permanent_arena);
+	deref(args) = psyc_parse_args(global_arena);
 	if(args->verbose_parse)
 	{
 		putzstr("grammar size: ");
@@ -229,7 +229,7 @@ main ::= func( -> s32)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	compile_program(ref prog, permanent_arena);
+	compile_program(ref prog, global_arena);
 	return 0;
 };
 
