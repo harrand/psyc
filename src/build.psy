@@ -1,5 +1,3 @@
-bar : arena mut? mut;
-
 build_inst ::= enum
 {
 	.run_command := 0;
@@ -55,7 +53,7 @@ bi_run_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 		psyc_exit_failure();
 	}
 
-	invoke_shell_command(path.chars, path.chars_len, bar);
+	invoke_shell_command(path.chars, path.chars_len, global_arena);
 };
 
 bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -74,7 +72,7 @@ bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> 
 	}
 
 	fn ::= prog->on_add_source_file;
-	fn(prog, path.chars, path.chars_len, bar);
+	fn(prog, path.chars, path.chars_len, global_arena);
 };
 
 bi_util_extension_is_psy ::= func(path : u8? -> bool)
@@ -111,12 +109,12 @@ bi_util_addsrc ::= func(path : u8? -> v0)
 		return;
 	}
 	fn ::= bi_util_prog->on_add_source_file;
-	full_path : u8 mut? := arena_alloc(bar, zstrlen(path) + zstrlen(bi_util_dir) + 2);
+	full_path : u8 mut? := arena_alloc(global_arena, zstrlen(path) + zstrlen(bi_util_dir) + 2);
 	memcopy(full_path, bi_util_dir, zstrlen(bi_util_dir));
 	deref(full_path # zstrlen(bi_util_dir)) = '/';
 	memcopy(full_path # (1 + zstrlen(bi_util_dir)), path, zstrlen(path));
 	deref(full_path # (1 + zstrlen(bi_util_dir) + zstrlen(path))) = 0;
-	fn(bi_util_prog, full_path, zstrlen(full_path), bar);
+	fn(bi_util_prog, full_path, zstrlen(full_path), global_arena);
 };
 
 bi_add_source_directory ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -134,13 +132,13 @@ bi_add_source_directory ::= func(s : scope mut?, node : ast?, prog : program mut
 		psyc_exit_failure();
 	}
 
-	path_zstr : u8 mut? := arena_alloc(bar, 1 + (path.chars_len));
+	path_zstr : u8 mut? := arena_alloc(global_arena, 1 + (path.chars_len));
 	memcopy(path_zstr, path.chars, path.chars_len);
 	deref(path_zstr # (path.chars_len)) = 0;
 
 	bi_util_prog = prog;
 	bi_util_dir = path_zstr;
-	directory_iterate(path_zstr, bi_util_addsrc, bar);
+	directory_iterate(path_zstr, bi_util_addsrc, global_arena);
 };
 
 bi_add_build_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -172,7 +170,7 @@ bi_add_build_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v
 	}
 
 	fn ::= prog->on_add_build_file;
-	fn(prog, path.chars, path.chars_len, build_config.chars, build_config.chars_len, bar);
+	fn(prog, path.chars, path.chars_len, build_config.chars, build_config.chars_len, global_arena);
 };
 
 bi_add_link_library ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -192,7 +190,7 @@ bi_add_link_library ::= func(s : scope mut?, node : ast?, prog : program mut? ->
 		psyc_exit_failure();
 	}
 
-	program_add_link_library(prog, path.chars, path.chars_len, bar);
+	program_add_link_library(prog, path.chars, path.chars_len, global_arena);
 };
 
 bi_set_optimization ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -396,7 +394,7 @@ interpret_node ::= func(prog : program mut?, ctx : context mut, file_scope : sco
 					.local := s;
 				}, prog);
 			}
-			scope_declare_variable(s, bar, variable
+			scope_declare_variable(s, global_arena, variable
 			{
 				.node := node;
 				.name := decl.name;
@@ -416,7 +414,7 @@ interpret_build_region ::= func(prog : program mut?, reg : region?, file_scope :
 	interpret_node(prog, context
 	{
 		.node := node;
-		.local := program_new_scope(prog, bar, ref(prog->global), scope_type.build_region, node->loc, "", 0);
+		.local := program_new_scope(prog, global_arena, ref(prog->global), scope_type.build_region, node->loc, "", 0);
 	}, file_scope);
 };
 
@@ -439,7 +437,6 @@ build_setup ::= func(a : arena mut? -> v0)
 	deref(build_instructions # ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
 	deref(build_instructions # ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
 	deref(build_instructions # ((build_inst.warning)@s64)) = build_fn{.fn := bi_warning;};
-	bar = a;
 };
 
  == build ==
