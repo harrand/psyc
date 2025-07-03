@@ -30,13 +30,22 @@
    	- [Block Statements](#stmt_blk)
    	- [Designator Statements](#stmt_decl)
    	- [Metaregion Statements](#stmt_metaregion)
+6. [Build Regions](#region)
 
 ## Programs <a name="programs"></a>
 
-There are no concept of translation units in Psy. Your project, and all the files it comprises, are a part of a single program. The Psy compiler is designed in such a way to analyse in multiple passes. This means:
+There are no concept of translation units in Psy. Your project, and all the files it comprises, are a part of a single program:
 - Order of declarations is unimportant. You can call a function, and not declare it until later - so long as the declaration is ultimately in the program somewhere.
-  	- This is also the case for structs and enums.
-- Due to the previous point, there is no concept of forward-declarations. Feel free to just... write code without metagaming it. I promise you, the compiler performance cost of allowing this is almost negligible.
+  	- This is also the case for structs, enums and macros.
+- A program has exactly one build file - that is, a .psy file that contains the source code of the program.
+	- You don't have to put the entire program's source code in this single file however. Using a build region, you can add additional source files to your program.
+   		- The order in which you add additional source files does not matter. These source files can rely on the build file, or the other way around, or each other in any kind of order.
+       	- The build region is also responsible for telling the compiler basic information about your program, such as:
+      		- Any libraries you link against. There is no restriction on this, but you should ensure they are ABI-compatible with your choice of linker/target.
+       	  	- The name of your output file (e.g 'foo.exe')
+       	  	- The type of your output file. This can be either an executable, or a library or a single object file containing the entire program's source code.
+       	  	- Optimisation level and build config flags.
+       	  	- For details, see [Build Regions](#region).
 
 ## Functions <a name="functions"></a>
 
@@ -390,3 +399,32 @@ Example:
 ```
 wglGetProcAddress ::= func(unnamedParam1 : u8& -> u64 weak) := extern;
 ```
+
+# Build Regions <a name="region"></a>
+Build regions are a special syntax within a .psy file that contain directives for the compiler regarding building the final program. Here is an example build region:
+
+```
+// a.psy
+== default ==
+{
+	set_executable("foo");
+	set_optimization(3);
+	run_command("echo building foo...");
+
+	static if(_win32)
+	{
+		add_link_library("User32.lib");
+	}
+}
+```
+
+Note that this is not a function - its purely a compile-time set of instructions that the compiler will use to inform its behaviour. This region is named 'default'.
+
+This means that, given:
+`psyc a.psy -b default`
+Then this region will be interpreted by the compiler. Note that 'default' is a special name - if no region name is specified via the `-b` flag then 'default' will be used. In this case, `psyc a.psy` works the same. When ran, this region means that:
+- The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .out for linux).
+- The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization.
+- During the build, before the output file is generated, the command `echo building foo...` will be invoked in a shell and its output is fed through to stdout.
+- If the host process is running on Windows, then:
+	- The final executable `foo.exe` will link against `User32.lib`.
