@@ -1,4 +1,4 @@
-# Psy Language Cheatsheet
+# Psy Language Reference
 
 # Table of Contents
 0. [Programs](#programs)
@@ -410,6 +410,7 @@ Build regions are a special syntax within a .psy file that contain directives fo
 	set_executable("foo");
 	set_optimization(3);
 	run_command("echo building foo...");
+	add_source_file("foo.psy");
 
 	static if(_win32)
 	{
@@ -426,5 +427,8 @@ Then this region will be interpreted by the compiler. Note that 'default' is a s
 - The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .out for linux).
 - The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization.
 - During the build, before the output file is generated, the command `echo building foo...` will be invoked in a shell and its output is fed through to stdout.
+- The file `foo.psy` will be compiled.
 - If the host process is running on Windows, then:
 	- The final executable `foo.exe` will link against `User32.lib`.
+
+Important Note: `add_source_file` will not invoke any build regions within the file that you added. To do that, you will want the `add_build_file` directive.
