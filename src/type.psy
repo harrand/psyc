@@ -1,15 +1,6 @@
 psyc_deduced_typename ::= "auto";
 psyc_function_placeholder_typename ::= "___fn";
 
-// global arena used by the type system.
-tyar : arena mut? mut;
-
-// tell me which arena im using on startup
-type_setup ::= func(a : arena mut? -> v0)
-{
-	tyar = a;
-};
-
 tyqual ::= enum
 {
 	.static := 1;
@@ -198,7 +189,7 @@ putty ::= func(t : ty -> v0)
 ty_ref ::= func(t : ty, q : tyqual -> ty)
 {
 	t2 ::= t;
-	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	underlying_data ::= arena_alloc(global_arena, __sizeof(ty));
 	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
@@ -222,7 +213,7 @@ ty_deref ::= func(t : ty -> ty)
 ty_arr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
 	t2 ::= t;
-	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	underlying_data ::= arena_alloc(global_arena, __sizeof(ty));
 	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
@@ -269,7 +260,7 @@ ty_getprim ::= func(p : primty, q : tyqual -> ty)
 ty_getarr ::= func(t : ty, len : u64, q : tyqual -> ty)
 {
 	t2 ::= t;
-	underlying_data ::= arena_alloc(tyar, __sizeof(ty));
+	underlying_data ::= arena_alloc(global_arena, __sizeof(ty));
 	memcopy(underlying_data, ref t2, __sizeof(ty));
 	return ty
 	{
@@ -285,9 +276,9 @@ ty_getarr ::= func(t : ty, len : u64, q : tyqual -> ty)
 
 ty_getfn ::= func(retty : ty, param_count : u64, q : tyqual -> ty)
 {
-	retty_alloc : ty mut? := arena_alloc(tyar, __sizeof(ty));
+	retty_alloc : ty mut? := arena_alloc(global_arena, __sizeof(ty));
 	deref(retty_alloc) = retty;
-	params_alloc : ty mut? := arena_alloc(tyar, __sizeof(ty) * param_count);
+	params_alloc : ty mut? := arena_alloc(global_arena, __sizeof(ty) * param_count);
 	// note: this zero'ing out is not strictly necessary. todo: debug only?
 	i : u64 mut;
 	for(i = 0, i < param_count, i = i + 1)
@@ -788,12 +779,12 @@ tybox_empty ::= func( -> tybox)
 	ret : tybox mut := zero;
 	(ret.structs_cap) = 8;
 	structs_bytes ::= __sizeof(deref (ret.structs)) * (ret.structs_cap);
-	(ret.structs) = arena_alloc(tyar, structs_bytes);
+	(ret.structs) = arena_alloc(global_arena, structs_bytes);
 	memfill(ret.structs, 0, structs_bytes);
 
 	(ret.enums_cap) = 8;
 	enums_bytes ::= __sizeof(deref (ret.enums)) * (ret.enums_cap);
-	(ret.enums) = arena_alloc(tyar, enums_bytes);
+	(ret.enums) = arena_alloc(global_arena, enums_bytes);
 	memfill(ret.enums, 0, enums_bytes);
 	return ret;
 };
@@ -826,7 +817,7 @@ impl_tybox_increase_struct_capacity ::= func(box : tybox mut? -> v0)
 	oldcap ::= box->structs_cap;
 	olddata ::= box->structs;
 	(box->structs_cap) = (box->structs_cap) * 2;
-	(box->structs) = arena_alloc(tyar, __sizeof(deref olddata) * (box->structs_cap));
+	(box->structs) = arena_alloc(global_arena, __sizeof(deref olddata) * (box->structs_cap));
 	memcopy(box->structs, olddata, oldcap * __sizeof(deref olddata));
 };
 
@@ -838,7 +829,7 @@ tybox_add_struct ::= func(box : tybox mut?, s : structty, loc : srcloc -> v0)
 	if((box->structs_cap) == 0)
 	{
 		(box->structs_cap) = 8;
-		(box->structs) = arena_alloc(tyar, __sizeof(deref (box->structs)) * (box->structs_cap));
+		(box->structs) = arena_alloc(global_arena, __sizeof(deref (box->structs)) * (box->structs_cap));
 	}
 	if((box->structs_size) >= (box->structs_cap))
 	{
@@ -890,7 +881,7 @@ impl_tybox_increase_enum_capacity ::= func(box : tybox mut? -> v0)
 	oldcap ::= box->enums_cap;
 	olddata ::= box->enums;
 	(box->enums_cap) = (box->enums_cap) * 2;
-	(box->enums) = arena_alloc(tyar, __sizeof(deref olddata) * (box->enums_cap));
+	(box->enums) = arena_alloc(global_arena, __sizeof(deref olddata) * (box->enums_cap));
 	memcopy(box->enums, olddata, oldcap * __sizeof(deref olddata));
 };
 
@@ -902,7 +893,7 @@ tybox_add_enum ::= func(box : tybox mut?, s : enumty, loc : srcloc -> v0)
 	if((box->enums_cap) == 0)
 	{
 		(box->enums_cap) = 8;
-		(box->enums) = arena_alloc(tyar, __sizeof(deref (box->enums)) * (box->enums_cap));
+		(box->enums) = arena_alloc(global_arena, __sizeof(deref (box->enums)) * (box->enums_cap));
 	}
 	if((box->enums_size) >= (box->enums_cap))
 	{

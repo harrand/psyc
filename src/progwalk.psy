@@ -9,7 +9,6 @@ progwalk_function ::= struct
 	fn : func(ctx : context mut, call : callcontext, prog : program mut? -> v0);
 };
 
-progar : arena mut? mut;
 node_jump_table : progwalk_function mut[1] mut;
 stmt_jump_table : progwalk_function mut[8] mut;
 expr_jump_table : progwalk_function mut[1] mut;
@@ -32,13 +31,13 @@ progwalk_flatten ::= func(call : callcontext, front_index : u64, back_index : u6
 	i : u64 mut;
 	for(i = 0, i < n, i = i + 1)
 	{
-		ast_add_child(parent@_, zero, progar);
+		ast_add_child(parent@_, zero, global_arena);
 	}
 	// parent children: [lhs..., node, rhs..., zero*n]
 	// move the rhs bits to the right 'n' times
 	// a memcpy will stomp on itself coz the regions could overlap
 	// so we create a buffer
-	buffer ::= arena_alloc(progar, rhslen * __sizeof(ast));
+	buffer ::= arena_alloc(global_arena, rhslen * __sizeof(ast));
 	// copy rhs... into it
 	memcopy(buffer, ast_get_child(parent@_, 1 + (call.idx)), rhslen * __sizeof(ast));
 	// now copy rhs... back in the buffer but a bit more forward
@@ -185,11 +184,11 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 	};
 	if(is_top_level_decl)
 	{
-		program_declare_variable(prog, progar, var);
+		program_declare_variable(prog, global_arena, var);
 	}
 	if(!is_top_level_decl)
 	{
-		scope_declare_variable(s, progar, var);
+		scope_declare_variable(s, global_arena, var);
 	}
 };
 
@@ -212,7 +211,7 @@ progwalk_region ::= func(ctx : context mut, call : callcontext, prog : program m
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	scope_declare_region(ctx.local, progar, region
+	scope_declare_region(ctx.local, global_arena, region
 	{
 		.node := node;
 		.name := reg.name;
@@ -229,7 +228,7 @@ progwalk_structdef ::= func(ctx : context mut, call : callcontext, prog : progra
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
-	program_declare_struct(prog, progar, structdef
+	program_declare_struct(prog, global_arena, structdef
 	{
 		.node := node;
 		.name := def.structname;
@@ -245,7 +244,7 @@ progwalk_enumdef ::= func(ctx : context mut, call : callcontext, prog : program 
 {
 	node ::= ctx.node;
 	def ::= node->enumdef;
-	program_declare_enum(prog, progar, enumdef
+	program_declare_enum(prog, global_arena, enumdef
 	{
 		.node := node;
 		.name := def.enumname;
@@ -306,7 +305,7 @@ progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 	funcscope = zero;
 	if(!(fn.is_extern))
 	{
-		funcscope = program_new_scope(prog, progar, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
+		funcscope = program_new_scope(prog, global_arena, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
 		progwalk_children_recursive(context
 		{
 			.node := node;
@@ -314,7 +313,7 @@ progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 		}, prog);
 	}
 
-	program_declare_function(prog, progar,
+	program_declare_function(prog, global_arena,
 		function{
 			.node := ctx.node;
 			.name := fn.fn_name;
@@ -384,7 +383,7 @@ progwalk_mac ::= func(ctx : context mut, call : callcontext, prog : program mut?
 		}
 	}
 
-	program_declare_macro(prog, progar, macrodef
+	program_declare_macro(prog, global_arena, macrodef
 	{
 		.node := node;
 		.name := mac.mac_name;
@@ -502,11 +501,10 @@ progwalk_call ::= func(ctx : context mut, call : callcontext, prog : program mut
 	(node->type) = (ast_type.composite);
 };
 
-progwalk_setup ::= func(a : arena mut? -> v0)
+progwalk_setup ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
-	progar = a;
 
 	deref(node_jump_table # 0) = progwalk_function{.fn := progwalk_stmt;};
 
@@ -529,7 +527,7 @@ progwalk_file ::= func(prog : program mut?, source : ast? -> scope mut?)
 	global ::= ref(prog->global);
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, progar, global, scope_type.file, source->loc, zero, zero);
+	file_scope ::= program_new_scope(prog, global_arena, global, scope_type.file, source->loc, zero, zero);
 
 	// remember these are direct children, not recursive children
 	// e.g top-level funcs/structs aswell as global variables

@@ -1,5 +1,3 @@
-par : arena mut? mut;
-
 parse_state ::= struct
 {
 	lex : lex_state?;
@@ -26,7 +24,7 @@ node_array_reserve ::= func(s : parse_state mut?, cap : u64 -> v0)
 	oldcap ::= s->node_array_cap;
 
 	(s->node_array_cap) = cap;
-	(s->node_array) = arena_alloc(par, __sizeof(deref (s->node_array)) * (s->node_array_cap));
+	(s->node_array) = arena_alloc(global_arena, __sizeof(deref (s->node_array)) * (s->node_array_cap));
 	if(oldptr != zero)
 	{
 		memcopy(s->node_array, oldptr, oldcap);
@@ -238,7 +236,7 @@ commit ::= func(s : parse_state mut?, nodes_to_commit : parse_slice -> v0)
 		off ::= (nodes_to_commit.off) + i;
 		cur ::= ((s->node_array) # off);
 
-		ast_add_child(parent, deref cur, par);
+		ast_add_child(parent, deref cur, global_arena);
 	}
 
 	impl_remove_nodes(s, nodes_to_commit);
@@ -477,11 +475,6 @@ parse ::= func(lex : lex_state?, verbose_parse : bool -> parse_state)
 		ast_verbose_print(ref (state.root), 0);
 	}
 	return state;
-};
-
-parse_setup ::= func(a : arena mut? -> v0)
-{
-	par = a;
 };
 
 == build ==

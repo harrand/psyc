@@ -1,5 +1,3 @@
-lexar : arena mut? mut;
-
 impl_is_whitespace ::= func(char : u8 -> bool)
 {
 	if(char == 0x20) // ' '
@@ -663,7 +661,7 @@ ls_current_loc ::= func(s : lex_state? -> srcloc)
 
 lex_newtable ::= func( -> lex_table mut?)
 {
-	ret : lex_table mut? := arena_alloc(lexar, __sizeof(lex_table));
+	ret : lex_table mut? := arena_alloc(global_arena, __sizeof(lex_table));
 	memfill(ret, 0, __sizeof(lex_table));
 	symbol_continuation_setup(ret);
 	return ret;
@@ -868,11 +866,10 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 	}
 };
 
-lex_setup ::= func(a : arena mut? -> v0)
+lex_setup ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
-	lexar = a;
 
 	main_table_setup(ref main_table);
 	string_table_setup();
@@ -971,7 +968,7 @@ ls_push_token ::= func(state : lex_state mut?, token : token_data -> v0)
 		old_tokens ::= state->tokens;
 
 		(state->tokens_cap) = (state->tokens_cap) * 2;
-		(state->tokens) = arena_alloc(lexar, __sizeof(deref (state->tokens)) * (state->tokens_cap));
+		(state->tokens) = arena_alloc(global_arena, __sizeof(deref (state->tokens)) * (state->tokens_cap));
 		memcopy(state->tokens, old_tokens, __sizeof(deref (state->tokens)) * oldcap);
 	}
 	deref((state->tokens) # (state->tokens_size)) = token;
@@ -1100,7 +1097,7 @@ lex ::= func(path : u8?, src : u8?, verbose_lex : bool -> lex_state)
 	(ret.path) = path;
 	(ret.src) = src;
 	(ret.tokens_cap) = 1024;
-	(ret.tokens) = arena_alloc(lexar, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
+	(ret.tokens) = arena_alloc(global_arena, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
 	len ::= zstrlen(src);
 
 	while((ret.cursor) < len@_)

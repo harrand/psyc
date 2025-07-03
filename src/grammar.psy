@@ -1,5 +1,3 @@
-ar : arena mut? mut;
-
 hashnode ::= func(t : ast_type -> u64)
 {
 	v ::= (t@s64) * 1093;
@@ -622,7 +620,7 @@ keywordretexpr2ret ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> par
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_add_child((ret.nodes) # 0, last, ar);
+	ast_add_child((ret.nodes) # 0, last, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -653,7 +651,7 @@ keywordyieldexpr2yield ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 ->
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_add_child((ret.nodes) # 0, last, ar);
+	ast_add_child((ret.nodes) # 0, last, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -888,7 +886,7 @@ tokenexpr2unop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_unop_set_operand((ret.nodes) # 0, last, ar);
+	ast_unop_set_operand((ret.nodes) # 0, last, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -917,7 +915,7 @@ deferstmt2unop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_unop_set_operand((ret.nodes) # 0, last, ar);
+	ast_unop_set_operand((ret.nodes) # 0, last, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -956,7 +954,7 @@ exprtok2halfbiop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_biop_set_lhs((ret.nodes) # 0, first, ar);
+	ast_biop_set_lhs((ret.nodes) # 0, first, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -974,7 +972,7 @@ wipbiop2biop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_val
 
 
 	(firstptr->type) = (ast_type.expr);
-	ast_biop_set_rhs(firstptr, last, ar);
+	ast_biop_set_rhs(firstptr, last, global_arena);
 
 	expr ::= first.expr;
 	wipbiop ::= expr.biop;
@@ -1024,8 +1022,8 @@ wipbiop2biop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_val
 					.childcap := 0;
 					.children := zero;
 				};
-				ast_biop_set_lhs(rhs, deref lhs_rhs, ar);
-				ast_biop_set_rhs(rhs, rhscpy, ar);
+				ast_biop_set_lhs(rhs, deref lhs_rhs, global_arena);
+				ast_biop_set_rhs(rhs, rhscpy, global_arena);
 				did_operator_precedence_shift = true;
 
 				firstexpr ::= ref(firstptr->expr);
@@ -1186,7 +1184,7 @@ wipdeclwipfnred2fnptrdecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64
 		.childcap := 0;
 		.childcount := 0;
 	};
-	ast_add_child((ret.nodes) # 0, last, ar);
+	ast_add_child((ret.nodes) # 0, last, global_arena);
 	(ret.nodes_size) = 1;
 };
 
@@ -1704,7 +1702,7 @@ ifelse2if ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 	defer return ret;
 
 
-	ast_add_child(firstptr, last, ar);
+	ast_add_child(firstptr, last, global_arena);
 };
 
 symoparen2wipcall ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -1967,7 +1965,7 @@ wipinitexpr2init ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse
 	(firstptr->type) = (ast_type.init);
 	(firstptr->cursor_end) = (last.cursor_end);
 	
-	ast_add_child(firstptr, last, ar);
+	ast_add_child(firstptr, last, global_arena);
 };
 
 symbolobrace2wipstructinit ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -3446,13 +3444,12 @@ grammar_commit_stmt ::= func(nodes : ast mut?, s : ast_stmt -> v0)
 		grammar_rule{.fn := commit_head;});
 };
 
-grammar_setup ::= func(a : arena mut? -> v0)
+grammar_setup ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
-	ar = a;
 	parse_table_cap = 2500;
-	parse_table = arena_alloc(a, __sizeof(deref parse_table) * parse_table_cap);
+	parse_table = arena_alloc(global_arena, __sizeof(deref parse_table) * parse_table_cap);
 	memfill(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
 	nodes : ast mut[16];
