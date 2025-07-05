@@ -1,3 +1,8 @@
+mod : u64 mut;
+
+ir : u64 mut;
+db : u64 mut;
+
 str2cstr ::= func(str : u8?, len : u64, a : arena mut? -> u8?)
 {
 	cstr : u8 mut? := arena_alloc(a, len + 1);
@@ -414,6 +419,7 @@ codegen ::= func(prog : program mut? -> v0)
 	defer psyc_timed_end();
 	mod = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
+	db = LLVMCreateDIBuilder(mod);
 
 	args ::= ref(prog->compile_args);
 
@@ -456,6 +462,10 @@ codegen ::= func(prog : program mut? -> v0)
 	LLVMSetExternallyInitialized(fltused, 0);
 	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
+	if(prog->debug_symbols)
+	{
+		LLVMDIBuilderFinalize(db);
+	}
 	cg_finish();
 	(prog->codegen) = mod;
 };
