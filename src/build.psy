@@ -9,7 +9,8 @@ build_inst ::= enum
 	.set_executable := 6;
 	.set_library := 7;
 	.set_object := 8;
-	.warning := 9;
+	.debug_symbols := 9;
+	.warning := 10;
 };
 
 build_fn ::= struct
@@ -34,7 +35,7 @@ build_resolve_constexpr ::= func(s : scope mut?, node : ast?, prog : program mut
 	return ret;
 };
 
-build_instructions : build_fn mut[10] mut;
+build_instructions : build_fn mut[11] mut;
 
 bi_run_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 {
@@ -287,6 +288,26 @@ bi_set_object ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	(prog->type) = (program_type.object);
 };
 
+bi_debug_symbols ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+{
+	psyc_timed_begin(psyc_stage.build);
+	defer psyc_timed_end();
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	msg ::= param.literal;
+	if((msg.type) != (ast_literal_type.bool_literal))
+	{
+		psyc_error_begin(child->loc);
+		putzstr("Argument to debug_symbols must be a string literal, but you have passed a ");
+		putzstr(__enumname(msg.type));
+		putzstr(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	(prog->debug_symbols) = msg.boolean;
+};
+
 bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
@@ -436,6 +457,7 @@ build_setup ::= func(a : arena mut? -> v0)
 	deref(build_instructions # ((build_inst.set_executable)@s64)) = build_fn{.fn := bi_set_executable;};
 	deref(build_instructions # ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
 	deref(build_instructions # ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
+	deref(build_instructions # ((build_inst.debug_symbols)@s64)) = build_fn{.fn := bi_debug_symbols;};
 	deref(build_instructions # ((build_inst.warning)@s64)) = build_fn{.fn := bi_warning;};
 };
 
