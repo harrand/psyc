@@ -2,6 +2,7 @@ mod : u64 mut;
 
 ir : u64 mut;
 db : u64 mut;
+di_cu : u64 mut;
 
 str2cstr ::= func(str : u8?, len : u64, a : arena mut? -> u8?)
 {
@@ -413,6 +414,11 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	}
 };
 
+static if(_win32)
+{
+	GetCurrentDirectoryA ::= func(nBufferLength : u32, lpBuffer : u8 mut? -> u32) := extern;
+}
+
 codegen ::= func(prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
@@ -421,6 +427,7 @@ codegen ::= func(prog : program mut? -> v0)
 	ir = LLVMCreateBuilder();
 	db = LLVMCreateDIBuilder(mod);
 
+	codegen_setup_debug_builder(prog);
 	args ::= ref(prog->compile_args);
 
 	glob ::= ref(prog->global);
@@ -468,6 +475,27 @@ codegen ::= func(prog : program mut? -> v0)
 	}
 	cg_finish();
 	(prog->codegen) = mod;
+};
+
+codegen_setup_debug_builder ::= func(prog : program mut? -> v0)
+{
+	args ::= ref(prog->compile_args);
+
+	dirname_len : u64 weak := GetCurrentDirectoryA(0, zero);
+	dirname : u8 mut? := arena_alloc(global_arena, dirname_len);
+	GetCurrentDirectoryA(dirname_len, dirname);
+	di_buildfile ::= LLVMDIBuilderCreateFile(db, args->build_file, zstrlen(args->build_file), dirname, dirname_len);
+	LLVM_DWARF_SRC_LANG_C ::= 1;
+	producer_str ::= "Psyc";
+	is_optimized ::= prog->opt != zero;
+	LLVMDWARFEmissionNone ::= 0;
+	LLVMDWARFEmissionFull ::= 1;
+	emission : s32 weak mut := LLVMDWARFEmissionNone;
+	if(prog->debug_symbols)
+	{
+		emission = LLVMDWARFEmissionFull;
+	}
+	di_cu = LLVMDIBuilderCreateCompileUnit(db, LLVM_DWARF_SRC_LANG_C, di_buildfile, producer_str, zstrlen(producer_str), is_optimized@s32, zero, zero, zero, zero, zero, emission, zero, true@s32, false@s32, zero, zero, zero, zero);
 };
 
 codegen_setup ::= func(a : arena mut? -> v0)
