@@ -1,16 +1,17 @@
 build_inst ::= enum
 {
-	.run_command := 0;
-	.add_source_file := 1;
-	.add_source_directory := 2;
-	.add_build_file := 3;
-	.add_link_library := 4;
-	.set_optimization := 5;
-	.set_executable := 6;
-	.set_library := 7;
-	.set_object := 8;
-	.debug_symbols := 9;
-	.warning := 10;
+	.prebuild_command := 0;
+	.postbuild_command := 1;
+	.add_source_file := 2;
+	.add_source_directory := 3;
+	.add_build_file := 4;
+	.add_link_library := 5;
+	.set_optimization := 6;
+	.set_executable := 7;
+	.set_library := 8;
+	.set_object := 9;
+	.debug_symbols := 10;
+	.warning := 11;
 };
 
 build_fn ::= struct
@@ -35,9 +36,9 @@ build_resolve_constexpr ::= func(s : scope mut?, node : ast?, prog : program mut
 	return ret;
 };
 
-build_instructions : build_fn mut[11] mut;
+build_instructions : build_fn mut[12] mut;
 
-bi_run_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_prebuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
@@ -47,7 +48,7 @@ bi_run_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	if((path.type) != (ast_literal_type.string_literal))
 	{
 		psyc_error_begin(child->loc);
-		putzstr("Argument to add_source_file must be a string literal, but you have passed a ");
+		putzstr("Argument to prebuild_command must be a string literal, but you have passed a ");
 		putzstr(__enumname(path.type));
 		putzstr(" literal");
 		psyc_diag_end();
@@ -55,6 +56,48 @@ bi_run_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	}
 
 	invoke_shell_command(path.chars, path.chars_len, global_arena);
+};
+
+bi_postbuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+{
+	psyc_timed_begin(psyc_stage.build);
+	defer psyc_timed_end();
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	path ::= param.literal;
+	if((path.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		putzstr("Argument to postbuild_command must be a string literal, but you have passed a ");
+		putzstr(__enumname(path.type));
+		putzstr(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// todo: store this in program somewhere so its ran later.
+	//invoke_shell_command(path.chars, path.chars_len, global_arena);
+	if(prog->postbuild_commands == zero)
+	{
+		prog->postbuild_commands_cap = 8;
+		prog->postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_commands)) * (prog->postbuild_commands_cap));
+		prog->postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_command_lens)) * (prog->postbuild_commands_cap));
+	}
+	while(prog->postbuild_commands_size >= prog->postbuild_commands_cap)
+	{
+		oldcap ::= prog->postbuild_commands_cap;
+		olddata ::= prog->postbuild_commands;
+		oldlens ::= prog->postbuild_command_lens;
+
+		prog->postbuild_commands_cap = oldcap * 2;
+		prog->postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_commands)) * (prog->postbuild_commands_cap));
+		memcopy(prog->postbuild_commands, olddata, __sizeof(deref(prog->postbuild_commands)) * oldcap);
+		prog->postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_command_lens)) * (prog->postbuild_commands_cap));
+		memcopy(prog->postbuild_command_lens, olddata, __sizeof(deref(prog->postbuild_command_lens)) * oldcap);
+	}
+	deref(prog->postbuild_commands # (prog->postbuild_commands_size)) = path.chars;
+	deref(prog->postbuild_command_lens # (prog->postbuild_commands_size)) = path.chars_len;
+	prog->postbuild_commands_size = (prog->postbuild_commands_size + 1);
 };
 
 bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
@@ -448,7 +491,8 @@ build_setup ::= func(a : arena mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
-	deref(build_instructions # ((build_inst.run_command)@s64)) = build_fn{.fn := bi_run_command;};
+	deref(build_instructions # ((build_inst.prebuild_command)@s64)) = build_fn{.fn := bi_prebuild_command;};
+	deref(build_instructions # ((build_inst.postbuild_command)@s64)) = build_fn{.fn := bi_postbuild_command;};
 	deref(build_instructions # ((build_inst.add_source_file)@s64)) = build_fn{.fn := bi_add_source_file;};
 	deref(build_instructions # ((build_inst.add_source_directory)@s64)) = build_fn{.fn := bi_add_source_directory;};
 	deref(build_instructions # ((build_inst.add_build_file)@s64)) = build_fn{.fn := bi_add_build_file;};

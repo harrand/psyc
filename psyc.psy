@@ -230,7 +230,6 @@ main ::= func( -> s32)
 		putuint(grammar_install_count);
 		putchar(10);
 	}
-	defer psyc_report_timings();
 
 	if(!file_exists(args->build_file))
 	{
@@ -244,6 +243,17 @@ main ::= func( -> s32)
 		psyc_exit_failure();
 	}
 	compile_program(ref prog, global_arena);
+	psyc_report_timings();
+
+	// do postbuild commands...
+	i : u64 mut;
+	for(i = 0, i < prog.postbuild_commands_size, i = i + 1)
+	{
+		cmd ::= deref(prog.postbuild_commands # i);
+		len ::= deref(prog.postbuild_command_lens # i);
+
+		invoke_shell_command(cmd, len, global_arena);
+	}
 	return 0;
 };
 
