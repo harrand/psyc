@@ -204,6 +204,21 @@ compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
 	link(prog);
 };
 
+do_postbuild ::= func(prog : program mut? -> v0)
+{
+	psyc_timed_begin(psyc_stage.build);
+	defer psyc_timed_end();
+
+	i : u64 mut;
+	for(i = 0, i < prog->postbuild_commands_size, i = i + 1)
+	{
+		cmd ::= deref(prog->postbuild_commands # i);
+		len ::= deref(prog->postbuild_command_lens # i);
+
+		invoke_shell_command(cmd, len, global_arena);
+	}
+};
+
 main ::= func( -> s32)
 {
 	setup_arenas();
@@ -243,17 +258,9 @@ main ::= func( -> s32)
 		psyc_exit_failure();
 	}
 	compile_program(ref prog, global_arena);
+
+	do_postbuild(ref prog);
 	psyc_report_timings();
-
-	// do postbuild commands...
-	i : u64 mut;
-	for(i = 0, i < prog.postbuild_commands_size, i = i + 1)
-	{
-		cmd ::= deref(prog.postbuild_commands # i);
-		len ::= deref(prog.postbuild_command_lens # i);
-
-		invoke_shell_command(cmd, len, global_arena);
-	}
 	return 0;
 };
 
