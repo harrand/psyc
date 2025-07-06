@@ -3,34 +3,12 @@ on:
   push:
     branches: [ master ]
 jobs:
+  fetch-compiler:
+    uses: ./.github/workflows/fetch-compiler-win32.yml
   build:
     runs-on: windows-latest
+    needs: fetch-compiler
     steps:
-      - name: Download compiler binary from latest (including pre-releases)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $Headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "gh-actions" }
-          $repo = "harrand/psyc"
-          $releases = Invoke-RestMethod -Headers $Headers -Uri "https://api.github.com/repos/$repo/releases"
-
-          # Get the first release (most recent), regardless of prerelease/draft status
-          $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
-
-          if (-not $latest) {
-            Write-Error "No non-draft releases found."
-            exit 1
-          }
-
-          $asset = $latest.assets | Where-Object { $_.name -eq "psyc.exe" }
-
-          if (-not $asset) {
-            Write-Error "Could not find asset 'psyc.exe' in latest release."
-            exit 1
-          }
-
-          Invoke-WebRequest -Uri $asset.browser_download_url -Headers $Headers -OutFile "psyc.exe"
       - name: Write basic hello world program
         shell: pwsh
         run:  |

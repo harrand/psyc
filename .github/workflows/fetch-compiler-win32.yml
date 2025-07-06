@@ -1,0 +1,36 @@
+name: "Fetch Compiler Win32"
+on:
+  workflow_call:
+jobs:
+  fetch:
+    runs-on: windows-latest
+    outputs:
+      compiler-path: ${{ steps.set-output.outputs.compiler-path }}
+    steps:
+      - name: Download compiler binary from latest (including pre-releases)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $Headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "gh-actions" }
+          $repo = "harrand/psyc"
+          $releases = Invoke-RestMethod -Headers $Headers -Uri "https://api.github.com/repos/$repo/releases"
+
+          $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+
+          if (-not $latest) {
+            Write-Error "No non-draft releases found."
+            exit 1
+          }
+
+          $asset = $latest.assets | Where-Object { $_.name -eq "psyc.exe" }
+
+          if (-not $asset) {
+            Write-Error "Could not find asset 'psyc.exe' in latest release."
+            exit 1
+          }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -Headers $Headers -OutFile "psyc.exe"
+      - name: Set compiler output path
+        id: set-output
+        run: echo "compiler-path=psyc.exe" >> $env:GITHUB_OUTPUT
