@@ -1,0 +1,25 @@
+name: "Hello World"
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download compiler binary from latest release
+        shell: pwsh
+        run: |
+          $repo = "${{ github.repository }}"
+          $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
+          
+          $asset = $releaseInfo.assets | Where-Object { $_.name -eq "psyc.exe" }
+          
+          if (-not $asset) {
+            Write-Error "Could not find asset 'psyc.exe' in the latest release."
+            exit 1
+          }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "psyc.exe"
+      - name: Write basic hello world program
+        run:  |
+          echo "main ::= func(-> s32){return 0;};" > helloworld.psy
+      - name: Compile program
+        run:  |
+          psyc helloworld.psy
