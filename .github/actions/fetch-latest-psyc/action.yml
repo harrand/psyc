@@ -1,0 +1,37 @@
+name: Fetch Latest Psyc
+description: Retrieve a 'psyc' executable from the latest release or pre-release
+
+runs:
+  using: "composite"
+  steps:
+    # Windows
+    - name: Fetch Windows compiler
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ env.GH_TOKEN }}
+      run: |
+        $Headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "gh-actions" }
+        $repo = "harrand/psyc"
+        $releases = Invoke-RestMethod -Headers $Headers -Uri "https://api.github.com/repos/$repo/releases"
+        $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+        $asset = $latest.assets | Where-Object { $_.name -eq "psyc.exe" }
+        Invoke-WebRequest -Uri $asset.browser_download_url -Headers $Headers -OutFile "psyc.exe"
+    # Linux
+    - name: Fetch Linux compiler
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GH_TOKEN }}
+      run: |
+        repo="harrand/psyc"
+        headers=("-H" "Authorization: Bearer $GH_TOKEN" "-H" "User-Agent: gh-actions")
+        releases=$(curl -s "${headers[@]}" "https://api.github.com/repos/$repo/releases")
+        url=$(echo "$releases" | jq -r '.[] | select(.draft == false) | .assets[] | select(.name == "psyc") | .browser_download_url' | head -n 1)
+        if [ -z "$url" ]; then
+          echo "Could not find psyc binary for Linux."
+          exit 1
+        fi
+        curl -L -o psyc "$url"
+        chmod +x psyc
+
