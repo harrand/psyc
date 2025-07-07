@@ -223,6 +223,109 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 	};
 };
 
+cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
+{
+	node ::= ctx.node;
+	pathnode ::= ast_get_child(node@_, 0);
+	path ::= sval_node(context
+	{
+		.node := pathnode;
+		.local := ctx.local;
+	}, prog);
+	if((path.tag) != (sval_tag.literal))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("Invalid call to builtin - param 0 must be a literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	lit ::= path.literal;
+	if((lit.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("Invalid call to builtin - param 0 must be a string literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	zstr ::= sstr2zstr(lit.chars, lit.chars_len, global_arena);
+	if(!file_exists(zstr))
+	{
+		psyc_error_begin(pathnode->loc);
+		putzstr("Cannot embed file ");
+		putchar('"');
+		putzstr(zstr);
+		putchar('"');
+		putzstr(" as the file cannot be found");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	buflen ::= file_size_bytes(zstr);
+	buf : u8 mut? := arena_alloc(global_arena, buflen);
+	file_read(zstr, buf, buflen);
+
+	result_node : ast mut := deref node;
+	result_node.children = zero;
+	result_node.childcount = 0;
+	result_node.type = ast_type.init;
+	embed_data_tyname ::= "embed_data";
+	result_node.init = ast_init
+	{
+		.name := embed_data_tyname;
+		.name_len := zstrlen(embed_data_tyname);
+	};
+	
+	data_node : ast mut := deref node;
+	data_node.children = zero;
+	data_node.childcount = 0;
+	data_node.type = ast_type.init;
+	data_node.init = ast_init
+	{
+		.name := "data";
+		.name_len := zstrlen("data");
+	};
+	data_value ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.string_literal;
+			.chars := buf;
+			.chars_len := buflen;
+		});
+	};
+	ast_add_child(ref data_node, data_value, global_arena);
+
+	size_node : ast mut := deref node;
+	size_node.children = zero;
+	size_node.childcount = 0;
+	size_node.type = ast_type.init;
+	size_node.init = ast_init
+	{
+		.name := "size";
+		.name_len := zstrlen("size");
+	};
+	size_value ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.integral;
+			.integral := buflen@_;
+		});
+	};
+	ast_add_child(ref size_node, size_value, global_arena);
+
+	ast_add_child(ref result_node, data_node, global_arena);
+	ast_add_child(ref result_node, size_node, global_arena);
+	return cg_structinit(zero, context
+	{
+		.node := ref result_node;
+		.local := ctx.local;
+		.typecheck_only := ctx.typecheck_only;
+	}, prog);
+};
+
 cg_builtin_error ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
