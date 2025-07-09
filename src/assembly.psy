@@ -29,6 +29,16 @@ assemble ::= func(prog : program? -> v0)
 		psyc_exit_failure();
 	}
 
+	codeview_str ::= "CodeView";
+	codeview_metadata ::= LLVMMDStringInContext2(LLVMGetGlobalContext(), codeview_str, zstrlen(codeview_str));
+	one_value ::= cg_integer_literal(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := 1;
+	}, zero, prog);
+	val_metadata ::= LLVMValueAsMetadata(one_value.ll);
+	LLVMAddModuleFlag(prog->codegen, 0, codeview_str, zstrlen(codeview_str), val_metadata);
+
 	// these represent backend codegen flags (e.g asm instructions used)
 	// they arent the same as O0-O3 but both offer increasing runtime perf
 	// for that reason i will directly re-use prog->opt
