@@ -520,14 +520,15 @@ progwalk_setup ::= func(-> v0)
 	deref(expr_jump_table # 0) = progwalk_function{.fn := progwalk_call;};
 };
 
-progwalk_file ::= func(prog : program mut?, source : ast? -> scope mut?)
+progwalk_file ::= func(prog : program mut?, source : ast?, path : u8?, len : u64 -> scope mut?)
 {
 	psyc_timed_begin(psyc_stage.semal);
 	defer psyc_timed_end();
 	global ::= ref(prog->global);
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, global_arena, global, scope_type.file, source->loc, zero, zero);
+	file_scope ::= program_new_scope(prog, global_arena, global, scope_type.file, source->loc, path, len);
+	cg_file_scope(file_scope, prog);
 
 	// remember these are direct children, not recursive children
 	// e.g top-level funcs/structs aswell as global variables

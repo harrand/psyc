@@ -423,9 +423,6 @@ codegen ::= func(prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
 	defer psyc_timed_end();
-	mod = LLVMModuleCreateWithName("Psy Program");
-	ir = LLVMCreateBuilder();
-	db = LLVMCreateDIBuilder(mod);
 
 	codegen_setup_debug_builder(prog);
 	args ::= ref(prog->compile_args);
@@ -496,10 +493,15 @@ codegen_setup_debug_builder ::= func(prog : program mut? -> v0)
 		emission = LLVMDWARFEmissionFull;
 	}
 	di_cu = LLVMDIBuilderCreateCompileUnit(db, LLVM_DWARF_SRC_LANG_C, di_buildfile, producer_str, zstrlen(producer_str), is_optimized@s32, zero, zero, zero, zero, zero, emission, zero, true@s32, false@s32, zero, zero, zero, zero);
+	glob ::= ref(prog->global);
+	glob->dbg = di_cu;
 };
 
 codegen_setup ::= func(a : arena mut? -> v0)
 {
+	mod = LLVMModuleCreateWithName("Psy Program");
+	ir = LLVMCreateBuilder();
+	db = LLVMCreateDIBuilder(mod);
 	codegen_node_setup(a, cg_helper_functions
 	{
 		.children := cg_children;

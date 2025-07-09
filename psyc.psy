@@ -56,11 +56,12 @@ fully_read_file ::= func(path : u8?, a : arena mut? -> u8 mut?)
 
 precompile_build_file ::= func(prog : program mut?, path : u8?, a : arena mut? -> v0)
 {
+	len ::= zstrlen(path);
 	source ::= fully_read_file(path, a);
 	args ::= ref(prog->compile_args);
 	l ::= lex(path, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(prog, ref(p.root));
+	file_scope ::= progwalk_file(prog, ref(p.root), path, len);
 
 	region ::= scope_find_region(file_scope, args->build_config, zstrlen(args->build_config));
 	if(region == zero)
@@ -93,7 +94,7 @@ add_source_file ::= func(progptr : v0? weak, path : u8?, len : u64, a : arena mu
 	source ::= fully_read_file(pathstr, a);
 	l ::= lex(pathstr, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	progwalk_file(prog, ref(p.root));
+	progwalk_file(prog, ref(p.root), path, len);
 };
 
 add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0)
@@ -109,7 +110,7 @@ add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config 
 	source ::= fully_read_file(pathstr, a);
 	l ::= lex(pathstr, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(prog, ref(p.root));
+	file_scope ::= progwalk_file(prog, ref(p.root), path, len);
 
 	region ::= scope_find_region(file_scope, build_config, build_config_len);
 	if(region == zero)
@@ -141,7 +142,7 @@ add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 	//}
 	l ::= lex("preload.psy", source, false);
 	p ::= parse(ref l, false);
-	progwalk_file(prog, ref(p.root));
+	progwalk_file(prog, ref(p.root), "preload.psy", zstrlen("preload.psy"));
 
 	args ::= prog->compile_args;
 
@@ -158,7 +159,7 @@ add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 
 	l2 ::= lex("preconfig.psy", src2, false);
 	p2 ::= parse(ref l2, false);
-	progwalk_file(prog, ref(p2.root));
+	progwalk_file(prog, ref(p2.root), "preconfig.psy", zstrlen("preconfig.psy"));
 };
 
 add_entrypoint ::= func(prog : program mut? -> v0)
@@ -173,7 +174,7 @@ add_entrypoint ::= func(prog : program mut? -> v0)
 	//}
 	l ::= lex("entrypoint.psy", source, false);
 	p ::= parse(ref l, false);
-	progwalk_file(prog, ref(p.root));
+	progwalk_file(prog, ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
 };
 
 compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
