@@ -253,6 +253,20 @@ cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut?
 	}
 };
 
+cg_define_debug_information_for_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
+{
+	funcscope ::= (fn->impl_scope)@scope mut?;
+	node ::= fn->node;
+
+	filescope ::= scope_get_parent_filescope(funcscope, prog);
+	file_di ::= filescope->dbg;
+	// todo: set subroutine type properly
+	metadata_ty : u64 := zero;
+	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, zero, false@s32);
+	LLVMSetSubprogram(fn->codegen, di_subprogram);
+	funcscope->dbg = di_subprogram;
+};
+
 cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
 {
 	if(fn->is_extern)
@@ -278,6 +292,8 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	(funcscope->codegen) = LLVMAppendBasicBlock(fn->codegen, "entry");
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
+
+	cg_define_debug_information_for_func(fn, s, prog);
 
 	i : u64 mut;
 

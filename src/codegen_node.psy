@@ -20,15 +20,12 @@ di_emit_location ::= func(ctx : context, prog : program? -> v0)
 	s ::= ctx.local;
 	n ::= ctx.node;
 	di_scope ::= s->dbg;
-	if(di_scope != zero)
+	if(di_scope == zero)
 	{
-		dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
-		LLVMSetCurrentDebugLocation2(ir, dloc);
+		di_scope = (prog->global).dbg;
 	}
-	else
-	{
-		LLVMSetCurrentDebugLocation2(ir, prog->global.dbg);
-	}
+	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
+	LLVMSetCurrentDebugLocation2(ir, dloc);
 };
 
 // node
@@ -51,7 +48,7 @@ cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut? 
 cg_expr ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
-	//di_emit_location(ctx, prog);
+	di_emit_location(ctx, prog);
 	return cg_expr_common(node->expr, ctx, prog);
 };
 
