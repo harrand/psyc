@@ -289,7 +289,7 @@ cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.type := ast_type.expr;
 		.expr := make_literal_expr(ast_literal_expr
 		{
-			.type := ast_literal_type.string_literal;
+.type := ast_literal_type.string_literal;
 			.chars := buf;
 			.chars_len := buflen;
 		});
@@ -318,6 +318,96 @@ cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 	ast_add_child(ref result_node, data_node, global_arena);
 	ast_add_child(ref result_node, size_node, global_arena);
+	return cg_structinit(zero, context
+	{
+		.node := ref result_node;
+		.local := ctx.local;
+		.typecheck_only := ctx.typecheck_only;
+	}, prog);
+};
+
+cg_builtin_curloc ::= func(ctx : context mut, prog : program mut? -> cgv)
+{
+	node ::= ctx.node;
+	loc ::= node->loc;
+	result_node : ast mut := deref node;
+	result_node.children = zero;
+	result_node.childcount = 0;
+	result_node.type = ast_type.init;
+	srcloc_tyname ::= "srcloc";
+	result_node.init = ast_init
+	{
+		.name := srcloc_tyname;
+		.name_len := zstrlen(srcloc_tyname);
+	};
+
+	filescope ::= scope_get_parent_filescope(ctx.local, prog);
+	
+	file_node : ast mut := deref node;
+	file_node.children = zero;
+	file_node.childcount = 0;
+	file_node.type = ast_type.init;
+	file_node.init = ast_init
+	{
+		.name := "file";
+		.name_len := zstrlen("file");
+	};
+	file_value ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.string_literal;
+			.chars := filescope->scope_label;
+			.chars_len := filescope->scope_label_len;
+		});
+	};
+	ast_add_child(ref file_node, file_value, global_arena);
+
+	line_node : ast mut := deref node;
+	line_node.children = zero;
+	line_node.childcount = 0;
+	line_node.type = ast_type.init;
+	line_node.init = ast_init
+	{
+		.name := "line";
+		.name_len := zstrlen("line");
+	};
+	line_value ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.integral;
+			.integral := loc.line@_;
+		});
+	};
+	ast_add_child(ref line_node, line_value, global_arena);
+
+	col_node : ast mut := deref node;
+	col_node.children = zero;
+	col_node.childcount = 0;
+	col_node.type = ast_type.init;
+	col_node.init = ast_init
+	{
+		.name := "column";
+		.name_len := zstrlen("column");
+	};
+	col_value ::= ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.integral;
+			.integral := loc.column@_;
+		});
+	};
+	ast_add_child(ref col_node, col_value, global_arena);
+
+	ast_add_child(ref result_node, file_node, global_arena);
+	ast_add_child(ref result_node, line_node, global_arena);
+	ast_add_child(ref result_node, col_node, global_arena);
+
 	return cg_structinit(zero, context
 	{
 		.node := ref result_node;
