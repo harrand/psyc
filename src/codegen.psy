@@ -143,6 +143,65 @@ cg_type ::= func(t : ty, prog : program mut? -> u64)
 	return 0;
 };
 
+di_type ::= func(t : ty, prog : program mut? -> u64)
+{
+	if(ty_isbad(t))
+	{
+		psyc_panic(zero, "attempted to codegen cg_type(badtype). semal should've caught this. compiler bug.");
+	}
+	if((t.tag) == (tytag.prim))
+	{
+		return di_primty(t.prim);
+	}
+	if((t.tag) == (tytag.enm))
+	{
+		return di_primty(primty.s64);
+	}
+	if((t.tag) == (tytag.ptr))
+	{
+		ptr ::= t.ptr;
+		u ::= deref((ptr.underlying)@ty?);
+		di_u ::= di_type(u, prog);
+		//return LLVMPointerType(cg_u, 0);
+	}
+	if((t.tag) == (tytag.strct))
+	{
+		strct ::= t.strct;
+		def ::= program_find_struct(prog, strct.name, strct.name_len);
+		if((def->codegen) == 0)
+		{
+			// todo: need to cg_struct here.
+			cg_struct_ptr.fn(def@_, prog);
+		}
+		return def->dbg;
+	}
+	if((t.tag) == (tytag.fn))
+	{
+		//fn ::= t.fn;
+		//paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count));
+
+		//ret_cg ::= cg_type(deref((fn.return_type)@ty?), prog);
+		//param_tys ::= (fn.param_types)@ty?;
+
+		//i : u64 mut;
+		//for(i = 0, i < (fn.param_count), i = i + 1)
+		//{
+		//	deref(paramdata # i) = cg_type(deref(param_tys # i), prog);
+		//}
+
+		//parcountu32 ::= (fn.param_count)@u32;
+		//return LLVMFunctionType(ret_cg, paramdata, parcountu32, false@s32);
+	}
+	if((t.tag) == (tytag.arr))
+	{
+		arr ::= t.arr;
+		u_cg ::= di_type(deref((arr.underlying)@ty?), prog);
+		//return LLVMArrayType2(u_cg, arr.len);
+	}
+	psyc_panic(zero, "control flow reached end of di_type - compiler bug.");
+	return 0;
+};
+
 cgu_is_defer ::= func(node : ast? -> bool)
 {
 	if(ast_is_expr(node, ast_expr_type.unop))
@@ -222,6 +281,32 @@ cg_children ::= func(ctx : context mut, prog : program mut?, offset : u64, back_
 	}
 };
 
+cg_define_debug_information_for_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
+{
+	node ::= def->node;
+	type ::= def->type;
+	if(ty_isbad(type))
+	{
+		psyc_panic(node->loc, "cg_struct structdef's type was badtype. semal should've sorted this - compiler bug.");
+	}
+	strct ::= type.strct;
+	memtys ::= (strct.member_types)@ty?;
+	memcount ::= strct.member_count;
+	di_memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * memcount);
+
+	i : u64 mut;
+	for(i = 0, i < memcount, i = i + 1)
+	{
+		deref(di_memarr # i) = di_type(deref(memtys # i), prog);
+	}
+
+	// todo: get the bloody file the struct is defined in...
+	struct_file_scope ::= prog->global;
+	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
+	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
+	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope.dbg, def->name, def->name_len, struct_file_scope.dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
+};
+
 cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 {
 	if((def->codegen) != 0)
@@ -249,6 +334,8 @@ cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 	deref(name_zstr # (strct.name_len)) = 0;
 	(def->codegen) = LLVMStructCreateNamed(LLVMGetGlobalContext(), name_zstr);
 	LLVMStructSetBody(def->codegen, memarr, memcount@u32, false@s32);
+
+	cg_define_debug_information_for_struct(def, prog);
 };
 
 cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
