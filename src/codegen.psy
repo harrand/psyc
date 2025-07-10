@@ -162,7 +162,7 @@ di_type ::= func(t : ty, prog : program mut? -> u64)
 		ptr ::= t.ptr;
 		u ::= deref((ptr.underlying)@ty?);
 		di_u ::= di_type(u, prog);
-		//return LLVMPointerType(cg_u, 0);
+		return LLVMDIBuilderCreatePointerType(db, di_u, 64, zero, zero, zero, zero);
 	}
 	if((t.tag) == (tytag.strct))
 	{
@@ -177,26 +177,31 @@ di_type ::= func(t : ty, prog : program mut? -> u64)
 	}
 	if((t.tag) == (tytag.fn))
 	{
-		//fn ::= t.fn;
-		//paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count));
+		fn ::= t.fn;
+		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count + 1));
 
-		//ret_cg ::= cg_type(deref((fn.return_type)@ty?), prog);
-		//param_tys ::= (fn.param_types)@ty?;
+		ret_di ::= di_type(deref((fn.return_type)@ty?), prog);
+		param_tys ::= (fn.param_types)@ty?;
 
-		//i : u64 mut;
-		//for(i = 0, i < (fn.param_count), i = i + 1)
-		//{
-		//	deref(paramdata # i) = cg_type(deref(param_tys # i), prog);
-		//}
+		i : u64 mut;
+		deref(paramdata # 0) = ret_di;
+		for(i = 0, i < (fn.param_count), i = i + 1)
+		{
+			deref(paramdata # (i + 1)) = di_type(deref(param_tys # i), prog);
+		}
 
-		//parcountu32 ::= (fn.param_count)@u32;
-		//return LLVMFunctionType(ret_cg, paramdata, parcountu32, false@s32);
+		// todo: dont lie
+		file_scope ::= prog->global;
+		return LLVMDIBuilderCreateSubroutineType(db, file_scope.dbg, paramdata, fn.param_count + 1, zero);
 	}
 	if((t.tag) == (tytag.arr))
 	{
 		arr ::= t.arr;
-		u_cg ::= di_type(deref((arr.underlying)@ty?), prog);
-		//return LLVMArrayType2(u_cg, arr.len);
+		u_di ::= di_type(deref((arr.underlying)@ty?), prog);
+		subrange ::= LLVMDIBuilderGetOrCreateSubrange(db, 0, arr.len);
+		size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(t, prog));
+		align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(t, prog));
+		return LLVMDIBuilderCreateArrayType(db, arr.len * size * 8, align * 8, u_di, ref subrange, 1);
 	}
 	psyc_panic(zero, "control flow reached end of di_type - compiler bug.");
 	return 0;
@@ -368,8 +373,7 @@ cg_define_debug_information_for_func ::= func(fn : function mut?, s : scope mut?
 
 	filescope ::= scope_get_parent_filescope(funcscope, prog);
 	file_di ::= filescope->dbg;
-	// todo: set subroutine type properly
-	metadata_ty : u64 := zero;
+	metadata_ty : u64 := di_type(fn->type, prog);
 	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, zero, false@s32);
 	LLVMSetSubprogram(fn->codegen, di_subprogram);
 	funcscope->dbg = di_subprogram;
