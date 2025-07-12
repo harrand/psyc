@@ -1,12 +1,3 @@
-cg_helper_functions ::= struct
-{
-	children : func(ctx : context mut, prog : program mut?, offset : u64, back_offset : u64 -> v0);
-	type : func(t : ty, prog : program mut? -> u64);
-};
-cg : cg_helper_functions mut;
-
-// cgv code begins here
-
 cgvtag ::= enum
 {
 	.misc := 1;
@@ -43,11 +34,11 @@ cgv_zero_as ::= func(type : ty, prog : program mut? -> cgv)
 	{
 		ptr ::= type.ptr;
 		underlying ::= deref((ptr.underlying)@ty?);
-		cg_u ::= cg.type(underlying, prog);
+		cg_u ::= cg_type(underlying, prog);
 		(ret.ll) = LLVMConstPointerNull(LLVMPointerType(cg_u, 0));
 		return ret;
 	}
-	cg_t ::= cg.type(type, prog);
+	cg_t ::= cg_type(type, prog);
 	(ret.ll) = LLVMConstNull(cg_t);
 	return ret;
 };
@@ -78,7 +69,7 @@ cgv_convert ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc, typech
 
 cgv_load ::= func(v : cgv mut, prog : program mut? -> cgv)
 {
-	(v.ll) = LLVMBuildLoad2(ir, cg.type(v.type, prog), v.ll, "");
+	(v.ll) = LLVMBuildLoad2(ir, cg_type(v.type, prog), v.ll, "");
 	return v;
 };
 

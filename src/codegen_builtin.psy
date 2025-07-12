@@ -39,7 +39,7 @@ cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return cg_literal(make_literal_expr(ast_literal_expr
 	{
 		.type := ast_literal_type.integral;
-		.integral := LLVMABISizeOfType(dl, cg.type(type, prog))@_;
+		.integral := LLVMABISizeOfType(dl, cg_type(type, prog))@_;
 	}), ctx, prog);
 };
 
@@ -69,7 +69,7 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return cg_literal(make_literal_expr(ast_literal_expr
 	{
 		.type := ast_literal_type.integral;
-		.integral := LLVMABIAlignmentOfType(dl, cg.type(type, prog))@_;
+		.integral := LLVMABIAlignmentOfType(dl, cg_type(type, prog))@_;
 	}), ctx, prog);
 };
 
@@ -141,8 +141,8 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 	curval : cgv mut;
 	for(i = 0, i < arrlen, i = i + 1)
 	{
-		deref(index_list # 1) = LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), i, false@s32);
-		offset_ll = LLVMBuildGEP2(ir, cg.type(type, prog), ptr.ll, index_list # 1, 1, "");
+		deref(index_list # 1) = LLVMConstInt(cg_type(ty_getprim(primty.s64, zero), prog), i, false@s32);
+		offset_ll = LLVMBuildGEP2(ir, cg_type(type, prog), ptr.ll, index_list # 1, 1, "");
 
 		curnode = ast_get_child(node@_, 2 + i);
 		
@@ -188,7 +188,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 	type ::= enumval.type;
 	enm ::= type.enm;
 	retty ::= ty_ref(ty_getprim(primty.u8, zero), zero);
-	llty ::= cg.type(retty, prog);
+	llty ::= cg_type(retty, prog);
 	ll ::= LLVMBuildAlloca(ir, llty, "__enumname_dynamic");
 	badenumval ::= LLVMBuildGlobalString(ir, "badenum", "badenum");
 	LLVMBuildStore(ir, badenumval, ll);
@@ -198,7 +198,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 		val ::= deref((enm.entry_values) # i);
 		name ::= deref((enm.entry_names) # i);
 		name_len ::= deref((enm.entry_name_lens) # i);
-		val_ll ::= LLVMConstInt(cg.type(ty_getprim(primty.s64, zero), prog), val, false@s32);
+		val_ll ::= LLVMConstInt(cg_type(ty_getprim(primty.s64, zero), prog), val, false@s32);
 		cond ::= LLVMBuildICmp(ir, 32, val_ll, enumval.ll, "");
 
 		cond_blk ::= LLVMAppendBasicBlock(fn->codegen, "enumname_if");

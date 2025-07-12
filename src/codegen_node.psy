@@ -227,7 +227,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 	}
 
 	(var->type) = declty;
-	cgty ::= cg.type(declty, prog);
+	cgty ::= cg_type(declty, prog);
 
 	if(init_node != zero)
 	{
@@ -358,7 +358,7 @@ cg_composite ::= func(ctx : context mut, prog : program mut? -> cgv)
 	// then pretend *we* are the terminator instead (last-children-terminator-checking magic for LLVM)
 	s ::= ctx.local;
 	oldterm ::= s->terminator;
-	cg.children(ctx, prog, 0, 0);
+	cg_children(ctx, prog, 0, 0);
 	if((s->terminator) != oldterm)
 	{
 		// yes, new terminator
@@ -387,7 +387,7 @@ cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg.type(type, prog), lit.integral, false@s32);
+		.ll := LLVMConstInt(cg_type(type, prog), lit.integral, false@s32);
 		.type := type;
 	};
 };
@@ -399,7 +399,7 @@ cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, pr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstReal(cg.type(type, prog), lit.floating_point);
+		.ll := LLVMConstReal(cg_type(type, prog), lit.floating_point);
 		.type := type;
 	};
 };
@@ -429,7 +429,7 @@ cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg.type(type, prog), deref(chars # 0), false@s32);
+		.ll := LLVMConstInt(cg_type(type, prog), deref(chars # 0), false@s32);
 		.type := type;
 	};
 };
@@ -478,7 +478,7 @@ cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg.type(type, prog), lit.boolean, false@s32);
+		.ll := LLVMConstInt(cg_type(type, prog), lit.boolean, false@s32);
 		.type := type;
 	};
 };
@@ -1476,13 +1476,13 @@ cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mu
 		if(ty_is(lhs_val.type, tytag.arr))
 		{
 			// do array things
-			(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(lhs_val.type, prog), lhs_val.ll, index_list # 0, 2, "");
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(lhs_val.type, prog), lhs_val.ll, index_list # 0, 2, "");
 		}
 		if(ty_is(lhs_val.type, tytag.ptr))
 		{
 			// do pointer gep
 			cgv_load_if_variable(ref lhs_val, prog);
-			(lhs_val.ll) = LLVMBuildGEP2(ir, cg.type(elem_ty, prog), lhs_val.ll, index_list # 1, 1, "");
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(elem_ty, prog), lhs_val.ll, index_list # 1, 1, "");
 		}
 	}
 	(lhs_val.tag) = (cgvtag.misc);
@@ -1585,9 +1585,9 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 		if((lhs_val.tag) == (cgvtag.var))
 		{
 			// variable! ll should be an alloca or GEP'd alloca
-			member_ll = LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			member_ll = LLVMBuildStructGEP2(ir, cg_type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
 			// we need the function itself to call it, so we force a load directly afterwards too
-			member_ll = LLVMBuildLoad2(ir, cg.type(ty_ref(selected_memty, zero), prog), member_ll, "");
+			member_ll = LLVMBuildLoad2(ir, cg_type(ty_ref(selected_memty, zero), prog), member_ll, "");
 		}
 		if((lhs_val.tag) != (cgvtag.var))
 		{
@@ -1642,7 +1642,7 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 	ret_ll : u64 mut := 0;
 	if(!(ctx.typecheck_only))
 	{
-		ret_ll = LLVMBuildCall2(ir, cg.type(selected_memty, prog), member_ll, ll_args, call_param_count@u32, "");
+		ret_ll = LLVMBuildCall2(ir, cg_type(selected_memty, prog), member_ll, ll_args, call_param_count@u32, "");
 	}
 	return cgv
 	{
@@ -1807,7 +1807,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 		};
 		if(!(ctx.typecheck_only))
 		{
-			(ret.ll) = LLVMBuildStructGEP2(ir, cg.type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
 		}
 
 		return ret;
@@ -1939,7 +1939,7 @@ cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 	};
 	if(!(ctx.typecheck_only))
 	{
-		(ret.ll) = LLVMBuildStructGEP2(ir, cg.type(lhs_uty, prog), lhs_val.ll, selected_memidx@u32, "");
+		(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_uty, prog), lhs_val.ll, selected_memidx@u32, "");
 	}
 	return ret;
 };
@@ -2143,7 +2143,7 @@ cg_unop_deref ::= func(operand : ast?, ctx : context mut, prog : program mut? ->
 	(opval.type) = ty_deref(opval.type);
 	if(!(ctx.typecheck_only))
 	{
-		(opval.ll) = LLVMBuildLoad2(ir, cg.type(opval.type, prog), opval.ll, "");
+		(opval.ll) = LLVMBuildLoad2(ir, cg_type(opval.type, prog), opval.ll, "");
 	}
 	return opval;
 };
@@ -2302,7 +2302,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 	ret_ll : u64 mut := 0;
 	if(!(ctx.typecheck_only))
 	{
-		ret_ll = LLVMBuildCall2(ir, cg.type(fnty, prog), ll, ll_args, call_param_count@u32, "");
+		ret_ll = LLVMBuildCall2(ir, cg_type(fnty, prog), ll, ll_args, call_param_count@u32, "");
 	}
 	return cgv
 	{
@@ -2318,7 +2318,7 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut? 
 	inits ::= node->childcount;
 	structty ::= type.strct;
 
-	struct_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+	struct_ll : u64 mut := LLVMGetUndef(cg_type(type, prog));
 
 	memtys ::= (structty.member_types)@ty?;
 	// write in the inits
@@ -2415,7 +2415,7 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut? -> 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	arr_ll : u64 mut := LLVMGetUndef(cg.type(type, prog));
+	arr_ll : u64 mut := LLVMGetUndef(cg_type(type, prog));
 	i : u64 mut;
 	childnode : ast? mut;
 	child_val : cgv mut;
@@ -2556,7 +2556,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	{
 		ifscope_back_offset = 1;
 	}
-	cg.children(context
+	cg_children(context
 	{
 		.node := node;
 		.local := ifscope;
@@ -2571,7 +2571,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	if(else_node != zero)
 	{
 		LLVMPositionBuilderAtEnd(ir, ifnt);
-		cg.children(context
+		cg_children(context
 		{
 			.node := else_node;
 			.local := elsescope;
@@ -2618,7 +2618,7 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 	// populate inside the while blk
 	LLVMPositionBuilderAtEnd(ir, whilescope->codegen);
-	cg.children(context
+	cg_children(context
 	{
 		.node := node;
 		.local := whilescope;
@@ -2688,7 +2688,7 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 	// populate inside the for blk
 	LLVMPositionBuilderAtEnd(ir, forscope->codegen);
-	cg.children(context
+	cg_children(context
 	{
 		.node := node;
 		.local := forscope;
@@ -2730,9 +2730,8 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 // LLVM IR CODE GENERATION END
 
-codegen_node_setup ::= func(a : arena mut?, h : cg_helper_functions -> v0)
+codegen_node_setup ::= func(-> v0)
 {
-	cg = h;
 	i : u64 mut;
 
 	// populate tables
