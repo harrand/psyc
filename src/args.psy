@@ -57,6 +57,8 @@ psyc_compile_args ::= struct
 	verbose_parse : bool;
 	verbose_codegen : bool;
 	verbose_link : bool;
+
+	requested_version : bool;
 };
 
 psyc_parse_args ::= func(a : arena mut? -> psyc_compile_args)
@@ -118,8 +120,19 @@ psyc_parse_args ::= func(a : arena mut? -> psyc_compile_args)
 			{
 				(ret.verbose_link) = true;
 			}
+			if(zstreql(curarg, "-v"))
+			{
+				ret.requested_version = true;
+			}
 			if(zstreql(curarg, "-b"))
 			{
+				if(i + 1 >= argc)
+				{
+					psyc_error_begin(zero);
+					putzstr("-b must be followed by a parameter");
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
 				(ret.build_config) = (deref nextarg);
 				i = i + 1;
 			}

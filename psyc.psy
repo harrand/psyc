@@ -234,10 +234,10 @@ main ::= func( -> s32)
 
 	prog : program mut := zero;
 	default_progname ::= "program";
-	(prog.name) = default_progname;
-	(prog.name_len) = zstrlen(default_progname);
-	(prog.on_add_source_file) = add_source_file;
-	(prog.on_add_build_file) = add_build_file;
+	prog.name = default_progname;
+	prog.name_len = zstrlen(default_progname);
+	prog.on_add_source_file = add_source_file;
+	prog.on_add_build_file = add_build_file;
 	args ::= ref(prog.compile_args);
 	deref(args) = psyc_parse_args(global_arena);
 	if(args->verbose_parse)
@@ -247,6 +247,23 @@ main ::= func( -> s32)
 		putchar(10);
 	}
 
+	if(args->build_file == zero)
+	{
+		if(args->requested_version)
+		{
+			// probably just did psyc -v
+			// print the version and return silently
+			ver ::= __embed("ver.txt");
+			putzstr("Psyc ");
+			putbytes(ver.data, ver.size);
+			putchar(10);
+			return 0;
+		}
+		psyc_error_begin(zero);
+		putzstr("no build file specified");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	if(!file_exists(args->build_file))
 	{
 		psyc_error_begin(zero);
@@ -270,15 +287,31 @@ srcloc_current ::= func( -> srcloc)
 	return zero;
 };
 
+== debug ==
+{
+	_base();
+	set_optimization(0);
+	debug_symbols(true);
+}
+
+== release ==
+{
+	_base();
+	set_optimization(3);
+}
+
 == default ==
+{
+	warning("no build config specified, defaulting to 'debug'");
+	debug();
+}
+
+== _base ==
 {
 	add_source_directory("src/stdlib");
 	add_source_directory("src");
 
 	set_executable("psyc2");
-	set_optimization(0);
-	debug_symbols(true);
-
 	add_link_library("Kernel32.lib");
 	add_link_library("Shell32.lib");
 
