@@ -115,18 +115,6 @@ psyc_panic ::= func(my_srcloc : srcloc, msg : u8? -> v0)
 	psyc_exit_failure();
 };
 
-psyc_gettime ::= func( -> s64)
-{
-	static if(_win32)
-	{
-		t : s64 mut;
-		QueryPerformanceCounter(ref t);
-		f : s64 mut;
-		QueryPerformanceFrequency(ref f);
-		return t * 1000000 / f;
-	}
-};
-
 psyc_set_stage ::= func(stage : psyc_stage -> v0)
 {
 	current_stage = stage;
@@ -137,13 +125,13 @@ _t : s64 mut;
 psyc_timed_begin ::= func(stage : psyc_stage -> v0)
 {
 	psyc_set_stage(stage);
-	_t = psyc_gettime();
+	_t = time_static();
 };
 
 psyc_timed_end ::= func( -> v0)
 {
 	s ::= current_stage@s64;
-	_diff ::= (psyc_gettime() - _t)@f32 weak;
+	_diff ::= (time_static() - _t)@f32 weak;
 	_diff_f32 ::= _diff / (1000000.0@f32);
 	deref(psyc_stage_times # s) = (deref(psyc_stage_times # s) + _diff_f32);
 	psyc_set_stage(zero);
