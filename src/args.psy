@@ -1,43 +1,38 @@
 static if(_win32)
 {
-	GetCommandLineW ::= func( -> u16? ):= extern;
-	CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
-	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
-	LocalFree ::= func(hMem : u64 -> u64 ):= extern;
-}
-
-impl_win32_get_args ::= func(argc : s32 mut?, argv : u8?? mut?, a : arena mut? -> v0)
-{
-	cmd_line ::= GetCommandLineW();
-	wide_argc : s32 mut;
-	wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
-
-	if(wide_argv == zero)
+	impl_win32_get_args ::= func(argc : s32 mut?, argv : u8?? mut?, a : arena mut? -> v0)
 	{
-		deref(argc) = 0;
-	}
+		cmd_line ::= GetCommandLineW();
+		wide_argc : s32 mut;
+		wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
 
-	args_cap : u64 mut := wide_argc@_;
-	args : u8 mut? mut? mut := arena_alloc(a, __sizeof(u8?) * wide_argc);
-	args_size : u64 mut := 0;
-
-	i : s32 mut;
-	for(i = 0, i < wide_argc, i = i + 1)
-	{
-		size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
-		if(size_needed > 0)
+		if(wide_argv == zero)
 		{
-			deref(args # args_size) = arena_alloc(a, __sizeof(u8) * size_needed);
-			WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
-			args_size = args_size + 1;
+			deref(argc) = 0;
 		}
-	}
 
-	LocalFree(wide_argv@u64);
+		args_cap : u64 mut := wide_argc@_;
+		args : u8 mut? mut? mut := arena_alloc(a, __sizeof(u8?) * wide_argc);
+		args_size : u64 mut := 0;
 
-	deref(argc) = wide_argc;
-	deref(argv) = args@_;
-};
+		i : s32 mut;
+		for(i = 0, i < wide_argc, i = i + 1)
+		{
+			size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
+			if(size_needed > 0)
+			{
+				deref(args # args_size) = arena_alloc(a, __sizeof(u8) * size_needed);
+				WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
+				args_size = args_size + 1;
+			}
+		}
+
+		LocalFree(wide_argv@u64);
+
+		deref(argc) = wide_argc;
+		deref(argv) = args@_;
+	};
+}
 
 psyc_build_target ::= enum
 {
