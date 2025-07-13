@@ -45,12 +45,34 @@ append_msvc_flags ::= func(str : u8 mut? mut? -> v0)
 	deref(str) = newstr;
 };
 
+append_linux_gnu_flags ::= func(str : u8 mut? mut? -> v0)
+{
+	oldstr ::= deref str;
+	oldlen ::= zstrlen(oldstr);
+
+	gnu_flags ::= " -z -stack-size=8000000 --static --entry=_start /usr/lib/x86_64-linux-gnu/libc.a /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o /usr/lib/x86_64-linux-gnu/crtn.o";
+	space_needed ::= zstrlen(gnu_flags);
+
+	newstr : u8 mut? := arena_alloc(global_arena, space_needed + oldlen + 1);
+	memcopy(newstr, oldstr, oldlen);
+	memcopy(newstr # oldlen, gnu_flags, zstrlen(gnu_flags));
+	deref(newstr # (space_needed + oldlen)) = 0;
+	deref(str) = newstr;
+};
+
 append_output ::= func(prog : program?, str : u8 mut? mut? -> v0)
 {
 	oldstr ::= deref str;
 	oldlen ::= zstrlen(oldstr);
 
-	out_flags ::= " /OUT:";
+	static if(_win32)
+	{
+		out_flags ::= " /OUT:";
+	}
+	else
+	{
+		out_flags ::= " -o ";
+	}
 	out_name ::= prog->name;
 	extension ::= default_exe_extension;
 	space_needed ::= zstrlen(out_flags) + (prog->name_len) + zstrlen(extension);
@@ -69,7 +91,14 @@ prepend_linker_name ::= func(str : u8 mut? mut? -> v0)
 	oldstr ::= deref str;
 	oldlen ::= zstrlen(oldstr);
 
-	lnkname ::= "lld-link ";
+	static if(_win32)
+	{
+		lnkname ::= "lld-link ";
+	}
+	else
+	{
+		lnkname ::= "ld ";
+	}
 	space_needed ::= zstrlen(lnkname);
 
 	newstr : u8 mut? := arena_alloc(global_arena, space_needed + oldlen + 1);
@@ -84,7 +113,14 @@ prepend_archiver_name ::= func(str : u8 mut? mut? -> v0)
 	oldstr ::= deref str;
 	oldlen ::= zstrlen(oldstr);
 
-	lnkname ::= "llvm-lib ";
+	static if(_win32)
+	{
+		lnkname ::= "llvm-lib ";
+	}
+	else
+	{
+		lnkname ::= "ar rcs ";
+	}
 	space_needed ::= zstrlen(lnkname);
 
 	newstr : u8 mut? := arena_alloc(global_arena, space_needed + oldlen + 1);
@@ -113,7 +149,14 @@ link ::= func(prog : program mut? -> v0)
 	if((prog->type) == (program_type.executable))
 	{
 		append_link_library_string(prog, ref cmd);
-		append_msvc_flags(ref cmd);
+		static if(_win32)
+		{
+			append_msvc_flags(ref cmd);
+		}
+		else
+		{
+			append_linux_gnu_flags(ref cmd);
+		}
 		prepend_linker_name(ref cmd);
 		append_output(prog, ref cmd);
 	}
