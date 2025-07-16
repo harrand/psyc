@@ -115,7 +115,6 @@ bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> 
 		psyc_exit_failure();
 	}
 
-	putzstr("add source file called...");
 	fn ::= prog->on_add_source_file;
 	fn(prog, path.chars, path.chars_len, global_arena);
 };
@@ -180,8 +179,6 @@ bi_add_source_directory ::= func(s : scope mut?, node : ast?, prog : program mut
 	path_zstr : u8 mut? := arena_alloc(global_arena, 1 + (path.chars_len));
 	memcopy(path_zstr, path.chars, path.chars_len);
 	deref(path_zstr # (path.chars_len)) = 0;
-
-	putzstr("add source directory called...");
 
 	bi_util_prog = prog;
 	bi_util_dir = path_zstr;
@@ -423,9 +420,6 @@ interpret_build_instruction ::= func(s : scope mut?, prog : program mut?, node :
 		}
 		return;
 	}
-	putzstr("build instruction: ");
-	putzstr(__enumname(instid));
-	putchar(10);
 	inst ::= deref(build_instructions # (instid@s64));
 	inst.fn(s, node, prog);
 };
@@ -489,18 +483,18 @@ interpret_build_region ::= func(prog : program mut?, reg : region?, file_scope :
 };
 
 default_build_dir ::= "build";
-//static if(_win32)
-//{
-//	default_obj_extension ::= ".o";
-//	default_exe_extension ::= ".exe";
-//	default_lib_extension ::= ".lib";
-//}
-//else
-//{
+static if(_win32)
+{
+	default_obj_extension ::= ".o";
+	default_exe_extension ::= ".exe";
+	default_lib_extension ::= ".lib";
+}
+else
+{
 	default_obj_extension ::= ".o";
 	default_exe_extension ::= ".out";
 	default_lib_extension ::= ".a";
-//}
+}
 
 build_setup ::= func( -> v0)
 {

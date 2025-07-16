@@ -78,15 +78,11 @@ precompile_build_file ::= func(prog : program mut?, path : u8?, a : arena mut? -
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	putzstr("interpretting build region...");
 	interpret_build_region(prog, region, file_scope);
 };
 
 add_source_file ::= func(progptr : v0? weak, path : u8?, len : u64, a : arena mut? -> v0)
 {
-	putzstr("adding extra source file ");
-	putbytes(path, len);
-	putchar(10);
 	prog ::= progptr@program mut?;
 	args ::= ref(prog->compile_args);
 	// unfortunately file will need the path as a zero terminated string.
@@ -136,14 +132,14 @@ add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config 
 
 add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 {
-	//static if(_win32)
-	//{
-		//source ::= "_win32 ::= true; _linux ::= false; embed_data ::= struct{data : u8?; size : u64;}; srcloc ::= struct{file : u8?; line : u64; column : u64;};";
-	//}
-	//static if(_linux)
-	//{
+	static if(_win32)
+	{
+		source ::= "_win32 ::= true; _linux ::= false; embed_data ::= struct{data : u8?; size : u64;}; srcloc ::= struct{file : u8?; line : u64; column : u64;};";
+	}
+	else
+	{
 		source ::= "_win32 ::= false; _linux ::= true; embed_data ::= struct{data : u8?; size : u64;}; srcloc ::= struct{file : u8?; line : u64; column : u64;};";
-	//}
+	}
 	l ::= lex("preload.psy", source, false);
 	p ::= parse(ref l, false);
 	progwalk_file(prog, ref(p.root), "preload.psy", zstrlen("preload.psy"));
@@ -168,65 +164,61 @@ add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 
 add_entrypoint ::= func(prog : program mut? -> v0)
 {
-	//static if(_win32)
-	//{
-	//	source ::= "
-	//	GetCommandLineW ::= func( -> u16? ):= extern;
-	//	CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
-	//	WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
-	//	LocalAlloc ::= func(uFlags : u32, uBytes : u64 -> v0? weak) := extern;
-	//	LocalFree ::= func(hMem : u64 -> u64 ):= extern;
-//
-	//	impl_win32_get_args ::= func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
-	//	{
-	//		cmd_line ::= GetCommandLineW();
-	//		wide_argc : s32 mut;
-	//		wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
-//
-	//		if(wide_argv == zero)
-	//		{
-	//			deref(oargc) = 0;
-	//		}
-//
-	//		args_cap : u64 mut := wide_argc@_;
-	//		args : u8 mut? mut? mut := LocalAlloc(zero, __sizeof(u8?) * wide_argc);
-	//		args_size : u64 mut := 0;
-//
-	//		i : s32 mut;
-	//		for(i = 0, i < wide_argc, i = i + 1)
-	//		{
-	//			size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
-	//			if(size_needed > 0)
-	//			{
-	//				deref(args # args_size) = LocalAlloc(zero, __sizeof(u8) * size_needed);
-	//				WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
-	//				args_size = args_size + 1;
-	//			}
-	//		}
-//
-	//		LocalFree(wide_argv@u64);
-//
-	//		deref(oargc) = wide_argc;
-	//		deref(oargv) = args@_;
-	//	};
-//
-	//	ExitProcess ::= func(uExitCode : u32 -> v0) := extern;
-	//	_psymain ::= func(-> v0)
-	//	{
-	//		local_argc : s32 mut;
-	//		local_argv : u8?? mut;
-	//		impl_win32_get_args(ref local_argc, ref local_argv);
-	//		ExitProcess(main(local_argc, local_argv)@u32);
-	//	};
-	//	";
-	//}
-	//static if(_linux)
-	//{
-	//	source ::= "_psymain ::= func(-> v0){main();};";
-	//}
-	//l ::= lex("entrypoint.psy", source, false);
-	//p ::= parse(ref l, false);
-	//progwalk_file(prog, ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
+	static if(_win32)
+	{
+		source ::= "
+		GetCommandLineW ::= func( -> u16? ):= extern;
+		CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
+		WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
+		LocalAlloc ::= func(uFlags : u32, uBytes : u64 -> v0? weak) := extern;
+		LocalFree ::= func(hMem : u64 -> u64 ):= extern;
+
+		impl_win32_get_args ::= func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
+		{
+			cmd_line ::= GetCommandLineW();
+			wide_argc : s32 mut;
+			wide_argv ::= CommandLineToArgvW(cmd_line, ref wide_argc);
+
+			if(wide_argv == zero)
+			{
+				deref(oargc) = 0;
+			}
+
+			args_cap : u64 mut := wide_argc@_;
+			args : u8 mut? mut? mut := LocalAlloc(zero, __sizeof(u8?) * wide_argc);
+			args_size : u64 mut := 0;
+
+			i : s32 mut;
+			for(i = 0, i < wide_argc, i = i + 1)
+			{
+				size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
+				if(size_needed > 0)
+				{
+					deref(args # args_size) = LocalAlloc(zero, __sizeof(u8) * size_needed);
+					WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
+					args_size = args_size + 1;
+				}
+			}
+
+			LocalFree(wide_argv@u64);
+
+			deref(oargc) = wide_argc;
+			deref(oargv) = args@_;
+		};
+
+		ExitProcess ::= func(uExitCode : u32 -> v0) := extern;
+		_psymain ::= func(-> v0)
+		{
+			local_argc : s32 mut;
+			local_argv : u8?? mut;
+			impl_win32_get_args(ref local_argc, ref local_argv);
+			ExitProcess(main(local_argc, local_argv, zero)@u32);
+		};
+		";
+		l ::= lex("entrypoint.psy", source, false);
+		p ::= parse(ref l, false);
+		progwalk_file(prog, ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
+	}
 };
 
 compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
@@ -234,9 +226,7 @@ compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
 	putzstr("Precompiling...     ");
 	putchar(13);
 	args ::= ref(prog->compile_args);
-	putzstr("preload");
 	add_preload(prog, a);
-	putzstr("precompile build file");
 	precompile_build_file(prog, args->build_file, a);
 	if((prog->type) == (program_type.executable))
 	{
@@ -254,7 +244,7 @@ compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
 	putchar(13);
 	assemble(prog);
 
-	putzstr("Linkage...          ");
+	putzstr("Link...             ");
 	putchar(13);
 	link(prog);
 };
@@ -375,214 +365,214 @@ srcloc_current ::= func( -> srcloc)
 	set_executable("psyc2");
 	static if(_win32)
 	{
-	add_link_library("Kernel32.lib");
-	add_link_library("Shell32.lib");
+		add_link_library("Kernel32.lib");
+		add_link_library("Shell32.lib");
 
-	add_link_library("LLVM-C.lib");
-	add_link_library("lldCOFF.lib");
-	add_link_library("lldCommon.lib");
-	add_link_library("lldELF.lib");
-	add_link_library("lldMachO.lib");
-	add_link_library("lldMinGW.lib");
-	add_link_library("lldWasm.lib");
-	add_link_library("LLVMAArch64AsmParser.lib");
-	add_link_library("LLVMAArch64CodeGen.lib");
-	add_link_library("LLVMAArch64Desc.lib");
-	add_link_library("LLVMAArch64Disassembler.lib");
-	add_link_library("LLVMAArch64Info.lib");
-	add_link_library("LLVMAArch64Utils.lib");
-	add_link_library("LLVMAggressiveInstCombine.lib");
-	add_link_library("LLVMAMDGPUAsmParser.lib");
-	add_link_library("LLVMAMDGPUCodeGen.lib");
-	add_link_library("LLVMAMDGPUDesc.lib");
-	add_link_library("LLVMAMDGPUDisassembler.lib");
-	add_link_library("LLVMAMDGPUInfo.lib");
-	add_link_library("LLVMAMDGPUTargetMCA.lib");
-	add_link_library("LLVMAMDGPUUtils.lib");
-	add_link_library("LLVMAnalysis.lib");
-	add_link_library("LLVMARMAsmParser.lib");
-	add_link_library("LLVMARMCodeGen.lib");
-	add_link_library("LLVMARMDesc.lib");
-	add_link_library("LLVMARMDisassembler.lib");
-	add_link_library("LLVMARMInfo.lib");
-	add_link_library("LLVMARMUtils.lib");
-	add_link_library("LLVMAsmParser.lib");
-	add_link_library("LLVMAsmPrinter.lib");
-	add_link_library("LLVMAVRAsmParser.lib");
-	add_link_library("LLVMAVRCodeGen.lib");
-	add_link_library("LLVMAVRDesc.lib");
-	add_link_library("LLVMAVRDisassembler.lib");
-	add_link_library("LLVMAVRInfo.lib");
-	add_link_library("LLVMBinaryFormat.lib");
-	add_link_library("LLVMBitReader.lib");
-	add_link_library("LLVMBitstreamReader.lib");
-	add_link_library("LLVMBitWriter.lib");
-	add_link_library("LLVMBPFAsmParser.lib");
-	add_link_library("LLVMBPFCodeGen.lib");
-	add_link_library("LLVMBPFDesc.lib");
-	add_link_library("LLVMBPFDisassembler.lib");
-	add_link_library("LLVMBPFInfo.lib");
-	add_link_library("LLVMCFGuard.lib");
-	add_link_library("LLVMCFIVerify.lib");
-	add_link_library("LLVMCodeGen.lib");
-	//add_link_library("LLVMCodeGenData.lib");
-	add_link_library("LLVMCodeGenTypes.lib");
-	add_link_library("LLVMCore.lib");
-	add_link_library("LLVMCoroutines.lib");
-	add_link_library("LLVMCoverage.lib");
-	add_link_library("LLVMDebugInfoBTF.lib");
-	add_link_library("LLVMDebugInfoCodeView.lib");
-	add_link_library("LLVMDebuginfod.lib");
-	add_link_library("LLVMDebugInfoDWARF.lib");
-	add_link_library("LLVMDebugInfoGSYM.lib");
-	add_link_library("LLVMDebugInfoLogicalView.lib");
-	add_link_library("LLVMDebugInfoMSF.lib");
-	add_link_library("LLVMDebugInfoPDB.lib");
-	add_link_library("LLVMDemangle.lib");
-	add_link_library("LLVMDiff.lib");
-	add_link_library("LLVMDlltoolDriver.lib");
-	add_link_library("LLVMDWARFLinker.lib");
-	add_link_library("LLVMDWARFLinkerClassic.lib");
-	add_link_library("LLVMDWARFLinkerParallel.lib");
-	add_link_library("LLVMDWP.lib");
-	add_link_library("LLVMExecutionEngine.lib");
-	add_link_library("LLVMExegesis.lib");
-	add_link_library("LLVMExegesisAArch64.lib");
-	add_link_library("LLVMExegesisMips.lib");
-	add_link_library("LLVMExegesisPowerPC.lib");
-	add_link_library("LLVMExegesisX86.lib");
-	add_link_library("LLVMExtensions.lib");
-	add_link_library("LLVMFileCheck.lib");
-	add_link_library("LLVMFrontendDriver.lib");
-	add_link_library("LLVMFrontendHLSL.lib");
-	add_link_library("LLVMFrontendOffloading.lib");
-	add_link_library("LLVMFrontendOpenACC.lib");
-	add_link_library("LLVMFrontendOpenMP.lib");
-	add_link_library("LLVMFuzzerCLI.lib");
-	add_link_library("LLVMFuzzMutate.lib");
-	add_link_library("LLVMGlobalISel.lib");
-	add_link_library("LLVMHexagonAsmParser.lib");
-	add_link_library("LLVMHexagonCodeGen.lib");
-	add_link_library("LLVMHexagonDesc.lib");
-	add_link_library("LLVMHexagonDisassembler.lib");
-	add_link_library("LLVMHexagonInfo.lib");
-	add_link_library("LLVMHipStdPar.lib");
-	add_link_library("LLVMInstCombine.lib");
-	add_link_library("LLVMInstrumentation.lib");
-	add_link_library("LLVMInterfaceStub.lib");
-	add_link_library("LLVMInterpreter.lib");
-	add_link_library("LLVMipo.lib");
-	add_link_library("LLVMIRPrinter.lib");
-	add_link_library("LLVMIRReader.lib");
-	add_link_library("LLVMJITLink.lib");
-	add_link_library("LLVMLanaiAsmParser.lib");
-	add_link_library("LLVMLanaiCodeGen.lib");
-	add_link_library("LLVMLanaiDesc.lib");
-	add_link_library("LLVMLanaiDisassembler.lib");
-	add_link_library("LLVMLanaiInfo.lib");
-	add_link_library("LLVMLibDriver.lib");
-	add_link_library("LLVMLineEditor.lib");
-	add_link_library("LLVMLinker.lib");
-	add_link_library("LLVMLoongArchAsmParser.lib");
-	add_link_library("LLVMLoongArchCodeGen.lib");
-	add_link_library("LLVMLoongArchDesc.lib");
-	add_link_library("LLVMLoongArchDisassembler.lib");
-	add_link_library("LLVMLoongArchInfo.lib");
-	add_link_library("LLVMLTO.lib");
-	add_link_library("LLVMMC.lib");
-	add_link_library("LLVMMCA.lib");
-	//add_link_library("LVMMCDisassembler.lib");
-	add_link_library("LLVMMCJIT.lib");
-	add_link_library("LLVMMCParser.lib");
-	add_link_library("LLVMMipsAsmParser.lib");
-	add_link_library("LLVMMipsCodeGen.lib");
-	add_link_library("LLVMMipsDesc.lib");
-	add_link_library("LLVMMipsDisassembler.lib");
-	add_link_library("LLVMMipsInfo.lib");
-	add_link_library("LLVMMIRParser.lib");
-	add_link_library("LLVMMSP430AsmParser.lib");
-	add_link_library("LLVMMSP430CodeGen.lib");
-	add_link_library("LLVMMSP430Desc.lib");
-	add_link_library("LLVMMSP430Disassembler.lib");
-	add_link_library("LLVMMSP430Info.lib");
-	add_link_library("LLVMNVPTXCodeGen.lib");
-	add_link_library("LLVMNVPTXDesc.lib");
-	add_link_library("LLVMNVPTXInfo.lib");
-	add_link_library("LLVMObjCARCOpts.lib");
-	add_link_library("LLVMObjCopy.lib");
-	add_link_library("LLVMObject.lib");
-	add_link_library("LLVMObjectYAML.lib");
-	//add_link_library("LLVMOptDriver.lib");
-	add_link_library("LLVMOption.lib");
-	add_link_library("LLVMOrcDebugging.lib");
-	add_link_library("LLVMOrcJIT.lib");
-	add_link_library("LLVMOrcShared.lib");
-	add_link_library("LLVMOrcTargetProcess.lib");
-	add_link_library("LLVMPasses.lib");
-	add_link_library("LLVMPowerPCAsmParser.lib");
-	add_link_library("LLVMPowerPCCodeGen.lib");
-	add_link_library("LLVMPowerPCDesc.lib");
-	add_link_library("LLVMPowerPCDisassembler.lib");
-	add_link_library("LLVMPowerPCInfo.lib");
-	add_link_library("LLVMProfileData.lib");
-	add_link_library("LLVMRemarks.lib");
-	add_link_library("LLVMRISCVAsmParser.lib");
-	add_link_library("LLVMRISCVCodeGen.lib");
-	add_link_library("LLVMRISCVDesc.lib");
-	add_link_library("LLVMRISCVDisassembler.lib");
-	add_link_library("LLVMRISCVInfo.lib");
-	add_link_library("LLVMRISCVTargetMCA.lib");
-	add_link_library("LLVMRuntimeDyld.lib");
-	//add_link_library("LLVMSandboxIR.lib");
-	add_link_library("LLVMScalarOpts.lib");
-	add_link_library("LLVMSelectionDAG.lib");
-	add_link_library("LLVMSparcAsmParser.lib");
-	add_link_library("LLVMSparcCodeGen.lib");
-	add_link_library("LLVMSparcDesc.lib");
-	add_link_library("LLVMSparcDisassembler.lib");
-	add_link_library("LLVMSparcInfo.lib");
-	add_link_library("LLVMSupport.lib");
-	add_link_library("LLVMSymbolize.lib");
-	add_link_library("LLVMSystemZAsmParser.lib");
-	add_link_library("LLVMSystemZCodeGen.lib");
-	add_link_library("LLVMSystemZDesc.lib");
-	add_link_library("LLVMSystemZDisassembler.lib");
-	add_link_library("LLVMSystemZInfo.lib");
-	add_link_library("LLVMTableGen.lib");
-	//add_link_library("LLVMTableGenBasic.lib");
-	add_link_library("LLVMTableGenCommon.lib");
-	add_link_library("LLVMTarget.lib");
-	add_link_library("LLVMTargetParser.lib");
-	add_link_library("LLVMTextAPI.lib");
-	add_link_library("LLVMTextAPIBinaryReader.lib");
-	add_link_library("LLVMTransformUtils.lib");
-	add_link_library("LLVMVEAsmParser.lib");
-	add_link_library("LLVMVECodeGen.lib");
-	add_link_library("LLVMVectorize.lib");
-	add_link_library("LLVMVEDesc.lib");
-	add_link_library("LLVMVEDisassembler.lib");
-	add_link_library("LLVMVEInfo.lib");
-	add_link_library("LLVMWebAssemblyAsmParser.lib");
-	add_link_library("LLVMWebAssemblyCodeGen.lib");
-	add_link_library("LLVMWebAssemblyDesc.lib");
-	add_link_library("LLVMWebAssemblyDisassembler.lib");
-	add_link_library("LLVMWebAssemblyInfo.lib");
-	add_link_library("LLVMWebAssemblyUtils.lib");
-	add_link_library("LLVMWindowsDriver.lib");
-	add_link_library("LLVMWindowsManifest.lib");
-	add_link_library("LLVMX86AsmParser.lib");
-	add_link_library("LLVMX86CodeGen.lib");
-	add_link_library("LLVMX86Desc.lib");
-	add_link_library("LLVMX86Disassembler.lib");
-	add_link_library("LLVMX86Info.lib");
-	add_link_library("LLVMX86TargetMCA.lib");
-	add_link_library("LLVMXCoreCodeGen.lib");
-	add_link_library("LLVMXCoreDesc.lib");
-	add_link_library("LLVMXCoreDisassembler.lib");
-	add_link_library("LLVMXCoreInfo.lib");
-	add_link_library("LLVMXRay.lib");
-	add_link_library("LTO.lib");
-	add_link_library("Remarks.lib");
+		add_link_library("LLVM-C.lib");
+		add_link_library("lldCOFF.lib");
+		add_link_library("lldCommon.lib");
+		add_link_library("lldELF.lib");
+		add_link_library("lldMachO.lib");
+		add_link_library("lldMinGW.lib");
+		add_link_library("lldWasm.lib");
+		add_link_library("LLVMAArch64AsmParser.lib");
+		add_link_library("LLVMAArch64CodeGen.lib");
+		add_link_library("LLVMAArch64Desc.lib");
+		add_link_library("LLVMAArch64Disassembler.lib");
+		add_link_library("LLVMAArch64Info.lib");
+		add_link_library("LLVMAArch64Utils.lib");
+		add_link_library("LLVMAggressiveInstCombine.lib");
+		add_link_library("LLVMAMDGPUAsmParser.lib");
+		add_link_library("LLVMAMDGPUCodeGen.lib");
+		add_link_library("LLVMAMDGPUDesc.lib");
+		add_link_library("LLVMAMDGPUDisassembler.lib");
+		add_link_library("LLVMAMDGPUInfo.lib");
+		add_link_library("LLVMAMDGPUTargetMCA.lib");
+		add_link_library("LLVMAMDGPUUtils.lib");
+		add_link_library("LLVMAnalysis.lib");
+		add_link_library("LLVMARMAsmParser.lib");
+		add_link_library("LLVMARMCodeGen.lib");
+		add_link_library("LLVMARMDesc.lib");
+		add_link_library("LLVMARMDisassembler.lib");
+		add_link_library("LLVMARMInfo.lib");
+		add_link_library("LLVMARMUtils.lib");
+		add_link_library("LLVMAsmParser.lib");
+		add_link_library("LLVMAsmPrinter.lib");
+		add_link_library("LLVMAVRAsmParser.lib");
+		add_link_library("LLVMAVRCodeGen.lib");
+		add_link_library("LLVMAVRDesc.lib");
+		add_link_library("LLVMAVRDisassembler.lib");
+		add_link_library("LLVMAVRInfo.lib");
+		add_link_library("LLVMBinaryFormat.lib");
+		add_link_library("LLVMBitReader.lib");
+		add_link_library("LLVMBitstreamReader.lib");
+		add_link_library("LLVMBitWriter.lib");
+		add_link_library("LLVMBPFAsmParser.lib");
+		add_link_library("LLVMBPFCodeGen.lib");
+		add_link_library("LLVMBPFDesc.lib");
+		add_link_library("LLVMBPFDisassembler.lib");
+		add_link_library("LLVMBPFInfo.lib");
+		add_link_library("LLVMCFGuard.lib");
+		add_link_library("LLVMCFIVerify.lib");
+		add_link_library("LLVMCodeGen.lib");
+		//add_link_library("LLVMCodeGenData.lib");
+		add_link_library("LLVMCodeGenTypes.lib");
+		add_link_library("LLVMCore.lib");
+		add_link_library("LLVMCoroutines.lib");
+		add_link_library("LLVMCoverage.lib");
+		add_link_library("LLVMDebugInfoBTF.lib");
+		add_link_library("LLVMDebugInfoCodeView.lib");
+		add_link_library("LLVMDebuginfod.lib");
+		add_link_library("LLVMDebugInfoDWARF.lib");
+		add_link_library("LLVMDebugInfoGSYM.lib");
+		add_link_library("LLVMDebugInfoLogicalView.lib");
+		add_link_library("LLVMDebugInfoMSF.lib");
+		add_link_library("LLVMDebugInfoPDB.lib");
+		add_link_library("LLVMDemangle.lib");
+		add_link_library("LLVMDiff.lib");
+		add_link_library("LLVMDlltoolDriver.lib");
+		add_link_library("LLVMDWARFLinker.lib");
+		add_link_library("LLVMDWARFLinkerClassic.lib");
+		add_link_library("LLVMDWARFLinkerParallel.lib");
+		add_link_library("LLVMDWP.lib");
+		add_link_library("LLVMExecutionEngine.lib");
+		add_link_library("LLVMExegesis.lib");
+		add_link_library("LLVMExegesisAArch64.lib");
+		add_link_library("LLVMExegesisMips.lib");
+		add_link_library("LLVMExegesisPowerPC.lib");
+		add_link_library("LLVMExegesisX86.lib");
+		add_link_library("LLVMExtensions.lib");
+		add_link_library("LLVMFileCheck.lib");
+		add_link_library("LLVMFrontendDriver.lib");
+		add_link_library("LLVMFrontendHLSL.lib");
+		add_link_library("LLVMFrontendOffloading.lib");
+		add_link_library("LLVMFrontendOpenACC.lib");
+		add_link_library("LLVMFrontendOpenMP.lib");
+		add_link_library("LLVMFuzzerCLI.lib");
+		add_link_library("LLVMFuzzMutate.lib");
+		add_link_library("LLVMGlobalISel.lib");
+		add_link_library("LLVMHexagonAsmParser.lib");
+		add_link_library("LLVMHexagonCodeGen.lib");
+		add_link_library("LLVMHexagonDesc.lib");
+		add_link_library("LLVMHexagonDisassembler.lib");
+		add_link_library("LLVMHexagonInfo.lib");
+		add_link_library("LLVMHipStdPar.lib");
+		add_link_library("LLVMInstCombine.lib");
+		add_link_library("LLVMInstrumentation.lib");
+		add_link_library("LLVMInterfaceStub.lib");
+		add_link_library("LLVMInterpreter.lib");
+		add_link_library("LLVMipo.lib");
+		add_link_library("LLVMIRPrinter.lib");
+		add_link_library("LLVMIRReader.lib");
+		add_link_library("LLVMJITLink.lib");
+		add_link_library("LLVMLanaiAsmParser.lib");
+		add_link_library("LLVMLanaiCodeGen.lib");
+		add_link_library("LLVMLanaiDesc.lib");
+		add_link_library("LLVMLanaiDisassembler.lib");
+		add_link_library("LLVMLanaiInfo.lib");
+		add_link_library("LLVMLibDriver.lib");
+		add_link_library("LLVMLineEditor.lib");
+		add_link_library("LLVMLinker.lib");
+		add_link_library("LLVMLoongArchAsmParser.lib");
+		add_link_library("LLVMLoongArchCodeGen.lib");
+		add_link_library("LLVMLoongArchDesc.lib");
+		add_link_library("LLVMLoongArchDisassembler.lib");
+		add_link_library("LLVMLoongArchInfo.lib");
+		add_link_library("LLVMLTO.lib");
+		add_link_library("LLVMMC.lib");
+		add_link_library("LLVMMCA.lib");
+		//add_link_library("LVMMCDisassembler.lib");
+		add_link_library("LLVMMCJIT.lib");
+		add_link_library("LLVMMCParser.lib");
+		add_link_library("LLVMMipsAsmParser.lib");
+		add_link_library("LLVMMipsCodeGen.lib");
+		add_link_library("LLVMMipsDesc.lib");
+		add_link_library("LLVMMipsDisassembler.lib");
+		add_link_library("LLVMMipsInfo.lib");
+		add_link_library("LLVMMIRParser.lib");
+		add_link_library("LLVMMSP430AsmParser.lib");
+		add_link_library("LLVMMSP430CodeGen.lib");
+		add_link_library("LLVMMSP430Desc.lib");
+		add_link_library("LLVMMSP430Disassembler.lib");
+		add_link_library("LLVMMSP430Info.lib");
+		add_link_library("LLVMNVPTXCodeGen.lib");
+		add_link_library("LLVMNVPTXDesc.lib");
+		add_link_library("LLVMNVPTXInfo.lib");
+		add_link_library("LLVMObjCARCOpts.lib");
+		add_link_library("LLVMObjCopy.lib");
+		add_link_library("LLVMObject.lib");
+		add_link_library("LLVMObjectYAML.lib");
+		//add_link_library("LLVMOptDriver.lib");
+		add_link_library("LLVMOption.lib");
+		add_link_library("LLVMOrcDebugging.lib");
+		add_link_library("LLVMOrcJIT.lib");
+		add_link_library("LLVMOrcShared.lib");
+		add_link_library("LLVMOrcTargetProcess.lib");
+		add_link_library("LLVMPasses.lib");
+		add_link_library("LLVMPowerPCAsmParser.lib");
+		add_link_library("LLVMPowerPCCodeGen.lib");
+		add_link_library("LLVMPowerPCDesc.lib");
+		add_link_library("LLVMPowerPCDisassembler.lib");
+		add_link_library("LLVMPowerPCInfo.lib");
+		add_link_library("LLVMProfileData.lib");
+		add_link_library("LLVMRemarks.lib");
+		add_link_library("LLVMRISCVAsmParser.lib");
+		add_link_library("LLVMRISCVCodeGen.lib");
+		add_link_library("LLVMRISCVDesc.lib");
+		add_link_library("LLVMRISCVDisassembler.lib");
+		add_link_library("LLVMRISCVInfo.lib");
+		add_link_library("LLVMRISCVTargetMCA.lib");
+		add_link_library("LLVMRuntimeDyld.lib");
+		//add_link_library("LLVMSandboxIR.lib");
+		add_link_library("LLVMScalarOpts.lib");
+		add_link_library("LLVMSelectionDAG.lib");
+		add_link_library("LLVMSparcAsmParser.lib");
+		add_link_library("LLVMSparcCodeGen.lib");
+		add_link_library("LLVMSparcDesc.lib");
+		add_link_library("LLVMSparcDisassembler.lib");
+		add_link_library("LLVMSparcInfo.lib");
+		add_link_library("LLVMSupport.lib");
+		add_link_library("LLVMSymbolize.lib");
+		add_link_library("LLVMSystemZAsmParser.lib");
+		add_link_library("LLVMSystemZCodeGen.lib");
+		add_link_library("LLVMSystemZDesc.lib");
+		add_link_library("LLVMSystemZDisassembler.lib");
+		add_link_library("LLVMSystemZInfo.lib");
+		add_link_library("LLVMTableGen.lib");
+		//add_link_library("LLVMTableGenBasic.lib");
+		add_link_library("LLVMTableGenCommon.lib");
+		add_link_library("LLVMTarget.lib");
+		add_link_library("LLVMTargetParser.lib");
+		add_link_library("LLVMTextAPI.lib");
+		add_link_library("LLVMTextAPIBinaryReader.lib");
+		add_link_library("LLVMTransformUtils.lib");
+		add_link_library("LLVMVEAsmParser.lib");
+		add_link_library("LLVMVECodeGen.lib");
+		add_link_library("LLVMVectorize.lib");
+		add_link_library("LLVMVEDesc.lib");
+		add_link_library("LLVMVEDisassembler.lib");
+		add_link_library("LLVMVEInfo.lib");
+		add_link_library("LLVMWebAssemblyAsmParser.lib");
+		add_link_library("LLVMWebAssemblyCodeGen.lib");
+		add_link_library("LLVMWebAssemblyDesc.lib");
+		add_link_library("LLVMWebAssemblyDisassembler.lib");
+		add_link_library("LLVMWebAssemblyInfo.lib");
+		add_link_library("LLVMWebAssemblyUtils.lib");
+		add_link_library("LLVMWindowsDriver.lib");
+		add_link_library("LLVMWindowsManifest.lib");
+		add_link_library("LLVMX86AsmParser.lib");
+		add_link_library("LLVMX86CodeGen.lib");
+		add_link_library("LLVMX86Desc.lib");
+		add_link_library("LLVMX86Disassembler.lib");
+		add_link_library("LLVMX86Info.lib");
+		add_link_library("LLVMX86TargetMCA.lib");
+		add_link_library("LLVMXCoreCodeGen.lib");
+		add_link_library("LLVMXCoreDesc.lib");
+		add_link_library("LLVMXCoreDisassembler.lib");
+		add_link_library("LLVMXCoreInfo.lib");
+		add_link_library("LLVMXRay.lib");
+		add_link_library("LTO.lib");
+		add_link_library("Remarks.lib");
 	}
 	else
 	{
