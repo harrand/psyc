@@ -27,11 +27,18 @@ runs:
         repo="harrand/psyc"
         headers=("-H" "Authorization: Bearer $GH_TOKEN" "-H" "User-Agent: gh-actions")
         releases=$(curl -s "${headers[@]}" "https://api.github.com/repos/$repo/releases")
-        url=$(echo "$releases" | jq -r '.[] | select(.draft == false) | .assets[] | select(.name == "psyc") | .browser_download_url' | head -n 1)
+        # Get the first release that is NOT a draft, regardless of prerelease status
+        url=$(echo "$releases" | jq -r '
+          map(select(.draft == false)) 
+          | .[0].assets[] 
+          | select(.name == "psyc.elf") 
+          | .browser_download_url
+        ')
         if [ -z "$url" ]; then
           echo "Could not find psyc binary for Linux."
           exit 1
         fi
-        curl -L -o psyc "$url"
-        chmod +x psyc
+        curl -L -o psyc.elf "$url"
+        chmod +x psyc.elf
+        export PATH=".:$PATH"
 
