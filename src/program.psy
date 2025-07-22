@@ -94,6 +94,29 @@ function_storage ::= struct
 	cap : u64;
 };
 
+assembly ::= struct
+{
+	node : ast?;
+	name : u8?;
+	name_len : u64;
+	param_count : u64;
+	code : u8?;
+	code_len : u64;
+	constraint : u8?;
+	constraint_len : u64;
+
+	type : ty;
+	codegen : u64;
+	codegen2 : u64;
+};
+
+assembly_storage ::= struct
+{
+	data : assembly mut?;
+	size : u64;
+	cap : u64;
+};
+
 region ::= struct
 {
 	node : ast?;
@@ -127,6 +150,7 @@ scope ::= struct
 	structs : structdef_storage;
 	enums : enumdef_storage;
 	funcs : function_storage;
+	asms : assembly_storage;
 	macros : macro_storage;
 	regions : region_storage;
 	parent : v0?;
@@ -541,6 +565,67 @@ scope_declare_function ::= func(s : scope mut?, a : arena mut?, f : function -> 
 	(funcs->size) = (funcs->size) + 1;
 };
 
+scope_find_assembly ::= func(s : scope mut?, asmname : u8?, asmname_len: u64 -> assembly?)
+{
+	curscope : scope? mut := s;
+	i : u64 mut;
+	curasm : assembly? mut;
+	while(curscope != zero)
+	{
+		asms ::= ref(curscope->asms)@_;
+		for(i = 0, i < (asms->size), i = i + 1)
+		{
+			curasm = (asms->data) # i;
+			if(asmname_len == (curasm->name_len))
+			{
+				if(streql_n(curasm->name, asmname, asmname_len))
+				{
+					return curasm;
+				}
+			}
+		}
+		// try its parent
+		curscope = ((curscope->parent)@scope?);
+	}
+	return zero;
+};
+
+scope_declare_assembly ::= func(s : scope mut?, a : arena mut?, as : assembly -> v0)
+{
+	already ::= scope_find_assembly(s, as.name, as.name_len);
+	if(already != zero)
+	{
+		node ::= as.node;
+		already_node ::= already->node;
+		psyc_error_begin(node->loc);
+		putzstr("assembly ");
+		putchar('"');
+		putbytes(as.name, as.name_len);
+		putchar('"');
+		putzstr(" has been previously defined ");
+		print_srcloc(already_node->loc);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	asms ::= ref(s->asms);
+	if((asms->data) == zero)
+	{
+		(asms->cap) = 8;
+		(asms->data) = arena_alloc(a, __sizeof(deref (asms->data)) * (asms->cap));
+	}
+	while((asms->size) >= (asms->cap))
+	{
+		oldcap ::= asms->cap;
+		olddata ::= asms->data;
+		(asms->cap) = (asms->cap) * 2;
+		(asms->data) = arena_alloc(a, __sizeof(deref (asms->data)) * (asms->cap));
+		memcopy(asms->data, olddata, oldcap * __sizeof(deref (asms->data)));
+	}
+	deref((asms->data) # (asms->size)) = as;
+	(asms->size) = (asms->size) + 1;
+};
+
 scope_find_macro ::= func(s : scope mut?, macname : u8?, macname_len: u64 -> macrodef?)
 {
 	curscope : scope? mut := s;
@@ -729,6 +814,18 @@ program_declare_function ::= func(prog : program mut?, a : arena mut?, f : funct
 {
 	glob : scope mut? := ref(prog->global);
 	scope_declare_function(glob, a, f);
+};
+
+program_find_assembly ::= func(prog : program mut?, name : u8?, name_len : u64 -> assembly?)
+{
+	glob : scope mut? := ref(prog->global);
+	return scope_find_assembly(glob, name, name_len);
+};
+
+program_declare_assembly ::= func(prog : program mut?, a : arena mut?, as : assembly -> v0)
+{
+	glob : scope mut? := ref(prog->global);
+	scope_declare_assembly(glob, a, as);
 };
 
 program_find_struct ::= func(prog : program mut?, name : u8?, name_len : u64 -> structdef?)

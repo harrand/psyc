@@ -332,6 +332,80 @@ semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0
 	(f->type) = fnty;
 };
 
+semal_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0)
+{
+	node ::= as->node;
+	asmdef ::= node->asmdef;
+	// start with the return type.
+	fn_retty ::= scope_parse_typename(s, asmdef.ret_typename, asmdef.ret_typename_len);
+	if(ty_isbad(fn_retty))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("return-type ");
+		putchar('"');
+		putbytes(asmdef.ret_typename, asmdef.ret_typename_len);
+		putchar('"');
+		putzstr(" of assembly ");
+		putbytes(as->name, as->name_len);
+		putzstr(" yielded badtype");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	fnty : ty mut := ty_getfn(fn_retty, as->param_count, zero);
+	// go through all params.
+	i : u64 mut;
+	for(i = 0, i < (as->param_count), i = i + 1)
+	{
+		cur_param_node ::= ast_get_child(node@_, i);
+		cur_param_decl ::= cur_param_node->decl;
+
+		declty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
+		if(ty_isbad(declty))
+		{
+			declty = semal_fnptrnode(cur_param_node, s, prog);
+		}
+		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
+		{
+			psyc_error_begin(cur_param_node->loc);
+			putzstr("parameter ");
+			putuint(i);
+			putzstr(" of assembly ");
+			putchar('"');
+			putbytes(as->name, as->name_len);
+			putchar('"');
+			putzstr(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+			declty = zero;
+		}
+		if(ty_isbad(declty))
+		{
+			psyc_error_begin(cur_param_node->loc);
+			putzstr("parameter ");
+			putuint(i);
+			putzstr(" of assembly ");
+			putchar('"');
+			putbytes(as->name, as->name_len);
+			putchar('"');
+			putzstr(" with typename: ");
+			putchar('"');
+			putbytes(cur_param_decl.typename, cur_param_decl.typename_len);
+			if((cur_param_decl.extras) != zero)
+			{
+				putchar(' ');
+				putbytes(cur_param_decl.extras, cur_param_decl.extras_size);
+			}
+			putchar('"');
+			putzstr(" yielded badtype");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		ty_fn_set_param(ref fnty, i, declty);
+	}
+
+	(as->type) = fnty;
+};
+
 semal ::= func(prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.semal);
@@ -340,6 +414,7 @@ semal ::= func(prog : program mut? -> v0)
 	structs ::= ref(glob->structs);
 	enums ::= ref(glob->enums);
 	funcs ::= ref(glob->funcs);
+	asms ::= ref(glob->asms);
 	macros ::= ref(glob->macros);
 
 	i : u64 mut;
@@ -357,6 +432,11 @@ semal ::= func(prog : program mut? -> v0)
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
 		semal_func((funcs->data) # i, glob, prog);
+	}
+
+	for(i = 0, i < (asms->size), i = i + 1)
+	{
+		semal_asm((asms->data) # i, glob, prog);
 	}
 };
 

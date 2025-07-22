@@ -366,6 +366,15 @@ cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut?
 	}
 };
 
+cg_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0)
+{
+	type ::= as->type;
+	fnty ::= type.fn;
+	param_count ::= (as->param_count);
+	func_tycg ::= cg_type(type, prog);
+	(as->codegen) = LLVMGetInlineAsm(func_tycg, as->code, as->code_len, as->constraint, as->constraint_len, true@s32, false@s32, LLVMInlineAsmDialectATT, false@s32);
+};
+
 cg_define_debug_information_for_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
 {
 	funcscope ::= (fn->impl_scope)@scope mut?;
@@ -553,6 +562,7 @@ codegen ::= func(prog : program mut? -> v0)
 	glob ::= ref(prog->global);
 	structs ::= ref(glob->structs);
 	funcs ::= ref(glob->funcs);
+	asms ::= ref(glob->asms);
 	gvars ::= ref(glob->vars);
 
 	i : u64 mut;
@@ -564,6 +574,11 @@ codegen ::= func(prog : program mut? -> v0)
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
 		cg_declare_func((funcs->data) # i, glob, prog);
+	}
+
+	for(i = 0, i < (asms->size), i = i + 1)
+	{
+		cg_asm((asms->data) # i, glob, prog);
 	}
 
 	for(i = 0, i < (gvars->size), i = i + 1)

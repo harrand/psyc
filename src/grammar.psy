@@ -709,6 +709,24 @@ fn2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+asm2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.asm_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 mac2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -1246,6 +1264,37 @@ declinitfunc2wipfn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> par
 	(ret.nodes_size) = 1;
 };
 
+declinitfunc2wipasm ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	decl ::= first.decl;
+	deref((ret.nodes) # 0) = ast
+	{
+		.type := ast_type.wipasm_blue;
+		.asmdef := ast_asm
+		{
+			.asm_name := decl.name;
+			.asm_name_len := decl.name_len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
 keywordfuncoparen2wipfn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -1302,6 +1351,31 @@ wipfn_givereturn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+wipasm_givereturn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+
+	secondlast ::= deref(nodes # (nodes_size - 2));
+	utok ::= secondlast.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	(firstptr->type) = (ast_type.wipasm_red);
+	as ::= ref(firstptr->asmdef);
+	(as->ret_typename) = src # (lex.off);
+	(as->ret_typename_len) = (lex.len);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 wipfn2externfn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -1319,6 +1393,77 @@ wipfn2externfn ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 	(firstptr->cursor_end) = (last.cursor_end);
 	fn ::= ref(firstptr->fn);
 	(fn->is_extern) = true;
+};
+
+wipasm2asm ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	(firstptr->type) = (ast_type.asmdef);
+	(firstptr->cursor_end) = (last.cursor_end);
+
+	utok ::= last.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	ast_add_child(firstptr, ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.string_literal;
+			.chars := src # (lex.off);
+			.chars_len := lex.len;
+		});
+		.loc := first.loc;
+		.cursor_begin := last.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	}, global_arena);
+};
+
+asmdef_append_child ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	utok ::= last.utok;
+	tok ::= utok.tok;
+	lex ::= tok.lexeme;
+
+	ast_add_child(firstptr, ast
+	{
+		.type := ast_type.expr;
+		.expr := make_literal_expr(ast_literal_expr
+		{
+			.type := ast_literal_type.string_literal;
+			.chars := src # (lex.off);
+			.chars_len := lex.len;
+		});
+		.loc := first.loc;
+		.cursor_begin := last.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	}, global_arena);
 };
 
 wipfn_awaitimplblock ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -2593,6 +2738,102 @@ grammar_wipfn ::= func(nodes : ast mut? -> v0)
 		grammar_rule{.fn := wipfn_givereturn;});
 };
 
+grammar_wipasm ::= func(nodes : ast mut? -> v0)
+{
+	// decl initialiser is asm(...)
+	// dont let it be stashed
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.decl), token(lex_token.initialiser)),
+		token(lex_token.keyword_asm),
+		zero,
+		grammar_rule{.fn := shift2;});
+	
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.decl), token(lex_token.initialiser), token(lex_token.keyword_asm), token(lex_token.oparen)),
+		zero,
+		zero,
+		grammar_rule{.fn := declinitfunc2wipasm;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.wipasm_blue)),
+		zero,
+		zero,
+		grammar_rule{.fn := stash_head;});
+
+	// push decl as new function param
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.decl)),
+		zero,
+		node(ast_type.wipasm_blue),
+		grammar_rule{.fn := commit_head;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, token(lex_token.comma)),
+		zero,
+		node(ast_type.wipasm_blue),
+		grammar_rule{.fn := swallow_all;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, token(lex_token.arrow)),
+		zero,
+		node(ast_type.wipasm_blue),
+		grammar_rule{.fn := unstash_head;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.wipasm_blue), token(lex_token.arrow)),
+		zero,
+		zero,
+		grammar_rule{.fn := shift2;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.wipasm_blue), token(lex_token.arrow), token(lex_token.symbol), token(lex_token.cparen)),
+		zero,
+		zero,
+		grammar_rule{.fn := wipasm_givereturn;});
+};
+
+grammar_asm ::= func(nodes : ast mut? -> v0)
+{
+	// wipfn_asm has the whole signature now, and is followed by either:
+	// (1) := extern (in which we will just set the function as extern and declare it complete)
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.wipasm_red)),
+		token(lex_token.initialiser),
+		zero,
+		grammar_rule{.fn := shift2;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.wipasm_red), token(lex_token.initialiser), token(lex_token.string_literal)),
+		zero,
+		zero,
+		grammar_rule{.fn := wipasm2asm;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.asmdef)),
+		token(lex_token.colon),
+		zero,
+		grammar_rule{.fn := shift2;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.asmdef), token(lex_token.colon), token(lex_token.string_literal)),
+		zero,
+		zero,
+		grammar_rule{.fn := asmdef_append_child;});
+};
+
 grammar_fn_extern ::= func(nodes : ast mut? -> v0)
 {
 	// wipfn_red has the whole signature now, and is followed by either:
@@ -3712,6 +3953,10 @@ grammar_setup ::= func(-> v0)
 	grammar_wipmacro(nodes # 0);
 	grammar_macro(nodes # 0);
 
+	// asm
+	grammar_wipasm(nodes # 0);
+	grammar_asm(nodes # 0);
+
 	grammar_if(nodes # 0);
 	grammar_if_cond(nodes # 0, ast_expr_type.symbol);
 	grammar_if_cond(nodes # 0, ast_expr_type.literal);
@@ -3762,6 +4007,7 @@ grammar_setup ::= func(-> v0)
 	grammar_stmtify(nodes # 0, node(ast_type.decl), grammar_rule{.fn := decl2stmt;});
 	grammar_stmtify(nodes # 0, node(ast_type.fnptrdecl), grammar_rule{.fn := decl2stmt;});
 	grammar_stmtify(nodes # 0, node(ast_type.fn), grammar_rule{.fn := fn2stmt;});
+	grammar_stmtify(nodes # 0, node(ast_type.asmdef), grammar_rule{.fn := asm2stmt;});
 	grammar_stmtify(nodes # 0, node(ast_type.mac), grammar_rule{.fn := mac2stmt;});
 	grammar_stmtify(nodes # 0, node(ast_type.structdef), grammar_rule{.fn := struct2stmt;});
 	grammar_stmtify(nodes # 0, node(ast_type.enumdef), grammar_rule{.fn := enum2stmt;});
@@ -3792,6 +4038,7 @@ grammar_setup ::= func(-> v0)
 	grammar_commit_stmt(nodes # 0, ast_stmt.struct_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.enum_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.fn_stmt);
+	grammar_commit_stmt(nodes # 0, ast_stmt.asm_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.mac_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.if_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.while_stmt);

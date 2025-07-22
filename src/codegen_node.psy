@@ -2213,49 +2213,59 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 	}
 	if(fn == zero)
 	{
-		// try treating it as a symbol
-		val : cgv mut := cg_expr_common(make_symbol_expr(ast_symbol_expr
+		// is there an asm with that name?
+		asmdef ::= scope_find_assembly(ctx.local, call.funcname, call.funcname_len);
+		if(asmdef != zero)
 		{
-			.symbol := call.funcname;
-			.len := call.funcname_len;
-		}), ctx, prog);
-		if(!(ctx.typecheck_only))
-		{
-			cgv_load_if_variable(ref val, prog);
+			fnty = (asmdef->type);
+			ll = (asmdef->codegen);
 		}
-		if(!ty_is(val.type, tytag.ptr))
+		else
 		{
-			psyc_error_begin(node->loc);
-			putzstr("invalid call to non-function ");
-			putchar('"');
-			putbytes(call.funcname, call.funcname_len);
-			putchar('"');
-			putzstr(", the symbol is of type ");
-			putchar('"');
-			putty(val.type);
-			putchar('"');
-			psyc_diag_end();
-			psyc_exit_failure();
-			return zero;
+			// try treating it as a symbol
+			val : cgv mut := cg_expr_common(make_symbol_expr(ast_symbol_expr
+			{
+				.symbol := call.funcname;
+				.len := call.funcname_len;
+			}), ctx, prog);
+			if(!(ctx.typecheck_only))
+			{
+				cgv_load_if_variable(ref val, prog);
+			}
+			if(!ty_is(val.type, tytag.ptr))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("invalid call to non-function ");
+				putchar('"');
+				putbytes(call.funcname, call.funcname_len);
+				putchar('"');
+				putzstr(", the symbol is of type ");
+				putchar('"');
+				putty(val.type);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+				return zero;
+			}
+			valfnty ::= ty_underlying(val.type);
+			if(!ty_is(valfnty, tytag.fn))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("invalid call to non-function ");
+				putchar('"');
+				putbytes(call.funcname, call.funcname_len);
+				putchar('"');
+				putzstr(", the symbol is of type ");
+				putchar('"');
+				putty(val.type);
+				putchar('"');
+				psyc_diag_end();
+				psyc_exit_failure();
+				return zero;
+			}
+			fnty = valfnty;
+			ll = (val.ll);
 		}
-		valfnty ::= ty_underlying(val.type);
-		if(!ty_is(valfnty, tytag.fn))
-		{
-			psyc_error_begin(node->loc);
-			putzstr("invalid call to non-function ");
-			putchar('"');
-			putbytes(call.funcname, call.funcname_len);
-			putchar('"');
-			putzstr(", the symbol is of type ");
-			putchar('"');
-			putty(val.type);
-			putchar('"');
-			psyc_diag_end();
-			psyc_exit_failure();
-			return zero;
-		}
-		fnty = valfnty;
-		ll = (val.ll);
 	}
 
 	call_param_count ::= node->childcount;
