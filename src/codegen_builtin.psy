@@ -165,6 +165,16 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
+	retty ::= ty_ref(ty_getprim(primty.u8, zero), zero);
+	if(ctx.typecheck_only)
+	{
+		return cgv
+		{
+			.tag := zero;
+			.ll := zero;
+			.type := retty;
+		};
+	}
 	node ::= ctx.node;
 	enumnode ::= ast_get_child(node@_, 0);
 	enumval : cgv mut := cg_expr(context
@@ -188,7 +198,6 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 
 	type ::= enumval.type;
 	enm ::= type.enm;
-	retty ::= ty_ref(ty_getprim(primty.u8, zero), zero);
 	llty ::= cg_type(retty, prog);
 	ll ::= LLVMBuildAlloca(ir, llty, "__enumname_dynamic");
 	badenumval ::= LLVMBuildGlobalString(ir, "badenum", "badenum");
