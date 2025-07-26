@@ -182,18 +182,97 @@ sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sv
 	}
 	if(t == (ast_biop_type.bitleft))
 	{
-		//(llit->integral) = (llit->integral) << (rlit->integral);
-		// todo: implement
+		(llit->integral) = (llit->integral) << (rlit->integral);
+		return lhs;
 	}
 	if(t == (ast_biop_type.bitright))
 	{
-		//(llit->integral) = (llit->integral) << (rlit->integral);
-		// todo: implement
+		(llit->integral) = (llit->integral) >> (rlit->integral);
+		return lhs;
 	}
 	if(t == (ast_biop_type.modulo))
 	{
 		(llit->integral) = (llit->integral) % (rlit->integral);
 		return lhs;
+	}
+	if(t == (ast_biop_type.field))
+	{
+		if(lhsnode->type != ast_type.expr)
+		{
+			psyc_error_begin(lhsnode->loc);
+			putzstr("expected field-lhs to be a symbol expression, but it is a ");
+			putzstr(__enumname(lhsnode->type));
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		lhs_expr ::= lhsnode->expr;
+		if(lhs_expr.type != ast_expr_type.symbol)
+		{
+			psyc_error_begin(lhsnode->loc);
+			putzstr("expected field-lhs to be a symbol expression, but instead it is a ");
+			putzstr(__enumname(lhs_expr.type));
+			putzstr(" expression.");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		sym ::= lhs_expr.symbol;
+		enumlhs ::= scope_find_enum(ctx.local, sym.symbol, sym.len);
+		if(enumlhs == zero)
+		{
+			// error out - lhs symbol isnt an enum
+			psyc_error_begin(lhsnode->loc);
+			putzstr("lhs symbol ");
+			putchar('"');
+			putbytes(sym.symbol, sym.len);
+			putchar('"');
+			putzstr(" is not recognised as a valid enum (only enum field acceses are valid in a static context)");
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		type ::= enumlhs->type;
+		enumtype ::= type.enm;
+		entryc ::= enumtype.entry_count;
+		i : u64 mut;
+
+		rhs_expr ::= rhsnode->expr;
+		rhs_sym ::= rhs_expr.symbol;
+
+		for(i = 0, i < entryc, i = i + 1)
+		{
+			curname ::= deref((enumtype.entry_names) # i);
+			curname_len ::= deref((enumtype.entry_name_lens) # i);
+			curval ::= deref((enumtype.entry_values) # i);
+			if(rhs_sym.len == curname_len)
+			{
+				if(streql_n(curname, rhs_sym.symbol, curname_len))
+				{
+					return sval
+					{
+						.tag := sval_tag.literal;
+						.literal := ast_literal_expr
+						{
+							.type := ast_literal_type.integral;
+							.integral := curval@_;
+						};
+					};
+				}
+			}
+		}
+		psyc_error_begin(rhsnode->loc);
+		putzstr("enum ");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		putzstr(" has no such entry named ");
+		putchar('"');
+		putbytes(rhs_sym.symbol, rhs_sym.len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+		// error out - unknown enum entry
+		return zero;
 	}
 	psyc_error_begin(node->loc);
 	putzstr("binary operator ");
