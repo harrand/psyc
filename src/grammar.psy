@@ -2157,6 +2157,71 @@ wipstructinitcbrace2structinit ::= func(src : u8?, nodes : ast mut?, nodes_size 
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+err_func_no_semicol ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "missing semicolon at the end of a function";
+	};
+};
+
+err_mac_no_semicol ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "missing semicolon at the end of a macro";
+	};
+};
+
+err_struct_no_semicol ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "missing semicolon at the end of a struct";
+	};
+};
+
+err_enum_no_semicol ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "missing semicolon at the end of an enum";
+	};
+};
+
+err_generic_no_semicol ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	return parse_value
+	{
+		.action := parse_action.error;
+		.errmsg := "token(s) do not form a statement. did you forget a semicolon?";
+	};
+};
+
+grammar_common_err_func_semicol ::= func(nodes : ast mut? -> v0)
+{
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.fn)),
+		zero,
+		zero,
+		grammar_rule{.fn := err_func_no_semicol;});
+};
+
+grammar_common_err_mac_semicol ::= func(nodes : ast mut? -> v0)
+{
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, node(ast_type.mac)),
+		zero,
+		zero,
+		grammar_rule{.fn := err_mac_no_semicol;});
+};
+
 grammar_stmtify ::= func(nodes : ast mut?, nod : ast, ru : grammar_rule -> v0)
 {
 	grammar_install(
@@ -2165,6 +2230,13 @@ grammar_stmtify ::= func(nodes : ast mut?, nod : ast, ru : grammar_rule -> v0)
 		token(lex_token.semicol),
 		zero,
 		grammar_rule{.fn := shift1;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, nod),
+		zero,
+		zero,
+		grammar_rule{.fn := err_generic_no_semicol;});
 
 	grammar_install(
 		nodes,
@@ -3473,6 +3545,13 @@ grammar_struct ::= func(nodes : ast mut? -> v0)
 
 	grammar_install(
 		nodes,
+		__arrcpy(nodes, ast, token(lex_token.cbrace)),
+		zero,
+		node(ast_type.wipstruct),
+		grammar_rule{.fn := err_struct_no_semicol;});
+
+	grammar_install(
+		nodes,
 		__arrcpy(nodes, ast, node(ast_type.wipstruct), token(lex_token.cbrace)),
 		zero,
 		zero,
@@ -3508,6 +3587,13 @@ grammar_enum ::= func(nodes : ast mut? -> v0)
 		token(lex_token.semicol),
 		node(ast_type.wipenum),
 		grammar_rule{.fn := unstash_head;});
+
+	grammar_install(
+		nodes,
+		__arrcpy(nodes, ast, token(lex_token.cbrace)),
+		zero,
+		node(ast_type.wipenum),
+		grammar_rule{.fn := err_enum_no_semicol;});
 
 	grammar_install(
 		nodes,
@@ -4045,6 +4131,9 @@ grammar_setup ::= func(-> v0)
 	grammar_commit_stmt(nodes # 0, ast_stmt.for_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.init_stmt);
 	grammar_commit_stmt(nodes # 0, ast_stmt.structinit_stmt);
+
+	grammar_common_err_func_semicol(nodes # 0);
+	grammar_common_err_mac_semicol(nodes # 0);
 };
 
 == build ==
