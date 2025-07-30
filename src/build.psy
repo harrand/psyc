@@ -11,7 +11,9 @@ build_inst ::= enum
 	.set_library := 8;
 	.set_object := 9;
 	.debug_symbols := 10;
-	.warning := 11;
+	.message := 11;
+	.warning := 12;
+	.error := 13;
 };
 
 build_fn ::= struct
@@ -36,7 +38,7 @@ build_resolve_constexpr ::= func(s : scope mut?, node : ast?, prog : program mut
 	return ret;
 };
 
-build_instructions : build_fn mut[12] mut;
+build_instructions : build_fn mut[14] mut;
 
 bi_prebuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 {
@@ -351,6 +353,28 @@ bi_debug_symbols ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0
 	(prog->debug_symbols) = msg.boolean;
 };
 
+bi_message ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+{
+	psyc_timed_begin(psyc_stage.build);
+	defer psyc_timed_end();
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	msg ::= param.literal;
+	if((msg.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		putzstr("Argument to message must be a string literal, but you have passed a ");
+		putzstr(__enumname(msg.type));
+		putzstr(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	psyc_message_begin(node->loc);
+	putbytes(msg.chars, msg.chars_len);
+	psyc_diag_end();
+};
+
 bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
@@ -369,6 +393,28 @@ bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	}
 
 	psyc_warning_begin(node->loc);
+	putbytes(msg.chars, msg.chars_len);
+	psyc_diag_end();
+};
+
+bi_error ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+{
+	psyc_timed_begin(psyc_stage.build);
+	defer psyc_timed_end();
+	child ::= ast_get_child(node@_, 0);
+	param ::= build_resolve_constexpr(s, child, prog);
+	msg ::= param.literal;
+	if((msg.type) != (ast_literal_type.string_literal))
+	{
+		psyc_error_begin(child->loc);
+		putzstr("Argument to warning must be a string literal, but you have passed a ");
+		putzstr(__enumname(msg.type));
+		putzstr(" literal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	psyc_error_begin(node->loc);
 	putbytes(msg.chars, msg.chars_len);
 	psyc_diag_end();
 };
@@ -510,7 +556,9 @@ build_setup ::= func( -> v0)
 	deref(build_instructions # ((build_inst.set_library)@s64)) = build_fn{.fn := bi_set_library;};
 	deref(build_instructions # ((build_inst.set_object)@s64)) = build_fn{.fn := bi_set_object;};
 	deref(build_instructions # ((build_inst.debug_symbols)@s64)) = build_fn{.fn := bi_debug_symbols;};
+	deref(build_instructions # ((build_inst.message)@s64)) = build_fn{.fn := bi_message;};
 	deref(build_instructions # ((build_inst.warning)@s64)) = build_fn{.fn := bi_warning;};
+	deref(build_instructions # ((build_inst.error)@s64)) = build_fn{.fn := bi_error;};
 };
 
  == build ==
