@@ -426,7 +426,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	// if you dont do this then the parameter values are just ssa register values i.e immutable and un-referenceable (i.e ref param is wrong)
 	// this kinda sucks, but backing things by default is a slight pessimisation
 	// we absolutely have to back mutable parameters and arrays anyway, so im just gonna go ahead and back everything tbh.
-	should_back ::= true;
+	should_back : bool mut;
 	for(i = 0, i < (fn->param_count), i = i + 1)
 	{
 		childnode ::= ast_get_child(node@_, i);
@@ -454,6 +454,15 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 			psyc_exit_failure();
 		}
 		// yes, back this.
+		should_back = false;
+		if(ty_is(childty, tytag.arr))
+		{
+			should_back = true;
+		}
+		if(ty_hasqual(childty, tyqual.mut))
+		{
+			should_back = true;
+		}
 		if(should_back)
 		{
 			scope_declare_variable(funcscope, global_arena, variable
