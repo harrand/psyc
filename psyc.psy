@@ -33,7 +33,12 @@ fully_read_file ::= func(path : u8?, a : arena mut? -> u8 mut?)
 		putchar('"');
 		putzstr(path);
 		putchar('"');
-		putzstr(" could not be located");
+		putzstr(" could not be located (cwd: ");
+		cwd : u8? mut;
+		cwdlen : u64 mut;
+		directory_get_cwd(ref cwd, ref cwdlen, global_arena);
+		putbytes(cwd, cwdlen);
+		putzstr(")");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -127,7 +132,17 @@ add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+
+	// get the current cwd
+	oldcwd : u8? mut;
+	oldcwdlen : u64 mut;
+	directory_get_cwd(ref oldcwd, ref oldcwdlen, global_arena);
+	// set the cwd to the directory containing the child build file
+	directory_set_cwd(path, path_get_parent_len(path, len), global_arena);
+	// do the child build region stuff
 	interpret_build_region(prog, region, file_scope);
+	// set it back to what it was and keep going with the rest of our build region.
+	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
 };
 
 add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
