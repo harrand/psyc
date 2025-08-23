@@ -16,19 +16,41 @@ di_emit_location ::= func(ctx : context, prog : program? -> v0)
 	{
 		return;
 	}
+	n ::= ctx.node;
 
 	s : scope mut? mut := ctx.local;
-	n ::= ctx.node;
+	parentfn ::= scope_get_parent_function(s, prog);
+	if(parentfn != zero)
+	{
+		s = (parentfn->impl_scope)@scope mut?;
+		//putzstr("expr location ");
+		//putloc(n->loc);
+		//putzstr(" belongs to parent function named ");
+		//putbytes(parentfn->name, parentfn->name_len);
+		//putchar(10);
+	}
+	else
+	{
+		// we have no parent function
+		// use file scope.
+		s = scope_get_parent_filescope(s, prog);
+		if(s == zero)
+		{
+			return;
+		}
+		putzstr("expr location ");
+		putloc(n->loc);
+		putzstr(" belongs to ");
+		putzstr(__enumname(s->type));
+		putzstr(" scope ");
+		putloc(s->loc);
+		putzstr(" named ");
+		putchar('"');
+		putbytes(parentfn->name, parentfn->name_len);
+		putchar('"');
+		putchar(10);
+	}
 	di_scope : u64 mut := s->dbg;
-	while(di_scope == zero)
-	{
-		s = (s->parent@scope mut?);
-		di_scope = s->dbg;
-	}
-	if(di_scope == zero)
-	{
-		di_scope = (prog->global).dbg;
-	}
 	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
 	LLVMSetCurrentDebugLocation2(ir, dloc);
 };
@@ -53,7 +75,7 @@ cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut? 
 cg_expr ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
 	node ::= ctx.node;
-	//di_emit_location(ctx, prog);
+	di_emit_location(ctx, prog);
 	return cg_expr_common(node->expr, ctx, prog);
 };
 
@@ -68,6 +90,7 @@ cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> c
 // decls 
 cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
+	di_emit_location(ctx, prog);
 	node ::= ctx.node;
 	decl ::= node->decl;
 	declty : ty mut := zero;

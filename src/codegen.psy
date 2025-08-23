@@ -306,10 +306,10 @@ cg_define_debug_information_for_struct ::= func(def : structdef mut?, prog : pro
 	}
 
 	// todo: get the bloody file the struct is defined in...
-	struct_file_scope ::= prog->global;
+	struct_file_scope ::= (def->file_scope)@scope?;
 	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
 	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
-	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope.dbg, def->name, def->name_len, struct_file_scope.dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
+	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope->dbg, def->name, def->name_len, struct_file_scope->dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
 };
 
 cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
@@ -375,7 +375,7 @@ cg_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0)
 	(as->codegen) = LLVMGetInlineAsm(func_tycg, as->code, as->code_len, as->constraint, as->constraint_len, true@s32, false@s32, LLVMInlineAsmDialectATT, false@s32);
 };
 
-cg_define_debug_information_for_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
+cg_define_debug_information_for_func ::= func(fn : function mut?, prog : program mut? -> v0)
 {
 	funcscope ::= (fn->impl_scope)@scope mut?;
 	node ::= fn->node;
@@ -384,7 +384,7 @@ cg_define_debug_information_for_func ::= func(fn : function mut?, s : scope mut?
 	file_di ::= filescope->dbg;
 	metadata_ty : u64 := di_type(fn->type, prog);
 	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, zero, false@s32);
-	//LLVMSetSubprogram(fn->codegen, di_subprogram);
+	LLVMSetSubprogram(fn->codegen, di_subprogram);
 	funcscope->dbg = di_subprogram;
 };
 
@@ -414,7 +414,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
-	cg_define_debug_information_for_func(fn, s, prog);
+	cg_define_debug_information_for_func(fn, prog);
 
 	i : u64 mut;
 
