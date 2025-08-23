@@ -1,0 +1,83 @@
+codegen_setup_debug_builder ::= func(prog : program mut? -> v0)
+{
+	args ::= ref(prog->compile_args);
+
+	dirname_len : u64 weak mut;
+	dirname : u8 mut? mut;
+	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
+
+	di_buildfile ::= LLVMDIBuilderCreateFile(db, args->build_file, zstrlen(args->build_file), dirname, dirname_len);
+	LLVM_DWARF_SRC_LANG_C ::= 1;
+	producer_str ::= "Psyc";
+	is_optimized ::= prog->opt != zero;
+	LLVMDWARFEmissionNone ::= 0;
+	LLVMDWARFEmissionFull ::= 1;
+	emission : s32 weak mut := LLVMDWARFEmissionNone;
+	if(prog->debug_symbols)
+	{
+		emission = LLVMDWARFEmissionFull;
+	}
+	di_cu = LLVMDIBuilderCreateCompileUnit(db, LLVM_DWARF_SRC_LANG_C, di_buildfile, producer_str, zstrlen(producer_str), is_optimized@s32, zero, zero, zero, zero, zero, emission, zero, true@s32, false@s32, zero, zero, zero, zero);
+	glob ::= ref(prog->global);
+	glob->dbg = di_cu;
+};
+
+cg_define_debug_information_for_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
+{
+	node ::= def->node;
+	type ::= def->type;
+	if(ty_isbad(type))
+	{
+		psyc_panic(node->loc, "cg_struct structdef's type was badtype. semal should've sorted this - compiler bug.");
+	}
+	strct ::= type.strct;
+	memtys ::= (strct.member_types)@ty?;
+	memcount ::= strct.member_count;
+	di_memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * memcount);
+
+	i : u64 mut;
+	for(i = 0, i < memcount, i = i + 1)
+	{
+		deref(di_memarr # i) = di_type(deref(memtys # i), prog);
+	}
+
+	// todo: get the bloody file the struct is defined in...
+	struct_file_scope ::= (def->file_scope)@scope?;
+	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
+	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
+	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope->dbg, def->name, def->name_len, struct_file_scope->dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
+};
+
+cg_define_debug_information_for_func ::= func(fn : function mut?, prog : program mut? -> v0)
+{
+	funcscope ::= (fn->impl_scope)@scope mut?;
+	node ::= fn->node;
+
+	filescope ::= scope_get_parent_filescope(funcscope, prog);
+	file_di ::= filescope->dbg;
+	metadata_ty : u64 := di_type(fn->type, prog);
+	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, zero, false@s32);
+	LLVMSetSubprogram(fn->codegen, di_subprogram);
+	funcscope->dbg = di_subprogram;
+};
+
+cg_debug_finalise ::= func(prog : program mut? -> v0)
+{
+	if(prog->debug_symbols)
+	{
+		LLVMDIBuilderFinalize(db);
+	}
+};
+
+as_setup_codeview ::= func(prog : program mut? -> v0)
+{
+	codeview_str ::= "CodeView";
+	one_value ::= cg_integer_literal(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := 1;
+	}, zero, prog);
+	val_metadata ::= LLVMValueAsMetadata(one_value.ll);
+	LLVMAddModuleFlag(prog->codegen, 0, codeview_str, zstrlen(codeview_str), val_metadata);
+
+};
