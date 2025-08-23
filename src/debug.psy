@@ -61,6 +61,52 @@ cg_define_debug_information_for_func ::= func(fn : function mut?, prog : program
 	funcscope->dbg = di_subprogram;
 };
 
+di_emit_location ::= func(ctx : context, prog : program? -> v0)
+{
+	if(ctx.typecheck_only)
+	{
+		return;
+	}
+	n ::= ctx.node;
+
+	s : scope mut? mut := ctx.local;
+	parentfn ::= scope_get_parent_function(s, prog);
+	if(parentfn != zero)
+	{
+		s = (parentfn->impl_scope)@scope mut?;
+		//putzstr("expr location ");
+		//putloc(n->loc);
+		//putzstr(" belongs to parent function named ");
+		//putbytes(parentfn->name, parentfn->name_len);
+		//putchar(10);
+	}
+	else
+	{
+		// we have no parent function
+		// use file scope.
+		s = scope_get_parent_filescope(s, prog);
+		if(s == zero)
+		{
+			return;
+		}
+		putzstr("expr location ");
+		putloc(n->loc);
+		putzstr(" belongs to ");
+		putzstr(__enumname(s->type));
+		putzstr(" scope ");
+		putloc(s->loc);
+		putzstr(" named ");
+		putchar('"');
+		putbytes(parentfn->name, parentfn->name_len);
+		putchar('"');
+		putchar(10);
+	}
+	di_scope : u64 mut := s->dbg;
+	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
+	LLVMSetCurrentDebugLocation2(ir, dloc);
+};
+
+
 cg_debug_finalise ::= func(prog : program mut? -> v0)
 {
 	if(prog->debug_symbols)

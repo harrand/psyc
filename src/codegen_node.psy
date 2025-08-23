@@ -10,51 +10,6 @@ cg_file_scope ::= func(f : scope mut?, prog : program mut? -> v0)
 	f->dbg = LLVMDIBuilderCreateFile(db, f->scope_label, f->scope_label_len, dirname, dirname_len);
 };
 
-di_emit_location ::= func(ctx : context, prog : program? -> v0)
-{
-	if(ctx.typecheck_only)
-	{
-		return;
-	}
-	n ::= ctx.node;
-
-	s : scope mut? mut := ctx.local;
-	parentfn ::= scope_get_parent_function(s, prog);
-	if(parentfn != zero)
-	{
-		s = (parentfn->impl_scope)@scope mut?;
-		//putzstr("expr location ");
-		//putloc(n->loc);
-		//putzstr(" belongs to parent function named ");
-		//putbytes(parentfn->name, parentfn->name_len);
-		//putchar(10);
-	}
-	else
-	{
-		// we have no parent function
-		// use file scope.
-		s = scope_get_parent_filescope(s, prog);
-		if(s == zero)
-		{
-			return;
-		}
-		putzstr("expr location ");
-		putloc(n->loc);
-		putzstr(" belongs to ");
-		putzstr(__enumname(s->type));
-		putzstr(" scope ");
-		putloc(s->loc);
-		putzstr(" named ");
-		putchar('"');
-		putbytes(parentfn->name, parentfn->name_len);
-		putchar('"');
-		putchar(10);
-	}
-	di_scope : u64 mut := s->dbg;
-	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
-	LLVMSetCurrentDebugLocation2(ir, dloc);
-};
-
 // node
 cg_node ::= func(ctx : context mut, prog : program mut? -> cgv)
 {
@@ -630,6 +585,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 	fnty ::= parentfn->type;
 	fnpayload ::= fnty.fn;
 	fn_retty ::= deref((fnpayload.return_type)@ty?);
+	di_emit_location(ctx, prog);
 	// todo: get parent fn and ensure the return is suitable.
 	if((node->childcount) == 0)
 	{
