@@ -113,11 +113,15 @@ dbg_markup_local_variable ::= func(var : variable mut?, s : scope mut?, prog : p
 	parent_file ::= scope_get_parent_filescope(s, prog);
 	divar ::= LLVMDIBuilderCreateAutoVariable(db, fnscope->dbg, var->name, var->name_len, parent_file->dbg, loc.line@_, di_type(var->type, prog), false@s32, zero, zero);
 	LLVMDIBuilderInsertDeclareAtEnd(db, var->codegen, divar, LLVMDIBuilderCreateExpression(db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->dbg, zero), fnscope->codegen);
-	//LLVMDIBuilderInsertDeclareAtEnd(db, var->codegen, divar, zero, zero, fnscope->codegen);
 };
 
 dbg_markup_global_variable ::= func(var : variable mut?, s : scope mut?, prog : program mut? -> v0)
 {
+	loc ::= var->node->loc;
+	filescope ::= (var->file_scope)@scope mut?;
+
+	divar ::= LLVMDIBuilderCreateGlobalVariableExpression(db, filescope->dbg, var->name, var->name_len, var->name, var->name_len, filescope->dbg, loc.line@_, di_type(var->type, prog), false@s32, LLVMDIBuilderCreateExpression(db, zero, zero), zero, zero);
+	LLVMGlobalSetMetadata(var->codegen, LLVMGetMDKindID("dbg", 3), divar);
 };
 
 dbg_markup_var ::= func(var : variable mut?, s : scope mut?, prog : program mut? -> v0)

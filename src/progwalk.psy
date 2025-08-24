@@ -171,6 +171,11 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 
 	s ::= ctx.local;
 	is_top_level_decl ::= (s->type) == (scope_type.file);
+	file_scope : scope mut? mut := s;
+	if(!is_top_level_decl)
+	{
+		file_scope = scope_get_parent_filescope(s, prog);
+	}
 	var ::= variable
 	{
 		.node := node;
@@ -179,6 +184,7 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 		.is_global := false; // note: this is set later on.
 		.type := zero;
 		.internal := false;
+		.file_scope := file_scope@v0?;
 		.initialiser := zero;
 		.codegen := zero;
 	};
