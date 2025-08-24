@@ -1,4 +1,4 @@
-codegen_setup_debug_builder ::= func(prog : program mut? -> v0)
+dbg_setup_builder ::= func(prog : program mut? -> v0)
 {
 	args ::= ref(prog->compile_args);
 
@@ -22,7 +22,7 @@ codegen_setup_debug_builder ::= func(prog : program mut? -> v0)
 	glob->dbg = di_cu;
 };
 
-cg_define_debug_information_for_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
+dbg_markup_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 {
 	node ::= def->node;
 	type ::= def->type;
@@ -48,7 +48,7 @@ cg_define_debug_information_for_struct ::= func(def : structdef mut?, prog : pro
 	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope->dbg, def->name, def->name_len, struct_file_scope->dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
 };
 
-cg_define_debug_information_for_func ::= func(fn : function mut?, prog : program mut? -> v0)
+dbg_markup_func ::= func(fn : function mut?, prog : program mut? -> v0)
 {
 	funcscope ::= (fn->impl_scope)@scope mut?;
 	node ::= fn->node;
@@ -61,7 +61,7 @@ cg_define_debug_information_for_func ::= func(fn : function mut?, prog : program
 	funcscope->dbg = di_subprogram;
 };
 
-di_emit_location ::= func(ctx : context, prog : program? -> v0)
+dbg_markup_location ::= func(ctx : context, prog : program? -> v0)
 {
 	if(ctx.typecheck_only)
 	{
@@ -85,21 +85,10 @@ di_emit_location ::= func(ctx : context, prog : program? -> v0)
 		// we have no parent function
 		// use file scope.
 		s = scope_get_parent_filescope(s, prog);
-		if(s == zero)
-		{
-			return;
-		}
-		putzstr("expr location ");
-		putloc(n->loc);
-		putzstr(" belongs to ");
-		putzstr(__enumname(s->type));
-		putzstr(" scope ");
-		putloc(s->loc);
-		putzstr(" named ");
-		putchar('"');
-		putbytes(parentfn->name, parentfn->name_len);
-		putchar('"');
-		putchar(10);
+	}
+	if(s == zero)
+	{
+		return;
 	}
 	di_scope : u64 mut := s->dbg;
 	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), n->loc.line@_, n->loc.column@_, di_scope, zero);
@@ -107,7 +96,7 @@ di_emit_location ::= func(ctx : context, prog : program? -> v0)
 };
 
 
-cg_debug_finalise ::= func(prog : program mut? -> v0)
+dbg_finalise ::= func(prog : program mut? -> v0)
 {
 	if(prog->debug_symbols)
 	{
@@ -115,7 +104,7 @@ cg_debug_finalise ::= func(prog : program mut? -> v0)
 	}
 };
 
-as_setup_codeview ::= func(prog : program mut? -> v0)
+dbg_setup_codeview ::= func(prog : program mut? -> v0)
 {
 	codeview_str ::= "CodeView";
 	one_value ::= cg_integer_literal(ast_literal_expr

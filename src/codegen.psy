@@ -314,7 +314,7 @@ cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 	(def->codegen) = LLVMStructCreateNamed(LLVMGetGlobalContext(), name_zstr);
 	LLVMStructSetBody(def->codegen, memarr, memcount@u32, false@s32);
 
-	cg_define_debug_information_for_struct(def, prog);
+	dbg_markup_struct(def, prog);
 };
 
 cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
@@ -375,7 +375,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
-	cg_define_debug_information_for_func(fn, prog);
+	dbg_markup_func(fn, prog);
 
 	i : u64 mut;
 
@@ -494,7 +494,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 		if(ty_is_v0(fn_retty))
 		{
 			// add a retvoid here. (give it a vaguely valid debug location even though there is no corresponding line of code)
-			di_emit_location(context
+			dbg_markup_location(context
 			{
 				.node := node;
 				.local := funcscope;
@@ -521,7 +521,7 @@ codegen ::= func(prog : program mut? -> v0)
 	psyc_timed_begin(psyc_stage.codegen);
 	defer psyc_timed_end();
 
-	codegen_setup_debug_builder(prog);
+	dbg_setup_builder(prog);
 	args ::= ref(prog->compile_args);
 
 	glob ::= ref(prog->global);
@@ -569,7 +569,7 @@ codegen ::= func(prog : program mut? -> v0)
 	LLVMSetExternallyInitialized(fltused, 0);
 	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
-	cg_debug_finalise(prog);
+	dbg_finalise(prog);
 	cg_finish();
 	(prog->codegen) = mod;
 };
