@@ -6,7 +6,7 @@ dbg_setup_builder ::= func(prog : program mut? -> v0)
 	dirname : u8 mut? mut;
 	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
 
-	di_buildfile ::= LLVMDIBuilderCreateFile(db, args->build_file, zstrlen(args->build_file), dirname, dirname_len);
+	di_buildfile ::= LLVMDIBuilderCreateFile(db, args->build_file, zstrlen(args->build_file), dirname, dirname_len - 1);
 	LLVM_DWARF_SRC_LANG_C ::= 1;
 	producer_str ::= "Psyc";
 	is_optimized ::= prog->opt != zero;
@@ -21,6 +21,15 @@ dbg_setup_builder ::= func(prog : program mut? -> v0)
 	glob ::= ref(prog->global);
 	glob->dbg = di_cu;
 };
+
+dbg_create_file ::= func(f : scope mut?, prog : program mut? -> v0)
+{
+	dirname_len : u64 weak mut;
+	dirname : u8 mut? mut;
+	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
+	f->dbg = LLVMDIBuilderCreateFile(db, f->scope_label, f->scope_label_len, dirname, dirname_len - 1);
+};
+
 
 dbg_markup_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 {
@@ -56,7 +65,8 @@ dbg_markup_func ::= func(fn : function mut?, prog : program mut? -> v0)
 	filescope ::= scope_get_parent_filescope(funcscope, prog);
 	file_di ::= filescope->dbg;
 	metadata_ty : u64 := di_type(fn->type, prog);
-	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, zero, false@s32);
+	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, 256, false@s32);
+
 	LLVMSetSubprogram(fn->codegen, di_subprogram);
 	funcscope->dbg = di_subprogram;
 };
@@ -107,12 +117,7 @@ dbg_finalise ::= func(prog : program mut? -> v0)
 dbg_setup_codeview ::= func(prog : program mut? -> v0)
 {
 	codeview_str ::= "CodeView";
-	one_value ::= cg_integer_literal(ast_literal_expr
-	{
-		.type := ast_literal_type.integral;
-		.integral := 1;
-	}, zero, prog);
-	val_metadata ::= LLVMValueAsMetadata(one_value.ll);
+	i32_type ::= cg_type(ty_getprim(primty.s32, zero), prog);
+	val_metadata ::= LLVMValueAsMetadata(LLVMConstInt(i32_type, 1, true@s32));
 	LLVMAddModuleFlag(prog->codegen, 0, codeview_str, zstrlen(codeview_str), val_metadata);
-
 };
