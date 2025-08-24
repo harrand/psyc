@@ -1,6 +1,6 @@
-dbg_setup_builder ::= func(prog : program mut? -> v0)
+dbg_setup_builder ::= func( -> v0)
 {
-	args ::= ref(prog->compile_args);
+	args ::= ref(prog.compile_args);
 
 	dirname_len : u64 weak mut;
 	dirname : u8 mut? mut;
@@ -9,20 +9,20 @@ dbg_setup_builder ::= func(prog : program mut? -> v0)
 	di_buildfile ::= LLVMDIBuilderCreateFile(db, args->build_file, zstrlen(args->build_file), dirname, dirname_len - 1);
 	LLVM_DWARF_SRC_LANG_C ::= 1;
 	producer_str ::= "Psyc";
-	is_optimized ::= prog->opt != zero;
+	is_optimized ::= prog.opt != zero;
 	LLVMDWARFEmissionNone ::= 0;
 	LLVMDWARFEmissionFull ::= 1;
 	emission : s32 weak mut := LLVMDWARFEmissionNone;
-	if(prog->debug_symbols)
+	if(prog.debug_symbols)
 	{
 		emission = LLVMDWARFEmissionFull;
 	}
 	di_cu = LLVMDIBuilderCreateCompileUnit(db, LLVM_DWARF_SRC_LANG_C, di_buildfile, producer_str, zstrlen(producer_str), is_optimized@s32, zero, zero, zero, zero, zero, emission, zero, true@s32, false@s32, zero, zero, zero, zero);
-	glob ::= ref(prog->global);
+	glob ::= ref(prog.global);
 	glob->dbg = di_cu;
 };
 
-dbg_create_file ::= func(f : scope mut?, prog : program mut? -> v0)
+dbg_create_file ::= func(f : scope mut? -> v0)
 {
 	dirname_len : u64 weak mut;
 	dirname : u8 mut? mut;
@@ -30,7 +30,7 @@ dbg_create_file ::= func(f : scope mut?, prog : program mut? -> v0)
 	f->dbg = LLVMDIBuilderCreateFile(db, f->scope_label, f->scope_label_len, dirname, dirname_len - 1);
 };
 
-dbg_markup_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
+dbg_markup_struct ::= func(def : structdef mut? -> v0)
 {
 	node ::= def->node;
 	type ::= def->type;
@@ -46,31 +46,31 @@ dbg_markup_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 	i : u64 mut;
 	for(i = 0, i < memcount, i = i + 1)
 	{
-		deref(di_memarr # i) = di_type(deref(memtys # i), prog);
+		deref(di_memarr # i) = di_type(deref(memtys # i));
 	}
 
 	// todo: get the bloody file the struct is defined in...
 	struct_file_scope ::= (def->file_scope)@scope?;
-	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
-	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type, prog));
+	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type));
+	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type));
 	def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope->dbg, def->name, def->name_len, struct_file_scope->dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
 };
 
-dbg_markup_func ::= func(fn : function mut?, prog : program mut? -> v0)
+dbg_markup_func ::= func(fn : function mut? -> v0)
 {
 	funcscope ::= (fn->impl_scope)@scope mut?;
 	node ::= fn->node;
 
-	filescope ::= scope_get_parent_filescope(funcscope, prog);
+	filescope ::= scope_get_parent_filescope(funcscope);
 	file_di ::= filescope->dbg;
-	metadata_ty : u64 := di_type(fn->type, prog);
+	metadata_ty : u64 := di_type(fn->type);
 	di_subprogram ::= LLVMDIBuilderCreateFunction(db, file_di, fn->name, fn->name_len, fn->name, fn->name_len, file_di, node->loc.line@_, metadata_ty, false@s32, true@s32, node->loc.column@_, 256, false@s32);
 
 	LLVMSetSubprogram(fn->codegen, di_subprogram);
 	funcscope->dbg = di_subprogram;
 };
 
-dbg_markup_location ::= func(ctx : context, prog : program? -> v0)
+dbg_markup_location ::= func(ctx : context -> v0)
 {
 	if(ctx.typecheck_only)
 	{
@@ -79,7 +79,7 @@ dbg_markup_location ::= func(ctx : context, prog : program? -> v0)
 	n ::= ctx.node;
 
 	s : scope mut? mut := ctx.local;
-	parentfn ::= scope_get_parent_function(s, prog);
+	parentfn ::= scope_get_parent_function(s);
 	if(parentfn != zero)
 	{
 		s = (parentfn->impl_scope)@scope mut?;
@@ -93,7 +93,7 @@ dbg_markup_location ::= func(ctx : context, prog : program? -> v0)
 	{
 		// we have no parent function
 		// use file scope.
-		s = scope_get_parent_filescope(s, prog);
+		s = scope_get_parent_filescope(s);
 	}
 	if(s == zero)
 	{
@@ -104,50 +104,50 @@ dbg_markup_location ::= func(ctx : context, prog : program? -> v0)
 	LLVMSetCurrentDebugLocation2(ir, dloc);
 };
 
-dbg_markup_local_variable ::= func(var : variable mut?, s : scope mut?, prog : program mut? -> v0)
+dbg_markup_local_variable ::= func(var : variable mut?, s : scope mut? -> v0)
 {
 	loc ::= var->node->loc;
 
-	parent_fn ::= scope_get_parent_function(s, prog);
+	parent_fn ::= scope_get_parent_function(s);
 	fnscope ::= (parent_fn->impl_scope)@scope mut?;
-	parent_file ::= scope_get_parent_filescope(s, prog);
-	divar ::= LLVMDIBuilderCreateAutoVariable(db, fnscope->dbg, var->name, var->name_len, parent_file->dbg, loc.line@_, di_type(var->type, prog), false@s32, zero, zero);
+	parent_file ::= scope_get_parent_filescope(s);
+	divar ::= LLVMDIBuilderCreateAutoVariable(db, fnscope->dbg, var->name, var->name_len, parent_file->dbg, loc.line@_, di_type(var->type), false@s32, zero, zero);
 	LLVMDIBuilderInsertDeclareAtEnd(db, var->codegen, divar, LLVMDIBuilderCreateExpression(db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->dbg, zero), fnscope->codegen);
 };
 
-dbg_markup_global_variable ::= func(var : variable mut?, s : scope mut?, prog : program mut? -> v0)
+dbg_markup_global_variable ::= func(var : variable mut?, s : scope mut? -> v0)
 {
 	loc ::= var->node->loc;
 	filescope ::= (var->file_scope)@scope mut?;
 
-	divar ::= LLVMDIBuilderCreateGlobalVariableExpression(db, filescope->dbg, var->name, var->name_len, var->name, var->name_len, filescope->dbg, loc.line@_, di_type(var->type, prog), false@s32, LLVMDIBuilderCreateExpression(db, zero, zero), zero, zero);
+	divar ::= LLVMDIBuilderCreateGlobalVariableExpression(db, filescope->dbg, var->name, var->name_len, var->name, var->name_len, filescope->dbg, loc.line@_, di_type(var->type), false@s32, LLVMDIBuilderCreateExpression(db, zero, zero), zero, zero);
 	LLVMGlobalSetMetadata(var->codegen, LLVMGetMDKindID("dbg", 3), divar);
 };
 
-dbg_markup_var ::= func(var : variable mut?, s : scope mut?, prog : program mut? -> v0)
+dbg_markup_var ::= func(var : variable mut?, s : scope mut? -> v0)
 {
 	if(var->is_global)
 	{
-		dbg_markup_global_variable(var, s, prog);
+		dbg_markup_global_variable(var, s);
 	}
 	else
 	{
-		dbg_markup_local_variable(var, s, prog);
+		dbg_markup_local_variable(var, s);
 	}
 };
 
-dbg_finalise ::= func(prog : program mut? -> v0)
+dbg_finalise ::= func( -> v0)
 {
-	if(prog->debug_symbols)
+	if(prog.debug_symbols)
 	{
 		LLVMDIBuilderFinalize(db);
 	}
 };
 
-dbg_setup_codeview ::= func(prog : program mut? -> v0)
+dbg_setup_codeview ::= func( -> v0)
 {
 	codeview_str ::= "CodeView";
-	i32_type ::= cg_type(ty_getprim(primty.s32, zero), prog);
+	i32_type ::= cg_type(ty_getprim(primty.s32, zero));
 	val_metadata ::= LLVMValueAsMetadata(LLVMConstInt(i32_type, 1, true@s32));
-	LLVMAddModuleFlag(prog->codegen, 0, codeview_str, zstrlen(codeview_str), val_metadata);
+	LLVMAddModuleFlag(prog.codegen, 0, codeview_str, zstrlen(codeview_str), val_metadata);
 };

@@ -1,8 +1,8 @@
 sval_expr_fn ::= struct
 {
-	fn : func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval);
+	fn : func(expr : ast_expr, ctx : context mut -> sval);
 };
-sval_exprfn_error ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval)
+sval_exprfn_error ::= func(expr : ast_expr, ctx : context mut -> sval)
 {
 	defer return zero;
 	node ::= ctx.node;
@@ -22,15 +22,15 @@ sval_exprfn_error ::= func(expr : ast_expr, ctx : context mut, prog : program mu
 };
 sval_expr_table : sval_expr_fn mut[10] mut;
 
-sval_node ::= func(ctx : context mut, prog : program mut? -> sval)
+sval_node ::= func(ctx : context mut -> sval)
 {
 	node ::= ctx.node;
 	expr ::= node->expr;
 	fn ::= deref(sval_expr_table # ((expr.type)@s64));
-	return fn.fn(expr, ctx, prog);
+	return fn.fn(expr, ctx);
 };
 
-sval_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval)
+sval_symbol ::= func(expr : ast_expr, ctx : context mut -> sval)
 {
 	node ::= ctx.node;
 	sym ::= expr.symbol;
@@ -55,10 +55,10 @@ sval_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 	{
 		.node := ast_get_child(declnode@_, 0);
 		.local := ctx.local;
-	}, prog);
+	});
 };
 
-sval_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval)
+sval_literal ::= func(expr : ast_expr, ctx : context mut -> sval)
 {
 	return sval
 	{
@@ -67,13 +67,13 @@ sval_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut? ->
 	};
 };
 
-sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval)
+sval_biop ::= func(expr : ast_expr, ctx : context mut -> sval)
 {
 	node ::= ctx.node;
 	lhsnode ::= ast_get_child(node@_, 0);
-	lhs : sval mut := sval_node(context{.node := lhsnode; .local := ctx.local;}, prog);
+	lhs : sval mut := sval_node(context{.node := lhsnode; .local := ctx.local;});
 	rhsnode ::= ast_get_child(node@_, 1);
-	rhs : sval mut := sval_node(context{.node := rhsnode; .local := ctx.local;}, prog);
+	rhs : sval mut := sval_node(context{.node := rhsnode; .local := ctx.local;});
 
 	llit ::= ref(lhs.literal);
 	rlit ::= ref(rhs.literal);
@@ -289,7 +289,7 @@ sval_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sv
 	return zero;
 };
 
-sval_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sval)
+sval_unop ::= func(expr : ast_expr, ctx : context mut -> sval)
 {
 	node ::= ctx.node;
 	operand ::= ast_get_child(node@_, 0);
@@ -297,7 +297,7 @@ sval_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> sv
 	{
 		.node := operand;
 		.local := ctx.local;
-	}, prog);
+	});
 	lit ::= ref(val.literal);
 
 	u ::= expr.unop;

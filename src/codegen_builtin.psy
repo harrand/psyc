@@ -1,6 +1,6 @@
 debugtrap_fn : u64 mut;
 
-cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_debugbreak ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	
@@ -13,7 +13,7 @@ cg_builtin_debugbreak ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return zero;
 };
 
-cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_sizeof ::= func(ctx : context mut -> cgv)
 {
 	type : ty mut := zero;
 
@@ -31,7 +31,7 @@ cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := dstnode;
 			.local := ctx.local;
 			.typecheck_only := true;
-		}, prog);
+		});
 		type = (val.type);
 	}
 
@@ -39,11 +39,11 @@ cg_builtin_sizeof ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return cg_literal(make_literal_expr(ast_literal_expr
 	{
 		.type := ast_literal_type.integral;
-		.integral := LLVMABISizeOfType(dl, cg_type(type, prog))@_;
-	}), ctx, prog);
+		.integral := LLVMABISizeOfType(dl, cg_type(type))@_;
+	}), ctx);
 };
 
-cg_builtin_alignof ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_alignof ::= func(ctx : context mut -> cgv)
 {
 	type : ty mut := zero;
 
@@ -61,7 +61,7 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := dstnode;
 			.local := ctx.local;
 			.typecheck_only := true;
-		}, prog);
+		});
 		type = (val.type);
 	}
 
@@ -69,11 +69,11 @@ cg_builtin_alignof ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return cg_literal(make_literal_expr(ast_literal_expr
 	{
 		.type := ast_literal_type.integral;
-		.integral := LLVMABIAlignmentOfType(dl, cg_type(type, prog))@_;
-	}), ctx, prog);
+		.integral := LLVMABIAlignmentOfType(dl, cg_type(type))@_;
+	}), ctx);
 };
 
-cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_arrcpy ::= func(ctx : context mut -> cgv)
 {
 	if(ctx.typecheck_only)
 	{
@@ -96,8 +96,8 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 	{
 		.node := firstnode;
 		.local := ctx.local;
-	}, prog);
-	cgv_load_if_variable(ref ptr, prog);
+	});
+	cgv_load_if_variable(ref ptr);
 	if(!ty_is(ptr.type, tytag.ptr))
 	{
 		psyc_error_begin(firstnode->loc);
@@ -141,8 +141,8 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 	curval : cgv mut;
 	for(i = 0, i < arrlen, i = i + 1)
 	{
-		deref(index_list # 1) = LLVMConstInt(cg_type(ty_getprim(primty.s64, zero), prog), i, false@s32);
-		offset_ll = LLVMBuildGEP2(ir, cg_type(type, prog), ptr.ll, index_list # 1, 1, "");
+		deref(index_list # 1) = LLVMConstInt(cg_type(ty_getprim(primty.s64, zero)), i, false@s32);
+		offset_ll = LLVMBuildGEP2(ir, cg_type(type), ptr.ll, index_list # 1, 1, "");
 
 		curnode = ast_get_child(node@_, 2 + i);
 		
@@ -151,19 +151,19 @@ cg_builtin_arrcpy ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := curnode;
 			.local := ctx.local;
 			.typecheck_only := false;
-		}, prog);
+		});
 		
-		curval = cgv_convert(curval, type, prog, curnode->loc, false);
+		curval = cgv_convert(curval, type, curnode->loc, false);
 		LLVMBuildStore(ir, curval.ll, offset_ll);
 	}
 	return cg_literal(make_literal_expr(ast_literal_expr
 	{
 		.type := ast_literal_type.integral;
 		.integral := arrlen@_;
-	}), ctx, prog);
+	}), ctx);
 };
 
-cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_enumname ::= func(ctx : context mut -> cgv)
 {
 	retty ::= ty_ref(ty_getprim(primty.u8, zero), zero);
 	if(ctx.typecheck_only)
@@ -182,8 +182,8 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := enumnode;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
-	cgv_load_if_variable(ref enumval, prog);
+	});
+	cgv_load_if_variable(ref enumval);
 	if(!ty_is(enumval.type, tytag.enm))
 	{
 		psyc_error_begin(enumnode->loc);
@@ -194,11 +194,11 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	fn ::= scope_get_parent_function(ctx.local, prog);
+	fn ::= scope_get_parent_function(ctx.local);
 
 	type ::= enumval.type;
 	enm ::= type.enm;
-	llty ::= cg_type(retty, prog);
+	llty ::= cg_type(retty);
 	ll ::= LLVMBuildAlloca(ir, llty, "__enumname_dynamic");
 	badenumval ::= LLVMBuildGlobalString(ir, "badenum", "badenum");
 	LLVMBuildStore(ir, badenumval, ll);
@@ -208,7 +208,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 		val ::= deref((enm.entry_values) # i);
 		name ::= deref((enm.entry_names) # i);
 		name_len ::= deref((enm.entry_name_lens) # i);
-		val_ll ::= LLVMConstInt(cg_type(ty_getprim(primty.s64, zero), prog), val, false@s32);
+		val_ll ::= LLVMConstInt(cg_type(ty_getprim(primty.s64, zero)), val, false@s32);
 		cond ::= LLVMBuildICmp(ir, 32, val_ll, enumval.ll, "");
 
 		cond_blk ::= LLVMAppendBasicBlock(fn->codegen, "enumname_if");
@@ -233,7 +233,7 @@ cg_builtin_enumname ::= func(ctx : context mut, prog : program mut? -> cgv)
 	};
 };
 
-cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_embed ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	pathnode ::= ast_get_child(node@_, 0);
@@ -241,7 +241,7 @@ cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
 	{
 		.node := pathnode;
 		.local := ctx.local;
-	}, prog);
+	});
 	if((path.tag) != (sval_tag.literal))
 	{
 		psyc_error_begin(node->loc);
@@ -333,10 +333,10 @@ cg_builtin_embed ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := ref result_node;
 		.local := ctx.local;
 		.typecheck_only := ctx.typecheck_only;
-	}, prog);
+	});
 };
 
-cg_builtin_curloc ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_curloc ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	loc ::= node->loc;
@@ -351,7 +351,7 @@ cg_builtin_curloc ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.name_len := zstrlen(srcloc_tyname);
 	};
 
-	filescope ::= scope_get_parent_filescope(ctx.local, prog);
+	filescope ::= scope_get_parent_filescope(ctx.local);
 	
 	file_node : ast mut := deref node;
 	file_node.children = zero;
@@ -423,10 +423,10 @@ cg_builtin_curloc ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := ref result_node;
 		.local := ctx.local;
 		.typecheck_only := ctx.typecheck_only;
-	}, prog);
+	});
 };
 
-cg_builtin_error ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_builtin_error ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	msgnode ::= ast_get_child(node@_, 0);
@@ -434,7 +434,7 @@ cg_builtin_error ::= func(ctx : context mut, prog : program mut? -> cgv)
 	{
 		.node := msgnode;
 		.local := ctx.local;
-	}, prog);
+	});
 	if((msg.tag) != (sval_tag.literal))
 	{
 		psyc_error_begin(node->loc);

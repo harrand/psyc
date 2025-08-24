@@ -59,14 +59,14 @@ fully_read_file ::= func(path : u8?, a : arena mut? -> u8 mut?)
 	return data;
 };
 
-precompile_build_file ::= func(prog : program mut?, path : u8?, a : arena mut? -> v0)
+precompile_build_file ::= func(path : u8?, a : arena mut? -> v0)
 {
 	len ::= zstrlen(path);
 	source ::= fully_read_file(path, a);
-	args ::= ref(prog->compile_args);
+	args ::= ref(prog.compile_args);
 	l ::= lex(path, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(prog, ref(p.root), path, len);
+	file_scope ::= progwalk_file(ref(p.root), path, len);
 
 	region ::= scope_find_region(file_scope, args->build_config, zstrlen(args->build_config));
 	if(region == zero)
@@ -83,13 +83,12 @@ precompile_build_file ::= func(prog : program mut?, path : u8?, a : arena mut? -
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	interpret_build_region(prog, region, file_scope);
+	interpret_build_region(region, file_scope);
 };
 
-add_source_file ::= func(progptr : v0? weak, path : u8?, len : u64, a : arena mut? -> v0)
+add_source_file ::= func(path : u8?, len : u64, a : arena mut? -> v0)
 {
-	prog ::= progptr@program mut?;
-	args ::= ref(prog->compile_args);
+	args ::= ref(prog.compile_args);
 	// unfortunately file will need the path as a zero terminated string.
 	// alloc time
 	pathstr : u8 mut? := arena_alloc(a, len + 1);
@@ -99,13 +98,12 @@ add_source_file ::= func(progptr : v0? weak, path : u8?, len : u64, a : arena mu
 	source ::= fully_read_file(pathstr, a);
 	l ::= lex(pathstr, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	progwalk_file(prog, ref(p.root), path, len);
+	progwalk_file(ref(p.root), path, len);
 };
 
-add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0)
+add_build_file ::= func(path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0)
 {
-	prog ::= progptr@program mut?;
-	args ::= ref(prog->compile_args);
+	args ::= ref(prog.compile_args);
 	// unfortunately file will need the path as a zero terminated string.
 	// alloc time
 	pathstr : u8 mut? := arena_alloc(a, len + 1);
@@ -115,7 +113,7 @@ add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config 
 	source ::= fully_read_file(pathstr, a);
 	l ::= lex(pathstr, source, args->verbose_lex);
 	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(prog, ref(p.root), path, len);
+	file_scope ::= progwalk_file(ref(p.root), path, len);
 
 	region ::= scope_find_region(file_scope, build_config, build_config_len);
 	if(region == zero)
@@ -140,12 +138,12 @@ add_build_file ::= func(progptr : v0? weak, path : u8?, len : u64, build_config 
 	// set the cwd to the directory containing the child build file
 	directory_set_cwd(path, path_get_parent_len(path, len), global_arena);
 	// do the child build region stuff
-	interpret_build_region(prog, region, file_scope);
+	interpret_build_region(region, file_scope);
 	// set it back to what it was and keep going with the rest of our build region.
 	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
 };
 
-add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
+add_preload ::= func(a : arena mut? -> v0)
 {
 	static if(_win32)
 	{
@@ -157,9 +155,9 @@ add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 	}
 	l ::= lex("preload.psy", source, false);
 	p ::= parse(ref l, false);
-	progwalk_file(prog, ref(p.root), "preload.psy", zstrlen("preload.psy"));
+	progwalk_file(ref(p.root), "preload.psy", zstrlen("preload.psy"));
 
-	args ::= prog->compile_args;
+	args ::= prog.compile_args;
 
 	config_bit ::= "_config ::= ";
 	len1 ::= zstrlen(config_bit);
@@ -174,10 +172,10 @@ add_preload ::= func(prog : program mut?, a : arena mut? -> v0)
 
 	l2 ::= lex("preconfig.psy", src2, false);
 	p2 ::= parse(ref l2, false);
-	progwalk_file(prog, ref(p2.root), "preconfig.psy", zstrlen("preconfig.psy"));
+	progwalk_file(ref(p2.root), "preconfig.psy", zstrlen("preconfig.psy"));
 };
 
-add_entrypoint ::= func(prog : program mut? -> v0)
+add_entrypoint ::= func( -> v0)
 {
 	static if(_win32)
 	{
@@ -262,19 +260,19 @@ add_entrypoint ::= func(prog : program mut? -> v0)
 	}
 	l ::= lex("entrypoint.psy", source, false);
 	p ::= parse(ref l, false);
-	progwalk_file(prog, ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
+	progwalk_file(ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
 };
 
-compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
+compile_program ::= func(a : arena mut? -> v0)
 {
 	putzstr("Precompiling...     ");
 	putchar(13);
-	args ::= ref(prog->compile_args);
-	add_preload(prog, a);
-	precompile_build_file(prog, args->build_file, a);
-	if((prog->type) == (program_type.executable))
+	args ::= ref(prog.compile_args);
+	add_preload(a);
+	precompile_build_file(args->build_file, a);
+	if((prog.type) == (program_type.executable))
 	{
-		add_entrypoint(prog);
+		add_entrypoint();
 	}
 	if(!directory_exists(args->output_dir))
 	{
@@ -282,31 +280,31 @@ compile_program ::= func(prog : program mut?, a : arena mut? -> v0)
 	}
 	putzstr("Semantic Analysis...");
 	putchar(13);
-	semal(prog);
+	semal();
 
 	putzstr("Code Generation...  ");
 	putchar(13);
-	codegen(prog);
+	codegen();
 
 	putzstr("Assembly...         ");
 	putchar(13);
-	assemble(prog);
+	assemble();
 
 	putzstr("Link...             ");
 	putchar(13);
-	link(prog);
+	link();
 };
 
-do_postbuild ::= func(prog : program mut? -> v0)
+do_postbuild ::= func( -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 
 	i : u64 mut;
-	for(i = 0, i < prog->postbuild_commands_size, i = i + 1)
+	for(i = 0, i < prog.postbuild_commands_size, i = i + 1)
 	{
-		cmd ::= deref(prog->postbuild_commands # i);
-		len ::= deref(prog->postbuild_command_lens # i);
+		cmd ::= deref(prog.postbuild_commands # i);
+		len ::= deref(prog.postbuild_command_lens # i);
 
 		sys_shell_command(cmd, len, envp, global_arena);
 	}
@@ -315,6 +313,7 @@ do_postbuild ::= func(prog : program mut? -> v0)
 argc : s32 mut;
 argv : u8?? mut;
 envp : u8?? mut;
+prog : program mut := zero;
 
 main ::= func(iargc : s32, iargv : u8??, ienvp : u8?? -> s32)
 {
@@ -331,7 +330,6 @@ main ::= func(iargc : s32, iargv : u8??, ienvp : u8?? -> s32)
 	sval_setup();
 	codegen_setup();
 
-	prog : program mut := zero;
 	default_progname ::= "program";
 	prog.name = default_progname;
 	prog.name_len = zstrlen(default_progname);
@@ -374,9 +372,9 @@ main ::= func(iargc : s32, iargv : u8??, ienvp : u8?? -> s32)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	compile_program(ref prog, global_arena);
+	compile_program(global_arena);
 
-	do_postbuild(ref prog);
+	do_postbuild();
 	psyc_report_timings();
 	return 0;
 };

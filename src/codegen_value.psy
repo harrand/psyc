@@ -19,11 +19,11 @@ cgv_is_zero ::= func(v : cgv -> bool)
 
 cgv_conv_fn ::= struct
 {
-	fn : func(v : cgv, to : ty, prog : program mut?, loc : srcloc -> cgv);
+	fn : func(v : cgv, to : ty, loc : srcloc -> cgv);
 };
 cgv_conv_table : cgv_conv_fn mut[16] mut;
 
-cgv_zero_as ::= func(type : ty, prog : program mut? -> cgv)
+cgv_zero_as ::= func(type : ty -> cgv)
 {
 	ret : cgv mut := cgv
 	{
@@ -34,16 +34,16 @@ cgv_zero_as ::= func(type : ty, prog : program mut? -> cgv)
 	{
 		ptr ::= type.ptr;
 		underlying ::= deref((ptr.underlying)@ty?);
-		cg_u ::= cg_type(underlying, prog);
+		cg_u ::= cg_type(underlying);
 		(ret.ll) = LLVMConstPointerNull(LLVMPointerType(cg_u, 0));
 		return ret;
 	}
-	cg_t ::= cg_type(type, prog);
+	cg_t ::= cg_type(type);
 	(ret.ll) = LLVMConstNull(cg_t);
 	return ret;
 };
 
-cgv_convert ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc, typecheck_only : bool -> cgv)
+cgv_convert ::= func(v : cgv, to : ty, loc : srcloc, typecheck_only : bool -> cgv)
 {
 	if(typecheck_only)
 	{
@@ -56,28 +56,28 @@ cgv_convert ::= func(v : cgv, to : ty, prog : program mut?, loc : srcloc, typech
 	}
 	if(cgv_is_zero(v))
 	{
-		return cgv_zero_as(to, prog);
+		return cgv_zero_as(to);
 	}
 	from ::= v.type;
 	conv ::= ty_get_conv(from, to);
 
 	do_conv ::= deref(cgv_conv_table # (conv@s64));
-	ret : cgv mut := do_conv.fn(v, to, prog, loc);
+	ret : cgv mut := do_conv.fn(v, to, loc);
 	(ret.type) = to;
 	return ret;
 };
 
-cgv_load ::= func(v : cgv mut, prog : program mut? -> cgv)
+cgv_load ::= func(v : cgv mut -> cgv)
 {
-	(v.ll) = LLVMBuildLoad2(ir, cg_type(v.type, prog), v.ll, "");
+	(v.ll) = LLVMBuildLoad2(ir, cg_type(v.type), v.ll, "");
 	return v;
 };
 
-cgv_load_if_variable ::= func(v : cgv mut?, prog : program mut? -> v0)
+cgv_load_if_variable ::= func(v : cgv mut? -> v0)
 {
 	if((v->tag) == (cgvtag.var))
 	{
-		deref(v) = cgv_load(deref v, prog);
+		deref(v) = cgv_load(deref v);
 	}
 };
 

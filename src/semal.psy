@@ -3,7 +3,7 @@ decl_ty ::= func(node : ast?, s : scope mut? -> ty)
 	return zero;
 };
 
-semal_fnptrnode ::= func(node : ast?, s : scope mut?, prog : program mut? -> ty)
+semal_fnptrnode ::= func(node : ast?, s : scope mut? -> ty)
 {
 	decl ::= node->decl;
 	bn_end : u64 mut;
@@ -22,7 +22,7 @@ semal_fnptrnode ::= func(node : ast?, s : scope mut?, prog : program mut? -> ty)
 				maybe_struct = scope_find_struct(s, wipfn.ret_typename, bn_end);
 				if(maybe_struct != zero)
 				{
-					semal_struct(maybe_struct@_, ref(prog->global), prog);
+					semal_struct(maybe_struct@_, ref(prog.global));
 					fn_retty = scope_parse_typename(s, wipfn.ret_typename, wipfn.ret_typename_len);
 				}
 			}
@@ -52,7 +52,7 @@ semal_fnptrnode ::= func(node : ast?, s : scope mut?, prog : program mut? -> ty)
 					maybe_struct = scope_find_struct(s, cur_param_decl.typename, bn_end);
 					if(maybe_struct != zero)
 					{
-						semal_struct(maybe_struct@_, ref(prog->global), prog);
+						semal_struct(maybe_struct@_, ref(prog.global));
 						paramty = scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
 					}
 				}
@@ -83,7 +83,7 @@ semal_fnptrnode ::= func(node : ast?, s : scope mut?, prog : program mut? -> ty)
 
 // semal struct is a bit complicated...
 // one of its data members could be another struct - one that we haven't semal'd yet either
-semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? -> v0)
+semal_struct ::= func(def : structdef mut?, s : scope mut? -> v0)
 {
 	node ::= def->node;
 
@@ -160,7 +160,7 @@ semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? 
 					psyc_diag_end();
 					psyc_exit_failure();
 				}
-				semal_struct(maybe_struct_member@_, s, prog);
+				semal_struct(maybe_struct_member@_, s);
 			}
 			memty = (maybe_struct_member->type);
 			mem_tyname_extras ::= (memdecl.typename) # base_end;
@@ -173,7 +173,7 @@ semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? 
 		}
 		if(ty_isbad(memty))
 		{
-			memty = semal_fnptrnode(memnode, s, prog);
+			memty = semal_fnptrnode(memnode, s);
 		}
 		if(typarse_extras(memdecl.extras, memdecl.extras_size, ref memty) < (memdecl.extras_size))
 		{
@@ -218,7 +218,7 @@ semal_struct ::= func(def : structdef mut?, s : scope mut?, prog : program mut? 
 	scope_declare_struct_type(s, retstruct, node->loc);
 };
 
-semal_enum ::= func(def : enumdef mut?, s : scope mut?, prog : program mut? -> v0)
+semal_enum ::= func(def : enumdef mut?, s : scope mut? -> v0)
 {
 	node ::= def->node;
 	enumdata ::= node->enumdef;
@@ -241,7 +241,7 @@ semal_enum ::= func(def : enumdef mut?, s : scope mut?, prog : program mut? -> v
 		{
 			.node := entval;
 			.local := s;
-		}, prog);
+		});
 		// todo: assert that this is an integer literal
 		entinitlit ::= entinitval.literal;
 
@@ -258,7 +258,7 @@ semal_enum ::= func(def : enumdef mut?, s : scope mut?, prog : program mut? -> v
 	scope_declare_enum_type(s, retenum, node->loc);
 };
 
-semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0)
+semal_func ::= func(f : function mut?, s : scope mut? -> v0)
 {
 	node ::= f->node;
 	fn ::= node->fn;
@@ -288,7 +288,7 @@ semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0
 		declty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
 		if(ty_isbad(declty))
 		{
-			declty = semal_fnptrnode(cur_param_node, s, prog);
+			declty = semal_fnptrnode(cur_param_node, s);
 		}
 		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
 		{
@@ -332,7 +332,7 @@ semal_func ::= func(f : function mut?, s : scope mut?, prog : program mut? -> v0
 	(f->type) = fnty;
 };
 
-semal_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0)
+semal_asm ::= func(as : assembly mut?, s : scope mut? -> v0)
 {
 	node ::= as->node;
 	asmdef ::= node->asmdef;
@@ -362,7 +362,7 @@ semal_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0
 		declty : ty mut := scope_parse_typename(s, cur_param_decl.typename, cur_param_decl.typename_len);
 		if(ty_isbad(declty))
 		{
-			declty = semal_fnptrnode(cur_param_node, s, prog);
+			declty = semal_fnptrnode(cur_param_node, s);
 		}
 		if(typarse_extras(cur_param_decl.extras, cur_param_decl.extras_size, ref declty) < (cur_param_decl.extras_size))
 		{
@@ -406,11 +406,11 @@ semal_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0
 	(as->type) = fnty;
 };
 
-semal ::= func(prog : program mut? -> v0)
+semal ::= func( -> v0)
 {
 	psyc_timed_begin(psyc_stage.semal);
 	defer psyc_timed_end();
-	glob ::= ref(prog->global);
+	glob ::= ref(prog.global);
 	structs ::= ref(glob->structs);
 	enums ::= ref(glob->enums);
 	funcs ::= ref(glob->funcs);
@@ -421,22 +421,22 @@ semal ::= func(prog : program mut? -> v0)
 
 	for(i = 0, i < (enums->size), i = i + 1)
 	{
-		semal_enum((enums->data) # i, glob, prog);
+		semal_enum((enums->data) # i, glob);
 	}
 
 	for(i = 0, i < (structs->size), i = i + 1)
 	{
-		semal_struct((structs->data) # i, glob, prog);
+		semal_struct((structs->data) # i, glob);
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		semal_func((funcs->data) # i, glob, prog);
+		semal_func((funcs->data) # i, glob);
 	}
 
 	for(i = 0, i < (asms->size), i = i + 1)
 	{
-		semal_asm((asms->data) # i, glob, prog);
+		semal_asm((asms->data) # i, glob);
 	}
 };
 

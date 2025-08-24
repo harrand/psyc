@@ -192,8 +192,8 @@ program ::= struct
 	locals_size : u64;
 	locals_cap : u64;
 
-	on_add_source_file : func(prog : v0? weak, path : u8?, len : u64, a : arena mut? -> v0);
-	on_add_build_file : func(prog : v0? weak, path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0);
+	on_add_source_file : func(path : u8?, len : u64, a : arena mut? -> v0);
+	on_add_build_file : func(path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0);
 	link_libraries : u8? mut?;
 	link_library_lens : u64 mut?;
 	link_library_size : u64;
@@ -762,29 +762,29 @@ scope_declare_enum_type ::= func(s : scope mut?, strct : enumty, loc : srcloc ->
 	tybox_add_enum(types, strct, loc);
 };
 
-program_parse_typename ::= func(prog : program mut?, tyname : u8?, tyname_len : u64 -> ty)
+program_parse_typename ::= func(tyname : u8?, tyname_len : u64 -> ty)
 {
-	return scope_parse_typename(ref(prog->global), tyname, tyname_len);
+	return scope_parse_typename(ref(prog.global), tyname, tyname_len);
 };
 
-program_new_scope ::= func(prog : program mut?, a : arena mut?, parent : scope mut?, type : scope_type, loc : srcloc, label : u8?, label_len : u64 -> scope mut?)
+program_new_scope ::= func(a : arena mut?, parent : scope mut?, type : scope_type, loc : srcloc, label : u8?, label_len : u64 -> scope mut?)
 {
-	if((prog->locals_cap) == 0)
+	if((prog.locals_cap) == 0)
 	{
-		(prog->locals_cap) = 8;
-		(prog->locals) = arena_alloc(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
+		(prog.locals_cap) = 8;
+		(prog.locals) = arena_alloc(a, __sizeof(deref (prog.locals)) * (prog.locals_cap));
 	}
-	while((prog->locals_size) >= (prog->locals_cap))
+	while((prog.locals_size) >= (prog.locals_cap))
 	{
-		oldcap ::= (prog->locals_cap);
-		olddata ::= (prog->locals);
-		(prog->locals_cap) = (oldcap * 2);
-		(prog->locals) = arena_alloc(a, __sizeof(deref (prog->locals)) * (prog->locals_cap));
-		memcopy(prog->locals, olddata, oldcap);
+		oldcap ::= (prog.locals_cap);
+		olddata ::= (prog.locals);
+		(prog.locals_cap) = (oldcap * 2);
+		(prog.locals) = arena_alloc(a, __sizeof(deref (prog.locals)) * (prog.locals_cap));
+		memcopy(prog.locals, olddata, oldcap);
 	}
-	id ::= prog->locals_size;
-	(prog->locals_size) = (prog->locals_size) + 1;
-	ptr ::= (prog->locals) # id;
+	id ::= prog.locals_size;
+	(prog.locals_size) = (prog.locals_size) + 1;
+	ptr ::= (prog.locals) # id;
 	deref(ptr) = zero;
 	(ptr->parent) = (parent@_);
 	(ptr->type) = type;
@@ -794,79 +794,79 @@ program_new_scope ::= func(prog : program mut?, a : arena mut?, parent : scope m
 	return ptr;
 };
 
-program_find_variable ::= func(prog : program mut?, name : u8?, name_len : u64 -> variable?)
+program_find_variable ::= func(name : u8?, name_len : u64 -> variable?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_variable(glob, name, name_len);
 };
 
-program_declare_variable ::= func(prog : program mut?, a : arena mut?, v : variable -> v0)
+program_declare_variable ::= func(a : arena mut?, v : variable -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_variable(glob, a, v);
 };
 
-program_find_function ::= func(prog : program mut?, name : u8?, name_len : u64 -> function?)
+program_find_function ::= func(name : u8?, name_len : u64 -> function?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_function(glob, name, name_len);
 };
 
-program_declare_function ::= func(prog : program mut?, a : arena mut?, f : function -> v0)
+program_declare_function ::= func(a : arena mut?, f : function -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_function(glob, a, f);
 };
 
-program_find_assembly ::= func(prog : program mut?, name : u8?, name_len : u64 -> assembly?)
+program_find_assembly ::= func(name : u8?, name_len : u64 -> assembly?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_assembly(glob, name, name_len);
 };
 
-program_declare_assembly ::= func(prog : program mut?, a : arena mut?, as : assembly -> v0)
+program_declare_assembly ::= func(a : arena mut?, as : assembly -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_assembly(glob, a, as);
 };
 
-program_find_struct ::= func(prog : program mut?, name : u8?, name_len : u64 -> structdef?)
+program_find_struct ::= func(name : u8?, name_len : u64 -> structdef?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_struct(glob, name, name_len);
 };
 
-program_declare_struct ::= func(prog : program mut?, a : arena mut?, s : structdef -> v0)
+program_declare_struct ::= func(a : arena mut?, s : structdef -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_struct(glob, a, s);
 };
 
-program_find_enum ::= func(prog : program mut?, name : u8?, name_len : u64 -> enumdef?)
+program_find_enum ::= func(name : u8?, name_len : u64 -> enumdef?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_enum(glob, name, name_len);
 };
 
-program_declare_enum ::= func(prog : program mut?, a : arena mut?, en : enumdef -> v0)
+program_declare_enum ::= func(a : arena mut?, en : enumdef -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_enum(glob, a, en);
 };
 
-program_find_macro ::= func(prog : program mut?, name : u8?, name_len : u64 -> macrodef?)
+program_find_macro ::= func(name : u8?, name_len : u64 -> macrodef?)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	return scope_find_macro(glob, name, name_len);
 };
 
-program_declare_macro ::= func(prog : program mut?, a : arena mut?, m : macrodef -> v0)
+program_declare_macro ::= func(a : arena mut?, m : macrodef -> v0)
 {
-	glob : scope mut? := ref(prog->global);
+	glob : scope mut? := ref(prog.global);
 	scope_declare_macro(glob, a, m);
 };
 
-scope_get_parent_function ::= func(s : scope?, prog : program mut? -> function?)
+scope_get_parent_function ::= func(s : scope? -> function?)
 {
 	curscope : scope? mut := s;
 	i : u64 mut;
@@ -878,7 +878,7 @@ scope_get_parent_function ::= func(s : scope?, prog : program mut? -> function?)
 			// get its name
 			parent_fnname ::= curscope->scope_label;
 			parent_fnname_len ::= curscope->scope_label_len;
-			return program_find_function(prog, curscope->scope_label, curscope->scope_label_len);
+			return program_find_function(curscope->scope_label, curscope->scope_label_len);
 		}
 		// try its parent
 		curscope = ((curscope->parent)@scope?);
@@ -886,7 +886,7 @@ scope_get_parent_function ::= func(s : scope?, prog : program mut? -> function?)
 	return zero;
 };
 
-scope_get_parent_filescope ::= func(s : scope?, prog : program mut? -> scope?)
+scope_get_parent_filescope ::= func(s : scope? -> scope?)
 {
 	curscope : scope? mut := s;
 	i : u64 mut;
@@ -902,29 +902,29 @@ scope_get_parent_filescope ::= func(s : scope?, prog : program mut? -> scope?)
 	return zero;
 };
 
-program_add_link_library ::= func(prog : program mut?, libname : u8?, libname_len : u64, a : arena mut? -> v0)
+program_add_link_library ::= func(libname : u8?, libname_len : u64, a : arena mut? -> v0)
 {
-	if((prog->link_libraries) == zero)
+	if((prog.link_libraries) == zero)
 	{
-		(prog->link_library_cap) = 256;
-		(prog->link_libraries) = arena_alloc(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
-		(prog->link_library_lens) = arena_alloc(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
+		(prog.link_library_cap) = 256;
+		(prog.link_libraries) = arena_alloc(a, __sizeof(deref (prog.link_libraries)) * (prog.link_library_cap));
+		(prog.link_library_lens) = arena_alloc(a, __sizeof(deref (prog.link_library_lens)) * (prog.link_library_cap));
 	}
-	while((prog->link_library_size) > (prog->link_library_cap))
+	while((prog.link_library_size) > (prog.link_library_cap))
 	{
-		oldcap ::= prog->link_library_cap;
-		oldlibs ::= prog->link_libraries;
-		oldlens ::= prog->link_library_lens;
-		(prog->link_library_cap) = (prog->link_library_cap) * 2;
-		(prog->link_libraries) = arena_alloc(a, __sizeof(deref (prog->link_libraries)) * (prog->link_library_cap));
-		memcopy(prog->link_libraries, oldlibs, oldcap * __sizeof(deref (prog->link_libraries)));
-		(prog->link_library_lens) = arena_alloc(a, __sizeof(deref (prog->link_library_lens)) * (prog->link_library_cap));
-		memcopy(prog->link_library_lens, oldlens, oldcap * __sizeof(deref (prog->link_library_lens)));
+		oldcap ::= prog.link_library_cap;
+		oldlibs ::= prog.link_libraries;
+		oldlens ::= prog.link_library_lens;
+		(prog.link_library_cap) = (prog.link_library_cap) * 2;
+		(prog.link_libraries) = arena_alloc(a, __sizeof(deref (prog.link_libraries)) * (prog.link_library_cap));
+		memcopy(prog.link_libraries, oldlibs, oldcap * __sizeof(deref (prog.link_libraries)));
+		(prog.link_library_lens) = arena_alloc(a, __sizeof(deref (prog.link_library_lens)) * (prog.link_library_cap));
+		memcopy(prog.link_library_lens, oldlens, oldcap * __sizeof(deref (prog.link_library_lens)));
 	}
-	id ::= prog->link_library_size;
-	(prog->link_library_size) = (prog->link_library_size) + 1;
-	deref((prog->link_libraries) # id) = libname;
-	deref((prog->link_library_lens) # id) = libname_len;
+	id ::= prog.link_library_size;
+	(prog.link_library_size) = (prog.link_library_size) + 1;
+	deref((prog.link_libraries) # id) = libname;
+	deref((prog.link_library_lens) # id) = libname_len;
 };
 
 == build ==

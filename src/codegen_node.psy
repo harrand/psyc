@@ -3,41 +3,41 @@
 // start with the absolute top-level stuff, as they rely on tables only
 // and then make our way down to the simplest bits.
 // node
-cg_node ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_node ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 
 	cg_func ::= deref(cg_node_table # ((node->type)@s64));
-	return cg_func.fn(ctx, prog);
+	return cg_func.fn(ctx);
 };
 
 // expressions
-cg_expr_common ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_expr_common ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	cg_func ::= deref(cg_expr_table # ((expr.type)@s64));
-	return cg_func.fn(expr, ctx, prog);
+	return cg_func.fn(expr, ctx);
 };
 
-cg_expr ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_expr ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
-	dbg_markup_location(ctx, prog);
-	return cg_expr_common(node->expr, ctx, prog);
+	dbg_markup_location(ctx);
+	return cg_expr_common(node->expr, ctx);
 };
 
-cg_literal ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_literal ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	lit ::= expr.literal;
 
 	cg_func ::= deref(cg_literal_table # ((lit.type)@s64));
-	return cg_func.fn(lit, ctx, prog);
+	return cg_func.fn(lit, ctx);
 };
 
 // decls 
-cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_decl ::= func(ctx : context mut -> cgv)
 {
-	dbg_markup_location(ctx, prog);
+	dbg_markup_location(ctx);
 	node ::= ctx.node;
 	decl ::= node->decl;
 	declty : ty mut := zero;
@@ -131,7 +131,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 				.node := init_node;
 				.local := ctx.local;
 				.typecheck_only := true;
-			}, prog);
+			});
 		if(!care_about_init_ll)
 		{
 			// not a global, i just need to know the type. therefore dont do anything else.
@@ -146,7 +146,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 				.node := init_node;
 				.local := ctx.local;
 				.typecheck_only := false;
-			}, prog);
+			});
 			if((init_sval.tag) == zero)
 			{
 				psyc_error_begin(init_node->loc);
@@ -166,7 +166,7 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 					.node := init_node;
 					.local := ctx.local;
 					.typecheck_only := false;
-				}, prog);
+				});
 			}
 			if((init_sval.tag) == (sval_tag.structliteral))
 			{
@@ -197,15 +197,15 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 	}
 
 	(var->type) = declty;
-	cgty ::= cg_type(declty, prog);
+	cgty ::= cg_type(declty);
 
 	if(init_node != zero)
 	{
 		if(care_about_init_ll)
 		{
-			cgv_load_if_variable(ref init_val, prog);
+			cgv_load_if_variable(ref init_val);
 		}
-		init_val = cgv_convert(init_val, declty, prog, node->loc, !care_about_init_ll);
+		init_val = cgv_convert(init_val, declty, node->loc, !care_about_init_ll);
 	}
 	name_zstr : u8 mut? := arena_alloc(global_arena, 1 + (decl.name_len));
 	memcopy(name_zstr, decl.name, decl.name_len);
@@ -259,20 +259,20 @@ cg_decl ::= func(ctx : context mut, prog : program mut? -> cgv)
 			LLVMSetInitializer(var->codegen, init_val.ll);
 		}
 	}
-	dbg_markup_var(var, ctx.local, prog);
+	dbg_markup_var(var, ctx.local);
 	return zero;
 };
 
 
 // statements
 
-cg_expr_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_expr_stmt ::= func(ctx : context mut -> cgv)
 {
 	// happens to be exactly the same code as ast_type.expr, so just re-use it.
-	return cg_expr(ctx, prog);
+	return cg_expr(ctx);
 };
 
-cg_decl_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_decl_stmt ::= func(ctx : context mut -> cgv)
 {
 	// note: decl stmts are always either global/local variables and nothing else.
 	// globals are handled in a special way (see top-level codegen gvars)
@@ -315,21 +315,21 @@ cg_decl_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := init_node;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
-	cgv_load_if_variable(ref init_val, prog);
-	init_val = cgv_convert(init_val, var->type, prog, init_node->loc, false);
+	});
+	cgv_load_if_variable(ref init_val);
+	init_val = cgv_convert(init_val, var->type, init_node->loc, false);
 	LLVMBuildStore(ir, init_val.ll, var->codegen);
 	return zero;
 };
 
-cg_composite ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_composite ::= func(ctx : context mut -> cgv)
 {
 	// just do the children
 	// if the children changes the terminator
 	// then pretend *we* are the terminator instead (last-children-terminator-checking magic for LLVM)
 	s ::= ctx.local;
 	oldterm ::= s->terminator;
-	cg_children(ctx, prog, 0, 0);
+	cg_children(ctx, 0, 0);
 	if((s->terminator) != oldterm)
 	{
 		// yes, new terminator
@@ -338,44 +338,44 @@ cg_composite ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return zero;
 };
 
-cg_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_stmt ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	stmt ::= node->stmt;
 
 	cg_func ::= deref(cg_stmt_table # (stmt@s64));
-	return cg_func.fn(ctx, prog);
+	return cg_func.fn(ctx);
 };
 
 // now onto the lower level bits.
 
 // literal
 
-cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_integer_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.s64, q);
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg_type(type, prog), lit.integral, false@s32);
+		.ll := LLVMConstInt(cg_type(type), lit.integral, false@s32);
 		.type := type;
 	};
 };
 
-cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_floating_point_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.f64, q);
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstReal(cg_type(type, prog), lit.floating_point);
+		.ll := LLVMConstReal(cg_type(type), lit.floating_point);
 		.type := type;
 	};
 };
 
-cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	q ::= (tyqual.static) | (tyqual.weak);
@@ -400,12 +400,12 @@ cg_char_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg_type(type, prog), deref(chars # 0), false@s32);
+		.ll := LLVMConstInt(cg_type(type), deref(chars # 0), false@s32);
 		.type := type;
 	};
 };
 
-cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	chars ::= lit.chars;
 	len ::= lit.chars_len;
@@ -442,19 +442,19 @@ cg_string_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : pro
 	};
 };
 
-cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_bool_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	q ::= (tyqual.static) | (tyqual.weak);
 	type ::= ty_getprim(primty.bool, q);
 	return cgv
 	{
 		.tag := cgvtag.misc;
-		.ll := LLVMConstInt(cg_type(type, prog), lit.boolean, false@s32);
+		.ll := LLVMConstInt(cg_type(type), lit.boolean, false@s32);
 		.type := type;
 	};
 };
 
-cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	return cgv
@@ -466,7 +466,7 @@ cg_zero_literal ::= func(lit : ast_literal_expr, ctx : context mut, prog : progr
 };
 
 // symbol
-cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_symbol ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	sym ::= expr.symbol;
 	node ::= ctx.node;
@@ -505,7 +505,7 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cg
 	}
 
 	// perhaps a function param?
-	maybe_parent_fn ::= scope_get_parent_function(ctx.local, prog);
+	maybe_parent_fn ::= scope_get_parent_function(ctx.local);
 	if(maybe_parent_fn != zero)
 	{
 		fnty ::= maybe_parent_fn->type;
@@ -563,10 +563,10 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cg
 };
 
 // ret
-cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_ret ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
-	parentfn ::= scope_get_parent_function(ctx.local, prog);
+	parentfn ::= scope_get_parent_function(ctx.local);
 	if(parentfn == zero)
 	{
 		psyc_error_begin(node->loc);
@@ -577,7 +577,7 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 	fnty ::= parentfn->type;
 	fnpayload ::= fnty.fn;
 	fn_retty ::= deref((fnpayload.return_type)@ty?);
-	dbg_markup_location(ctx, prog);
+	dbg_markup_location(ctx);
 	// todo: get parent fn and ensure the return is suitable.
 	if((node->childcount) == 0)
 	{
@@ -590,9 +590,9 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 			.node := ast_get_child(node@_, 0);
 			.local := ctx.local;
 			.typecheck_only := false;
-		}, prog);
-		cgv_load_if_variable(ref retval, prog);
-		retval = cgv_convert(retval, fn_retty, prog, node->loc, false);
+		});
+		cgv_load_if_variable(ref retval);
+		retval = cgv_convert(retval, fn_retty, node->loc, false);
 		// do a convert
 		LLVMBuildRet(ir, retval.ll);
 	}
@@ -607,14 +607,14 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 
 // biop
 
-cg_common_process_param ::= func(param : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_common_process_param ::= func(param : ast?, ctx : context mut -> cgv)
 {
 	pval ::= cg_node(context
 	{
 		.node := param;
 		.local := ctx.local;
 		.typecheck_only := ctx.typecheck_only;
-	}, prog);
+	});
 	if((pval.tag) == zero)
 	{
 		// invalid
@@ -626,18 +626,18 @@ cg_common_process_param ::= func(param : ast?, ctx : context mut, prog : program
 	return pval;
 };
 
-cg_biop_compare_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> v0)
+cg_biop_compare_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut -> v0)
 {
-	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
-	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(lhs_val, prog);
-		cgv_load_if_variable(rhs_val, prog);
+		cgv_load_if_variable(lhs_val);
+		cgv_load_if_variable(rhs_val);
 	}
 	if(cgv_is_zero(deref rhs_val))
 	{
-		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+		deref(rhs_val) = cgv_zero_as(lhs_val->type);
 	}
 
 	// select the return type.
@@ -735,26 +735,26 @@ cg_biop_compare_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : as
 
 	if(conversion_direction)
 	{
-		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, rhs->loc, ctx.typecheck_only);
 	}
 	if(!conversion_direction)
 	{
-		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, rhs->loc, ctx.typecheck_only);
 	}
 };
 
-cg_biop_arith_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> v0)
+cg_biop_arith_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut -> v0)
 {
-	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
-	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(lhs_val, prog);
-		cgv_load_if_variable(rhs_val, prog);
+		cgv_load_if_variable(lhs_val);
+		cgv_load_if_variable(rhs_val);
 	}
 	if(cgv_is_zero(deref rhs_val))
 	{
-		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+		deref(rhs_val) = cgv_zero_as(lhs_val->type);
 	}
 
 	// select the return type.
@@ -823,27 +823,27 @@ cg_biop_arith_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?
 
 	if(conversion_direction)
 	{
-		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, rhs->loc, ctx.typecheck_only);
 	}
 	if(!conversion_direction)
 	{
-		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, rhs->loc, ctx.typecheck_only);
 	}
 };
 
-cg_biop_bitwise_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> v0)
+cg_biop_bitwise_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : ast?, rhs : ast?, ctx : context mut -> v0)
 {
-	deref(lhs_val) = cg_common_process_param(lhs, ctx, prog);
-	deref(rhs_val) = cg_common_process_param(rhs, ctx, prog);
+	deref(lhs_val) = cg_common_process_param(lhs, ctx);
+	deref(rhs_val) = cg_common_process_param(rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(lhs_val, prog);
-		cgv_load_if_variable(rhs_val, prog);
+		cgv_load_if_variable(lhs_val);
+		cgv_load_if_variable(rhs_val);
 	}
 	if(cgv_is_zero(deref rhs_val))
 	{
-		deref(rhs_val) = cgv_zero_as(lhs_val->type, prog);
+		deref(rhs_val) = cgv_zero_as(lhs_val->type);
 	}
 
 	// select the return type.
@@ -896,15 +896,15 @@ cg_biop_bitwise_common ::= func(lhs_val : cgv mut?, rhs_val : cgv mut?, lhs : as
 
 	if(conversion_direction)
 	{
-		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(rhs_val) = cgv_convert(deref rhs_val, lhsty, rhs->loc, ctx.typecheck_only);
 	}
 	if(!conversion_direction)
 	{
-		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, prog, rhs->loc, ctx.typecheck_only);
+		deref(lhs_val) = cgv_convert(deref lhs_val, rhsty, rhs->loc, ctx.typecheck_only);
 	}
 };
 
-cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	// special case here: lhs is a deref.
@@ -926,10 +926,10 @@ cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 					.node := lhs_child;
 					.local := ctx.local;
 					.typecheck_only := ctx.typecheck_only;
-				}, prog);
+				});
 				if(!(ctx.typecheck_only))
 				{
-					cgv_load_if_variable(ref lhs_val, prog);
+					cgv_load_if_variable(ref lhs_val);
 				}
 				(lhs_val.type) = ty_deref(lhs_val.type);
 				did_special_case = true;
@@ -938,7 +938,7 @@ cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 	}
 	if(!did_special_case)
 	{
-		lhs_val = cg_common_process_param(lhs, ctx, prog);
+		lhs_val = cg_common_process_param(lhs, ctx);
 	}
 
 	if(!ty_hasqual(lhs_val.type, tyqual.mut))
@@ -951,12 +951,12 @@ cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref rhs_val, prog);
+		cgv_load_if_variable(ref rhs_val);
 	}
-	rhs_val = cgv_convert(rhs_val, lhs_val.type, prog, rhs->loc, ctx.typecheck_only);
+	rhs_val = cgv_convert(rhs_val, lhs_val.type, rhs->loc, ctx.typecheck_only);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -965,11 +965,11 @@ cg_biop_assign ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_compare ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_compare ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -996,11 +996,11 @@ cg_biop_compare ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progr
 	return lhs_val;
 };
 
-cg_biop_comparen ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_comparen ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_compare_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_integral(lhs_val.type))
@@ -1026,11 +1026,11 @@ cg_biop_comparen ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_less_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_less_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_integral(lhs_val.type))
@@ -1054,11 +1054,11 @@ cg_biop_less_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 	return lhs_val;
 };
 
-cg_biop_less_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_less_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -1083,11 +1083,11 @@ cg_biop_less_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog
 	return lhs_val;
 };
 
-cg_biop_greater_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_greater_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -1112,11 +1112,11 @@ cg_biop_greater_than ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : 
 	return lhs_val;
 };
 
-cg_biop_greater_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_greater_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -1141,11 +1141,11 @@ cg_biop_greater_than_equal ::= func(lhs : ast?, rhs : ast?, ctx : context mut, p
 	return lhs_val;
 };
 
-cg_biop_plus ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_plus ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_integral(lhs_val.type))
@@ -1162,11 +1162,11 @@ cg_biop_plus ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program 
 	return lhs_val;
 };
 
-cg_biop_minus ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_minus ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -1183,11 +1183,11 @@ cg_biop_minus ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 	return lhs_val;
 };
 
-cg_biop_multiply ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_multiply ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 
 	if(!(ctx.typecheck_only))
 	{
@@ -1205,11 +1205,11 @@ cg_biop_multiply ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_divide ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_divide ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_arith_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_integral(lhs_val.type))
@@ -1233,11 +1233,11 @@ cg_biop_divide ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_bitwise_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_bitwise_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
@@ -1247,9 +1247,9 @@ cg_biop_bitwise_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pr
 	return lhs_val;
 };
 
-cg_biop_logical_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_logical_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
-	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx);
 	if(!ty_is_boolean(lhs_val.type))
 	{
 		psyc_error_begin(lhs->loc);
@@ -1261,7 +1261,7 @@ cg_biop_logical_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pr
 		psyc_exit_failure();
 	}
 
-	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx);
 	if(!ty_is_boolean(rhs_val.type))
 	{
 		psyc_error_begin(rhs->loc);
@@ -1276,19 +1276,19 @@ cg_biop_logical_or ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pr
 
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref lhs_val, prog);
-		cgv_load_if_variable(ref rhs_val, prog);
+		cgv_load_if_variable(ref lhs_val);
+		cgv_load_if_variable(ref rhs_val);
 
 		(lhs_val.ll) = LLVMBuildOr(ir, lhs_val.ll, rhs_val.ll, "");
 	}
 	return lhs_val;
 };
 
-cg_biop_bitwise_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_bitwise_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
@@ -1298,9 +1298,9 @@ cg_biop_bitwise_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : p
 	return lhs_val;
 };
 
-cg_biop_logical_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_logical_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
-	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx);
 	if(!ty_is_boolean(lhs_val.type))
 	{
 		psyc_error_begin(lhs->loc);
@@ -1312,7 +1312,7 @@ cg_biop_logical_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : p
 		psyc_exit_failure();
 	}
 
-	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx);
 	if(!ty_is_boolean(rhs_val.type))
 	{
 		psyc_error_begin(rhs->loc);
@@ -1328,18 +1328,18 @@ cg_biop_logical_and ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : p
 
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref lhs_val, prog);
-		cgv_load_if_variable(ref rhs_val, prog);
+		cgv_load_if_variable(ref lhs_val);
+		cgv_load_if_variable(ref rhs_val);
 		(lhs_val.ll) = LLVMBuildAnd(ir, lhs_val.ll, rhs_val.ll, "");
 	}
 	return lhs_val;
 };
 
-cg_biop_exor ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_exor ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		(lhs_val.ll) = LLVMBuildXor(ir, lhs_val.ll, rhs_val.ll, "");
@@ -1349,11 +1349,11 @@ cg_biop_exor ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program 
 	return lhs_val;
 };
 
-cg_biop_bitleft ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_bitleft ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		(lhs_val.ll) = LLVMBuildShl(ir, lhs_val.ll, rhs_val.ll, "");
@@ -1362,11 +1362,11 @@ cg_biop_bitleft ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progr
 	return lhs_val;
 };
 
-cg_biop_bitright ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_bitright ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_signed_integral(lhs_val.type))
@@ -1382,11 +1382,11 @@ cg_biop_bitright ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : prog
 	return lhs_val;
 };
 
-cg_biop_modulo ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_modulo ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	lhs_val : cgv mut;
 	rhs_val : cgv mut;
-	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx, prog);
+	cg_biop_bitwise_common(ref lhs_val, ref rhs_val, lhs, rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
 		if(ty_is_signed_integral(lhs_val.type))
@@ -1403,9 +1403,9 @@ cg_biop_modulo ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : progra
 	return lhs_val;
 };
 
-cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
-	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx);
 	if(!ty_is(lhs_val.type, tytag.arr))
 	{
 		if(!ty_is(lhs_val.type, tytag.ptr))
@@ -1420,10 +1420,10 @@ cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mu
 		}
 	}
 
-	rhs_val : cgv mut := cg_common_process_param(rhs, ctx, prog);
+	rhs_val : cgv mut := cg_common_process_param(rhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref rhs_val, prog);
+		cgv_load_if_variable(ref rhs_val);
 	}
 	if(!ty_is_integral(rhs_val.type))
 	{
@@ -1448,13 +1448,13 @@ cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mu
 		if(ty_is(lhs_val.type, tytag.arr))
 		{
 			// do array things
-			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(lhs_val.type, prog), lhs_val.ll, index_list # 0, 2, "");
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(lhs_val.type), lhs_val.ll, index_list # 0, 2, "");
 		}
 		if(ty_is(lhs_val.type, tytag.ptr))
 		{
 			// do pointer gep
-			cgv_load_if_variable(ref lhs_val, prog);
-			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(elem_ty, prog), lhs_val.ll, index_list # 1, 1, "");
+			cgv_load_if_variable(ref lhs_val);
+			(lhs_val.ll) = LLVMBuildGEP2(ir, cg_type(elem_ty), lhs_val.ll, index_list # 1, 1, "");
 		}
 	}
 	(lhs_val.tag) = (cgvtag.misc);
@@ -1462,7 +1462,7 @@ cg_biop_at ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mu
 	return lhs_val;
 };
 
-cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	rhs_expr ::= rhs->expr;
 	callfunc ::= rhs_expr.callfunc;
@@ -1472,7 +1472,7 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 		.len := callfunc.funcname_len;
 	};
 
-	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	lhs_val ::= cg_common_process_param(lhs, ctx);
 	// firstly ensure the lhs of struct type.
 	lhs_ty ::= lhs_val.type;
 	if(!ty_is(lhs_ty, tytag.strct))
@@ -1557,9 +1557,9 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 		if((lhs_val.tag) == (cgvtag.var))
 		{
 			// variable! ll should be an alloca or GEP'd alloca
-			member_ll = LLVMBuildStructGEP2(ir, cg_type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			member_ll = LLVMBuildStructGEP2(ir, cg_type(lhs_ty), lhs_val.ll, selected_memidx@u32, "");
 			// we need the function itself to call it, so we force a load directly afterwards too
-			member_ll = LLVMBuildLoad2(ir, cg_type(ty_ref(selected_memty, zero), prog), member_ll, "");
+			member_ll = LLVMBuildLoad2(ir, cg_type(ty_ref(selected_memty, zero)), member_ll, "");
 		}
 		if((lhs_val.tag) != (cgvtag.var))
 		{
@@ -1602,19 +1602,19 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 			.node := paramnode;
 			.local := ctx.local;
 			.typecheck_only := ctx.typecheck_only;
-		}, prog);
+		});
 		if(!(ctx.typecheck_only))
 		{
-			cgv_load_if_variable(ref param_val, prog);
+			cgv_load_if_variable(ref param_val);
 		}
-		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc, ctx.typecheck_only);
+		param_val = cgv_convert(param_val, reqty, paramnode->loc, ctx.typecheck_only);
 		deref(ll_args # i) = (param_val.ll);
 	}
 
 	ret_ll : u64 mut := 0;
 	if(!(ctx.typecheck_only))
 	{
-		ret_ll = LLVMBuildCall2(ir, cg_type(selected_memty, prog), member_ll, ll_args, call_param_count@u32, "");
+		ret_ll = LLVMBuildCall2(ir, cg_type(selected_memty), member_ll, ll_args, call_param_count@u32, "");
 	}
 	return cgv
 	{
@@ -1624,7 +1624,7 @@ cg_biop_field_callfunc ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog 
 	};
 };
 
-cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	// firstly
 	// rhs should be a symbol expr (or a callfunc)
@@ -1641,7 +1641,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 		if((rhs_expr.type) == (ast_expr_type.callfunc))
 		{
 			// callfuncs are a special case, do it in its own function
-			return cg_biop_field_callfunc(lhs, rhs, ctx, prog);
+			return cg_biop_field_callfunc(lhs, rhs, ctx);
 		}
 	}
 	if((rhs_sym.symbol) == zero)
@@ -1686,7 +1686,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 							{
 								.type := ast_literal_type.integral;
 								.integral := value@s64;
-							}), ctx, prog);
+							}), ctx);
 							(ret.type) = enumty;
 							return ret;
 						}
@@ -1707,7 +1707,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 		}
 	}
 
-	lhs_val ::= cg_common_process_param(lhs, ctx, prog);
+	lhs_val ::= cg_common_process_param(lhs, ctx);
 	// firstly ensure the lhs of struct type.
 	lhs_ty ::= lhs_val.type;
 	if(!ty_is(lhs_ty, tytag.strct))
@@ -1779,7 +1779,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 		};
 		if(!(ctx.typecheck_only))
 		{
-			(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_ty, prog), lhs_val.ll, selected_memidx@u32, "");
+			(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_ty), lhs_val.ll, selected_memidx@u32, "");
 		}
 
 		return ret;
@@ -1797,7 +1797,7 @@ cg_biop_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program
 	return ret;
 };
 
-cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
 	// firstly
 	// rhs should be a symbol expr (or a callfunc)
@@ -1814,7 +1814,7 @@ cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 		if((rhs_expr.type) == (ast_expr_type.callfunc))
 		{
 			// callfuncs are a special case, do it in its own function
-			return cg_biop_field_callfunc(lhs, rhs, ctx, prog);
+			return cg_biop_field_callfunc(lhs, rhs, ctx);
 		}
 	}
 	if((rhs_sym.symbol) == zero)
@@ -1827,7 +1827,7 @@ cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 
 	i : u64 mut;
 
-	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx);
 	// firstly ensure the lhs of struct type.
 	lhs_ty ::= lhs_val.type;
 	if(!ty_is(lhs_ty, tytag.ptr))
@@ -1844,7 +1844,7 @@ cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 	underlying_cgv : cgv mut;
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref lhs_val, prog);
+		cgv_load_if_variable(ref lhs_val);
 	}
 	if(!ty_is(lhs_uty, tytag.strct))
 	{
@@ -1911,17 +1911,17 @@ cg_biop_ptr_field ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : pro
 	};
 	if(!(ctx.typecheck_only))
 	{
-		(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_uty, prog), lhs_val.ll, selected_memidx@u32, "");
+		(ret.ll) = LLVMBuildStructGEP2(ir, cg_type(lhs_uty), lhs_val.ll, selected_memidx@u32, "");
 	}
 	return ret;
 };
 
-cg_biop_cast ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_biop_cast ::= func(lhs : ast?, rhs : ast?, ctx : context mut -> cgv)
 {
-	lhs_val : cgv mut := cg_common_process_param(lhs, ctx, prog);
+	lhs_val : cgv mut := cg_common_process_param(lhs, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref lhs_val, prog);
+		cgv_load_if_variable(ref lhs_val);
 	}
 	rhs_sym : ast_symbol_expr mut;
 	rhs_sym = zero;
@@ -1974,11 +1974,11 @@ cg_biop_cast ::= func(lhs : ast?, rhs : ast?, ctx : context mut, prog : program 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	lhs_val = cgv_convert(lhs_val, rhs_ty, prog, lhs->loc, ctx.typecheck_only);
+	lhs_val = cgv_convert(lhs_val, rhs_ty, lhs->loc, ctx.typecheck_only);
 	return lhs_val;
 };
 
-cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_biop ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	biop ::= expr.biop;
 	biop_ty ::= biop.type;
@@ -1988,15 +1988,15 @@ cg_biop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 	rhs ::= ast_biop_get_rhs(deref node);
 
 	cg_func ::= deref(cg_biop_table # (biop_ty@s64));
-	return cg_func.fn(lhs, rhs, ctx, prog);
+	return cg_func.fn(lhs, rhs, ctx);
 };
 
-cg_unop_minus ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_minus ::= func(operand : ast?, ctx : context mut -> cgv)
 {
-	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	opval : cgv mut := cg_common_process_param(operand, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref opval, prog);
+		cgv_load_if_variable(ref opval);
 	}
 	if(!ty_is_integral(opval.type))
 	{
@@ -2026,12 +2026,12 @@ cg_unop_minus ::= func(operand : ast?, ctx : context mut, prog : program mut? ->
 	return opval;
 };
 
-cg_unop_bitwise_invert ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_bitwise_invert ::= func(operand : ast?, ctx : context mut -> cgv)
 {
-	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	opval : cgv mut := cg_common_process_param(operand, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref opval, prog);
+		cgv_load_if_variable(ref opval);
 	}
 	if(!ty_is_integral(opval.type))
 	{
@@ -2051,12 +2051,12 @@ cg_unop_bitwise_invert ::= func(operand : ast?, ctx : context mut, prog : progra
 	return opval;
 };
 
-cg_unop_logical_invert ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_logical_invert ::= func(operand : ast?, ctx : context mut -> cgv)
 {
-	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	opval : cgv mut := cg_common_process_param(operand, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref opval, prog);
+		cgv_load_if_variable(ref opval);
 	}
 	if(!ty_is_boolean(opval.type))
 	{
@@ -2076,10 +2076,10 @@ cg_unop_logical_invert ::= func(operand : ast?, ctx : context mut, prog : progra
 	return opval;
 };
 
-cg_unop_ref ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_ref ::= func(operand : ast?, ctx : context mut -> cgv)
 {
 	// this ones really easy. get the operand, do *not* load it, but pretend you already have.
-	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	opval : cgv mut := cg_common_process_param(operand, ctx);
 	if((opval.tag) != (cgvtag.var))
 	{
 		psyc_error_begin(operand->loc);
@@ -2094,12 +2094,12 @@ cg_unop_ref ::= func(operand : ast?, ctx : context mut, prog : program mut? -> c
 	return opval;
 };
 
-cg_unop_deref ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_deref ::= func(operand : ast?, ctx : context mut -> cgv)
 {
-	opval : cgv mut := cg_common_process_param(operand, ctx, prog);
+	opval : cgv mut := cg_common_process_param(operand, ctx);
 	if(!(ctx.typecheck_only))
 	{
-		cgv_load_if_variable(ref opval, prog);
+		cgv_load_if_variable(ref opval);
 	}
 	if(!ty_is(opval.type, tytag.ptr))
 	{
@@ -2115,18 +2115,18 @@ cg_unop_deref ::= func(operand : ast?, ctx : context mut, prog : program mut? ->
 	(opval.type) = ty_deref(opval.type);
 	if(!(ctx.typecheck_only))
 	{
-		(opval.ll) = LLVMBuildLoad2(ir, cg_type(opval.type, prog), opval.ll, "");
+		(opval.ll) = LLVMBuildLoad2(ir, cg_type(opval.type), opval.ll, "");
 	}
 	return opval;
 };
 
-cg_unop_defer ::= func(operand : ast?, ctx : context mut, prog : program mut? -> cgv)
+cg_unop_defer ::= func(operand : ast?, ctx : context mut -> cgv)
 {
 	psyc_panic(operand->loc, "unop defer NYI");
 	return zero;
 };
 
-cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_unop ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	unop ::= expr.unop;
 	unop_ty ::= unop.type;
@@ -2135,11 +2135,11 @@ cg_unop ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
 	operand ::= ast_unop_get_operand(deref node);
 
 	cg_func ::= deref(cg_unop_table # (unop_ty@s64));
-	return cg_func.fn(operand, ctx, prog);
+	return cg_func.fn(operand, ctx);
 };
 
 // callfunc
-cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_callfunc ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	call ::= expr.callfunc;
@@ -2162,7 +2162,7 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 					if(streql_n(name, rest, rest_len))
 					{
 						cg_func ::= deref(cg_builtin_table # i);
-						return cg_func.fn(ctx, prog);
+						return cg_func.fn(ctx);
 					}
 				}
 			}
@@ -2198,10 +2198,10 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 			{
 				.symbol := call.funcname;
 				.len := call.funcname_len;
-			}), ctx, prog);
+			}), ctx);
 			if(!(ctx.typecheck_only))
 			{
-				cgv_load_if_variable(ref val, prog);
+				cgv_load_if_variable(ref val);
 			}
 			if(!ty_is(val.type, tytag.ptr))
 			{
@@ -2272,19 +2272,19 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 			.node := paramnode;
 			.local := ctx.local;
 			.typecheck_only := ctx.typecheck_only;
-		}, prog);
+		});
 		if(!(ctx.typecheck_only))
 		{
-			cgv_load_if_variable(ref param_val, prog);
+			cgv_load_if_variable(ref param_val);
 		}
-		param_val = cgv_convert(param_val, reqty, prog, paramnode->loc, ctx.typecheck_only);
+		param_val = cgv_convert(param_val, reqty, paramnode->loc, ctx.typecheck_only);
 		deref(ll_args # i) = (param_val.ll);
 	}
 
 	ret_ll : u64 mut := 0;
 	if(!(ctx.typecheck_only))
 	{
-		ret_ll = LLVMBuildCall2(ir, cg_type(fnty, prog), ll, ll_args, call_param_count@u32, "");
+		ret_ll = LLVMBuildCall2(ir, cg_type(fnty), ll, ll_args, call_param_count@u32, "");
 	}
 	return cgv
 	{
@@ -2294,13 +2294,13 @@ cg_callfunc ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> 
 	};
 };
 
-cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut? -> cgv)
+cg_structinit_struct ::= func(type : ty, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	inits ::= node->childcount;
 	structty ::= type.strct;
 
-	struct_ll : u64 mut := LLVMGetUndef(cg_type(type, prog));
+	struct_ll : u64 mut := LLVMGetUndef(cg_type(type));
 
 	memtys ::= (structty.member_types)@ty?;
 	// write in the inits
@@ -2320,10 +2320,10 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut? 
 			.node := childvalnode;
 			.local := ctx.local;
 			.typecheck_only := ctx.typecheck_only;
-		}, prog);
+		});
 		if(!(ctx.typecheck_only))
 		{
-			cgv_load_if_variable(ref childval, prog);
+			cgv_load_if_variable(ref childval);
 		}
 		// find the member idx of this init
 		j = 0;
@@ -2359,7 +2359,7 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut? 
 		}
 		// write the value in there.
 		//deref(structinit_ll # j) = (childval.ll);
-		childval = cgv_convert(childval, deref(memtys # j), prog, childnode->loc, ctx.typecheck_only);
+		childval = cgv_convert(childval, deref(memtys # j), childnode->loc, ctx.typecheck_only);
 
 		if(!(ctx.typecheck_only))
 		{
@@ -2375,7 +2375,7 @@ cg_structinit_struct ::= func(type : ty, ctx : context mut, prog : program mut? 
 	};
 };
 
-cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut? -> cgv)
+cg_structinit_arr ::= func(type : ty, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	arrty ::= type.arr;
@@ -2397,7 +2397,7 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut? -> 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	arr_ll : u64 mut := LLVMGetUndef(cg_type(type, prog));
+	arr_ll : u64 mut := LLVMGetUndef(cg_type(type));
 	i : u64 mut;
 	childnode : ast? mut;
 	child_val : cgv mut;
@@ -2409,12 +2409,12 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut? -> 
 			.node := childnode;
 			.local := ctx.local;
 			.typecheck_only := ctx.typecheck_only;
-		}, prog);
+		});
 		if(!(ctx.typecheck_only))
 		{
-			cgv_load_if_variable(ref child_val, prog);
+			cgv_load_if_variable(ref child_val);
 		}
-		child_val = cgv_convert(child_val, element_ty, prog, childnode->loc, ctx.typecheck_only);
+		child_val = cgv_convert(child_val, element_ty, childnode->loc, ctx.typecheck_only);
 		if(!(ctx.typecheck_only))
 		{
 			arr_ll = LLVMBuildInsertValue(ir, arr_ll, child_val.ll, i@_, "");
@@ -2429,7 +2429,7 @@ cg_structinit_arr ::= func(type : ty, ctx : context mut, prog : program mut? -> 
 };
 
 // structinit
-cg_structinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -> cgv)
+cg_structinit ::= func(expr : ast_expr, ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	init ::= node->init;
@@ -2464,17 +2464,17 @@ cg_structinit ::= func(expr : ast_expr, ctx : context mut, prog : program mut? -
 
 	if(ty_is(result_type, tytag.strct))
 	{
-		return cg_structinit_struct(result_type, ctx, prog);
+		return cg_structinit_struct(result_type, ctx);
 	}
 	if(ty_is(result_type, tytag.arr))
 	{
-		return cg_structinit_arr(result_type, ctx, prog);
+		return cg_structinit_arr(result_type, ctx);
 	}
 	psyc_panic(node->loc, "control reached end of cg_structinit. compiler bug.");
 	return zero;
 };
 
-cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_if_stmt ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 	ifdef ::= node->ifdef;
@@ -2489,9 +2489,9 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := condnode;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
-	cgv_load_if_variable(ref condval, prog);
-	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+	});
+	cgv_load_if_variable(ref condval);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), condnode->loc, false);
 
 	else_node : ast? mut;
 	else_node = zero;
@@ -2505,12 +2505,12 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		}
 	}
 
-	fn ::= scope_get_parent_function(ctx.local, prog);
+	fn ::= scope_get_parent_function(ctx.local);
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	if_scope_label ::= "if";
-	ifscope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, if_scope_label, zstrlen(if_scope_label));
+	ifscope ::= program_new_scope(global_arena, ctx.local, scope_type.code, node->loc, if_scope_label, zstrlen(if_scope_label));
 	(ifscope->codegen) = LLVMAppendBasicBlock(fn->codegen, if_scope_label);
 
 	// populate the else blk if there is one
@@ -2520,7 +2520,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	elsescope : scope mut? mut := zero;
 	if(else_node != zero)
 	{
-		elsescope = program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, else_scope_label, zstrlen(else_scope_label));
+		elsescope = program_new_scope(global_arena, ctx.local, scope_type.code, node->loc, else_scope_label, zstrlen(else_scope_label));
 		ifnt = LLVMAppendBasicBlock(fn->codegen, else_scope_label);
 	}
 
@@ -2543,7 +2543,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := node;
 		.local := ifscope;
 		.typecheck_only := false;
-	}, prog, 1, ifscope_back_offset);
+	}, 1, ifscope_back_offset);
 	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
 	if((ifscope->terminator) == zero)
 	{
@@ -2558,7 +2558,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := else_node;
 			.local := elsescope;
 			.typecheck_only := false;
-		}, prog, 0, 0);
+		}, 0, 0);
 		if((elsescope->terminator) == zero)
 		{
 			LLVMBuildBr(ir, ifcont);
@@ -2574,7 +2574,7 @@ cg_if_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return zero;
 };
 
-cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_while_stmt ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 
@@ -2584,16 +2584,16 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := condnode;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
-	cgv_load_if_variable(ref condval, prog);
-	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+	});
+	cgv_load_if_variable(ref condval);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), condnode->loc, false);
 
-	fn ::= scope_get_parent_function(ctx.local, prog);
+	fn ::= scope_get_parent_function(ctx.local);
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	while_scope_label ::= "while";
-	whilescope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, while_scope_label, zstrlen(while_scope_label));
+	whilescope ::= program_new_scope(global_arena, ctx.local, scope_type.code, node->loc, while_scope_label, zstrlen(while_scope_label));
 	(whilescope->codegen) = LLVMAppendBasicBlock(fn->codegen, while_scope_label);
 
 	whilecont ::= LLVMAppendBasicBlock(fn->codegen, "whilecont");
@@ -2605,7 +2605,7 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := node;
 		.local := whilescope;
 		.typecheck_only := false;
-	}, prog, 1, 0);
+	}, 1, 0);
 	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
 	if((whilescope->terminator) == zero)
 	{
@@ -2617,9 +2617,9 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := condnode;
 			.local := ctx.local;
 			.typecheck_only := false;
-		}, prog);
-		cgv_load_if_variable(ref inner_condval, prog);
-		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+		});
+		cgv_load_if_variable(ref inner_condval);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), condnode->loc, false);
 		LLVMBuildCondBr(ir, inner_condval.ll, whilescope->codegen, whilecont);
 	}
 
@@ -2632,7 +2632,7 @@ cg_while_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 	return zero;
 };
 
-cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
+cg_for_stmt ::= func(ctx : context mut -> cgv)
 {
 	node ::= ctx.node;
 
@@ -2643,7 +2643,7 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := initnode;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
+	});
 
 	// get the cond intially now
 	condnode ::= ast_get_child(node@_, 1);
@@ -2652,18 +2652,18 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := condnode;
 		.local := ctx.local;
 		.typecheck_only := false;
-	}, prog);
-	cgv_load_if_variable(ref condval, prog);
-	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+	});
+	cgv_load_if_variable(ref condval);
+	condval = cgv_convert(condval, ty_getprim(primty.bool, zero), condnode->loc, false);
 
 	iternode ::= ast_get_child(node@_, 2);
 
-	fn ::= scope_get_parent_function(ctx.local, prog);
+	fn ::= scope_get_parent_function(ctx.local);
 
 	oldblk ::= LLVMGetInsertBlock(ir);
 
 	for_scope_label ::= "for";
-	forscope ::= program_new_scope(prog, global_arena, ctx.local, scope_type.code, node->loc, for_scope_label, zstrlen(for_scope_label));
+	forscope ::= program_new_scope(global_arena, ctx.local, scope_type.code, node->loc, for_scope_label, zstrlen(for_scope_label));
 	(forscope->codegen) = LLVMAppendBasicBlock(fn->codegen, for_scope_label);
 
 	forcont ::= LLVMAppendBasicBlock(fn->codegen, "forcont");
@@ -2675,7 +2675,7 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 		.node := node;
 		.local := forscope;
 		.typecheck_only := false;
-	}, prog, 3, 0);
+	}, 3, 0);
 	// note: only branch to ifcont if the if blk didnt contain a terminator (e.g early return)
 	if((forscope->terminator) == zero)
 	{
@@ -2686,7 +2686,7 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := iternode;
 			.local := forscope;
 			.typecheck_only := false;
-		}, prog);
+		});
 		// conditional branch
 		// condition still true? back to for
 		// false? forcont
@@ -2695,9 +2695,9 @@ cg_for_stmt ::= func(ctx : context mut, prog : program mut? -> cgv)
 			.node := condnode;
 			.local := ctx.local;
 			.typecheck_only := false;
-		}, prog);
-		cgv_load_if_variable(ref inner_condval, prog);
-		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), prog, condnode->loc, false);
+		});
+		cgv_load_if_variable(ref inner_condval);
+		inner_condval = cgv_convert(inner_condval, ty_getprim(primty.bool, zero), condnode->loc, false);
 		LLVMBuildCondBr(ir, inner_condval.ll, forscope->codegen, forcont);
 	}
 

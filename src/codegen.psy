@@ -80,11 +80,11 @@ di_primty ::= func(p : primty -> u64)
 
 cg_struct_ptr_t ::= struct
 {
-	fn : func(def : structdef mut?, prog : program mut? -> v0);
+	fn : func(def : structdef mut? -> v0);
 };
 cg_struct_ptr : cg_struct_ptr_t mut;
 // convert psyc 'ty' to LLVMTypeRef
-cg_type ::= func(t : ty, prog : program mut? -> u64)
+cg_type ::= func(t : ty -> u64)
 {
 	if(ty_isbad(t))
 	{
@@ -102,17 +102,17 @@ cg_type ::= func(t : ty, prog : program mut? -> u64)
 	{
 		ptr ::= t.ptr;
 		u ::= deref((ptr.underlying)@ty?);
-		cg_u ::= cg_type(u, prog);
+		cg_u ::= cg_type(u);
 		return LLVMPointerType(cg_u, 0);
 	}
 	if((t.tag) == (tytag.strct))
 	{
 		strct ::= t.strct;
-		def ::= program_find_struct(prog, strct.name, strct.name_len);
+		def ::= program_find_struct(strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
 			// todo: need to cg_struct here.
-			cg_struct_ptr.fn(def@_, prog);
+			cg_struct_ptr.fn(def@_);
 		}
 		return def->codegen;
 	}
@@ -121,13 +121,13 @@ cg_type ::= func(t : ty, prog : program mut? -> u64)
 		fn ::= t.fn;
 		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count));
 
-		ret_cg ::= cg_type(deref((fn.return_type)@ty?), prog);
+		ret_cg ::= cg_type(deref((fn.return_type)@ty?));
 		param_tys ::= (fn.param_types)@ty?;
 
 		i : u64 mut;
 		for(i = 0, i < (fn.param_count), i = i + 1)
 		{
-			deref(paramdata # i) = cg_type(deref(param_tys # i), prog);
+			deref(paramdata # i) = cg_type(deref(param_tys # i));
 		}
 
 		parcountu32 ::= (fn.param_count)@u32;
@@ -136,14 +136,14 @@ cg_type ::= func(t : ty, prog : program mut? -> u64)
 	if((t.tag) == (tytag.arr))
 	{
 		arr ::= t.arr;
-		u_cg ::= cg_type(deref((arr.underlying)@ty?), prog);
+		u_cg ::= cg_type(deref((arr.underlying)@ty?));
 		return LLVMArrayType2(u_cg, arr.len);
 	}
 	psyc_panic(zero, "control flow reached end of cg_type - compiler bug.");
 	return 0;
 };
 
-di_type ::= func(t : ty, prog : program mut? -> u64)
+di_type ::= func(t : ty -> u64)
 {
 	if(ty_isbad(t))
 	{
@@ -161,17 +161,17 @@ di_type ::= func(t : ty, prog : program mut? -> u64)
 	{
 		ptr ::= t.ptr;
 		u ::= deref((ptr.underlying)@ty?);
-		di_u ::= di_type(u, prog);
+		di_u ::= di_type(u);
 		return LLVMDIBuilderCreatePointerType(db, di_u, 64, zero, zero, zero, zero);
 	}
 	if((t.tag) == (tytag.strct))
 	{
 		strct ::= t.strct;
-		def ::= program_find_struct(prog, strct.name, strct.name_len);
+		def ::= program_find_struct(strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
 			// todo: need to cg_struct here.
-			cg_struct_ptr.fn(def@_, prog);
+			cg_struct_ptr.fn(def@_);
 		}
 		return def->dbg;
 	}
@@ -180,27 +180,27 @@ di_type ::= func(t : ty, prog : program mut? -> u64)
 		fn ::= t.fn;
 		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count + 1));
 
-		ret_di ::= di_type(deref((fn.return_type)@ty?), prog);
+		ret_di ::= di_type(deref((fn.return_type)@ty?));
 		param_tys ::= (fn.param_types)@ty?;
 
 		i : u64 mut;
 		deref(paramdata # 0) = ret_di;
 		for(i = 0, i < (fn.param_count), i = i + 1)
 		{
-			deref(paramdata # (i + 1)) = di_type(deref(param_tys # i), prog);
+			deref(paramdata # (i + 1)) = di_type(deref(param_tys # i));
 		}
 
 		// todo: dont lie
-		file_scope ::= prog->global;
+		file_scope ::= prog.global;
 		return LLVMDIBuilderCreateSubroutineType(db, file_scope.dbg, paramdata, fn.param_count + 1, zero);
 	}
 	if((t.tag) == (tytag.arr))
 	{
 		arr ::= t.arr;
-		u_di ::= di_type(deref((arr.underlying)@ty?), prog);
+		u_di ::= di_type(deref((arr.underlying)@ty?));
 		subrange ::= LLVMDIBuilderGetOrCreateSubrange(db, 0, arr.len);
-		size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(t, prog));
-		align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(t, prog));
+		size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(t));
+		align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(t));
 		return LLVMDIBuilderCreateArrayType(db, arr.len * size * 8, align * 8, u_di, ref subrange, 1);
 	}
 	psyc_panic(zero, "control flow reached end of di_type - compiler bug.");
@@ -265,7 +265,7 @@ cg_handle_defer ::= func(node : ast mut?, offset : u64, back_offset : u64 -> v0)
 	}
 };
 
-cg_children ::= func(ctx : context mut, prog : program mut?, offset : u64, back_offset : u64 -> v0)
+cg_children ::= func(ctx : context mut, offset : u64, back_offset : u64 -> v0)
 {
 	node ::= ctx.node;
 	i : u64 mut;
@@ -282,11 +282,11 @@ cg_children ::= func(ctx : context mut, prog : program mut?, offset : u64, back_
 			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
 			.typecheck_only := ctx.typecheck_only;
-		}, prog);
+		});
 	}
 };
 
-cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
+cg_struct ::= func(def : structdef mut? -> v0)
 {
 	if((def->codegen) != 0)
 	{
@@ -306,7 +306,7 @@ cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 	i : u64 mut;
 	for(i = 0, i < memcount, i = i + 1)
 	{
-		deref(memarr # i) = cg_type(deref(memtys # i), prog);
+		deref(memarr # i) = cg_type(deref(memtys # i));
 	}
 	name_zstr : u8 mut? := arena_alloc(global_arena, 1 + (strct.name_len));
 	memcopy(name_zstr, strct.name, strct.name_len);
@@ -314,15 +314,15 @@ cg_struct ::= func(def : structdef mut?, prog : program mut? -> v0)
 	(def->codegen) = LLVMStructCreateNamed(LLVMGetGlobalContext(), name_zstr);
 	LLVMStructSetBody(def->codegen, memarr, memcount@u32, false@s32);
 
-	dbg_markup_struct(def, prog);
+	dbg_markup_struct(def);
 };
 
-cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
+cg_declare_func ::= func(fn : function mut?, s : scope mut? -> v0)
 {
 	type ::= fn->type;
 	fnty ::= type.fn;
 	param_count ::= (fn->param_count);
-	func_tycg ::= cg_type(type, prog);
+	func_tycg ::= cg_type(type);
 	(fn->codegen) = LLVMAddFunction(mod, str2cstr(fn->name, fn->name_len, global_arena), func_tycg);
 
 	param : u64 mut := LLVMGetFirstParam(fn->codegen);
@@ -340,16 +340,16 @@ cg_declare_func ::= func(fn : function mut?, s : scope mut?, prog : program mut?
 	}
 };
 
-cg_asm ::= func(as : assembly mut?, s : scope mut?, prog : program mut? -> v0)
+cg_asm ::= func(as : assembly mut?, s : scope mut? -> v0)
 {
 	type ::= as->type;
 	fnty ::= type.fn;
 	param_count ::= (as->param_count);
-	func_tycg ::= cg_type(type, prog);
+	func_tycg ::= cg_type(type);
 	(as->codegen) = LLVMGetInlineAsm(func_tycg, as->code, as->code_len, as->constraint, as->constraint_len, true@s32, false@s32, LLVMInlineAsmDialectATT, false@s32);
 };
 
-cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? -> v0)
+cg_define_func ::= func(fn : function mut?, s : scope mut? -> v0)
 {
 	if(fn->is_extern)
 	{
@@ -375,7 +375,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	LLVMPositionBuilderAtEnd(ir, funcscope->codegen);
 	defer LLVMClearInsertionPosition(ir);
 
-	dbg_markup_func(fn, prog);
+	dbg_markup_func(fn);
 
 	i : u64 mut;
 
@@ -441,7 +441,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 			{
 				.node := childnode;
 				.local := funcscope;
-			}, prog);
+			});
 			// now actually store into it.
 			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
 			paramval ::= LLVMGetParam(fn->codegen, i@_);
@@ -474,7 +474,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 				.node := curvar->node;
 				.local := funcscope;
 				.typecheck_only := false;
-			}, prog);
+			});
 		}
 	}
 
@@ -484,7 +484,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 		.node := node;
 		.local := funcscope;
 		.typecheck_only := false;
-	}, prog, child_iterate_offset, 0);
+	}, child_iterate_offset, 0);
 
 	fn_retty ::= deref((fnpayload.return_type)@ty?);
 	lastchildidx ::= (node->childcount) - 1;
@@ -499,7 +499,7 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 				.node := node;
 				.local := funcscope;
 				.typecheck_only := false;
-			}, prog);
+			});
 			LLVMBuildRetVoid(ir);
 		}
 		if(!ty_is_v0(fn_retty))
@@ -516,15 +516,15 @@ cg_define_func ::= func(fn : function mut?, s : scope mut?, prog : program mut? 
 	}
 };
 
-codegen ::= func(prog : program mut? -> v0)
+codegen ::= func( -> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
 	defer psyc_timed_end();
 
-	dbg_setup_builder(prog);
-	args ::= ref(prog->compile_args);
+	dbg_setup_builder();
+	args ::= ref(prog.compile_args);
 
-	glob ::= ref(prog->global);
+	glob ::= ref(prog.global);
 	structs ::= ref(glob->structs);
 	funcs ::= ref(glob->funcs);
 	asms ::= ref(glob->asms);
@@ -533,17 +533,17 @@ codegen ::= func(prog : program mut? -> v0)
 	i : u64 mut;
 	for(i = 0, i < (structs->size), i = i + 1)
 	{
-		cg_struct((structs->data) # i, prog);
+		cg_struct((structs->data) # i);
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		cg_declare_func((funcs->data) # i, glob, prog);
+		cg_declare_func((funcs->data) # i, glob);
 	}
 
 	for(i = 0, i < (asms->size), i = i + 1)
 	{
-		cg_asm((asms->data) # i, glob, prog);
+		cg_asm((asms->data) # i, glob);
 	}
 
 	for(i = 0, i < (gvars->size), i = i + 1)
@@ -555,23 +555,23 @@ codegen ::= func(prog : program mut? -> v0)
 			.node := gvar->node;
 			.local := glob;
 			.typecheck_only := false;
-		}, prog);
+		});
 	}
 
 	for(i = 0, i < (funcs->size), i = i + 1)
 	{
-		cg_define_func((funcs->data) # i, glob, prog);
+		cg_define_func((funcs->data) # i, glob);
 	}
 
-	fltused_cgty ::= cg_type(ty_getprim(primty.s64, zero), prog);
+	fltused_cgty ::= cg_type(ty_getprim(primty.s64, zero));
 	fltused ::= LLVMAddGlobal(mod, fltused_cgty, "_fltused");
 	LLVMSetLinkage(fltused, LLVMCommonLinkage);
 	LLVMSetExternallyInitialized(fltused, 0);
 	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
-	dbg_finalise(prog);
+	dbg_finalise();
 	cg_finish();
-	(prog->codegen) = mod;
+	(prog.codegen) = mod;
 };
 
 codegen_setup ::= func(-> v0)

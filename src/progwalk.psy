@@ -6,7 +6,7 @@ callcontext ::= struct
 
 progwalk_function ::= struct
 {
-	fn : func(ctx : context mut, call : callcontext, prog : program mut? -> v0);
+	fn : func(ctx : context mut, call : callcontext -> v0);
 };
 
 node_jump_table : progwalk_function mut[1] mut;
@@ -58,7 +58,7 @@ progwalk_delete_node ::= func(call : callcontext -> v0)
 	(parent->childcount) = (parent->childcount) - 1;
 };
 
-progwalk_node ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_node ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 
@@ -75,10 +75,10 @@ progwalk_node ::= func(ctx : context mut, call : callcontext, prog : program mut
 		return;
 	}
 	jump ::= deref(node_jump_table # idx);
-	jump.fn(ctx, call, prog);
+	jump.fn(ctx, call);
 };
 
-progwalk_children ::= func(ctx : context mut, prog : program mut?, front_offset : u64, back_offset : u64 -> v0)
+progwalk_children ::= func(ctx : context mut, front_offset : u64, back_offset : u64 -> v0)
 {
 	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast?;
@@ -95,11 +95,11 @@ progwalk_children ::= func(ctx : context mut, prog : program mut?, front_offset 
 		{
 			.parent := node;
 			.idx := i;
-		}, prog);
+		});
 	}
 };
 
-progwalk_children_recursive ::= func(ctx : context mut, prog : program mut? -> v0)
+progwalk_children_recursive ::= func(ctx : context mut -> v0)
 {
 	node ::= ctx.node;
 	childrenptr ::= (node->children)@ast?;
@@ -116,16 +116,16 @@ progwalk_children_recursive ::= func(ctx : context mut, prog : program mut? -> v
 		{
 			.parent := node;
 			.idx := i;
-		}, prog);
+		});
 		progwalk_children_recursive(context
 		{
 			.node := ast_get_child(node@_, i);
 			.local := ctx.local;
-		}, prog);
+		});
 	}
 };
 
-progwalk_stmt ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_stmt ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	pre_transform_idx ::= (node->stmt)@s64;
@@ -141,10 +141,10 @@ progwalk_stmt ::= func(ctx : context mut, call : callcontext, prog : program mut
 		return;
 	}
 	jump ::= deref(stmt_jump_table # idx);
-	jump.fn(ctx, call, prog);
+	jump.fn(ctx, call);
 };
 
-progwalk_expr ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_expr ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	expr ::= node->expr;
@@ -161,10 +161,10 @@ progwalk_expr ::= func(ctx : context mut, call : callcontext, prog : program mut
 		return;
 	}
 	jump ::= deref(expr_jump_table # idx);
-	jump.fn(ctx, call, prog);
+	jump.fn(ctx, call);
 };
 
-progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_decl ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	decl ::= node->decl;
@@ -174,7 +174,7 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 	file_scope : scope mut? mut := s;
 	if(!is_top_level_decl)
 	{
-		file_scope = scope_get_parent_filescope(s, prog);
+		file_scope = scope_get_parent_filescope(s);
 	}
 	var ::= variable
 	{
@@ -190,7 +190,7 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 	};
 	if(is_top_level_decl)
 	{
-		program_declare_variable(prog, global_arena, var);
+		program_declare_variable(global_arena, var);
 	}
 	if(!is_top_level_decl)
 	{
@@ -198,7 +198,7 @@ progwalk_decl ::= func(ctx : context mut, call : callcontext, prog : program mut
 	}
 };
 
-progwalk_region ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_region ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	reg ::= node->region;
@@ -227,14 +227,14 @@ progwalk_region ::= func(ctx : context mut, call : callcontext, prog : program m
 	{
 		.node := node;
 		.local := ctx.local;
-	}, prog, 0, 0);
+	}, 0, 0);
 };
 
-progwalk_structdef ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_structdef ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	def ::= node->structdef;
-	program_declare_struct(prog, global_arena, structdef
+	program_declare_struct(global_arena, structdef
 	{
 		.node := node;
 		.name := def.structname;
@@ -247,11 +247,11 @@ progwalk_structdef ::= func(ctx : context mut, call : callcontext, prog : progra
 	});
 };
 
-progwalk_enumdef ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_enumdef ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	def ::= node->enumdef;
-	program_declare_enum(prog, global_arena, enumdef
+	program_declare_enum(global_arena, enumdef
 	{
 		.node := node;
 		.name := def.enumname;
@@ -262,7 +262,7 @@ progwalk_enumdef ::= func(ctx : context mut, call : callcontext, prog : program 
 	});
 };
 
-progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_fn ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	fn ::= node->fn;
@@ -312,15 +312,15 @@ progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 	funcscope = zero;
 	if(!(fn.is_extern))
 	{
-		funcscope = program_new_scope(prog, global_arena, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
+		funcscope = program_new_scope(global_arena, ctx.local, scope_type.fn, node->loc, fn.fn_name, fn.fn_name_len);
 		progwalk_children_recursive(context
 		{
 			.node := node;
 			.local := funcscope;
-		}, prog);
+		});
 	}
 
-	program_declare_function(prog, global_arena,
+	program_declare_function(global_arena,
 		function{
 			.node := ctx.node;
 			.name := fn.fn_name;
@@ -333,7 +333,7 @@ progwalk_fn ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 		});
 };
 
-progwalk_asm ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_asm ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	asmdef ::= node->asmdef;
@@ -385,7 +385,7 @@ progwalk_asm ::= func(ctx : context mut, call : callcontext, prog : program mut?
 			code_literal ::= code_expr.literal;
 			if((code_literal.type) == (ast_literal_type.string_literal))
 			{
-				program_declare_assembly(prog, global_arena,
+				program_declare_assembly(global_arena,
 					assembly{
 						.node := ctx.node;
 						.name := asmdef.asm_name;
@@ -404,7 +404,7 @@ progwalk_asm ::= func(ctx : context mut, call : callcontext, prog : program mut?
 	}
 };
 
-progwalk_mac ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_mac ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= ctx.node;
 	mac ::= node->mac;
@@ -461,7 +461,7 @@ progwalk_mac ::= func(ctx : context mut, call : callcontext, prog : program mut?
 		}
 	}
 
-	program_declare_macro(prog, global_arena, macrodef
+	program_declare_macro(global_arena, macrodef
 	{
 		.node := node;
 		.name := mac.mac_name;
@@ -472,7 +472,7 @@ progwalk_mac ::= func(ctx : context mut, call : callcontext, prog : program mut?
 	});
 };
 
-progwalk_if ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_if ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	node ::= (ctx.node)@ast mut?;
 	ifdef ::= node->ifdef;
@@ -485,7 +485,7 @@ progwalk_if ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 	{
 		.node := cond_node;
 		.local := ctx.local;
-	}, prog);
+	});
 	if((sv.tag) != (sval_tag.literal))
 	{
 		psyc_error_begin(cond_node->loc);
@@ -556,18 +556,18 @@ progwalk_if ::= func(ctx : context mut, call : callcontext, prog : program mut? 
 		{
 			.node := node;
 			.local := ctx.local;
-		}, prog, 0, 0);
+		}, 0, 0);
 	}
 };
 
-progwalk_call ::= func(ctx : context mut, call : callcontext, prog : program mut? -> v0)
+progwalk_call ::= func(ctx : context mut, call : callcontext -> v0)
 {
 	// if the callfunc name is a macro, then we do something.
 	// otherwise, there's nothing to do...
 	node ::= (ctx.node)@ast mut?;
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
-	mac ::= program_find_macro(prog, callfunc.funcname, callfunc.funcname_len);
+	mac ::= program_find_macro(callfunc.funcname, callfunc.funcname_len);
 	if(mac == zero)
 	{
 		return;
@@ -599,15 +599,15 @@ progwalk_setup ::= func(-> v0)
 	deref(expr_jump_table # 0) = progwalk_function{.fn := progwalk_call;};
 };
 
-progwalk_file ::= func(prog : program mut?, source : ast?, path : u8?, len : u64 -> scope mut?)
+progwalk_file ::= func(source : ast?, path : u8?, len : u64 -> scope mut?)
 {
 	psyc_timed_begin(psyc_stage.semal);
 	defer psyc_timed_end();
-	global ::= ref(prog->global);
+	global ::= ref(prog.global);
 
 	// file scope is a child of the program scope
-	file_scope ::= program_new_scope(prog, global_arena, global, scope_type.file, source->loc, path, len);
-	dbg_create_file(file_scope, prog);
+	file_scope ::= program_new_scope(global_arena, global, scope_type.file, source->loc, path, len);
+	dbg_create_file(file_scope);
 
 	// remember these are direct children, not recursive children
 	// e.g top-level funcs/structs aswell as global variables
@@ -615,7 +615,7 @@ progwalk_file ::= func(prog : program mut?, source : ast?, path : u8?, len : u64
 	{
 		.node := source;
 		.local := file_scope;
-	}, prog, 0, 0);
+	}, 0, 0);
 	return file_scope;
 };
 

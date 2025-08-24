@@ -18,16 +18,16 @@ build_inst ::= enum
 
 build_fn ::= struct
 {
-	fn : func(s : scope mut?, node : ast?, prog : program mut? -> v0);
+	fn : func(s : scope mut?, node : ast? -> v0);
 };
 
-build_resolve_constexpr ::= func(s : scope mut?, node : ast?, prog : program mut? -> sval)
+build_resolve_constexpr ::= func(s : scope mut?, node : ast? -> sval)
 {
 	ret ::= sval_node(context
 	{
 		.node := node;
 		.local := s;
-	}, prog);
+	});
 	if((ret.tag) == zero)
 	{
 		psyc_error_begin(node->loc);
@@ -40,12 +40,12 @@ build_resolve_constexpr ::= func(s : scope mut?, node : ast?, prog : program mut
 
 build_instructions : build_fn mut[14] mut;
 
-bi_prebuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_prebuild_command ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -60,12 +60,12 @@ bi_prebuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? ->
 	sys_shell_command(path.chars, path.chars_len, envp, global_arena);
 };
 
-bi_postbuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_postbuild_command ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -79,33 +79,33 @@ bi_postbuild_command ::= func(s : scope mut?, node : ast?, prog : program mut? -
 
 	// todo: store this in program somewhere so its ran later.
 	//invoke_shell_command(path.chars, path.chars_len, global_arena);
-	if(prog->postbuild_commands == zero)
+	if(prog.postbuild_commands == zero)
 	{
-		prog->postbuild_commands_cap = 8;
-		prog->postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_commands)) * (prog->postbuild_commands_cap));
-		prog->postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_command_lens)) * (prog->postbuild_commands_cap));
+		prog.postbuild_commands_cap = 8;
+		prog.postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog.postbuild_commands)) * (prog.postbuild_commands_cap));
+		prog.postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog.postbuild_command_lens)) * (prog.postbuild_commands_cap));
 	}
-	while(prog->postbuild_commands_size >= prog->postbuild_commands_cap)
+	while(prog.postbuild_commands_size >= prog.postbuild_commands_cap)
 	{
-		oldcap ::= prog->postbuild_commands_cap;
-		olddata ::= prog->postbuild_commands;
-		oldlens ::= prog->postbuild_command_lens;
+		oldcap ::= prog.postbuild_commands_cap;
+		olddata ::= prog.postbuild_commands;
+		oldlens ::= prog.postbuild_command_lens;
 
-		prog->postbuild_commands_cap = oldcap * 2;
-		prog->postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_commands)) * (prog->postbuild_commands_cap));
-		memcopy(prog->postbuild_commands, olddata, __sizeof(deref(prog->postbuild_commands)) * oldcap);
-		prog->postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog->postbuild_command_lens)) * (prog->postbuild_commands_cap));
-		memcopy(prog->postbuild_command_lens, olddata, __sizeof(deref(prog->postbuild_command_lens)) * oldcap);
+		prog.postbuild_commands_cap = oldcap * 2;
+		prog.postbuild_commands = arena_alloc(global_arena, __sizeof(deref(prog.postbuild_commands)) * (prog.postbuild_commands_cap));
+		memcopy(prog.postbuild_commands, olddata, __sizeof(deref(prog.postbuild_commands)) * oldcap);
+		prog.postbuild_command_lens = arena_alloc(global_arena, __sizeof(deref(prog.postbuild_command_lens)) * (prog.postbuild_commands_cap));
+		memcopy(prog.postbuild_command_lens, olddata, __sizeof(deref(prog.postbuild_command_lens)) * oldcap);
 	}
-	deref(prog->postbuild_commands # (prog->postbuild_commands_size)) = path.chars;
-	deref(prog->postbuild_command_lens # (prog->postbuild_commands_size)) = path.chars_len;
-	prog->postbuild_commands_size = (prog->postbuild_commands_size + 1);
+	deref(prog.postbuild_commands # (prog.postbuild_commands_size)) = path.chars;
+	deref(prog.postbuild_command_lens # (prog.postbuild_commands_size)) = path.chars_len;
+	prog.postbuild_commands_size = (prog.postbuild_commands_size + 1);
 };
 
-bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_add_source_file ::= func(s : scope mut?, node : ast? -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -117,8 +117,8 @@ bi_add_source_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> 
 		psyc_exit_failure();
 	}
 
-	fn ::= prog->on_add_source_file;
-	fn(prog, path.chars, path.chars_len, global_arena);
+	fn ::= prog.on_add_source_file;
+	fn(path.chars, path.chars_len, global_arena);
 };
 
 bi_util_extension_is_psy ::= func(path : u8? -> bool)
@@ -146,7 +146,6 @@ bi_util_extension_is_psy ::= func(path : u8? -> bool)
 	return streql_n(path # (dot_position + 1), extension, zstrlen(extension));
 };
 
-bi_util_prog : program mut? mut;
 bi_util_dir : u8? mut;
 bi_util_addsrc ::= func(path : u8? -> v0)
 {
@@ -154,19 +153,19 @@ bi_util_addsrc ::= func(path : u8? -> v0)
 	{
 		return;
 	}
-	fn ::= bi_util_prog->on_add_source_file;
+	fn ::= prog.on_add_source_file;
 	full_path : u8 mut? := arena_alloc(global_arena, zstrlen(path) + zstrlen(bi_util_dir) + 2);
 	memcopy(full_path, bi_util_dir, zstrlen(bi_util_dir));
 	deref(full_path # zstrlen(bi_util_dir)) = '/';
 	memcopy(full_path # (1 + zstrlen(bi_util_dir)), path, zstrlen(path));
 	deref(full_path # (1 + zstrlen(bi_util_dir) + zstrlen(path))) = 0;
-	fn(bi_util_prog, full_path, zstrlen(full_path), global_arena);
+	fn(full_path, zstrlen(full_path), global_arena);
 };
 
-bi_add_source_directory ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_add_source_directory ::= func(s : scope mut?, node : ast? -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -182,15 +181,14 @@ bi_add_source_directory ::= func(s : scope mut?, node : ast?, prog : program mut
 	memcopy(path_zstr, path.chars, path.chars_len);
 	deref(path_zstr # (path.chars_len)) = 0;
 
-	bi_util_prog = prog;
 	bi_util_dir = path_zstr;
 	directory_iterate(path_zstr, bi_util_addsrc, global_arena);
 };
 
-bi_add_build_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_add_build_file ::= func(s : scope mut?, node : ast? -> v0)
 {
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -203,7 +201,7 @@ bi_add_build_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v
 	}
 
 	child2 ::= ast_get_child(node@_, 1);
-	param2 ::= build_resolve_constexpr(s, child2, prog);
+	param2 ::= build_resolve_constexpr(s, child2);
 	build_config ::= param2.literal;
 	if((build_config.type) != (ast_literal_type.string_literal))
 	{
@@ -215,16 +213,16 @@ bi_add_build_file ::= func(s : scope mut?, node : ast?, prog : program mut? -> v
 		psyc_exit_failure();
 	}
 
-	fn ::= prog->on_add_build_file;
-	fn(prog, path.chars, path.chars_len, build_config.chars, build_config.chars_len, global_arena);
+	fn ::= prog.on_add_build_file;
+	fn(path.chars, path.chars_len, build_config.chars, build_config.chars_len, global_arena);
 };
 
-bi_add_link_library ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_add_link_library ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -236,15 +234,15 @@ bi_add_link_library ::= func(s : scope mut?, node : ast?, prog : program mut? ->
 		psyc_exit_failure();
 	}
 
-	program_add_link_library(prog, path.chars, path.chars_len, global_arena);
+	program_add_link_library(path.chars, path.chars_len, global_arena);
 };
 
-bi_set_optimization ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_set_optimization ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	level ::= param.literal;
 	if((level.type) != (ast_literal_type.integral))
 	{
@@ -264,15 +262,15 @@ bi_set_optimization ::= func(s : scope mut?, node : ast?, prog : program mut? ->
 		psyc_exit_failure();
 	}
 
-	(prog->opt) = (level.integral)@opt_level;
+	(prog.opt) = (level.integral)@opt_level;
 };
 
-bi_set_executable ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_set_executable ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -284,17 +282,17 @@ bi_set_executable ::= func(s : scope mut?, node : ast?, prog : program mut? -> v
 		psyc_exit_failure();
 	}
 
-	(prog->name) = (path.chars);
-	(prog->name_len) = (path.chars_len);
-	(prog->type) = (program_type.executable);
+	(prog.name) = (path.chars);
+	(prog.name_len) = (path.chars_len);
+	(prog.type) = (program_type.executable);
 };
 
-bi_set_library ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_set_library ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -306,17 +304,17 @@ bi_set_library ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 		psyc_exit_failure();
 	}
 
-	(prog->name) = (path.chars);
-	(prog->name_len) = (path.chars_len);
-	(prog->type) = (program_type.library);
+	(prog.name) = (path.chars);
+	(prog.name_len) = (path.chars_len);
+	(prog.type) = (program_type.library);
 };
 
-bi_set_object ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_set_object ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	path ::= param.literal;
 	if((path.type) != (ast_literal_type.string_literal))
 	{
@@ -328,17 +326,17 @@ bi_set_object ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 		psyc_exit_failure();
 	}
 
-	(prog->name) = (path.chars);
-	(prog->name_len) = (path.chars_len);
-	(prog->type) = (program_type.object);
+	(prog.name) = (path.chars);
+	(prog.name_len) = (path.chars_len);
+	(prog.type) = (program_type.object);
 };
 
-bi_debug_symbols ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_debug_symbols ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	msg ::= param.literal;
 	if((msg.type) != (ast_literal_type.bool_literal))
 	{
@@ -350,15 +348,15 @@ bi_debug_symbols ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0
 		psyc_exit_failure();
 	}
 
-	(prog->debug_symbols) = msg.boolean;
+	(prog.debug_symbols) = msg.boolean;
 };
 
-bi_message ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_message ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	msg ::= param.literal;
 	if((msg.type) != (ast_literal_type.string_literal))
 	{
@@ -375,12 +373,12 @@ bi_message ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	psyc_diag_end();
 };
 
-bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_warning ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	msg ::= param.literal;
 	if((msg.type) != (ast_literal_type.string_literal))
 	{
@@ -397,12 +395,12 @@ bi_warning ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
 	psyc_diag_end();
 };
 
-bi_error ::= func(s : scope mut?, node : ast?, prog : program mut? -> v0)
+bi_error ::= func(s : scope mut?, node : ast? -> v0)
 {
 	psyc_timed_begin(psyc_stage.build);
 	defer psyc_timed_end();
 	child ::= ast_get_child(node@_, 0);
-	param ::= build_resolve_constexpr(s, child, prog);
+	param ::= build_resolve_constexpr(s, child);
 	msg ::= param.literal;
 	if((msg.type) != (ast_literal_type.string_literal))
 	{
@@ -439,7 +437,7 @@ get_build_instruction ::= func(name : u8?, name_len : u64 -> build_inst)
 	return (-1)@build_inst;
 };
 
-interpret_build_instruction ::= func(s : scope mut?, prog : program mut?, node : ast?, file_scope : scope? -> v0)
+interpret_build_instruction ::= func(s : scope mut?, node : ast?, file_scope : scope? -> v0)
 {
 	expr ::= node->expr;
 	callfunc ::= expr.callfunc;
@@ -453,7 +451,7 @@ interpret_build_instruction ::= func(s : scope mut?, prog : program mut?, node :
 		region ::= scope_find_region(file_scope@_, callfunc.funcname, callfunc.funcname_len);
 		if(region != zero)
 		{
-			interpret_build_region(prog, region, file_scope);
+			interpret_build_region(region, file_scope);
 		}
 		if(region == zero)
 		{
@@ -468,10 +466,10 @@ interpret_build_instruction ::= func(s : scope mut?, prog : program mut?, node :
 		return;
 	}
 	inst ::= deref(build_instructions # (instid@s64));
-	inst.fn(s, node, prog);
+	inst.fn(s, node);
 };
 
-interpret_node ::= func(prog : program mut?, ctx : context mut, file_scope : scope? -> v0)
+interpret_node ::= func(ctx : context mut, file_scope : scope? -> v0)
 {
 	node ::= ctx.node;
 	s ::= ctx.local;
@@ -483,11 +481,11 @@ interpret_node ::= func(prog : program mut?, ctx : context mut, file_scope : sco
 		cur ::= childrenptr # i;
 		if(ast_is_expr(cur, ast_expr_type.callfunc))
 		{
-			interpret_build_instruction(s, prog, cur, file_scope);
+			interpret_build_instruction(s, cur, file_scope);
 		}
 		if((cur->type) == (ast_type.composite))
 		{
-			interpret_node(prog, context
+			interpret_node(context
 			{
 				.node := cur;
 				.local := ctx.local;
@@ -503,7 +501,7 @@ interpret_node ::= func(prog : program mut?, ctx : context mut, file_scope : sco
 				{
 					.node := ast_get_child(cur@_, 0);
 					.local := s;
-				}, prog);
+				});
 			}
 			scope_declare_variable(s, global_arena, variable
 			{
@@ -519,13 +517,13 @@ interpret_node ::= func(prog : program mut?, ctx : context mut, file_scope : sco
 	}
 };
 
-interpret_build_region ::= func(prog : program mut?, reg : region?, file_scope : scope? -> v0)
+interpret_build_region ::= func(reg : region?, file_scope : scope? -> v0)
 {
 	node ::= reg->node;
-	interpret_node(prog, context
+	interpret_node(context
 	{
 		.node := node;
-		.local := program_new_scope(prog, global_arena, ref(prog->global), scope_type.build_region, node->loc, "", 0);
+		.local := program_new_scope(global_arena, ref(prog.global), scope_type.build_region, node->loc, "", 0);
 	}, file_scope);
 };
 
