@@ -460,3 +460,119 @@ cg_builtin_error ::= func(ctx : context mut -> cgv)
 	psyc_exit_failure();
 	return zero;
 };
+
+cg_builtin_atomic_rmw ::= func(ctx : context mut -> cgv)
+{
+	opnode ::= ast_get_child((ctx.node)@_, 0);
+	ptrnode ::= ast_get_child((ctx.node)@_, 1);
+	valnode ::= ast_get_child((ctx.node)@_, 2);
+	ordernode ::= ast_get_child((ctx.node)@_, 3);
+
+	op ::= sval_node(context
+	{
+		.node := opnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+
+	ptr : cgv mut := cg_expr(context
+	{
+		.node := ptrnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+	ptrtype ::= ptr.type;
+	if(!ty_is(ptrtype, tytag.ptr))
+	{
+		psyc_error_begin(ptrnode->loc);
+		putzstr("parameter 1 to __atomic_rmw must be a pointer type. you have provided ");
+		putchar('"');
+		putty(ptrtype);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	ptr_uty ::= ty_deref(ptrtype);
+
+	val : cgv mut := cg_expr(context
+	{
+		.node := valnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+
+	order ::= sval_node(context
+	{
+		.node := ordernode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+	// order is expected to be an integral literal
+	// whose value directly corresponds to the LLVMAtomicOrdering to be passed to LLVMBuildAtomicRMW
+
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildAtomicRMW(ir, op.literal.integral, ptr.ll, val.ll, order.literal.integral, zero);
+		.type := ptr_uty;
+	};
+};
+
+cg_builtin_atomic_cmpxchg ::= func(ctx : context mut -> cgv)
+{
+	ptrnode ::= ast_get_child((ctx.node)@_, 0);
+	cmpnode ::= ast_get_child((ctx.node)@_, 1);
+	newnode ::= ast_get_child((ctx.node)@_, 2);
+	ordernode ::= ast_get_child((ctx.node)@_, 3);
+
+	ptr : cgv mut := cg_expr(context
+	{
+		.node := ptrnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+	ptrtype ::= ptr.type;
+	if(!ty_is(ptrtype, tytag.ptr))
+	{
+		psyc_error_begin(ptrnode->loc);
+		putzstr("parameter 0 to __atomic_cmpxchg must be a pointer type. you have provided ");
+		putchar('"');
+		putty(ptrtype);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	ptr_uty ::= ty_deref(ptrtype);
+
+	cmp : cgv mut := cg_expr(context
+	{
+		.node := cmpnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+
+	new : cgv mut := cg_expr(context
+	{
+		.node := cmpnode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+
+	order ::= sval_node(context
+	{
+		.node := ordernode;
+		.local := ctx.local;
+		.typecheck_only := false;
+	});
+
+	// order is expected to be an integral literal
+	// whose value directly corresponds to the LLVMAtomicOrdering to be passed to LLVMBuildAtomicRMW
+
+	xchg_result ::= LLVMBuildAtomicCmpXchg(ir, ptr.ll, cmp.ll, new.ll, order.literal.integral, _atomic_ordering.monotonic@s64, zero);
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := LLVMBuildExtractValue(ir, xchg_result, 1, "success");
+		.type := ty_getprim(primty.bool, zero);
+	};
+};
