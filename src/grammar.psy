@@ -796,6 +796,23 @@ init2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 	(firstptr->cursor_end) = (last.cursor_end);
 };
 
+structinit2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	(firstptr->type) = (ast_type.stmt);
+	(firstptr->stmt) = (ast_stmt.structinit_stmt);
+	(firstptr->cursor_end) = (last.cursor_end);
+};
+
 if2stmt ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -3888,6 +3905,7 @@ grammar_setup ::= func(-> v0)
 	grammar_stmtify(expr(ast_expr_type.callfunc), grammar_rule{.fn := expr2stmt;});
 	grammar_stmtify(expr(ast_expr_type.ret), grammar_rule{.fn := expr2stmt;});
 	grammar_stmtify(expr(ast_expr_type.yld), grammar_rule{.fn := expr2stmt;});
+	grammar_stmtify(expr(ast_expr_type.structinit), grammar_rule{.fn := expr2stmt;});
 	grammar_stmtify(node(ast_type.decl), grammar_rule{.fn := decl2stmt;});
 	grammar_stmtify(node(ast_type.fnptrdecl), grammar_rule{.fn := decl2stmt;});
 	grammar_stmtify(node(ast_type.fn), grammar_rule{.fn := fn2stmt;});
