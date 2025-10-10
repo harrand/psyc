@@ -193,6 +193,7 @@ add_entrypoint ::= func( -> v0)
 		WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
 		LocalAlloc ::= func(uFlags : u32, uBytes : u64 -> v0? weak) := extern;
 		LocalFree ::= func(hMem : u64 -> u64 ):= extern;
+		GetSystemInfo ::= func(lpSystemInfo : SYSTEM_INFO mut? -> v0) := extern;
 
 		impl_win32_get_args ::= func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
 		{
@@ -227,13 +228,89 @@ add_entrypoint ::= func( -> v0)
 			deref(oargv) = args@_;
 		};
 
+		SYSTEM_INFO ::= struct
+		{
+			dwOemId : u32;
+			dwPageSize : u32;
+			lpMinimumApplicationAddress : v0?;
+			lpMaximumApplicationAddress : v0?;
+			dwActiveProcessorMask : s64;
+			dwNumberOfProcessors : u32;
+			dwProcessorType : u32;
+			dwAllocationGranularity : u32;
+			wProcessorLevel : u16;
+			wProcessorRevision : u16;
+		};
+
+		impl_win32_get_thread_count ::= func( -> u32)
+		{
+			info ::= zero@SYSTEM_INFO mut;
+			GetSystemInfo(ref info);
+			return info.dwNumberOfProcessors;
+		};
+
 		ExitProcess ::= func(uExitCode : u32 -> v0) := extern;
+		WaitForMultipleObjects ::= func(nCount : u32, lpHandles : u64?, bWaitAll : s32, dwMilliseconds : u32 -> u32) := extern;
+		CreateThread ::= func(lpThreadAttributes : v0?, dwStackSize : u64, lpStartAddress : v0? weak, lpParameter : v0? weak, dwCreationFlags : u32, lpThreadId : u32 mut? -> u64) := extern;
+		ExitThread ::= func(dwExitCode : u32 -> v0) := extern;
+		GetExitCodeThread ::= func(hThread : u64, lpExitCode : u32 mut? -> s32) := extern;
+
+		program_args ::= struct
+		{
+			argc : s32;
+			argv : u8??;
+			envp : u8??;
+			thread_id : u32;
+		};
+
+		_tmain ::= func(param : v0? weak -> u32)
+		{
+			ret ::= main(param)@_;
+			ExitThread(ret);
+			return ret;
+		};
+
 		_psymain ::= func(-> v0)
 		{
 			local_argc : s32 mut;
 			local_argv : u8?? mut;
 			impl_win32_get_args(ref local_argc, ref local_argv);
-			ExitProcess(main(local_argc, local_argv, zero)@u32);
+			N ::= impl_win32_get_thread_count();
+			thread_count ::= N - 1;
+			i : u32 mut;
+			threads : u64 mut? := LocalAlloc(zero, __sizeof(u64) * thread_count);
+			for(i = 1, i < N, i = i + 1)
+			{
+				data : program_args mut? := LocalAlloc(zero, __sizeof(program_args));
+				deref(data) = program_args
+				{
+					.argc := local_argc;
+					.argv := local_argv;
+					.envp := zero;
+					.thread_id := i;
+				};
+				deref(threads # (i - 1)) = CreateThread(zero, zero, _tmain, data, zero, zero);
+			}
+			
+			main_params ::= program_args
+			{
+				.argc := local_argc;
+				.argv := local_argv;
+				.envp := zero;
+				.thread_id := 0;
+			};
+			main_ret : u64 mut weak := main(ref main_params);
+			WaitForMultipleObjects(thread_count, threads, true@s32, -1@u32);
+			for(i = 0, i < (N-1), i = i + 1)
+			{
+				thread_code : u32 mut;
+				GetExitCodeThread(deref(threads # i), ref thread_code);
+				if(thread_code != zero)
+				{
+					main_ret = thread_code;
+				}
+			}
+			ExitProcess(main_ret@u32);
 		};
 		";
 	}
