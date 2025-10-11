@@ -228,9 +228,6 @@ add_entrypoint ::= func( -> v0)
 	memcopy(thread_src # thread_src_counter, threadclause3, zstrlen(threadclause3));
 	thread_src_counter = (thread_src_counter + zstrlen(threadclause3));
 	deref(thread_src # thread_src_counter) = zero;
-	putzstr("thread.psy: ");
-	putzstr(thread_src # 0);
-	putchar(10);
 	thread_l ::= lex("threads.psy", thread_src # 0, false);
 	thread_p ::= parse(ref thread_l, false);
 	progwalk_file(ref(thread_p.root), "threads.psy", zstrlen("threads.psy"));
@@ -598,11 +595,11 @@ argv : u8?? mut;
 envp : u8?? mut;
 prog : program mut := zero;
 
-main ::= func(iargc : s32, iargv : u8??, ienvp : u8?? -> s32)
+main ::= func(pargs : program_args? -> s32)
 {
-	argc = iargc;
-	argv = iargv;
-	envp = ienvp;
+	argc = (pargs->argc);
+	argv = (pargs->argv);
+	envp = (pargs->envp);
 	setup_arenas();
 	defer destroy_arenas();
 
@@ -688,6 +685,7 @@ main ::= func(iargc : s32, iargv : u8??, ienvp : u8?? -> s32)
 	add_source_directory("src");
 
 	set_executable("psyc_out");
+	set_thread_count(1);
 	static if(_win32)
 	{
 		add_link_library("LLVM-C.lib");
