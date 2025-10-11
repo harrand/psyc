@@ -145,6 +145,35 @@ add_build_file ::= func(path : u8?, len : u64, build_config : u8?, build_config_
 	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
 };
 
+putchar_str ::= func(c : u8 weak, buf : u8 mut? -> u64)
+{
+	deref(buf) = c;
+	return 1;
+};
+
+putuint_str ::= func(i : u64 weak, buf : u8 mut? -> u64)
+{
+	charcount : u64 mut := 0;
+	if(i > 9)
+	{
+		charcount = putuint_str(i / 10, buf);
+	}
+	digit ::= i - ((i / 10) * 10);
+	putchar_str('0' + digit, buf # charcount);
+	charcount = (charcount + 1);
+	return charcount;
+};
+
+putsint_str ::= func(i : s64 weak, buf : u8 mut? -> u64)
+{
+	if(i < 0)
+	{
+		putchar_str('-', buf);
+		return putuint_str(-i, buf # 1) + 1;
+	}
+	return putuint_str(i, buf);
+};
+
 add_preload ::= func(a : arena mut? -> v0)
 {
 	static if(_win32)
@@ -185,6 +214,27 @@ add_preload ::= func(a : arena mut? -> v0)
 
 add_entrypoint ::= func( -> v0)
 {
+	thread_src : u8 mut? := arena_alloc(global_arena, 1024);
+	thread_src_counter : u64 mut := 0;
+	threadclause1 ::= "_thread_format_relative ::= ";
+	threadclause2 ::= "; _thread_count ::= ";
+	threadclause3 ::= ";";
+	memcopy(thread_src # 0, threadclause1, zstrlen(threadclause1));
+	thread_src_counter = (thread_src_counter + zstrlen(threadclause1));
+	thread_src_counter = (thread_src_counter + putuint_str(prog.thread_format@s64@_, thread_src # thread_src_counter));
+	memcopy(thread_src # thread_src_counter, threadclause2, zstrlen(threadclause2));
+	thread_src_counter = (thread_src_counter + zstrlen(threadclause2));
+	thread_src_counter = (thread_src_counter + putsint_str(prog.thread_count@_, thread_src # thread_src_counter));
+	memcopy(thread_src # thread_src_counter, threadclause3, zstrlen(threadclause3));
+	thread_src_counter = (thread_src_counter + zstrlen(threadclause3));
+	deref(thread_src # thread_src_counter) = zero;
+	putzstr("thread.psy: ");
+	putzstr(thread_src # 0);
+	putchar(10);
+	thread_l ::= lex("threads.psy", thread_src # 0, false);
+	thread_p ::= parse(ref thread_l, false);
+	progwalk_file(ref(thread_p.root), "threads.psy", zstrlen("threads.psy"));
+
 	static if(_win32)
 	{
 		source ::= "
@@ -276,22 +326,17 @@ add_entrypoint ::= func( -> v0)
 			local_argv : u8?? mut;
 			impl_win32_get_args(ref local_argc, ref local_argv);
 			N ::= impl_win32_get_thread_count();
-			thread_count ::= N - 1;
-			i : u32 mut;
-			threads : u64 mut? := LocalAlloc(zero, __sizeof(u64) * thread_count);
-			for(i = 1, i < N, i = i + 1)
+
+			thread_count : s32 mut;
+			if(_thread_format_relative)
 			{
-				data : program_args mut? := LocalAlloc(zero, __sizeof(program_args));
-				deref(data) = program_args
-				{
-					.argc := local_argc;
-					.argv := local_argv;
-					.envp := zero;
-					.thread_id := i;
-				};
-				deref(threads # (i - 1)) = CreateThread(zero, zero, _tmain, data, zero, zero);
+				thread_count = (N + _thread_count);
 			}
-			
+			else
+			{
+				thread_count = _thread_count;
+			}
+
 			main_params ::= program_args
 			{
 				.argc := local_argc;
@@ -299,9 +344,31 @@ add_entrypoint ::= func( -> v0)
 				.envp := zero;
 				.thread_id := 0;
 			};
+
+			if(thread_count <= 1)
+			{
+				// dodgy thread count or we're singlethreaded. just run main now...
+				ExitProcess(main(ref main_params));
+			}
+			// call main with multiple threads
+			// and do some basic sync
+			i : u32 mut;
+			threads : u64 mut? := LocalAlloc(zero, __sizeof(u64) * (thread_count - 1));
+			for(i = 0, i < (thread_count - 1), i = i + 1)
+			{
+				data : program_args mut? := LocalAlloc(zero, __sizeof(program_args));
+				deref(data) = program_args
+				{
+					.argc := local_argc;
+					.argv := local_argv;
+					.envp := zero;
+					.thread_id := i + 1;
+				};
+				deref(threads # i) = CreateThread(zero, zero, _tmain, data, zero, zero);
+			}
 			main_ret : u64 mut weak := main(ref main_params);
-			WaitForMultipleObjects(thread_count, threads, true@s32, -1@u32);
-			for(i = 0, i < (N-1), i = i + 1)
+			WaitForMultipleObjects(thread_count - 1, threads, true@s32, -1@u32);
+			for(i = 0, i < (thread_count-1), i = i + 1)
 			{
 				thread_code : u32 mut;
 				GetExitCodeThread(deref(threads # i), ref thread_code);
