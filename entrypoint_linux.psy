@@ -1,0 +1,146 @@
+_syscall0 ::= asm(num : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,~{rcx},~{r11},~{memory}';
+
+_syscall1 ::= asm(num : u64 weak, arg0 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},~{rcx},~{r11},~{memory}';
+
+_syscall2 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}';
+
+_syscall3 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}';
+
+_syscall4 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},~{rcx},~{r11},~{memory}';
+
+_syscall5 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak, arg4 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},{r8},~{rcx},~{r11},~{memory}';
+
+_syscall6 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak, arg4 : u64 weak, arg5 : u64 weak -> u64 weak) :=
+'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}';
+
+impl_mask_count_bits ::= func(mask : u64?, nbytes : u64 -> u32)
+{
+	count : u32 mut := 0;
+	nwords ::= nbytes / __sizeof(u64);
+	i : u64 mut;
+	for(i = 0, i < nwords, i = i + 1)
+	{
+		v : u64 mut := deref(mask # i);
+		while(v > 0)
+		{
+			count = (count + ((v & 1)@_));
+			v = (v >> 1);
+		}
+	}
+	return count;
+};
+
+impl_linux_get_thread_count ::= func( -> u32)
+{
+	sys_sched_getaffinity ::= 204;
+	mask : u64[16];
+	// assume never fails even though it can xD
+	_syscall3(sys_sched_getaffinity, 0, __sizeof(mask), mask # 0);
+	return impl_mask_count_bits(mask # 0, __sizeof(mask));
+};
+
+_getstacktop ::= asm( -> u64 weak) := 'movq %rsp, $0' : '=r';
+
+_psy_linux_main ::= func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
+{
+	main_params ::= program_args
+	{
+		.argc := _i_argc;
+		.argv := _i_argv;
+		.envp := _i_envp;
+		.thread_id := 0;
+	};
+	N ::= impl_linux_get_thread_count();
+	thread_count : s32 mut;
+	if(_thread_format_relative)
+	{
+		thread_count = (N + _thread_count);
+	}
+	else
+	{
+		thread_count = _thread_count;
+	}
+	if(thread_count <= 1)
+	{
+		// dodgy thread count or we're singlethreaded. just run main now
+		return main(ref main_params)@_;
+	}
+	// call main with multiple threads
+	// and do some basic sync
+	i : u32 mut;
+	_i_sys_mmap ::= 9;
+	_i_sys_clone ::= 56;
+	_i_PROT_READ ::= 0x01;
+	_i_PROT_WRITE ::= 0x02;
+	_i_MAP_PRIVATE ::= 0x02;
+	_i_MAP_ANONYMOUS ::= 0x20;
+	_i_MAP_STACK ::= 0x20000;
+
+	_i_CLONE_VM ::= 0x00000100;
+	_i_CLONE_FS ::= 0x00000200;
+	_i_CLONE_FILES ::= 0x00000400;
+	_i_CLONE_SIGHAND ::= 0x00000800;
+	_i_CLONE_THREAD ::= 0x00010000;
+	_i_CLONE_SYSVSEM ::= 0x00040000;
+	cloneflags ::= _i_CLONE_VM | _i_CLONE_FS | _i_CLONE_FILES | _i_CLONE_SIGHAND | _i_CLONE_THREAD | _i_CLONE_SYSVSEM;
+
+	threads : u64 mut? := _syscall6(_i_sys_mmap, 0, __sizeof(u64) * (thread_count - 1), _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS, zero, zero);
+	thread_stack_size ::= 4096 * 2000;
+	for(i = 0, i < (thread_count - 1), i = i + 1)
+	{
+		stack : u8? := _syscall6(_i_sys_mmap, 0, thread_stack_size, _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS | _i_MAP_STACK, zero, zero);
+		stacktop ::= stack # (thread_stack_size);
+		argsptr ::= (stack # (thread_stack_size - __sizeof(program_args)))@program_args mut?;
+		deref(argsptr) = program_args
+		{
+			.argc := _i_argc;
+			.argv := _i_argv;
+			.envp := _i_envp;
+			.thread_id := i + 1;
+		};
+		cloneret ::= _syscall6(_i_sys_clone, cloneflags, argsptr, thread_stack_size, zero, zero, zero);
+		if(cloneret == 0)
+		{
+			// child
+			thread_args ::= _getstacktop()@program_args?;
+			_i_sys_exit ::= 60;
+			thread_exit_code ::= main(thread_args)@_;
+			_syscall1(_i_sys_exit, thread_exit_code);
+		}
+	}
+	main_ret : u64 mut weak := main(ref main_params);
+	// todo: wait
+	// note: no exit code handling of threads because on linux threads uh apparantly dont have one
+	return main_ret;
+};
+
+_psymain ::= asm(-> v0) :=
+'
+	mov (%rsp), %rdi
+	lea 8(%rsp), %rsi
+	mov (%rsp), %rax
+	lea 1(%rax), %rax
+	shl $$3, %rax
+	add %rsi, %rax
+	mov %rax, %rdx
+	call _psy_linux_main
+	mov %eax, %edi
+	mov $$60, %rax
+	syscall
+' : '~{rax},~{rdi},~{rsi},~{rdx},~{rcx},~{r11},~{memory}';
+
+_start ::= func( -> v0)
+{
+	iargc : s32 mut;
+	iargv : u8?? mut;
+	ienvp : u8?? mut;
+	ret : s32;
+
+	_psymain();
+};
