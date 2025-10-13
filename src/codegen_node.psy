@@ -581,10 +581,39 @@ cg_ret ::= func(expr : ast_expr, ctx : context mut -> cgv)
 	// todo: get parent fn and ensure the return is suitable.
 	if((node->childcount) == 0)
 	{
+		if(!ty_is_v0(fn_retty))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("valueless return is invalid as the enclosing function ");
+			putchar('"');
+			putbytes(parentfn->name, parentfn->name_len);
+			putchar('"');
+			putzstr(" returns ");
+			putchar('"');
+			putty(fn_retty);
+			putchar('"');
+			putzstr(" - please return a value");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		LLVMBuildRetVoid(ir);
 	}
 	if((node->childcount) == 1)
 	{
+		if(ty_is_v0(fn_retty))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("returning a value is invalid as the enclosing function ");
+			putchar('"');
+			putbytes(parentfn->name, parentfn->name_len);
+			putchar('"');
+			putzstr(" returns ");
+			putchar('"');
+			putty(fn_retty);
+			putchar('"');
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		retval : cgv mut := cg_node(context
 		{
 			.node := ast_get_child(node@_, 0);
