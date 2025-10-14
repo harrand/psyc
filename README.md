@@ -1,10 +1,30 @@
-# Psy Language Reference
+# Psy Programming Language <a name="intro"></a>
 
-# Table of Contents
-0. [Programs](#programs)
-1. [Functions](#functions)
+Psy is a systems programming language. It is intended to have the best of C:
+- Simple, procedural, statically-typed code.
+- Manual memory management.
+- Structs and functions, but not classes/ctors/dtors/virtuals
+- The number of ways to initialise a variable should be countable on one hand.
+- Act as a "portable assembly".
+but without any of the badness of C:
+- Implicit conversions are evil.
+- Conditional compilation shouldn't require the use of macros.
+- Declaration order shouldn't matter.
+- Translation units are not a sensible way to structure a program. Header-only libraries are a bandaid fix to a serious architectural defect.
+- Type punning should exist - the strict aliasing rule is not a sane default.
+- Build instructions should not be external to the program, and certainly shouldn't be written in a whole different programming language.
+- Macros being textual replacements murders debuggability.
+- Mutability should require opt-in.
+- Large libraries shouldn't be linked against by default. If you want features, write them or link against them explicitly.
+
+Take C, apply all of these opinionated changes, and you have Psy.
+
+## Table of Contents
+0. [Psy Programming Language](#intro)
+1. [Programs](#programs)
+2. [Functions](#functions)
 	- [Defining basic functions](#basic_functions)
-2. [Types](#types)
+3. [Types](#types)
 	- [Type Qualifiers](#type_qualifiers)
 	- [Primitive Types](#type_prim)
 	- [Pointer Types](#type_ptr)
@@ -17,13 +37,13 @@
 		- [Enum Conversions](#type_conv_enum)
    		- [Pointer Conversions](#type_conv_ptr)
        	- [Type Casting](#type_cast)
-3. [Values](#values)
+4. [Values](#values)
    	- [Literal Values](#val_lit)
    	- [Named Values](#val_named)
-4. [Variables](#vars)
+5. [Variables](#vars)
    	- [Global Variables](#var_glob)
    	- [Local Variables](#var_loc)
-5. [Statements](#stmt)
+6. [Statements](#stmt)
    	- [Declaration Statements](#stmt_decl)
    	- [Expression Statements](#stmt_expr)
    	- [Return Statements](#stmt_ret)
@@ -32,27 +52,25 @@
    	- [Metaregion Statements](#stmt_metaregion)
 6. [Build Regions](#region)
 
-## Programs <a name="programs"></a>
+# 1) Programs <a name="programs"></a>
 
 There are no concept of translation units in Psy. Your project, and all the files it comprises, are a part of a single program:
 - Order of declarations is unimportant. You can call a function, and not declare it until later - so long as the declaration is ultimately in the program somewhere.
   	- This is also the case for structs, enums and macros.
-- A program has exactly one build file - that is, a .psy file that contains the source code of the program.
-	- You don't have to put the entire program's source code in this single file however. Using a build region, you can add additional source files to your program.
-   		- The order in which you add additional source files does not matter. These source files can rely on the build file, or the other way around, or each other in any kind of order.
-       	- The build region is also responsible for telling the compiler basic information about your program, such as:
-      		- Any libraries you link against. There is no restriction on this, but you should ensure they are ABI-compatible with your choice of linker/target.
-       	  	- The name of your output file (e.g 'foo.exe')
-       	  	- The type of your output file. This can be either an executable, or a library or a single object file containing the entire program's source code.
-       	  	- Optimisation level and build config flags.
-       	  	- For details, see [Build Regions](#region).
+- A program has exactly one build file - that is, a .psy file that contains build instructions such as:
+	- Any libraries you link against. ABI compatibility is your responsibility.
+	- The name of your output file.
+	- The type of your output file. This can be either an executable, or a library or a single object file containing the entire program's source code.
+	- Optimisation level and whether debug symbols are enabled.
+	- For details, see [Build Regions](#region).
 
-## Functions <a name="functions"></a>
+# 2) Functions <a name="functions"></a>
 
 Exactly what you'd expect from other systems languages. A function consists of:
-- A name
+- A name.
 - Zero or more parameters (default parameter values are not supported), each with their own name and type.
 - A return type.
+- An implementation surrounded by braces, or markup describing the function as `extern`.
 
 ### Defining basic functions <a name="basic_functions"></a>
 The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C). Note that the return type is within the parentheses - this is a syntactical choice that seems odd at first. In actuality, it removes the necessity for arcane syntax for function pointers, but more on that later.
@@ -82,7 +100,7 @@ The following function doubles the value `5` and stores it in a new variable cal
 result ::= double_value(5);
 ```
 
-## Types <a name="types"></a>
+# 3) Types <a name="types"></a>
 Psy is a statically-typed and strongly-typed language. This means that:
 - The type of all variables are known by the compiler at compile-time.
 - Typing rules are strict. Unlike languages such as C, implicit conversions are disabled by default - you must explicitly opt-into this.
@@ -95,8 +113,8 @@ A type can have zero or more qualifiers. Qualifiers appear at the end of the typ
 | Type Qualifier         | C Equivalent      | Explanation                                                                    |
 | :--------------------- | :---------------: | :----------------------------------------------------------------------------- |
 | none                   | `const`           | Everything is immutable by default, like Rust but unlike C.                    |
-| `mut`                  |                   | The variable is mutable - it's value can be changed after initialisation.      |
-| `weak`                 | none              | Types that are marked `weak` will be subject to *implicit conversions*.        |
+| `mut`                  |                   | The variable is mutable - its value can be changed after initialisation.       |
+| `weak`                 | none              | Types that are marked `weak` will be subject to *some implicit conversions*.   |
 | `static`               | `constexpr` (C++) | The variable must be a compile-time constant, or a compile error will occur.   |
 
 Note that a type can have multiple qualifiers. Here are some examples of various types:
@@ -116,13 +134,13 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 | u32               |  uint32_t    | 32-bit unsigned integer.               |
 | u16               |  uint16_t    | 16-bit unsigned integer.               |
 | u8                |  uint8_t     | 8-bit unsigned integer.                |
-| bool              |  BOOL        | 1-bit `true`/`false` value.            |
+| bool              |  BOOL        | 8-bit `true`/`false` value.            |
 | f64               |  double      | 64-bit floating-point number. IEEE-754 |
 | f32               |  float       | 32-bit floating-point number. IEEE-754 |
 | v0                |  void        | Represents no value. Zero size.        |
 
 ### Pointer Types <a name="type_ptr"></a>
-Pointers work almost identically to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
+Pointers work almost similarly to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
 ```
 main ::= func(-> s32)
 {
@@ -139,6 +157,7 @@ Within a typename, pointer-ness is represented by the ampersand `&` symbol. It d
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
 - Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
 - Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
+- Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator for it.
 
 Like C, you can also have function pointers:
 ```
@@ -289,7 +308,7 @@ my_int2 : s64 := my_int@_;
 ```
 
 
-# Values <a name="values"></a>
+# 4) Values <a name="values"></a>
 Values represent a stored permutation of bits, representative of a given type. Unlike C, values of a given type have no such concept of a lifetime - only memory has a lifetime. For this reason, the notion of constructors and destructors do not exist in Psy. Values are used to initialise variables, re-assign mutable variables, and pass/return from functions.
 
 ## Literal Values <a name="val_lit"></a>
@@ -327,23 +346,23 @@ world_cpy : world static := new_world; // error: cannot convert world to world s
 ## Named Values <a name="val_named"></a>
 Named Values (otherwise known as lvalues in C) are values that have an identifiable location in memory. All variables are named values.
 
-# Variables <a name="vars"></a>
+# 5) Variables <a name="vars"></a>
 Variables in Psy are very similar to other C-like languages. Variables are named values that are of a given type.
 
-# Global Variables <a name="var_glob"></a>
+### Global Variables <a name="var_glob"></a>
 Global variables are variables whose memory is not automatically reserved - the lifetime of its memory matches that of the program's runtime. Global variables do not have to be initialised initially, but if they are given an initialiser, that initialiser must be a literal value.
 
 Global variables are visible across the whole of the source file, aswell as any source files that add the containing source file in its *build metaregion*.
 
-# Local Variables <a name="var_loc"></a>
+### Local Variables <a name="var_loc"></a>
 Local variables are variables that are limited to a scope. Their lifetime semantics exactly match that of C.
 
-# Statements <a name="stmt"></a>
+# 6) Statements <a name="stmt"></a>
 Statements represent the main building blocks of a Psy program. Each statement compiles down to a sequential list of zero or more instructions.
 
 Some statements are purely a compile-time mechanism and do not generate any code.
 
-## Declaration Statements <a name="stmt_decl"></a>
+### Declaration Statements <a name="stmt_decl"></a>
 Declaration statements are the primary way to define variables. The syntax of a declaration statement is as follows:
 ```
 (1)
@@ -400,7 +419,7 @@ Example:
 wglGetProcAddress ::= func(unnamedParam1 : u8& -> u64 weak) := extern;
 ```
 
-# Build Regions <a name="region"></a>
+# 7) Build Regions <a name="region"></a>
 Build regions are a special syntax within a .psy file that contain directives for the compiler regarding building the final program. Here is an example build region:
 
 ```
