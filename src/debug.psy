@@ -48,10 +48,22 @@ dbg_markup_struct ::= func(def : structdef mut? -> v0)
 		memcount ::= strct.member_count;
 		di_memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * memcount);
 
+		// file scope is really not correct for both
+		file_scope ::= def->file_scope@scope?;
+		struct_scope ::= file_scope;
+
 		i : u64 mut;
+		dl ::= LLVMGetModuleDataLayout(mod);
 		for(i = 0, i < memcount, i = i + 1)
 		{
-			deref(di_memarr # i) = di_type(deref(memtys # i));
+			memty ::= deref(memtys # i);
+			cg_memty ::= cg_type(memty);
+			di_memty ::= di_type(memty);
+			//deref(di_memarr # i) = di_type(deref(memtys # i));
+			mem_offset ::= LLVMOffsetOfElement(dl, def->codegen, i@_);
+			mem_size ::= LLVMABISizeOfType(dl, cg_memty);
+			mem_align ::= LLVMABIAlignmentOfType(dl, cg_memty);
+			deref(di_memarr # i) = LLVMDIBuilderCreateMemberType(db, struct_scope->dbg, deref(strct.member_names # i), deref(strct.member_name_lens # i), file_scope->dbg, def->node->loc.line@_, mem_size * 8, mem_align * 8, mem_offset * 8, zero, di_memty);
 		}
 
 		// todo: get the bloody file the struct is defined in...
@@ -139,18 +151,6 @@ dbg_markup_global_variable ::= func(var : variable mut?, s : scope mut? -> v0)
 
 		divar ::= LLVMDIBuilderCreateGlobalVariableExpression(db, filescope->dbg, var->name, var->name_len, var->name, var->name_len, filescope->dbg, loc.line@_, di_type(var->type), false@s32, LLVMDIBuilderCreateExpression(db, zero, zero), zero, zero);
 		LLVMGlobalSetMetadata(var->codegen, LLVMGetMDKindID("dbg", 3), divar);
-	}
-};
-
-dbg_markup_var ::= func(var : variable mut?, s : scope mut? -> v0)
-{
-	if(var->is_global)
-	{
-		dbg_markup_global_variable(var, s);
-	}
-	else
-	{
-		dbg_markup_local_variable(var, s);
 	}
 };
 

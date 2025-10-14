@@ -259,7 +259,11 @@ cg_decl ::= func(ctx : context mut -> cgv)
 			LLVMSetInitializer(var->codegen, init_val.ll);
 		}
 	}
-	dbg_markup_var(var, ctx.local);
+	if(var->is_global)
+	{
+		dbg_markup_global_variable(var, ctx.local);
+	}
+	// dont markup a local variable until we hit it naturally in the cg_decl_stmt
 	return zero;
 };
 
@@ -287,6 +291,7 @@ cg_decl_stmt ::= func(ctx : context mut -> cgv)
 		return zero;
 	}
 
+	dbg_markup_local_variable(var, ctx.local);
 	initialiser_child_idx : u64 mut := 0;
 	if((decl.typename_len) == zstrlen(psyc_function_placeholder_typename))
 	{

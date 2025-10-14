@@ -70,11 +70,12 @@ di_primty ::= func(p : primty -> u64)
 	deref(arr # ((primty.u16)@s64)) = LLVMDIBuilderCreateBasicType(db, "u16", 3, 16, DW_ATE_unsigned, zero);
 	deref(arr # ((primty.u8)@s64)) = LLVMDIBuilderCreateBasicType(db, "u8", 3, 8, DW_ATE_unsigned_char, zero);
 
-	deref(arr # ((primty.bool)@s64)) = LLVMDIBuilderCreateBasicType(db, "bool", 4, 1, DW_ATE_boolean, zero);
+	real_bool_size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(ty_getprim(primty.u8, zero)));
+	deref(arr # ((primty.bool)@s64)) = LLVMDIBuilderCreateBasicType(db, "bool", 4, real_bool_size * 8, DW_ATE_boolean, zero);
 	deref(arr # ((primty.f64)@s64)) = LLVMDIBuilderCreateBasicType(db, "f64", 3, 64, DW_ATE_float, zero);
 	deref(arr # ((primty.f32)@s64)) = LLVMDIBuilderCreateBasicType(db, "f32", 3, 32, DW_ATE_float, zero);
 
-	deref(arr # ((primty.v0)@s64)) = LLVMDIBuilderCreateBasicType(db, "v0", 2, 0, DW_ATE_address, zero);
+	deref(arr # ((primty.v0)@s64)) = LLVMDIBuilderCreateBasicType(db, "v0", 2, 8, DW_ATE_unsigned, zero);
 	return deref(arr # (p@s64));
 };
 
@@ -170,7 +171,6 @@ di_type ::= func(t : ty -> u64)
 		def ::= program_find_struct(strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
-			// todo: need to cg_struct here.
 			cg_struct_ptr.fn(def@_);
 		}
 		return def->dbg;
