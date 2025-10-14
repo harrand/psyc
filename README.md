@@ -1,3 +1,7 @@
+# Psyc
+
+Psyc is a small, minimal-dependency compiler for the Psy programming language.
+
 # Psy Programming Language <a name="intro"></a>
 
 Psy is a systems programming language. It is intended to have the best of C:
@@ -6,18 +10,21 @@ Psy is a systems programming language. It is intended to have the best of C:
 - Structs and functions, but not classes/ctors/dtors/virtuals
 - The number of ways to initialise a variable should be countable on one hand.
 - Act as a "portable assembly".
-but without any of the badness of C:
-- Implicit conversions are evil.
-- Conditional compilation shouldn't require the use of macros.
-- Declaration order shouldn't matter.
-- Translation units are not a sensible way to structure a program. Header-only libraries are a bandaid fix to a serious architectural defect.
-- Type punning should exist - the strict aliasing rule is not a sane default.
-- Build instructions should not be external to the program, and certainly shouldn't be written in a whole different programming language.
-- Macros being textual replacements murders debuggability.
-- Mutability should require opt-in.
-- Large libraries shouldn't be linked against by default. If you want features, write them or link against them explicitly.
 
-Take C, apply all of these opinionated changes, and you have Psy.
+but without:
+- Implicit conversions (though you can explicitly opt-in).
+- Array-to-pointer-decay.
+- Textual Macros.
+- Declaration order requirements.
+- Translation units.
+- Strict aliasing (type-punning is perfectly fine).
+- Incremental builds.
+- External build instructions. If I want to build my program I should just need to run the compiler on a single file.
+- Macros being textual replacements.
+- Default variable mutability.
+- An implicitly-linked-against standard library. Write your own or explicitly link against one.
+
+Take C, apply all of these opinionated changes, and you have Psy. I will now write vast swathes of text describing the language in more detail.
 
 ## Table of Contents
 0. [Psy Programming Language](#intro)
@@ -54,7 +61,8 @@ Take C, apply all of these opinionated changes, and you have Psy.
 
 # 1) Programs <a name="programs"></a>
 
-There are no concept of translation units in Psy. Your project, and all the files it comprises, are a part of a single program:
+There is no concept of a "translation unit", "module", or "header" in Psy. There are only source files.
+- If one .psy file declares something, it is visible to *all* other source files in the program without needing to include or pre-declare anything.
 - Order of declarations is unimportant. You can call a function, and not declare it until later - so long as the declaration is ultimately in the program somewhere.
   	- This is also the case for structs, enums and macros.
 - A program has exactly one build file - that is, a .psy file that contains build instructions such as:
@@ -66,20 +74,24 @@ There are no concept of translation units in Psy. Your project, and all the file
 
 # 2) Functions <a name="functions"></a>
 
-Exactly what you'd expect from other systems languages. A function consists of:
+There's no novelty here. A function consists of:
 - A name.
 - Zero or more parameters (default parameter values are not supported), each with their own name and type.
 - A return type.
 - An implementation surrounded by braces, or markup describing the function as `extern`.
 
+A function marked as `extern` means that the implementation of the function is not defined in any part of the program, but one of the link dependencies contains the implementation instead.
+
 ### Defining basic functions <a name="basic_functions"></a>
-The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C). Note that the return type is within the parentheses - this is a syntactical choice that seems odd at first. In actuality, it removes the necessity for arcane syntax for function pointers, but more on that later.
+The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C):
 ```
 my_function_name ::= func(-> v0)
 {
 	// code goes here
 };
 ```
+Note that the return type is within the parentheses - this is a syntactical choice that seems odd at first. In actuality, it removes the necessity for arcane syntax for function pointers, but more on that later.
+
 Calling the function is just like you would expect:
 ```
 my_function_name();
@@ -157,7 +169,14 @@ Within a typename, pointer-ness is represented by the ampersand `&` symbol. It d
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
 - Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
 - Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
-- Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator for it.
+- Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator which is identical to C pointer arithmetic in all other ways.
+```
+	ints_begin : s32? := get_pointer_to_64_ints();
+	first_int ::= deref(ints_begin);
+	also_first_int ::= deref(ints_begin # 0);
+	second_int ::= deref(ints_begin # 1);
+	// "ints_begin + 1" is an error because you cant add an integer to a pointer. if you want this you almost certainly mean "ints_begin # 1"
+```
 
 Like C, you can also have function pointers:
 ```
@@ -167,7 +186,7 @@ my_cool_function ::= func(-> v0)
 	// code...
 };
 
-// later on in main:
+// later on in main
 main ::= func() -> s32 weak
 {
 	// function pointer variable.
@@ -177,6 +196,7 @@ main ::= func() -> s32 weak
 	my_function_pointer(); // calls my_cool_function.
 };
 ```
+Remember - declaration order doesn't matter. You could swap these two functions around and the result will be identical.
 
 ### Array Types <a name="type_array"></a>
 I consider arrays in C to be highly error-prone, particularly around its implicit conversion to a pointer (decay). Here's how it works in Psy:
@@ -184,19 +204,19 @@ I consider arrays in C to be highly error-prone, particularly around its implici
 // mutable array of three mutable u64s. initial values are undefined.
 my_favourite_numbers : u64 mut[3] mut;
 // pointer to first number (note that this does *not* perform a load, unlike dereferencing in C. this is pointer arithmetic)
-pointer : u64& := my_favourite_numbers at 0;
+pointer : u64& := my_favourite_numbers # 0;
 
 // note that array does not implicitly decay to pointer
 //another_pointer : u64& := my_favourite_numbers; // error!
 
-// populate each value.
-(deref pointer) = 7; // equivalent to (deref (my_favourite_numbers at 0)) = 7;
-(deref (my_favourite_numbers at 1)) = 69;
-(deref (my_favourite_numbers at 2)) = 420;
-(deref (my_favourite_numbers at 0)) = zero;
+// write to each value. this requires the element type to be mutable but not the array.
+(deref pointer) = 7; // equivalent to (deref (my_favourite_numbers # 0)) = 7;
+(deref (my_favourite_numbers # 1)) = 69;
+(deref (my_favourite_numbers # 2)) = 420;
+(deref (my_favourite_numbers # 0)) = zero;
 // Array is now: 0, 69, 420
 
-// write directly to the array.
+// write directly to the array. this requires the array itself to be mutable.
 my_favourite_numbers = u64[3]{0; 1; 2;};
 // Array is now: 0, 1, 2
 my_favourite_numbers = zero;
@@ -346,13 +366,27 @@ world_cpy : world static := new_world; // error: cannot convert world to world s
 ## Named Values <a name="val_named"></a>
 Named Values (otherwise known as lvalues in C) are values that have an identifiable location in memory. All variables are named values.
 
+## Zero Value
+The `zero` value is a special keyword that can be compared/assigned/initialised to any type. The zero value representation is comprised entirely of zeroes.
+
+You can use it to represent a "null pointer":
+```
+my_pointer : u64? mut := zero;
+```
+
+Or zero-initialise a variable
+```
+foo : complex_struct_type := zero;
+enum_value ::= zero@my_enum_type;
+```
+
+I don't know why this isn't a default in all languages.
+
 # 5) Variables <a name="vars"></a>
 Variables in Psy are very similar to other C-like languages. Variables are named values that are of a given type.
 
 ### Global Variables <a name="var_glob"></a>
-Global variables are variables whose memory is not automatically reserved - the lifetime of its memory matches that of the program's runtime. Global variables do not have to be initialised initially, but if they are given an initialiser, that initialiser must be a literal value.
-
-Global variables are visible across the whole of the source file, aswell as any source files that add the containing source file in its *build metaregion*.
+Global variables are variables whose the lifetime of its memory matches that of the program's runtime and are visible across the whole program. Global variables do not have to be initialised initially, but if they are given an initialiser, that initialiser must be a literal value.
 
 ### Local Variables <a name="var_loc"></a>
 Local variables are variables that are limited to a scope. Their lifetime semantics exactly match that of C.
@@ -428,7 +462,7 @@ Build regions are a special syntax within a .psy file that contain directives fo
 {
 	set_executable("foo");
 	set_optimization(3);
-	run_command("echo building foo...");
+	prebuild_command("echo building foo...");
 	add_source_file("foo.psy");
 
 	static if(_win32)
@@ -443,11 +477,11 @@ Note that this is not a function - its purely a compile-time set of instructions
 This means that, given:
 `psyc a.psy -b default`
 Then this region will be interpreted by the compiler. Note that 'default' is a special name - if no region name is specified via the `-b` flag then 'default' will be used. In this case, `psyc a.psy` works the same. When ran, this region means that:
-- The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .out for linux).
-- The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization.
+- The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .elf for linux). There is currently no way to modify the extension.
+- The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization. It must be a value between 0-3.
 - During the build, before the output file is generated, the command `echo building foo...` will be invoked in a shell and its output is fed through to stdout.
 - The file `foo.psy` will be compiled.
 - If the host process is running on Windows, then:
 	- The final executable `foo.exe` will link against `User32.lib`.
 
-Important Note: `add_source_file` will not invoke any build regions within the file that you added. To do that, you will want the `add_build_file` directive.
+Important Note: `add_source_file` will not invoke any build regions within the file that you added. To do that, you will want the `add_build_file` build instruction.
