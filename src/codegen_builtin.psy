@@ -73,6 +73,41 @@ cg_builtin_alignof ::= func(ctx : context mut -> cgv)
 	}), ctx);
 };
 
+cg_builtin_stack_push ::= func(ctx : context mut -> cgv)
+{
+	countnode ::= ast_get_child((ctx.node)@_, 0);
+	countval : cgv mut := cg_expr(context
+	{
+		.node := countnode;
+		.local := ctx.local;
+		.typecheck_only := ctx.typecheck_only;
+	});
+	cgv_load_if_variable(ref countval);
+	if(!ty_is_integral(countval.type))
+	{
+		psyc_error_begin(countnode->loc);
+		putzstr("parameter to __stack_push must be an integral type, you have provided a ");
+		putchar('"');
+		putty(countval.type);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	retty ::= ty_ref(ty_getprim(primty.u8, tyqual.mut), tyqual.weak);
+	ll : u64 mut := zero;
+	if(!(ctx.typecheck_only))
+	{
+		ll = LLVMBuildArrayAlloca(ir, cg_type(retty), countval.ll, "__alloca");
+	}
+	return cgv
+	{
+		.tag := cgvtag.misc;
+		.ll := ll;
+		.type := retty;
+	};
+};
+
 cg_builtin_arrcpy ::= func(ctx : context mut -> cgv)
 {
 	if(ctx.typecheck_only)
