@@ -59,6 +59,7 @@ static if(_win32)
 		wProcessorRevision : u16;
 	};
 	GetSystemInfo ::= func(lpSystemInfo : SYSTEM_INFO mut? -> v0) := extern;
+	Sleep ::= func(dwMilliSeconds : u32 -> v0) := extern;
 }
 else
 {
@@ -98,6 +99,12 @@ else
 			}
 		}
 		return count;
+	};
+
+	timespec ::= struct
+	{
+		tv_sec : u64;
+		tv_nsec : u64;
 	};
 }
 
@@ -149,17 +156,40 @@ barrier ::= func(count : u32 -> v0)
 {
 	gen ::= barrier_global.generation;
 	// atomically increment
-	__atomic_rmw(_atomic_op.add, ref(barrier_global.touch_count), 1, _atomic_ordering.acqrel);
-	while(!__atomic_cmpxchg(ref(barrier_global.touch_count), count, 0, _atomic_ordering.acqrel))
+	__atomic_rmw(_atomic_op.add, ref(barrier_global.touch_count), 1, _atomic_ordering.monotonic);
+	while(!__atomic_cmpxchg(ref(barrier_global.touch_count), count, 0, _atomic_ordering.monotonic))
 	{
 		if(barrier_global.generation != gen)
 		{
 			// someone else zeroed it and the barrier is done.
 			return;
 		}
+		sleep(1);
 	}
 	// the touch count just hit max and ive just set it back to 0
 	// everyone else is waiting on the same thing (which wont ever happen now ive just set it to zero)
 	// i will increment the generation however and formally finish the barrier.
 	__atomic_rmw(_atomic_op.add, ref(barrier_global.generation), 1, _atomic_ordering.acqrel);
+};
+
+sleep ::= func(millis : u64 -> v0)
+{
+	static if(_win32)
+	{
+		Sleep(millis@_);
+	}
+	else
+	{
+		t_secs ::= millis / 1000;
+		t_millis ::= (millis - (t_secs * 1000));
+		my_ts ::= timespec mut
+		{
+			.tv_sec := t_secs@_;
+			.tv_nsec := (t_millis * 1000000)@_;
+		};
+		// note: rem is entirely useless here, but due to what can only be undefined behaviour the 2nd parameter (ref ts) does not resolve to the address of ts on release builds
+		rem ::= zero@timespec mut;
+		sys_nanosleep ::= 35;
+		_syscall2(sys_nanosleep, ref my_ts, ref rem);
+	}
 };
