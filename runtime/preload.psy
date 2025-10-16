@@ -144,32 +144,30 @@ program_thread_count ::= func( -> u32)
 	return thread_count@_;
 };
 
-barrier_t ::= struct
+barrier ::= struct
 {
 	touch_count : u32;
 	generation : u32;
 };
 
-barrier_global : barrier_t mut := zero;
-
-barrier ::= func(count : u32 -> v0)
+barrier_sync ::= func(_my_barrier : barrier mut?, count : u32 -> v0)
 {
-	gen ::= barrier_global.generation;
+	gen ::= _my_barrier->generation;
 	// atomically increment
-	__atomic_rmw(_atomic_op.add, ref(barrier_global.touch_count), 1, _atomic_ordering.monotonic);
-	while(!__atomic_cmpxchg(ref(barrier_global.touch_count), count, 0, _atomic_ordering.monotonic))
+	__atomic_rmw(_atomic_op.add, ref(_my_barrier->touch_count), 1, _atomic_ordering.monotonic);
+	while(!__atomic_cmpxchg(ref(_my_barrier->touch_count), count, 0, _atomic_ordering.monotonic))
 	{
-		if(barrier_global.generation != gen)
+		if(_my_barrier->generation != gen)
 		{
-			// someone else zeroed it and the barrier is done.
+			// someone else zeroed it and the b is done.
 			return;
 		}
 		sleep(1);
 	}
 	// the touch count just hit max and ive just set it back to 0
 	// everyone else is waiting on the same thing (which wont ever happen now ive just set it to zero)
-	// i will increment the generation however and formally finish the barrier.
-	__atomic_rmw(_atomic_op.add, ref(barrier_global.generation), 1, _atomic_ordering.acqrel);
+	// i will increment the generation however and formally finish the b.
+	__atomic_rmw(_atomic_op.add, ref(_my_barrier->generation), 1, _atomic_ordering.acqrel);
 };
 
 sleep ::= func(millis : u64 -> v0)
