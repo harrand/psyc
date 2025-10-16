@@ -1,49 +1,3 @@
-_syscall0 ::= asm(num : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,~{rcx},~{r11},~{memory}';
-
-_syscall1 ::= asm(num : u64 weak, arg0 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},~{rcx},~{r11},~{memory}';
-
-_syscall2 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}';
-
-_syscall3 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}';
-
-_syscall4 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},~{rcx},~{r11},~{memory}';
-
-_syscall5 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak, arg4 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},{r8},~{rcx},~{r11},~{memory}';
-
-_syscall6 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak, arg4 : u64 weak, arg5 : u64 weak -> u64 weak) :=
-'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}';
-
-impl_mask_count_bits ::= func(mask : u64?, nbytes : u64 -> u32)
-{
-	count : u32 mut := 0;
-	nwords ::= nbytes / __sizeof(u64);
-	i : u64 mut;
-	for(i = 0, i < nwords, i = i + 1)
-	{
-		v : u64 mut := deref(mask # i);
-		while(v > 0)
-		{
-			count = (count + ((v & 1)@_));
-			v = (v >> 1);
-		}
-	}
-	return count;
-};
-
-impl_linux_get_thread_count ::= func( -> u32)
-{
-	sys_sched_getaffinity ::= 204;
-	mask : u64[16];
-	// assume never fails even though it can xD
-	_syscall3(sys_sched_getaffinity, 0, __sizeof(mask), mask # 0);
-	return impl_mask_count_bits(mask # 0, __sizeof(mask));
-};
 
 _getstacktop ::= asm( -> u64 weak) := 'movq %rsp, $0' : '=r';
 
@@ -56,16 +10,7 @@ _psy_linux_main ::= func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
 		.envp := _i_envp;
 		.thread_id := 0;
 	};
-	N ::= impl_linux_get_thread_count();
-	thread_count : s32 mut;
-	if(_thread_format_relative)
-	{
-		thread_count = (N + _thread_count);
-	}
-	else
-	{
-		thread_count = _thread_count;
-	}
+	thread_count ::= program_thread_count();
 	if(thread_count <= 1)
 	{
 		// dodgy thread count or we're singlethreaded. just run main now
