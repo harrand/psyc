@@ -132,7 +132,7 @@ A type can have zero or more qualifiers. Qualifiers appear at the end of the typ
 Note that a type can have multiple qualifiers. Here are some examples of various types:
 - `u64` - immutable, no implicit conversions, not a compile-time constant.
 - `f32 mut` - mutable, no implicit conversions, not a compile-time constant.
-- `v0& weak static` - pointer type. implicit conversions allowed. compile-time constant. pointee is `v0` - immutable, no implicit conversions, not a compile-time constant.
+- `v0? weak static` - pointer type. implicit conversions allowed. compile-time constant. pointee is `v0` - immutable, no implicit conversions, not a compile-time constant.
 
  ### Primitive Types <a name="type_prim"></a>
  There are a number of primitive types:
@@ -157,14 +157,14 @@ Pointers work almost similarly to C pointers, but the syntax is slightly differe
 main ::= func(-> s32)
 {
 	my_value : s64 mut := 5;
-	my_pointer : s64 mut& := ref my_value;
+	my_pointer : s64 mut? := ref my_value;
 
 	// equivalent to: my_value = 0;
 	(deref my_pointer) = 0;
 	return 0;
 };
 ```
-Within a typename, pointer-ness is represented by the ampersand `&` symbol. It directly proceeds the base type representing the pointee.
+Within a typename, pointer-ness is represented by the ampersand `?` symbol. It directly proceeds the base type representing the pointee.
 
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
 - Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
@@ -204,10 +204,10 @@ I consider arrays in C to be highly error-prone, particularly around its implici
 // mutable array of three mutable u64s. initial values are undefined.
 my_favourite_numbers : u64 mut[3] mut;
 // pointer to first number (note that this does *not* perform a load, unlike dereferencing in C. this is pointer arithmetic)
-pointer : u64& := my_favourite_numbers # 0;
+pointer : u64? := my_favourite_numbers # 0;
 
 // note that array does not implicitly decay to pointer
-//another_pointer : u64& := my_favourite_numbers; // error!
+//another_pointer : u64? := my_favourite_numbers; // error!
 
 // write to each value. this requires the element type to be mutable but not the array.
 (deref pointer) = 7; // equivalent to (deref (my_favourite_numbers # 0)) = 7;
@@ -290,7 +290,7 @@ If either type `A` or `B` are `weak`, then the following type conversion rules a
 - Enums do not convert to anything else.
 #### Pointer Conversions <a name="type_conv_ptr"></a>
 - Pointer types can be freely converted to other pointer types, with the following restriction:
-	- You cannot apply mutability with a cast. `T&` cannot be converted to `T mut&`
+	- You cannot apply mutability with a cast. `T?` cannot be converted to `T mut?`
  - While `*reinterpret_cast<T*>(some_pointer)` is almost always "undefined behaviour" in C, it is not so in Psy. There are no aliasing rules in place, so you are free to do this - memory is memory and there is no type-based alias analysis.
 
 ### Type Casting <a name="type_cast"></a>
@@ -450,7 +450,7 @@ main ::= func(-> s32 weak)
 (5) Declares a function, but indicates that the implementation of the function lives elsewhere. The linker is expected to locate this implementation after compilation. You should use this to declare functions from other libraries (.lib/.o) that you wish to link against and call in your program.
 Example:
 ```
-wglGetProcAddress ::= func(unnamedParam1 : u8& -> u64 weak) := extern;
+wglGetProcAddress ::= func(unnamedParam1 : u8? -> u64 weak) := extern;
 ```
 
 # 7) Build Regions <a name="region"></a>
