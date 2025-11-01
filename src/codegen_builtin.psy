@@ -73,6 +73,52 @@ cg_builtin_alignof ::= func(ctx : context mut -> cgv)
 	}), ctx);
 };
 
+cg_builtin_countof ::= func(ctx : context mut -> cgv)
+{
+	type : ty mut := zero;
+
+	dstnode ::= ast_get_child((ctx.node)@_, 0);
+	if(ast_is_expr(dstnode, ast_expr_type.symbol))
+	{
+		expr ::= dstnode->expr;
+		sym ::= expr.symbol;
+		type = scope_parse_typename(ctx.local, sym.symbol, sym.len);
+	}
+	if(ty_isbad(type))
+	{
+		val : cgv mut := cg_expr(context
+		{
+			.node := dstnode;
+			.local := ctx.local;
+			.typecheck_only := true;
+		});
+		type = (val.type);
+	}
+
+	count : u64 mut := 0;
+	if(type.tag == (tytag.strct))
+	{
+		count = (type.strct.member_count);
+	}
+	if(type.tag == (tytag.enm))
+	{
+		count = (type.enm.entry_count);
+	}
+	if(type.tag == (tytag.arr))
+	{
+		count = (type.arr.len);
+	}
+	if(type.tag == (tytag.fn))
+	{
+		count = (type.fn.param_count);
+	}
+	return cg_literal(make_literal_expr(ast_literal_expr
+	{
+		.type := ast_literal_type.integral;
+		.integral := count@_;
+	}), ctx);
+};
+
 cg_builtin_stack_push ::= func(ctx : context mut -> cgv)
 {
 	countnode ::= ast_get_child((ctx.node)@_, 0);
