@@ -142,6 +142,21 @@ dbg_markup_local_variable ::= func(var : variable mut?, s : scope mut? -> v0)
 	}
 };
 
+dbg_markup_parameter ::= func(var : variable mut?, s : scope mut?, param_idx : u64 -> v0)
+{
+	if(prog.debug_symbols)
+	{
+		loc ::= var->node->loc;
+
+		parent_fn ::= scope_get_parent_function(s);
+		fnscope ::= (parent_fn->impl_scope)@scope mut?;
+		parent_file ::= scope_get_parent_filescope(s);
+		//divar ::= LLVMDIBuilderCreateAutoVariable(db, fnscope->dbg, var->name, var->name_len, parent_file->dbg, loc.line@_, di_type(var->type), false@s32, zero, zero);
+		divar ::= LLVMDIBuilderCreateParameterVariable(db, fnscope->dbg, var->name, var->name_len, param_idx@_, parent_file->dbg, loc.line@_, di_type(var->type), zero, zero);
+		LLVMDIBuilderInsertDeclareAtEnd(db, var->codegen, divar, LLVMDIBuilderCreateExpression(db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->dbg, zero), fnscope->codegen);
+	}
+};
+
 dbg_markup_global_variable ::= func(var : variable mut?, s : scope mut? -> v0)
 {
 	if(prog.debug_symbols)
