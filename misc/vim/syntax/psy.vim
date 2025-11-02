@@ -1,6 +1,6 @@
 " Vim syntax file
-" Language:     Psy
-" Maintainer:   Harrand
+" Language:     psy
+" Maintainer:   harrand
 
 if version < 600
     syntax clear
@@ -9,7 +9,6 @@ elseif exists("b:current_syntax")
 endif
 
 " Syntax definitions {{{1
-" Basic keywords {{{2
 
 syntax match psy_builtin /\<__\w\+\>/
 syntax match psy_funcname /\<\h\w*\>\ze\s*::=\s*func/
@@ -32,9 +31,9 @@ syn region psy_char_literal start=+'+ skip=+\\'+ end=+'+
 
 syntax keyword psy_keywords deref defer ref if else while for return
 syntax keyword psy_modifiers mut weak static
-syntax keyword psy_constants true false zero extern
+syntax keyword psy_constants true false zero extern _config _win32 _linux
 syntax keyword psy_funcs func macro asm
-syntax keyword psy_types struct enum srcloc v0 s8 s16 s32 s64 u8 u16 u32 u64 bool
+syntax keyword psy_types struct enum v0 s8 s16 s32 s64 u8 u16 u32 u64 bool embed_data srcloc program_args _atomic_op _atomic_ordering barrier
 
 hi link psy_funcname Function
 hi link psy_typename Type
