@@ -420,41 +420,29 @@ cg_define_func ::= func(fn : function mut?, s : scope mut? -> v0)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		// yes, back this.
-		should_back = false;
-		if(ty_is(childty, tytag.arr))
+		scope_declare_variable(funcscope, global_arena, variable
 		{
-			should_back = true;
-		}
-		if(ty_hasqual(childty, tyqual.mut))
+			.node := childnode;
+			.name := childdecl.name;
+			.name_len := childdecl.name_len;
+			.is_global := false;
+			.type := childty;
+			.internal := true;
+			.initialiser := zero;
+			.codegen := zero;
+		});
+		cg_decl(context
 		{
-			should_back = true;
-		}
-		if(should_back)
-		{
-			scope_declare_variable(funcscope, global_arena, variable
-			{
-				.node := childnode;
-				.name := childdecl.name;
-				.name_len := childdecl.name_len;
-				.is_global := false;
-				.type := childty;
-				.internal := true;
-				.initialiser := zero;
-				.codegen := zero;
-			});
-			cg_decl(context
-			{
-				.node := childnode;
-				.local := funcscope;
-			});
-			// now actually store into it.
-			backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
-			paramval ::= LLVMGetParam(fn->codegen, i@_);
-			LLVMBuildStore(ir, paramval, backed_array_var->codegen);
+			.node := childnode;
+			.local := funcscope;
+		});
+		// now actually store into it.
+		backed_array_var ::= scope_find_variable(funcscope, childdecl.name, childdecl.name_len);
+		paramval ::= LLVMGetParam(fn->codegen, i@_);
+		LLVMBuildStore(ir, paramval, backed_array_var->codegen);
 
-			dbg_markup_parameter(backed_array_var, funcscope, i@_);
-		}
+		dbg_markup_parameter(backed_array_var, funcscope, i@_);
+
 		if(ty_isbad(childty))
 		{
 			psyc_error_begin(childnode->loc);
