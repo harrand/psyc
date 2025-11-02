@@ -509,43 +509,6 @@ cg_symbol ::= func(expr : ast_expr, ctx : context mut -> cgv)
 		};
 	}
 
-	// perhaps a function param?
-	maybe_parent_fn ::= scope_get_parent_function(ctx.local);
-	if(maybe_parent_fn != zero)
-	{
-		fnty ::= maybe_parent_fn->type;
-		fnpayload ::= fnty.fn;
-		fnparamtys ::= (fnpayload.param_types)@ty?;
-		parentnode ::= maybe_parent_fn->node;
-
-		paramidx : u64 mut := -1;
-		i : u64 mut;
-		paramnode : ast? mut;
-		paramdecl : ast_decl mut;
-		for(i = 0, i < (maybe_parent_fn->param_count), i = i + 1)
-		{
-			paramnode = ast_get_child(parentnode@_, i);
-			paramdecl = (paramnode->decl);
-			if((paramdecl.name_len) == (sym.len))
-			{
-				if(streql_n(paramdecl.name, sym.symbol, sym.len))
-				{
-					paramidx = i;
-				}
-			}
-		}
-		if(paramidx != -1)
-		{
-			// yep
-			return cgv
-			{
-				.tag := cgvtag.misc;
-				.type := deref(fnparamtys # paramidx);
-				.ll := LLVMGetParam(maybe_parent_fn->codegen, paramidx@_);
-			};
-		}
-	}
-
 	maybe_function_ref ::= scope_find_function(ctx.local, sym.symbol, sym.len);
 	if(maybe_function_ref != zero)
 	{
