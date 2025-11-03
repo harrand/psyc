@@ -79,11 +79,6 @@ di_primty ::= func(p : primty -> u64)
 	return deref(arr # (p@s64));
 };
 
-cg_struct_ptr_t ::= struct
-{
-	fn : func(def : structdef mut? -> v0);
-};
-cg_struct_ptr : cg_struct_ptr_t mut;
 // convert psyc 'ty' to LLVMTypeRef
 cg_type ::= func(t : ty -> u64)
 {
@@ -112,8 +107,7 @@ cg_type ::= func(t : ty -> u64)
 		def ::= program_find_struct(strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
-			// todo: need to cg_struct here.
-			cg_struct_ptr.fn(def@_);
+			cg_struct(def@_);
 		}
 		return def->codegen;
 	}
@@ -171,7 +165,7 @@ di_type ::= func(t : ty -> u64)
 		def ::= program_find_struct(strct.name, strct.name_len);
 		if((def->codegen) == 0)
 		{
-			cg_struct_ptr.fn(def@_);
+			cg_struct(def@_);
 		}
 		return def->dbg;
 	}
@@ -575,47 +569,6 @@ codegen_setup ::= func(-> v0)
 	ir = LLVMCreateBuilder();
 	db = LLVMCreateDIBuilder(mod);
 	codegen_node_setup();
-	cg_struct_ptr = cg_struct_ptr_t{.fn := cg_struct;};
-
-	i : u64 mut;
-	// fill in cgv conv tables.
-	cgv_conv_table_size ::= __sizeof(cgv_conv_table) / __sizeof(deref(cgv_conv_table # 0));
-	for(i = 0, i < cgv_conv_table_size, i = i + 1)
-	{
-		deref(cgv_conv_table # i) = cgv_conv_fn{.fn := cgv_conv_undef;};
-	}
-	deref(cgv_conv_table # ((tyconv.cant)@s64)) = cgv_conv_fn{.fn := cgv_conv_cant;};
-	deref(cgv_conv_table # ((tyconv.could_if_weak)@s64)) = cgv_conv_fn{.fn := cgv_conv_could_if_weak;};
-	deref(cgv_conv_table # ((tyconv.i2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2i;};
-	deref(cgv_conv_table # ((tyconv.i2f)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2f;};
-	deref(cgv_conv_table # ((tyconv.i2p)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2p;};
-	deref(cgv_conv_table # ((tyconv.i2e)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2e;};
-	deref(cgv_conv_table # ((tyconv.i2b)@s64)) = cgv_conv_fn{.fn := cgv_conv_i2b;};
-	deref(cgv_conv_table # ((tyconv.e2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_e2i;};
-	deref(cgv_conv_table # ((tyconv.p2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_p2i;};
-	deref(cgv_conv_table # ((tyconv.p2fn)@s64)) = cgv_conv_fn{.fn := cgv_conv_p2fn;};
-	deref(cgv_conv_table # ((tyconv.p2p)@s64)) = cgv_conv_fn{.fn := cgv_conv_p2p;};
-	deref(cgv_conv_table # ((tyconv.fn2p)@s64)) = cgv_conv_fn{.fn := cgv_conv_fn2p;};
-	deref(cgv_conv_table # ((tyconv.f2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_f2i;};
-	deref(cgv_conv_table # ((tyconv.f2f)@s64)) = cgv_conv_fn{.fn := cgv_conv_f2f;};
-	deref(cgv_conv_table # ((tyconv.b2i)@s64)) = cgv_conv_fn{.fn := cgv_conv_b2i;};
-	deref(cgv_conv_table # ((tyconv.same)@s64)) = cgv_conv_fn{.fn := cgv_conv_same;};
-
-	cg_builtin_table_size ::= __sizeof(cg_builtin_table) / __sizeof(deref(cg_builtin_table # 0));
-	for(i = 0, i < cg_builtin_table_size, i = i + 1)
-	{
-		deref(cg_builtin_table # i) = cg_builtin_fn{.fn := cg_builtinfn_error;};
-	}
-	deref(cg_builtin_table # ((builtin.debugbreak)@s64)) = cg_builtin_fn{.fn := cg_builtin_debugbreak;};
-	deref(cg_builtin_table # ((builtin.sizeof)@s64)) = cg_builtin_fn{.fn := cg_builtin_sizeof;};
-	deref(cg_builtin_table # ((builtin.alignof)@s64)) = cg_builtin_fn{.fn := cg_builtin_alignof;};
-	deref(cg_builtin_table # ((builtin.countof)@s64)) = cg_builtin_fn{.fn := cg_builtin_countof;};
-	deref(cg_builtin_table # ((builtin.stack_push)@s64)) = cg_builtin_fn{.fn := cg_builtin_stack_push;};
-	deref(cg_builtin_table # ((builtin.arrcpy)@s64)) = cg_builtin_fn{.fn := cg_builtin_arrcpy;};
-	deref(cg_builtin_table # ((builtin.enumname)@s64)) = cg_builtin_fn{.fn := cg_builtin_enumname;};
-	deref(cg_builtin_table # ((builtin.embed)@s64)) = cg_builtin_fn{.fn := cg_builtin_embed;};
-	deref(cg_builtin_table # ((builtin.curloc)@s64)) = cg_builtin_fn{.fn := cg_builtin_curloc;};
-	deref(cg_builtin_table # ((builtin.error)@s64)) = cg_builtin_fn{.fn := cg_builtin_error;};
-	deref(cg_builtin_table # ((builtin.atomic_rmw)@s64)) = cg_builtin_fn{.fn := cg_builtin_atomic_rmw;};
-	deref(cg_builtin_table # ((builtin.atomic_cmpxchg)@s64)) = cg_builtin_fn{.fn := cg_builtin_atomic_cmpxchg;};
+	codegen_builtin_setup();
+	codegen_conv_setup();
 };
