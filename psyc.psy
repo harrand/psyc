@@ -313,6 +313,11 @@ main ::= func(pargs : program_args? -> s32)
 	sval_setup();
 	codegen_setup();
 
+	// get the current cwd
+	oldcwd : u8? mut;
+	oldcwdlen : u64 mut;
+	directory_get_cwd(ref oldcwd, ref oldcwdlen, global_arena);
+
 	default_progname ::= "program";
 	prog.name = default_progname;
 	prog.name_len = zstrlen(default_progname);
@@ -357,6 +362,7 @@ main ::= func(pargs : program_args? -> s32)
 	}
 	compile_program(global_arena);
 
+	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
 	do_postbuild();
 	psyc_report_timings();
 	return 0;
