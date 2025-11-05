@@ -10,7 +10,13 @@ di_type ::= func(t : ty -> u64)
 	}
 	if((t.tag) == (tytag.enm))
 	{
-		return di_primty(primty.s64);
+		enm ::= t.enm;
+		endef ::= program_find_enum(enm.name, enm.name_len);
+		if((endef->dbg == 0))
+		{
+			cg_enum(endef@_);
+		}
+		return endef->dbg;
 	}
 	if((t.tag) == (tytag.ptr))
 	{
@@ -135,6 +141,30 @@ dbg_markup_struct ::= func(def : structdef mut? -> v0)
 		align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type));
 		def->dbg = LLVMDIBuilderCreateStructType(db, struct_file_scope->dbg, def->name, def->name_len, struct_file_scope->dbg, node->loc.line@_, size * 8, align * 8, zero, zero, di_memarr, memcount@_, zero, zero, def->name, def->name_len);
 	}
+};
+
+dbg_markup_enum ::= func(def : enumdef mut? -> v0)
+{
+	i : u64 mut;
+	encount ::= def->entry_count;
+	type ::= def->type;
+	enty ::= type.enm;
+	node ::= def->node;
+	di_entries : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * encount);
+	for(i = 0, i < encount, i = i + 1)
+	{
+		enval ::= deref(enty.entry_values # i);
+		enname ::= deref(enty.entry_names # i);
+		enname_len ::= deref(enty.entry_name_lens # i);
+		deref(di_entries # i) = LLVMDIBuilderCreateEnumerator(db, enname, enname_len, enval@_, false@s32);
+	}
+
+	file_scope ::= def->file_scope@scope?;
+	enum_scope ::= file_scope;
+
+	size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(type));
+	align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(type));
+	def->dbg = LLVMDIBuilderCreateEnumerationType(db, enum_scope->dbg, def->name, def->name_len, enum_scope->dbg, node->loc.line@_, size * 8, align * 8, di_entries, encount@_, di_primty(primty.s64));
 };
 
 dbg_markup_func ::= func(fn : function mut? -> v0)
