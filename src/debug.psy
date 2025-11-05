@@ -1,3 +1,66 @@
+di_type ::= func(t : ty -> u64)
+{
+	if(ty_isbad(t))
+	{
+		psyc_panic(zero, "attempted to codegen di_type(badtype). semal should've caught this. compiler bug.");
+	}
+	if((t.tag) == (tytag.prim))
+	{
+		return di_primty(t.prim);
+	}
+	if((t.tag) == (tytag.enm))
+	{
+		return di_primty(primty.s64);
+	}
+	if((t.tag) == (tytag.ptr))
+	{
+		ptr ::= t.ptr;
+		u ::= deref((ptr.underlying)@ty?);
+		di_u ::= di_type(u);
+		return LLVMDIBuilderCreatePointerType(db, di_u, 64, zero, zero, zero, zero);
+	}
+	if((t.tag) == (tytag.strct))
+	{
+		strct ::= t.strct;
+		def ::= program_find_struct(strct.name, strct.name_len);
+		if((def->codegen) == 0)
+		{
+			cg_struct(def@_);
+		}
+		return def->dbg;
+	}
+	if((t.tag) == (tytag.fn))
+	{
+		fn ::= t.fn;
+		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fn.param_count + 1));
+
+		ret_di ::= di_type(deref((fn.return_type)@ty?));
+		param_tys ::= (fn.param_types)@ty?;
+
+		i : u64 mut;
+		deref(paramdata # 0) = ret_di;
+		for(i = 0, i < (fn.param_count), i = i + 1)
+		{
+			deref(paramdata # (i + 1)) = di_type(deref(param_tys # i));
+		}
+
+		// todo: dont lie
+		file_scope ::= prog.global;
+		return LLVMDIBuilderCreateSubroutineType(db, file_scope.dbg, paramdata, fn.param_count + 1, zero);
+	}
+	if((t.tag) == (tytag.arr))
+	{
+		arr ::= t.arr;
+		u_di ::= di_type(deref((arr.underlying)@ty?));
+		subrange ::= LLVMDIBuilderGetOrCreateSubrange(db, 0, arr.len);
+		size ::= LLVMABISizeOfType(LLVMGetModuleDataLayout(mod), cg_type(t));
+		align ::= LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(mod), cg_type(t));
+		return LLVMDIBuilderCreateArrayType(db, size * 8, align * 8, u_di, ref subrange, 1);
+	}
+	psyc_panic(zero, "control flow reached end of di_type - compiler bug.");
+	return 0;
+};
+
 dbg_setup_builder ::= func( -> v0)
 {
 	if(prog.debug_symbols)
