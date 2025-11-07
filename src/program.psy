@@ -388,6 +388,7 @@ scope_declare_variable ::= func(s : scope mut?, a : arena mut?, v : variable -> 
 		(vars->cap) = (vars->cap) * 2;
 		(vars->data) = arena_alloc(a, __sizeof(deref (vars->data)) * (vars->cap));
 		memcopy(vars->data, olddata, oldcap * __sizeof(deref (vars->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (vars->data)));
 	}
 	deref((vars->data) # (vars->size)) = v;
 	(vars->size) = (vars->size) + 1;
@@ -449,6 +450,7 @@ scope_declare_struct ::= func(s : scope mut?, a : arena mut?, v : structdef -> v
 		(structs->cap) = (structs->cap) * 2;
 		(structs->data) = arena_alloc(a, __sizeof(deref (structs->data)) * (structs->cap));
 		memcopy(structs->data, olddata, oldcap * __sizeof(deref (structs->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (structs->data)));
 	}
 	deref((structs->data) # (structs->size)) = v;
 	(structs->size) = (structs->size) + 1;
@@ -510,6 +512,7 @@ scope_declare_enum ::= func(s : scope mut?, a : arena mut?, v : enumdef -> v0)
 		(enums->cap) = (enums->cap) * 2;
 		(enums->data) = arena_alloc(a, __sizeof(deref (enums->data)) * (enums->cap));
 		memcopy(enums->data, olddata, oldcap * __sizeof(deref (enums->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (enums->data)));
 	}
 	deref((enums->data) # (enums->size)) = v;
 	(enums->size) = (enums->size) + 1;
@@ -571,6 +574,7 @@ scope_declare_function ::= func(s : scope mut?, a : arena mut?, f : function -> 
 		(funcs->cap) = (funcs->cap) * 2;
 		(funcs->data) = arena_alloc(a, __sizeof(deref (funcs->data)) * (funcs->cap));
 		memcopy(funcs->data, olddata, oldcap * __sizeof(deref (funcs->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (funcs->data)));
 	}
 	deref((funcs->data) # (funcs->size)) = f;
 	(funcs->size) = (funcs->size) + 1;
@@ -632,6 +636,7 @@ scope_declare_assembly ::= func(s : scope mut?, a : arena mut?, as : assembly ->
 		(asms->cap) = (asms->cap) * 2;
 		(asms->data) = arena_alloc(a, __sizeof(deref (asms->data)) * (asms->cap));
 		memcopy(asms->data, olddata, oldcap * __sizeof(deref (asms->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (asms->data)));
 	}
 	deref((asms->data) # (asms->size)) = as;
 	(asms->size) = (asms->size) + 1;
@@ -693,6 +698,7 @@ scope_declare_macro ::= func(s : scope mut?, a : arena mut?, m : macrodef -> v0)
 		(macros->cap) = (macros->cap) * 2;
 		(macros->data) = arena_alloc(a, __sizeof(deref (macros->data)) * (macros->cap));
 		memcopy(macros->data, olddata, oldcap * __sizeof(deref (macros->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (macros->data)));
 	}
 	deref((macros->data) # (macros->size)) = m;
 	(macros->size) = (macros->size) + 1;
@@ -754,6 +760,7 @@ scope_declare_region ::= func(s : scope mut?, a : arena mut?, r : region -> v0)
 		(regions->cap) = (regions->cap) * 2;
 		(regions->data) = arena_alloc(a, __sizeof(deref (regions->data)) * (regions->cap));
 		memcopy(regions->data, olddata, oldcap * __sizeof(deref (regions->data)));
+		arena_free(a, olddata, oldcap * __sizeof(deref (regions->data)));
 	}
 	deref((regions->data) # (regions->size)) = r;
 	(regions->size) = (regions->size) + 1;
@@ -790,6 +797,7 @@ program_new_scope ::= func(a : arena mut?, parent : scope mut?, type : scope_typ
 		(prog.locals_cap) = (oldcap * 2);
 		(prog.locals) = arena_alloc(a, __sizeof(deref (prog.locals)) * (prog.locals_cap));
 		memcopy(prog.locals, olddata, oldcap);
+		arena_free(a, olddata, oldcap * __sizeof(deref (prog.locals)));
 	}
 	id ::= prog.locals_size;
 	(prog.locals_size) = (prog.locals_size) + 1;
@@ -929,6 +937,9 @@ program_add_link_library ::= func(libname : u8?, libname_len : u64, a : arena mu
 		memcopy(prog.link_libraries, oldlibs, oldcap * __sizeof(deref (prog.link_libraries)));
 		(prog.link_library_lens) = arena_alloc(a, __sizeof(deref (prog.link_library_lens)) * (prog.link_library_cap));
 		memcopy(prog.link_library_lens, oldlens, oldcap * __sizeof(deref (prog.link_library_lens)));
+
+		arena_free(a, oldlibs, oldcap * __sizeof(deref (prog.link_libraries)));
+		arena_free(a, oldlens, oldcap * __sizeof(deref (prog.link_library_lens)));
 	}
 	id ::= prog.link_library_size;
 	(prog.link_library_size) = (prog.link_library_size) + 1;
