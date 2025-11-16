@@ -1069,7 +1069,8 @@ wipbiop2biop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_val
 
 symcol2wipbasicdecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
-	// make an empty ast node for wipbasicdecl
+	// make an ast node for wipbasicdecl
+	// set its decl.name & decl.name_len to be the symbol provided
 	setup_decls();
 	ret : parse_value mut := parse_value
 	{
@@ -1080,9 +1081,17 @@ symcol2wipbasicdecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> pa
 	};
 	defer return ret;
 
+	first_utok ::= first.utok;
+	first_tok ::= first_utok.tok;
+
 	deref(ret.nodes # 0) = ast
 	{
 		.type := ast_type.wipbasicdecl;
+		.decl := ast_decl
+		{
+			.name : src # (first_tok.lexeme.off);
+			.name_len := first_tok.lexeme.len;
+		};
 		.loc := first.loc;
 		.cursor_begin := first.cursor_begin;
 		.cursor_end := last.cursor_end;
@@ -1295,9 +1304,36 @@ typename_add_qual_weak ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 ->
 
 wipbasicdecl_typename2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
-	putzstr("FUCK");
-	__debugbreak();
-	return zero;
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	typename_node ::= deref(nodes # 1);
+
+	decl ::= ast_decl
+	{
+		.name := first.decl.name;
+		.name_len := first.decl.name_len;
+		.typename := typename_node.typename;
+	};
+
+	deref(ret.nodes # 0) = ast
+	{
+		.type := ast_type.decl;
+		.decl := first.decl;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
 };
 
 symcrap2deduceddecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -2676,7 +2712,7 @@ grammar_basic_decl ::= func( -> v0)
 		zero,
 		grammar_rule{.fn := symcol2wipbasicdecl;});
 
-	// wipbasicdecl by itself gets stashed
+	// wipbasicdecl by itself gets stashed. we want the slate clean for typename parsing which is a whole thing.
 	grammar_install(
 		__arrcpy(node_arena#0, ast, node(ast_type.wipbasicdecl)),
 		zero,
