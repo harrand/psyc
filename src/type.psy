@@ -2,6 +2,31 @@ psyc_deduced_typename ::= "auto";
 psyc_meta_typename ::= "type";
 psyc_function_placeholder_typename ::= "___fn";
 
+typename2ty ::= func(node : ast? -> ty)
+{
+	if(node->type != (ast_type.typename))
+	{
+		// bruh
+		return zero;
+	}
+	typename ::= node->typename;
+	if(typename.tag == (ast_typename_tag.array))
+	{
+		return ty_arr(typename2ty(ast_get_child(node, 0)), typename.array_len, typename.quals);
+	}
+	if(typename.tag == (ast_typename_tag.pointer))
+	{
+		return ty_ref(typename2ty(ast_get_child(node, 0)), typename.quals);
+	}
+	if(typename.tag == (ast_typename_tag.symbol))
+	{
+		return program_parse_typename(typename.name, typename.name_len);
+	}
+	putzstr("rodney you PLONKER you didnt add support for a specific typename tag (internal compiler error plz submit bug report)");
+	__debugbreak();
+	return zero;
+};
+
 tyqual ::= enum
 {
 	.static := 1;
