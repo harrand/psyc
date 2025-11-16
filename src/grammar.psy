@@ -922,6 +922,25 @@ tokenexpr2unop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 	(ret.nodes_size) = 1;
 };
 
+brackexpr2deref ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	// we have obrack(expr-T), cbrack
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	(firstptr->type) = (ast_type.expr);
+	(firstptr->expr) = make_unop_expr(ast_unop_expr{.type := ast_unop_type.op_deref;});
+
+	(ret.nodes_size) = 1;
+};
+
 deferstmt2unop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -2545,6 +2564,36 @@ grammar_decl_init ::= func(exp : ast_expr_type -> v0)
 		grammar_rule{.fn := unstash_head;});
 };
 
+grammar_deref ::= func(-> v0)
+{
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.obrack)),
+		zero,
+		zero,
+		grammar_rule{.fn := stash_head;});
+};
+
+grammar_deref_expr ::= func(exp : ast_expr_type -> v0)
+{
+	grammar_install(
+		__arrcpy(node_arena#0, ast, expr(exp)),
+		token(lex_token.cbrack),
+		zero,
+		grammar_rule{.fn := shift1;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, expr(exp), token(lex_token.cbrack)),
+		zero,
+		token(lex_token.obrack),
+		grammar_rule{.fn := unstash_head;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.obrack), expr(exp), token(lex_token.cbrack)),
+		zero,
+		zero,
+		grammar_rule{.fn := brackexpr2deref;});
+};
+
 grammar_unop ::= func(t : lex_token -> v0)
 {
 	grammar_install(
@@ -3592,7 +3641,7 @@ grammar_setup ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 	defer psyc_timed_end();
-	parse_table_cap = 2500;
+	parse_table_cap = 4096;
 	parse_table = arena_alloc(global_arena, __sizeof(deref parse_table) * parse_table_cap);
 	memfill(parse_table, 0, __sizeof(deref parse_table) * parse_table_cap);
 
@@ -3674,6 +3723,14 @@ grammar_setup ::= func(-> v0)
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.unop);
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.callfunc);
 	grammar_unop_expr(lex_token.keyword_ref, ast_expr_type.structinit);
+
+	grammar_deref();
+	grammar_deref_expr(ast_expr_type.symbol);
+	grammar_deref_expr(ast_expr_type.literal);
+	grammar_deref_expr(ast_expr_type.biop);
+	grammar_deref_expr(ast_expr_type.unop);
+	grammar_deref_expr(ast_expr_type.callfunc);
+	grammar_deref_expr(ast_expr_type.structinit);
 
 	grammar_unop(lex_token.keyword_deref);
 	grammar_unop_expr(lex_token.keyword_deref, ast_expr_type.symbol);
