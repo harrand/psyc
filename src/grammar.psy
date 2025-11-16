@@ -1067,6 +1067,31 @@ wipbiop2biop ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_val
 	
 };
 
+symcol2wipbasicdecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	// make an empty ast node for wipbasicdecl
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	deref(ret.nodes # 0) = ast
+	{
+		.type := ast_type.wipbasicdecl;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+};
+
 symcolsym2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -1110,6 +1135,169 @@ symcolsym2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 		.childcount := 0;
 	};
 	(ret.nodes_size) = 1;
+};
+
+sym2typename ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	utok ::= first.utok;
+	tok ::= utok.tok;
+
+	deref(ret.nodes # 0) = ast
+	{
+		.type := ast_type.typename;
+		.typename := ast_typename
+		{
+			.quals := zero;
+			.tag := ast_typename_tag.symbol;
+			.name := src # (tok.lexeme.off);
+			.name_len := tok.lexeme.len;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+};
+
+typename_add_arrayness ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	// first is the base typename that is being array-ified
+	// second is a obrack, third is what we expect to be a numeric literal
+	arraylen_node ::= deref(nodes # 2);
+	// todo: confirm arraylen_node is an integral literal expr
+	arraylen_value ::= arraylen_node.expr.literal.integral;
+
+	deref(firstptr) = ast
+	{
+		.type := ast_type.typename;
+		.typename := ast_typename
+		{
+			.quals := zero;
+			.tag := ast_typename_tag.array;
+			.array_len := arraylen_value;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_add_child(firstptr, first, global_arena);
+};
+
+typename_add_pointerness ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	// first is the base typename that is being pointer-ified
+	deref(firstptr) = ast
+	{
+		.type := ast_type.typename;
+		.typename := ast_typename
+		{
+			.quals := zero;
+			.tag := ast_typename_tag.pointer;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	ast_add_child(firstptr, first, global_arena);
+};
+
+typename_add_qual_mut ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	// first is the base typename that is being pointer-ified
+	firstptr->cursor_end = (last.cursor_end);
+	quals : tyqual mut ? := ref(firstptr->typename.quals);
+	deref(quals) = (deref(quals) | (tyqual.mut));
+};
+
+typename_add_qual_static ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	// first is the base typename that is being pointer-ified
+	firstptr->cursor_end = (last.cursor_end);
+	quals : tyqual mut ? := ref(firstptr->typename.quals);
+	deref(quals) = (deref(quals) | (tyqual.static));
+};
+
+typename_add_qual_weak ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	// first is the base typename that is being pointer-ified
+	firstptr->cursor_end = (last.cursor_end);
+	quals : tyqual mut ? := ref(firstptr->typename.quals);
+	deref(quals) = (deref(quals) | (tyqual.weak));
+};
+
+wipbasicdecl_typename2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	putzstr("FUCK");
+	__debugbreak();
+	return zero;
 };
 
 symcrap2deduceddecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -2402,6 +2590,75 @@ grammar_parenthesised_expr ::= func(exp : ast_expr_type -> v0)
 		grammar_rule{.fn := parenthesise_expr;});
 };
 
+grammar_typename ::= func(-> v0)
+{
+	// well obviously a symbol is a valid typename
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.symbol)),
+		zero,
+		zero,
+		grammar_rule{.fn := sym2typename;});
+
+	// but also tyname[ exp-lit ] would be a valid typename
+	// if we see the obrack we should shift by 3 (to get the obrack, the length literal expr, and the cbrack)
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		token(lex_token.obrack),
+		zero,
+		grammar_rule{.fn := shift3;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename), token(lex_token.obrack), expr(expr_type.literal), token(lex_token.cbrack)),
+		zero,
+		zero,
+		grammar_rule{.fn := typename_add_arrayness;});
+
+	// tyname? is a pointer
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		token(lex_token.qmark),
+		zero,
+		grammar_rule{.fn := shift1;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename), token(lex_token.qmark)),
+		zero,
+		zero,
+		grammar_rule{.fn := typename_add_pointerness;});
+
+	// need to do qualifiers too now.
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		token(lex_token.qual_mut),
+		zero,
+		grammar_rule{.fn := shift1;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename), token(lex_token.qual_mut)),
+		zero,
+		zero,
+		grammar_rule{.fn := typename_add_qual_mut;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		token(lex_token.qual_static),
+		zero,
+		grammar_rule{.fn := shift1;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename), token(lex_token.qual_static)),
+		zero,
+		zero,
+		grammar_rule{.fn := typename_add_qual_static;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		token(lex_token.qual_weak),
+		zero,
+		grammar_rule{.fn := shift1;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename), token(lex_token.qual_weak)),
+		zero,
+		zero,
+		grammar_rule{.fn := typename_add_qual_weak;});
+};
+
 grammar_basic_decl ::= func( -> v0)
 {
 	// if a symbol is directly followed by a colon, its probably the start of a decl, so override before we exprify it.
@@ -2411,17 +2668,35 @@ grammar_basic_decl ::= func( -> v0)
 		zero,
 		grammar_rule{.fn := shift1;});
 
+	// sym :
+	// becomes wipbasicdecl
 	grammar_install(
 		__arrcpy(node_arena#0, ast, token(lex_token.symbol), token(lex_token.colon)),
 		zero,
 		zero,
-		grammar_rule{.fn := shift1;});
+		grammar_rule{.fn := symcol2wipbasicdecl;});
+
+	// wipbasicdecl by itself gets stashed
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.wipbasicdecl)),
+		zero,
+		zero,
+		grammar_rule{.fn := stash_head;});
+
+	// so if wipbasicdecl is on the top of the stash what would we want to see to pop it off?
+	// well we want it to be a typename. the rules of parsing typenames exist elsewhere.
+	// we just want to see a typename
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		zero,
+		node(ast_type.wipbasic_decl),
+		grammar_rule{.fn := unstash_head;});
 
 	grammar_install(
-		__arrcpy(node_arena#0, ast, token(lex_token.symbol), token(lex_token.colon), token(lex_token.symbol)),
+		__arrcpy(node_arena#0, ast, node(ast_type.wipbasicdecl), node(ast_type.typename)),
 		zero,
 		zero,
-		grammar_rule{.fn := symcolsym2decl;});
+		grammar_rule{.fn := wipbasicdecl_typename2decl;});
 };
 
 grammar_deduced_decl ::= func( -> v0)
@@ -3629,6 +3904,8 @@ grammar_setup ::= func(-> v0)
 	grammar_parenthesised_expr(ast_expr_type.callfunc);
 	grammar_parenthesised_expr(ast_expr_type.ret);
 	grammar_parenthesised_expr(ast_expr_type.structinit);
+
+	grammar_typename();
 
 	grammar_basic_decl();
 	grammar_deduced_decl();
