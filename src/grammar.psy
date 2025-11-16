@@ -1146,6 +1146,129 @@ symcolsym2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_v
 	(ret.nodes_size) = 1;
 };
 
+new_fn_stem_wip ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	deref(ret.nodes # 0) = ast
+	{
+		.type := ast_type.fn_stem_wip;
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := zero;
+		.childcap := 0;
+		.childcount := 0;
+	};
+	(ret.nodes_size) = 1;
+};
+
+fn_stem_add_param ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+	defer return ret;
+
+	(firstptr->type) = (ast_type.fn_stem_await_punc);
+	// last is a decl
+	ast_add_child(firstptr, last, global_arena);
+};
+
+fn_stem_ready_for_next_param_destructive ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	// we need to go back to being a normal stem. but we want to eat all other nodes.
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+	(firstptr->type) = (ast_type.fn_stem_wip);
+};
+
+fn_stem_ready_for_next_param ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	// we need to go back to being a normal stem, but without eating any nodes.
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := 0;
+		.nodes_size := 0;
+	};
+	defer return ret;
+	(firstptr->type) = (ast_type.fn_stem_wip);
+};
+
+fn_stem_set_await_retty ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 1;
+		.len := nodes_size - 1;
+		.nodes_size := 0;
+	};
+	defer return ret;
+	(firstptr->type) = (ast_type.fn_stem_await_retty);
+	// we have a stem and we were just given an arrow
+	// put ourselves into a state where we are just waiting for a return type now.
+	// kill all other nodes.
+};
+
+fn_stem_finalise ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
+{
+	// we are a fn_stem_await_retty
+	// last node is a cparen - 2nd last node is the typename node
+	setup_decls();
+	ret : parse_value mut := parse_value
+	{
+		.action := (parse_action.reduce);
+		.offset := 0;
+		.len := nodes_size;
+		.nodes_size := 0;
+	};
+
+	second_last ::= deref(nodes # (nodes_size - 2));
+	deref(ret.nodes # 0) = ast
+	{
+		.type := ast_type.fn_stem;
+		.fn := ast_fn
+		{
+			.fn_name := zero;
+			.fn_name_len := zero;
+			.ret_typename := second_last.typename;
+			.is_extern := false;
+		};
+		.loc := first.loc;
+		.cursor_begin := first.cursor_begin;
+		.cursor_end := last.cursor_end;
+		.children := first.children;
+		.childcap := first.childcap;
+		.childcount := first.childcount;
+	};
+	(ret.nodes_size) = 1;
+};
+
 sym2typename ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
 {
 	setup_decls();
@@ -1178,6 +1301,7 @@ sym2typename ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_val
 		.childcap := 0;
 		.childcount := 0;
 	};
+	(ret.nodes_size) = 1;
 };
 
 typename_add_arrayness ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -1334,6 +1458,7 @@ wipbasicdecl_typename2decl ::= func(src : u8?, nodes : ast mut?, nodes_size : u6
 		.childcap := 0;
 		.childcount := 0;
 	};
+	(ret.nodes_size) = 1;
 };
 
 symcrap2deduceddecl ::= func(src : u8?, nodes : ast mut?, nodes_size : u64 -> parse_value)
@@ -2624,6 +2749,98 @@ grammar_parenthesised_expr ::= func(exp : ast_expr_type -> v0)
 		zero,
 		zero,
 		grammar_rule{.fn := parenthesise_expr;});
+};
+
+grammar_fn_stem ::= func(-> v0)
+{
+	// func(params... -> retty)
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.keyword_func)),
+		token(lex_token.oparen),
+		zero,
+		grammar_rule{.fn := shift1;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.keyword_func), token(lex_token.oparen)),
+		zero,
+		zero,
+		grammar_rule{.fn := new_fn_stem_wip;});
+
+	// ok rest are from adding stuff to stem and capping it off into an actual fn
+	// a stem alone gets stashed
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_wip)),
+		zero,
+		zero,
+		grammar_rule{.fn := stash_head;});
+
+	// stem gets unstashed for a decl or an arrow
+	grammar_install(
+		__arrcpy(node_arena#0, ast, token(lex_token.arrow)),
+		zero,
+		node(ast_type.fn_stem_wip),
+		grammar_rule{.fn := unstash_head;});
+	// if a stem is followed by a decl then we add it as a param (and it awaits a punc)
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.decl)),
+		zero,
+		node(ast_type.fn_stem_wip),
+		grammar_rule{.fn := unstash_head;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_wip), node(ast_type.decl)),
+		zero,
+		zero,
+		grammar_rule{.fn := fn_stem_add_param;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_punc)),
+		zero,
+		zero,
+		grammar_rule{.fn := shift1;});
+	// await_punc + comma means we just need to eat the comma and go back to a fn_stem
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_punc), token(lex_token.comma)),
+		zero,
+		zero,
+		grammar_rule{.fn := fn_stem_ready_for_next_param_destructive;});
+	// getting an arrow is valid for both a fn_stem and an await_punc
+	// let's share the same codepath so if we fn_stem_await_punc gets an arrow we just turn it back to a normal fn_stem + arrow and take that codepath.
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_punc), token(lex_token.arrow)),
+		zero,
+		zero,
+		grammar_rule{.fn := fn_stem_ready_for_next_param;});
+	// now for the unified codepath to get an arrow
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_wip), token(lex_token.arrow)),
+		zero,
+		zero,
+		grammar_rule{.fn := fn_stem_set_await_retty;});
+
+	// await_retty must stash ourselves until we see a typename
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_retty)),
+		zero,
+		zero,
+		grammar_rule{.fn := stash_head;});
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.typename)),
+		zero,
+		node(ast_type.fn_stem_await_retty),
+		grammar_rule{.fn := unstash_head;});
+
+	// finally we can make our finished fn_stem (make sure we eat the cparen!)
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_retty), node(ast_type.typename)),
+		token(lex_token.cparen),
+		zero,
+		grammar_rule{.fn := shift1;});
+
+	grammar_install(
+		__arrcpy(node_arena#0, ast, node(ast_type.fn_stem_await_retty), node(ast_type.typename), token(lex_token.cparen)),
+		zero,
+		zero,
+		grammar_rule{.fn := fn_stem_finalise;});
 };
 
 grammar_typename ::= func(-> v0)
