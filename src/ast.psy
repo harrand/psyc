@@ -152,7 +152,7 @@ ast_function ::= struct
 {
 	name : u8?;
 	name_len : u64;
-	return_type : typename;
+	return_type : ast_typename;
 };
 
 ast_enumeration ::= struct
@@ -165,7 +165,7 @@ ast_assembly ::= struct
 {
 	name : u8?;
 	name_len : u64;
-	return_type : typename;
+	return_type : ast_typename;
 };
 
 ast ::= struct
@@ -190,7 +190,7 @@ ast ::= struct
 	structure : ast_structure;
 	function : ast_function;
 	enumeration : ast_enumeration;
-	assembly : ast_assembly
+	assembly : ast_assembly;
 
 	// meta info
 	begin_cursor : u64;
@@ -223,22 +223,18 @@ ast_add_child ::= func(node : ast mut?, child : ast, ar : arena mut? -> v0)
 	node->childcount = (node->childcount + 1);
 };
 
-ast_is_any_expr ::= func(node : ast? -> bool)
+hash_tag ::= func(tag : ast_tag -> u64)
 {
-	return node->tag == (ast_type.expr);
+	return (tag@s64) * 1093;
+	return hash(v);
 };
 
-ast_is_expr ::= func(node : ast?, tag : ast_expr_tag -> bool)
+hash_expr ::= func(tag : ast_expr_tag -> u64)
 {
-	return (node->tag == (ast_type.expr)) && (node->expr == tag);
+	return hash_tag(ast_tag.expr) ^ hash(tag@s64 * 190299117);
 };
 
-ast_is_any_stmt ::= func(node : ast? -> bool)
+hash_stmt ::= func(tag : ast_stmt_tag -> u64)
 {
-	return node->tag == (ast_type.stmt);
-};
-
-ast_is_stmt ::= func(node : ast?, tag : ast_stmt_tag -> bool)
-{
-	return (node->tag == (ast_type.stmt)) && (node->stmt == tag);
+	return hash_tag(ast_tag.stmt) ^ hash(tag@s64 * 393505272299);
 };
