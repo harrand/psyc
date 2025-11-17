@@ -2,6 +2,9 @@ ast_stmt_tag ::= enum
 {
 	.expr := 1;
 	.decl := 2;
+	.if_block := 3;
+	.while_block := 4;
+	.for_block := 5;
 };
 
 ast_expr_tag ::= enum
@@ -11,7 +14,20 @@ ast_expr_tag ::= enum
 	.unop := 3;
 	.biop := 4;
 	.callfunc := 5;
-	.structinit := 6;
+	.blkinit := 6;
+};
+
+ast_decl_tag ::= enum
+{
+	// todo: intermediate parser state we can generate unique hashes from
+};
+
+ast_decl ::= struct
+{
+	tag : ast_decl_tag;
+	name : u8?;
+	name_len : u64;
+	typename : ast_typename;
 };
 
 ast_typename_tag ::= enum
@@ -75,6 +91,29 @@ ast_unop ::= enum
 
 ast_biop ::= enum
 {
+	.assign := 1;
+	.compare_equal := 2;
+	.compare_not_equal := 3;
+	.compare_less := 4;
+	.compare_less_equal := 5;
+	.compare_greater := 6;
+	.compare_greater_equal := 7;
+	.add := 8;
+	.sub := 9;
+	.mul := 10;
+	.div := 11;
+	.bitwise_or := 12;
+	.bitwise_and := 13;
+	.logical_or := 14;
+	.logical_and := 15;
+	.xor := 16;
+	.bitshift_left := 17;
+	.bitshift_right := 18;
+	.modulo := 19;
+	.at := 20;
+	.field := 21;
+	.ptr_field := 22;
+	.cast := 23;
 };
 
 ast_callfunc ::= struct
@@ -83,12 +122,24 @@ ast_callfunc ::= struct
 	call_name_len : u64;
 };
 
+ast_blkinit ::= struct
+{
+	typename : ast_typename;
+};
+
+ast_init ::= struct
+{
+	name : u8?;
+	name_len : u64;
+};
+
 ast ::= struct
 {
 	tag : ast_tag;
 	stmt : ast_stmt_tag;
 	expr : ast_expr_tag;
 
+	decl : ast_decl;
 	typename : ast_typename;
 
 	literal : ast_literal;
@@ -96,6 +147,8 @@ ast ::= struct
 	unop : ast_unop;
 	biop : ast_biop;
 	callfunc : ast_callfunc;
+	blkinit : ast_blkinit;
+	init : ast_init;
 
 	begin_cursor : u64;
 	end_cursor : u64;
@@ -125,4 +178,24 @@ ast_add_child ::= func(node : ast mut?, child : ast, ar : arena mut? -> v0)
 	children ::= node->children@ast mut?;
 	deref(children # (node->childcount)) = child;
 	node->childcount = (node->childcount + 1);
+};
+
+ast_is_any_expr ::= func(node : ast? -> bool)
+{
+	return node->tag == (ast_type.expr);
+};
+
+ast_is_expr ::= func(node : ast?, tag : ast_expr_tag -> bool)
+{
+	return (node->tag == (ast_type.expr)) && (node->expr == tag);
+};
+
+ast_is_any_stmt ::= func(node : ast? -> bool)
+{
+	return node->tag == (ast_type.stmt);
+};
+
+ast_is_stmt ::= func(node : ast?, tag : ast_stmt_tag -> bool)
+{
+	return (node->tag == (ast_type.stmt)) && (node->stmt == tag);
 };
