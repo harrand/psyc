@@ -7,6 +7,11 @@ ast_stmt_tag ::= enum
 	.for_block := 5;
 };
 
+ast_unparsed_token ::= struct
+{
+	tok : token_data;
+};
+
 ast_expr_tag ::= enum
 {
 	.symbol := 1;
@@ -49,12 +54,16 @@ ast_typename ::= struct
 
 ast_tag ::= enum
 {
-	.stmt := 1;
-	.expr := 2;
-	.decl := 3;
-	.typename := 4;
-	.init := 5;
-	.structure := 6;
+	.unparsed_token := 1;
+	.stmt := 2;
+	.expr := 3;
+	.decl := 4;
+	.typename := 5;
+	.init := 6;
+	.structure := 7;
+	.function := 8;
+	.enumeration := 9;
+	.assembly := 10;
 };
 
 ast_literal_tag ::= enum
@@ -170,8 +179,9 @@ ast_assembly ::= struct
 
 ast ::= struct
 {
-	// top-level tags
+	// top-level bits
 	tag : ast_tag;
+	utok : ast_unparsed_token;
 	stmt : ast_stmt_tag;
 	expr : ast_expr_tag;
 
@@ -223,7 +233,7 @@ ast_add_child ::= func(node : ast mut?, child : ast, ar : arena mut? -> v0)
 	node->childcount = (node->childcount + 1);
 };
 
-hash_tag ::= func(tag : ast_tag -> u64)
+hash_node ::= func(tag : ast_tag -> u64)
 {
 	return (tag@s64) * 1093;
 	return hash(v);
@@ -231,10 +241,15 @@ hash_tag ::= func(tag : ast_tag -> u64)
 
 hash_expr ::= func(tag : ast_expr_tag -> u64)
 {
-	return hash_tag(ast_tag.expr) ^ hash(tag@s64 * 190299117);
+	return hash_node(ast_tag.expr) ^ hash(tag@s64 * 190299117);
 };
 
 hash_stmt ::= func(tag : ast_stmt_tag -> u64)
 {
-	return hash_tag(ast_tag.stmt) ^ hash(tag@s64 * 393505272299);
+	return hash_node(ast_tag.stmt) ^ hash(tag@s64 * 393505272299);
+};
+
+hash_token ::= func(lex : lex_token -> u64)
+{
+	return hash_node(ast_tag.unparsed_token) ^ hash(lex@s64 * 866820901);
 };
