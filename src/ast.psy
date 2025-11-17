@@ -15,6 +15,7 @@ ast_expr_tag ::= enum
 	.biop := 4;
 	.callfunc := 5;
 	.blkinit := 6;
+	.zero_value := 7;
 };
 
 ast_decl_tag ::= enum
@@ -50,8 +51,10 @@ ast_tag ::= enum
 {
 	.stmt := 1;
 	.expr := 2;
-	.typename := 3;
-	.zero_value := 4;
+	.decl := 3;
+	.typename := 4;
+	.init := 5;
+	.structure := 6;
 };
 
 ast_literal_tag ::= enum
@@ -116,8 +119,14 @@ ast_biop ::= enum
 	.cast := 23;
 };
 
+ast_callfunc_tag ::= enum
+{
+	// todo: intermediate parser state we can generate unique hashes from
+};
+
 ast_callfunc ::= struct
 {
+	tag : ast_callfunc_tag;
 	call_name : u8?;
 	call_name_len : u64;
 };
@@ -133,23 +142,57 @@ ast_init ::= struct
 	name_len : u64;
 };
 
+ast_structure ::= struct
+{
+	name : u8?;
+	name_len : u64;
+};
+
+ast_function ::= struct
+{
+	name : u8?;
+	name_len : u64;
+	return_type : typename;
+};
+
+ast_enumeration ::= struct
+{
+	name : u8?;
+	name_len : u64;
+};
+
+ast_assembly ::= struct
+{
+	name : u8?;
+	name_len : u64;
+	return_type : typename;
+};
+
 ast ::= struct
 {
+	// top-level tags
 	tag : ast_tag;
 	stmt : ast_stmt_tag;
 	expr : ast_expr_tag;
 
-	decl : ast_decl;
-	typename : ast_typename;
-
+	// expr payloads
 	literal : ast_literal;
 	symbol : ast_symbol;
 	unop : ast_unop;
 	biop : ast_biop;
 	callfunc : ast_callfunc;
 	blkinit : ast_blkinit;
-	init : ast_init;
 
+	// other payloads
+	decl : ast_decl;
+	typename : ast_typename;
+	init : ast_init;
+	structure : ast_structure;
+	function : ast_function;
+	enumeration : ast_enumeration;
+	assembly : ast_assembly
+
+	// meta info
 	begin_cursor : u64;
 	end_cursor : u64;
 	loc : srcloc;
