@@ -6,23 +6,24 @@ psyc_meta_typename ::= "type";
 // but sometimes the node itself isnt a typename but contains one (e.g typename2ty(my_decl_node, my_decl_node->decl.typename))
 typename2ty ::= func(node : ast?, typename : ast_typename -> ty)
 {
-	if(node->type != (ast_type.typename))
+	if(node->tag != (ast_tag.typename))
 	{
 		// bruh
 		putzstr("hammond you sodding tictac you passed a non-typename ast node to typename2ty (internal compiler error plz submit bug report)");
 		return zero;
 	}
+	child ::= ast_get_child(node, 0);
 	if(typename.tag == (ast_typename_tag.array))
 	{
-		return ty_arr(typename2ty(ast_get_child(node, 0)), typename.array_len, typename.quals);
+		return ty_arr(typename2ty(child, child->typename), typename.array_len, typename.quals);
 	}
 	if(typename.tag == (ast_typename_tag.pointer))
 	{
-		return ty_ref(typename2ty(ast_get_child(node, 0)), typename.quals);
+		return ty_ref(typename2ty(child, child->typename), typename.quals);
 	}
-	if(typename.tag == (ast_typename_tag.symbol))
+	if(typename.tag == (ast_typename_tag.base))
 	{
-		return program_parse_typename(typename.name, typename.name_len);
+		return program_parse_typename(typename.basename, typename.basename_len);
 	}
 	putzstr("rodney you PLONKER you didnt add support for a specific typename tag (internal compiler error plz submit bug report)");
 	__debugbreak();

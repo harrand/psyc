@@ -61,236 +61,36 @@ fully_read_file ::= func(path : u8?, a : arena mut? -> u8 mut?)
 	return data;
 };
 
-precompile_build_file ::= func(path : u8?, a : arena mut? -> v0)
-{
-	len ::= zstrlen(path);
-	source ::= fully_read_file(path, a);
-	args ::= ref(prog.compile_args);
-	l ::= lex(path, source, args->verbose_lex);
-	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(ref(p.root), path, len);
-
-	region ::= scope_find_region(file_scope, args->build_config, zstrlen(args->build_config));
-	if(region == zero)
-	{
-		psyc_error_begin(zero);
-		putzstr("build file ");
-		putchar('"');
-		putzstr(path);
-		putchar('"');
-		putzstr(" had no build region named ");
-		putchar('"');
-		putzstr(args->build_config);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	interpret_build_region(region, file_scope);
-};
-
-add_source_file ::= func(path : u8?, len : u64, a : arena mut? -> v0)
-{
-	args ::= ref(prog.compile_args);
-	// unfortunately file will need the path as a zero terminated string.
-	// alloc time
-	pathstr : u8 mut? := arena_alloc(a, len + 1);
-	memcopy(pathstr, path, len);
-	deref(pathstr # (len)) = 0;
-
-	source ::= fully_read_file(pathstr, a);
-	l ::= lex(pathstr, source, args->verbose_lex);
-	p ::= parse(ref l, args->verbose_parse);
-	progwalk_file(ref(p.root), path, len);
-};
-
-add_build_file ::= func(path : u8?, len : u64, build_config : u8?, build_config_len : u64, a : arena mut? -> v0)
-{
-	args ::= ref(prog.compile_args);
-	// unfortunately file will need the path as a zero terminated string.
-	// alloc time
-	pathstr : u8 mut? := arena_alloc(a, len + 1);
-	memcopy(pathstr, path, len);
-	deref(pathstr # (len)) = 0;
-
-	source ::= fully_read_file(pathstr, a);
-	l ::= lex(pathstr, source, args->verbose_lex);
-	p ::= parse(ref l, args->verbose_parse);
-	file_scope ::= progwalk_file(ref(p.root), path, len);
-
-	region ::= scope_find_region(file_scope, build_config, build_config_len);
-	if(region == zero)
-	{
-		psyc_error_begin(zero);
-		putzstr("build file ");
-		putchar('"');
-		putzstr(pathstr);
-		putchar('"');
-		putzstr(" had no build region named ");
-		putchar('"');
-		putbytes(build_config, build_config_len);
-		putchar('"');
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	// get the current cwd
-	oldcwd : u8? mut;
-	oldcwdlen : u64 mut;
-	directory_get_cwd(ref oldcwd, ref oldcwdlen, global_arena);
-	// set the cwd to the directory containing the child build file
-	directory_set_cwd(path, path_get_parent_len(path, len), global_arena);
-	// do the child build region stuff
-	interpret_build_region(region, file_scope);
-	// set it back to what it was and keep going with the rest of our build region.
-	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
-};
-
-putchar_str ::= func(c : u8 weak, buf : u8 mut? -> u64)
-{
-	deref(buf) = c;
-	return 1;
-};
-
-putuint_str ::= func(i : u64 weak, buf : u8 mut? -> u64)
-{
-	charcount : u64 mut := 0;
-	if(i > 9)
-	{
-		charcount = putuint_str(i / 10, buf);
-	}
-	digit ::= i - ((i / 10) * 10);
-	putchar_str('0' + digit, buf # charcount);
-	charcount = (charcount + 1);
-	return charcount;
-};
-
-putsint_str ::= func(i : s64 weak, buf : u8 mut? -> u64)
-{
-	if(i < 0)
-	{
-		putchar_str('-', buf);
-		return putuint_str(-i, buf # 1) + 1;
-	}
-	return putuint_str(i, buf);
-};
-
-add_preload ::= func(a : arena mut? -> v0)
-{
-	static if(_win32)
-	{
-		platform_src ::= "_win32 ::= true; _linux ::= false;";
-	}
-	else
-	{
-		platform_src ::= "_win32 ::= false; _linux ::= true;";
-	}
-	platform_l ::= lex("platform.psy", platform_src, false);
-	platform_p ::= parse(ref platform_l, false);
-	progwalk_file(ref(platform_p.root), "platform.psy", zstrlen("platform.psy"));
-
-	preload_embed ::= __embed("./runtime/preload.psy");
-	source ::= sstr2zstr(preload_embed.data, preload_embed.size, global_arena);
-	l ::= lex("preload.psy", source, false);
-	p ::= parse(ref l, false);
-	progwalk_file(ref(p.root), "preload.psy", zstrlen("preload.psy"));
-
-	args ::= prog.compile_args;
-
-	config_bit ::= "_config ::= ";
-	len1 ::= zstrlen(config_bit);
-	len2 ::= zstrlen(args.build_config);
-	src2 : u8 mut? mut := arena_alloc(a, len1 + len2 + 4);
-	memcopy(src2, config_bit, len1);
-	deref(src2 # len1) = '"';
-	memcopy(src2 # (len1 + 1), args.build_config, len2);
-	deref(src2 # (len1 + 1 + len2)) = '"';
-	deref(src2 # (len1 + 1 + len2 + 1)) = ';';
-	deref(src2 # (len1 + 1 + len2 + 2)) = 0;
-
-	l2 ::= lex("preconfig.psy", src2, false);
-	p2 ::= parse(ref l2, false);
-	progwalk_file(ref(p2.root), "preconfig.psy", zstrlen("preconfig.psy"));
-};
-
-add_entrypoint ::= func( -> v0)
-{
-	thread_src : u8 mut? := arena_alloc(global_arena, 1024);
-	thread_src_counter : u64 mut := 0;
-	threadclause1 ::= "_thread_format_relative ::= ";
-	threadclause2 ::= "; _thread_count ::= ";
-	threadclause3 ::= ";";
-	memcopy(thread_src # 0, threadclause1, zstrlen(threadclause1));
-	thread_src_counter = (thread_src_counter + zstrlen(threadclause1));
-	thread_src_counter = (thread_src_counter + putuint_str(prog.thread_format@s64@_, thread_src # thread_src_counter));
-	memcopy(thread_src # thread_src_counter, threadclause2, zstrlen(threadclause2));
-	thread_src_counter = (thread_src_counter + zstrlen(threadclause2));
-	thread_src_counter = (thread_src_counter + putsint_str(prog.thread_count@_, thread_src # thread_src_counter));
-	memcopy(thread_src # thread_src_counter, threadclause3, zstrlen(threadclause3));
-	thread_src_counter = (thread_src_counter + zstrlen(threadclause3));
-	deref(thread_src # thread_src_counter) = zero;
-	thread_l ::= lex("threads.psy", thread_src # 0, false);
-	thread_p ::= parse(ref thread_l, false);
-	progwalk_file(ref(thread_p.root), "threads.psy", zstrlen("threads.psy"));
-
-	static if(_win32)
-	{
-		sourcedata ::= __embed("./runtime/entrypoint_win32.psy");
-	}
-	else
-	{
-		sourcedata ::= __embed("./runtime/entrypoint_linux.psy");
-	}
-	source ::= sstr2zstr(sourcedata.data, sourcedata.size, global_arena);
-	l ::= lex("entrypoint.psy", source, false);
-	p ::= parse(ref l, false);
-	progwalk_file(ref(p.root), "entrypoint.psy", zstrlen("entrypoint.psy"));
-};
-
 compile_program ::= func(a : arena mut? -> v0)
 {
 	putzstr("Precompiling...     ");
 	putchar(13);
 	args ::= ref(prog.compile_args);
-	add_preload(a);
-	precompile_build_file(args->build_file, a);
-	if((prog.type) == (program_type.executable))
-	{
-		add_entrypoint();
-	}
+	//add_preload(a);
+	//precompile_build_file(args->build_file, a);
+	//if((prog.type) == (program_type.executable))
+	//{
+	//	add_entrypoint();
+	//}
 	if(!directory_exists(args->output_dir))
 	{
 		directory_create(args->output_dir);
 	}
 	putzstr("Semantic Analysis...");
 	putchar(13);
-	semal();
+	//semal();
 
 	putzstr("Code Generation...  ");
 	putchar(13);
-	codegen();
+	//codegen();
 
 	putzstr("Assembly...         ");
 	putchar(13);
-	assemble();
+	//assemble();
 
 	putzstr("Link...             ");
 	putchar(13);
-	link();
-};
-
-do_postbuild ::= func( -> v0)
-{
-	psyc_timed_begin(psyc_stage.build);
-	defer psyc_timed_end();
-
-	i : u64 mut;
-	for(i = 0, i < prog.postbuild_commands_size, i = i + 1)
-	{
-		cmd ::= deref(prog.postbuild_commands # i);
-		len ::= deref(prog.postbuild_command_lens # i);
-
-		sys_shell_command(cmd, len, envp, global_arena);
-	}
+	//link();
 };
 
 argc : s32 mut;
@@ -307,11 +107,11 @@ main ::= func(pargs : program_args? -> s32)
 	defer destroy_arenas();
 
 	lex_setup();
-	grammar_setup();
-	progwalk_setup();
-	build_setup();
-	sval_setup();
-	codegen_setup();
+	//grammar_setup();
+	//progwalk_setup();
+	//build_setup();
+	//sval_setup();
+	//codegen_setup();
 
 	// get the current cwd
 	oldcwd : u8? mut;
@@ -321,16 +121,10 @@ main ::= func(pargs : program_args? -> s32)
 	default_progname ::= "program";
 	prog.name = default_progname;
 	prog.name_len = zstrlen(default_progname);
-	prog.on_add_source_file = add_source_file;
-	prog.on_add_build_file = add_build_file;
+	//prog.on_add_source_file = add_source_file;
+	//prog.on_add_build_file = add_build_file;
 	args ::= ref(prog.compile_args);
 	deref(args) = psyc_parse_args(global_arena);
-	if(args->verbose_parse)
-	{
-		putzstr("grammar size: ");
-		putuint(grammar_install_count);
-		putchar(10);
-	}
 
 	if(args->build_file == zero)
 	{
@@ -363,7 +157,7 @@ main ::= func(pargs : program_args? -> s32)
 	compile_program(global_arena);
 
 	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
-	do_postbuild();
+	//do_postbuild();
 	psyc_report_timings();
 	return 0;
 };
