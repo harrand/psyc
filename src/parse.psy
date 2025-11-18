@@ -1,6 +1,8 @@
 parse_state : parse_data mut := zero;
 parse_data ::= struct
 {
+	src : u8?;
+	path : u8?;
 	tokens : lex_state?;
 	tokens_cursor : u64;
 	nodes : ast mut[6];
@@ -22,14 +24,11 @@ token2ast ::= func(tok : token_data -> ast)
 		.utok := ast_unparsed_token{.tok := tok;};
 		.begin_cursor := l.off;
 		.end_cursor := l.off + (l.len);
+		.loc := tok.begin;
 		.children := zero;
 		.children_count := zero;
 		.children_cap := zero;
 	};
-};
-
-shift ::= func( -> v0)
-{
 };
 
 parse_complete ::= func(-> bool)
@@ -91,17 +90,65 @@ parse_get_next_rule ::= func( -> grammar_rule)
 	return rule;
 };
 
+shift ::= func(n : u64 -> v0)
+{
+	i : u64 mut;
+	if((parse_state.nodes_cursor + n) >= (__sizeof(parse_state.nodes) / __sizeof(deref(parse_state.nodes # 0))))
+	{
+		psyc_panic_begin(zero);
+		putzstr("shifted beyond parser node capacity. increase parse_data.nodes array size or shift less stuff.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	for(i = 0, i < n, i = i + 1)
+	{
+		// push current lookahead to the end of the list
+		deref(parse_state.nodes # (parse_state.nodes_cursor)) = (parse_state.lookahead);
+		parse_state.nodes_cursor = (parse_state.nodes_cursor + 1);
+		parse_state.lookahead = token2ast(deref(parse_state.tokens->tokens # (parse_state.tokens_cursor)));
+		parse_state.tokens_cursor = (parse_state.tokens_cursor + 1);
+	}
+};
+
+parse_invalid_syntax_error ::= func(-> v0)
+{
+	front ::= parse_state.nodes # 0;
+	psyc_error_begin(front->loc);
+	snip_begin : u8? mut := parse_state.src;
+	snip_len : u64 mut;
+	ast_quote_source(front, ref snip_begin, ref snip_len);
+	putzstr("the code snippet below is of malformed syntax:");
+	putchar(10);
+	psyc_colour_blue();
+	putbytes(snip_begin, snip_len);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
 parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> ast)
 {
+	psyc_timed_begin(psyc_stage.parse);
+	defer psyc_timed_end();
+
 	if(lex->tokens_size == zero)
 	{
 		// empty source. return null ast
 		return zero;
 	}
+	parse_state.path = path;
+	parse_state.src = src;
 	parse_state.tokens = lex;
 	parse_state.lookahead = token2ast(deref(lex->tokens # 0));
+	parse_state.tokens_cursor = 1;
+
+	shift(1);
 	while(!parse_complete())
 	{
+		rule ::= parse_get_next_rule();
+		if(grammar_rule_invalid(rule))
+		{
+			parse_invalid_syntax_error();
+		}
 	}
 	return parse_state.root;
 };
