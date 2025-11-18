@@ -1,0 +1,214 @@
+// so each ast node can generate a uid via ast_uid
+// and we need to match lists of nodes to patterns (so we can shift/reduce etc...)
+// foreach pattern we generate a grammar_entry and store it in a hashtable
+// when we're parsing we take the current state and generate a grammar_entry for that too
+// we then check the hashtable. if a pattern matches it then we call its rule (shift/reduce/commit/error)
+// if not then we have a syntax error.
+grammar : grammar_hashtable mut := zero;
+
+grammar_entry ::= struct
+{
+	uids : u8 weak[6];
+	lookahead : u8 weak;
+	stash : u8 weak;
+};
+
+grammar_hashtable_elem ::= struct
+{
+	key : grammar_entry;
+	hash : u64;
+	occupied : bool;
+	rule : grammar_rule;
+};
+
+grammar_rule ::= struct
+{
+	fn : func(nodes : ast mut?, nodes_count : u64 -> v0);
+};
+
+grammar_hashtable ::= struct
+{
+	elements : grammar_hashtable_elem mut?;
+	elements_cap : u64;
+	elements_count : u64;
+};
+
+grammar_omega_law_holds ::= func(-> bool)
+{
+	return ast_maximum_uid() <= 255;
+};
+
+grammar_setup ::= func(a : arena mut? -> v0)
+{
+	if(!grammar_omega_law_holds())
+	{
+		psyc_panic_begin(zero);
+		putzstr("you have violated the grammar omega law (ast_maximum_uid() == ");
+		putuint(ast_maximum_uid());
+		putzstr(") - it must be <= 255");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// lets setup the table
+	grammar.elements_cap = 2048; // hashtable element capacity
+	(grammar.elements) = arena_alloc(a, grammar.elements_cap * __sizeof(grammar_hashtable_elem));
+
+	// finally start populating it
+	grammar_install();
+};
+
+// so long as the ast tags are treatedly properly and grammar omega law holds, chance of hash collision == 0
+grammar_hash ::= func(entry : grammar_entry -> u64)
+{
+	return
+		(deref(entry.uids # 0) << 0 ) |
+		(deref(entry.uids # 1) << 8 ) |
+		(deref(entry.uids # 2) << 16) |
+		(deref(entry.uids # 3) << 24) |
+		(deref(entry.uids # 4) << 32) |
+		(deref(entry.uids # 5) << 40) |
+		(entry.lookahead << 48) |
+		(entry.stash << 56);
+};
+
+_grammar_hashtable_find_slot ::= func(key : grammar_entry -> u64)
+{
+	hash ::= grammar_hash(key);
+	idx : u64 mut := hash % (grammar.elements_cap);
+	while(((grammar.elements # idx)->occupied) && ((grammar.elements # idx)->hash != hash)) 
+	{
+		idx = (idx + 1 % (grammar.elements_cap));
+	}
+	return idx;
+};
+
+grammar_hashtable_lookup ::= func(key : grammar_entry -> grammar_rule)
+{
+	idx ::= _grammar_hashtable_find_slot(key);
+	slot ::= deref(grammar.elements # idx);
+	if(slot.occupied)
+	{
+		// yep this is the one
+		return slot.rule;
+	}
+	return zero;
+};
+
+grammar_hashtable_insert ::= func(key : grammar_entry, value : grammar_rule -> v0)
+{
+	if(grammar.elements_count >= (grammar.elements_cap - 1))
+	{
+		psyc_panic_begin(zero);
+		putzstr("grammar_hashtable is too small. make it larger pls.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// remember, overwriting a valid key is not allowed and means the grammar is wrong
+	idx ::= _grammar_hashtable_find_slot(key);
+	slot ::= grammar.elements # idx;
+	if(slot->occupied)
+	{
+		psyc_panic_begin(zero);
+		putzstr("grammar_hashtable_insert more than once for the same entry");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	deref(slot) = grammar_hashtable_elem
+	{
+		.key := key;
+		.hash := grammar_hash(key);
+		.occupied := true;
+		.rule := value;
+	};
+};
+
+token ::= func(tok : lex_token -> u64)
+{
+	a ::= ast
+	{
+		.tag := ast_tag.unparsed_token;
+		.utok := ast_unparsed_token
+		{
+			.tok := token_data{.tok := tok;};
+		};
+	};
+	return ast_uid(ref a);
+};
+
+node ::= func(tag : ast_tag -> u64)
+{
+	a ::= ast
+	{
+		.tag := tag;
+	};
+	return ast_uid(ref a);
+};
+
+expr ::= func(tag : ast_expr_tag -> u64)
+{
+	a ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := tag;
+	};
+	return ast_uid(ref a);
+};
+
+stmt ::= func(tag : ast_stmt_tag -> u64)
+{
+	a ::= ast
+	{
+		.tag := ast_tag.stmt;
+		.stmt := tag;
+	};
+	return ast_uid(ref a);
+};
+
+decl ::= func(tag : ast_decl_tag -> u64)
+{
+	a ::= ast
+	{
+		.tag := ast_tag.decl;
+		.decl := ast_decl{.tag := tag;};
+	};
+	return ast_uid(ref a);
+};
+
+state6 ::= func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, uid4 : u8 weak, uid5 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return grammar_entry
+	{
+		.uids := u8 weak[6]{uid0; uid1; uid2; uid3; uid4; uid5;};
+		.lookahead := lookahead;
+		.stash := stash;
+	};
+};
+
+state5 ::= func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, uid4 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return state6(uid0, uid1, uid2, uid3, uid4, zero, lookahead, stash);
+};
+
+state4 ::= func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return state6(uid0, uid1, uid2, uid3, zero, zero, lookahead, stash);
+};
+
+state3 ::= func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return state6(uid0, uid1, uid2, zero, zero, zero, lookahead, stash);
+};
+
+state2 ::= func(uid0 : u8 weak, uid1 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return state6(uid0, uid1, zero, zero, zero, zero, lookahead, stash);
+};
+
+state1 ::= func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak -> grammar_entry)
+{
+	return state6(uid0, zero, zero, zero, zero, zero, lookahead, stash);
+};
+
+// e.g 
+// grammar_hashtable_insert(state1(token(lex_token.semicol)), grammar_rule{.fn := foo;})
