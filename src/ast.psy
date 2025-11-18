@@ -35,8 +35,8 @@ ast ::= struct
 ast_tag ::= enum
 {
 	.unparsed_token := 1;
-	.stmt := 2;
-	.expr := 3;
+	.expr := 2;
+	.stmt := 3;
 	.decl := 4;
 	.typename := 5;
 	.init := 6;
@@ -69,6 +69,7 @@ ast_expr_tag ::= enum
 	.callfunc := 5;
 	.blkinit := 6;
 	.zero_value := 7;
+	.dereference := 8;
 };
 
 ast_decl_tag ::= enum
@@ -132,7 +133,6 @@ ast_unop ::= enum
 	.bitwise_invert := 2;
 	.logical_invert := 3;
 	.reference := 4;
-	.dereference := 5;
 };
 
 ast_biop ::= enum
@@ -238,23 +238,52 @@ ast_get_child ::= func(node : ast mut?, idx : u64 -> ast mut?)
 	return node->children@ast mut? # idx;
 };
 
-hash_node ::= func(tag : ast_tag -> u64)
+// countof + 1 because enum entries start at 1 not 0
+tag_offset_utok ::= func(-> u64)
 {
-	v ::= (tag@s64) * 1093;
-	return hash(v);
+	return __countof(ast_tag) + 1;
 };
 
-hash_expr ::= func(tag : ast_expr_tag -> u64)
+tag_offset_expr ::= func(-> u64)
 {
-	return hash_node(ast_tag.expr) ^ hash(tag@s64 * 190299117);
+	return tag_offset_utok() + __countof(lex_token) + 1;
 };
 
-hash_stmt ::= func(tag : ast_stmt_tag -> u64)
+tag_offset_stmt ::= func(-> u64)
 {
-	return hash_node(ast_tag.stmt) ^ hash(tag@s64 * 393505272299);
+	return tag_offset_expr() + __countof(ast_expr_tag) + 1;
 };
 
-hash_token ::= func(lex : lex_token -> u64)
+tag_offset_decl ::= func(-> u64)
 {
-	return hash_node(ast_tag.unparsed_token) ^ hash(lex@s64 * 866820901);
+	return tag_offset_stmt() + __countof(ast_stmt_tag) + 1;
+};
+
+ast_uid ::= func(node : ast? -> u64)
+{
+	// the idea is this generates a unique id for every possible specific ast type
+	// some are more strict than others (e.g all asts that are functions will have the same uid, but asts that are decls will have a different uid depending on the decl tag)
+	// the default is that all ast_tag N have the same uid. the exceptions to that are below
+	// the reason for this is the grammar might have a reduction for a literal expression but not necessarily a symbol expression. but the grammar might treat all functions/structs the exact same.
+	// the previous thing was to try and hash everything together but it was slow (both for all the hash calculations and dealing with collisions)
+	// this way is much more specific and attempts to guarantee uniqueness in cases where it matters without a noticeable perf cost.
+	tag ::= node->tag;
+	if(tag == (ast_tag.unparsed_token))
+	{
+		return tag_offset_utok() + (node->utok.tok.tok@s64);
+	}
+	if(tag == (ast_tag.expr))
+	{
+		return tag_offset_expr() + (node->expr@s64);
+	}
+	if(tag == (ast_tag.stmt))
+	{
+		return tag_offset_stmt() + (node->stmt@s64);
+	}
+	if(tag == (ast_tag.decl))
+	{
+		return tag_offset_decl() + (node->decl.tag@s64);
+	}
+	// anything not listed above just uses its ast_tag as its uid
+	return node->tag@s64;
 };
