@@ -285,5 +285,24 @@ ast_uid ::= func(node : ast? -> u64)
 		return tag_offset_decl() + (node->decl.tag@s64);
 	}
 	// anything not listed above just uses its ast_tag as its uid
-	return node->tag@s64@u64;
+	return node->tag@s64@_;
+};
+
+// give me the begin src (DONT PASS ZERO) and a node and i will tell you where the source lives
+ast_quote_source ::= func(node : ast?, src : u8? mut?, len : u64 mut? -> v0)
+{
+	if(node->end_cursor < (node->begin_cursor))
+	{
+		psyc_panic_begin(node->loc);
+		putzstr("node's begin_cursor (");
+		putuint(node->begin_cursor);
+		putzstr(") > end_cursor(");
+		putuint(node->end_cursor);
+		putzstr(") - super illegal");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	read_ptr ::= deref src;
+	deref(src) = (read_ptr # (node->begin_cursor));
+	deref(len) = (node->end_cursor - (node->begin_cursor));
 };
