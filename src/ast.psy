@@ -275,6 +275,7 @@ ast_uid ::= func(node : ast? -> u64)
 	// the previous thing was to try and hash everything together but it was slow (both for all the hash calculations and dealing with collisions)
 	// this way is much more specific and attempts to guarantee uniqueness in cases where it matters without a noticeable perf cost.
 	tag ::= node->tag;
+	if(tag == zero){return zero;}
 	if(tag == (ast_tag.unparsed_token))
 	{
 		return tag_offset_utok() + (node->utok.tok.tok@s64);
@@ -293,6 +294,12 @@ ast_uid ::= func(node : ast? -> u64)
 	}
 	// anything not listed above just uses its ast_tag as its uid
 	return node->tag@s64@_;
+};
+
+// whats the largest possible value we can get from ast_uid?
+ast_maximum_uid ::= func(-> u64)
+{
+	return (tag_offset_decl() + __countof(ast_decl_tag) + 1);
 };
 
 // give me the begin src (DONT PASS ZERO) and a node and i will tell you where the source lives
