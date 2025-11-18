@@ -1,8 +1,107 @@
-parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state -> ast?)
+parse_state : parse_data mut := zero;
+parse_data ::= struct
 {
-	psyc_panic_begin(zero);
-	putzstr("TODO: implement parsing");
-	psyc_diag_end();
-	psyc_exit_failure();
-	return zero;
+	tokens : lex_state?;
+	tokens_cursor : u64;
+	nodes : ast mut[6];
+	nodes_cursor : u64;
+	lookahead : ast;
+	
+	stash : ast mut[64];
+	stash_cursor : u64;
+
+	root : ast mut;
+};
+
+token2ast ::= func(tok : token_data -> ast)
+{
+	l ::= tok.lexeme;
+	return ast
+	{
+		.tag := ast_tag.unparsed_token;
+		.utok := ast_unparsed_token{.tok := tok;};
+		.begin_cursor := l.off;
+		.end_cursor := l.off + (l.len);
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+};
+
+shift ::= func( -> v0)
+{
+};
+
+parse_complete ::= func(-> bool)
+{
+	// parsing is done if:
+	return
+		// we've processed all the tokens
+		(parse_state.tokens_cursor) >= (parse_state.tokens->tokens_size)
+			&&
+		// there are no nodes in our buffer
+		(parse_state.nodes_cursor == 0)
+			&&
+		// the stash is empty
+		(parse_state.stash_cursor == 0);
+};
+
+parse_current_key ::= func(include_lookahead : bool, include_stash : bool -> grammar_entry)
+{
+	key : grammar_entry mut := zero;
+
+	i : u64 mut;
+	for(i = 0, i < (parse_state.nodes_cursor), i = i + 1)
+	{
+		deref(key.uids # i) = ast_uid(parse_state.nodes # i);
+	}
+	if(include_lookahead)
+	{
+		key.lookahead = ast_uid(ref(parse_state.lookahead));
+	}
+	if(include_stash)
+	{
+		stashval : ast mut := zero;
+		if(parse_state.stash_cursor > 0)
+		{
+			stashval = deref(parse_state.stash # 0);
+		}
+		key.stash = ast_uid(ref(stashval));
+	}
+	return key;
+};
+
+parse_get_next_rule ::= func( -> grammar_rule)
+{
+	rule : grammar_rule mut := zero;
+
+	// first try including both stash and lookahead
+	rule = grammar_hashtable_lookup(parse_current_key(true, true));
+	if(grammar_rule_invalid(rule))
+	{
+		// stash no lookahead
+		rule = grammar_hashtable_lookup(parse_current_key(false, true));
+	}
+	if(grammar_rule_invalid(rule))
+	{
+		// lookahead no stash
+		rule = grammar_hashtable_lookup(parse_current_key(true, false));
+	}
+	// if its invalid at this point then yes we're fugged.
+	return rule;
+};
+
+parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> ast)
+{
+	if(lex->tokens_size == zero)
+	{
+		// empty source. return null ast
+		return zero;
+	}
+	parse_state.tokens = lex;
+	parse_state.lookahead = token2ast(deref(lex->tokens # 0));
+	while(!parse_complete())
+	{
+	}
+	return parse_state.root;
 };
