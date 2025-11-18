@@ -90,26 +90,6 @@ parse_get_next_rule ::= func( -> grammar_rule)
 	return rule;
 };
 
-shift ::= func(n : u64 -> v0)
-{
-	i : u64 mut;
-	if((parse_state.nodes_cursor + n) >= (__sizeof(parse_state.nodes) / __sizeof(deref(parse_state.nodes # 0))))
-	{
-		psyc_panic_begin(zero);
-		putzstr("shifted beyond parser node capacity. increase parse_data.nodes array size or shift less stuff.");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	for(i = 0, i < n, i = i + 1)
-	{
-		// push current lookahead to the end of the list
-		deref(parse_state.nodes # (parse_state.nodes_cursor)) = (parse_state.lookahead);
-		parse_state.nodes_cursor = (parse_state.nodes_cursor + 1);
-		parse_state.lookahead = token2ast(deref(parse_state.tokens->tokens # (parse_state.tokens_cursor)));
-		parse_state.tokens_cursor = (parse_state.tokens_cursor + 1);
-	}
-};
-
 parse_invalid_syntax_error ::= func(-> v0)
 {
 	front ::= parse_state.nodes # 0;
@@ -121,6 +101,35 @@ parse_invalid_syntax_error ::= func(-> v0)
 	putchar(10);
 	psyc_colour_blue();
 	putbytes(snip_begin, snip_len);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+parse_invoke_rule ::= func(rule : grammar_rule -> v0)
+{
+	result ::= rule.fn(parse_state.nodes # 0, parse_state.nodes_cursor);
+	if(result.tag == (rule.shift))
+	{
+		shift(result.shift);
+	}
+	if(result.tag == (rule.reduce))
+	{
+		reduce(result.reduce);
+	}
+	if(result.tag == (rule.stash))
+	{
+		stash();
+	}
+	if(result.tag == (rule.unstash))
+	{
+		unstash();
+	}
+	if(result.tag == (rule.commit))
+	{
+		commit(result.commit);
+	}
+	psyc_panic_begin(zero);
+	putzstr("malformed rule detected");
 	psyc_diag_end();
 	psyc_exit_failure();
 };
@@ -141,7 +150,7 @@ parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> 
 	parse_state.lookahead = token2ast(deref(lex->tokens # 0));
 	parse_state.tokens_cursor = 1;
 
-	shift(1);
+	shift(shift_data{.count := 1;});
 	while(!parse_complete())
 	{
 		rule ::= parse_get_next_rule();
@@ -149,6 +158,86 @@ parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> 
 		{
 			parse_invalid_syntax_error();
 		}
+		parse_invoke_rule(rule);
 	}
 	return parse_state.root;
 };
+
+shift ::= func(data : shift_data -> v0)
+{
+	n ::= data.count;
+
+	i : u64 mut;
+	if((parse_state.nodes_cursor + n) >= (__sizeof(parse_state.nodes) / __sizeof(deref(parse_state.nodes # 0))))
+	{
+		psyc_panic_begin(zero);
+		putzstr("shifted beyond parser node capacity. increase parse_data.nodes array size or shift less stuff.");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	for(i = 0, i < n, i = i + 1)
+	{
+		// push current lookahead to the end of the list
+		deref(parse_state.nodes # (parse_state.nodes_cursor)) = (parse_state.lookahead);
+		parse_state.nodes_cursor = (parse_state.nodes_cursor + 1);
+		parse_state.lookahead = token2ast(deref(parse_state.tokens->tokens # (parse_state.tokens_cursor)));
+		parse_state.tokens_cursor = (parse_state.tokens_cursor + 1);
+	}
+};
+
+reduce ::= func(data : reduce_data -> v0)
+{
+	putzstr("reduce NYI");
+	__debugbreak();
+};
+
+stash ::= func(-> v0)
+{
+	putzstr("stash NYI");
+	__debugbreak();
+};
+
+unstash ::= func(-> v0)
+{
+	putzstr("unstash NYI");
+	__debugbreak();
+};
+
+commit ::= func(data : commit_data -> v0)
+{
+	putzstr("commit NYI");
+	__debugbreak();
+};
+
+rule ::= enum
+{
+	.shift := 1;
+	.reduce := 2;
+	.stash := 3;
+	.unstash := 4;
+	.commit := 5;
+};
+
+shift_data ::= struct
+{
+	count : u64;
+};
+
+reduce_data ::= struct
+{
+
+};
+
+commit_data ::= struct
+{
+
+};
+
+rule_result ::= struct
+{
+	tag : rule;
+	shift : shift_data;
+	reduce : reduce_data;
+	commit : commit_data;
+};
+
