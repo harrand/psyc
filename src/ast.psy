@@ -185,8 +185,13 @@ ast_init ::= struct
 	name_len : u64;
 };
 
+ast_structure_tag ::= enum
+{
+};
+
 ast_structure ::= struct
 {
+	tag : ast_structure_tag;
 	name : u8?;
 	name_len : u64;
 };
@@ -203,14 +208,25 @@ ast_function ::= struct
 	return_type : ast_typename;
 };
 
+ast_enumeration_tag ::= enum
+{
+	
+};
+
 ast_enumeration ::= struct
 {
+	tag : ast_enumeration_tag;
 	name : u8?;
 	name_len : u64;
 };
 
+ast_assembly_tag ::= enum
+{
+};
+
 ast_assembly ::= struct
 {
+	tag : ast_assembly_tag;
 	name : u8?;
 	name_len : u64;
 	return_type : ast_typename;
@@ -271,9 +287,24 @@ tag_offset_function ::= func(-> u64 weak)
 	return tag_offset_stmt() + __countof(ast_stmt_tag) + 1;
 };
 
-tag_offset_decl ::= func(-> u64 weak)
+tag_offset_structure ::= func(-> u64 weak)
 {
 	return tag_offset_function() + __countof(ast_function_tag) + 1;
+};
+
+tag_offset_enumeration ::= func(-> u64 weak)
+{
+	return tag_offset_structure() + __countof(ast_structure_tag) + 1;
+};
+
+tag_offset_assembly ::= func(-> u64 weak)
+{
+	return tag_offset_enumeration() + __countof(ast_enumeration_tag) + 1;
+};
+
+tag_offset_decl ::= func(-> u64 weak)
+{
+	return tag_offset_assembly() + __countof(ast_assembly_tag) + 1;
 };
 
 
@@ -308,6 +339,18 @@ ast_uid ::= func(node : ast? -> u64)
 	if(tag == (ast_tag.function))
 	{
 		return tag_offset_function() + (node->function.tag@s64);
+	}
+	if(tag == (ast_tag.structure))
+	{
+		return tag_offset_structure() + (node->structure.tag@s64);
+	}
+	if(tag == (ast_tag.enumeration))
+	{
+		return tag_offset_enumeration() + (node->enumeration.tag@s64);
+	}
+	if(tag == (ast_tag.assembly))
+	{
+		return tag_offset_assembly() + (node->assembly.tag@s64);
 	}
 	if(tag == (ast_tag.decl))
 	{
