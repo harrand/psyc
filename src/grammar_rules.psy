@@ -16,3 +16,92 @@ rule_token_symbol2symbol_expr ::= func(nodes : ast mut?, nodes_count : u64 -> ru
 		});
 	};
 };
+
+rule_token_char_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.literal;
+			.literal := ast_literal
+			{
+				.tag := ast_literal_tag.char;
+				.chars := parse_state.src # (lexeme.off);
+				.chars_len := lexeme.len;
+			};
+		});
+	};
+};
+
+rule_token_string_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.literal;
+			.literal := ast_literal
+			{
+				.tag := ast_literal_tag.string;
+				.chars := parse_state.src # (lexeme.off);
+				.chars_len := lexeme.len;
+			};
+		});
+	};
+};
+
+rule_token_keyword_true2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.literal;
+			.literal := ast_literal
+			{
+				.tag := ast_literal_tag.boolean;
+				.boolean := true;
+			};
+		});
+	};
+};
+
+rule_token_keyword_false2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.literal;
+			.literal := ast_literal
+			{
+				.tag := ast_literal_tag.boolean;
+				.boolean := false;
+			};
+		});
+	};
+};
+
+rule_token_keyword_zero2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.zero_value;
+		});
+	};
+};
