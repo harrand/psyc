@@ -3,6 +3,8 @@ grammar_install ::= func(-> v0)
 	grammar_exprify();
 	grammar_typename();
 	grammar_decl();
+
+	grammar_decl_init_expr(ast_expr_tag.zero_value);
 };
 
 grammar_exprify ::= func(-> v0)
@@ -147,10 +149,49 @@ grammar_decl ::= func(-> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_decl_awaittype_typename_finalised2noinit;});
 
-	// HELLO FUTURE HARRY
-	// I HAVE GOT TYPENAMES PARSING (INCL. QUALS AND POINTERNESS BUT NOT ARRAYNESS AND FUNCTION TYPES)
-	// I HAVE MADE IT SO THAT A DECL AWAITING A TYPE IS STASHED UNTIL A FINALISED TYPENAME IS THERE
-	// IN WHICH CASE WE UNSTASH AND COMBINE THEM INTO A DECL_NOINIT MEANING IT NOW HAS A TYPE (THE TYPENAME IS THE 0TH CHILD OF THE DECL)
-	// YOUR JOB NOW IS TO CHECK IF A DECL_NOINIT HAS AN INITIALISER IN THE NEXT LOOKAHEAD, GET THAT EXPRESSION AND THEN FINALISE THE DECL WITH THAT
-	// IF THE LOOKAHEAD ISNT AN INITIALISER TOKEN THEN THIS DECL DEFINITELY DOESNT HAVE AN INITIALISER SO YOU CAN FINALISE IT NOW (YOU WILL NEED TO ADD A FINALISED DECL TAG)
+	// if noinit is followed by an initialiser then great we can turn it into an await_init_expr
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.noinit),
+	token(lex_token.initialiser), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		decl(ast_decl_tag.noinit),
+		token(lex_token.initialiser),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_noinit_token_initialiser2await_init_expr;});
+
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.await_init_expr),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	// note: code to handle init-exprs is below in grammar_decl_init_expr.
+	// this is so the expr tags allowed can be parameterised
+
+	// ok so lets move on. what if our noinit is *not* followed by an initialiser
+	// well then we finalise it without one i.e this is 'foo : u64'
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.noinit),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_noinit2finalised;});
+
+	// note: what we do with a finalised decl depends on quite a few things so we dont handle it here.
+	// examples could be:
+	// - followed by a semicol -> stmtify
+	// - function stashed -> add as param
+};
+
+grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	zero, decl(ast_decl_tag.await_init_expr)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		decl(ast_decl_tag.await_init_expr),
+		expr(exprtag),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_await_init_expr_init_expr2finalised;});
 };

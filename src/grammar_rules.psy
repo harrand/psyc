@@ -298,3 +298,45 @@ rule_decl_awaittype_typename_finalised2noinit ::= func(nodes : ast mut?, nodes_c
 		.reduce := reduce_delete_all_but_first();
 	};
 };
+
+rule_decl_noinit_token_initialiser2await_init_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// have a decl without an init followed by a :=
+	// change its state to await_init_expr
+	decl_node ::= nodes # 0;
+	decl_node->decl.tag = (ast_decl_tag.await_init_expr);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_decl_noinit2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a decl that is marked noinit
+	// but it definitely isnt followed by an initialiser
+	// we just mark it as finalised
+	decl_node ::= nodes # 0;
+	decl_node->decl.tag = (ast_decl_tag.finalised);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a decl that awaits an init expr
+	// followed by a finalised expr that the grammar says is a valid initialiser
+	// shove it as a child and call it a day
+	decl_node ::= nodes # 0;
+	decl_node->decl.tag = (ast_decl_tag.finalised);
+	ast_add_child(decl_node, deref(nodes # 1), global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
