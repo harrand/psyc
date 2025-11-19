@@ -361,22 +361,24 @@ ast_uid ::= func(node : ast? -> u64)
 };
 
 // give me the begin src (DONT PASS ZERO) and a node and i will tell you where the source lives
-ast_quote_source ::= func(node : ast?, src : u8? mut?, len : u64 mut? -> v0)
+ast_quote_source ::= func(nodes : ast?, nodes_count : u64, src : u8? mut?, len : u64 mut? -> v0)
 {
-	if(node->end_cursor < (node->begin_cursor))
+	first ::= nodes # 0;
+	last ::= nodes # (nodes_count - 1);
+	if(last->end_cursor < (first->begin_cursor))
 	{
-		psyc_panic_begin(node->loc);
-		putzstr("node's begin_cursor (");
-		putuint(node->begin_cursor);
+		psyc_panic_begin(first->loc);
+		putzstr("node span's begin_cursor (");
+		putuint(first->begin_cursor);
 		putzstr(") > end_cursor(");
-		putuint(node->end_cursor);
+		putuint(last->end_cursor);
 		putzstr(") - super illegal");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
 	read_ptr ::= deref src;
-	deref(src) = (read_ptr # (node->begin_cursor));
-	deref(len) = (node->end_cursor - (node->begin_cursor));
+	deref(src) = (read_ptr # (first->begin_cursor));
+	deref(len) = (last->end_cursor - (first->begin_cursor));
 };
 
 ast_rotate_left ::= func(node_array : ast mut?, node_array_count : u64 mut?, pivot : u64, shift_amount : u64 -> v0)
