@@ -128,10 +128,19 @@ parse_invoke_rule ::= func(rule : grammar_rule -> v0)
 	{
 		commit(result.commit);
 	}
-	psyc_panic_begin(zero);
-	putzstr("malformed rule detected");
-	psyc_diag_end();
-	psyc_exit_failure();
+	if(result.tag == zero)
+	{
+		psyc_panic_begin(zero);
+		putzstr("malformed rule detected");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// if our nodes_cursor is ever zero at this point we will automatically shift
+	if(parse_state.nodes_cursor == 0)
+	{
+		shift(shift_data{.count := 1;});
+	}
 };
 
 parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> ast)
@@ -185,10 +194,44 @@ shift ::= func(data : shift_data -> v0)
 	}
 };
 
-reduce ::= func(data : reduce_data -> v0)
+reduce ::= func(data : reduce_data mut -> v0)
 {
-	putzstr("reduce NYI");
-	__debugbreak();
+	num_new_nodes : u64 mut := 0;
+	if(data.new_node.tag != zero)
+	{
+		num_new_nodes = 1;
+		// write begin/end locs to new node automatically
+		data.new_node.loc = ((parse_state.nodes # 0)->loc);
+		data.new_node.begin_cursor = ((parse_state.nodes # 0)->begin_cursor);
+		data.new_node.end_cursor = ((parse_state.nodes # (parse_state.nodes_cursor - 1))->end_cursor);
+	}
+	// how many are we deleting
+	num_deleted_nodes : u64 mut := data.delete_count;
+	if(num_deleted_nodes == -1)
+	{
+		num_deleted_nodes = (parse_state.nodes_cursor);
+	}
+
+	nodes_diff ::= (num_deleted_nodes@s64) - (num_new_nodes@s64);
+	if(nodes_diff < 0)
+	{
+		// adding more than we destroyed
+		posdiff ::= -nodes_diff;
+		ast_rotate_right(parse_state.nodes # 0, ref(parse_state.nodes_cursor), data.delete_offset, posdiff@u64);
+		// this will stomp over old data but thats okay
+		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), __sizeof(ast));
+	}
+	if(nodes_diff == 0)
+	{
+		// this is copying 1 node (if new_node.tag isnt zero)
+		// or no copying at all if there is no new node (in which case this memcopy does nothing)
+		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), __sizeof(ast));
+	}
+	if(nodes_diff > 0)
+	{
+		// deleting more than we added
+		ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), data.delete_offset, nodes_diff@u64);
+	}
 };
 
 stash ::= func(-> v0)
@@ -225,7 +268,20 @@ shift_data ::= struct
 
 reduce_data ::= struct
 {
+	delete_offset : u64;
+	delete_count : u64; // -1 means all
+	// if new_node.tag == 0 it doesnt get added.
+	new_node : ast;
+};
 
+reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
+{
+	return reduce_data
+	{
+		.delete_offset := 0;
+		.delete_count := -1;
+		.new_node := new_node;
+	};
 };
 
 commit_data ::= struct
@@ -240,4 +296,3 @@ rule_result ::= struct
 	reduce : reduce_data;
 	commit : commit_data;
 };
-

@@ -321,3 +321,36 @@ ast_quote_source ::= func(node : ast?, src : u8? mut?, len : u64 mut? -> v0)
 	deref(src) = (read_ptr # (node->begin_cursor));
 	deref(len) = (node->end_cursor - (node->begin_cursor));
 };
+
+ast_rotate_left ::= func(node_array : ast mut?, node_array_count : u64 mut?, pivot : u64, shift_amount : u64 -> v0)
+{
+	// say our nodes are:
+	// 0, 1, 2, 3, 4, 5, 6
+	// the pivot represents some index in this list
+	// we overwrite 'shift_amount' elements # and rightwards of the pivot by the same number of proceeding elements
+	// so: ast_rotate_left(nodes, nodes_len, 3, 2) =>
+	// 0, 1, 2, 5, 6	
+	copydst ::= node_array # pivot;
+	copysrc ::= copydst # shift_amount;
+
+	count ::= deref(node_array_count) - (pivot + shift_amount);
+	memcopy(copydst, copysrc, __sizeof(ast) * count);
+	deref(node_array_count) = (deref(node_array_count) - shift_amount);
+};
+
+// assumes node_array capacity >= (node_array_count + shift_amount)
+ast_rotate_right ::= func(node_array : ast mut?, node_array_count : u64 mut?, pivot : u64, shift_amount : u64 -> v0)
+{
+	// say our nodes are:
+	// 0, 1, 2, 3, 4
+	// the pivot represents some index in this list
+	// the shift_amount will shift all elements # and rightwards of the pivot by that amount, adding extra space which will be zero'd out.
+	// so: impl_shift_nodes_right(nodes, 3, 2) =>
+	// 0, 1, 2, 0, 0, 3, 4	
+	copysrc ::= node_array # pivot;
+	copydst ::= copysrc # shift_amount;
+	memcopy(copydst, copysrc, __sizeof(ast) * shift_amount);
+	// zero the hole
+	memfill(copysrc, 0, __sizeof(ast) * shift_amount);
+	deref(node_array_count) = (deref(node_array_count) + shift_amount);
+};
