@@ -326,6 +326,50 @@ rule_decl_noinit2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_
 	};
 };
 
+rule_token_symbol_token_colon_token_initialiser2decl_await_init_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we are 'foo ::='
+	// we want to convert this to a decl with 'deduced' descriptor typename and the 'await_init_expr' tag
+	// this is the same as 'foo : xyz :='
+	// so we can share that code
+	name ::= (nodes # 0)->utok.tok.lexeme;
+	new_decl_node : ast mut := ast
+	{
+		.tag := ast_tag.decl;
+		.decl := ast_decl
+		{
+			.tag := ast_decl_tag.await_init_expr;
+			.name := parse_state.src # (name.off);
+			.name_len := name.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	initialiser_node ::= (nodes # 2);
+	// this is the typename
+	ast_add_child(ref new_decl_node, ast
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.finalised;
+			.descriptor := ast_typename_descriptor.deduced;
+		};
+		.begin_cursor := initialiser_node->begin_cursor;
+		.end_cursor := initialiser_node->end_cursor;
+		.loc := initialiser_node->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(new_decl_node);
+	};
+};
+
 rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have a decl that awaits an init expr

@@ -2,8 +2,11 @@ grammar_install ::= func(-> v0)
 {
 	grammar_exprify();
 	grammar_typename();
-	grammar_decl();
+	grammar_decl_explicitly_typed();
+	grammar_decl_deducibly_typed();
 
+	grammar_decl_init_expr(ast_expr_tag.symbol);
+	grammar_decl_init_expr(ast_expr_tag.literal);
 	grammar_decl_init_expr(ast_expr_tag.zero_value);
 };
 
@@ -117,7 +120,7 @@ grammar_typename ::= func(-> v0)
 	grammar_rule{.fn := rule_typename_wip2finalised;});
 };
 
-grammar_decl ::= func(-> v0)
+grammar_decl_explicitly_typed ::= func(-> v0)
 {
 	grammar_hashtable_insert(state1(
 		token(lex_token.symbol),
@@ -180,6 +183,24 @@ grammar_decl ::= func(-> v0)
 	// examples could be:
 	// - followed by a semicol -> stmtify
 	// - function stashed -> add as param
+};
+
+grammar_decl_deducibly_typed ::= func(-> v0)
+{
+	// im not sure deducibly is a word...
+	// i mean 'foo ::= 5' instead of 'foo : s64 := 5'
+	grammar_hashtable_insert(state2(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+	token(lex_token.initialiser), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+		token(lex_token.initialiser),
+	zero, zero),
+	grammar_rule{.fn := rule_token_symbol_token_colon_token_initialiser2decl_await_init_expr;});
 };
 
 grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
