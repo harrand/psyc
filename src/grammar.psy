@@ -1,6 +1,7 @@
 grammar_install ::= func(-> v0)
 {
 	grammar_exprify();
+	grammar_typename();
 	grammar_decl();
 };
 
@@ -9,42 +10,147 @@ grammar_exprify ::= func(-> v0)
 	// symbol expression
 	grammar_hashtable_insert(state1(
 		token(lex_token.symbol),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_symbol2symbol_expr;});
 
 	// literal expression (char)
 	grammar_hashtable_insert(state1(
 		token(lex_token.char_literal),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_char_literal2literal_expr;});
 
 	// literal expression (string)
 	grammar_hashtable_insert(state1(
 		token(lex_token.string_literal),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_string_literal2literal_expr;});
 
 	// literal expression (bool): 'true' and 'false'
 	grammar_hashtable_insert(state1(
 		token(lex_token.keyword_true),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_true2literal_expr;});
 	grammar_hashtable_insert(state1(
 		token(lex_token.keyword_false),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_false2literal_expr;});
 
 	/// zero expression
 	grammar_hashtable_insert(state1(
 		token(lex_token.keyword_zero),
-		zero, zero),
+	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_zero2literal_expr;});
+};
+
+grammar_typename ::= func(-> v0)
+{
+	// normally a symbol by itself (e.g 'foo' is a symbol expression)
+	// in the case that we have an await_typename stashed however we can say its a typename
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, decl(ast_decl_tag.await_type)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
+	// now a wip typename basically stays wip until it doesnt have any lookaheads we expect (in which case we finalise it)
+	// but lets do the lookahead first to keep things intuitive.
+	// if we see something we like we shift1 to get it into the node array and then process it in some way
+
+	// first are all the typequal tokens.
+	// tyqual.mut:
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	token(lex_token.qual_mut), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.wip),
+		token(lex_token.qual_mut),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2mut;});
+
+	// tyqual.static:
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	token(lex_token.qual_static), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.wip),
+		token(lex_token.qual_static),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2static;});
+
+	// tyqual.weak:
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	token(lex_token.qual_weak), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.wip),
+		token(lex_token.qual_weak),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2weak;});
+
+	// ok now pointerness
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	token(lex_token.qmark), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.wip),
+		token(lex_token.qmark),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2ptr;});
+
+	// todo: function typenames...
+	// maybe todo: decltype
+
+	// ok now that we've done the lookahead possibilities.
+	// if we dont see any of those then we assume the lookahead is irrelevant and our typename is now complete.
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2finalised;});
 };
 
 grammar_decl ::= func(-> v0)
 {
 	grammar_hashtable_insert(state1(
 		token(lex_token.symbol),
-		token(lex_token.colon), zero),
-	grammar_rule{.fn := rule_shift2;});
+	token(lex_token.colon), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+	zero, zero),
+	grammar_rule{.fn := rule_token_symbol_token_colon2decl_awaittype;});
+
+	// a decl.await_type will be stashed until a typename is found
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.await_type),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	// unstash await_type if we have a finished typename ready to go.
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, decl(ast_decl_tag.await_type)),
+	grammar_rule{.fn := rule_unstash;});
+
+	// ok if we have a await_type decl and a typename, then we combine them into a basic decl!
+	grammar_hashtable_insert(state2(
+		decl(ast_decl_tag.await_type),
+		typename(ast_typename_tag.finalised),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_awaittype_typename_finalised2noinit;});
+
+	// HELLO FUTURE HARRY
+	// I HAVE GOT TYPENAMES PARSING (INCL. QUALS AND POINTERNESS BUT NOT ARRAYNESS AND FUNCTION TYPES)
+	// I HAVE MADE IT SO THAT A DECL AWAITING A TYPE IS STASHED UNTIL A FINALISED TYPENAME IS THERE
+	// IN WHICH CASE WE UNSTASH AND COMBINE THEM INTO A DECL_NOINIT MEANING IT NOW HAS A TYPE (THE TYPENAME IS THE 0TH CHILD OF THE DECL)
+	// YOUR JOB NOW IS TO CHECK IF A DECL_NOINIT HAS AN INITIALISER IN THE NEXT LOOKAHEAD, GET THAT EXPRESSION AND THEN FINALISE THE DECL WITH THAT
+	// IF THE LOOKAHEAD ISNT AN INITIALISER TOKEN THEN THIS DECL DEFINITELY DOESNT HAVE AN INITIALISER SO YOU CAN FINALISE IT NOW (YOU WILL NEED TO ADD A FINALISED DECL TAG)
 };

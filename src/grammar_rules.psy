@@ -13,7 +13,26 @@ rule_token_symbol2symbol_expr ::= func(nodes : ast mut?, nodes_count : u64 -> ru
 				.data := parse_state.src # (lexeme.off);
 				.len := lexeme.len;
 			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
+	};
+};
+
+rule_stash ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.stash;
+	};
+};
+
+rule_unstash ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.unstash;
 	};
 };
 
@@ -51,6 +70,9 @@ rule_token_char_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u6
 				.chars := parse_state.src # (lexeme.off);
 				.chars_len := lexeme.len;
 			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
 	};
 };
@@ -71,6 +93,9 @@ rule_token_string_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : 
 				.chars := parse_state.src # (lexeme.off);
 				.chars_len := lexeme.len;
 			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
 	};
 };
@@ -89,6 +114,9 @@ rule_token_keyword_true2literal_expr ::= func(nodes : ast mut?, nodes_count : u6
 				.tag := ast_literal_tag.boolean;
 				.boolean := true;
 			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
 	};
 };
@@ -107,6 +135,9 @@ rule_token_keyword_false2literal_expr ::= func(nodes : ast mut?, nodes_count : u
 				.tag := ast_literal_tag.boolean;
 				.boolean := false;
 			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
 	};
 };
@@ -120,6 +151,150 @@ rule_token_keyword_zero2literal_expr ::= func(nodes : ast mut?, nodes_count : u6
 		{
 			.tag := ast_tag.expr;
 			.expr := ast_expr_tag.zero_value;
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
 		});
+	};
+};
+
+rule_token_symbol2typename_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	name ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.typename;
+			.typename := ast_typename
+			{
+				.tag := ast_typename_tag.wip;
+				.quals := zero;
+				.descriptor := ast_typename_descriptor.base;
+				.basename := parse_state.src # (name.off);
+				.basename_len := name.len;
+			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_typename_wip2mut ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	typename_quals ::= ref(typename_node->typename.quals);
+	deref(typename_quals) = (deref(typename_quals) | (tyqual.mut));
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	// add tyqual.mut to the node
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_typename_wip2static ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	typename_quals ::= ref(typename_node->typename.quals);
+	deref(typename_quals) = (deref(typename_quals) | (tyqual.static));
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	// add tyqual.static to the node
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_typename_wip2weak ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	typename_quals ::= ref(typename_node->typename.quals);
+	deref(typename_quals) = (deref(typename_quals) | (tyqual.weak));
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	// add tyqual.weak to the node
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_typename_wip2ptr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// make the current first node an underlying type of a new typename node (pointer)
+	underlying ::= deref(nodes # 0);
+	ptr_node ::= ast mut
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.wip;
+			.quals := zero;
+			.descriptor := ast_typename_descriptor.pointer;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref ptr_node, underlying, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ptr_node);
+	};
+};
+
+rule_typename_wip2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	// make the typename finalised.
+	typename_node->typename.tag = (ast_typename_tag.finalised);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_token_symbol_token_colon2decl_awaittype ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	name ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.decl;
+			.decl := ast_decl
+			{
+				.tag := ast_decl_tag.await_type;
+				.name := parse_state.src # (name.off);
+				.name_len := name.len;
+			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_decl_awaittype_typename_finalised2noinit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// have a decl that awaits a typename
+	// and a finalised typename
+	// it's now a well-formed decl but without an init. we cant say the decl itself is finalised because we dont know if an initialisre is coming next so we will just say noinit for now.
+	decl_node ::= nodes # 0;
+	decl_node->decl.tag = (ast_decl_tag.noinit);
+	ast_add_child(decl_node, deref(nodes # 1), global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
 	};
 };
