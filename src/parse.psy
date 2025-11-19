@@ -236,14 +236,36 @@ reduce ::= func(data : reduce_data mut -> v0)
 
 stash ::= func(-> v0)
 {
-	putzstr("stash NYI");
-	__debugbreak();
+	if(parse_state.stash_cursor >= (__sizeof(parse_state.stash) / __sizeof(deref(parse_state.stash # 0))))
+	{
+		psyc_panic_begin(zero);
+		putzstr("reached the absolute stash limit. submit a bug report or better yet jesus christ dont nest so much code!");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	stashptr ::= parse_state.stash # (parse_state.stash_cursor);
+	parse_state.stash_cursor = (parse_state.stash_cursor + 1);
+
+	deref(stashptr) = deref(parse_state.nodes # 0);
+	// so im fairly certain the old impl was wrong - it was just copying the necessary node to the stash but not doing anything to the node array itself
+	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
 unstash ::= func(-> v0)
 {
-	putzstr("unstash NYI");
-	__debugbreak();
+	// get the thing at the top of the stash
+	if(parse_state.stash_cursor == 0)
+	{
+		psyc_panic_begin(zero);
+		putzstr("unstash invoked on empty stash");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	parse_state.stash_cursor = (parse_state.stash_cursor - 1);
+	stashptr ::= parse_state.stash # (parse_state.stash_cursor);
+	ast_rotate_right(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
+	deref(parse_state.nodes # 0) = deref(stashptr);
+	deref(stashptr) = zero;
 };
 
 commit ::= func(data : commit_data -> v0)
