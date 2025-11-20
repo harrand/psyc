@@ -8,6 +8,10 @@ grammar_install ::= func(-> v0)
 	grammar_decl_init_expr(ast_expr_tag.symbol);
 	grammar_decl_init_expr(ast_expr_tag.literal);
 	grammar_decl_init_expr(ast_expr_tag.zero_value);
+
+	grammar_stmtify();
+
+	grammar_commit_stmt(ast_stmt_tag.decl);
 };
 
 grammar_exprify ::= func(-> v0)
@@ -215,4 +219,30 @@ grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
 		expr(exprtag),
 	zero, zero),
 	grammar_rule{.fn := rule_decl_await_init_expr_init_expr2finalised;});
+};
+
+grammar_stmtify ::= func(-> v0)
+{
+	// all things that can become stmts live here
+	// let's start with expr stmts
+
+	// decl stmts
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.finalised),
+	token(lex_token.semicol), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		decl(ast_decl_tag.finalised),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_finalised_token_semicol2stmt;});
+};
+
+grammar_commit_stmt ::= func(stmttag : ast_stmt_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		stmt(stmttag),
+	zero, zero),
+	grammar_rule{.fn := rule_commit;});
 };

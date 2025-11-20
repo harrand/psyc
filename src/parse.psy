@@ -132,7 +132,7 @@ parse_invoke_rule ::= func(rule : grammar_rule -> v0)
 	}
 	if(result.tag == (rule.commit))
 	{
-		commit(result.commit);
+		commit();
 	}
 	if(result.tag == zero)
 	{
@@ -181,6 +181,11 @@ parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> 
 shift ::= func(data : shift_data -> v0)
 {
 	n ::= data.count;
+	// remember cursor points to lookahead so the end case is actually 'tokens_cursor == tokens_size + 1'
+	if(parse_state.tokens_cursor > (parse_state.tokens->tokens_size))
+	{
+		return;
+	}
 
 	i : u64 mut;
 	if((parse_state.nodes_cursor + n) >= (__sizeof(parse_state.nodes) / __sizeof(deref(parse_state.nodes # 0))))
@@ -279,10 +284,19 @@ unstash ::= func(-> v0)
 	deref(stashptr) = zero;
 };
 
-commit ::= func(data : commit_data -> v0)
+commit ::= func(-> v0)
 {
-	putzstr("commit NYI");
-	__debugbreak();
+	// get the first node
+	// if we have a stash, make it a child of stashtop
+	// otherwise
+	// make it a child of the root... simple as.
+	parent : ast mut? mut := ref(parse_state.root);
+	if(parse_state.stash_cursor > 1)
+	{
+		parent = (parse_state.stash # (parse_state.stash_cursor - 1));
+	}
+	ast_add_child(parent, deref(parse_state.nodes # 0), global_arena);
+	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
 rule ::= enum
@@ -327,15 +341,9 @@ reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
 	};
 };
 
-commit_data ::= struct
-{
-
-};
-
 rule_result ::= struct
 {
 	tag : rule;
 	shift : shift_data;
 	reduce : reduce_data;
-	commit : commit_data;
 };

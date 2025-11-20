@@ -54,6 +54,14 @@ rule_shift2 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 	};
 };
 
+rule_commit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.commit;
+	};
+};
+
 rule_token_char_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	lexeme ::= (nodes # 0)->utok.tok.lexeme;
@@ -378,6 +386,21 @@ rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_c
 	decl_node ::= nodes # 0;
 	decl_node->decl.tag = (ast_decl_tag.finalised);
 	ast_add_child(decl_node, deref(nodes # 1), global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a finalised deck and a semicol
+	decl_node ::= nodes # 0;
+	(decl_node->tag) = (ast_tag.stmt);
+	(decl_node->stmt) = (ast_stmt_tag.decl);
+	last ::= nodes # (nodes_count - 1);
+	decl_node->end_cursor = (last->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;
