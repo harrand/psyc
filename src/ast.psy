@@ -434,7 +434,9 @@ ast_rotate_right ::= func(node_array : ast mut?, node_array_count : u64 mut?, pi
 	// 0, 1, 2, 0, 0, 3, 4	
 	copysrc ::= node_array # pivot;
 	copydst ::= copysrc # shift_amount;
-	memcopy(copydst, copysrc, __sizeof(ast) * shift_amount);
+	// the copy length is not __sizeof(ast) * shift_amount as that wouldnt shift all nodes
+	// it will be node_array_count - (shift_amount + pivot)
+	memcopy_backwards(copydst, copysrc, __sizeof(ast) * ((1 + deref(node_array_count)) - (pivot + shift_amount)));
 	// zero the hole
 	memfill(copysrc, 0, __sizeof(ast) * shift_amount);
 	deref(node_array_count) = (deref(node_array_count) + shift_amount);
