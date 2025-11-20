@@ -9,8 +9,12 @@ grammar_install ::= func(-> v0)
 	grammar_decl_init_expr(ast_expr_tag.literal);
 	grammar_decl_init_expr(ast_expr_tag.zero_value);
 
-	grammar_stmtify();
+	grammar_stmtify_expr(ast_expr_tag.symbol);
+	grammar_stmtify_expr(ast_expr_tag.literal);
+	grammar_stmtify_expr(ast_expr_tag.zero_value);
+	grammar_stmtify_nonexpr();
 
+	grammar_commit_stmt(ast_stmt_tag.expr);
 	grammar_commit_stmt(ast_stmt_tag.decl);
 };
 
@@ -221,11 +225,27 @@ grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
 	grammar_rule{.fn := rule_decl_await_init_expr_init_expr2finalised;});
 };
 
-grammar_stmtify ::= func(-> v0)
+grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
 {
-	// all things that can become stmts live here
-	// let's start with expr stmts
+	// allow expr(T); to be stmtified
+	// non-expr stmtifications belong in grammar_stmtify_nonexpr
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.semicol), zero),
+	grammar_rule{.fn := rule_shift1;});
 
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_expr_token_semicol2stmt;});
+};
+
+grammar_stmtify_nonexpr ::= func(-> v0)
+{
+	// any non-exprs that can get stmtified live here.
+	// exprs are separate because all expr tags behave the same
+	// but each of these are special and require their own rule.
 	// decl stmts
 	grammar_hashtable_insert(state1(
 		decl(ast_decl_tag.finalised),

@@ -393,9 +393,24 @@ rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_c
 	};
 };
 
+rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have an expr (of any particular tag) and a semicol
+	expr_node ::= nodes # 0;
+	(expr_node->tag) = (ast_tag.stmt);
+	(expr_node->stmt) = (ast_stmt_tag.expr);
+	last ::= nodes # (nodes_count - 1);
+	expr_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
-	// we have a finalised deck and a semicol
+	// we have a finalised decl and a semicol
 	decl_node ::= nodes # 0;
 	(decl_node->tag) = (ast_tag.stmt);
 	(decl_node->stmt) = (ast_stmt_tag.decl);
