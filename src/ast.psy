@@ -441,3 +441,115 @@ ast_rotate_right ::= func(node_array : ast mut?, node_array_count : u64 mut?, pi
 	memfill(copysrc, 0, __sizeof(ast) * shift_amount);
 	deref(node_array_count) = (deref(node_array_count) + shift_amount);
 };
+
+isdigit ::= func(ch : u8 -> bool)
+{
+	return (ch >= '0') && (ch <= '9');
+};
+
+interpret_numeric_literal ::= func(src : u8?, lexeme : lex_slice -> ast_literal)
+{
+	src_begin : u8? mut := src # (lexeme.off);
+	begin_cpy ::= src_begin;
+	i : u64 mut := 0;
+
+	sign : s64 mut := 1;
+	if(deref(src_begin) == '-')
+	{
+		sign = -1;
+		src_begin = src_begin # 1;
+		i = i + 1;
+	}
+
+	base : s64 mut := 10;
+	ch : u8 mut;
+	if(deref(src_begin) == '0')
+	{
+		src_begin = src_begin # 1;
+		ch = deref(src_begin);
+		if(ch == 'x')
+		{
+			base = 16;
+			src_begin = src_begin # 1;
+			i = i + 2;
+		}
+		if(ch == 'b')
+		{
+			base = 2;
+			src_begin = src_begin # 1;
+			i = i + 2;
+		}
+	}
+
+	ival : s64 mut := 0;
+	fval : f64 mut := 0;
+
+	digit_val : s64 mut := 0;
+	frac_div : f64 mut := 1.0;
+
+	is_integral : bool mut := true;
+	while(i < (lexeme.len))
+	{
+		ch = deref(begin_cpy # i);
+		if(ch == '.')
+		{
+			is_integral = false;
+		}
+		if(isdigit(ch))
+		{
+			digit_val = (ch - '0')@_;
+		}
+		if(ch >= 'a')
+		{
+			if(ch <= 'f')
+			{
+				digit_val = (10 + (ch - 'a'));
+			}
+		}
+		if(ch >= 'A')
+		{
+			if(ch <= 'F')
+			{
+				digit_val = (10 + (ch - 'A'));
+			}
+		}
+
+		if(digit_val >= base)
+		{
+			putchar(ch);
+			putuint(digit_val);
+			psyc_panic(__curloc(), "waaah it all went wrong");
+		}
+
+		if(is_integral)
+		{
+			ival = ((ival * base) + digit_val);
+		}
+		if(!is_integral)
+		{
+			if(isdigit(ch))
+			{
+				frac_div = (frac_div / (base@f64));
+				fval = (fval + ((digit_val@f64) * frac_div));
+			}
+		}
+
+		i = i + 1;
+	}
+
+	ret : ast_literal mut;
+	if(is_integral)
+	{
+		ival = ival * sign;
+		ret.tag = (ast_literal_tag.integer);
+		ret.integer = ival;
+	}
+	if(!is_integral)
+	{
+		fval = fval + (ival@f64) * (sign@f64);
+		ret.tag = (ast_literal_tag.floating_point);
+		ret.floating_point = fval;
+	}
+
+	return ret;
+};
