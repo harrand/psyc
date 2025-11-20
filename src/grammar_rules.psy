@@ -452,6 +452,44 @@ rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_c
 	};
 };
 
+rule_token_symbol_token_colon_token_initialiser_token_keyword_struct_token_obrace2structure_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a bunch of tokens
+	// turn them into an empty struct so we can stash it and add members
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.structure;
+			.structure := ast_structure
+			{
+				.tag := ast_structure_tag.wip;
+				.name := parse_state.src # (lexeme.off);
+				.name_len := lexeme.len;
+			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_structure_wip_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a struct_wip and a cbrace
+	// just set the struct as finalised and swallow everything else
+	structure_node ::= nodes # 0;
+	structure_node->structure.tag = (ast_structure_tag.finalised);
+	structure_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have an expr (of any particular tag) and a semicol
@@ -473,6 +511,21 @@ rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : 
 	decl_node ::= nodes # 0;
 	(decl_node->tag) = (ast_tag.stmt);
 	(decl_node->stmt) = (ast_stmt_tag.decl);
+	last ::= nodes # (nodes_count - 1);
+	decl_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_structure_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a finalised structure and a semicol
+	decl_node ::= nodes # 0;
+	(decl_node->tag) = (ast_tag.stmt);
+	(decl_node->stmt) = (ast_stmt_tag.structure);
 	last ::= nodes # (nodes_count - 1);
 	decl_node->end_cursor = (last->end_cursor);
 	return rule_result
