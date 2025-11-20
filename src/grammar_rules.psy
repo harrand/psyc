@@ -62,6 +62,24 @@ rule_commit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 	};
 };
 
+rule_token_numeric_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.expr;
+			.expr := ast_expr_tag.literal;
+			.literal := interpret_numeric_literal(parse_state.src, lexeme);
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
 rule_token_char_literal2literal_expr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	lexeme ::= (nodes # 0)->utok.tok.lexeme;
