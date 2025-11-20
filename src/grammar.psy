@@ -117,6 +117,28 @@ grammar_typename ::= func(-> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_typename_wip2ptr;});
 
+	// arrayness is somewhat more complicated
+	// in theory it would be quite nice to not only allow numeric literals but any expression
+	// so we need to put it into an array state and then stash until an expression comes around.
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.wip),
+	token(lex_token.obrack), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.wip),
+		token(lex_token.obrack),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_wip2array_await_length;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.array_await_length),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+	// the idea here is that when we see a valid array initialiser we unstash and combine it back into the typename_wip
+	// however we want to be explicit in which expr types are valid initialisers
+	// so the rest of this logic is in grammar_typename_array_length_expr
+
 	// todo: function typenames...
 	// maybe todo: decltype
 
@@ -126,6 +148,32 @@ grammar_typename ::= func(-> v0)
 		typename(ast_typename_tag.wip),
 	zero, zero),
 	grammar_rule{.fn := rule_typename_wip2finalised;});
+};
+
+grammar_typename_array_length_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	// we need to be quite careful here
+	// we dont want to munch before a biop for example
+	// so when we see the expr we actually shift again
+	// only when its array_await_length,  exprtag, ] do we know for sure
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.semicol), typename(ast_typename_tag.array_await_length)),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, typename(ast_typename_tag.array_await_length)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state3(
+		typename(ast_typename_tag.array_await_length),
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_array_await_length_expr_token_semicol2wip;});
+	
 };
 
 grammar_decl_explicitly_typed ::= func(-> v0)

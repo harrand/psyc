@@ -257,6 +257,47 @@ rule_typename_wip2ptr ::= func(nodes : ast mut?, nodes_count : u64 -> rule_resul
 	};
 };
 
+rule_typename_wip2array_await_length ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	underlying ::= deref(nodes # 0);
+	array_node ::= ast mut
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.array_await_length;
+			.quals := zero;
+			.descriptor := ast_typename_descriptor.array;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref array_node, underlying, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(array_node);
+	};
+};
+
+rule_typename_array_await_length_expr_token_semicol2wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	array_length_expr ::= deref(nodes # 1);
+	// add the array length as another child (typename_node should already have a child which is the underlying type)
+	// then set the tag to wip (incase it has more stuff afterwards)...
+	ast_add_child(typename_node, array_length_expr, global_arena);
+	typename_node->typename.tag = (ast_typename_tag.wip);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_typename_wip2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	typename_node ::= nodes # 0;
