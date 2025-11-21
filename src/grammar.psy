@@ -1,6 +1,8 @@
 grammar_install ::= func(-> v0)
 {
 	grammar_exprify();
+	grammar_deref();
+	foreach_expr(grammar_deref_expr);
 	grammar_typename();
 	grammar_typename_array_length_expr(ast_expr_tag.literal);
 	grammar_decl_explicitly_typed();
@@ -57,6 +59,36 @@ grammar_exprify ::= func(-> v0)
 		token(lex_token.keyword_zero),
 	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_zero2literal_expr;});
+};
+
+grammar_deref ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.obrack),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+};
+
+grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	// try not to early munch exprs here. make sure the lookahead is cbrack
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.cbrack), token(lex_token.obrack)),
+	grammar_rule{.fn := rule_unstash;});
+		
+	grammar_hashtable_insert(state2(
+		token(lex_token.obrack),
+		expr(exprtag),
+	token(lex_token.cbrack), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.obrack),
+		expr(exprtag),
+		token(lex_token.cbrack),
+	zero, zero),
+	grammar_rule{.fn := rule_token_obrack_expr_token_cbrack2deref;});
 };
 
 grammar_typename ::= func(-> v0)

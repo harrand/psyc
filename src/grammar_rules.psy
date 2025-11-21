@@ -184,6 +184,27 @@ rule_token_keyword_zero2literal_expr ::= func(nodes : ast mut?, nodes_count : u6
 	};
 };
 
+rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have [ expr ]
+	// make it into a deref expr
+	expr_node ::= deref(nodes # 1);
+	deref_node ::= ast mut
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.dereference;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref deref_node, expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(deref_node);
+	};
+};
+
 rule_token_symbol2typename_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	name ::= (nodes # 0)->utok.tok.lexeme;
