@@ -1,12 +1,13 @@
 grammar_install ::= func(-> v0)
 {
+	grammar_setup_unops();
+	grammar_setup_biops();
+	grammar_setup_base_operators();
+
 	grammar_exprify();
 
 	grammar_deref();
 	foreach_expr(grammar_deref_expr);
-
-	grammar_unop(lex_token.dash, ast_unop.minus);
-	grammar_unop(lex_token.keyword_ref, ast_unop.reference);
 
 	grammar_typename();
 	foreach_expr(grammar_typename_array_length_expr);
@@ -22,6 +23,178 @@ grammar_install ::= func(-> v0)
 	grammar_stmtify_nonexpr();
 
 	foreach_stmt(grammar_commit_stmt);
+};
+
+is_already_an_operator ::= func(tok : lex_token -> bool)
+{
+	i : u64 mut;
+	for(i = 0, i < ast_all_op_tokens_cursor, i = i + 1)
+	{
+		if(deref(ast_all_op_tokens # i) == tok)
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+grammar_setup_unops ::= func(-> v0)
+{
+	deref(ast_unop_tokens # (ast_unop.minus@s64)) = (lex_token.dash);
+	deref(ast_unop_tokens # (ast_unop.bitwise_invert@s64)) = (lex_token.bitwise_invert);
+	deref(ast_unop_tokens # (ast_unop.logical_invert@s64)) = (lex_token.logical_invert);
+	deref(ast_unop_tokens # (ast_unop.reference@s64)) = (lex_token.keyword_ref);
+
+	i : u64 mut;
+	for(i = 0, i < __countof(ast_unop), i = i + 1)
+	{
+		tok ::= deref(ast_unop_tokens # (i + 1));
+		if(!is_already_an_operator(tok))
+		{
+			deref(ast_all_op_tokens # ast_all_op_tokens_cursor) = tok;
+			ast_all_op_tokens_cursor = (ast_all_op_tokens_cursor + 1);
+		}
+	}
+};
+
+grammar_setup_biops ::= func(-> v0)
+{
+	deref(ast_biop_tokens # (ast_biop.assign@s64)) = (lex_token.assign);
+	deref(ast_biop_tokens # (ast_biop.compare_equal@s64)) = (lex_token.compare);
+	deref(ast_biop_tokens # (ast_biop.compare_not_equal@s64)) = (lex_token.comparen);
+	deref(ast_biop_tokens # (ast_biop.compare_less@s64)) = (lex_token.oanglebrack);
+	deref(ast_biop_tokens # (ast_biop.compare_less_equal@s64)) = (lex_token.loreq);
+	deref(ast_biop_tokens # (ast_biop.compare_greater@s64)) = (lex_token.canglebrack);
+	deref(ast_biop_tokens # (ast_biop.compare_greater_equal@s64)) = (lex_token.goreq);
+	deref(ast_biop_tokens # (ast_biop.add@s64)) = (lex_token.plus);
+	deref(ast_biop_tokens # (ast_biop.sub@s64)) = (lex_token.dash);
+	deref(ast_biop_tokens # (ast_biop.mul@s64)) = (lex_token.asterisk);
+	deref(ast_biop_tokens # (ast_biop.div@s64)) = (lex_token.fslash);
+	deref(ast_biop_tokens # (ast_biop.bitwise_or@s64)) = (lex_token.bitwise_or);
+	deref(ast_biop_tokens # (ast_biop.bitwise_and@s64)) = (lex_token.bitwise_and);
+	deref(ast_biop_tokens # (ast_biop.logical_or@s64)) = (lex_token.logical_or);
+	deref(ast_biop_tokens # (ast_biop.logical_and@s64)) = (lex_token.logical_and);
+	deref(ast_biop_tokens # (ast_biop.xor@s64)) = (lex_token.bitwise_exor);
+	deref(ast_biop_tokens # (ast_biop.bitshift_left@s64)) = (lex_token.oanglebrack2);
+	deref(ast_biop_tokens # (ast_biop.bitshift_right@s64)) = (lex_token.canglebrack2);
+	deref(ast_biop_tokens # (ast_biop.modulo@s64)) = (lex_token.modulo);
+	deref(ast_biop_tokens # (ast_biop.at@s64)) = (lex_token.keyword_at);
+	deref(ast_biop_tokens # (ast_biop.field@s64)) = (lex_token.dot);
+	deref(ast_biop_tokens # (ast_biop.ptr_field@s64)) = (lex_token.arrow);
+	deref(ast_biop_tokens # (ast_biop.cast@s64)) = (lex_token.cast);
+
+	i : u64 mut;
+	for(i = 0, i < __countof(ast_biop), i = i + 1)
+	{
+		tok ::= deref(ast_biop_tokens # (i + 1));
+		if(!is_already_an_operator(tok))
+		{
+			deref(ast_all_op_tokens # ast_all_op_tokens_cursor) = tok;
+			ast_all_op_tokens_cursor = (ast_all_op_tokens_cursor + 1);
+		}
+	}
+};
+
+grammar_setup_base_operators ::= func(-> v0)
+{
+	// so all tokens that can be either an unop and/or a biop will get these reduction rules
+	// all of these will get both reductions for unop/biop and it is the responsibility of the grammar_rule to check if you've misused any of them.
+	i : u64 mut;
+	for(i = 0, i < ast_all_op_tokens_cursor, i = i + 1)
+	{
+		tok ::= deref(ast_all_op_tokens # i);
+		grammar_setup_base_operator(tok);
+		grammar_setup_base_operator_expr(tok);
+	}
+};
+
+grammar_setup_base_operator ::= func(tok : lex_token -> v0)
+{
+	// lets say we have
+	// 5 + 5
+	// first we see a literal expr with a lookahead(+)
+	// we stash the literal expr so its only +
+		// with lookahead(token)
+		// due to the biop rule that gets stashed too
+	// so now the rhs comes and gets exprified
+	// stash is: literal-expr, token (front)
+	// unstash token and match to unop
+		//: token literal-expr
+	// now match the unop-expr with stash(literal-expr)
+	// to turn it into a biop
+
+
+	// any biop or unop operator symbol gets stashed if:
+	// unop: its the token itself
+	grammar_hashtable_insert(state1(
+		token(tok),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+};
+
+grammar_setup_base_operator_expr ::= func(tok : lex_token -> v0)
+{
+	i : u64 mut;
+	// ok so this is highly gnarly
+	// we want to iterate over every single expr tag for both exprtag1 and exprtag2
+	// some grammar rules include both of them in the node state which will require a quadratic iteration
+	// but we cant do this for rules which include only 1 (coz it will be done multiple times and panic coz inserting the same grammar_hashtable entry
+
+	// lets do all the exprtag1 only stuff (lhs only)
+	
+	exprtag1 : ast_expr_tag mut;
+	exprtag2 : ast_expr_tag mut;
+	for(i = 0, i < __countof(ast_expr_tag), i = i + 1)
+	{
+		exprtag1 = ((i + 1)@ast_expr_tag);
+		grammar_hashtable_insert(state1(
+			expr(exprtag1),
+		token(tok), zero),
+		grammar_rule{.fn := rule_stash;});
+	}
+
+	// now exprtag2 only stuff (rhs only)
+	for(i = 0, i < __countof(ast_expr_tag), i = i + 1)
+	{
+		exprtag2 = ((i + 1)@ast_expr_tag);
+		// ok this is at least an unop on the way (potentially a biop if another expr is stashtop after this unstash)
+		grammar_hashtable_insert(state1(
+			expr(exprtag2),
+		zero, token(tok)),
+		grammar_rule{.fn := rule_unstash;});
+
+		// if there's not another expr stashed then this is an unop
+		grammar_hashtable_insert(state2(
+			token(tok),
+			expr(exprtag2),
+		zero, zero),
+		grammar_rule{.fn := rule_token_x_expr_x2unop;});
+	}
+
+	j : u64 mut;
+	// and finally both
+	for(i = 0, i < __countof(ast_expr_tag), i = i + 1)
+	{
+		exprtag1 = ((i + 1)@ast_expr_tag);
+		for(j = 0, j < __countof(ast_expr_tag), j = j + 1)
+		{
+			exprtag2 = ((j + 1)@ast_expr_tag);
+
+			// but if there is then this is gonna be a biop (unstash first)
+			grammar_hashtable_insert(state2(
+				token(tok),
+				expr(exprtag2),
+			zero, expr(exprtag1)),
+			grammar_rule{.fn := rule_unstash;});
+
+			grammar_hashtable_insert(state3(
+				expr(exprtag1),
+				token(tok),
+				expr(exprtag2),
+			zero, zero),
+			grammar_rule{.fn := rule_expr_x_token_x_expr_y2biop;});
+		}
+	}
 };
 
 grammar_exprify ::= func(-> v0)
@@ -101,59 +274,6 @@ grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)
 	grammar_rule{.fn := rule_token_obrack_expr_token_cbrack2deref;});
 };
 
-grammar_unop ::= func(tok : lex_token, op : ast_unop -> v0)
-{
-	grammar_hashtable_insert(state1(
-		token(tok),
-	zero, zero),
-	grammar_rule{.fn := rule_stash;});
-
-	op_value ::= lex_token_as_operator # (tok@s64);
-	if(op_value->unop != zero)
-	{
-		psyc_panic_begin(zero);
-		putzstr("compiler bug a grammar rule invocation is trying to map unop.");
-		putzstr(__enumname(op));
-		putzstr(" to lex_token.");
-		putzstr(__enumname(tok));
-		putzstr(" but seemingly someone else already mapped that token to unop.");
-		putzstr(__enumname(op_value->unop));
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	op_value->unop = op;
-
-	i : u64 mut;
-	for(i = 0, i < __countof(ast_expr_tag), i = i + 1)
-	{
-		grammar_unop_expr(tok, op, (i + 1)@ast_expr_tag);
-	}
-};
-
-grammar_unop_expr ::= func(tok : lex_token, op : ast_unop, exprtag : ast_expr_tag -> v0)
-{
-	// is there anyway to guarantee this doesnt early munch?
-	// actually uh not really
-	// e.g ref x + 5
-	// it will be ref(x) + 5
-	// but tbf in c &x + 5 is the same thing so maybe its okay
-	
-	// ok so we need to somehow tell the grammar rule which unop the token maps to
-	// we could in theory just add it to the grammar_rule signature but that's extremely ridiculous - everyone else would zero it
-	// so instead we have a global array called 'lex_token_as_unop'
-	// we set the element at our token type to be the unop we were given.
-	// if it was already set to something else then we have to panic.
-	grammar_hashtable_insert(state1(
-		expr(exprtag),
-	zero, token(tok)),
-	grammar_rule{.fn := rule_unstash;});
-
-	grammar_hashtable_insert(state2(
-		token(tok),
-		expr(exprtag),
-	zero, zero),
-	grammar_rule{.fn := rule_token_x_expr2unop;});
-};
 
 grammar_typename ::= func(-> v0)
 {

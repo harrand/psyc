@@ -205,31 +205,76 @@ rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count
 	};
 };
 
-rule_token_x_expr2unop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+//rule_token_x_expr2unop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+//{
+//	// x expr
+//	// where x is some token
+//	// we don't know directly which unop type it is so we will read it from an array.
+//	// we figure it out from a magic 'ast_unop_token_mapping' array
+//	token_node ::= nodes # 0;
+//	expr_node ::= nodes # 1;
+//	tok ::= token_node->utok.tok.tok;
+//	unop ::= (lex_token_as_operator # (tok@s64))->unop;
+//	if(unop == zero)
+//	{
+//		psyc_panic_begin(token_node->loc);
+//		putzstr("lex token ");
+//		putzstr(__enumname(tok));
+//		putzstr(" did not map to a valid ast_unop via 'ast_unop_token_mapping'. please submit a bug report.");
+//		psyc_diag_end();
+//		psyc_exit_failure();
+//	}
+//
+//	unop_node ::= ast
+//	{
+//		.tag := ast_tag.expr;
+//		.expr := ast_expr_tag.unop;
+//		.unop := unop;
+//		.children := zero;
+//		.children_count := zero;
+//		.children_cap := zero;
+//	};
+//	ast_add_child(ref unop_node, deref expr_node, global_arena);
+//	return rule_result
+//	{
+//		.tag := rule.reduce;
+//		.reduce := reduce_replace_all_with(unop_node);
+//	};
+//};
+
+rule_token_x_expr_x2unop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
-	// x expr
-	// where x is some token
-	// we don't know directly which unop type it is so we will read it from an array.
-	// we figure it out from a magic 'ast_unop_token_mapping' array
+	// we've got a token of some type
+	// we expect it to be a valid unop
 	token_node ::= nodes # 0;
 	expr_node ::= nodes # 1;
+
 	tok ::= token_node->utok.tok.tok;
-	unop ::= (lex_token_as_operator # (tok@s64))->unop;
-	if(unop == zero)
+
+	op : ast_unop mut := zero;
+	// make sure the token is a valid unop
+	i : u64 mut;
+	for(i = 0, i < __countof(ast_unop), i = i + 1)
+	{
+		if(deref(ast_unop_tokens # (i + 1)) == tok)
+		{
+			op = ((i + 1)@ast_unop);
+		}
+	}
+	if(op == zero)
 	{
 		psyc_panic_begin(token_node->loc);
-		putzstr("lex token ");
+		putzstr("lex_token.");
 		putzstr(__enumname(tok));
-		putzstr(" did not map to a valid ast_unop via 'ast_unop_token_mapping'. please submit a bug report.");
+		putzstr(" is not a valid unary operator");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-
 	unop_node ::= ast
 	{
 		.tag := ast_tag.expr;
 		.expr := ast_expr_tag.unop;
-		.unop := unop;
+		.unop := op;
 		.children := zero;
 		.children_count := zero;
 		.children_cap := zero;
@@ -242,6 +287,52 @@ rule_token_x_expr2unop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_resu
 	};
 };
 
+rule_expr_x_token_x_expr_y2biop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we've got a token of some type
+	// we expect it to be a valid biop
+	lhs_expr_node ::= nodes # 0;
+	token_node ::= nodes # 1;
+	rhs_expr_node ::= nodes # 2;
+
+	tok ::= token_node->utok.tok.tok;
+
+	op : ast_biop mut := zero;
+	// make sure the token is a valid biop
+	i : u64 mut;
+	for(i = 0, i < __countof(ast_biop), i = i + 1)
+	{
+		if(deref(ast_biop_tokens # (i + 1)) == tok)
+		{
+			op = ((i + 1)@ast_biop);
+		}
+	}
+	if(op == zero)
+	{
+		psyc_panic_begin(token_node->loc);
+		putzstr("lex_token.");
+		putzstr(__enumname(tok));
+		putzstr(" is not a valid binary operator");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	biop_node ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.biop;
+		.biop := op;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref biop_node, deref lhs_expr_node, global_arena);
+	ast_add_child(ref biop_node, deref rhs_expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(biop_node);
+	};
+};
 
 rule_token_symbol2typename_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
