@@ -5,6 +5,8 @@ grammar_install ::= func(-> v0)
 	grammar_setup_base_operators();
 
 	grammar_exprify();
+	grammar_parentheses();
+	foreach_expr(grammar_parentheses_expr);
 
 	grammar_deref();
 	foreach_expr(grammar_deref_expr);
@@ -238,6 +240,35 @@ grammar_exprify ::= func(-> v0)
 		token(lex_token.keyword_zero),
 	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_zero2literal_expr;});
+};
+
+grammar_parentheses ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.oparen),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+};
+
+grammar_parentheses_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.cparen), token(lex_token.oparen))
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.cparen),
+	zero, token(lex_token.oparen))
+	grammar_rule{.fn := rule_unstash;});
+		
+	grammar_hashtable_insert(state3(
+		token(lex_token.oparen),
+		expr(exprtag),
+		token(lex_token.cparen),
+	zero, zero),
+	grammar_rule{.fn := rule_token_oparen_expr_x_token_cparen2expr;});
 };
 
 grammar_deref ::= func(-> v0)
