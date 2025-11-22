@@ -9,7 +9,8 @@ grammar_install ::= func(-> v0)
 	grammar_unop(lex_token.keyword_ref, ast_unop.reference);
 
 	grammar_typename();
-	grammar_typename_array_length_expr(ast_expr_tag.literal);
+	foreach_expr(grammar_typename_array_length_expr);
+	//grammar_typename_array_length_expr(ast_expr_tag.literal);
 	grammar_decl_explicitly_typed();
 	grammar_decl_deducibly_typed();
 
@@ -107,8 +108,8 @@ grammar_unop ::= func(tok : lex_token, op : ast_unop -> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_stash;});
 
-	unop_value ::= lex_token_as_unop # (tok@s64);
-	if(deref(unop_value) != zero)
+	op_value ::= lex_token_as_operator # (tok@s64);
+	if(op_value->unop != zero)
 	{
 		psyc_panic_begin(zero);
 		putzstr("compiler bug a grammar rule invocation is trying to map unop.");
@@ -116,12 +117,11 @@ grammar_unop ::= func(tok : lex_token, op : ast_unop -> v0)
 		putzstr(" to lex_token.");
 		putzstr(__enumname(tok));
 		putzstr(" but seemingly someone else already mapped that token to unop.");
-		putzstr(__enumname(deref unop_value));
+		putzstr(__enumname(op_value->unop));
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	deref(unop_value) = op;
-
+	op_value->unop = op;
 
 	i : u64 mut;
 	for(i = 0, i < __countof(ast_expr_tag), i = i + 1)
