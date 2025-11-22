@@ -1,8 +1,13 @@
 grammar_install ::= func(-> v0)
 {
 	grammar_exprify();
+
 	grammar_deref();
 	foreach_expr(grammar_deref_expr);
+
+	grammar_unop(lex_token.dash, ast_unop.minus);
+	grammar_unop_expr(lex_token.dash, ast_unop.minus, ast_expr_tag.literal);
+
 	grammar_typename();
 	grammar_typename_array_length_expr(ast_expr_tag.literal);
 	grammar_decl_explicitly_typed();
@@ -72,6 +77,10 @@ grammar_deref ::= func(-> v0)
 grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)
 {
 	// try not to early munch exprs here. make sure the lookahead is cbrack
+	// btw yes we do stash obrack and treat that as our equivalent of an ast_deref_tag
+	// most of the time we cant do this because certain things require more than 1 token but deref is just [ expr ]
+	// we have a limited number of possible ast states so this allows us to save one.
+	// in short: do this sparingly, for anything of nontrivial complexity use a specific ast tag but for something like this its chill + simpler + faster
 	grammar_hashtable_insert(state1(
 		expr(exprtag),
 	token(lex_token.cbrack), token(lex_token.obrack)),
@@ -89,6 +98,56 @@ grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)
 		token(lex_token.cbrack),
 	zero, zero),
 	grammar_rule{.fn := rule_token_obrack_expr_token_cbrack2deref;});
+};
+
+grammar_unop ::= func(tok : lex_token, op : ast_unop -> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(tok),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+};
+
+grammar_unop_expr ::= func(tok : lex_token, op : ast_unop, exprtag : ast_expr_tag -> v0)
+{
+	// is there anyway to guarantee this doesnt early munch?
+	// actually uh not really
+	// e.g ref x + 5
+	// it will be ref(x) + 5
+	// but tbf in c &x + 5 is the same thing so maybe its okay
+	
+	// ok so we need to somehow tell the grammar rule which unop the token maps to
+	// we could in theory just add it to the grammar_rule signature but that's extremely ridiculous - everyone else would zero it
+	// so instead we have a global array called 'lex_token_as_unop'
+	// we set the element at our token type to be the unop we were given.
+	// if it was already set to something else then we have to panic.
+	unop_value ::= lex_token_as_unop # (tok@s64);
+	if(deref(unop_value) != zero)
+	{
+		psyc_panic_begin(zero);
+		putzstr("compiler bug a grammar rule invocation is trying to map unop.");
+		putzstr(__enumname(op));
+		putzstr(" to lex_token.");
+		putzstr(__enumname(tok));
+		putzstr(" but seemingly someone else already mapped that token to unop.");
+		putzstr(__enumname(deref unop_value));
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// for mysterious reasons this memory is invalid
+	// maybe im too sleep deprived
+	// todo: future harry debug this.
+	deref(unop_value) = op;
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	zero, token(tok)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(tok),
+		expr(exprtag),
+	zero, zero),
+	grammar_rule{.fn := rule_token_x_expr2unop;});
 };
 
 grammar_typename ::= func(-> v0)
