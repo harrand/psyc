@@ -481,10 +481,18 @@ grammar_decl_deducibly_typed ::= func(-> v0)
 
 grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
 {
-	grammar_hashtable_insert(state1(
-		expr(exprtag),
-	zero, decl(ast_decl_tag.await_init_expr)),
-	grammar_rule{.fn := rule_unstash;});
+	// we have to be very careful not to munch here.
+	// we know for sure what tokens will always follow the end of a decl expr
+	decl_enders ::= lex_token[3]{lex_token.semicol; lex_token.comma; lex_token.arrow;};
+
+	i : u64 mut;
+	for(i = 0, i < (__sizeof(decl_enders) / __sizeof(deref(decl_enders # 0))), i = i + 1)
+	{
+		grammar_hashtable_insert(state1(
+			expr(exprtag),
+		token(deref(decl_enders # i)), decl(ast_decl_tag.await_init_expr)),
+		grammar_rule{.fn := rule_unstash;});
+	}
 
 	grammar_hashtable_insert(state2(
 		decl(ast_decl_tag.await_init_expr),
