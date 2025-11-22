@@ -259,11 +259,27 @@ ast_assembly ::= struct
 	return_type : ast_typename;
 };
 
+ast_reserve_children ::= func(node : ast mut?, count : u64, ar : arena mut? -> v0)
+{
+	if(node->children_cap < count)
+	{
+		old ::= node->children;
+		oldcap ::= node->children_cap;
+		node->children_cap = count;
+		node->children = arena_alloc(ar, __sizeof(ast) * (node->children_cap));	
+		if(old != zero)
+		{
+			memcopy(node->children, old, oldcap * __sizeof(ast));
+			arena_free(ar, old, oldcap * __sizeof(ast));
+		}
+	}
+};
+
 ast_add_child ::= func(node : ast mut?, child : ast, ar : arena mut? -> v0)
 {
 	if(node->children == zero)
 	{
-		node->children_cap = 8;
+		node->children_cap = 2;
 		node->children = arena_alloc(ar, __sizeof(ast) * (node->children_cap));
 	}
 	while(node->children_cap <= (node->children_count))
