@@ -410,8 +410,51 @@ grammar_typename ::= func(-> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_keyword_func_keyword_oparen2function_await_param_or_arrow;});
 
-	// todo: typename parameters here...
+	// no arrow in lookahead, so we will stash until we see a decl
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
 
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.finalised),
+	zero, typename(ast_typename_tag.function_await_param_or_arrow)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		decl(ast_decl_tag.finalised),
+	token(lex_token.arrow), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		decl(ast_decl_tag.finalised),
+		token(lex_token.arrow),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_function_await_param_or_arrow_decl_finalised_token_arrow2function_await_return_type;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		decl(ast_decl_tag.finalised),
+	token(lex_token.comma), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		decl(ast_decl_tag.finalised),
+		token(lex_token.comma),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_function_await_param_or_arrow_decl_finalised_token_comma2function_await_param_or_arrow;});
+
+	grammar_hashtable_insert(state3(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		decl(ast_decl_tag.finalised),
+		token(lex_token.comma),
+	token(lex_token.arrow), zero),
+	grammar_rule{.fn := rule_error_typename_function_comma_followed_by_arrow;});
+
+	// ok arrow in lookahead 
 	grammar_hashtable_insert(state1(
 		typename(ast_typename_tag.function_await_param_or_arrow),
 	token(lex_token.arrow), zero),
@@ -419,7 +462,7 @@ grammar_typename ::= func(-> v0)
 
 	grammar_hashtable_insert(state2(
 		typename(ast_typename_tag.function_await_param_or_arrow),
-		token(lex_token.arrow)
+		token(lex_token.arrow),
 	zero, zero),
 	grammar_rule{.fn := rule_typename_function_await_param_or_arrow_token_arrow2await_return_type;});
 

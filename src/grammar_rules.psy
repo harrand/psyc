@@ -502,6 +502,51 @@ rule_keyword_func_keyword_oparen2function_await_param_or_arrow ::= func(nodes : 
 	};
 };
 
+rule_typename_function_await_param_or_arrow_decl_finalised_token_arrow2function_await_return_type ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a function stem with a last param + an arrow
+	// add the param decl as a child and then set tag to function_await_return_type
+	typename_node ::= nodes # 0;
+	decl_node ::= nodes # 1;
+	ast_add_child(typename_node, deref decl_node, global_arena);
+	typename_node->typename.tag = (ast_typename_tag.function_await_return_type);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_typename_function_await_param_or_arrow_decl_finalised_token_comma2function_await_param_or_arrow ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a function stem with a param and then a comma
+	// add the param decl as a child and then set tag to function_await_param_or_arrow
+	// we obviously dont expect an arrow next but thats handled by an erroneous-case grammar_rule that has the arrow as a lookahead - in other words we dont deal with that error case in this rule.
+	typename_node ::= nodes # 0;
+	decl_node ::= nodes # 1;
+	ast_add_child(typename_node, deref decl_node, global_arena);
+	typename_node->typename.tag = (ast_typename_tag.function_await_param_or_arrow);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_error_typename_function_comma_followed_by_arrow ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	typename_node ::= nodes # 0;
+	psyc_error_begin((nodes # 2)->loc);
+	putzstr("comma after parameter ");
+	putuint(typename_node->children_count);
+	putzstr(" is directly followed by an arrow. either add another parameter or remove the comma.");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 rule_typename_function_await_param_or_arrow_token_arrow2await_return_type ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// typename_function_await_param_or_arrow arrow
