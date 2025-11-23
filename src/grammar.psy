@@ -308,11 +308,20 @@ grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)
 
 grammar_typename ::= func(-> v0)
 {
+	// under some circumstances we want to treat a symbol as the start of a typename
+	// (normally if some certain node is stashtop)
+	// we list them all here:
+
 	// normally a symbol by itself (e.g 'foo' is a symbol expression)
 	// in the case that we have an await_typename stashed however we can say its a typename
 	grammar_hashtable_insert(state1(
 		token(lex_token.symbol),
 	zero, decl(ast_decl_tag.await_type)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, typename(ast_typename_tag.function_await_return_type)),
 	grammar_rule{.fn := rule_token_symbol2typename_wip;});
 
 	// now a wip typename basically stays wip until it doesnt have any lookaheads we expect (in which case we finalise it)
@@ -390,7 +399,53 @@ grammar_typename ::= func(-> v0)
 	// however we want to be explicit in which expr types are valid initialisers
 	// so the rest of this logic is in grammar_typename_array_length_expr
 
-	// todo: function typenames...
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_func),
+	token(lex_token.oparen), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_func),
+		token(lex_token.oparen),
+	zero, zero),
+	grammar_rule{.fn := rule_keyword_func_keyword_oparen2function_await_param_or_arrow;});
+
+	// todo: typename parameters here...
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+	token(lex_token.arrow), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.function_await_param_or_arrow),
+		token(lex_token.arrow)
+	zero, zero),
+	grammar_rule{.fn := rule_typename_function_await_param_or_arrow_token_arrow2await_return_type;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.function_await_return_type),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, typename(ast_typename_tag.function_await_return_type)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		typename(ast_typename_tag.function_await_return_type),
+		typename(ast_typename_tag.finalised),
+	token(lex_token.cparen), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		typename(ast_typename_tag.function_await_return_type),
+		typename(ast_typename_tag.finalised),
+		token(lex_token.cparen),
+	zero, zero),
+	grammar_rule{.fn := rule_typename_function_await_return_type_typename_token_cparen2wip;});
+
 	// maybe todo: decltype
 
 	// ok now that we've done the lookahead possibilities.

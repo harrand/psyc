@@ -479,6 +479,62 @@ rule_typename_array_await_length_expr_token_semicol2wip ::= func(nodes : ast mut
 	};
 };
 
+rule_keyword_func_keyword_oparen2function_await_param_or_arrow ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// func(
+	// make it into a function typename
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.typename;
+			.typename := ast_typename
+			{
+				.tag := ast_typename_tag.function_await_param_or_arrow;
+				.quals := zero;
+				.descriptor := ast_typename_descriptor.function;
+			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_typename_function_await_param_or_arrow_token_arrow2await_return_type ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// typename_function_await_param_or_arrow arrow
+	// make put it in the 'await return type' tag
+	typename_node ::= nodes # 0;
+	typename_node->typename.tag = (ast_typename_tag.function_await_return_type);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_typename_function_await_return_type_typename_token_cparen2wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// typename_function_await_return_type typename_finalised cparen
+	// i.e a full function stem
+
+	// we move it to wip instead of finalised (as function typenames can have qualifiers etc...)
+	typename_node ::= nodes # 0;
+	return_typename_node ::= nodes # 1;
+	typename_node->typename.tag = (ast_typename_tag.wip);
+	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	ast_add_child(typename_node, deref return_typename_node, global_arena);
+	
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_typename_wip2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	typename_node ::= nodes # 0;
