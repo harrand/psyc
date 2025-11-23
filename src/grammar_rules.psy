@@ -831,6 +831,21 @@ rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rul
 	};
 };
 
+rule_function_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a finalised function and a semicol
+	function_node ::= nodes # 0;
+	(function_node->tag) = (ast_tag.stmt);
+	(function_node->stmt) = (ast_stmt_tag.function);
+	last ::= nodes # (nodes_count - 1);
+	function_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have a finalised decl and a semicol
@@ -849,11 +864,11 @@ rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : 
 rule_structure_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have a finalised structure and a semicol
-	decl_node ::= nodes # 0;
-	(decl_node->tag) = (ast_tag.stmt);
-	(decl_node->stmt) = (ast_stmt_tag.structure);
+	structure_node ::= nodes # 0;
+	(structure_node->tag) = (ast_tag.stmt);
+	(structure_node->stmt) = (ast_stmt_tag.structure);
 	last ::= nodes # (nodes_count - 1);
-	decl_node->end_cursor = (last->end_cursor);
+	structure_node->end_cursor = (last->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;
