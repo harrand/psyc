@@ -10,6 +10,8 @@ grammar_install ::= func(-> v0)
 
 	grammar_deref();
 	grammar_call();
+	grammar_call_param();
+	foreach_expr(grammar_call_param_expr);
 	foreach_expr(grammar_deref_expr);
 
 	grammar_typename();
@@ -297,8 +299,6 @@ grammar_call ::= func(-> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_stash;});
 
-	// todo: call params
-
 	grammar_hashtable_insert(state1(
 		node(ast_tag.callwip),
 	token(lex_token.cparen), zero),
@@ -309,6 +309,46 @@ grammar_call ::= func(-> v0)
 		token(lex_token.cparen),
 	zero, zero),
 	grammar_rule{.fn := rule_callwip_token_cparen2call;});
+};
+
+grammar_call_param ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		node(ast_tag.call_expect_comma_or_cparen),
+	token(lex_token.comma), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state1(
+		node(ast_tag.call_expect_comma_or_cparen),
+	token(lex_token.cparen), zero),
+	grammar_rule{.fn := rule_call_expect_comma_or_cparen2callwip;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.call_expect_comma_or_cparen),
+		token(lex_token.comma),
+	zero, zero),
+	grammar_rule{.fn := rule_call_expect_comma_or_cparen_token_comma2callwip;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.call_expect_comma_or_cparen),
+		token(lex_token.comma),
+	token(lex_token.cparen), zero),
+	grammar_rule{.fn := rule_error_call_comma_followed_by_cparen;});
+};
+
+grammar_call_param_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	zero, node(ast_tag.callwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.callwip),
+		expr(exprtag),
+	zero, zero),
+	grammar_rule{.fn := rule_callwip_expr_x2expect_comma_or_cparen;});
+
 };
 
 grammar_deref_expr ::= func(exprtag : ast_expr_tag -> v0)

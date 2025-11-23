@@ -224,16 +224,71 @@ rule_callwip_token_cparen2call ::= func(nodes : ast mut?, nodes_count : u64 -> r
 {
 	// callwip )
 	// turn it into a call expr
-	wipcall_node ::= nodes # 0;
-	wipcall_node->tag = (ast_tag.expr);
-	wipcall_node->expr = (ast_expr_tag.call);
-	// wipcall_node->call was already populated while in its callwip state.
-	wipcall_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	callwip_node ::= nodes # 0;
+	callwip_node->tag = (ast_tag.expr);
+	callwip_node->expr = (ast_expr_tag.call);
+	// callwip_node->call was already populated while in its callwip state.
+	callwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;
 		.reduce := reduce_delete_all_but_first();
 	};
+};
+
+rule_callwip_expr_x2expect_comma_or_cparen ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// callwip expr
+	callwip_node ::= nodes # 0;
+	callwip_node->tag = (ast_tag.call_expect_comma_or_cparen);
+	expr_node ::= nodes # 1;
+	ast_add_child(callwip_node, deref expr_node, global_arena);
+	callwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_call_expect_comma_or_cparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// got a call_expect_comma_or_cparen by itself
+	// but the lookahead is a cparen
+	// instead of shifting it we just turn it back into a callwip now and re-use some existing rules.
+	callwip_expect_comma_or_cparen_node ::= nodes # 0;
+	callwip_expect_comma_or_cparen_node->tag = (ast_tag.callwip);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_call_expect_comma_or_cparen_token_comma2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// got a call_expect_comma_or_cparen,
+	// means we put it back into wipcall
+	callwip_expect_comma_or_cparen_node ::= nodes # 0;
+	callwip_expect_comma_or_cparen_node->tag = (ast_tag.callwip);
+	callwip_expect_comma_or_cparen_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_error_call_comma_followed_by_cparen ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	call_node ::= nodes # 0;
+	psyc_error_begin((nodes # 2)->loc);
+	putzstr("comma after parameter ");
+	putuint(call_node->children_count);
+	putzstr(" is directly followed by a ')'. either add another parameter or remove the comma.");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
 };
 
 rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
