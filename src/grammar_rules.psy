@@ -754,6 +754,68 @@ rule_structure_wip_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_count
 	};
 };
 
+rule_decl_finalised_token_obrace2function_impl ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// decl_finalised {
+	// this is the syntax for a function definition
+	// we check the typename of the decl and ensure that is a function type
+	decl_node ::= nodes # 0;
+	typename_node ::= ast_get_child(decl_node, 0);
+	if(typename_node->tag != (ast_tag.typename))
+	{
+		psyc_panic_begin(decl_node->loc);
+		putzstr("internal error: first child of decl node was expected to be ast_tag.typename but it is ast_tag.");
+		putzstr(__enumname(typename_node->tag));
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	typename ::= typename_node->typename;
+	if(typename.descriptor != (ast_typename_descriptor.function)) 
+	{
+		psyc_error_begin(decl_node->loc);
+		putzstr("decl followed immediately by a '{' means a function definition, so i expect the decl typename to be a function type, but it is a ");
+		putzstr(__enumname(typename.descriptor));
+		putzstr(" type");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	decl ::= decl_node->decl;
+
+	function_node ::= ast
+	{
+		.tag := ast_tag.function;
+		.function := ast_function
+		{
+			.tag := ast_function_tag.impl;
+			.name := decl.name;
+			.name_len := decl.name_len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref function_node, deref typename_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(function_node);
+	};
+};
+
+rule_function_impl_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// function_impl }
+	// means we are done and need to set our function to be in its finalised state
+	function_node ::= nodes # 0;
+	function_node->function.tag = (ast_function_tag.finalised);
+	function_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have an expr (of any particular tag) and a semicol
