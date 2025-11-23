@@ -21,6 +21,7 @@ grammar_install ::= func(-> v0)
 
 	grammar_struct();
 	grammar_function();
+	grammar_extern_function();
 
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
@@ -697,6 +698,20 @@ grammar_function ::= func(-> v0)
 		token(lex_token.cbrace),
 	zero, zero),
 	grammar_rule{.fn := rule_function_impl_cbrace2finalised;});
+};
+
+grammar_extern_function ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		decl(ast_decl_tag.finalised),
+	token(lex_token.keyword_extern), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		decl(ast_decl_tag.finalised),
+		token(lex_token.keyword_extern),
+	zero, zero),
+	grammar_rule{.fn := rule_decl_finalised_token_keyword_extern2function_finalised;});
 };
 
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
