@@ -197,6 +197,45 @@ rule_token_oparen_expr_x_token_cparen2expr ::= func(nodes : ast mut?, nodes_coun
 	};
 };
 
+rule_token_symbol_token_oparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// foo(
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	callnode ::= ast
+	{
+		.tag := ast_tag.callwip;
+		.call := ast_call
+		{
+			.call_name := parse_state.src # (lexeme.off);
+			.call_name_len := lexeme.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(callnode);
+	};
+};
+
+rule_callwip_token_cparen2call ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// callwip )
+	// turn it into a call expr
+	wipcall_node ::= nodes # 0;
+	wipcall_node->tag = (ast_tag.expr);
+	wipcall_node->expr = (ast_expr_tag.call);
+	// wipcall_node->call was already populated while in its callwip state.
+	wipcall_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have [ expr ]
