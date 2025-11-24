@@ -946,6 +946,79 @@ rule_decl_finalised_token_keyword_extern2function_finalised ::= func(nodes : ast
 	};
 };
 
+rule_typename_finalised_token_obrace2blkinitwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// typename_finalised{
+	// create a blkinitwip
+	typename_node ::= nodes # 0;
+	blkinit_node ::= ast
+	{
+		.tag := ast_tag.blkinitwip;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref blkinit_node, deref typename_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(blkinit_node);
+	};
+};
+
+rule_blkinitwip_token_cbrace2blkinit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	blkinitwip_node ::= nodes # 0;
+	blkinitwip_node->tag = (ast_tag.expr);
+	blkinitwip_node->expr = (ast_expr_tag.blkinit);
+	blkinitwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_token_dot_token_symbol_token_initialiser2desiginitwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// .foo := 
+	// turn into desiginitwip
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	desiginit_node ::= ast
+	{
+		.tag := ast_tag.desiginitwip;
+		.desiginit := ast_desiginit
+		{
+			.name := parse_state.src # (lexeme.off);
+			.name_len := lexeme.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(desiginit_node);
+	};
+};
+
+rule_desiginitwip_expr_x2desiginit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// desiginitwip expr
+	// turn it into a proper desiginit
+	desiginitwip_node ::= nodes # 0;
+	expr_node ::= nodes # 1;
+	ast_add_child(desiginitwip_node, deref expr_node, global_arena);
+	desiginitwip_node->tag = (ast_tag.desiginit);
+	desiginitwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_x_token_cast2castwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// expr@
@@ -1032,6 +1105,32 @@ rule_function_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_coun
 		.tag := rule.reduce;
 		.reduce := reduce_delete_all_but_first();
 	};
+};
+
+rule_desiginit_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a desiginit and a semicol
+	desiginit_node ::= nodes # 0;
+	(desiginit_node->tag) = (ast_tag.stmt);
+	(desiginit_node->stmt) = (ast_stmt_tag.desiginit);
+	last ::= nodes # (nodes_count - 1);
+	desiginit_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_error_commit_non_desiginit_to_blkinit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	stmt_node ::= nodes # 0;
+	psyc_error_begin(stmt_node->loc);
+	putzstr(__enumname(stmt_node->stmt));
+	putzstr(" statement is not valid within a block initialiser - i will only accept designated initialisers.");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
 };
 
 rule_decl_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
