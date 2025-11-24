@@ -26,6 +26,9 @@ grammar_install ::= func(-> v0)
 	grammar_function();
 	grammar_extern_function();
 
+	foreach_expr(grammar_cast_expr);
+	grammar_cast();
+
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
 
@@ -399,6 +402,11 @@ grammar_typename ::= func(-> v0)
 	grammar_hashtable_insert(state1(
 		token(lex_token.symbol),
 	zero, typename(ast_typename_tag.function_await_return_type)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, node(ast_tag.castwip)),
 	grammar_rule{.fn := rule_token_symbol2typename_wip;});
 
 	// now a wip typename basically stays wip until it doesnt have any lookaheads we expect (in which case we finalise it)
@@ -788,6 +796,41 @@ grammar_extern_function ::= func(-> v0)
 	zero, zero),
 	grammar_rule{.fn := rule_decl_finalised_token_keyword_extern2function_finalised;});
 };
+
+grammar_cast_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	// expr@typename
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.cast), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.cast),
+	zero, zero),
+	grammar_rule{.fn := rule_expr_x_token_cast2castwip;});
+};
+
+grammar_cast ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		node(ast_tag.castwip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, node(ast_tag.castwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.castwip),
+		typename(ast_typename_tag.finalised),
+	zero, zero),
+	grammar_rule{.fn := rule_castwip_typename_finalised2cast;});
+};
+
 
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
 {

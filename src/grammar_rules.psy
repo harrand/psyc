@@ -946,6 +946,25 @@ rule_decl_finalised_token_keyword_extern2function_finalised ::= func(nodes : ast
 	};
 };
 
+rule_expr_x_token_cast2castwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// expr@
+	expr_node ::= nodes # 0;
+	cast_node ::= ast
+	{
+		.tag := ast_tag.castwip;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref cast_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(cast_node);
+	};
+};
+
 rule_function_impl_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// function_impl }
@@ -953,6 +972,31 @@ rule_function_impl_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64
 	function_node ::= nodes # 0;
 	function_node->function.tag = (ast_function_tag.finalised);
 	function_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_castwip_typename_finalised2cast ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// castwip typename_finalised
+	// just add the typename_finalised as the 2nd child (first child should be the expr that we're casting)
+	castwip_node ::= nodes # 0;
+	typename_node ::= nodes # 1;
+	if(castwip_node->children_count != 1)
+	{
+		psyc_panic_begin(castwip_node->loc);
+		putzstr("invalid castwip state. should have 1 child (the expr to cast) but it had ");
+		putuint(castwip_node->children_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	ast_add_child(castwip_node, deref typename_node, global_arena);
+	castwip_node->tag = (ast_tag.expr);
+	castwip_node->expr = (ast_expr_tag.cast);
+	castwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;
