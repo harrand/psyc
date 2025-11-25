@@ -35,6 +35,8 @@ grammar_install ::= func(-> v0)
 
 	foreach_expr(grammar_field_expr);
 	grammar_field();
+	foreach_expr(grammar_ptrfield_expr);
+	grammar_ptrfield();
 
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
@@ -985,6 +987,58 @@ grammar_field ::= func(-> v0)
 		expr(ast_expr_tag.call),
 	zero, zero)
 	grammar_rule{.fn := rule_fieldwip_expr_x2field;});
+};
+
+grammar_ptrfield_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.arrow), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.arrow),
+	token(lex_token.symbol), zero),
+	grammar_rule{.fn := rule_expr_x_token_arrow2ptrfieldwip;});
+};
+
+grammar_ptrfield ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		node(ast_tag.ptrfieldwip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	// now we dont do this for every expr. just expr.symbol (for normal member access)
+	// and expr.call for a call to a member function call (not a method - a data member that is a function reference)
+	// feel free to add error rules for all other expr tags
+
+	// foo.bar
+	// just a member access
+	grammar_hashtable_insert(state1(
+		expr(ast_expr_tag.symbol),
+	zero, node(ast_tag.ptrfieldwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.ptrfieldwip),
+		expr(ast_expr_tag.symbol),
+	zero, zero),
+	grammar_rule{.fn := rule_ptrfieldwip_expr_x2ptrfield;});
+
+	// foo.bar(...)
+	// member function pointer call
+	grammar_hashtable_insert(state1(
+		expr(ast_expr_tag.call),
+	zero, node(ast_tag.ptrfieldwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.ptrfieldwip),
+		expr(ast_expr_tag.call),
+	zero, zero)
+	grammar_rule{.fn := rule_ptrfieldwip_expr_x2ptrfield;});
 };
 
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
