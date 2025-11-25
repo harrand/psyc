@@ -436,6 +436,115 @@ ast_quote_source ::= func(nodes : ast?, nodes_count : u64, src : u8? mut?, len :
 	deref(len) = (last->end_cursor - (first->begin_cursor));
 };
 
+// return the number of chars we have moved backwards for the newline
+ast_quote_source_from_line_begin ::= func(nodes : ast?, nodes_count : u64, src : u8? mut?, len : u64 mut?, tab_extra : u64 mut? -> u64)
+{
+	distance : u64 mut := 0;
+	first ::= deref src;
+	ast_quote_source(nodes, nodes_count, src, len);
+	deref(tab_extra) = 0;
+	while(deref(deref(src)) != 10 && (first@u64 < (deref src@u64)))
+	{
+		if(deref(deref(src)) == 9)
+		{
+			// tab size
+			deref(tab_extra) = (deref tab_extra + 1);
+		}
+		distance = distance + 1;
+		deref(src) = (deref(src) # -1);
+		deref(len) = (deref len + 1);
+	}
+	// dont want to include the newline
+	hit_first ::= (first@u64 == (deref src@u64));
+	if(!hit_first)
+	{
+		deref(src) = (deref(src) # 1);
+		deref(len) = (deref len - 1);
+		return distance - 1;
+	}
+	return distance;
+};
+
+// give me a node (or multiple) that are erroneous and i will print out that annotated source code
+// you should call me after psyc_error_begin(node->loc) and then putzstr'ing a relevant message + newline
+ast_print_annotated_source ::= func(src : u8?, node : ast?, node_count : u64 -> v0)
+{
+	loc ::= node->loc;
+
+	snip_begin : u8? mut := src;
+	snip_len : u64 mut;
+	tab_extra : u64 mut;
+	err_begin ::= ast_quote_source_from_line_begin(node, node_count, ref snip_begin, ref snip_len, ref tab_extra);
+	till_newline : u64 mut := 0;
+	// this assumes src is null terminated.
+	while((deref(snip_begin # (snip_len + till_newline)) != 10) && (deref(snip_begin # (snip_len + till_newline)) != 0))
+	{
+		till_newline = (till_newline + 1);
+	}
+
+	line_prefix ::= " | ";
+	// quote source
+	psyc_colour_reset();
+	line_number_digit_count ::= lenuint(loc.line) + 1;
+	putuint(loc.line);
+	putchar(' ');
+	putzstr(line_prefix);
+	// if we print the whole thing we will include newlines
+	// so lets do it manually and if we hit a newline thats okay we just print the prefix out again
+	i : u64 mut := 0;
+	new_line_counter : u64 mut := 1;
+	for(i = 0, i < (snip_len + till_newline), i = i + 1)
+	{
+		char ::= deref(snip_begin # i);
+		if(char != 13)
+		{
+			if(char == 9) // tab
+			{
+				putzstr("    ");
+			}
+			else
+			{
+				putchar(char);
+			}
+		}
+		if(char == 10)
+		{
+			putuint(loc.line + new_line_counter);
+			if(lenuint(loc.line + new_line_counter) + 1 <= (line_number_digit_count))
+			{
+				putchar(' ');
+			}
+			new_line_counter = (new_line_counter + 1);
+			putzstr(line_prefix);
+		}
+	}
+	putchar(10);
+
+	// make equal space for the pointer line
+	for(i = 0, i < line_number_digit_count, i = i + 1)
+	{
+		putchar(' ');
+	}
+	putzstr(line_prefix);
+	for(i = 0, i < tab_extra, i = i + 1)
+	{
+		putzstr("    ");
+	}
+	for(i = 0, i < err_begin, i = i + 1)
+	{
+		putchar(' ');
+	}
+	psyc_colour_red();
+	putchar('^');
+	for(i = 1, i < (snip_len - err_begin), i = i + 1)
+	{
+		putchar('~');
+	}
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+
 ast_rotate_left ::= func(node_array : ast mut?, node_array_count : u64 mut?, pivot : u64, shift_amount : u64 -> v0)
 {
 	// say our nodes are:

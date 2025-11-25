@@ -282,12 +282,14 @@ rule_call_expect_comma_or_cparen_token_comma2callwip ::= func(nodes : ast mut?, 
 rule_error_call_comma_followed_by_cparen ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	call_node ::= nodes # 0;
-	psyc_error_begin((nodes # 2)->loc);
-	putzstr("comma after parameter ");
-	putuint(call_node->children_count);
-	putzstr(" is directly followed by a ')'. either add another parameter or remove the comma.");
-	psyc_diag_end();
-	psyc_exit_failure();
+	psyc_error_begin((nodes # 1)->loc);
+	putzstr("in call to ");
+	putchar('"');
+	putbytes(call_node->call.call_name, call_node->call.call_name_len);
+	putchar('"');
+	putzstr(", a ',' must be followed by another parameter");
+	putchar(10);
+	ast_print_annotated_source(parse_state.src, nodes # 1, nodes_count - 1);
 	return zero;
 };
 
@@ -633,9 +635,9 @@ rule_error_typename_function_comma_followed_by_arrow ::= func(nodes : ast mut?, 
 {
 	typename_node ::= nodes # 0;
 	psyc_error_begin((nodes # 2)->loc);
-	putzstr("comma after parameter ");
-	putuint(typename_node->children_count);
-	putzstr(" is directly followed by an arrow. either add another parameter or remove the comma.");
+	putzstr("in function typename, a ',' must be followed by another typename ");
+	putchar(10);
+	ast_print_annotated_source(parse_state.src, nodes # 2, nodes_count - 2);
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
