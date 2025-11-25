@@ -22,6 +22,9 @@ grammar_install ::= func(-> v0)
 
 	foreach_expr(grammar_decl_init_expr);
 
+	grammar_return();
+	foreach_expr(grammar_return_expr);
+
 	grammar_struct();
 	grammar_enum();
 	grammar_function();
@@ -756,6 +759,46 @@ grammar_decl_init_expr ::= func(exprtag : ast_expr_tag -> v0)
 		expr(exprtag),
 	zero, zero),
 	grammar_rule{.fn := rule_decl_await_init_expr_init_expr2finalised;});
+};
+
+grammar_return ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_return),
+	token(lex_token.semicol), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_return),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_return_token_semicol2stmt;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_return),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+};
+
+grammar_return_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.semicol), token(lex_token.keyword_return)),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, token(lex_token.keyword_return)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.keyword_return),
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_return_expr_x_token_semicol2stmt;});
 };
 
 grammar_struct ::= func(-> v0)

@@ -812,6 +812,42 @@ rule_decl_await_init_expr_init_expr2finalised ::= func(nodes : ast mut?, nodes_c
 	};
 };
 
+rule_token_keyword_return_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.stmt;
+			.stmt := ast_stmt_tag.ret;
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_token_keyword_return_expr_x_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// return expr_x;
+	expr_node ::= nodes # 1;
+	ret_node ::= ast
+	{
+		.tag := ast_tag.stmt;
+		.stmt := ast_stmt_tag.ret;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref ret_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ret_node);
+	};
+};
+
 rule_token_symbol_token_colon_token_initialiser_token_keyword_struct_token_obrace2structure_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have a bunch of tokens
