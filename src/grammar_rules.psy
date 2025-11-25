@@ -1077,6 +1077,47 @@ rule_castwip_typename_finalised2cast ::= func(nodes : ast mut?, nodes_count : u6
 	};
 };
 
+rule_expr_x_token_dot2fieldwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// expr_x.
+	// make into fieldwip
+	expr_node ::= nodes # 0;
+	field_node ::= ast
+	{
+		.tag := ast_tag.fieldwip;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref field_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(field_node);
+	};
+};
+
+rule_fieldwip_expr_x2field ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// fieldwip expr
+	// turn this into a proper field
+	// fieldwip should already have a child 0 (the expr representing the struct/enum)
+	fieldwip_node ::= nodes # 0;
+	// remember this expr is expected to be either a symbol expr or a callfunc
+	// in any case a symbol is easy to retrieve.
+	expr_node ::= nodes # 1;
+	ast_add_child(fieldwip_node, deref expr_node, global_arena);
+
+	fieldwip_node->tag = (ast_tag.expr);
+	fieldwip_node->expr = (ast_expr_tag.field);
+	fieldwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have an expr (of any particular tag) and a semicol
