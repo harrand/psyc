@@ -850,6 +850,45 @@ rule_structure_wip_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_count
 	};
 };
 
+rule_token_symbol_token_colon_token_initialiser_token_keyword_enum_token_obrace2enumeration_wip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a bunch of tokens
+	// turn them into an empty enum so we can stash it and add members
+	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.enumeration;
+			.enumeration := ast_enumeration
+			{
+				.tag := ast_enumeration_tag.wip;
+				.name := parse_state.src # (lexeme.off);
+				.name_len := lexeme.len;
+			};
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_enumeration_wip_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a enumeration_wip and a cbrace
+	// just set the enum as finalised and swallow everything else
+	enumeration_node ::= nodes # 0;
+	enumeration_node->enumeration.tag = (ast_enumeration_tag.finalised);
+	enumeration_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+
 rule_decl_finalised_token_obrace2function_impl ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// decl_finalised {
@@ -1242,6 +1281,21 @@ rule_structure_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_cou
 	(structure_node->stmt) = (ast_stmt_tag.structure);
 	last ::= nodes # (nodes_count - 1);
 	structure_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_enumeration_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a finalised enumeration and a semicol
+	enumeration_node ::= nodes # 0;
+	(enumeration_node->tag) = (ast_tag.stmt);
+	(enumeration_node->stmt) = (ast_stmt_tag.enumeration);
+	last ::= nodes # (nodes_count - 1);
+	enumeration_node->end_cursor = (last->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;

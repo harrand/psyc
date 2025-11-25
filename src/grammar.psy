@@ -23,6 +23,7 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_decl_init_expr);
 
 	grammar_struct();
+	grammar_enum();
 	grammar_function();
 	grammar_extern_function();
 
@@ -793,6 +794,42 @@ grammar_struct ::= func(-> v0)
 	grammar_rule{.fn := rule_structure_wip_token_cbrace2finalised;});
 };
 
+grammar_enum ::= func(-> v0)
+{
+	grammar_hashtable_insert(state2(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+	token(lex_token.keyword_enum), zero),
+	grammar_rule{.fn := rule_shift2;});
+
+	grammar_hashtable_insert(state4(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+		token(lex_token.keyword_enum),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_token_symbol_token_colon_token_initialiser_token_keyword_enum_token_obrace2enumeration_wip;});
+
+	grammar_hashtable_insert(state1(
+		enumeration(ast_enumeration_tag.wip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	// remember, when desiginits are stmtified they get committed so if we're stashed we get it as a child automatically
+	// so lets unstash and finalise ourselves when we see a cbrace
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.cbrace),
+	zero, enumeration(ast_enumeration_tag.wip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		enumeration(ast_enumeration_tag.wip),
+		token(lex_token.cbrace),
+	zero, zero),
+	grammar_rule{.fn := rule_enumeration_wip_token_cbrace2finalised;});
+};
+
 grammar_function ::= func(-> v0)
 {
 	// my_func : func(param1 : type1, param2 : type2 ... -> retty){
@@ -1085,6 +1122,18 @@ grammar_stmtify_nonexpr ::= func(-> v0)
 		token(lex_token.semicol),
 	zero, zero),
 	grammar_rule{.fn := rule_structure_finalised_token_semicol2stmt;});
+
+	// enumeration
+	grammar_hashtable_insert(state1(
+		enumeration(ast_enumeration_tag.finalised),
+	token(lex_token.semicol), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		enumeration(ast_enumeration_tag.finalised),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_enumeration_finalised_token_semicol2stmt;});
 
 	// function
 	grammar_hashtable_insert(state1(
