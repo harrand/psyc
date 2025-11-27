@@ -42,6 +42,10 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_ptrfield_expr);
 	grammar_ptrfield();
 
+	grammar_if();
+	foreach_expr(grammar_if_expr);
+	grammar_else();
+
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
 
@@ -1119,6 +1123,105 @@ grammar_ptrfield ::= func(-> v0)
 		expr(ast_expr_tag.call),
 	zero, zero)
 	grammar_rule{.fn := rule_ptrfieldwip_expr_x2ptrfield;});
+};
+
+grammar_if ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_if),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+	
+	// grammar_if_expr goes here logically
+
+	// after expr stuff is done we're left with an ifwip
+	grammar_hashtable_insert(state1(
+		node(ast_tag.ifwip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.cbrace),
+	zero, node(ast_tag.ifwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.ifwip),
+		token(lex_token.cbrace),
+	zero, zero),
+	grammar_rule{.fn := rule_ifwip_token_cbrace2if;});
+};
+
+grammar_if_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.obrace), token(lex_token.keyword_if)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_if)
+		expr(exprtag),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.keyword_if),
+		expr(exprtag),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_if_expr_x_token_obrace2ifwip;});
+};
+
+grammar_else ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_else),
+	zero, zero),
+	grammar_rule{.fn := rule_error_else_without_preceding_if_stmt;});
+
+	grammar_hashtable_insert(state1(
+		stmt(ast_stmt_tag.if_block),
+	token(lex_token.keyword_else), zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_else),
+	token(lex_token.obrace), stmt(ast_stmt_tag.if_block)),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_else),
+		token(lex_token.obrace),
+	zero, stmt(ast_stmt_tag.if_block)),
+	grammar_rule{.fn := rule_token_keyword_else_token_obrace2elsewip;});
+
+	grammar_hashtable_insert(state1(
+		node(ast_tag.elsewip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.cbrace),
+	zero, node(ast_tag.elsewip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.elsewip),
+		token(lex_token.cbrace),
+	zero, stmt(ast_stmt_tag.if_block)),
+	grammar_rule{.fn := rule_elsewip_token_cbrace2else;});
+
+	grammar_hashtable_insert(state1(
+		stmt(ast_stmt_tag.else_block),
+	zero, stmt(ast_stmt_tag.if_block)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		stmt(ast_stmt_tag.if_block)
+		stmt(ast_stmt_tag.else_block),
+	zero, zero),
+	grammar_rule{.fn := rule_ifstmt_elsestmt2ifstmt;});
 };
 
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)

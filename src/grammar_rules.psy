@@ -1237,6 +1237,100 @@ rule_ptrfieldwip_expr_x2ptrfield ::= func(nodes : ast mut?, nodes_count : u64 ->
 	};
 };
 
+rule_token_keyword_if_expr_x_token_obrace2ifwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// if expr{
+	// make into ifwip
+	expr_node ::= nodes # 1;
+
+	ifwip_node ::= ast
+	{
+		.tag := ast_tag.ifwip;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref ifwip_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ifwip_node);
+	};
+};
+
+rule_error_else_without_preceding_if_stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	psyc_error_begin((nodes # 0)->loc);
+	putzstr("an else statement can only be valid if placed directly after an if-statement");
+	putchar(10);
+	ast_print_annotated_source(parse_state.src, nodes # 0, nodes_count);
+	return zero;
+};
+
+rule_token_keyword_else_token_obrace2elsewip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// else{
+	// with an if stmt as stashtop
+	// just return an empty wipelse...
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(ast
+		{
+			.tag := ast_tag.elsewip;
+			.children := zero;
+			.children_count := zero;
+			.children_cap := zero;
+		});
+	};
+};
+
+rule_elsewip_token_cbrace2else ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// elsewip}
+	// with an if stmt as stashtop
+	// turn into proper else stmt
+	elsewip_node ::= nodes # 0;
+	elsewip_node->tag = (ast_tag.stmt);
+	elsewip_node->stmt = (ast_stmt_tag.else_block);
+	elsewip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_ifstmt_elsestmt2ifstmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// if_stmt else_stmt
+	// make else_stmt a child of the if_stmt
+	// and we're done
+	if_node ::= nodes # 0;
+	else_node ::= nodes # 1;
+	if_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	ast_add_child(if_node, deref else_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_ifwip_token_cbrace2if ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// ifwip}
+	// cap off into if stmt
+	ifwip_node ::= nodes # 0;
+	ifwip_node->tag = (ast_tag.stmt);
+	ifwip_node->stmt = (ast_stmt_tag.if_block);
+	ifwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
 
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
