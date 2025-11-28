@@ -54,6 +54,24 @@ rule_shift2 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 	};
 };
 
+rule_shift3 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.shift;
+		.shift := shift_data{.count := 3;};
+	};
+};
+
+rule_shift4 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	return rule_result
+	{
+		.tag := rule.shift;
+		.shift := shift_data{.count := 4;};
+	};
+};
+
 rule_commit ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	return rule_result
@@ -1332,6 +1350,99 @@ rule_ifwip_token_cbrace2if ::= func(nodes : ast mut?, nodes_count : u64 -> rule_
 	};
 };
 
+// hot DAMN SON thats a long function name
+rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_cparen2asmwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// symbol : asm(string_literal)
+	constraints_lexeme ::= (nodes # 4)->utok.tok.lexeme;
+	name_lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	asm_node ::= ast
+	{
+		.tag := ast_tag.assembly;
+		.assembly := ast_assembly
+		{
+			.tag := ast_assembly_tag.wip;
+			.name := parse_state.src # (name_lexeme.off);
+			.name_len := name_lexeme.len;
+			.constraints := parse_state.src # (constraints_lexeme.off);
+			.constraints_len := constraints_lexeme.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(asm_node);
+	};
+};
+
+rule_assembly_wip_token_obrace2coding ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// asmwip{
+	// we are now expecting everything to be assembly code (until the next cbrace which ends it)
+	asm_node ::= nodes # 0;
+	asm_node->assembly.tag = (ast_assembly_tag.coding);
+	asm_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_assembly_coding_token_x2coding ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// assembly_coding x
+	// where x is any token that isnt a cbrace
+	asm_node ::= nodes # 0;
+	tok_node ::= nodes # 1;
+	// ok so this node may or may not already have a child
+	new_child ::= asm_node->children_count == 0;
+	if(new_child)
+	{
+		ast_add_child(asm_node, deref tok_node, global_arena);
+	}
+	child ::= ast_get_child(asm_node, 0);
+	if(!new_child)
+	{
+		// ok so this is a bit weird
+		// tok_node lexeme may not start at the same point
+		// but we need to include it all
+		// so we add (tok_node.lexeme.off - child_node.lexeme.len)
+		// to get to the begin of the new lexeme
+		// and then also add tok_node.lexeme.len:
+		child_lexeme ::= child->utok.tok.lexeme;
+		new_lexeme ::= tok_node->utok.tok.lexeme;
+		// increase len enough to touch new_lexeme.off
+		// i.e child_lexeme.off + child_lexeme.len + n = new_lexeme.off
+		// n = new_lexeme.off - (child_lexeme.off + child_lexeme.len)
+		n ::= new_lexeme.off - (child_lexeme.off + (child_lexeme.len));
+		child->utok.tok.lexeme.len = (child->utok.tok.lexeme.len + (n + new_lexeme.len));
+	}
+	child->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	asm_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_assembly_coding_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	asm_node ::= nodes # 0;
+	asm_node->assembly.tag = (ast_assembly_tag.finalised);
+	asm_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have an expr (of any particular tag) and a semicol
@@ -1429,6 +1540,21 @@ rule_enumeration_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_c
 	(enumeration_node->stmt) = (ast_stmt_tag.enumeration);
 	last ::= nodes # (nodes_count - 1);
 	enumeration_node->end_cursor = (last->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_assembly_finalised_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// we have a finalised assembly and a semicol
+	assembly_node ::= nodes # 0;
+	(assembly_node->tag) = (ast_tag.stmt);
+	(assembly_node->stmt) = (ast_stmt_tag.assembly);
+	last ::= nodes # (nodes_count - 1);
+	assembly_node->end_cursor = (last->end_cursor);
 	return rule_result
 	{
 		.tag := rule.reduce;

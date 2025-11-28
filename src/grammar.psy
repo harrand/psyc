@@ -46,6 +46,8 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_if_expr);
 	grammar_else();
 
+	grammar_asm();
+
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
 
@@ -1224,6 +1226,70 @@ grammar_else ::= func(-> v0)
 	grammar_rule{.fn := rule_ifstmt_elsestmt2ifstmt;});
 };
 
+grammar_asm ::= func(-> v0)
+{
+	grammar_hashtable_insert(state2(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+	token(lex_token.keyword_asm), zero),
+	grammar_rule{.fn := rule_shift4;});
+
+	grammar_hashtable_insert(state6(
+		token(lex_token.symbol),
+		token(lex_token.colon),
+		token(lex_token.keyword_asm),
+		token(lex_token.oparen),
+		token(lex_token.string_literal),
+		token(lex_token.cparen),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_cparen2asmwip;});
+
+	grammar_hashtable_insert(state1(
+		assembly(ast_assembly_tag.wip),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		assembly(ast_assembly_tag.wip),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_assembly_wip_token_obrace2coding;});
+
+	// ok we are in coding mode here
+	// every single token that is not cbrace will have a rule that we just add it to the
+	i : u64 mut;
+	for(i = 0, i < (__countof(lex_token) + 1), i = i + 1)
+	{
+		tok ::= i@lex_token;
+		if(tok != (lex_token.cbrace))
+		{
+			grammar_hashtable_insert(state1(
+				assembly(ast_assembly_tag.coding),
+			token(tok), zero),
+			grammar_rule{.fn := rule_shift1;});
+
+			grammar_hashtable_insert(state2(
+				assembly(ast_assembly_tag.coding),
+				token(tok),
+			zero, zero),
+			grammar_rule{.fn := rule_assembly_coding_token_x2coding;});
+		}
+		else
+		{
+			grammar_hashtable_insert(state1(
+				assembly(ast_assembly_tag.coding),
+			token(lex_token.cbrace), zero),
+			grammar_rule{.fn := rule_shift1;});
+
+			grammar_hashtable_insert(state2(
+				assembly(ast_assembly_tag.coding),
+				token(lex_token.cbrace),
+			zero, zero),
+			grammar_rule{.fn := rule_assembly_coding_token_cbrace2finalised;});
+		}
+	}
+};
+
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
 {
 	// allow expr(T); to be stmtified
@@ -1280,6 +1346,18 @@ grammar_stmtify_nonexpr ::= func(-> v0)
 		token(lex_token.semicol),
 	zero, zero),
 	grammar_rule{.fn := rule_enumeration_finalised_token_semicol2stmt;});
+
+	// assembly
+	grammar_hashtable_insert(state1(
+		assembly(ast_assembly_tag.finalised),
+	token(lex_token.semicol), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		assembly(ast_assembly_tag.finalised),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_assembly_finalised_token_semicol2stmt;});
 
 	// function
 	grammar_hashtable_insert(state1(
