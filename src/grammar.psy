@@ -46,6 +46,9 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_if_expr);
 	grammar_else();
 
+	grammar_while();
+	foreach_expr(grammar_while_expr);
+
 	grammar_asm();
 
 	foreach_expr(grammar_stmtify_expr);
@@ -1229,6 +1232,54 @@ grammar_else ::= func(-> v0)
 		stmt(ast_stmt_tag.else_block),
 	zero, zero),
 	grammar_rule{.fn := rule_ifstmt_elsestmt2ifstmt;});
+};
+
+grammar_while ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_while),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+	
+	// grammar_while_expr goes here logically
+
+	// after expr stuff is done we're left with an ifwip
+	grammar_hashtable_insert(state1(
+		node(ast_tag.whilewip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.cbrace),
+	zero, node(ast_tag.whilewip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		node(ast_tag.whilewip),
+		token(lex_token.cbrace),
+	zero, zero),
+	grammar_rule{.fn := rule_whilewip_token_cbrace2while;});
+};
+
+grammar_while_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.obrace), token(lex_token.keyword_while)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_while)
+		expr(exprtag),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.keyword_while),
+		expr(exprtag),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_while_expr_x_token_obrace2whilewip;});
 };
 
 grammar_asm ::= func(-> v0)

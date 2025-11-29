@@ -1350,6 +1350,42 @@ rule_ifwip_token_cbrace2if ::= func(nodes : ast mut?, nodes_count : u64 -> rule_
 	};
 };
 
+rule_token_keyword_while_expr_x_token_obrace2whilewip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// while expr{
+	// make into whilewip
+	expr_node ::= nodes # 1;
+
+	whilewip_node ::= ast
+	{
+		.tag := ast_tag.whilewip;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref whilewip_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(whilewip_node);
+	};
+};
+
+rule_whilewip_token_cbrace2while ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// whilewip}
+	// cap off into while stmt
+	whilewip_node ::= nodes # 0;
+	whilewip_node->tag = (ast_tag.stmt);
+	whilewip_node->stmt = (ast_stmt_tag.while_block);
+	whilewip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 // hot DAMN SON thats a long function name
 rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_arrow2asmwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
