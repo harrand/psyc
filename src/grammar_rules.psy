@@ -1351,7 +1351,7 @@ rule_ifwip_token_cbrace2if ::= func(nodes : ast mut?, nodes_count : u64 -> rule_
 };
 
 // hot DAMN SON thats a long function name
-rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_cparen2asmwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_arrow2asmwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// symbol : asm(string_literal)
 	constraints_lexeme ::= (nodes # 4)->utok.tok.lexeme;
@@ -1378,13 +1378,16 @@ rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_litera
 	};
 };
 
-rule_assembly_wip_token_obrace2coding ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+rule_assembly_wip_typename_finalised_token_cparen_token_obrace2coding ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
-	// asmwip{
+	// asmwip typename){
 	// we are now expecting everything to be assembly code (until the next cbrace which ends it)
 	asm_node ::= nodes # 0;
 	asm_node->assembly.tag = (ast_assembly_tag.coding);
 	asm_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+
+	typename_node ::= nodes # 1;
+	ast_add_child(asm_node, deref typename_node, global_arena);
 
 	return rule_result
 	{
@@ -1400,12 +1403,12 @@ rule_assembly_coding_token_x2coding ::= func(nodes : ast mut?, nodes_count : u64
 	asm_node ::= nodes # 0;
 	tok_node ::= nodes # 1;
 	// ok so this node may or may not already have a child
-	new_child ::= asm_node->children_count == 0;
+	new_child ::= asm_node->children_count == 1;
 	if(new_child)
 	{
 		ast_add_child(asm_node, deref tok_node, global_arena);
 	}
-	child ::= ast_get_child(asm_node, 0);
+	child ::= ast_get_child(asm_node, 1);
 	if(!new_child)
 	{
 		// ok so this is a bit weird

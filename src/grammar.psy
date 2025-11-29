@@ -428,6 +428,11 @@ grammar_typename ::= func(-> v0)
 	zero, node(ast_tag.castwip)),
 	grammar_rule{.fn := rule_token_symbol2typename_wip;});
 
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, assembly(ast_assembly_tag.wip)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
 	// blkinits start with a typename so its a bit weird:
 	// symbol followed by the following lookahead means typename:
 	// 1. {
@@ -1240,20 +1245,33 @@ grammar_asm ::= func(-> v0)
 		token(lex_token.keyword_asm),
 		token(lex_token.oparen),
 		token(lex_token.string_literal),
-		token(lex_token.cparen),
-	token(lex_token.obrace), zero),
-	grammar_rule{.fn := rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_cparen2asmwip;});
+		token(lex_token.arrow),
+	zero, zero),
+	grammar_rule{.fn := rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_literal_token_arrow2asmwip;});
 
 	grammar_hashtable_insert(state1(
 		assembly(ast_assembly_tag.wip),
-	token(lex_token.obrace), zero),
-	grammar_rule{.fn := rule_shift1;});
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, assembly(ast_assembly_tag.wip)),
+	grammar_rule{.fn := rule_unstash;});
 
 	grammar_hashtable_insert(state2(
 		assembly(ast_assembly_tag.wip),
+		typename(ast_typename_tag.finalised),
+	token(lex_token.cparen), zero),
+	grammar_rule{.fn := rule_shift2;});
+
+	grammar_hashtable_insert(state4(
+		assembly(ast_assembly_tag.wip),
+		typename(ast_typename_tag.finalised),
+		token(lex_token.cparen),
 		token(lex_token.obrace),
 	zero, zero),
-	grammar_rule{.fn := rule_assembly_wip_token_obrace2coding;});
+	grammar_rule{.fn := rule_assembly_wip_typename_finalised_token_cparen_token_obrace2coding;});
 
 	// ok we are in coding mode here
 	// every single token that is not cbrace will have a rule that we just add it to the
