@@ -104,6 +104,41 @@ parse_would_be_valid_if_extra_semicol ::= func(-> bool)
 	return !would_be_invalid;
 };
 
+parse_print_state ::= func(-> v0)
+{
+	putchar(10);
+	psyc_colour_reset();
+	if(!(prog.compile_args.verbose_parse))
+	{
+		putzstr("to view the invalid AST, enable --verbose-parse");
+		return;
+	}
+	putzstr("parse state (verbose)");
+	putchar(10);
+
+	putzstr("node stack:");
+	putchar(10);
+	i : u64 mut;
+	for(i = 0, i < (parse_state.nodes_cursor), i = i + 1)
+	{
+		ast_verbose_print(deref(parse_state.nodes # i), 1);
+	}
+
+	if(parse_state.tokens_cursor <= (parse_state.tokens->tokens_size))
+	{
+		putzstr("lookahead:");
+		putchar(10);
+		ast_verbose_print(parse_state.lookahead, 1);
+	}
+
+	if(parse_state.stash_cursor > 0)
+	{
+		putzstr("stashtop:");
+		putchar(10);
+		ast_verbose_print(deref(parse_state.stash # 0), 1);
+	}
+};
+
 parse_invalid_syntax_error ::= func(-> v0)
 {
 	front ::= parse_state.nodes # 0;
@@ -117,6 +152,9 @@ parse_invalid_syntax_error ::= func(-> v0)
 	putchar(10);
 
 	ast_print_annotated_source(parse_state.src, front, parse_state.nodes_cursor);
+	parse_print_state();
+	psyc_diag_end();
+	psyc_exit_failure();
 };
 
 parse_invoke_rule ::= func(rule : grammar_rule -> v0)
