@@ -613,12 +613,46 @@ ast_print_expr_part ::= func(n : ast -> v0)
 	if(n.expr == (ast_expr_tag.symbol))
 	{
 		putzstr(".");
+		putchar('"');
 		putbytes(n.symbol.data, n.symbol.len);
+		putchar('"');
 	}
 	if(n.expr == (ast_expr_tag.literal))
 	{
 		putzstr(".");
 		putzstr(__enumname(n.literal.tag));
+		if(n.literal.tag == (ast_literal_tag.integer))
+		{
+			putzstr(".");
+			putsint(n.literal.integer);
+		}
+		if(n.literal.tag == (ast_literal_tag.floating_point))
+		{
+			putzstr(".");
+			putfloat(n.literal.floating_point);
+		}
+		if(n.literal.tag == (ast_literal_tag.char))
+		{
+			putzstr(".");
+			putbytes(n.literal.chars, n.literal.chars_len);
+		}
+		if(n.literal.tag == (ast_literal_tag.string))
+		{
+			putzstr(".");
+			putbytes(n.literal.chars, n.literal.chars_len);
+		}
+		if(n.literal.tag == (ast_literal_tag.boolean))
+		{
+			putzstr(".");
+			if(n.literal.boolean)
+			{
+				putzstr("true");
+			}
+			else
+			{
+				putzstr("false");
+			}
+		}
 	}
 	if(n.expr == (ast_expr_tag.zero_value))
 	{
@@ -655,6 +689,14 @@ ast_verbose_print ::= func(n : ast, indent : u64 -> v0)
 	{
 		putzstr(".");
 		putzstr(__enumname(n.utok.tok.tok));
+		if(n.utok.tok.tok == (lex_token.symbol))
+		{
+			lexeme ::= n.utok.tok.lexeme;
+			putzstr(".");
+			putchar('"');
+			putbytes(parse_state.src # (lexeme.off), lexeme.len);
+			putchar('"');
+		}
 	}
 	if(n.tag == (ast_tag.expr))
 	{
@@ -682,6 +724,11 @@ ast_verbose_print ::= func(n : ast, indent : u64 -> v0)
 	{
 		putzstr(".");
 		putzstr(__enumname(n.typename.descriptor));
+		if(n.typename.descriptor == (ast_typename_descriptor.base))
+		{
+			putzstr(".");
+			putbytes(n.typename.basename, n.typename.basename_len);
+		}
 	}
 	putzstr("[");
 	putuint(n.loc.line);
