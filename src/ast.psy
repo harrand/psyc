@@ -593,6 +593,98 @@ ast_rotate_right ::= func(node_array : ast mut?, node_array_count : u64 mut?, pi
 	deref(node_array_count) = (deref(node_array_count) + shift_amount);
 };
 
+ast_util_print_indent ::= func(indent : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0, i < indent, i = i + 1)
+	{
+		putchar(9);
+	}
+};
+
+ast_print_expr_part ::= func(n : ast -> v0)
+{
+	if(n.expr == (ast_expr_tag.symbol))
+	{
+		putzstr(".");
+		putbytes(n.symbol.data, n.symbol.len);
+	}
+	if(n.expr == (ast_expr_tag.literal))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.literal.tag));
+	}
+	if(n.expr == (ast_expr_tag.zero_value))
+	{
+	}
+	if(n.expr == (ast_expr_tag.unop))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.unop));
+	}
+	if(n.expr == (ast_expr_tag.biop))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.biop));
+	}
+	if(n.expr == (ast_expr_tag.call))
+	{
+		putzstr(".");
+		putbytes(n.call.call_name, n.call.call_name_len);
+	}
+};
+
+ast_verbose_print ::= func(n : ast, indent : u64 -> v0)
+{
+	ast_util_print_indent(indent);
+	if(n.tag == zero)
+	{
+		putzstr("zero");
+	}
+	else
+	{
+		putzstr(__enumname(n.tag));
+	}
+	if(n.tag == (ast_tag.expr))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.expr));
+		ast_print_expr_part(n);
+	}
+	if(n.tag == (ast_tag.stmt))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.stmt));
+		if(n.stmt == (ast_stmt_tag.expr))
+		{
+			putzstr(".");
+			putzstr(__enumname(n.expr));
+			ast_print_expr_part(n);
+		}
+		if(n.stmt == (ast_stmt_tag.desiginit))
+		{
+			putzstr(".");
+			putbytes(n.desiginit.name, n.desiginit.name_len);
+		}
+	}
+	if(n.tag == (ast_tag.typename))
+	{
+		putzstr(".");
+		putzstr(__enumname(n.typename.descriptor));
+	}
+	putzstr("[");
+	putuint(n.loc.line);
+	putzstr(", ");
+	putuint(n.loc.column);
+	putzstr("]");
+	putchar(10);
+	i : u64 mut;
+	for(i = 0, i < (n.children_count), i = i + 1)
+	{
+		ast_verbose_print(deref ast_get_child(ref n, i), indent + 1);
+	}
+};
+
 foreach_expr ::= func(callback : func(tag : ast_expr_tag -> v0) -> v0)
 {
 	i : u64 mut;
