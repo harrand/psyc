@@ -1421,6 +1421,73 @@ rule_token_symbol_token_colon_token_keyword_asm_token_oparen_token_string_litera
 	};
 };
 
+rule_token_keyword_for_stmt_x2forwip1 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// for stmt_x
+	// make into forwip1
+	stmt_node ::= nodes # 1;
+	forwip1_node ::= ast
+	{
+		.tag := ast_tag.forwip1;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref forwip1_node, deref stmt_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(forwip1_node);
+	};
+};
+
+rule_forwip1_stmt_x2forwip2 ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// forwip1 stmt_x
+	// make into forwip2
+	forwip2_node ::= nodes # 0;
+	forwip2_node->tag = (ast_tag.forwip2);
+	stmt_node ::= nodes # 1;
+	ast_add_child(forwip2_node, deref stmt_node, global_arena);
+	forwip2_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_forwip2_stmt_x_token_obrace2forwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// forwip2 stmt_x{
+	// make into forwip
+	forwip_node ::= nodes # 0;
+	forwip_node->tag = (ast_tag.forwip);
+	stmt_node ::= nodes # 1;
+	ast_add_child(forwip_node, deref stmt_node, global_arena);
+	forwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
+rule_forwip_token_cbrace2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// forwip }
+	// make into for stmt
+	forwip_node ::= nodes # 0;
+	forwip_node->tag = (ast_tag.stmt);
+	forwip_node->stmt = (ast_stmt_tag.for_block);
+	forwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_assembly_wip_typename_finalised_token_cparen_token_obrace2coding ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// asmwip typename){
