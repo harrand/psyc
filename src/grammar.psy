@@ -44,6 +44,8 @@ grammar_install ::= func(-> v0)
 
 	grammar_if();
 	foreach_expr(grammar_if_expr);
+	grammar_static_if();
+	foreach_expr(grammar_static_if_expr);
 	grammar_else();
 
 	grammar_while();
@@ -1184,6 +1186,37 @@ grammar_if_expr ::= func(exprtag : ast_expr_tag -> v0)
 		token(lex_token.obrace),
 	zero, zero),
 	grammar_rule{.fn := rule_token_keyword_if_expr_x_token_obrace2ifwip;});
+};
+
+grammar_static_if ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_static_if),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+	
+	// grammar_static_if_expr goes here logically
+};
+
+grammar_static_if_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	token(lex_token.obrace), token(lex_token.keyword_static_if)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_static_if)
+		expr(exprtag),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.keyword_static_if),
+		expr(exprtag),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_static_if_expr_x_token_obrace2ifwip;});
 };
 
 grammar_else ::= func(-> v0)
