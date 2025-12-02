@@ -14,8 +14,13 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_call_param_expr);
 	foreach_expr(grammar_deref_expr);
 
+
 	grammar_typename();
 	foreach_expr(grammar_typename_array_length_expr);
+
+	grammar_typeof();
+	foreach_expr(grammar_typeof_expr);
+
 	//grammar_typename_array_length_expr(ast_expr_tag.literal);
 	grammar_decl_explicitly_typed();
 	grammar_decl_deducibly_typed();
@@ -672,8 +677,32 @@ grammar_typename_array_length_expr ::= func(exprtag : ast_expr_tag -> v0)
 		token(lex_token.cbrack),
 	zero, zero),
 	grammar_rule{.fn := rule_typename_array_await_length_expr_token_semicol2wip;});
-	
 };
+
+grammar_typeof ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_typeof),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	// grammar_typeof_expr
+};
+
+grammar_typeof_expr ::= func(exprtag : ast_expr_tag -> v0)
+{
+	grammar_hashtable_insert(state1(
+		expr(exprtag),
+	zero, token(lex_token.keyword_typeof)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_typeof),
+		expr(exprtag),
+	zero, zero),
+	grammar_rule{.fn := rule_token_keyword_typeof_expr_x2typename;});
+};
+
 
 grammar_decl_explicitly_typed ::= func(-> v0)
 {

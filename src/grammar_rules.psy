@@ -711,6 +711,32 @@ rule_typename_wip2finalised ::= func(nodes : ast mut?, nodes_count : u64 -> rule
 	};
 };
 
+rule_token_keyword_typeof_expr_x2typename ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// typeof expr_x
+	// turn into typename
+	expr_node ::= nodes # 1;
+	typename_node ::= ast mut
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.wip;
+			.quals := zero;
+			.descriptor := ast_typename_descriptor.inferred_from;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref typename_node, deref expr_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(typename_node);
+	};
+};
+
 rule_token_symbol_token_colon2decl_awaittype ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	name ::= (nodes # 0)->utok.tok.lexeme;
