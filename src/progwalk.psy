@@ -1,0 +1,43 @@
+// given an ast, walk through it and populate program bits
+// e.g global/locals, scopes, functions, structs, etc...
+
+// in theory you'd think its as simple as progwalk_node + progwalk_children and then dispatch it all to the right node types
+// however this would mean alot of unnecessary work
+// so instead we just iterate over all the immediate children. globals/functions/structs etc are recorded.
+progwalk_file ::= func(node : ast? -> v0)
+{
+	file_scope ::= program_add_scope();
+	deref(file_scope) = lexical_scope
+	{
+		.type := scope_type.file;
+		.name := node->loc.file;
+		.name_len := zstrlen(node->loc.file);
+	};
+
+	i : u64 mut;
+	for(i = 0, i < (node->children_count), i = i + 1)
+	{
+		child ::= ast_get_child(node, i);
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.function)))
+		{
+			// its a function
+			progwalk_function(child, file_scope);
+		}
+	}
+};
+
+progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	ast_fn ::= node->function;
+
+	func_scope ::= program_add_scope();
+	func_scope->name = (ast_fn.name);
+	func_scope->name_len = (ast_fn.name_len);
+	func_scope->parent_id = (scope->id);
+
+	scope_add_function(scope, function
+	{
+		.node := node;
+		.scope := func_scope;
+	});
+};
