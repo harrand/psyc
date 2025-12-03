@@ -34,83 +34,6 @@ destroy_arenas ::= func( -> v0)
 	arena_destroy(ref frame_arena_val);
 };
 
-// read a file path. allocates for the whole file data. returns zero if file didnt exist.
-fully_read_file ::= func(path : u8?, a : arena mut? -> u8 mut?)
-{
-	if(!file_exists(path))
-	{
-		psyc_error_begin(zero);
-		putzstr("file ");
-		putchar('"');
-		putzstr(path);
-		putchar('"');
-		putzstr(" could not be located (cwd: ");
-		cwd : u8? mut;
-		cwdlen : u64 mut;
-		directory_get_cwd(ref cwd, ref cwdlen, global_arena);
-		putbytes(cwd, cwdlen);
-		putzstr(")");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	len ::= file_size_bytes(path);
-	if(len == 0)
-	{
-		psyc_warning_begin(zero);
-		putzstr("file ");
-		putchar('"');
-		putzstr(path);
-		putchar('"');
-		putzstr(" exists but is empty");
-		psyc_diag_end();
-	}
-	data : u8 mut? := arena_alloc(a, len + 1);
-	file_read(path, data, len);
-	deref(data # len) = 0;
-	return data;
-};
-
-add_source_file ::= func(path : u8?, a : arena mut? -> v0)
-{
-	src ::= fully_read_file(path, a);
-	l ::= lex(path, src, prog.compile_args.verbose_lex);
-	p ::= parse(path, src, prog.compile_args.verbose_parse, ref l);
-	progwalk_file(ref p);
-};
-
-compile_program ::= func(a : arena mut? -> v0)
-{
-	putzstr("Precompiling...     ");
-	putchar(13);
-	args ::= ref(prog.compile_args);
-	add_source_file(prog.compile_args.build_file, a);
-	//add_preload(a);
-	//precompile_build_file(args->build_file, a);
-	//if((prog.type) == (program_type.executable))
-	//{
-	//	add_entrypoint();
-	//}
-	if(!directory_exists(args->output_dir))
-	{
-		directory_create(args->output_dir);
-	}
-	putzstr("Semantic Analysis...");
-	putchar(13);
-	//semal();
-
-	putzstr("Code Generation...  ");
-	putchar(13);
-	//codegen();
-
-	putzstr("Assembly...         ");
-	putchar(13);
-	//assemble();
-
-	putzstr("Link...             ");
-	putchar(13);
-	//link();
-};
-
 argc : s32 mut;
 argv : u8?? mut;
 envp : u8?? mut;
@@ -175,7 +98,7 @@ main ::= func(pargs : program_args? -> s32)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	compile_program(global_arena);
+	compile_program();
 
 	directory_set_cwd(oldcwd, oldcwdlen, global_arena);
 	//do_postbuild();

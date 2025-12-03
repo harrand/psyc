@@ -121,21 +121,21 @@ parse_print_state ::= func(-> v0)
 	i : u64 mut;
 	for(i = 0, i < (parse_state.nodes_cursor), i = i + 1)
 	{
-		ast_verbose_print(deref(parse_state.nodes # i), 1);
+		ast_verbose_print(deref(parse_state.nodes # i), 0);
 	}
 
 	if(parse_state.tokens_cursor <= (parse_state.tokens->tokens_size))
 	{
 		putzstr("lookahead:");
 		putchar(10);
-		ast_verbose_print(parse_state.lookahead, 1);
+		ast_verbose_print(parse_state.lookahead, 0);
 	}
 
 	if(parse_state.stash_cursor > 0)
 	{
 		putzstr("stashtop:");
 		putchar(10);
-		ast_verbose_print(deref(parse_state.stash # 0), 1);
+		ast_verbose_print(deref(parse_state.stash # 0), 0);
 	}
 };
 
@@ -195,7 +195,7 @@ parse_invoke_rule ::= func(rule : grammar_rule -> v0)
 	}
 };
 
-parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> ast)
+parse ::= func(file : source_file, lex : lex_state? -> ast)
 {
 	psyc_timed_begin(psyc_stage.parse);
 	defer psyc_timed_end();
@@ -208,12 +208,12 @@ parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> 
 	parse_state = zero;
 	parse_state.root.loc = srcloc
 	{
-		.file := path;
+		.file := file.path;
 		.line := 1;
 		.column := 1;
 	};
-	parse_state.path = path;
-	parse_state.src = src;
+	parse_state.path = (file.path);
+	parse_state.src = (file.src);
 	parse_state.tokens = lex;
 	parse_state.lookahead = token2ast(deref(lex->tokens # 0));
 	parse_state.tokens_cursor = 1;
@@ -229,9 +229,9 @@ parse ::= func(path : u8?, src : u8?, verbose_parse : bool, lex : lex_state? -> 
 		}
 		parse_invoke_rule(rule);
 	}
-	if(verbose_parse)
+	if(prog.compile_args.verbose_parse)
 	{
-		ast_verbose_print(parse_state.root, 1);
+		ast_verbose_print(parse_state.root, 0);
 	}
 	return parse_state.root;
 };

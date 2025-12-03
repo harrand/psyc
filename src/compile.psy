@@ -1,0 +1,111 @@
+source_file ::= struct
+{
+	src : u8?;
+	path : u8?;
+};
+
+add_source_file_to_compilation ::= func(path : u8? -> ast)
+{
+	src ::= fully_read_file(path, global_arena);
+	tokens ::= lex(src);
+	nodes ::= parse(src, ref tokens);
+	progwalk_file(ref nodes);
+	return nodes;
+};
+
+add_build_file_to_compilation ::= func(path : u8? -> v0)
+{
+	node ::= add_source_file_to_compilation(path);
+	// todo: build bits
+};
+
+add_entrypoint_to_compilation ::= func(-> v0)
+{
+	// todo: entrypoint
+};
+
+add_preload_to_compilation ::= func(-> v0)
+{
+	// todo: preload
+};
+
+compile_program ::= func(-> v0)
+{
+	putzstr("Parsing...          ");
+	putchar(13);
+	args ::= ref(prog.compile_args);
+
+	add_build_file_to_compilation(prog.compile_args.build_file);
+	add_preload_to_compilation();
+	if(prog.type == (program_type.executable))
+	{
+		add_entrypoint_to_compilation();
+	}
+
+	if(!directory_exists(args->output_dir))
+	{
+		directory_create(args->output_dir);
+	}
+	putzstr("Semantic Analysis...");
+	putchar(13);
+	//semal();
+
+	putzstr("Code Generation...  ");
+	putchar(13);
+	//codegen();
+
+	putzstr("Assembly...         ");
+	putchar(13);
+	//assemble();
+
+	putzstr("Link...             ");
+	putchar(13);
+	//link();
+
+	postbuild();
+};
+
+postbuild ::= func(-> v0)
+{
+};
+
+// read a file path. allocates for the whole file data. returns zero if file didnt exist.
+fully_read_file ::= func(path : u8?, a : arena mut? -> source_file)
+{
+	if(!file_exists(path))
+	{
+		psyc_error_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" could not be located (cwd: ");
+		cwd : u8? mut;
+		cwdlen : u64 mut;
+		directory_get_cwd(ref cwd, ref cwdlen, global_arena);
+		putbytes(cwd, cwdlen);
+		putzstr(")");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	len ::= file_size_bytes(path);
+	if(len == 0)
+	{
+		psyc_warning_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" exists but is empty");
+		psyc_diag_end();
+	}
+	data : u8 mut? := arena_alloc(a, len + 1);
+	file_read(path, data, len);
+	deref(data # len) = 0;
+	return source_file
+	{
+		.src := data;
+		.path := path;
+	};
+};
+

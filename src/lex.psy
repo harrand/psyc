@@ -1086,7 +1086,7 @@ lex_next ::= func(s : lex_state mut? -> v0)
 	}
 };
 
-lex ::= func(path : u8?, src : u8?, verbose_lex : bool -> lex_state)
+lex ::= func(file : source_file -> lex_state)
 {
 	psyc_timed_begin(psyc_stage.lex);
 	defer psyc_timed_end();
@@ -1094,18 +1094,18 @@ lex ::= func(path : u8?, src : u8?, verbose_lex : bool -> lex_state)
 	ret : lex_state mut := zero;
 	(ret.line) = 1;
 	(ret.col) = 1;
-	(ret.path) = path;
-	(ret.src) = src;
+	(ret.path) = (file.path);
+	(ret.src) = (file.src);
 	(ret.tokens_cap) = 1024;
 	(ret.tokens) = arena_alloc(global_arena, __sizeof(deref (ret.tokens)) * (ret.tokens_cap));
-	len ::= zstrlen(src);
+	len ::= zstrlen(file.src);
 
 	while((ret.cursor) < len@_)
 	{
 		lex_next(ref ret);
 	}
 
-	if(verbose_lex)
+	if(prog.compile_args.verbose_lex)
 	{
 		ls_verbose_print(ref ret);
 	}
