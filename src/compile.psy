@@ -7,16 +7,41 @@ source_file ::= struct
 add_source_file_to_compilation ::= func(path : u8? -> ast)
 {
 	src ::= fully_read_file(path, global_arena);
+
 	tokens ::= lex(src);
 	nodes ::= parse(src, ref tokens);
+
 	progwalk_file(ref nodes);
 	return nodes;
 };
 
-add_build_file_to_compilation ::= func(path : u8? -> v0)
+find_and_invoke_build_region ::= func(node : ast?, region_name : u8?, region_name_len : u64 -> v0)
+{
+	region_node ::= ast_find_child_region(node, region_name, region_name_len);
+	if(region_node == zero)
+	{
+		psyc_error_begin(zero);
+		putzstr("build file ");
+		putchar('"');
+		putzstr(node->loc.file);
+		putchar('"');
+		putzstr(" had no region named ");
+		putchar('"');
+		putbytes(region_name, region_name_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// todo: invoke build region.
+};
+
+add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> v0)
 {
 	node ::= add_source_file_to_compilation(path);
-	// todo: build bits
+
+	psyc_timed_begin(psyc_stage.build);
+	find_and_invoke_build_region(ref node, config, config_len);
+	psyc_timed_end();
 };
 
 add_entrypoint_to_compilation ::= func(-> v0)
@@ -35,7 +60,8 @@ compile_program ::= func(-> v0)
 	putchar(13);
 	args ::= ref(prog.compile_args);
 
-	add_build_file_to_compilation(prog.compile_args.build_file);
+	default_config ::= "default";
+	add_build_file_to_compilation(prog.compile_args.build_file, default_config, zstrlen(default_config));
 	add_preload_to_compilation();
 	if(prog.type == (program_type.executable))
 	{
