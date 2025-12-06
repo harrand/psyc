@@ -1,13 +1,3 @@
-structure ::= struct
-{
-	name : u8?;
-	name_len : u64;
-	// opaque codegen handle
-	cg : u64;
-	// opaque debug information handle
-	db : u64;
-};
-
 program_type ::= enum
 {
 	.executable := 0;
@@ -27,11 +17,56 @@ program ::= struct
 	scopes_cap : u64;
 };
 
+structure ::= struct
+{
+	node : ast mut?;
+	name : u8?;
+	name_len : u64;
+	// opaque codegen handle
+	cg : u64;
+	// opaque debug information handle
+	db : u64;
+};
+
 function ::= struct
 {
 	node : ast mut?;
 	// todo: change type to lexical_scope mut? when circular dependencies (via pointers) are allowed
 	scope : v0 mut? weak;
+	name : u8?;
+	name_len : u64;
+	// opaque codegen handle
+	cg : u64;
+	// opaque debug information handle
+	db : u64;
+};
+
+enumeration ::= struct
+{
+	node : ast mut?;
+	name : u8?;
+	name_len : u64;
+	// opaque codegen handle
+	cg : u64;
+	// opaque debug information handle
+	db : u64;
+};
+
+assembly ::= struct
+{
+	node : ast mut?;
+	name : u8?;
+	name_len : u64;
+
+	code : u8?;
+	code_len : u64;
+	constraints : u8?;
+	constraints_len : u64;
+
+	// opaque codegen handle
+	cg : u64;
+	// opaque debug information handle
+	db : u64;
 };
 
 scope_type ::= enum
@@ -49,9 +84,50 @@ lexical_scope ::= struct
 	id : u64;
 	parent_id : u64;
 
+	structures : structure mut?;
+	structures_count : u64;
+	structures_cap : u64;
+
 	functions : function mut?;
 	functions_count : u64;
 	functions_cap : u64;
+
+	enumerations : enumeration mut?;
+	enumerations_count : u64;
+	enumerations_cap : u64;
+
+	assemblys : assembly mut?;
+	assemblys_count : u64;
+	assemblys_cap : u64;
+};
+
+scope_add_structure ::= func(scope : lexical_scope mut? mut, str : structure -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the structure becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use structure.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->structures == zero)
+	{
+		scope->structures_cap = 8;
+		scope->structures = arena_alloc(global_arena, scope->structures_cap * __sizeof(deref(scope->structures)));
+	}
+	while(scope->structures_count >= (scope->structures_cap))
+	{
+		oldcap ::= scope->structures_cap;
+		olddata ::= scope->structures;
+		scope->structures_cap = (scope->structures_cap * 2);
+		scope->structures = arena_alloc(global_arena, scope->structures_cap * __sizeof(deref(scope->structures)));
+		memcopy(scope->structures, olddata, oldcap * __sizeof(deref(scope->structures)));
+	}
+	deref(scope->structures # (scope->structures_count)) = str;
+	scope->structures_count = (scope->structures_count + 1);
 };
 
 scope_add_function ::= func(scope : lexical_scope mut? mut, fn : function -> v0)
@@ -81,6 +157,64 @@ scope_add_function ::= func(scope : lexical_scope mut? mut, fn : function -> v0)
 	}
 	deref(scope->functions # (scope->functions_count)) = fn;
 	scope->functions_count = (scope->functions_count + 1);
+};
+
+scope_add_enumeration ::= func(scope : lexical_scope mut? mut, en : enumeration -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the enumeration becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use enumeration.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->enumerations == zero)
+	{
+		scope->enumerations_cap = 8;
+		scope->enumerations = arena_alloc(global_arena, scope->enumerations_cap * __sizeof(deref(scope->enumerations)));
+	}
+	while(scope->enumerations_count >= (scope->enumerations_cap))
+	{
+		oldcap ::= scope->enumerations_cap;
+		olddata ::= scope->enumerations;
+		scope->enumerations_cap = (scope->enumerations_cap * 2);
+		scope->enumerations = arena_alloc(global_arena, scope->enumerations_cap * __sizeof(deref(scope->enumerations)));
+		memcopy(scope->enumerations, olddata, oldcap * __sizeof(deref(scope->enumerations)));
+	}
+	deref(scope->enumerations # (scope->enumerations_count)) = en;
+	scope->enumerations_count = (scope->enumerations_count + 1);
+};
+
+scope_add_assembly ::= func(scope : lexical_scope mut? mut, as : assembly -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the assembly becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use assembly.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->assemblys == zero)
+	{
+		scope->assemblys_cap = 8;
+		scope->assemblys = arena_alloc(global_arena, scope->assemblys_cap * __sizeof(deref(scope->assemblys)));
+	}
+	while(scope->assemblys_count >= (scope->assemblys_cap))
+	{
+		oldcap ::= scope->assemblys_cap;
+		olddata ::= scope->assemblys;
+		scope->assemblys_cap = (scope->assemblys_cap * 2);
+		scope->assemblys = arena_alloc(global_arena, scope->assemblys_cap * __sizeof(deref(scope->assemblys)));
+		memcopy(scope->assemblys, olddata, oldcap * __sizeof(deref(scope->assemblys)));
+	}
+	deref(scope->assemblys # (scope->assemblys_count)) = as;
+	scope->assemblys_count = (scope->assemblys_count + 1);
 };
 
 program_add_scope ::= func(-> lexical_scope mut?)

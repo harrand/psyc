@@ -18,12 +18,40 @@ progwalk_file ::= func(node : ast? -> v0)
 	for(i = 0, i < (node->children_count), i = i + 1)
 	{
 		child ::= ast_get_child(node, i);
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.structure)))
+		{
+			// its a structure
+			progwalk_structure(child, file_scope);
+		}
 		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.function)))
 		{
 			// its a function
 			progwalk_function(child, file_scope);
 		}
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.enumeration)))
+		{
+			// its a enumeration
+			progwalk_enumeration(child, file_scope);
+		}
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.assembly)))
+		{
+			// its a assembly
+			progwalk_assembly(child, file_scope);
+		}
 	}
+};
+
+progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	ast_struct ::= node->structure;
+	scope_add_structure(scope, structure
+	{
+		.node := node;
+		.name := ast_struct.name;
+		.name_len := ast_struct.name_len;
+		.cg := zero;
+		.db := zero;
+	});
 };
 
 progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
@@ -39,5 +67,44 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	{
 		.node := node;
 		.scope := func_scope;
+		.name := ast_fn.name;
+		.name_len := ast_fn.name_len;
+		.cg := zero;
+		.db := zero;
+	});
+};
+
+progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	ast_enum ::= node->enumeration;
+	scope_add_enumeration(scope, enumeration
+	{
+		.node := node;
+		.name := ast_enum.name;
+		.name_len := ast_enum.name_len;
+		.cg := zero;
+		.db := zero;
+	});
+};
+
+progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	ast_asm ::= node->assembly;
+	// child 0 is the typename
+	// child 1 is the unparsed_token symbol
+	symbol_node ::= ast_get_child(node, 1);
+	//assert(symbol_node->tag == (ast_tag.unparsed_token));
+	lexeme ::= symbol_node->utok.tok.lexeme;
+	scope_add_assembly(scope, assembly
+	{
+		.node := node;
+		.name := ast_asm.name;
+		.name_len := ast_asm.name_len;
+		.code := parse_state.src # (lexeme.off);
+		.code_len := lexeme.len;
+		.constraints := ast_asm.constraints;
+		.constraints_len := ast_asm.constraints_len;
+		.cg := zero;
+		.db := zero;
 	});
 };

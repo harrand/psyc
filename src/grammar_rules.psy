@@ -1611,6 +1611,44 @@ rule_assembly_coding_token_cbrace2finalised ::= func(nodes : ast mut?, nodes_cou
 	};
 };
 
+rule_token_compare_token_symbol_token_compare_token_obrace2regionwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// == symbol == {
+	lexeme ::= (nodes # 1)->utok.tok.lexeme;
+	regionwip_node ::= ast
+	{
+		.tag := ast_tag.regionwip;
+		.region := ast_region
+		{
+			.name := parse_state.src # (lexeme.off);
+			.name_len := lexeme.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(regionwip_node);
+	};
+};
+
+rule_regionwip_token_cbrace_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// regionwip };
+	// cap off a regionwip into a region stmt.
+	region_node ::= nodes # 0;
+	region_node->tag = (ast_tag.stmt);
+	region_node->stmt = (ast_stmt_tag.region);
+	region_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_delete_all_but_first();
+	};
+};
+
 rule_expr_token_semicol2stmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have an expr (of any particular tag) and a semicol

@@ -14,7 +14,6 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_call_param_expr);
 	foreach_expr(grammar_deref_expr);
 
-
 	grammar_typename();
 	foreach_expr(grammar_typename_array_length_expr);
 
@@ -60,6 +59,8 @@ grammar_install ::= func(-> v0)
 	foreach_stmt(grammar_for_stmt);
 
 	grammar_asm();
+
+	grammar_region();
 
 	foreach_expr(grammar_stmtify_expr);
 	grammar_stmtify_nonexpr();
@@ -1499,6 +1500,61 @@ grammar_asm ::= func(-> v0)
 			grammar_rule{.fn := rule_assembly_coding_token_cbrace2finalised;});
 		}
 	}
+};
+
+grammar_region ::= func(-> v0)
+{
+	// compare is also a unop which gets stashed.
+	// it gets stashed super early on so we cant catch it earlier
+	// so lets unstash it early if we notice the syntax for a region
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	token(lex_token.compare), token(lex_token.compare)),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.symbol),
+		token(lex_token.compare),
+	zero, token(lex_token.compare)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state3(
+		token(lex_token.compare),
+		token(lex_token.symbol),
+		token(lex_token.compare),
+	token(lex_token.obrace), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state4(
+		token(lex_token.compare),
+		token(lex_token.symbol),
+		token(lex_token.compare),
+		token(lex_token.obrace),
+	zero, zero),
+	grammar_rule{.fn := rule_token_compare_token_symbol_token_compare_token_obrace2regionwip;});
+
+	grammar_hashtable_insert(state1(
+		node(ast_tag.regionwip),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.cbrace),
+	token(lex_token.semicol), node(ast_tag.regionwip)),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.cbrace),
+		token(lex_token.semicol),
+	zero, node(ast_tag.regionwip)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state3(
+		node(ast_tag.regionwip),
+		token(lex_token.cbrace),
+		token(lex_token.semicol),
+	zero, zero),
+	grammar_rule{.fn := rule_regionwip_token_cbrace_token_semicol2stmt;});
 };
 
 grammar_stmtify_expr ::= func(exprtag : ast_expr_tag -> v0)
