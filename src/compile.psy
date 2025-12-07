@@ -4,26 +4,46 @@ source_file ::= struct
 	path : u8?;
 };
 
-add_source_file_to_compilation ::= func(path : u8? -> ast)
+// if out_file_scope isnt zero, i will write out the new file scope i created for this file.
+add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_scope mut? mut? -> ast)
 {
 	src ::= fully_read_file(path, global_arena);
 
 	tokens ::= lex(src);
 	nodes ::= parse(src, ref tokens);
 
-	progwalk_file(ref nodes);
+	file_scope ::= progwalk_file(ref nodes);
+	if(out_file_scope != zero)
+	{
+		deref(out_file_scope) = file_scope;
+	}
 	return nodes;
 };
 
-find_and_invoke_build_region ::= func(node : ast?, region_name : u8?, region_name_len : u64 -> v0)
+find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?, region_name_len : u64 -> v0)
 {
-	region_node ::= ast_find_child_region(node, region_name, region_name_len);
-	if(region_node == zero)
+	the_region : region mut? mut := zero;
+
+	i : u64 mut;
+	for(i = 0, i < (scope->regions_count), i = i + 1)
 	{
+		cur_region ::= scope->regions # i;
+		if(cur_region->name_len == region_name_len)
+		{
+			if(streql_n(cur_region->name, region_name, region_name_len))
+			{
+				the_region = cur_region;
+			}
+		}
+	}
+
+	if(the_region == zero)
+	{
+		// todo: maybe pass in a called_from ast so we can give a more specific error message in the case that the build region was invoked from another?
 		psyc_error_begin(zero);
 		putzstr("build file ");
 		putchar('"');
-		putzstr(node->loc.file);
+		putbytes(scope->name, scope->name_len);
 		putchar('"');
 		putzstr(" had no region named ");
 		putchar('"');
@@ -33,15 +53,19 @@ find_and_invoke_build_region ::= func(node : ast?, region_name : u8?, region_nam
 		psyc_exit_failure();
 	}
 	// todo: invoke build region.
+	invoke_build_region(the_region->node);
 };
 
-add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> v0)
+add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> ast)
 {
-	node ::= add_source_file_to_compilation(path);
+	file_scope : lexical_scope mut? mut := zero;
+	node ::= add_source_file_to_compilation(path, ref file_scope);
 
 	psyc_timed_begin(psyc_stage.build);
-	find_and_invoke_build_region(ref node, config, config_len);
+	find_and_invoke_build_region(file_scope, config, config_len);
 	psyc_timed_end();
+
+	return node;
 };
 
 add_entrypoint_to_compilation ::= func(-> v0)

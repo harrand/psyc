@@ -69,6 +69,13 @@ assembly ::= struct
 	db : u64;
 };
 
+region ::= struct
+{
+	node : ast mut?;
+	name : u8?;
+	name_len : u64;
+};
+
 scope_type ::= enum
 {
 	.program := 0;
@@ -99,6 +106,10 @@ lexical_scope ::= struct
 	assemblys : assembly mut?;
 	assemblys_count : u64;
 	assemblys_cap : u64;
+
+	regions : region mut?;
+	regions_count : u64;
+	regions_cap : u64;
 };
 
 scope_add_structure ::= func(scope : lexical_scope mut? mut, str : structure -> v0)
@@ -215,6 +226,27 @@ scope_add_assembly ::= func(scope : lexical_scope mut? mut, as : assembly -> v0)
 	}
 	deref(scope->assemblys # (scope->assemblys_count)) = as;
 	scope->assemblys_count = (scope->assemblys_count + 1);
+};
+
+scope_add_region ::= func(scope : lexical_scope mut? mut, as : region -> v0)
+{
+	// unlike the others, regions never jump from file-scope -> program-scope.
+
+	if(scope->regions == zero)
+	{
+		scope->regions_cap = 8;
+		scope->regions = arena_alloc(global_arena, scope->regions_cap * __sizeof(deref(scope->regions)));
+	}
+	while(scope->regions_count >= (scope->regions_cap))
+	{
+		oldcap ::= scope->regions_cap;
+		olddata ::= scope->regions;
+		scope->regions_cap = (scope->regions_cap * 2);
+		scope->regions = arena_alloc(global_arena, scope->regions_cap * __sizeof(deref(scope->regions)));
+		memcopy(scope->regions, olddata, oldcap * __sizeof(deref(scope->regions)));
+	}
+	deref(scope->regions # (scope->regions_count)) = as;
+	scope->regions_count = (scope->regions_count + 1);
 };
 
 program_add_scope ::= func(-> lexical_scope mut?)

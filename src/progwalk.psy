@@ -4,7 +4,7 @@
 // in theory you'd think its as simple as progwalk_node + progwalk_children and then dispatch it all to the right node types
 // however this would mean alot of unnecessary work
 // so instead we just iterate over all the immediate children. globals/functions/structs etc are recorded.
-progwalk_file ::= func(node : ast? -> v0)
+progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 {
 	file_scope ::= program_add_scope();
 	deref(file_scope) = lexical_scope
@@ -38,7 +38,13 @@ progwalk_file ::= func(node : ast? -> v0)
 			// its a assembly
 			progwalk_assembly(child, file_scope);
 		}
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.region)))
+		{
+			// its a region
+			progwalk_region(child, file_scope);
+		}
 	}
+	return file_scope;
 };
 
 progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
@@ -106,5 +112,16 @@ progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 		.constraints_len := ast_asm.constraints_len;
 		.cg := zero;
 		.db := zero;
+	});
+};
+
+progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	ast_region ::= node->region;
+	scope_add_region(scope, region
+	{
+		.node := node;
+		.name := ast_region.name;
+		.name_len := ast_region.name_len;
 	});
 };
