@@ -1,14 +1,6 @@
-source_file ::= struct
-{
-	src : u8?;
-	path : u8?;
-};
-
 // if out_file_scope isnt zero, i will write out the new file scope i created for this file.
-add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_scope mut? mut? -> ast)
+add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope mut? mut? -> ast)
 {
-	src ::= fully_read_file(path, global_arena);
-
 	tokens ::= lex(src);
 	nodes ::= parse(src, ref tokens);
 
@@ -19,11 +11,23 @@ add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_sco
 	}
 	return nodes;
 };
+add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_scope mut? mut? -> ast)
+{
+	src ::= fully_read_file(path, global_arena);
+	program_push_source_file(src);
+	defer program_pop_source_file();
+	ret ::= add_source_file_inner(src, zero);
+	return ret;
+};
 
 add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> ast)
 {
+	src ::= fully_read_file(path, global_arena);
+	program_push_source_file(src);
+	defer program_pop_source_file();
+
 	file_scope : lexical_scope mut? mut := zero;
-	node ::= add_source_file_to_compilation(path, ref file_scope);
+	node ::= add_source_file_inner(src, ref file_scope);
 
 	psyc_timed_begin(psyc_stage.build);
 	find_and_invoke_build_region(file_scope, config, config_len);

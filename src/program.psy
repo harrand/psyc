@@ -15,6 +15,16 @@ program ::= struct
 	scopes : lexical_scope mut?;
 	scopes_count : u64;
 	scopes_cap : u64;
+
+	source_files : source_file mut?;
+	source_files_count : u64;
+	source_files_cap : u64;
+};
+
+source_file ::= struct
+{
+	src : u8?;
+	path : u8?;
 };
 
 structure ::= struct
@@ -280,6 +290,36 @@ program_get_scope ::= func(id : u64 -> lexical_scope mut?)
 program_scope ::= func(-> lexical_scope mut?)
 {
 	return program_get_scope(0);
+};
+
+program_push_source_file ::= func(file : source_file -> v0)
+{
+	if(prog.source_files == zero)
+	{
+		prog.source_files_cap = 8;
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * __sizeof(deref(prog.source_files)));
+	}
+	while(prog.source_files_count >= (prog.source_files_cap))
+	{
+		oldcap ::= prog.source_files_cap;
+		olddata ::= prog.source_files;
+		prog.source_files_cap = (prog.source_files_cap * 2);
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * __sizeof(deref(prog.source_files)));
+		memcopy(prog.source_files, olddata, oldcap * __sizeof(deref(prog.source_files)));
+	}
+	i ::= prog.source_files_count;
+	prog.source_files_count = (prog.source_files_count + 1);
+	deref(prog.source_files # i) = file;
+};
+
+program_current_source_file ::= func(-> source_file)
+{
+	return deref(prog.source_files # (prog.source_files_count - 1));
+};
+
+program_pop_source_file ::= func(-> v0)
+{
+	prog.source_files_count = (prog.source_files_count - 1);
 };
 
 scope_get_parent ::= func(s : lexical_scope mut? -> lexical_scope mut?)
