@@ -45,4 +45,22 @@ invoke_build_region ::= func(node : ast? -> v0)
 
 invoke_build_instruction ::= func(node : ast? -> v0)
 {
+	if(ast_is_expr(node, ast_expr_tag.call))
+	{
+		maybe_builtin ::= builtin_match_name(node->call.call_name, node->call.call_name_len);
+		if(maybe_builtin != zero)
+		{
+			builtin_get(maybe_builtin).on_call_static(node);
+		}
+		else
+		{
+		}
+		return;
+	}
+	psyc_panic_begin(node->loc);	
+	putzstr("not sure how to invoke the following code within a build region:");
+	putchar(10);
+	ast_print_annotated_source(parse_state.src, node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
 };

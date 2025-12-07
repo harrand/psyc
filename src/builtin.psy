@@ -1,0 +1,98 @@
+builtin_type ::= enum
+{
+	.static_builtin := 1;
+	.runtime_builtin := 2;
+};
+
+builtin_data ::= struct
+{
+	on_call_static : func(node : ast? -> v0);
+	// todo: use whatever signature you want here.
+	on_call_runtime : func(-> v0);
+};
+
+builtin_install ::= func(id : builtin, data : builtin_data -> v0)
+{
+	deref(builtin_table # (id@s64 - 1)) = data;
+};
+
+builtin_match_name ::= func(name : u8?, name_len : u64 -> builtin)
+{
+	i : u64 mut;
+	for(i = 0, i < __countof(builtin), i = i + 1)
+	{
+		id ::= (i + 1)@s64@builtin;
+		cur_name ::= __enumname(id);
+		cur_name_len ::= zstrlen(cur_name);
+		if(cur_name_len == name_len)
+		{
+			if(streql_n(cur_name, name, name_len))
+			{
+				return id;
+			}
+		}
+	}
+	return zero;
+};
+
+builtin_fn_param ::= func(node : ast?, id : u64 -> sval)
+{
+	if(node->children_count <= id)
+	{
+		psyc_panic_begin(node->loc);
+		putzstr("builtin_fn_param out of range. this should've been checked earlier.");
+		psyc_diag_end();
+		psyc_exit_failure();
+		return zero;
+	}
+	child ::= ast_get_child(node, id);
+	return sval_node(child);
+};
+
+builtin_require_params ::= func(node : ast?, min : u64, max : u64 -> v0)
+{
+	count ::= node->children_count;
+	if((min <= count) && (count <= max))
+	{
+		return;
+	}
+	psyc_error_begin(node->loc);
+	putzstr("invalid call to builtin ");
+	putchar('"');
+	putbytes(node->call.call_name, node->call.call_name_len);
+	putchar('"');
+	putzstr(" - expected ");
+	putuint(min);
+	if(min != max)
+	{
+		putzstr("-");
+		putuint(max);
+	}
+	putzstr(" param(s), but got ");
+	putuint(count);
+	putchar(10);
+	ast_print_annotated_source(parse_state.src, node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+builtin_get ::= func(b : builtin -> builtin_data)
+{
+	return deref(builtin_table # (b@s64 - 1));
+};
+
+builtin_table : builtin_data mut[1] mut := zero;
+builtin ::= enum
+{
+	.assert := 1;
+};
+
+builtin_setup ::= func(-> v0)
+{
+	builtin_install(builtin.assert, builtin_data
+	{
+		.on_call_static := builtin_assert_static;
+		.on_call_runtime := zero;
+	});
+};
+
