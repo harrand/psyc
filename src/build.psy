@@ -1,3 +1,39 @@
+find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?, region_name_len : u64 -> v0)
+{
+	the_region : region mut? mut := zero;
+
+	i : u64 mut;
+	for(i = 0, i < (scope->regions_count), i = i + 1)
+	{
+		cur_region ::= scope->regions # i;
+		if(cur_region->name_len == region_name_len)
+		{
+			if(streql_n(cur_region->name, region_name, region_name_len))
+			{
+				the_region = cur_region;
+			}
+		}
+	}
+
+	if(the_region == zero)
+	{
+		// todo: maybe pass in a called_from ast so we can give a more specific error message in the case that the build region was invoked from another?
+		psyc_error_begin(zero);
+		putzstr("build file ");
+		putchar('"');
+		putbytes(scope->name, scope->name_len);
+		putchar('"');
+		putzstr(" had no region named ");
+		putchar('"');
+		putbytes(region_name, region_name_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// todo: invoke build region.
+	invoke_build_region(the_region->node);
+};
+
 invoke_build_region ::= func(node : ast? -> v0)
 {
 	i : u64 mut;
