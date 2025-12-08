@@ -19,6 +19,10 @@ program ::= struct
 	source_files : source_file mut?;
 	source_files_count : u64;
 	source_files_cap : u64;
+
+	structures : structure mut?;
+	structures_count : u64;
+	structures_cap : u64;
 };
 
 source_file ::= struct
@@ -101,7 +105,9 @@ lexical_scope ::= struct
 	id : u64;
 	parent_id : u64;
 
-	structures : structure mut?;
+	// this is an index into prog.structures.
+	// this is a necessary workaround so a structure can have a pointer to itself as a data member.
+	structures : u64 mut?;
 	structures_count : u64;
 	structures_cap : u64;
 
@@ -122,11 +128,36 @@ lexical_scope ::= struct
 	regions_cap : u64;
 };
 
+program_add_global_structure ::= func(str : structure -> u64)
+{
+	// first add it to prog.structures globally
+	if(prog.structures == zero)
+	{
+		prog.structures_cap = 8;
+		prog.structures = arena_alloc(global_arena, prog.structures_cap * __sizeof(deref(prog.structures)));
+	}
+	while(prog.structures_count >= (prog.structures_cap))
+	{
+		oldcap ::= prog.structures_cap;
+		olddata ::= prog.structures;
+		prog.structures_cap = (prog.structures_cap * 2);
+		prog.structures = arena_alloc(global_arena, prog.structures_cap * __sizeof(deref(prog.structures)));
+		memcopy(prog.structures, olddata, oldcap * __sizeof(deref(prog.structures)));
+	}
+	id ::= prog.structures_count;
+	deref(prog.structures # id) = str;
+	prog.structures_count = (prog.structures_count + 1);
+	return id;
+};
+
 scope_add_structure ::= func(scope : lexical_scope mut? mut, str : structure -> v0)
 {
+	// and now the actual scope part
+	id ::= program_add_global_structure(str);
+
 	// naughty secret here:
 	// if the scope is a file scope
-	// we change ourselves to the program scope so the structure becomes globally available
+	// we change ourselves to the program scope so the function becomes globally available
 	// we could just have it in both but then the data could go out of sync
 	// you can always use structure.node->loc to get the original file location anyway.
 	if(scope->type == (scope_type.file))
@@ -147,7 +178,7 @@ scope_add_structure ::= func(scope : lexical_scope mut? mut, str : structure -> 
 		scope->structures = arena_alloc(global_arena, scope->structures_cap * __sizeof(deref(scope->structures)));
 		memcopy(scope->structures, olddata, oldcap * __sizeof(deref(scope->structures)));
 	}
-	deref(scope->structures # (scope->structures_count)) = str;
+	deref(scope->structures # (scope->structures_count)) = id;
 	scope->structures_count = (scope->structures_count + 1);
 };
 
