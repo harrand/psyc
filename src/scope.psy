@@ -1,0 +1,205 @@
+scope_type ::= enum
+{
+	.program := 0;
+	.file := 1;
+	.function := 2;
+};
+
+lexical_scope ::= struct
+{
+	type : scope_type;
+	name : u8?;
+	name_len : u64;
+	id : u64;
+	parent_id : u64;
+
+	structures : structure mut?;
+	structures_count : u64;
+	structures_cap : u64;
+
+	functions : function mut?;
+	functions_count : u64;
+	functions_cap : u64;
+
+	enumerations : enumeration mut?;
+	enumerations_count : u64;
+	enumerations_cap : u64;
+
+	assemblys : assembly mut?;
+	assemblys_count : u64;
+	assemblys_cap : u64;
+
+	regions : region mut?;
+	regions_count : u64;
+	regions_cap : u64;
+};
+
+scope_find_structure ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> structure?)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->structures_count), i = i + 1)
+	{
+		cur ::= scope->structures # i;
+		typedata ::= tybox_at(ref(prog.types), cur->type);
+		if(typedata->name_len == name_len)
+		{
+			if(streql_n(typedata->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	parent ::= scope_get_parent(scope);
+	if(parent != zero)
+	{
+		return scope_find_structure(parent, name, name_len);
+	}
+	return zero;
+};
+
+scope_add_structure ::= func(scope : lexical_scope mut? mut, fn : structure -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the structure becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use structure.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->structures == zero)
+	{
+		scope->structures_cap = 8;
+		scope->structures = arena_alloc(global_arena, scope->structures_cap * __sizeof(deref(scope->structures)));
+	}
+	while(scope->structures_count >= (scope->structures_cap))
+	{
+		oldcap ::= scope->structures_cap;
+		olddata ::= scope->structures;
+		scope->structures_cap = (scope->structures_cap * 2);
+		scope->structures = arena_alloc(global_arena, scope->structures_cap * __sizeof(deref(scope->structures)));
+		memcopy(scope->structures, olddata, oldcap * __sizeof(deref(scope->structures)));
+	}
+	deref(scope->structures # (scope->structures_count)) = fn;
+	scope->structures_count = (scope->structures_count + 1);
+};
+
+scope_add_function ::= func(scope : lexical_scope mut? mut, fn : function -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the function becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use function.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->functions == zero)
+	{
+		scope->functions_cap = 8;
+		scope->functions = arena_alloc(global_arena, scope->functions_cap * __sizeof(deref(scope->functions)));
+	}
+	while(scope->functions_count >= (scope->functions_cap))
+	{
+		oldcap ::= scope->functions_cap;
+		olddata ::= scope->functions;
+		scope->functions_cap = (scope->functions_cap * 2);
+		scope->functions = arena_alloc(global_arena, scope->functions_cap * __sizeof(deref(scope->functions)));
+		memcopy(scope->functions, olddata, oldcap * __sizeof(deref(scope->functions)));
+	}
+	deref(scope->functions # (scope->functions_count)) = fn;
+	scope->functions_count = (scope->functions_count + 1);
+};
+
+scope_add_enumeration ::= func(scope : lexical_scope mut? mut, en : enumeration -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the enumeration becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use enumeration.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->enumerations == zero)
+	{
+		scope->enumerations_cap = 8;
+		scope->enumerations = arena_alloc(global_arena, scope->enumerations_cap * __sizeof(deref(scope->enumerations)));
+	}
+	while(scope->enumerations_count >= (scope->enumerations_cap))
+	{
+		oldcap ::= scope->enumerations_cap;
+		olddata ::= scope->enumerations;
+		scope->enumerations_cap = (scope->enumerations_cap * 2);
+		scope->enumerations = arena_alloc(global_arena, scope->enumerations_cap * __sizeof(deref(scope->enumerations)));
+		memcopy(scope->enumerations, olddata, oldcap * __sizeof(deref(scope->enumerations)));
+	}
+	deref(scope->enumerations # (scope->enumerations_count)) = en;
+	scope->enumerations_count = (scope->enumerations_count + 1);
+};
+
+scope_add_assembly ::= func(scope : lexical_scope mut? mut, as : assembly -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the assembly becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use assembly.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->assemblys == zero)
+	{
+		scope->assemblys_cap = 8;
+		scope->assemblys = arena_alloc(global_arena, scope->assemblys_cap * __sizeof(deref(scope->assemblys)));
+	}
+	while(scope->assemblys_count >= (scope->assemblys_cap))
+	{
+		oldcap ::= scope->assemblys_cap;
+		olddata ::= scope->assemblys;
+		scope->assemblys_cap = (scope->assemblys_cap * 2);
+		scope->assemblys = arena_alloc(global_arena, scope->assemblys_cap * __sizeof(deref(scope->assemblys)));
+		memcopy(scope->assemblys, olddata, oldcap * __sizeof(deref(scope->assemblys)));
+	}
+	deref(scope->assemblys # (scope->assemblys_count)) = as;
+	scope->assemblys_count = (scope->assemblys_count + 1);
+};
+
+scope_add_region ::= func(scope : lexical_scope mut? mut, as : region -> v0)
+{
+	// unlike the others, regions never jump from file-scope -> program-scope.
+
+	if(scope->regions == zero)
+	{
+		scope->regions_cap = 8;
+		scope->regions = arena_alloc(global_arena, scope->regions_cap * __sizeof(deref(scope->regions)));
+	}
+	while(scope->regions_count >= (scope->regions_cap))
+	{
+		oldcap ::= scope->regions_cap;
+		olddata ::= scope->regions;
+		scope->regions_cap = (scope->regions_cap * 2);
+		scope->regions = arena_alloc(global_arena, scope->regions_cap * __sizeof(deref(scope->regions)));
+		memcopy(scope->regions, olddata, oldcap * __sizeof(deref(scope->regions)));
+	}
+	deref(scope->regions # (scope->regions_count)) = as;
+	scope->regions_count = (scope->regions_count + 1);
+};
+
+scope_get_parent ::= func(s : lexical_scope mut? -> lexical_scope mut?)
+{
+	if(s->parent_id == -1)
+	{
+		return zero;
+	}
+	return program_get_scope(s->parent_id);
+};
+
