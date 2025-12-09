@@ -1,24 +1,11 @@
 tyqual ::= enum
 {
-	.qual_static := 0b10000000;
-	.qual_mut := 0b01000000;
-	.qual_weak := 0b00100000;
-};
-
-tyid ::= enum
-{
-	.v0 := 1;
-	.s64 := 2;
-	.s32 := 3;
-	.s16 := 4;
-	.s8 := 5;
-	.u64 := 6;
-	.u32 := 7;
-	.u16 := 8;
-	.u8 := 9;
-	.bool := 10;
-	.f64 := 11;
-	.f32 := 12;
+	// msb set
+	.qual_static := 0x8000000000000000;
+	// msb-1 set
+	.qual_mut := 0x4000000000000000;
+	// msb-2 set
+	.qual_weak := 0x2000000000000000;
 };
 
 tytag ::= enum
@@ -45,9 +32,70 @@ ty ::= struct
 	name : u8?;
 	name_len : u64;
 
-	// if pointer: underlying. if base, id into type_table
+	// if pointer: underlying. if base, id into corresponding tybox
 	base : tyid;
 	array_len : u64;
 	strct : structty;
 };
 
+// this tyid enum is the magic behind it all. here you only see the primitive types.
+// however anytime a tybox registers a new e.g struct/enum type they will get their
+// own tyid entry dedicated to them. also pointers/arrays of stuff will also have
+// their own tyid. this might seem wasteful but is necessary. type qualifiers though
+// are implemented as bitflags on the top 3 most significant bits of a tyid. so for
+// example. tyid.v0 is 'v0' with no quals. if this tyid had the top 3 bits set, it
+// would instead be a 'v0 mut weak static'. this means that *every* single type you
+// could think of has its own tyid. it also makes the type system pretty flat w.r.t
+// memory.
+tyid ::= enum
+{
+	.v0 := 1;
+	.s64 := 2;
+	.s32 := 3;
+	.s16 := 4;
+	.s8 := 5;
+	.u64 := 6;
+	.u32 := 7;
+	.u16 := 8;
+	.u8 := 9;
+	.bool := 10;
+	.f64 := 11;
+	.f32 := 12;
+};
+
+tyid_has_qual ::= func(id : tyid, qual : tyqual -> bool)
+{
+	return ((id@s64) & (qual@s64)) > 1;
+};
+
+tyid_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
+{
+	return ((id@s64) | (qual@s64))@tyid;
+};
+
+tyid_clear_qual ::= func(id : tyid -> tyid)
+{
+	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
+	return (id@s64 & all_but_top_3_msb)@tyid;
+};
+
+putty ::= func(id : tyid -> v0)
+{
+	is_mut ::= tyid_has_qual(id, tyqual.qual_mut);
+	is_weak ::= tyid_has_qual(id, tyqual.qual_weak);
+	is_static ::= tyid_has_qual(id, tyqual.qual_static);
+	tydata ::= tybox_at(ref(prog.types), tyid_clear_qual(id));
+	putbytes(tydata->name, tydata->name_len);
+	if(is_mut)
+	{
+		putzstr(" mut");
+	}
+	if(is_weak)
+	{
+		putzstr(" weak");
+	}
+	if(is_static)
+	{
+		putzstr(" static");
+	}
+};
