@@ -20,6 +20,11 @@ program ::= struct
 	source_files_count : u64;
 	source_files_cap : u64;
 
+	queued_source_paths : u8? mut?;
+	queued_source_path_lens : u64 mut?;
+	queued_source_paths_count : u64;
+	queued_source_paths_cap : u64;
+
 	types : tybox;
 };
 
@@ -165,3 +170,30 @@ program_find_source_file ::= func(path : u8? -> source_file?)
 	return zero;
 };
 
+program_queue_source_path ::= func(path : u8?, path_len : u64 -> v0)
+{
+	if(prog.queued_source_paths == zero)
+	{
+		prog.queued_source_paths_cap = 8;
+		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_paths)));
+		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_path_lens)));
+	}
+	while(prog.queued_source_paths_count >= (prog.queued_source_paths_cap))
+	{
+		oldcap ::= prog.queued_source_paths_cap;
+		oldpathdata ::= prog.queued_source_paths;
+		oldlendata ::= prog.queued_source_path_lens;
+
+		prog.queued_source_paths_cap = (prog.queued_source_paths_cap * 2);
+		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_paths)));
+		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_path_lens)));
+		memcopy(prog.queued_source_paths, oldpathdata, oldcap * __sizeof(deref(prog.queued_source_paths)));
+		memcopy(prog.queued_source_path_lens, oldlendata, oldcap * __sizeof(deref(prog.queued_source_path_lens)));
+
+		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.queued_source_paths)));
+		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.queued_source_path_lens)));
+	}
+	deref(prog.queued_source_paths # (prog.queued_source_paths_count)) = path;
+	deref(prog.queued_source_path_lens # (prog.queued_source_paths_count)) = path_len;
+	prog.queued_source_paths_count = (prog.queued_source_paths_count + 1);
+};

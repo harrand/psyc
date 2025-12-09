@@ -11,6 +11,7 @@ add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope
 	}
 	return nodes;
 };
+
 add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_scope mut? mut? -> ast)
 {
 	src ::= fully_read_file(path);
@@ -56,6 +57,15 @@ compile_program ::= func(-> v0)
 	if(prog.type == (program_type.executable))
 	{
 		add_entrypoint_to_compilation();
+	}
+
+	while(prog.queued_source_paths_count > 0)
+	{
+		cur_path ::= deref(prog.queued_source_paths # (prog.queued_source_paths_count - 1));
+		cur_len ::= deref(prog.queued_source_path_lens # (prog.queued_source_paths_count - 1));
+		path_zstr ::= sstr2zstr(cur_path, cur_len, string_arena);
+		add_source_file_to_compilation(path_zstr, zero);
+		prog.queued_source_paths_count = (prog.queued_source_paths_count - 1);
 	}
 
 	if(!directory_exists(args->output_dir))

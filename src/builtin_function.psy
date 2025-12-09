@@ -1,15 +1,15 @@
 builtin_assert_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	cond ::= builtin_fn_param(node, 0);
-	if(!sval_is_valid(cond) || (cond.tag != (sval_tag.primitive)) || (cond.primitive.tag != (ast_literal_tag.boolean)))
+	cond_sval ::= builtin_fn_param(node, 0);
+	if(!sval_is_valid(cond_sval) || (cond_sval.tag != (sval_tag.primitive)) || (cond_sval.primitive.tag != (ast_literal_tag.boolean)))
 	{
 		psyc_error_begin(node->loc);
 		putzstr("todo: better error message for dodgy static assert param 0");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(!(cond.primitive.boolean))
+	if(!(cond_sval.primitive.boolean))
 	{
 		psyc_error_begin(node->loc);
 		putzstr("static assert failure");
@@ -18,5 +18,34 @@ builtin_assert_static ::= func(node : ast? -> v0)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+};
+
+builtin_add_source_file_static ::= func(node : ast? -> v0)
+{
+	builtin_require_params(node, 1, 1);
+	path_sval ::= builtin_fn_param(node, 0);
+	if(!sval_is_valid(path_sval) || (path_sval.tag != (sval_tag.primitive)) || (path_sval.primitive.tag != (ast_literal_tag.string)))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("todo: better error message for dodgy static assert param 0");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	path_zstr ::= sstr2zstr(path_sval.primitive.chars, path_sval.primitive.chars_len, string_arena);
+	if(!file_exists(path_zstr))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("source file ");
+		putchar('"');
+		putzstr(path_zstr);
+		putchar('"');
+		putzstr(" could not be found:");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	program_queue_source_path(path_sval.primitive.chars, path_sval.primitive.chars_len);
 };
 
