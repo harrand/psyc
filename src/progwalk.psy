@@ -6,6 +6,8 @@
 // so instead we just iterate over all the immediate children. globals/functions/structs etc are recorded.
 progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 {
+	psyc_timed_begin(psyc_stage.semantic);
+	defer psyc_timed_end();
 	file_scope ::= program_add_scope();
 	deref(file_scope) = lexical_scope
 	{
@@ -49,16 +51,49 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 
 progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 {
-	ast_struct ::= node->structure;
+	structdata ::= node->structure;
 	// todo: do something with ast_struct
-	//scope_add_structure(scope, structure
-	//{
-	//	.node := node;
-	//	.name := ast_struct.name;
-	//	.name_len := ast_struct.name_len;
-	//	.cg := zero;
-	//	.db := zero;
-	//});
+	memcount ::= node->children_count;
+	unfinished_type ::= ty
+	{
+		.tag := tytag.strct;
+		.name := structdata.name;
+		.name_len := structdata.name_len;
+		.strct := structty
+		{
+			.members := arena_alloc(global_arena, memcount * __sizeof(tyid));
+			.member_names := arena_alloc(global_arena, memcount * __sizeof(u8?));
+			.member_name_lens := arena_alloc(global_arena, memcount * __sizeof(u64));
+			.members_count := memcount;
+		};
+	};
+	already ::= scope_find_structure(scope, structdata.name, structdata.name_len);
+	if(already != zero)
+	{
+		psyc_error_begin(node->loc);
+		putzstr("duplicate struct ");
+		putchar('"');
+		putbytes(structdata.name, structdata.name_len);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_current_source_file().src, node, 1);
+		putchar(10);
+		putzstr("previous definition was ");
+		putloc(already->node->loc);
+		putchar(':');
+		already_src ::= program_find_source_file(already->node->loc.file);
+		putchar(10);
+		ast_print_annotated_source(already_src->src, already->node, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	scope_add_structure(scope, structure
+	{
+		.node := node;
+		.type := tybox_do_add(ref(prog.types), unfinished_type);
+		.cg := zero;
+		.db := zero;
+	});
 };
 
 progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
