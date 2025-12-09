@@ -42,6 +42,7 @@ structty ::= struct
 ty ::= struct
 {
 	tag : tytag;
+	quals : tyqual;
 	name : u8?;
 	name_len : u64;
 
@@ -72,8 +73,9 @@ tybox_create ::= func(capacity : u64 -> tybox)
 	return ret;
 };
 
-// add a new type to the box and return its id
-tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
+
+// add a new type to the box and return its id. dont check for duplicates.
+tybox_do_add ::= func(box : tybox mut?, newty : ty -> tyid)
 {
 	while(box->data_count >= (box->data_cap))
 	{
@@ -86,6 +88,17 @@ tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
 	id ::= box->data_count;
 	deref(box->data # id) = newty;
 	return id@s64@tyid;
+};
+
+// like tybox_do_add, but if the type already exists return its id.
+tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
+{
+	already ::= tybox_find(box, newty.name, newty.name_len);
+	if(already != zero)
+	{
+		return already;
+	}
+	return tybox_do_add(box, newty);
 };
 
 tybox_find ::= func(box : tybox?, name : u8?, name_len : u64 -> tyid)
@@ -109,7 +122,23 @@ tybox_find ::= func(box : tybox?, name : u8?, name_len : u64 -> tyid)
 // add an empty type to the box and return its id
 tybox_add_empty ::= func(box : tybox mut? -> tyid)
 {
-	return tybox_add(box, zero);
+	return tybox_do_add(box, zero);
+};
+
+tybox_add_ref ::= func(box : tybox mut?, underlying : tyid, quals : tyqual -> tyid)
+{
+	u ::= tybox_at(box, underlying);
+	name : u8 mut? := arena_alloc(string_arena, u->name_len + 1);
+	memcopy(name, u->name, u->name_len);
+	deref(name # (u->name_len)) = 0;
+	return tybox_add(box, ty
+	{
+		.tag := tytag.ptr;
+		.quals := quals;
+		.name := name;
+		.name_len := u->name_len + 1;
+		.base := underlying;
+	});
 };
 
 // get the type within a box at the given id
@@ -136,10 +165,4 @@ impl_tybox_populate_prims ::= func(box : tybox mut? -> u64)
 		};
 	}
 	return prim_count;
-};
-
-// actual type utilities
-ty_ref ::= func(underlying : ty -> ty)
-{
-	
 };

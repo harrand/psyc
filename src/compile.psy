@@ -13,7 +13,7 @@ add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope
 };
 add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_scope mut? mut? -> ast)
 {
-	src ::= fully_read_file(path, global_arena);
+	src ::= fully_read_file(path);
 	program_push_source_file(src);
 	defer program_pop_source_file();
 	ret ::= add_source_file_inner(src, zero);
@@ -22,7 +22,7 @@ add_source_file_to_compilation ::= func(path : u8?, out_file_scope : lexical_sco
 
 add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> ast)
 {
-	src ::= fully_read_file(path, global_arena);
+	src ::= fully_read_file(path);
 	program_push_source_file(src);
 	defer program_pop_source_file();
 
@@ -88,7 +88,7 @@ postbuild ::= func(-> v0)
 };
 
 // read a file path. allocates for the whole file data. returns zero if file didnt exist.
-fully_read_file ::= func(path : u8?, a : arena mut? -> source_file)
+fully_read_file ::= func(path : u8? -> source_file)
 {
 	if(!file_exists(path))
 	{
@@ -117,7 +117,7 @@ fully_read_file ::= func(path : u8?, a : arena mut? -> source_file)
 		putzstr(" exists but is empty");
 		psyc_diag_end();
 	}
-	data : u8 mut? := arena_alloc(a, len + 1);
+	data : u8 mut? := arena_alloc(string_arena, len + 1);
 	file_read(path, data, len);
 	deref(data # len) = 0;
 	return source_file

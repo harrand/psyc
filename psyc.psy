@@ -1,8 +1,9 @@
 global_arena_val : arena mut;
 global_arena : arena mut? mut;
 
-frame_arena_val : arena mut;
-frame_arena : arena mut? mut;
+// stores strings
+string_arena_val : arena mut;
+string_arena : arena mut? mut;
 
 setup_arenas ::= func( -> v0)
 {
@@ -10,28 +11,37 @@ setup_arenas ::= func( -> v0)
 	global_arena = ref global_arena_val;
 	arena_auto_align(global_arena, 8);
 
-	frame_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
-	frame_arena = ref frame_arena_val;
-	arena_auto_align(frame_arena, 8);
+	string_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	string_arena = ref string_arena_val;
+	arena_auto_align(string_arena, 1);
+};
+
+print_arena_summary ::= func(a : arena mut?, name : u8? -> v0)
+{
+	putzstr(name);
+	putzstr(" arena: ");
+	putuint(a->cur);
+	putzstr("B");
+	if(a->recycling_enabled)
+	{
+		putzstr(" (free list total: ");
+		putuint(free_list_total_size(ref(a->recycle_bin)));
+		putzstr("B");
+		putzstr(", avg: ");
+		putuint(free_list_avg_size(ref(a->recycle_bin)));
+		putzstr("B)");
+	}
+	putchar(10);
+	deref(a) = zero;
 };
 
 destroy_arenas ::= func( -> v0)
 {
-	putzstr("arena free: ");
-	putuint(global_arena_val.cur);
-	putzstr("B");
-	if(global_arena_val.recycling_enabled)
-	{
-		putzstr(" (free list total: ");
-		putuint(free_list_total_size(ref(global_arena_val.recycle_bin)));
-		putzstr("B");
-		putzstr(", avg: ");
-		putuint(free_list_avg_size(ref(global_arena_val.recycle_bin)));
-		putzstr("B)");
-	}
-	putchar(10);
-	arena_destroy(ref global_arena_val);
-	arena_destroy(ref frame_arena_val);
+	print_arena_summary(global_arena, "global");
+	arena_destroy(global_arena);
+
+	print_arena_summary(string_arena, "string");
+	arena_destroy(string_arena);
 };
 
 argc : s32 mut;
