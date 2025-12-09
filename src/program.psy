@@ -25,6 +25,12 @@ program ::= struct
 	queued_source_paths_count : u64;
 	queued_source_paths_cap : u64;
 
+	queued_build_paths : u8? mut?;
+	queued_build_path_lens : u64 mut?;
+	queued_build_path_configs : u8? mut?;
+	queued_build_paths_count : u64;
+	queued_build_paths_cap : u64;
+
 	types : tybox;
 };
 
@@ -170,7 +176,7 @@ program_find_source_file ::= func(path : u8? -> source_file?)
 	return zero;
 };
 
-program_queue_source_path ::= func(path : u8?, path_len : u64 -> v0)
+program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
 {
 	if(prog.queued_source_paths == zero)
 	{
@@ -196,4 +202,38 @@ program_queue_source_path ::= func(path : u8?, path_len : u64 -> v0)
 	deref(prog.queued_source_paths # (prog.queued_source_paths_count)) = path;
 	deref(prog.queued_source_path_lens # (prog.queued_source_paths_count)) = path_len;
 	prog.queued_source_paths_count = (prog.queued_source_paths_count + 1);
+};
+
+program_queue_build_file ::= func(path : u8?, path_len : u64, config : u8? -> v0)
+{
+	if(prog.queued_build_paths == zero)
+	{
+		prog.queued_build_paths_cap = 8;
+		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_paths)));
+		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_lens)));
+		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_configs)));
+	}
+	while(prog.queued_build_paths_count >= (prog.queued_build_paths_cap))
+	{
+		oldcap ::= prog.queued_build_paths_cap;
+		oldpathdata ::= prog.queued_build_paths;
+		oldlendata ::= prog.queued_build_path_lens;
+		oldcfgdata ::= prog.queued_build_path_configs;
+
+		prog.queued_build_paths_cap = (prog.queued_build_paths_cap * 2);
+		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_paths)));
+		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_lens)));
+		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_configs)));
+		memcopy(prog.queued_build_paths, oldpathdata, oldcap * __sizeof(deref(prog.queued_build_paths)));
+		memcopy(prog.queued_build_path_lens, oldlendata, oldcap * __sizeof(deref(prog.queued_build_path_lens)));
+		memcopy(prog.queued_build_path_configs, oldcfgdata, oldcap * __sizeof(deref(prog.queued_build_path_configs)));
+
+		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.queued_build_paths)));
+		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.queued_build_path_lens)));
+		arena_free(global_arena, oldcfgdata, oldcap * __sizeof(deref(prog.queued_build_path_configs)));
+	}
+	deref(prog.queued_build_paths # (prog.queued_build_paths_count)) = path;
+	deref(prog.queued_build_path_lens # (prog.queued_build_paths_count)) = path_len;
+	deref(prog.queued_build_path_configs # (prog.queued_build_paths_count)) = config;
+	prog.queued_build_paths_count = (prog.queued_build_paths_count + 1);
 };

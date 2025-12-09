@@ -39,10 +39,6 @@ builtin_fn_param ::= func(node : ast?, id : u64 -> sval)
 {
 	if(node->children_count <= id)
 	{
-		psyc_panic_begin(node->loc);
-		putzstr("builtin_fn_param out of range. this should've been checked earlier.");
-		psyc_diag_end();
-		psyc_exit_failure();
 		return zero;
 	}
 	child ::= ast_get_child(node, id);
@@ -85,8 +81,9 @@ builtin ::= enum
 {
 	.assert := 1;
 	.add_source_file := 2;
+	.add_build_file := 2;
 };
-builtin_table : builtin_data mut[2] mut := zero;
+builtin_table : builtin_data mut[3] mut := zero;
 
 builtin_setup ::= func(-> v0)
 {
@@ -99,6 +96,12 @@ builtin_setup ::= func(-> v0)
 	builtin_install(builtin.add_source_file, builtin_data
 	{
 		.on_call_static := builtin_add_source_file_static;
+		.on_call_runtime := zero;
+	});
+
+	builtin_install(builtin.add_build_file, builtin_data
+	{
+		.on_call_static := builtin_add_build_file_static;
 		.on_call_runtime := zero;
 	});
 };
