@@ -369,3 +369,74 @@ scope_get_parent ::= func(s : lexical_scope mut? -> lexical_scope mut?)
 	}
 	return program_get_scope(s->parent_id);
 };
+
+node2type ::= func(node : ast? -> tyid)
+{
+	if(node->tag != (ast_tag.typename))
+	{
+		return zero;
+	}
+	typename ::= node->typename;
+	if(typename.descriptor == (ast_typename_descriptor.base))
+	{
+		return tybox_find(ref(prog.types), typename.basename, typename.basename_len);
+	}
+	if(typename.descriptor == (ast_typename_descriptor.array))
+	{
+		array_len_node ::= ast_get_child(node, 1);
+		array_len_sval ::= sval_node(array_len_node);
+		if(array_len_sval.tag != (sval_tag.primitive))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("array length did not yield a valid statically-known integral value");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		array_len_prim ::= array_len_sval.primitive;
+		if(array_len_prim.tag != (ast_literal_tag.integer))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("array length yielded a statically-known *");
+			putzstr(__enumname(array_len_prim.tag));
+			putzstr("* value, but it needs to be an *integral* value");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		array_len ::= array_len_prim.integer;
+		if(array_len < 0)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("array length is negative (");
+			putsint(array_len);
+			putzstr(")");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+
+		array_underlying_node ::= ast_get_child(node, 0);
+		array_underlying_tyid ::= node2type(array_underlying_node);
+		if(array_underlying_tyid == zero)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("underlying type of array was ill-formed");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return tybox_add_array(ref(prog.types), array_underlying_tyid, array_len@u64);
+	}
+
+	psyc_panic_begin(node->loc);
+	putzstr("control reached end of node2type");
+	psyc_diag_end();
+	psyc_exit_failure();
+
+	return zero;
+};
