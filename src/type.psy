@@ -4,3 +4,142 @@ tyqual ::= enum
 	.qual_mut := 0b00000010;
 	.qual_weak := 0b00000100;
 };
+
+tyid ::= enum
+{
+	.v0 := 1;
+	.s64 := 2;
+	.s32 := 3;
+	.s16 := 4;
+	.s8 := 5;
+	.u64 := 6;
+	.u32 := 7;
+	.u16 := 8;
+	.u8 := 9;
+	.bool := 10;
+	.f64 := 11;
+	.f32 := 12;
+};
+
+tytag ::= enum
+{
+	.prim := 1;
+	.ptr := 2;
+	.arr := 3;
+	.enm := 4;
+	.strct := 5;
+	.fn := 6;
+};
+
+structty ::= struct
+{
+	members : v0?;
+	member_names : u8?;
+	member_name_lens : u64;
+	members_count : u64;
+};
+
+ty ::= struct
+{
+	tag : tytag;
+	name : u8?;
+	name_len : u64;
+
+	// if pointer: underlying. if base, id into type_table
+	base : tyid;
+	array_len : u64;
+	strct : structty;
+};
+
+// stores a bunch of types
+tybox ::= struct
+{
+	data : ty mut?;
+	data_count : u64;
+	data_cap : u64;
+};
+
+// create a new box. it will have the prims but nothing else.
+tybox_create ::= func(capacity : u64 -> tybox)
+{
+	ret ::= zero@tybox mut;
+	// all tyboxes include primitives
+	ret.data_cap = (capacity + __countof(tyid));
+
+	ret.data = arena_alloc(global_arena, __sizeof(deref (ret.data)) * (ret.data_cap));
+	ret.data_count = impl_tybox_populate_prims(ref ret);
+
+	return ret;
+};
+
+// add a new type to the box and return its id
+tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
+{
+	while(box->data_count >= (box->data_cap))
+	{
+		oldcap ::= box->data_cap;
+		olddata ::= box->data;
+		box->data_cap = (box->data_cap * 2);
+		box->data = arena_alloc(global_arena, __sizeof(deref(box->data)) * (box->data_cap));
+		memcopy(box->data, olddata, oldcap * __sizeof(deref(box->data)));
+	}
+	id ::= box->data_count;
+	deref(box->data # id) = newty;
+	return id@s64@tyid;
+};
+
+tybox_find ::= func(box : tybox?, name : u8?, name_len : u64 -> tyid)
+{
+	// linear search :/
+	i : u64 mut;
+	for(i = 0, i < (box->data_count), i = i + 1)
+	{
+		cur ::= box->data # i;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return i@tyid;
+			}
+		}
+	}
+	return zero;
+};
+
+// add an empty type to the box and return its id
+tybox_add_empty ::= func(box : tybox mut? -> tyid)
+{
+	return tybox_add(box, zero);
+};
+
+// get the type within a box at the given id
+tybox_at ::= func(box : tybox mut?, id : tyid -> ty mut?)
+{
+	return box->data # (id@s64);
+};
+
+// implementation detail. given a fully empty box, populate the prims.
+impl_tybox_populate_prims ::= func(box : tybox mut? -> u64)
+{
+	prim_count ::= __countof(tyid);
+	i : u64 mut;
+	for(i = 0, i < prim_count, i = i + 1)
+	{
+		prim ::= i@tyid;
+		name ::= __enumname(prim);
+		deref(box->data # i) = ty
+		{
+			.tag := tytag.prim;
+			.name := name;
+			.name_len := zstrlen(name);
+			.base := prim;
+		};
+	}
+	return prim_count;
+};
+
+// actual type utilities
+ty_ref ::= func(underlying : ty -> ty)
+{
+	
+};
