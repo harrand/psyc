@@ -45,6 +45,11 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 			// its a region
 			progwalk_region(child, file_scope);
 		}
+		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.if_block)))
+		{
+			// its a region
+			progwalk_if(child, file_scope);
+		}
 	}
 	return file_scope;
 };
@@ -118,12 +123,25 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 
 progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 {
-	ast_enum ::= node->enumeration;
+	enumdata ::= node->enumeration;
+	entcount ::= node->children_count;
+	unfinished_type ::= ty
+	{
+		.tag := tytag.enm;
+		.name := enumdata.name;
+		.name_len := enumdata.name_len;
+		.enm := enumty
+		{
+			.entries := arena_alloc(global_arena, __sizeof(u64) * entcount);
+			.entry_names := arena_alloc(global_arena, __sizeof(u8?) * entcount);
+			.entry_name_lens := arena_alloc(global_arena, __sizeof(u64) * entcount);
+			.entries_count := entcount;
+		};
+	};
 	scope_add_enumeration(scope, enumeration
 	{
 		.node := node;
-		.name := ast_enum.name;
-		.name_len := ast_enum.name_len;
+		.type := ty_wrap(unfinished_type, zero);
 		.cg := zero;
 		.db := zero;
 	});
@@ -153,11 +171,60 @@ progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 
 progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 {
-	ast_region ::= node->region;
+	regiondata ::= node->region;
 	scope_add_region(scope, region
 	{
 		.node := node;
-		.name := ast_region.name;
-		.name_len := ast_region.name_len;
+		.name := regiondata.name;
+		.name_len := regiondata.name_len;
 	});
+};
+
+progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+{
+	// this exists for 2 reasons:
+	// 1. we need to check inside if blocks etc for hoisting reasons
+	// 2. we want to evaluate static_ifs as early as possible. i.e now.
+	ifdata ::= node->ifblk;
+	cond_node ::= ast_get_child(node, 0);
+	last_child ::= ast_get_child(node, (node->children_count - 1));
+	else_node : ast mut? mut := zero;
+	if((last_child->tag == (ast_tag.stmt)) && (last_child->stmt == (ast_stmt_tag.else_block)))
+	{
+		else_node = last_child;
+	}
+
+	if(ifdata.is_static)
+	{
+		cond_sval ::= sval_node(cond_node);
+		if(!sval_is_valid(cond_sval) || (cond_sval.tag != (sval_tag.primitive)) || (cond_sval.primitive.tag != (ast_literal_tag.boolean)))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("condition of static-if could not be expressed as a statically-known bool value");
+			putchar(10);
+			ast_print_annotated_source(program_current_source_file().src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(!(cond_sval.primitive.boolean))
+		{
+			// static_if(false)
+			// if we have no else then just set childcount to 1
+			if(else_node == zero)
+			{
+				node->children_count = 1;
+			}
+			else // otherwise, move the elsenode's children to be our own.
+			{
+				// let the first child stay put as its the cond
+				node->children_count = 1;
+				// but the rest should be replaced with the children of the else node.
+				i : u64 mut;
+				for(i = 0, i < (else_node->children_count), i = i + 1)
+				{
+					ast_add_child(node, deref(ast_get_child(else_node, i)), global_arena);
+				}
+			}
+		}
+	}
 };
