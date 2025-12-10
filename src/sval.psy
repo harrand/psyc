@@ -28,7 +28,6 @@ sval_zero ::= func(-> sval)
 	return sval{.tag := sval_tag.zero_value;};
 };
 
-
 sval_node ::= func(node : ast? -> sval)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
@@ -43,5 +42,141 @@ sval_is_valid ::= func(s : sval -> bool)
 	return s.tag != zero;
 };
 
+sval2type ::= func(s : sval -> tyid)
+{
+	if(s.tag == (sval_tag.primitive))
+	{
+		literal ::= s.primitive;
+		if(literal.tag == (ast_literal_tag.integer))
+		{
+			return tyid_set_qual(tyid.s64, tyqual.qual_weak | tyqual.qual_static);
+		}
+		if(literal.tag == (ast_literal_tag.floating_point))
+		{
+			return tyid_set_qual(tyid.f64, tyqual.qual_weak | tyqual.qual_static);
+		}
+		if(literal.tag == (ast_literal_tag.char))
+		{
+			return tyid_set_qual(tyid.u8, tyqual.qual_weak | tyqual.qual_static);
+		}
+		if(literal.tag == (ast_literal_tag.string))
+		{
+			return ty_ref(tyid.u8, tyqual.qual_static);
+		}
+		if(literal.tag == (ast_literal_tag.boolean))
+		{
+			return tyid_set_qual(tyid.bool, tyqual.qual_static);
+		}
+	}
+	return zero;
+};
+
 // add, sub etc... still kinda get into type conversion rules
 // e.g adding a zero_value to a integral or an integral to a floating-point.
+sval_must_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
+{
+	ret_sval : sval mut := zero;
+	toty ::= ty_unwrap(to);
+	if(s.tag == (sval_tag.zero_value))
+	{
+		ret_sval.tag = (sval_tag.primitive);
+		ret_sval.primitive = zero;
+		// tag does need to match the primty.
+		if(tyid_is_integral(to))
+		{
+			ret_sval.primitive.tag = (ast_literal_tag.integer);
+			return ret_sval;
+		}
+		if(tyid_is_floating_point(to))
+		{
+			ret_sval.primitive.tag = (ast_literal_tag.floating_point);
+			return ret_sval;
+		}
+		psyc_panic_begin(source->loc);
+		putzstr("missing codepath in sval_must_convert_to for a zero_value converting to ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+		return ret_sval;
+	}
+	from ::= sval2type(s);
+	ty_ensure_convertible_to(from, to, source);
+	// prims
+	toprim ::= toty->base;
+	if(s.tag == (sval_tag.primitive))
+	{
+		fromprim ::= s.primitive;
+		if(toty->tag == (tytag.prim))
+		{
+			// integer 2 x
+			if(fromprim.tag == (ast_literal_tag.integer))
+			{
+				if(tyid_is_integral(to))
+				{
+					// already done.
+					return ret_sval;
+				}
+				if(tyid_is_floating_point(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.floating_point);
+					ret_sval.primitive.floating_point = (s.primitive.integer@_);
+					return ret_sval;
+				}
+				if(tyid_is_bool(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.boolean);
+					ret_sval.primitive.boolean = (s.primitive.integer != 0);
+					return ret_sval;
+				}
+			}
+			// floating point 2 x
+			if(fromprim.tag == (ast_literal_tag.floating_point))
+			{
+				if(tyid_is_integral(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.integer);
+					ret_sval.primitive.integer = (s.primitive.floating_point@_);
+				}
+				if(tyid_is_floating_point(to))
+				{
+					// already done.
+					return ret_sval;
+				}
+			}
+			// boolean 2 x
+			if(fromprim.tag == (ast_literal_tag.boolean))
+			{
+				if(tyid_is_integral(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.integer);
+					if(ret_sval.primitive.boolean)
+					{
+						ret_sval.primitive.integer = 1;
+					}
+					else
+					{
+						ret_sval.primitive.integer = 0;
+					}
+					return ret_sval;
+				}
+				if(tyid_is_bool(to))
+				{
+					// already done.
+					return ret_sval;
+				}
+			}
+		}
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("missing codepath in sval_must_convert_to for a sval_tag.");
+	putzstr(__enumname(s.tag));
+	putzstr(" converting to ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};

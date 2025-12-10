@@ -72,9 +72,43 @@ tyid ::= enum
 	.f32 := 12;
 };
 
+tyid_is_integral ::= func(id : tyid -> bool)
+{
+	idpure ::= tyid_clear_qual(id);
+	return
+		(idpure == (tyid.s64)) || 
+		(idpure == (tyid.s32)) || 
+		(idpure == (tyid.s16)) || 
+		(idpure == (tyid.s8))  || 
+		(idpure == (tyid.u64)) || 
+		(idpure == (tyid.u32)) || 
+		(idpure == (tyid.u16)) || 
+		(idpure == (tyid.u8));
+};
+
+tyid_is_floating_point ::= func(id : tyid -> bool)
+{
+	idpure ::= tyid_clear_qual(id);
+	return
+		(idpure == (tyid.f64)) || 
+		(idpure == (tyid.f32));
+};
+
+tyid_is_bool ::= func(id : tyid -> bool)
+{
+	idpure ::= tyid_clear_qual(id);
+	return (idpure == (tyid.bool));
+};
+
+tyid_is_v0 ::= func(id : tyid -> bool)
+{
+	idpure ::= tyid_clear_qual(id);
+	return (idpure == (tyid.v0));
+};
+
 tyid_has_qual ::= func(id : tyid, qual : tyqual -> bool)
 {
-	return ((id@s64) & (qual@s64)) > 1;
+	return ((id@s64) & (qual@s64)) != 0;
 };
 
 tyid_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
@@ -109,6 +143,11 @@ putty ::= func(id : tyid -> v0)
 	}
 };
 
+ty_matches_ignore_quals ::= func(lhs : tyid, rhs : tyid -> bool)
+{
+	return tyid_clear_qual(lhs) == tyid_clear_qual(rhs);
+};
+
 // high-level function to convert type data to a tyid (including quals).
 // assume that if this type data has not been seen before it will be dynamically added to a huge type table.
 ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
@@ -120,4 +159,200 @@ ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
 ty_unwrap ::= func(id : tyid -> ty mut?)
 {
 	return tybox_at(ref(prog.types), tyid_clear_qual(id));
+};
+
+tyconv ::= enum
+{
+	.yes := 1;
+	.yes_needs_convert := 2;
+	.no := 3;
+	.no_cant_add_staticness := 4;
+	.no_but_yes_with_weak := 5;
+};
+
+ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
+{
+	from_is_mut ::= tyid_has_qual(from, tyqual.qual_mut);
+	from_is_weak ::= tyid_has_qual(from, tyqual.qual_weak);
+	from_is_static ::= tyid_has_qual(from, tyqual.qual_static);
+
+	to_is_mut ::= tyid_has_qual(to, tyqual.qual_mut);
+	to_is_weak ::= tyid_has_qual(to, tyqual.qual_weak);
+	to_is_static ::= tyid_has_qual(to, tyqual.qual_static);
+
+	either_is_weak ::= from_is_weak || to_is_weak;
+	if(ty_matches_ignore_quals(from, to))
+	{
+		// core of the types are the same.
+		// mut doesnt matter.
+		// static converts to non-static but NOT vice-versa
+		// weakness doesnt matter.
+		if((!from_is_static) && to_is_static)
+		{
+			return tyconv.no_cant_add_staticness;
+		}
+		return tyconv.yes;
+	}
+	// types dont match
+	fromty ::= ty_unwrap(from);
+	toty ::= ty_unwrap(to);
+	fromprim ::= fromty->base;
+	toprim ::= toty->base;
+	if(fromty->tag == (tytag.prim))
+	{
+		if(toty->tag == (tytag.prim))
+		{
+			// both are prims.
+			// integral converts to integral if one is weak
+			// floating point converts to floating point if one is weak
+			// integral converts to floating point and vice-versa if one is weak
+			// bool converts to integral and vice-versa if one is weak
+			// or in other words:
+			// v0 doesnt convert to/from anything
+			// integral converts to/from everything else with weak
+			// floating point converts to/from everything else apart from bool with weak
+			if((fromprim == (tyid.v0)) || (toprim == (tyid.v0)))
+			{
+				return tyconv.no;
+			}
+			if(tyid_is_integral(fromprim))
+			{
+				if(either_is_weak)
+				{
+					return tyconv.yes_needs_convert;
+				}
+				return tyconv.no_but_yes_with_weak;
+			}
+		}
+		else
+		{
+			// when can a prim convert to a non-prim?
+			// s64 weak converts to enums
+			// u64 weak converts to pointers.
+			// nothing else.
+			if(fromprim == (tyid.s64))
+			{
+				if(toty->tag == (tytag.enm))
+				{
+					if(either_is_weak)
+					{
+						return tyconv.yes_needs_convert;
+					}
+					return tyconv.no_but_yes_with_weak;
+				}
+			}
+			if(fromprim == (tyid.u64))
+			{
+				if(toty->tag == (tytag.ptr))
+				{
+					if(either_is_weak)
+					{
+						return tyconv.yes_needs_convert;
+					}
+					return tyconv.no_but_yes_with_weak;
+				}
+			}
+			return tyconv.no;
+		}
+	}
+	// lhs is not a prim
+	// enums can convert to s64
+	if(fromty->tag == (tytag.enm))
+	{
+		if(toty->tag == (tytag.prim))
+		{
+			if(toprim == (tyid.s64))
+			{
+				if(either_is_weak)
+				{
+					return tyconv.yes_needs_convert;
+				}
+				return tyconv.no_but_yes_with_weak;
+			}
+		}
+	}
+	// ptrs can convert to u64
+	if(fromty->tag == (tytag.ptr))
+	{
+		if(toty->tag == (tytag.prim))
+		{
+			if(toprim == (tyid.u64))
+			{
+				if(either_is_weak)
+				{
+					return tyconv.yes_needs_convert;
+				}
+				return tyconv.no_but_yes_with_weak;
+			}
+		}
+	}
+	return zero;
+};
+
+// make sure from can convert to to
+// fail with a good error message if not.
+ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
+{
+	conv ::= ty_converts_to(from, to);
+	if((conv == (tyconv.yes)) || (conv == (tyconv.yes_needs_convert)))
+	{
+		// epic!
+		return;
+	}
+	if(conv == (tyconv.no))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("type ");
+		putchar('"');
+		putty(from);
+		putchar('"');
+		putzstr(" is not convertible to a ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.no_but_yes_with_weak))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("type ");
+		putchar('"');
+		putty(from);
+		putchar('"');
+		putzstr(" is not convertible to a ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(" (but it would work with a cast!)");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("ty_converts_to(");
+	putchar('"');
+	putty(from);
+	putchar('"');
+	putzstr(", ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putzstr(") yielded ");
+	putzstr(__enumname(conv));
+	putzstr(" (");
+	putsint(conv@s64);
+	putzstr("). this is a compiler bug.");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+ty_ref ::= func(id : tyid, quals : tyqual -> tyid)
+{
+	return tyid_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
 };

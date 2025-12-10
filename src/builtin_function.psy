@@ -1,20 +1,11 @@
 builtin_assert_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	cond_sval ::= builtin_fn_param(node, 0);
-	if(!sval_is_valid(cond_sval) || (cond_sval.tag != (sval_tag.primitive)) || (cond_sval.primitive.tag != (ast_literal_tag.boolean)))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("todo: better error message for dodgy static assert param 0");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
+	cond_sval ::= sval_must_convert_to(builtin_fn_param(node, 0), tyid_set_qual(tyid.bool, tyqual.qual_static), node);
 	if(!(cond_sval.primitive.boolean))
 	{
 		psyc_error_begin(node->loc);
-		putzstr("static assert failure");
-		putchar(10);
-		ast_print_annotated_source(program_current_source_file().src, node, 1);
+		putzstr("ASSERT FAIL");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
