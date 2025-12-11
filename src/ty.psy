@@ -72,9 +72,14 @@ tyid ::= enum
 	.f32 := 12;
 };
 
-tyid_is_integral ::= func(id : tyid -> bool)
+tyid_string_literal ::= func(-> tyid)
 {
-	idpure ::= tyid_clear_qual(id);
+	return ty_ref(tyid.u8, tyqual.qual_static);
+};
+
+ty_is_integral ::= func(id : tyid -> bool)
+{
+	idpure ::= ty_clear_qual(id);
 	return
 		(idpure == (tyid.s64)) || 
 		(idpure == (tyid.s32)) || 
@@ -86,37 +91,37 @@ tyid_is_integral ::= func(id : tyid -> bool)
 		(idpure == (tyid.u8));
 };
 
-tyid_is_floating_point ::= func(id : tyid -> bool)
+ty_is_floating_point ::= func(id : tyid -> bool)
 {
-	idpure ::= tyid_clear_qual(id);
+	idpure ::= ty_clear_qual(id);
 	return
 		(idpure == (tyid.f64)) || 
 		(idpure == (tyid.f32));
 };
 
-tyid_is_bool ::= func(id : tyid -> bool)
+ty_is_bool ::= func(id : tyid -> bool)
 {
-	idpure ::= tyid_clear_qual(id);
+	idpure ::= ty_clear_qual(id);
 	return (idpure == (tyid.bool));
 };
 
-tyid_is_v0 ::= func(id : tyid -> bool)
+ty_is_v0 ::= func(id : tyid -> bool)
 {
-	idpure ::= tyid_clear_qual(id);
+	idpure ::= ty_clear_qual(id);
 	return (idpure == (tyid.v0));
 };
 
-tyid_has_qual ::= func(id : tyid, qual : tyqual -> bool)
+ty_has_qual ::= func(id : tyid, qual : tyqual -> bool)
 {
 	return ((id@s64) & (qual@s64)) != 0;
 };
 
-tyid_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
+ty_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
 {
 	return ((id@s64) | (qual@s64))@tyid;
 };
 
-tyid_clear_qual ::= func(id : tyid -> tyid)
+ty_clear_qual ::= func(id : tyid -> tyid)
 {
 	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
 	return (id@s64 & all_but_top_3_msb)@tyid;
@@ -124,10 +129,10 @@ tyid_clear_qual ::= func(id : tyid -> tyid)
 
 putty ::= func(id : tyid -> v0)
 {
-	is_mut ::= tyid_has_qual(id, tyqual.qual_mut);
-	is_weak ::= tyid_has_qual(id, tyqual.qual_weak);
-	is_static ::= tyid_has_qual(id, tyqual.qual_static);
-	tydata ::= tybox_at(ref(prog.types), tyid_clear_qual(id));
+	is_mut ::= ty_has_qual(id, tyqual.qual_mut);
+	is_weak ::= ty_has_qual(id, tyqual.qual_weak);
+	is_static ::= ty_has_qual(id, tyqual.qual_static);
+	tydata ::= tybox_at(ref(prog.types), ty_clear_qual(id));
 	putbytes(tydata->name, tydata->name_len);
 	if(is_mut)
 	{
@@ -145,20 +150,20 @@ putty ::= func(id : tyid -> v0)
 
 ty_matches_ignore_quals ::= func(lhs : tyid, rhs : tyid -> bool)
 {
-	return tyid_clear_qual(lhs) == tyid_clear_qual(rhs);
+	return ty_clear_qual(lhs) == ty_clear_qual(rhs);
 };
 
 // high-level function to convert type data to a tyid (including quals).
 // assume that if this type data has not been seen before it will be dynamically added to a huge type table.
 ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
 {
-	return tyid_set_qual(tybox_add(ref(prog.types), type), quals);
+	return ty_set_qual(tybox_add(ref(prog.types), type), quals);
 };
 
 // high-level function to retrieve the data corresponding to a type.
 ty_unwrap ::= func(id : tyid -> ty mut?)
 {
-	return tybox_at(ref(prog.types), tyid_clear_qual(id));
+	return tybox_at(ref(prog.types), ty_clear_qual(id));
 };
 
 tyconv ::= enum
@@ -172,13 +177,13 @@ tyconv ::= enum
 
 ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 {
-	from_is_mut ::= tyid_has_qual(from, tyqual.qual_mut);
-	from_is_weak ::= tyid_has_qual(from, tyqual.qual_weak);
-	from_is_static ::= tyid_has_qual(from, tyqual.qual_static);
+	from_is_mut ::= ty_has_qual(from, tyqual.qual_mut);
+	from_is_weak ::= ty_has_qual(from, tyqual.qual_weak);
+	from_is_static ::= ty_has_qual(from, tyqual.qual_static);
 
-	to_is_mut ::= tyid_has_qual(to, tyqual.qual_mut);
-	to_is_weak ::= tyid_has_qual(to, tyqual.qual_weak);
-	to_is_static ::= tyid_has_qual(to, tyqual.qual_static);
+	to_is_mut ::= ty_has_qual(to, tyqual.qual_mut);
+	to_is_weak ::= ty_has_qual(to, tyqual.qual_weak);
+	to_is_static ::= ty_has_qual(to, tyqual.qual_static);
 
 	either_is_weak ::= from_is_weak || to_is_weak;
 	if(ty_matches_ignore_quals(from, to))
@@ -211,11 +216,11 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 			// v0 doesnt convert to/from anything
 			// integral converts to/from everything else with weak
 			// floating point converts to/from everything else apart from bool with weak
-			if((fromprim == (tyid.v0)) || (toprim == (tyid.v0)))
+			if(ty_is_v0(fromprim) || ty_is_v0(toprim))
 			{
 				return tyconv.no;
 			}
-			if(tyid_is_integral(fromprim))
+			if(ty_is_integral(fromprim))
 			{
 				if(either_is_weak)
 				{
@@ -354,5 +359,5 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 
 ty_ref ::= func(id : tyid, quals : tyqual -> tyid)
 {
-	return tyid_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
+	return ty_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
 };

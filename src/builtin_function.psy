@@ -1,7 +1,8 @@
 builtin_assert_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	cond_sval ::= sval_must_convert_to(builtin_fn_param(node, 0), tyid_set_qual(tyid.bool, tyqual.qual_static), node);
+	par0ty ::= ty_set_qual(tyid.bool, tyqual.qual_static);
+	cond_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
 	if(!(cond_sval.primitive.boolean))
 	{
 		psyc_error_begin(node->loc);
@@ -14,16 +15,10 @@ builtin_assert_static ::= func(node : ast? -> v0)
 builtin_add_source_file_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	path_sval ::= builtin_fn_param(node, 0);
-	if(!sval_is_valid(path_sval) || (path_sval.tag != (sval_tag.primitive)) || (path_sval.primitive.tag != (ast_literal_tag.string)))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("todo: better error message for dodgy add_source_file param 0");
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
+	par0ty ::= tyid_string_literal();
+	path_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
 	path_zstr ::= sstr2zstr(path_sval.primitive.chars, path_sval.primitive.chars_len, string_arena);
+
 	if(!file_exists(path_zstr))
 	{
 		psyc_error_begin(node->loc);
@@ -43,37 +38,16 @@ builtin_add_source_file_static ::= func(node : ast? -> v0)
 builtin_add_build_file_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 2);
-	path_sval ::= builtin_fn_param(node, 0);
-	if(!sval_is_valid(path_sval) || (path_sval.tag != (sval_tag.primitive)) || (path_sval.primitive.tag != (ast_literal_tag.string)))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("param 0 of add_build_file must be a ");
-		putchar('"');
-		putzstr("u8? static");
-		putchar('"');
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
+	par0ty ::= tyid_string_literal();
+	path_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
 	path_zstr ::= sstr2zstr(path_sval.primitive.chars, path_sval.primitive.chars_len, string_arena);
+
+	par1ty ::= tyid_string_literal();
 	config : u8? mut := "default";
-	config_sval ::= builtin_fn_param(node, 1);
+	config_sval : sval mut := builtin_fn_param(node, 1);
 	if(sval_is_valid(config_sval))
 	{
-		if((config_sval.tag != (sval_tag.primitive)) || (config_sval.primitive.tag != (ast_literal_tag.string)))
-		{
-			psyc_error_begin(node->loc);
-			putzstr("param 1 of add_build_file must be a ");
-			putchar('"');
-			putzstr("u8? static");
-			putchar('"');
-			putchar(10);
-			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
+		config_sval = sval_convert_to(config_sval, par1ty, node);
 		config = sstr2zstr(config_sval.primitive.chars, config_sval.primitive.chars_len, string_arena);
 	}
 	if(!file_exists(path_zstr))
@@ -95,19 +69,8 @@ builtin_add_build_file_static ::= func(node : ast? -> v0)
 builtin_executable_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	name_sval ::= builtin_fn_param(node, 0);
-	if(!sval_is_valid(name_sval) || (name_sval.tag != (sval_tag.primitive)) || (name_sval.primitive.tag != (ast_literal_tag.string)))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("param 0 of executable must be a ");
-		putchar('"');
-		putzstr("u8? static");
-		putchar('"');
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
+	par0ty ::= tyid_string_literal();
+	name_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
 	name ::= sstr2zstr(name_sval.primitive.chars, name_sval.primitive.chars_len, string_arena);
 	prog.output.name = name;
 };
