@@ -34,6 +34,11 @@ sval_node ::= func(node : ast? -> sval)
 	{
 		return sval_primitive(node->literal);
 	}
+	if(ast_is_expr(node, ast_expr_tag.unop))
+	{
+		operand ::= sval_node(ast_get_child(node, 0));
+		return sval_unop(ref operand, node->unop, node);
+	}
 	return zero;
 };
 
@@ -466,6 +471,72 @@ apply_biop_bool ::= func(op : ast_biop, lhs : bool mut?, rhs : bool mut?, source
 	putzstr("attempt to statically perform a binary ");
 	putzstr(__enumname(op));
 	putzstr(" operation on two boolean literals, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+sval_unop ::= func(s : sval mut?, op : ast_unop, source : ast? -> sval)
+{
+	type ::= sval2type(deref s);
+	if(s->tag == (sval_tag.primitive))
+	{
+		if(ty_is_integral(type))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.integer;
+					.integer := apply_unop_int(op, ref(s->primitive.integer), source);
+				};
+			};
+		}
+		if(ty_is_floating_point(type))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.integer;
+					.floating_point := apply_unop_float(op, ref(s->primitive.floating_point), source);
+				};
+			};
+		}
+		if(ty_is_bool(type))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.boolean;
+					.boolean := apply_unop_bool(op, ref(s->primitive.boolean), source);
+				};
+			};
+		}
+		psyc_error_begin(source->loc);
+		putzstr("cannot perform unary ");
+		putzstr(__enumname(op));
+		putzstr(" operation on a ");
+		putty(type);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+		return zero;
+	}
+	psyc_error_begin(source->loc);
+	putzstr("cannot perform unary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on a non-primitive ");
+	putty(type);
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
