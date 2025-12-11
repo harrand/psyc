@@ -104,46 +104,80 @@ tyid_bool_literal ::= func(-> tyid)
 
 ty_is_char ::= func(id : tyid -> bool)
 {
-	idpure ::= ty_clear_qual(id);
+	idpure ::= ty_clear_all_quals(id);
 	return
 		(idpure == (tyid.u8));
 };
 
+// integral size in bits. zero if not integral.
+ty_integral_size ::= func(id : tyid -> u64)
+{
+	idpure ::= ty_clear_all_quals(id);
+	if((idpure == (tyid.s64)) || (idpure == (tyid.u64)))
+	{
+		return 64;
+	}
+	if((idpure == (tyid.s32)) || (idpure == (tyid.u32)))
+	{
+		return 32;
+	}
+	if((idpure == (tyid.s16)) || (idpure == (tyid.u16)))
+	{
+		return 16;
+	}
+	if((idpure == (tyid.s8)) || (idpure == (tyid.u8)))
+	{
+		return 8;
+	}
+	return zero;
+};
+
+ty_is_signed_integral ::= func(id : tyid -> bool)
+{
+	idpure ::= ty_clear_all_quals(id);
+	return
+		(idpure == (tyid.s64)) ||
+		(idpure == (tyid.s32)) ||
+		(idpure == (tyid.s16)) ||
+		(idpure == (tyid.s8));
+};
 // is the given type any form of integer?
 ty_is_integral ::= func(id : tyid -> bool)
 {
-	idpure ::= ty_clear_qual(id);
-	return
-		(idpure == (tyid.s64)) || 
-		(idpure == (tyid.s32)) || 
-		(idpure == (tyid.s16)) || 
-		(idpure == (tyid.s8))  || 
-		(idpure == (tyid.u64)) || 
-		(idpure == (tyid.u32)) || 
-		(idpure == (tyid.u16)) || 
-		(idpure == (tyid.u8));
+	return ty_integral_size(id) > 0;
+};
+
+ty_floating_point_size ::= func(id : tyid -> u64)
+{
+	idpure ::= ty_clear_all_quals(id);
+	if(idpure == (tyid.f64))
+	{
+		return 64;
+	}
+	if(idpure == (tyid.f32))
+	{
+		return 32;
+	}
+	return 0;
 };
 
 // is the given type any form of floating point?
 ty_is_floating_point ::= func(id : tyid -> bool)
 {
-	idpure ::= ty_clear_qual(id);
-	return
-		(idpure == (tyid.f64)) || 
-		(idpure == (tyid.f32));
+	return ty_floating_point_size(id) > 0;
 };
 
 // is the given type any form of bool?
 ty_is_bool ::= func(id : tyid -> bool)
 {
-	idpure ::= ty_clear_qual(id);
+	idpure ::= ty_clear_all_quals(id);
 	return (idpure == (tyid.bool));
 };
 
 // is the given type a void type
 ty_is_v0 ::= func(id : tyid -> bool)
 {
-	idpure ::= ty_clear_qual(id);
+	idpure ::= ty_clear_all_quals(id);
 	return (idpure == (tyid.v0));
 };
 
@@ -159,8 +193,14 @@ ty_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
 	return ((id@s64) | (qual@s64))@tyid;
 };
 
+// returns the input type but without the given qualifier(s)
+ty_clear_qual ::= func(id : tyid, qual : tyqual -> tyid)
+{
+    return ((id@s64) & ~(qual@s64))@tyid;
+};
+
 // returns the input type but without any qualifiers.
-ty_clear_qual ::= func(id : tyid -> tyid)
+ty_clear_all_quals ::= func(id : tyid -> tyid)
 {
 	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
 	return (id@s64 & all_but_top_3_msb)@tyid;
@@ -172,7 +212,7 @@ putty ::= func(id : tyid -> v0)
 	is_mut ::= ty_has_qual(id, tyqual.qual_mut);
 	is_weak ::= ty_has_qual(id, tyqual.qual_weak);
 	is_static ::= ty_has_qual(id, tyqual.qual_static);
-	tydata ::= tybox_at(ref(prog.types), ty_clear_qual(id));
+	tydata ::= tybox_at(ref(prog.types), ty_clear_all_quals(id));
 	putbytes(tydata->name, tydata->name_len);
 	if(is_mut)
 	{
@@ -191,7 +231,7 @@ putty ::= func(id : tyid -> v0)
 // returns whether the lhs and rhs types are the same (ignoring qualifiers)
 ty_matches_ignore_quals ::= func(lhs : tyid, rhs : tyid -> bool)
 {
-	return ty_clear_qual(lhs) == ty_clear_qual(rhs);
+	return ty_clear_all_quals(lhs) == ty_clear_all_quals(rhs);
 };
 
 // high-level function to convert type data to a tyid (including quals).
@@ -204,7 +244,7 @@ ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
 // high-level function to retrieve the data corresponding to a type.
 ty_unwrap ::= func(id : tyid -> ty mut?)
 {
-	return tybox_at(ref(prog.types), ty_clear_qual(id));
+	return tybox_at(ref(prog.types), ty_clear_all_quals(id));
 };
 
 // describes type conversions
@@ -409,4 +449,61 @@ ty_ref ::= func(id : tyid, quals : tyqual -> tyid)
 ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_array(ref(prog.types), id, len), quals);
+};
+
+// given two primitive types which we want to add/sub/mul/div/shr/etc...
+// return the type that both should be converted to
+// you can always assume the returned type matches one of the operands.
+// return zero if arithmetic operations are not defined for this type combination
+ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
+{
+	lhs_integral ::= ty_is_integral(lhs);
+	rhs_integral ::= ty_is_integral(rhs);
+	lhs_floating_point ::= ty_is_floating_point(lhs);
+	rhs_floating_point ::= ty_is_floating_point(rhs);
+	lhs_arithmetic_size ::= ty_integral_size(lhs) + ty_floating_point_size(lhs);
+	rhs_arithmetic_size ::= ty_integral_size(rhs) + ty_floating_point_size(rhs);
+	lhs_signed ::= ty_is_signed_integral(lhs);
+	rhs_signed ::= ty_is_signed_integral(rhs);
+
+	both_are_static ::= ty_has_qual(lhs, tyqual.qual_static) && ty_has_qual(rhs, tyqual.qual_static);
+	
+	if(lhs_floating_point && rhs_integral)
+	{
+		return lhs;
+	}
+	if(lhs_integral && rhs_floating_point)
+	{
+		return rhs;
+	}
+	if((lhs_integral && rhs_integral) || (lhs_floating_point && rhs_floating_point))
+	{
+		if(lhs_arithmetic_size < rhs_arithmetic_size)
+		{
+			return rhs;
+		}
+		if(lhs_arithmetic_size == rhs_arithmetic_size)
+		{
+			// if the sizes are the same then we prefer unsigned
+			if(lhs_signed != rhs_signed)
+			{
+				if(lhs_signed)
+				{
+					// rhs is unsigned
+					return rhs;
+				}
+				// lhs is unsigned
+				return lhs;
+			}
+		}
+		// well theyre just the same type excluding qualifiers.
+		// if both are static then set static, otherwise remove static
+		// static + nonstatic = nonstatic after all
+		if(both_are_static)
+		{
+			return ty_set_qual(ty_clear_all_quals(lhs), tyqual.qual_static);
+		}
+		return ty_clear_all_quals(lhs);
+	}
+	return zero;
 };
