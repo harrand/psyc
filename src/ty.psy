@@ -462,6 +462,21 @@ ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
 // return zero if arithmetic operations are not defined for this type combination
 ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 {
+	both_are_static ::= ty_has_qual(lhs, tyqual.qual_static) && ty_has_qual(rhs, tyqual.qual_static);
+	if(ty_is_bool(lhs) || ty_is_bool(rhs))
+	{
+		// if either of them are bools, they both must be.
+		// we dont be supporting true + 5 no thank you. cast it if you absolutely must.
+		if(ty_is_bool(lhs) && ty_is_bool(rhs))
+		{
+			if(both_are_static)
+			{
+				return ty_set_qual(tyid.bool, tyqual.qual_static);
+			}
+			return tyid.bool;
+		}
+		return zero;
+	}
 	lhs_integral ::= ty_is_integral(lhs);
 	rhs_integral ::= ty_is_integral(rhs);
 	lhs_floating_point ::= ty_is_floating_point(lhs);
@@ -471,7 +486,6 @@ ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 	lhs_signed ::= ty_is_signed_integral(lhs);
 	rhs_signed ::= ty_is_signed_integral(rhs);
 
-	both_are_static ::= ty_has_qual(lhs, tyqual.qual_static) && ty_has_qual(rhs, tyqual.qual_static);
 	
 	if(lhs_floating_point && rhs_integral)
 	{
