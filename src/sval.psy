@@ -49,23 +49,23 @@ sval2type ::= func(s : sval -> tyid)
 		literal ::= s.primitive;
 		if(literal.tag == (ast_literal_tag.integer))
 		{
-			return ty_set_qual(tyid.s64, tyqual.qual_weak | tyqual.qual_static);
+			return tyid_integral_literal();
 		}
 		if(literal.tag == (ast_literal_tag.floating_point))
 		{
-			return ty_set_qual(tyid.f64, tyqual.qual_weak | tyqual.qual_static);
+			return tyid_floating_point_literal();
 		}
 		if(literal.tag == (ast_literal_tag.char))
 		{
-			return ty_set_qual(tyid.u8, tyqual.qual_weak | tyqual.qual_static);
+			return tyid_char_literal();
 		}
 		if(literal.tag == (ast_literal_tag.string))
 		{
-			return ty_ref(tyid.u8, tyqual.qual_static);
+			return tyid_string_literal();
 		}
 		if(literal.tag == (ast_literal_tag.boolean))
 		{
-			return ty_set_qual(tyid.bool, tyqual.qual_static);
+			return tyid_bool_literal();
 		}
 	}
 	return zero;
@@ -130,6 +130,13 @@ sval_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
 					ret_sval.primitive.boolean = (s.primitive.integer != 0);
 					return ret_sval;
 				}
+				if(ty_is_char(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.char);
+					ret_sval.primitive.chars = arena_alloc(global_arena, 1);
+					ret_sval.primitive.chars_len = 1;
+					deref(ret_sval.primitive.chars) = (s.primitive.integer@_);
+				}
 			}
 			// floating point 2 x
 			if(fromprim.tag == (ast_literal_tag.floating_point))
@@ -144,6 +151,41 @@ sval_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
 					// already done.
 					return s;
 				}
+				if(ty_is_char(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.char);
+					ret_sval.primitive.chars = arena_alloc(global_arena, 1);
+					ret_sval.primitive.chars_len = 1;
+					deref(ret_sval.primitive.chars) = (s.primitive.floating_point@_);
+				}
+			}
+			// char 2 x
+			if(fromprim.tag == (ast_literal_tag.char))
+			{
+				ch ::= deref(s.primitive.chars # 0);
+				if(ty_is_integral(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.integer);
+					ret_sval.primitive.integer = (ch@_);
+					return ret_sval;
+				}
+				if(ty_is_floating_point(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.floating_point);
+					ret_sval.primitive.floating_point = (ch@_);
+					return ret_sval;
+				}
+				if(ty_is_char(to))
+				{
+					// already done.
+					return s;
+				}
+				if(ty_is_bool(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.boolean);
+					ret_sval.primitive.boolean = (ch != 0);
+					return ret_sval;
+				}
 			}
 			// boolean 2 x
 			if(fromprim.tag == (ast_literal_tag.boolean))
@@ -151,7 +193,7 @@ sval_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
 				if(ty_is_integral(to))
 				{
 					ret_sval.primitive.tag = (ast_literal_tag.integer);
-					if(ret_sval.primitive.boolean)
+					if(s.primitive.boolean)
 					{
 						ret_sval.primitive.integer = 1;
 					}
@@ -160,6 +202,20 @@ sval_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
 						ret_sval.primitive.integer = 0;
 					}
 					return ret_sval;
+				}
+				if(ty_is_char(to))
+				{
+					ret_sval.primitive.tag = (ast_literal_tag.char);
+					ret_sval.primitive.chars = arena_alloc(global_arena, 1);
+					ret_sval.primitive.chars_len = 1;
+					if(s.primitive.boolean)
+					{
+						deref(ret_sval.primitive.chars) = 1;
+					}
+					else
+					{
+						deref(ret_sval.primitive.chars) = 0;
+					}
 				}
 				if(ty_is_bool(to))
 				{

@@ -72,11 +72,44 @@ tyid ::= enum
 	.f32 := 12;
 };
 
+// integer literals e.g '5' will have this exact type
+tyid_integral_literal ::= func(-> tyid)
+{
+	return ty_set_qual(tyid.s64, tyqual.qual_weak | tyqual.qual_static);
+};
+
+// float literals e.g '6.9' will have this exact type
+tyid_floating_point_literal ::= func(-> tyid)
+{
+	return ty_set_qual(tyid.f64, tyqual.qual_weak | tyqual.qual_static);
+};
+
+// char literals e.g ''f'' will have this exact type
+tyid_char_literal ::= func(-> tyid)
+{
+	return ty_set_qual(tyid.u8, tyqual.qual_weak | tyqual.qual_static);
+};
+
+// string literals e.g "foo" will have this exact type
 tyid_string_literal ::= func(-> tyid)
 {
 	return ty_ref(tyid.u8, tyqual.qual_static);
 };
 
+// bool literals i.e true/false will have this exact type
+tyid_bool_literal ::= func(-> tyid)
+{
+	return ty_set_qual(tyid.bool, tyqual.qual_static);
+};
+
+ty_is_char ::= func(id : tyid -> bool)
+{
+	idpure ::= ty_clear_qual(id);
+	return
+		(idpure == (tyid.u8));
+};
+
+// is the given type any form of integer?
 ty_is_integral ::= func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_qual(id);
@@ -91,6 +124,7 @@ ty_is_integral ::= func(id : tyid -> bool)
 		(idpure == (tyid.u8));
 };
 
+// is the given type any form of floating point?
 ty_is_floating_point ::= func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_qual(id);
@@ -99,34 +133,40 @@ ty_is_floating_point ::= func(id : tyid -> bool)
 		(idpure == (tyid.f32));
 };
 
+// is the given type any form of bool?
 ty_is_bool ::= func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_qual(id);
 	return (idpure == (tyid.bool));
 };
 
+// is the given type a void type
 ty_is_v0 ::= func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_qual(id);
 	return (idpure == (tyid.v0));
 };
 
+// returns whether the type has the given qualifier(s)
 ty_has_qual ::= func(id : tyid, qual : tyqual -> bool)
 {
 	return ((id@s64) & (qual@s64)) != 0;
 };
 
+// returns the input type but with the given qualifier(s)
 ty_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
 {
 	return ((id@s64) | (qual@s64))@tyid;
 };
 
+// returns the input type but without any qualifiers.
 ty_clear_qual ::= func(id : tyid -> tyid)
 {
 	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
 	return (id@s64 & all_but_top_3_msb)@tyid;
 };
 
+// print out the name of a type.
 putty ::= func(id : tyid -> v0)
 {
 	is_mut ::= ty_has_qual(id, tyqual.qual_mut);
@@ -148,6 +188,7 @@ putty ::= func(id : tyid -> v0)
 	}
 };
 
+// returns whether the lhs and rhs types are the same (ignoring qualifiers)
 ty_matches_ignore_quals ::= func(lhs : tyid, rhs : tyid -> bool)
 {
 	return ty_clear_qual(lhs) == ty_clear_qual(rhs);
@@ -166,6 +207,7 @@ ty_unwrap ::= func(id : tyid -> ty mut?)
 	return tybox_at(ref(prog.types), ty_clear_qual(id));
 };
 
+// describes type conversions
 tyconv ::= enum
 {
 	.yes := 1;
@@ -175,6 +217,7 @@ tyconv ::= enum
 	.no_but_yes_with_weak := 5;
 };
 
+// describe how we convert 'from' -> 'to'
 ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 {
 	from_is_mut ::= ty_has_qual(from, tyqual.qual_mut);
@@ -294,8 +337,8 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	return zero;
 };
 
-// make sure from can convert to to
-// fail with a good error message if not.
+// make sure from can convert 'from' -> 'to'
+// fail with a good error message if the conversion cannot happen
 ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 {
 	conv ::= ty_converts_to(from, to);
@@ -357,7 +400,13 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 	psyc_exit_failure();
 };
 
+// return a pointer to the given type, along with qualifiers
 ty_ref ::= func(id : tyid, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
+};
+
+ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
+{
+	return ty_set_qual(tybox_add_array(ref(prog.types), id, len), quals);
 };

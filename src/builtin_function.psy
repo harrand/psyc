@@ -1,8 +1,7 @@
 builtin_assert_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	par0ty ::= ty_set_qual(tyid.bool, tyqual.qual_static);
-	cond_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
+	cond_sval ::= builtin_static_param(node, 0, tyid_bool_literal());
 	if(!(cond_sval.primitive.boolean))
 	{
 		psyc_error_begin(node->loc);
@@ -15,8 +14,7 @@ builtin_assert_static ::= func(node : ast? -> v0)
 builtin_add_source_file_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 1);
-	par0ty ::= tyid_string_literal();
-	path_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
+	path_sval ::= builtin_static_param(node, 0, tyid_string_literal());
 	path_zstr ::= sstr2zstr(path_sval.primitive.chars, path_sval.primitive.chars_len, string_arena);
 
 	if(!file_exists(path_zstr))
@@ -38,16 +36,13 @@ builtin_add_source_file_static ::= func(node : ast? -> v0)
 builtin_add_build_file_static ::= func(node : ast? -> v0)
 {
 	builtin_require_params(node, 1, 2);
-	par0ty ::= tyid_string_literal();
-	path_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
+	path_sval ::= builtin_static_param(node, 0, tyid_string_literal());
 	path_zstr ::= sstr2zstr(path_sval.primitive.chars, path_sval.primitive.chars_len, string_arena);
 
-	par1ty ::= tyid_string_literal();
 	config : u8? mut := "default";
-	config_sval : sval mut := builtin_fn_param(node, 1);
-	if(sval_is_valid(config_sval))
+	if(builtin_has_param(node, 1))
 	{
-		config_sval = sval_convert_to(config_sval, par1ty, node);
+		config_sval ::= builtin_static_param(node, 1, tyid_string_literal());
 		config = sstr2zstr(config_sval.primitive.chars, config_sval.primitive.chars_len, string_arena);
 	}
 	if(!file_exists(path_zstr))
@@ -72,6 +67,7 @@ builtin_executable_static ::= func(node : ast? -> v0)
 	par0ty ::= tyid_string_literal();
 	name_sval ::= sval_convert_to(builtin_fn_param(node, 0), par0ty, node);
 	name ::= sstr2zstr(name_sval.primitive.chars, name_sval.primitive.chars_len, string_arena);
+
 	prog.output.name = name;
 };
 
