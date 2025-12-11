@@ -37,7 +37,13 @@ sval_node ::= func(node : ast? -> sval)
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
 		operand ::= sval_node(ast_get_child(node, 0));
-		return sval_unop(ref operand, node->unop, node);
+		return sval_unop(node->unop, ref operand, node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.biop))
+	{
+		lhs ::= sval_node(ast_get_child(node, 0));
+		rhs ::= sval_node(ast_get_child(node, 1));
+		return sval_biop(node->biop, ref lhs, ref rhs, node);
 	}
 	return zero;
 };
@@ -478,7 +484,7 @@ apply_biop_bool ::= func(op : ast_biop, lhs : bool mut?, rhs : bool mut?, source
 	return zero;
 };
 
-sval_unop ::= func(s : sval mut?, op : ast_unop, source : ast? -> sval)
+sval_unop ::= func(op : ast_unop, s : sval mut?, source : ast? -> sval)
 {
 	type ::= sval2type(deref s);
 	if(s->tag == (sval_tag.primitive))
@@ -535,6 +541,198 @@ sval_unop ::= func(s : sval mut?, op : ast_unop, source : ast? -> sval)
 	putzstr(__enumname(op));
 	putzstr(" operation on a non-primitive ");
 	putty(type);
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+sval_biop ::= func(op : ast_biop, lhs : sval mut?, rhs : sval mut?, source : ast? -> sval)
+{
+	// so this one is a little more complicated as we need to deal with zero-value.
+	// these types are immediately wrong if these are zero values so lets check that now.
+	lhs_type : tyid mut := sval2type(deref lhs);
+	rhs_type : tyid mut := sval2type(deref rhs);
+	if(lhs->tag == (sval_tag.zero_value))
+	{
+		if(rhs->tag == (sval_tag.primitive))
+		{
+			lhs_type = rhs_type;
+		}
+		else
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary operator ");
+			putzstr(__enumname(op));
+			putzstr(" with lhs as 'zero' is only valid if the rhs is a primitive type, but it is a ");
+			putty(rhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	if(rhs->tag == (sval_tag.zero_value))
+	{
+		if(lhs->tag == (sval_tag.primitive))
+		{
+			rhs_type = lhs_type;
+		}
+		else
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary operator ");
+			putzstr(__enumname(op));
+			putzstr(" with rhs as 'zero' is only valid if the lhs is a primitive type, but it is a ");
+			putty(lhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+
+	arith_ty ::= ty_of_arithmetic(lhs_type, rhs_type);
+
+	// list all the ops that ty_of_arithmetic will help with
+	if(
+		(op == (ast_biop.add)) ||
+		(op == (ast_biop.sub)) ||
+		(op == (ast_biop.mul)) ||
+		(op == (ast_biop.div)) ||
+		(op == (ast_biop.bitwise_or)) ||
+		(op == (ast_biop.bitwise_and)) ||
+		(op == (ast_biop.xor)) ||
+		(op == (ast_biop.bitshift_left)) ||
+		(op == (ast_biop.bitshift_right)) ||
+		(op == (ast_biop).modulo)
+	)
+	{
+		if(arith_ty == zero)
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary ");
+			putzstr(__enumname(op));
+			putzstr(" operation is not valid on a ");
+			putty(lhs_type);
+			putzstr(" and a ");
+			putty(rhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		// okay great
+		deref(lhs) = sval_convert_to(deref lhs, arith_ty, source);
+		deref(rhs) = sval_convert_to(deref rhs, arith_ty, source);
+		if(ty_is_integral(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.integer;
+					.integer := apply_biop_int(op, ref(lhs->primitive.integer), ref(rhs->primitive.integer), source);
+				};
+			};
+		}
+		if(ty_is_floating_point(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.floating_point;
+					.floating_point := apply_biop_float(op, ref(lhs->primitive.floating_point), ref(rhs->primitive.floating_point), source);
+				};
+			};
+		}
+		if(ty_is_bool(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.boolean;
+					.boolean := apply_biop_bool(op, ref(lhs->primitive.boolean), ref(rhs->primitive.boolean), source);
+				};
+			};
+		}
+	}
+	// list all the comparison ops that return bool
+	if(
+		(op == (ast_biop.compare_equal)) ||
+		(op == (ast_biop.compare_not_equal)) ||
+		(op == (ast_biop.compare_less)) ||
+		(op == (ast_biop.compare_less_equal)) ||
+		(op == (ast_biop.compare_greater)) ||
+		(op == (ast_biop.compare_greater_equal))
+	)
+	{
+		// convert rhs type to lhs type
+		// still use arithmetic type
+		if(arith_ty == zero)
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary ");
+			putzstr(__enumname(op));
+			putzstr(" operation is not valid on a ");
+			putty(lhs_type);
+			putzstr(" and a ");
+			putty(rhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		// okay great
+		deref(lhs) = sval_convert_to(deref lhs, arith_ty, source);
+		deref(rhs) = sval_convert_to(deref rhs, arith_ty, source);
+		if(ty_is_integral(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.boolean;
+					.boolean := apply_biop_int(op, ref(lhs->primitive.integer), ref(rhs->primitive.integer), source)@bool;
+				};
+			};
+		}
+		if(ty_is_floating_point(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.boolean;
+					.boolean := apply_biop_float(op, ref(lhs->primitive.floating_point), ref(rhs->primitive.floating_point), source)@s64@bool;
+				};
+			};
+		}
+		if(ty_is_bool(arith_ty))
+		{
+			return sval
+			{
+				.tag := sval_tag.primitive;
+				.primitive := ast_literal
+				{
+					.tag := ast_literal_tag.boolean;
+					.boolean := apply_biop_bool(op, ref(lhs->primitive.boolean), ref(rhs->primitive.boolean), source);
+				};
+			};
+		}
+	}
+	// logical_or and logical_and are still missing i think. need to confirm theyre both bools and then return the sval comparison result.
+	// also havent done biop.at but i basically dont expect that to really be used in svals (todo: sval arrays)
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of sval_biop. either your code is wrong or mine havent figured it out yet.");
 	putchar(10);
 	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
 	psyc_diag_end();
