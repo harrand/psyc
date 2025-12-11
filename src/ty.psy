@@ -93,7 +93,7 @@ tyid_char_literal ::= func(-> tyid)
 // string literals e.g "foo" will have this exact type
 tyid_string_literal ::= func(-> tyid)
 {
-	return ty_ref(tyid.u8, tyqual.qual_static);
+	return ty_ptr(ty_set_qual(tyid.u8, tyqual.qual_static), tyqual.qual_static);
 };
 
 // bool literals i.e true/false will have this exact type
@@ -206,6 +206,11 @@ ty_clear_all_quals ::= func(id : tyid -> tyid)
 	return (id@s64 & all_but_top_3_msb)@tyid;
 };
 
+quals_max_strlen ::= 7 * 3;
+qual_str_mut ::= " mut";
+qual_str_weak ::= " weak";
+qual_str_static ::= " static";
+
 // print out the name of a type.
 putty ::= func(id : tyid -> v0)
 {
@@ -216,15 +221,15 @@ putty ::= func(id : tyid -> v0)
 	putbytes(tydata->name, tydata->name_len);
 	if(is_mut)
 	{
-		putzstr(" mut");
+		putzstr(qual_str_mut);
 	}
 	if(is_weak)
 	{
-		putzstr(" weak");
+		putzstr(qual_str_weak);
 	}
 	if(is_static)
 	{
-		putzstr(" static");
+		putzstr(qual_str_static);
 	}
 };
 
@@ -441,7 +446,7 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 };
 
 // return a pointer to the given type, along with qualifiers
-ty_ref ::= func(id : tyid, quals : tyqual -> tyid)
+ty_ptr ::= func(id : tyid, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
 };

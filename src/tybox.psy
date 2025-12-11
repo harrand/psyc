@@ -75,14 +75,31 @@ tybox_add_empty ::= func(box : tybox mut? -> tyid)
 tybox_add_ptr ::= func(box : tybox mut?, underlying : tyid -> tyid)
 {
 	u ::= tybox_at(box, underlying);
-	name : u8 mut? := arena_alloc(string_arena, u->name_len + 1);
+	name : u8 mut? := arena_alloc(string_arena, u->name_len + quals_max_strlen + 1);
 	memcopy(name, u->name, u->name_len);
-	deref(name # (u->name_len)) = '?';
+	// need to add extra quals
+	name_offset : u64 mut := u->name_len;
+	if(ty_has_qual(underlying, tyqual.qual_mut))
+	{
+		memcopy(name # (name_offset), qual_str_mut, zstrlen(qual_str_mut));
+		name_offset = (name_offset + zstrlen(qual_str_mut));
+	}
+	if(ty_has_qual(underlying, tyqual.qual_weak))
+	{
+		memcopy(name # (name_offset), qual_str_weak, zstrlen(qual_str_weak));
+		name_offset = (name_offset + zstrlen(qual_str_weak));
+	}
+	if(ty_has_qual(underlying, tyqual.qual_static))
+	{
+		memcopy(name # (name_offset), qual_str_static, zstrlen(qual_str_static));
+		name_offset = (name_offset + zstrlen(qual_str_static));
+	}
+	deref(name # name_offset) = '?';
 	return tybox_add(box, ty
 	{
 		.tag := tytag.ptr;
 		.name := name;
-		.name_len := u->name_len + 1;
+		.name_len := name_offset + 1;
 		.base := underlying;
 	});
 };
@@ -91,16 +108,32 @@ tybox_add_array ::= func(box : tybox mut?, underlying : tyid, array_len : u64 ->
 {
 	u ::= tybox_at(box, underlying);
 	len_strlen ::= lenuint(array_len);
-	name : u8 mut? := arena_alloc(string_arena, u->name_len + 2 + len_strlen);
+	name : u8 mut? := arena_alloc(string_arena, u->name_len + quals_max_strlen + 2 + len_strlen);
 	memcopy(name, u->name, u->name_len);
-	deref(name # (u->name_len + 0)) = '[';
-	sputuint(name # (u->name_len + 1), array_len);
-	deref(name # (u->name_len + 1 + len_strlen)) = ']';
+	name_offset : u64 mut := u->name_len;
+	if(ty_has_qual(underlying, tyqual.qual_mut))
+	{
+		memcopy(name # (name_offset), qual_str_mut, zstrlen(qual_str_mut));
+		name_offset = (name_offset + zstrlen(qual_str_mut));
+	}
+	if(ty_has_qual(underlying, tyqual.qual_weak))
+	{
+		memcopy(name # (name_offset), qual_str_weak, zstrlen(qual_str_weak));
+		name_offset = (name_offset + zstrlen(qual_str_weak));
+	}
+	if(ty_has_qual(underlying, tyqual.qual_static))
+	{
+		memcopy(name # (name_offset), qual_str_static, zstrlen(qual_str_static));
+		name_offset = (name_offset + zstrlen(qual_str_static));
+	}
+	deref(name # (name_offset + 0)) = '[';
+	sputuint(name # (name_offset + 1), array_len);
+	deref(name # (name_offset + 1 + len_strlen)) = ']';
 	return tybox_add(box, ty
 	{
 		.tag := tytag.arr;
 		.name := name;
-		.name_len := u->name_len + 2 + len_strlen;
+		.name_len := name_offset + 2 + len_strlen;
 		.base := underlying;
 	});
 };
