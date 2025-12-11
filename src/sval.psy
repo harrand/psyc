@@ -244,6 +244,61 @@ sval_convert_to ::= func(s : sval, to : tyid, source : ast? -> sval)
 	return zero;
 };
 
+apply_unop_int ::= func(op : ast_unop, operand : s64 mut?, source : ast? -> s64)
+{
+	if(op == (ast_unop.minus))
+	{
+		return -deref(operand);
+	}
+	if(op == (ast_unop.bitwise_invert))
+	{
+		return ~deref(operand);
+	}
+	psyc_error_begin(source->loc);
+	putzstr("attempt to statically perform a unary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on an integral literal, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+apply_unop_float ::= func(op : ast_unop, operand : f64 mut?, source : ast? -> f64)
+{
+	if(op == (ast_unop.minus))
+	{
+		return -deref(operand);
+	}
+	psyc_error_begin(source->loc);
+	putzstr("attempt to statically perform a unary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on a floating-point literal, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+apply_unop_bool ::= func(op : ast_unop, operand : bool mut?, source : ast? -> bool)
+{
+	if(op == (ast_unop.logical_invert))
+	{
+		return !deref(operand);
+	}
+	psyc_error_begin(source->loc);
+	putzstr("attempt to statically perform a unary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on a boolean literal, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 apply_biop_int ::= func(op : ast_biop, lhs : s64 mut?, rhs : s64 mut?, source : ast? -> s64)
 {
 	if(op == (ast_biop.assign))
@@ -326,6 +381,8 @@ apply_biop_int ::= func(op : ast_biop, lhs : s64 mut?, rhs : s64 mut?, source : 
 	putzstr("attempt to statically perform a binary ");
 	putzstr(__enumname(op));
 	putzstr(" operation on two integral literals, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
@@ -383,8 +440,33 @@ apply_biop_float ::= func(op : ast_biop, lhs : f64 mut?, rhs : f64 mut?, source 
 	putzstr("attempt to statically perform a binary ");
 	putzstr(__enumname(op));
 	putzstr(" operation on two floating-point literals, which is not valid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
 	psyc_diag_end();
 	psyc_exit_failure();
 	return zero;
 };
 
+apply_biop_bool ::= func(op : ast_biop, lhs : bool mut?, rhs : bool mut?, source : ast? -> bool)
+{
+	if(op == (ast_biop.assign))
+	{
+		deref(lhs) = deref(rhs);
+		return deref(lhs);
+	}
+	if(op == (ast_biop.compare_equal))
+	{
+		return (deref(lhs) == deref(rhs));
+	}
+	if(op == (ast_biop.compare_not_equal))
+	{
+		return (deref(lhs) != deref(rhs));
+	}
+	psyc_error_begin(source->loc);
+	putzstr("attempt to statically perform a binary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on two boolean literals, which is not valid");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
