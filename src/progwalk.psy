@@ -125,7 +125,7 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	enumdata ::= node->enumeration;
 	entcount ::= node->children_count;
-	unfinished_type ::= ty
+	retty ::= ty
 	{
 		.tag := tytag.enm;
 		.name := enumdata.name;
@@ -138,10 +138,21 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 			.entries_count := entcount;
 		};
 	};
+	i : u64 mut;
+	for(i = 0, i < entcount, i = i + 1)
+	{
+		// ent is going to be a desiginit with a single child value
+		ent ::= ast_get_child(node, i);
+		ent_sval ::= sval_convert_to(sval_node(ast_get_child(ent, 0)), tyid.s64, ent);
+		desig ::= ent->desiginit;
+		deref(retty.enm.entry_names # i) = (desig.name);
+		deref(retty.enm.entry_name_lens # i) = (desig.name_len);
+		deref(retty.enm.entries # i) = (ent_sval.primitive.integer@u64);
+	}
 	scope_add_enumeration(scope, enumeration
 	{
 		.node := node;
-		.type := ty_wrap(unfinished_type, zero);
+		.type := ty_wrap(retty, zero);
 		.cg := zero;
 		.db := zero;
 	});
