@@ -45,6 +45,80 @@ sval_node ::= func(node : ast? -> sval)
 		rhs ::= sval_node(ast_get_child(node, 1));
 		return sval_biop(node->biop, ref lhs, ref rhs, node);
 	}
+	if(ast_is_expr(node, ast_expr_tag.field))
+	{
+		// remember we are in a static context
+		// so we basically only expect this to be an enum access.
+		field_lhs ::= ast_get_child(node, 0);
+		field_rhs ::= ast_get_child(node, 1);
+		// expect them to both be symbol expressions
+		if(ast_is_expr(field_lhs, ast_expr_tag.symbol) && ast_is_expr(field_rhs, ast_expr_tag.symbol))
+		{
+			enumname_symbol ::= field_lhs->symbol;
+			entryname_symbol ::= field_rhs->symbol;
+			maybe_type ::= ty_find_by_name(enumname_symbol.data, enumname_symbol.len);
+			if(!ty_is_enum(maybe_type))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("expected field_lhs symbol ");
+				putchar('"');
+				putbytes(enumname_symbol.data, enumname_symbol.len);
+				putchar('"');
+				putzstr(" to be a valid enum type, but it instead yielded ");
+				putty(maybe_type);
+				putchar(10);
+				ast_print_annotated_source(program_current_source_file().src, node, 1);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			enty ::= ty_unwrap(maybe_type)->enm;
+			i : u64 mut;
+			for(i = 0, i < (enty.entries_count), i = i + 1)
+			{
+				cur_entry_name ::= deref(enty.entry_names # i);
+				cur_entry_name_len ::= deref(enty.entry_name_lens # i);
+				if(cur_entry_name_len == (entryname_symbol.len))
+				{
+					if(streql_n(cur_entry_name, entryname_symbol.data, cur_entry_name_len))
+					{
+						// yes its this entry
+						// just return the value as an sval
+						return sval
+						{
+							.tag := sval_tag.primitive;
+							.primitive := ast_literal
+							{
+								.tag := ast_literal_tag.integer;
+								.integer := deref(enty.entries # i)@s64;
+							};
+						};
+					}
+				}
+			}
+			psyc_error_begin(node->loc);
+			putzstr("enum ");
+			putchar('"');
+			putty(maybe_type);
+			putchar('"');
+			putzstr(" has no entry named ");
+			putchar('"');
+			putbytes(entryname_symbol.data, entryname_symbol.len);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_current_source_file().src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		else
+		{
+			psyc_error_begin(node->loc);
+			putzstr("in a static context, the only xxx.yyy field access allowed is for an enum access, which the below code is not:");
+			putchar(10);
+			ast_print_annotated_source(program_current_source_file().src, node, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
 	return zero;
 };
 
