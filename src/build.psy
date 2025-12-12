@@ -1,4 +1,4 @@
-find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?, region_name_len : u64 -> v0)
+find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?, region_name_len : u64, source : ast? -> v0)
 {
 	the_region : region mut? mut := zero;
 
@@ -18,7 +18,7 @@ find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?,
 	if(the_region == zero)
 	{
 		// todo: maybe pass in a called_from ast so we can give a more specific error message in the case that the build region was invoked from another?
-		psyc_error_begin(zero);
+		psyc_error_begin(source->loc);
 		putzstr("build file ");
 		putchar('"');
 		putbytes(scope->name, scope->name_len);
@@ -27,22 +27,27 @@ find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?,
 		putchar('"');
 		putbytes(region_name, region_name_len);
 		putchar('"');
+		if(source != zero)
+		{
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		}
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	invoke_build_region(the_region->node);
+	invoke_build_region(the_region->node, scope);
 };
 
-invoke_build_region ::= func(node : ast? -> v0)
+invoke_build_region ::= func(node : ast?, scope : lexical_scope? -> v0)
 {
 	i : u64 mut;
 	for(i = 0, i < (node->children_count), i = i + 1)
 	{
-		invoke_build_instruction(ast_get_child(node, i));
+		invoke_build_instruction(ast_get_child(node, i), scope);
 	}
 };
 
-invoke_build_instruction ::= func(node : ast? -> v0)
+invoke_build_instruction ::= func(node : ast?, scope : lexical_scope? -> v0)
 {
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
@@ -53,12 +58,9 @@ invoke_build_instruction ::= func(node : ast? -> v0)
 		}
 		else
 		{
-			psyc_panic_begin(node->loc);	
-			putzstr("non-builtin called. todo: treat it as a separate build region?");
-			putchar(10);
-			ast_print_annotated_source(program_current_source_file().src, node, 1);
-			psyc_diag_end();
-			psyc_exit_failure();
+			// the call isnt a builtin
+			// how about another build region, Murray?
+			find_and_invoke_build_region(scope, node->call.call_name, node->call.call_name_len, node);
 		}
 		return;
 	}
