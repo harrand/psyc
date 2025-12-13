@@ -466,6 +466,31 @@ ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
 	return ty_set_qual(tybox_add_array(ref(prog.types), id, len), quals);
 };
 
+ty_node ::= func(node : ast? -> tyid)
+{
+	typename ::= node->typename;
+	if(typename.descriptor == (ast_typename_descriptor.base))
+	{
+		return ty_set_qual(ty_find_by_name(typename.basename, typename.basename_len), typename.quals);
+	}
+	if(typename.descriptor == (ast_typename_descriptor.array))
+	{
+		arrlen_sval ::= sval_node(ast_get_child(node, 1));
+		return ty_arr(ty_node(ast_get_child(node, 0)), arrlen_sval.primitive.integer@u64, typename.quals);
+	}
+	if(typename.descriptor == (ast_typename_descriptor.pointer))
+	{
+		return ty_ptr(ty_node(ast_get_child(node, 0)), typename.quals);
+	}
+	psyc_panic_begin(node->loc);
+	putzstr("failed to convert this typename node to a tyid");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 // given two primitive types which we want to add/sub/mul/div/shr/etc...
 // return the type that both should be converted to
 // you can always assume the returned type matches one of the operands.
