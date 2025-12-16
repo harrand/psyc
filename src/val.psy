@@ -19,7 +19,7 @@ val_static ::= func(s : sval -> val)
 
 val_is_valid ::= func(v : val -> bool)
 {
-	return v.tag == zero;
+	return v.tag != zero;
 };
 
 val_node ::= func(node : ast? -> val)
@@ -41,7 +41,8 @@ val_node ::= func(node : ast? -> val)
 	}
 	if(ast_is_expr(node, ast_expr_tag.cast))
 	{
-		cast_from_val ::= val_node(ast_get_child(node, 0));
+		cast_from_val : val mut := val_node(ast_get_child(node, 0));
+		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
 		return val_convert_to(cast_from_val, ty_node(ast_get_child(node, 1)), node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.field))
@@ -295,14 +296,276 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 	return zero;
 };
 
+zero_as ::= func(to : tyid, source : ast? -> val)
+{
+	ret : val mut := zero;
+	ret.tag = (valtag.s);
+	ret.type = to;
+	ret.s.tag = (sval_tag.primitive);
+	ret.s.primitive = zero;
+	// tag needs to match tho
+	if(ty_is_integral(to))
+	{
+		ret.s.primitive.tag = (ast_literal_tag.integer);
+		return ret;
+	}
+	if(ty_is_floating_point(to))
+	{
+		ret.s.primitive.tag = (ast_literal_tag.floating_point);
+		return ret;
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("missing codepath in zero_as for a zero_value converting to ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return ret;
+};
+
+number_as ::= func(n : s64 weak, to : tyid -> val)
+{
+	return val
+	{
+		.tag := valtag.s;
+		.type := to;
+		.s := sval
+		{
+			.tag := sval_tag.primitive;
+			.primitive := ast_literal
+			{
+				.tag := ast_literal_tag.integer;
+				.integer := n;
+			};
+		};
+	};
+};
+
+string_as ::= func(chars : u8?, chars_len : u64 -> val)
+{
+	return val
+	{
+		.tag := valtag.s;
+		.type := tyid_string_literal();
+		.s := sval
+		{
+			.tag := sval_tag.primitive;
+			.primitive := ast_literal
+			{
+				.tag := ast_literal_tag.string;
+				.chars := chars;
+				.chars_len := chars_len;
+			};
+		};
+	};
+};
+
 val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 {
-	if(v.tag == (valtag.s))
+	ret : val mut := v;
+	if(ret.tag == (valtag.s))
 	{
-		return val_static(sval_convert_to(v.s, to, source));
+		toty ::= ty_unwrap(to);
+		if(ret.s.tag == (sval_tag.zero_value))
+		{
+			return zero_as(to, source);
+		}
+		// not a zero value but still is statically known.
+		from ::= ret.type;
+		ty_ensure_convertible_to(from, to, source);
+		ret.type = to;
+
+		toprim ::= toty->base;
+		if(ty_is_integral(from))
+		{
+			// integer 2 x
+			if(ty_is_integral(to))
+			{
+				// no work necessary
+				return ret;
+			}
+			if(ty_is_floating_point(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.floating_point);
+				ret.s.primitive.floating_point = (ret.s.primitive.integer@_);
+				return ret;
+			}
+			if(ty_is_bool(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.boolean);
+				ret.s.primitive.boolean = (ret.s.primitive.integer != 0);
+				return ret;
+			}
+			if(ty_is_char(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.char);
+				ret.s.primitive.chars = arena_alloc(global_arena, 1);
+				ret.s.primitive.chars_len = 1;
+				deref(ret.s.primitive.chars) = (ret.s.primitive.integer@_);
+				return ret;
+			}
+			// special checks:
+			// s64 to enum
+			if(ty_matches_ignore_quals(from, tyid.s64) && ty_is_enum(to))
+			{
+				// nothing needs to be done
+				return ret;
+			}
+			if(ty_matches_ignore_quals(from, tyid.u64) && ty_is_ptr(to))
+			{
+				// so how do we convert a u64 literal to a pointer
+				// you cant really.
+				return ret;
+			}
+		}
+		if(ret.s.tag == (sval_tag.primitive))
+		{
+			fromprim ::= v.s.primitive;
+			if(toty->tag == (tytag.prim))
+			{
+				// integer 2 x
+				if(fromprim.tag == (ast_literal_tag.integer))
+				{
+					if(ty_is_integral(to))
+					{
+						// already done.
+						return ret;
+					}
+					if(ty_is_floating_point(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.floating_point);
+						ret.s.primitive.floating_point = (ret.s.primitive.integer@_);
+						return ret;
+					}
+					if(ty_is_bool(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.boolean);
+						ret.s.primitive.boolean = (ret.s.primitive.integer != 0);
+						return ret;
+					}
+					if(ty_is_char(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.char);
+						ret.s.primitive.chars = arena_alloc(global_arena, 1);
+						ret.s.primitive.chars_len = 1;
+						deref(ret.s.primitive.chars) = (ret.s.primitive.integer@_);
+						return ret;
+					}
+				}
+				// floating point 2 x
+				if(fromprim.tag == (ast_literal_tag.floating_point))
+				{
+					if(ty_is_integral(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.integer);
+						ret.s.primitive.integer = (ret.s.primitive.floating_point@_);
+					}
+					if(ty_is_floating_point(to))
+					{
+						// already done.
+						return ret;
+					}
+					if(ty_is_char(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.char);
+						ret.s.primitive.chars = arena_alloc(global_arena, 1);
+						ret.s.primitive.chars_len = 1;
+						deref(ret.s.primitive.chars) = (ret.s.primitive.floating_point@_);
+					}
+				}
+				// char 2 x
+				if(fromprim.tag == (ast_literal_tag.char))
+				{
+					ch ::= deref(ret.s.primitive.chars # 0);
+					if(ty_is_integral(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.integer);
+						ret.s.primitive.integer = (ch@_);
+						return ret;
+					}
+					if(ty_is_floating_point(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.floating_point);
+						ret.s.primitive.floating_point = (ch@_);
+						return ret;
+					}
+					if(ty_is_char(to))
+					{
+						// already done.
+						return ret;
+					}
+					if(ty_is_bool(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.boolean);
+						ret.s.primitive.boolean = (ch != 0);
+						return ret;
+					}
+				}
+				// boolean 2 x
+				if(fromprim.tag == (ast_literal_tag.boolean))
+				{
+					if(ty_is_integral(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.integer);
+						if(ret.s.primitive.boolean)
+						{
+							ret.s.primitive.integer = 1;
+						}
+						else
+						{
+							ret.s.primitive.integer = 0;
+						}
+						return ret;
+					}
+					if(ty_is_char(to))
+					{
+						ret.s.primitive.tag = (ast_literal_tag.char);
+						ret.s.primitive.chars = arena_alloc(global_arena, 1);
+						ret.s.primitive.chars_len = 1;
+						if(ret.s.primitive.boolean)
+						{
+							deref(ret.s.primitive.chars) = 1;
+						}
+						else
+						{
+							deref(ret.s.primitive.chars) = 0;
+						}
+						return ret;
+					}
+					if(ty_is_bool(to))
+					{
+						// already done.
+						return ret;
+					}
+				}
+			}
+		}
+		if(from == tyid_string_literal())
+		{
+			if(to == tyid_string_literal())
+			{
+				return ret;
+			}
+		}
+		psyc_panic_begin(source->loc);
+		putzstr("missing codepath in val_convert_to from type ");
+		putchar('"');
+		putty(from);
+		putchar('"');
+		putzstr(" converting to ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+		return zero;
 	}
-	psyc_nyi(source->loc);
-	return zero;
+	ret.cg = cg_convert_to(ref v, to, source);
+	ret.type = to;
+	return ret;
 };
 
 val_static2dynamic ::= func(v : val mut?, source : ast? -> v0)
