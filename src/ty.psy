@@ -398,6 +398,21 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 				return tyconv.no_but_yes_with_weak;
 			}
 		}
+		if(toty->tag == (tytag.ptr))
+		{
+			// two pointers
+			if((!from_is_static) && to_is_static)
+			{
+				return tyconv.no_cant_add_staticness;
+			}
+			// should we use yes_needs_convert?
+			// no, because we assume our codegen treats all pointers the same.
+			if(either_is_weak)
+			{
+				return tyconv.yes;
+			}
+			return tyconv.no_but_yes_with_weak;
+		}
 	}
 	return zero;
 };
@@ -440,6 +455,23 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 		putty(to);
 		putchar('"');
 		putzstr(" (but it would work with a cast!)");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(conv == (tyconv.no_cant_add_staticness))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("type ");
+		putchar('"');
+		putty(from);
+		putchar('"');
+		putzstr(" is not convertible to a ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(" because doing so would add staticness");
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
 		psyc_diag_end();

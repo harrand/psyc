@@ -8,7 +8,8 @@ sval_tag ::= enum
 {
 	.zero_value := 1;
 	.primitive := 2;
-	.array := 3;
+	.pointer := 3;
+	.array := 4;
 	//.structure := 4;
 };
 
@@ -16,6 +17,8 @@ sval ::= struct
 {
 	tag : sval_tag;
 	primitive : ast_literal;
+	// note: actually a val mut?
+	underlying : v0? weak;
 };
 
 val ::= struct
@@ -52,7 +55,14 @@ val_node ::= func(node : ast? -> val)
 	{
 		cast_from_val : val mut := val_node(ast_get_child(node, 0));
 		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
-		return val_convert_to(cast_from_val, ty_node(ast_get_child(node, 1)), node);
+		cast_to_node ::= ast_get_child(node, 1);
+		if(ast_is_weakness_idiom(cast_to_node))
+		{
+			// its the weakness idiom! i.e foo@_
+			// no need to do a conversion.
+			return cast_from_val;
+		}
+		return val_convert_to(cast_from_val, ty_node(cast_to_node), node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.field))
 	{
@@ -68,6 +78,18 @@ val_node ::= func(node : ast? -> val)
 val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 {
 	s ::= v->tag == (valtag.s);
+	// check for 'ref' as this one has special functionality
+	if(op == (ast_unop.reference))
+	{
+		if(s)
+		{
+			return s_ref(v, source);
+		}
+		else
+		{
+			return cg_ref(v, source);
+		}
+	}
 	if(ty_is_integral(v->type))
 	{
 		if(s)
