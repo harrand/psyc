@@ -143,11 +143,11 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	{
 		// ent is going to be a desiginit with a single child value
 		ent ::= ast_get_child(node, i);
-		ent_sval ::= sval_convert_to(sval_node(ast_get_child(ent, 0)), tyid.s64, ent);
+		ent_val ::= val_convert_to(val_node(ast_get_child(ent, 0)), tyid.s64, ent);
 		desig ::= ent->desiginit;
 		deref(retty.enm.entry_names # i) = (desig.name);
 		deref(retty.enm.entry_name_lens # i) = (desig.name_len);
-		deref(retty.enm.entries # i) = (ent_sval.primitive.integer@u64);
+		deref(retty.enm.entries # i) = val_must_get_integer_literal(ent_val, ent);
 	}
 	scope_add_enumeration(scope, enumeration
 	{
@@ -207,17 +207,8 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 
 	if(ifdata.is_static)
 	{
-		cond_sval ::= sval_node(cond_node);
-		if(!sval_is_valid(cond_sval) || (cond_sval.tag != (sval_tag.primitive)) || (cond_sval.primitive.tag != (ast_literal_tag.boolean)))
-		{
-			psyc_error_begin(node->loc);
-			putzstr("condition of static-if could not be expressed as a statically-known bool value");
-			putchar(10);
-			ast_print_annotated_source(program_current_source_file().src, node, 1);
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		if(!(cond_sval.primitive.boolean))
+		cond_val ::= val_node(cond_node);
+		if(!val_must_get_boolean_literal(cond_val, cond_node))
 		{
 			// static_if(false)
 			// if we have no else then just set childcount to 1

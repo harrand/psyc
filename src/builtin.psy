@@ -35,19 +35,31 @@ builtin_match_name ::= func(name : u8?, name_len : u64 -> builtin)
 	return zero;
 };
 
-builtin_fn_param ::= func(node : ast?, id : u64 -> sval)
+builtin_fn_param ::= func(node : ast?, id : u64 -> val)
 {
 	if(node->children_count <= id)
 	{
 		return zero;
 	}
 	child ::= ast_get_child(node, id);
-	return sval_node(child);
+	return val_node(child);
 };
 
 builtin_static_param ::= func(node : ast?, id : u64, type : tyid -> sval)
 {
-	return sval_convert_to(builtin_fn_param(node, id), type, node);
+	v ::= val_convert_to(builtin_fn_param(node, id), type, node);
+	if(v.tag != (valtag.s))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("the code below must be a statically-known ");
+		putty(type);
+		putzstr(" but it is not statically known");
+		psyc_diag_end();
+		psyc_exit_failure();
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1);
+	}
+	return v.s;
 };
 
 builtin_has_param ::= func(node : ast?, id : u64 -> bool)

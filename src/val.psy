@@ -1,0 +1,391 @@
+valtag ::= enum
+{
+	.s := 1;
+	.d := 2;
+};
+
+val ::= struct
+{
+	tag : valtag;
+	type : tyid;
+	s : sval;
+	cg : u64;
+};
+
+val_static ::= func(s : sval -> val)
+{
+	return val{.tag := valtag.s; .type := sval2type(s); .s := s; .cg := zero;};
+};
+
+val_is_valid ::= func(v : val -> bool)
+{
+	return v.tag == zero;
+};
+
+val_node ::= func(node : ast? -> val)
+{
+	if(ast_is_expr(node, ast_expr_tag.literal))
+	{
+		return val_static(sval_primitive(node->literal));
+	}
+	if(ast_is_expr(node, ast_expr_tag.unop))
+	{
+		operand ::= val_node(ast_get_child(node, 0));
+		return val_unop(node->unop, ref operand, node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.biop))
+	{
+		lhs ::= val_node(ast_get_child(node, 0));
+		rhs ::= val_node(ast_get_child(node, 1));
+		return val_biop(node->biop, ref lhs, ref rhs, node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.cast))
+	{
+		cast_from_val ::= val_node(ast_get_child(node, 0));
+		return val_convert_to(cast_from_val, ty_node(ast_get_child(node, 1)), node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.field))
+	{
+		psyc_nyi(node->loc);
+	}
+	psyc_panic_begin(node->loc);
+	putzstr("control reached end of val_node");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
+{
+	s ::= v->tag == (valtag.s);
+	if(ty_is_integral(v->type))
+	{
+		if(s)
+		{
+			return s_integral_unop(op, v, source);
+		}
+		else
+		{
+			return cg_integral_unop(op, v, source);
+		}
+	}
+	if(ty_is_floating_point(v->type))
+	{
+		if(s)
+		{
+			return s_floating_point_unop(op, v, source);
+		}
+		else
+		{
+			return cg_floating_point_unop(op, v, source);
+		}
+	}
+	if(ty_is_bool(v->type))
+	{
+		if(s)
+		{
+			return s_bool_unop(op, v, source);
+		}
+		else
+		{
+			return cg_bool_unop(op, v, source);
+		}
+	}
+	psyc_error_begin(source->loc);
+	putzstr("cannot perform unary ");
+	putzstr(__enumname(op));
+	putzstr(" operation on a ");
+	putty(v->type);
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -> val)
+{
+	lhs_s ::= lhs->tag == (valtag.s);
+	rhs_s ::= rhs->tag == (valtag.s);
+	s ::= lhs_s && rhs_s;
+	if(lhs_s && (!rhs_s))
+	{
+		// lhs->cg needs to exist as we're doing runtime stuff now.
+		val_static2dynamic(lhs, source);
+	}
+	if((!lhs_s) && (rhs_s))
+	{
+		val_static2dynamic(rhs, source);
+	}
+	if(!s)
+	{
+		// better have 2 valid cg's
+		if((lhs->cg == 0) || (rhs->cg == 0))
+		{
+			psyc_panic_begin(source->loc);
+			putzstr("the following biop is not calculable at compile-time, but runtime codegen data has not been generated for both rhs and lhs. this is a compiler bug.");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	// so this one is a little more complicated as we need to deal with zero-value.
+	// these types are immediately wrong if these are zero values so lets check that now.
+	lhs_type : tyid mut := lhs->type;
+	rhs_type : tyid mut := rhs->type;
+	lhs_is_zero ::= (lhs->tag == (valtag.s)) && (lhs->s.tag == (sval_tag.zero_value));
+	rhs_is_zero ::= (rhs->tag == (valtag.s)) && (rhs->s.tag == (sval_tag.zero_value));
+	if(lhs_is_zero && (!rhs_is_zero))
+	{
+		lhs_type = rhs_type;
+	}
+	if((!lhs_is_zero) && rhs_is_zero)
+	{
+		rhs_type = lhs_type;
+	}
+	if(lhs_is_zero && rhs_is_zero)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("binary operator ");
+		putzstr(__enumname(op));
+		putzstr(" cannot be provided 'zero' on both sides as there is no way to decipher the type of the result.");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	arith_ty ::= ty_of_arithmetic(lhs_type, rhs_type);
+	// list all the ops that ty_of_arithmetic will help with
+	if(
+		(op == (ast_biop.add)) ||
+		(op == (ast_biop.sub)) ||
+		(op == (ast_biop.mul)) ||
+		(op == (ast_biop.div)) ||
+		(op == (ast_biop.bitwise_or)) ||
+		(op == (ast_biop.bitwise_and)) ||
+		(op == (ast_biop.xor)) ||
+		(op == (ast_biop.bitshift_left)) ||
+		(op == (ast_biop.bitshift_right)) ||
+		(op == (ast_biop).modulo)
+	)
+	{
+		if(arith_ty == zero)
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary ");
+			putzstr(__enumname(op));
+			putzstr(" operation is not valid on a ");
+			putty(lhs_type);
+			putzstr(" and a ");
+			putty(rhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		// okay great
+		deref(lhs) = val_convert_to(deref lhs, arith_ty, source);
+		deref(rhs) = val_convert_to(deref rhs, arith_ty, source);
+		if(ty_is_integral(arith_ty))
+		{
+			if(s)
+			{
+				return s_integral_arith_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_integral_arith_biop(op, lhs, rhs, source);
+			}
+		}
+		if(ty_is_floating_point(arith_ty))
+		{
+			if(s)
+			{
+				return s_floating_point_arith_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_floating_point_arith_biop(op, lhs, rhs, source);
+			}
+		}
+		if(ty_is_bool(arith_ty))
+		{
+			if(s)
+			{
+				return s_bool_arith_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_bool_arith_biop(op, lhs, rhs, source);
+			}
+		}
+	}
+	// list all the comparison ops that return bool
+	if(
+		(op == (ast_biop.compare_equal)) ||
+		(op == (ast_biop.compare_not_equal)) ||
+		(op == (ast_biop.compare_less)) ||
+		(op == (ast_biop.compare_less_equal)) ||
+		(op == (ast_biop.compare_greater)) ||
+		(op == (ast_biop.compare_greater_equal))
+	)
+	{
+		// still use arithmetic type
+		if(arith_ty == zero)
+		{
+			psyc_error_begin(source->loc);
+			putzstr("binary ");
+			putzstr(__enumname(op));
+			putzstr(" operation is not valid on a ");
+			putty(lhs_type);
+			putzstr(" and a ");
+			putty(rhs_type);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		// okay great
+		deref(lhs) = val_convert_to(deref lhs, arith_ty, source);
+		deref(rhs) = val_convert_to(deref rhs, arith_ty, source);
+		if(ty_is_integral(arith_ty))
+		{
+			if(s)
+			{
+				return s_integral_cmp_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_integral_cmp_biop(op, lhs, rhs, source);
+			}
+		}
+		if(ty_is_floating_point(arith_ty))
+		{
+			if(s)
+			{
+				return s_floating_point_cmp_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_floating_point_cmp_biop(op, lhs, rhs, source);
+			}
+		}
+		if(ty_is_bool(arith_ty))
+		{
+			if(s)
+			{
+				return s_bool_cmp_biop(op, lhs, rhs, source);
+			}
+			else
+			{
+				return cg_bool_cmp_biop(op, lhs, rhs, source);
+			}
+		}
+	}
+	// logical_or and logical_and are still missing i think. need to confirm theyre both bools and then return the sval comparison result.
+	// also havent done biop.at but i basically dont expect that to really be used in svals (todo: sval arrays)
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of val_biop. either your code is wrong or mine havent figured it out yet.");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
+{
+	if(v.tag == (valtag.s))
+	{
+		return val_static(sval_convert_to(v.s, to, source));
+	}
+	psyc_nyi(source->loc);
+	return zero;
+};
+
+val_static2dynamic ::= func(v : val mut?, source : ast? -> v0)
+{
+	// v->cg needs to exist
+	if(v->tag == (valtag.s))
+	{
+		if(v->cg == zero)
+		{
+			// make it happen.
+			v->cg = cg_sval(v, source);
+		}
+	}
+};
+
+val_must_get_integer_literal ::= func(v : val, source : ast? -> s64 weak)
+{
+	if(v.tag != (valtag.s))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known integer literal, but it was instead a runtime ");
+		putty(v.type);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.s.tag != (sval_tag.primitive))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known integer literal, but it was instead a statically-known ");
+		putzstr(__enumname(v.s.tag));
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.s.primitive.tag != (ast_literal_tag.integer))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known integer literal, but it was instead a statically-known ");
+		putzstr(__enumname(v.s.primitive.tag));
+		putzstr(" literal");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return v.s.primitive.integer;
+};
+
+val_must_get_boolean_literal ::= func(v : val, source : ast? -> bool)
+{
+	if(v.tag != (valtag.s))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known boolean literal, but it was instead a runtime ");
+		putty(v.type);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.s.tag != (sval_tag.primitive))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known boolean literal, but it was instead a statically-known ");
+		putzstr(__enumname(v.s.tag));
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.s.primitive.tag != (ast_literal_tag.boolean))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to yield a statically-known boolean literal, but it was instead a statically-known ");
+		putzstr(__enumname(v.s.primitive.tag));
+		putzstr(" literal");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return v.s.primitive.boolean;
+};
