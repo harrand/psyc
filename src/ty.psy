@@ -18,6 +18,14 @@ tytag ::= enum
 	.fn := 6;
 };
 
+enumty ::= struct
+{
+	entries : u64 mut?;
+	entry_names : u8? mut?;
+	entry_name_lens : u64 mut?;
+	entries_count : u64;
+};
+
 structty ::= struct
 {
 	members : tyid mut?;
@@ -27,12 +35,11 @@ structty ::= struct
 	node : ast?;
 };
 
-enumty ::= struct
+fnty ::= struct
 {
-	entries : u64 mut?;
-	entry_names : u8? mut?;
-	entry_name_lens : u64 mut?;
-	entries_count : u64;
+	return_type : tyid;
+	param_types : tyid mut?;
+	params_count : u64;
 };
 
 ty ::= struct
@@ -46,6 +53,7 @@ ty ::= struct
 	array_len : u64;
 	strct : structty;
 	enm : enumty;
+	fn : fnty;
 };
 
 // this tyid enum is the magic behind it all. here you only see the primitive types.
@@ -535,6 +543,11 @@ ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
 	return ty_set_qual(tybox_add_array(ref(prog.types), id, len), quals);
 };
 
+ty_fn ::= func(ret_id : tyid, param_ids : tyid?, params_count : u64, quals : tyqual -> tyid)
+{
+	return ty_set_qual(tybox_add_function(ref(prog.types), ret_id, param_ids, params_count), quals);
+};
+
 ty_node ::= func(node : ast? -> tyid)
 {
 	typename ::= node->typename;
@@ -552,6 +565,24 @@ ty_node ::= func(node : ast? -> tyid)
 	if(typename.descriptor == (ast_typename_descriptor.pointer))
 	{
 		return ty_ptr(ty_node(ast_get_child(node, 0)), typename.quals);
+	}
+	if(typename.descriptor == (ast_typename_descriptor.function))
+	{
+		// param nodes are 0-(n-1)
+		// ret node is n-1
+		retty_node ::= ast_get_child(node, node->children_count - 1);
+		retty ::= ty_node(retty_node);
+		params_count ::= node->children_count - 1;
+		fn_params : tyid mut? := arena_alloc(global_arena, __sizeof(tyid) * params_count);
+		i : u64 mut;
+		for(i = 0, i < params_count, i = i + 1)
+		{
+			cur_param_node ::= ast_get_child(node, i);
+			// remember the param is a decl
+			// its first child is the typename
+			deref(fn_params # i) = ty_node(ast_get_child(cur_param_node, 0));
+		}
+		return ty_fn(retty, fn_params, params_count, typename.quals);
 	}
 	psyc_panic_begin(node->loc);
 	putzstr("failed to convert this typename node to a tyid");

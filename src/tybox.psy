@@ -136,6 +136,95 @@ tybox_add_array ::= func(box : tybox mut?, underlying : tyid, array_len : u64 ->
 		.name := name;
 		.name_len := name_offset + 2 + len_strlen;
 		.base := underlying;
+		.array_len := array_len;
+	});
+};
+
+tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, params_count : u64 -> tyid)
+{
+	i : u64 mut;
+	// need to calculate the name len... ugh...
+	maximum_name_len : u64 mut := zstrlen("func( -> )");
+	for(i = 0, i < params_count, i = i + 1)
+	{
+		// include enough space for the actual name
+		// + qual_max_strlen
+		// + a space and comma
+		maximum_name_len = (maximum_name_len + (tybox_at(box, ty_clear_all_quals(deref(param_ids # i)))->name_len) + quals_max_strlen + 2);
+	}
+	maximum_name_len = (maximum_name_len + quals_max_strlen + 2 + tybox_at(box, ty_clear_all_quals(ret_id))->name_len);
+	name : u8 mut? := arena_alloc(string_arena, maximum_name_len);
+
+	funcname_prefix ::= "func(";
+	name_offset : u64 mut := 0;
+	memcopy(name # name_offset, funcname_prefix, zstrlen(funcname_prefix));
+	name_offset = name_offset + zstrlen(funcname_prefix);
+	// ok do params
+	for(i = 0, i < params_count, i = i + 1)
+	{
+		param_id ::= deref(param_ids # i);
+		param ::= tybox_at(box, ty_clear_all_quals(param_id));
+		memcopy(name # name_offset, param->name, param->name_len);
+		name_offset = (name_offset + param->name_len);
+		if(ty_has_qual(param_id, tyqual.qual_mut))
+		{
+			memcopy(name # (name_offset), qual_str_mut, zstrlen(qual_str_mut));
+			name_offset = (name_offset + zstrlen(qual_str_mut));
+		}
+		if(ty_has_qual(param_id, tyqual.qual_weak))
+		{
+			memcopy(name # (name_offset), qual_str_weak, zstrlen(qual_str_weak));
+			name_offset = (name_offset + zstrlen(qual_str_weak));
+		}
+		if(ty_has_qual(param_id, tyqual.qual_static))
+		{
+			memcopy(name # (name_offset), qual_str_static, zstrlen(qual_str_static));
+			name_offset = (name_offset + zstrlen(qual_str_static));
+		}
+		if(i < (params_count - 1))
+		{
+			// not last param, add the comma and space
+			per_param_suffix ::= ", ";
+			memcopy(name # name_offset, per_param_suffix, zstrlen(per_param_suffix));
+			name_offset = (name_offset + zstrlen(per_param_suffix));
+		}
+	}
+	pre_retty_suffix ::= " -> ";
+	memcopy(name # name_offset, pre_retty_suffix, zstrlen(pre_retty_suffix));
+	name_offset = (name_offset + zstrlen(pre_retty_suffix));
+	// now do the retty
+	retty ::= tybox_at(box, ty_clear_all_quals(ret_id));
+	memcopy(name # name_offset, retty->name, retty->name_len);
+	name_offset = (name_offset + retty->name_len);
+	if(ty_has_qual(ret_id, tyqual.qual_mut))
+	{
+		memcopy(name # (name_offset), qual_str_mut, zstrlen(qual_str_mut));
+		name_offset = (name_offset + zstrlen(qual_str_mut));
+	}
+	if(ty_has_qual(ret_id, tyqual.qual_weak))
+	{
+		memcopy(name # (name_offset), qual_str_weak, zstrlen(qual_str_weak));
+		name_offset = (name_offset + zstrlen(qual_str_weak));
+	}
+	if(ty_has_qual(ret_id, tyqual.qual_static))
+	{
+		memcopy(name # (name_offset), qual_str_static, zstrlen(qual_str_static));
+		name_offset = (name_offset + zstrlen(qual_str_static));
+	}
+	// finally add a ) at the end
+	deref(name # name_offset) = ')';
+	name_offset = name_offset + 1;
+	return tybox_add(box, ty
+	{
+		.tag := tytag.fn;
+		.name := name;
+		.name_len := name_offset;
+		.fn := fnty
+		{
+			.return_type := ret_id;
+			.param_types := param_ids;
+			.params_count := params_count;
+		};
 	});
 };
 
