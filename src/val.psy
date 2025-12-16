@@ -4,6 +4,20 @@ valtag ::= enum
 	.d := 2;
 };
 
+sval_tag ::= enum
+{
+	.zero_value := 1;
+	.primitive := 2;
+	.array := 3;
+	//.structure := 4;
+};
+
+sval ::= struct
+{
+	tag : sval_tag;
+	primitive : ast_literal;
+};
+
 val ::= struct
 {
 	tag : valtag;
@@ -26,7 +40,7 @@ val_node ::= func(node : ast? -> val)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
-		return val_static(sval_primitive(node->literal));
+		return literal_as(node->literal);
 	}
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
@@ -326,7 +340,7 @@ zero_as ::= func(to : tyid, source : ast? -> val)
 	return ret;
 };
 
-number_as ::= func(n : s64 weak, to : tyid -> val)
+integer_as ::= func(n : s64 weak, to : tyid -> val)
 {
 	return val
 	{
@@ -339,6 +353,24 @@ number_as ::= func(n : s64 weak, to : tyid -> val)
 			{
 				.tag := ast_literal_tag.integer;
 				.integer := n;
+			};
+		};
+	};
+};
+
+float_as ::= func(n : f64 weak, to : tyid -> val)
+{
+	return val
+	{
+		.tag := valtag.s;
+		.type := to;
+		.s := sval
+		{
+			.tag := sval_tag.primitive;
+			.primitive := ast_literal
+			{
+				.tag := ast_literal_tag.floating_point;
+				.floating_point := n;
 			};
 		};
 	};
@@ -382,6 +414,49 @@ char_as ::= func(char : u8 -> val)
 			};
 		};
 	};
+};
+
+bool_as ::= func(b : bool -> val)
+{
+	return val
+	{
+		.tag := valtag.s;
+		.type := tyid_bool_literal();
+		.s := sval
+		{
+			.tag := sval_tag.primitive;
+			.primitive := ast_literal
+			{
+				.tag := ast_literal_tag.boolean;
+				.boolean := b;
+			};
+		};
+	};
+};
+
+literal_as ::= func(literal : ast_literal -> val)
+{
+	if(literal.tag == (ast_literal_tag.integer))
+	{
+		return integer_as(literal.integer, tyid_integral_literal());
+	}
+	if(literal.tag == (ast_literal_tag.floating_point))
+	{
+		return float_as(literal.floating_point, tyid_floating_point_literal());
+	}
+	if(literal.tag == (ast_literal_tag.char))
+	{
+		return char_as(deref(literal.chars # 0));
+	}
+	if(literal.tag == (ast_literal_tag.string))
+	{
+		return string_as(literal.chars, literal.chars_len);
+	}
+	if(literal.tag == (ast_literal_tag.boolean))
+	{
+		return bool_as(literal.boolean);
+	}
+	return zero;
 };
 
 val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
