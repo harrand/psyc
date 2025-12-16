@@ -1,0 +1,69 @@
+semal ::= func(-> v0)
+{
+	semal_all_structs();
+};
+
+semal_all_structs ::= func(-> v0)
+{
+	// go through every single struct type
+	// populate the types.
+	box ::= ref(prog.types);
+	i : u64 mut;
+	for(i = 0, i < (box->data_count), i = i + 1)
+	{
+		id ::= i@tyid;
+		if(ty_is_struct(id))
+		{
+			semal_struct(id);
+		}
+	}
+};
+
+semal_struct ::= func(type : tyid -> v0)
+{
+	s ::= ty_unwrap(type);
+	node ::= s->strct.node;
+	i : u64 mut;
+	for(i = 0, i < (node->children_count), i = i + 1)
+	{
+		child ::= ast_get_child(node, i);
+		decl ::= child->decl;
+		deref(s->strct.member_names # i) = (decl.name);
+		deref(s->strct.member_name_lens # i) = (decl.name_len);
+		// typename is first child of the decl
+		typename_node ::= ast_get_child(child, 0);
+		cur_ty ::= ty_node(typename_node);
+		if(cur_ty == zero)
+		{
+			// dodgy member type.
+			psyc_error_begin(child->loc);
+			putzstr("type of data member ");
+			putty(type);
+			putzstr("::");
+			putbytes(decl.name, decl.name_len);
+			putzstr(" was not valid");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(ty_matches_ignore_quals(cur_ty, type))
+		{
+			// struct is a member of itself.
+			psyc_error_begin(child->loc);
+			putzstr("recursive struct - data member ");
+			putty(type);
+			putzstr("::");
+			putbytes(decl.name, decl.name_len);
+			putzstr(" is itself a ");
+			putchar('"');
+			putty(cur_ty);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		deref(s->strct.members # i) = ty_node(typename_node);
+	}
+};
