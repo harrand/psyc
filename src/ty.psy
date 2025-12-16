@@ -425,6 +425,27 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 	if((conv == (tyconv.yes)) || (conv == (tyconv.yes_needs_convert)))
 	{
 		// epic!
+		if(ty_is_ptr(from) && ty_is_ptr(to))
+		{
+			from_underlying ::= ty_underlying(from);
+			to_underlying ::= ty_underlying(to);
+			if(!ty_has_qual(from_underlying, tyqual.qual_mut) && ty_has_qual(to_underlying, tyqual.qual_mut))
+			{
+				psyc_warning_begin(source->loc);
+				putzstr("cast from ");
+				putchar('"');
+				putty(from);
+				putchar('"');
+				putzstr(" to ");
+				putchar('"');
+				putty(to);
+				putchar('"');
+				putzstr(" adds mutability");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1);
+				psyc_diag_end();
+			}
+		}
 		return;
 	}
 	if(conv == (tyconv.no))
