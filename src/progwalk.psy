@@ -20,38 +20,43 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 	for(i = 0, i < (node->children_count), i = i + 1)
 	{
 		child ::= ast_get_child(node, i);
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.structure)))
-		{
-			// its a structure
-			progwalk_structure(child, file_scope);
-		}
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.function)))
-		{
-			// its a function
-			progwalk_function(child, file_scope);
-		}
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.enumeration)))
-		{
-			// its a enumeration
-			progwalk_enumeration(child, file_scope);
-		}
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.assembly)))
-		{
-			// its a assembly
-			progwalk_assembly(child, file_scope);
-		}
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.region)))
-		{
-			// its a region
-			progwalk_region(child, file_scope);
-		}
-		if((child->tag == (ast_tag.stmt)) && (child->stmt == (ast_stmt_tag.if_block)))
-		{
-			// its a region
-			progwalk_if(child, file_scope);
-		}
+		progwalk_node(child, file_scope);
 	}
 	return file_scope;
+};
+
+progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+{
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.structure)))
+	{
+		// its a structure
+		progwalk_structure(node, scope);
+	}
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.function)))
+	{
+		// its a function
+		progwalk_function(node, scope);
+	}
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.enumeration)))
+	{
+		// its a enumeration
+		progwalk_enumeration(node, scope);
+	}
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.assembly)))
+	{
+		// its a assembly
+		progwalk_assembly(node, scope);
+	}
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.region)))
+	{
+		// its a region
+		progwalk_region(node, scope);
+	}
+	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.if_block)))
+	{
+		// its a region
+		progwalk_if(node, scope);
+	}
 };
 
 progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
@@ -246,6 +251,10 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 	// this exists for 2 reasons:
 	// 1. we need to check inside if blocks etc for hoisting reasons
 	// 2. we want to evaluate static_ifs as early as possible. i.e now.
+	// 3. static_ifs have special functionality such that if they are true then their contents are treated as if they were in the scope that the if is in.
+
+	// 1 and 2
+	i : u64 mut;
 	ifdata ::= node->ifblk;
 	cond_node ::= ast_get_child(node, 0);
 	last_child ::= ast_get_child(node, (node->children_count - 1));
@@ -280,12 +289,20 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 				// let the first child stay put as its the cond
 				node->children_count = 1;
 				// but the rest should be replaced with the children of the else node.
-				i : u64 mut;
 				for(i = 0, i < (else_node->children_count), i = i + 1)
 				{
 					ast_add_child(node, deref(ast_get_child(else_node, i)), global_arena);
 				}
 			}
+		}
+
+
+		// 3
+		// we no longer care about the condition because of above, iterate over the non-condition children
+		// and then progwalk them
+		for(i = 1, i < (node->children_count), i = i + 1)
+		{
+			progwalk_node(ast_get_child(node, i), scope);
 		}
 	}
 };
