@@ -101,6 +101,51 @@ progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
+progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offset : u64, end_offset : u64, func_scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	last ::= node->children_count - end_offset;
+	for(i = begin_offset, i < last, i = i + 1)
+	{
+		child ::= ast_get_child(node, i);
+		if(ast_is_stmt(child, ast_stmt_tag.decl))
+		{
+			// yes this decl needs to be hoisted
+			scope_add_variable(func_scope, variable
+			{
+				.node := child;
+				// need to defer typing this till after progwalk because it could e.g be a struct that isnt declared yet.
+				.type := zero;
+				.cg := zero;
+				.db := zero;			
+			});
+		}
+		// if/else/while/fors need to be scanned too.
+		if(ast_is_stmt(child, ast_stmt_tag.if_block))
+		{
+			// progwalk_if first because if its a static if we want that dealt with now.
+			progwalk_if(child, func_scope);
+			// ignore cond
+			progwalk_search_function_descendents_for_locals(child, 1, 0, func_scope);
+		}
+		if(ast_is_stmt(child, ast_stmt_tag.else_block))
+		{
+			progwalk_search_function_descendents_for_locals(child, 0, 0, func_scope);
+		}
+		if(ast_is_stmt(child, ast_stmt_tag.while_block))
+		{
+			// ignore cond
+			progwalk_search_function_descendents_for_locals(child, 0, 0, func_scope);
+		}
+		if(ast_is_stmt(child, ast_stmt_tag.for_block))
+		{
+			// ignore init, cond, iter
+			// todo: future harry, if you make the parser allow decls in the init, then do actually progwalk cond.
+			progwalk_search_function_descendents_for_locals(child, 3, 0, func_scope);
+		}
+	}
+};
+
 progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	ast_fn ::= node->function;
@@ -109,6 +154,11 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	func_scope->name = (ast_fn.name);
 	func_scope->name_len = (ast_fn.name_len);
 	func_scope->parent_id = (scope->id);
+
+	// so we need to iterate over every child node (aside from child 0 which is the typename)
+	// and catch all local variables
+	// and then shove them in the scope.
+	progwalk_search_function_descendents_for_locals(node, 1, 0, func_scope);
 
 	scope_add_function(scope, function
 	{

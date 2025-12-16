@@ -13,6 +13,10 @@ lexical_scope ::= struct
 	id : u64;
 	parent_id : u64;
 
+	variables : variable mut?;
+	variables_count : u64;
+	variables_cap : u64;
+
 	structures : structure mut?;
 	structures_count : u64;
 	structures_cap : u64;
@@ -55,6 +59,35 @@ scope_find_structure ::= func(scope : lexical_scope mut?, name : u8?, name_len :
 		return scope_find_structure(parent, name, name_len);
 	}
 	return zero;
+};
+
+scope_add_variable ::= func(scope : lexical_scope mut? mut, v : variable -> v0)
+{
+	// naughty secret here:
+	// if the scope is a file scope
+	// we change ourselves to the program scope so the variable becomes globally available
+	// we could just have it in both but then the data could go out of sync
+	// you can always use variable.node->loc to get the original file location anyway.
+	if(scope->type == (scope_type.file))
+	{
+		scope = program_scope();
+	}
+
+	if(scope->variables == zero)
+	{
+		scope->variables_cap = 8;
+		scope->variables = arena_alloc(global_arena, scope->variables_cap * __sizeof(deref(scope->variables)));
+	}
+	while(scope->variables_count >= (scope->variables_cap))
+	{
+		oldcap ::= scope->variables_cap;
+		olddata ::= scope->variables;
+		scope->variables_cap = (scope->variables_cap * 2);
+		scope->variables = arena_alloc(global_arena, scope->variables_cap * __sizeof(deref(scope->variables)));
+		memcopy(scope->variables, olddata, oldcap * __sizeof(deref(scope->variables)));
+	}
+	deref(scope->variables # (scope->variables_count)) = v;
+	scope->variables_count = (scope->variables_count + 1);
 };
 
 scope_add_structure ::= func(scope : lexical_scope mut? mut, fn : structure -> v0)
