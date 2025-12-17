@@ -2,6 +2,7 @@ semal ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.semantic);
 	semal_all_structs();
+	semal_all_functions();
 	psyc_timed_end();
 };
 
@@ -68,4 +69,21 @@ semal_struct ::= func(type : tyid -> v0)
 		}
 		deref(s->strct.members # i) = cur_ty;
 	}
+};
+
+semal_all_functions ::= func(-> v0)
+{
+	i : u64 mut;
+	progscope ::= program_scope();
+	for(i = 0, i < (progscope->functions_count), i = i + 1)
+	{
+		semal_function(progscope->functions # i);
+	}
+};
+
+semal_function ::= func(fn : function mut? -> v0)
+{
+	// function typename is first child of node
+	function_typename_node ::= ast_get_child(fn->node, 0);
+	fn->type = ty_node(function_typename_node);
 };
