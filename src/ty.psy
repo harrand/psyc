@@ -118,6 +118,11 @@ ty_is_char ::= func(id : tyid -> bool)
 		(idpure == (tyid.u8));
 };
 
+ty_is_string_literal ::= func(id : tyid -> bool)
+{
+	return id == tyid_string_literal();
+};
+
 ty_is_enum ::= func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.enm);
@@ -138,7 +143,7 @@ ty_underlying ::= func(id : tyid -> tyid)
 	return ty_unwrap(id)->base;
 };
 
-ty_is_primitive ::= func(id : tyid -> bool)
+ty_is_prim ::= func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.prim);
 };
@@ -341,9 +346,9 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	toty ::= ty_unwrap(to);
 	fromprim ::= fromty->base;
 	toprim ::= toty->base;
-	if(ty_is_primitive(from))
+	if(ty_is_prim(from))
 	{
-		if(ty_is_primitive(to))
+		if(ty_is_prim(to))
 		{
 			// both are prims.
 			// integral converts to integral if one is weak
@@ -402,7 +407,7 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	// enums can convert to s64
 	if(ty_is_enum(from))
 	{
-		if(ty_is_primitive(to))
+		if(ty_is_prim(to))
 		{
 			if(toprim == (tyid.s64))
 			{
@@ -417,7 +422,7 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	// ptrs can convert to u64
 	if(ty_is_ptr(from))
 	{
-		if(ty_is_primitive(to))
+		if(ty_is_prim(to))
 		{
 			if(toprim == (tyid.u64))
 			{

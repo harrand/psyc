@@ -496,9 +496,9 @@ val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 		ret.type = to;
 
 		toprim ::= toty->base;
+		// integer 2 x
 		if(ty_is_integral(from))
 		{
-			// integer 2 x
 			if(ty_is_integral(to))
 			{
 				// no work necessary
@@ -539,132 +539,89 @@ val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 				return ret;
 			}
 		}
-		if(ret.s.tag == (sval_tag.primitive))
+		// floating point 2 x
+		if(ty_is_floating_point(from))
 		{
-			fromprim ::= v.s.primitive;
-			if(ty_is_primitive(to))
+			if(ty_is_integral(to))
 			{
-				// integer 2 x
-				if(fromprim.tag == (ast_literal_tag.integer))
-				{
-					if(ty_is_integral(to))
-					{
-						// already done.
-						return ret;
-					}
-					if(ty_is_floating_point(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.floating_point);
-						ret.s.primitive.floating_point = (ret.s.primitive.integer@_);
-						return ret;
-					}
-					if(ty_is_bool(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.boolean);
-						ret.s.primitive.boolean = (ret.s.primitive.integer != 0);
-						return ret;
-					}
-					if(ty_is_char(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.char);
-						ret.s.primitive.chars = arena_alloc(global_arena, 1);
-						ret.s.primitive.chars_len = 1;
-						deref(ret.s.primitive.chars) = (ret.s.primitive.integer@_);
-						return ret;
-					}
-				}
-				// floating point 2 x
-				if(fromprim.tag == (ast_literal_tag.floating_point))
-				{
-					if(ty_is_integral(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.integer);
-						ret.s.primitive.integer = (ret.s.primitive.floating_point@_);
-					}
-					if(ty_is_floating_point(to))
-					{
-						// already done.
-						return ret;
-					}
-					if(ty_is_char(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.char);
-						ret.s.primitive.chars = arena_alloc(global_arena, 1);
-						ret.s.primitive.chars_len = 1;
-						deref(ret.s.primitive.chars) = (ret.s.primitive.floating_point@_);
-					}
-				}
-				// char 2 x
-				if(fromprim.tag == (ast_literal_tag.char))
-				{
-					ch ::= deref(ret.s.primitive.chars # 0);
-					if(ty_is_integral(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.integer);
-						ret.s.primitive.integer = (ch@_);
-						return ret;
-					}
-					if(ty_is_floating_point(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.floating_point);
-						ret.s.primitive.floating_point = (ch@_);
-						return ret;
-					}
-					if(ty_is_char(to))
-					{
-						// already done.
-						return ret;
-					}
-					if(ty_is_bool(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.boolean);
-						ret.s.primitive.boolean = (ch != 0);
-						return ret;
-					}
-				}
-				// boolean 2 x
-				if(fromprim.tag == (ast_literal_tag.boolean))
-				{
-					if(ty_is_integral(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.integer);
-						if(ret.s.primitive.boolean)
-						{
-							ret.s.primitive.integer = 1;
-						}
-						else
-						{
-							ret.s.primitive.integer = 0;
-						}
-						return ret;
-					}
-					if(ty_is_char(to))
-					{
-						ret.s.primitive.tag = (ast_literal_tag.char);
-						ret.s.primitive.chars = arena_alloc(global_arena, 1);
-						ret.s.primitive.chars_len = 1;
-						if(ret.s.primitive.boolean)
-						{
-							deref(ret.s.primitive.chars) = 1;
-						}
-						else
-						{
-							deref(ret.s.primitive.chars) = 0;
-						}
-						return ret;
-					}
-					if(ty_is_bool(to))
-					{
-						// already done.
-						return ret;
-					}
-				}
+				ret.s.primitive.tag = (ast_literal_tag.integer);
+				ret.s.primitive.integer = (ret.s.primitive.floating_point@_);
+			}
+			if(ty_is_floating_point(to))
+			{
+				// already done.
+				return ret;
+			}
+			if(ty_is_char(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.char);
+				ret.s.primitive.chars = arena_alloc(global_arena, 1);
+				ret.s.primitive.chars_len = 1;
+				deref(ret.s.primitive.chars) = (ret.s.primitive.floating_point@_);
 			}
 		}
-		if(from == tyid_string_literal())
+		// char 2 x
+		if(ty_is_char(from))
 		{
-			if(to == tyid_string_literal())
+			ch ::= deref(ret.s.primitive.chars # 0);
+			if(ty_is_integral(to))
 			{
+				ret.s.primitive.tag = (ast_literal_tag.integer);
+				ret.s.primitive.integer = (ch@_);
+				return ret;
+			}
+			if(ty_is_floating_point(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.floating_point);
+				ret.s.primitive.floating_point = (ch@_);
+				return ret;
+			}
+			if(ty_is_char(to))
+			{
+				// already done.
+				return ret;
+			}
+			if(ty_is_bool(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.boolean);
+				ret.s.primitive.boolean = (ch != 0);
+				return ret;
+			}
+		}
+		// boolean 2 x
+		if(ty_is_bool(from))
+		{
+			if(ty_is_integral(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.integer);
+				if(ret.s.primitive.boolean)
+				{
+					ret.s.primitive.integer = 1;
+				}
+				else
+				{
+					ret.s.primitive.integer = 0;
+				}
+				return ret;
+			}
+			if(ty_is_char(to))
+			{
+				ret.s.primitive.tag = (ast_literal_tag.char);
+				ret.s.primitive.chars = arena_alloc(global_arena, 1);
+				ret.s.primitive.chars_len = 1;
+				if(ret.s.primitive.boolean)
+				{
+					deref(ret.s.primitive.chars) = 1;
+				}
+				else
+				{
+					deref(ret.s.primitive.chars) = 0;
+				}
+				return ret;
+			}
+			if(ty_is_bool(to))
+			{
+				// already done.
 				return ret;
 			}
 		}
@@ -674,6 +631,22 @@ val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 			{
 				// how do we convert between pointers at compile time?
 				// we cant really...
+				return ret;
+			}
+			if(ty_matches_ignore_quals(to, tyid.u64))
+			{
+				return ret;
+			}
+		}
+		if(ty_is_enum(from))
+		{
+			// enums dont convert to each other unless they're the same exact enum. if we havent errored out by this point then we assume this is the case and just convert trivially.
+			if(ty_is_enum(to))
+			{
+				return ret;
+			}
+			if(ty_matches_ignore_quals(to, tyid.s64))
+			{
 				return ret;
 			}
 		}
