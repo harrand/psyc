@@ -605,6 +605,23 @@ ty_node ::= func(node : ast? -> tyid)
 		}
 		return ty_fn(retty, fn_params, params_count, typename.quals);
 	}
+	if(typename.descriptor == (ast_typename_descriptor.deduced))
+	{
+		// this is impossible. error out. this function should never be called with a deduced type
+		// example might be someone using a deduced type as a struct member...
+		psyc_error_begin(node->loc);
+		putzstr("deduced-type declarations are not valid in the following contexts:");
+		putchar(10);
+		putzstr("- function parameters/return types");
+		putchar(10);
+		putzstr("- assembly return types");
+		putchar(10);
+		putzstr("- struct data members");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	psyc_panic_begin(node->loc);
 	putzstr("failed to convert this typename node to a tyid");
 	putchar(10);
