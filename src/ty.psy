@@ -138,6 +138,11 @@ ty_underlying ::= func(id : tyid -> tyid)
 	return ty_unwrap(id)->base;
 };
 
+ty_is_primitive ::= func(id : tyid -> bool)
+{
+	return ty_unwrap(id)->tag == (tytag.prim);
+};
+
 // integral size in bits. zero if not integral.
 ty_integral_size ::= func(id : tyid -> u64)
 {
@@ -170,6 +175,7 @@ ty_is_signed_integral ::= func(id : tyid -> bool)
 		(idpure == (tyid.s16)) ||
 		(idpure == (tyid.s8));
 };
+
 // is the given type any form of integer?
 ty_is_integral ::= func(id : tyid -> bool)
 {
@@ -325,9 +331,9 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	toty ::= ty_unwrap(to);
 	fromprim ::= fromty->base;
 	toprim ::= toty->base;
-	if(fromty->tag == (tytag.prim))
+	if(ty_is_primitive(from))
 	{
-		if(toty->tag == (tytag.prim))
+		if(ty_is_primitive(to))
 		{
 			// both are prims.
 			// integral converts to integral if one is weak
@@ -384,9 +390,9 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	}
 	// lhs is not a prim
 	// enums can convert to s64
-	if(fromty->tag == (tytag.enm))
+	if(ty_is_enum(from))
 	{
-		if(toty->tag == (tytag.prim))
+		if(ty_is_primitive(to))
 		{
 			if(toprim == (tyid.s64))
 			{
@@ -399,9 +405,9 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 		}
 	}
 	// ptrs can convert to u64
-	if(fromty->tag == (tytag.ptr))
+	if(ty_is_ptr(from))
 	{
-		if(toty->tag == (tytag.prim))
+		if(ty_is_primitive(to))
 		{
 			if(toprim == (tyid.u64))
 			{
@@ -412,7 +418,7 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 				return tyconv.no_but_yes_with_weak;
 			}
 		}
-		if(toty->tag == (tytag.ptr))
+		if(ty_is_ptr(to))
 		{
 			// two pointers
 			if((!from_is_static) && to_is_static)
