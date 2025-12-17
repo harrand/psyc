@@ -1,3 +1,53 @@
+ir : u64 mut;
+
+codegen ::= func(-> v0)
+{
+	psyc_timed_begin(psyc_stage.codegen);
+	cg_begin();
+	i : u64 mut;
+	progscope ::= program_scope();
+	for(i = 0, i < (progscope->functions_count), i = i + 1)
+	{
+		cg_func(progscope->functions # i);
+	}
+	cg_end();
+	psyc_timed_end();
+};
+
+cg_begin ::= func(-> v0)
+{
+	prog.cg = LLVMModuleCreateWithName("Psy Program");
+	ir = LLVMCreateBuilder();
+	prog.db = LLVMCreateDIBuilder(prog.cg);
+};
+
+cg_end ::= func(-> v0)
+{
+	// todo: _fltused
+	err : u8? mut;
+	if(LLVMVerifyModule(prog.cg, 2, ref err) != 0)
+	{
+		str ::= LLVMPrintModuleToString(prog.cg);
+		putzstr("Codegen: ");
+		putchar(10);
+		putzstr(str);
+		putchar(10);
+		putchar(10);
+
+		putzstr("LLVM Internal Codegen Failed:");
+		putchar(10);
+		putzstr(err);
+		putchar(10);
+		psyc_error_begin(zero);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+};
+
+cg_func ::= func(fn : function mut? -> v0)
+{
+};
+
 cg_integral_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 {
 	psyc_nyi(source->loc);
