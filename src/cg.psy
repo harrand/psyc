@@ -177,12 +177,26 @@ cg_all_functions ::= func(scope : lexical_scope mut? -> v0)
 	}
 };
 
+llvm_add_function_string_attribute ::= func(fn : function mut?, attrib_name_zstr : u8? -> v0)
+{
+	attr ::= LLVMCreateStringAttribute(LLVMGetGlobalContext(), attrib_name_zstr, zstrlen(attrib_name_zstr)@u32, "", 0);
+	LLVMAddAttributeAtIndex(fn->cg, LLVMAttributeFunctionIndex, attr);
+};
+
 cg_func_sig ::= func(fn : function mut? -> v0)
 {
+	type ::= ty_unwrap(fn->type);
+	is_extern ::= fn->node->function.is_extern;
+	name_zstr ::= sstr2zstr(type->name, type->name_len, string_arena);
+	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type));
 };
 
 cg_func_def ::= func(fn : function mut? -> v0)
 {
+	// todo: function implementation contents
+	llvm_add_function_string_attribute(fn, "no-stack-arg-probe");
+	llvm_add_function_string_attribute(fn, "no-builtin-memset");
+	llvm_add_function_string_attribute(fn, "no-builtin-memcpy");
 };
 
 cg_integral_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
