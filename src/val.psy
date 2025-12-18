@@ -34,7 +34,7 @@ val_is_valid ::= func(v : val -> bool)
 	return v.tag != zero;
 };
 
-val_node ::= func(node : ast? -> val)
+val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
@@ -42,18 +42,18 @@ val_node ::= func(node : ast? -> val)
 	}
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
-		operand ::= val_node(ast_get_child(node, 0));
+		operand ::= val_node(ast_get_child(node, 0), scope);
 		return val_unop(node->unop, ref operand, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.biop))
 	{
-		lhs ::= val_node(ast_get_child(node, 0));
-		rhs ::= val_node(ast_get_child(node, 1));
+		lhs ::= val_node(ast_get_child(node, 0), scope);
+		rhs ::= val_node(ast_get_child(node, 1), scope);
 		return val_biop(node->biop, ref lhs, ref rhs, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.cast))
 	{
-		cast_from_val : val mut := val_node(ast_get_child(node, 0));
+		cast_from_val : val mut := val_node(ast_get_child(node, 0), scope);
 		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
 		cast_to_node ::= ast_get_child(node, 1);
 		if(ast_is_weakness_idiom(cast_to_node))
@@ -66,6 +66,15 @@ val_node ::= func(node : ast? -> val)
 	}
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
+		if(scope == zero)
+		{
+			psyc_panic_begin(node->loc);
+			putzstr("call to val_node on a call but no scope was provided. must provide a scope so i have somewhere to search for the function you're trying to call.");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		psyc_nyi(node->loc);
 	}
 	if(ast_is_expr(node, ast_expr_tag.field))

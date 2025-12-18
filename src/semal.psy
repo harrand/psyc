@@ -92,11 +92,11 @@ semal_function ::= func(fn : function mut? -> v0)
 	funcscope ::= fn->scope@lexical_scope mut?;
 	for(i = 0, i < (funcscope->variables_count), i = i + 1)
 	{
-		semal_variable(funcscope->variables # i);
+		semal_variable(funcscope->variables # i, funcscope);
 	}
 };
 
-semal_variable ::= func(var : variable mut? -> v0)
+semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
 {
 	decl ::= var->node->decl;
 	// set the typename of a variable
@@ -104,7 +104,7 @@ semal_variable ::= func(var : variable mut? -> v0)
 	typename ::= var_typename_node->typename;
 	if(var->node->children_count > 1)
 	{
-		var->init = val_node(ast_get_child(var->node, 1));
+		var->init = val_node(ast_get_child(var->node, 1), scope);
 	}
 	// handle the special typename bits
 	if(typename.descriptor == (ast_typename_descriptor.deduced))
@@ -126,7 +126,7 @@ semal_variable ::= func(var : variable mut? -> v0)
 		{
 			inferred_expr_node ::= ast_get_child(var_typename_node, 0);
 			// todo: have a way to call val_node but for typeinfo only to avoid wasting computation.
-			var->type = (val_node(inferred_expr_node).type);
+			var->type = (val_node(inferred_expr_node, scope).type);
 		}
 		else
 		{
