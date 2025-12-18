@@ -4,12 +4,9 @@ codegen ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
 	cg_begin();
-	i : u64 mut;
-	progscope ::= program_scope();
-	for(i = 0, i < (progscope->functions_count), i = i + 1)
-	{
-		cg_func(progscope->functions # i);
-	}
+
+	cg_all_structs();
+	cg_all_functions(program_scope());
 	cg_end();
 	psyc_timed_end();
 };
@@ -44,7 +41,147 @@ cg_end ::= func(-> v0)
 	}
 };
 
-cg_func ::= func(fn : function mut? -> v0)
+cg_type ::= func(type : tyid -> u64)
+{
+	t ::= ty_clear_all_quals(type);
+	if(ty_is_prim(t))
+	{
+		if(t == (tyid.v0))
+		{
+			return LLVMVoidType();
+		}
+		if((t == (tyid.s64)) || (t == (tyid.u64)))
+		{
+			return LLVMInt64Type();
+		}
+		if((t == (tyid.s32)) || (t == (tyid.u32)))
+		{
+			return LLVMInt32Type();
+		}
+		if((t == (tyid.s16)) || (t == (tyid.u16)))
+		{
+			return LLVMInt16Type();
+		}
+		if((t == (tyid.s8)) || (t == (tyid.u8)))
+		{
+			return LLVMInt8Type();
+		}
+		if(t == (tyid.bool))
+		{
+			return LLVMInt1Type();
+		}
+		if(t == (tyid.f64))
+		{
+			return LLVMDoubleType();
+		}
+		if(t == (tyid.f32))
+		{
+			return LLVMFloatType();
+		}
+	}
+	if(ty_is_enum(t))
+	{
+		return cg_type(tyid.s64);
+	}
+	if(ty_is_struct(t))
+	{
+		return ty_unwrap(t)->strct.cg;
+	}
+	if(ty_is_ptr(t))
+	{
+		return LLVMPointerType(cg_type(ty_underlying(t)), 0);
+	}
+	if(ty_is_arr(t))
+	{
+		return LLVMArrayType(cg_type(ty_underlying(t)), ty_unwrap(t)->array_len@u32);
+	}
+	if(ty_is_fn(t))
+	{
+		fntype ::= ty_unwrap(t);
+		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fntype->fn.params_count));
+		ret_cg ::= cg_type(fntype->fn.return_type);
+		i : u64 mut;
+		for(i = 0, i < (fntype->fn.params_count), i = i + 1)
+		{
+			deref(paramdata # i) = cg_type(deref(fntype->fn.param_types # i));
+		}
+		return LLVMFunctionType(ret_cg, paramdata, fntype->fn.params_count@u32, false@s32);
+	}
+	psyc_panic_begin(zero);
+	putzstr("attempt to resolve ");
+	putchar('"');
+	putty(t);
+	putchar('"');
+	putzstr(" reached end of cg_type. either support for this type is unimplemented or this is a dodgy type.");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+cg_all_structs ::= func(-> v0)
+{
+	box ::= ref(prog.types);
+	i : u64 mut;
+	id : tyid mut;
+	for(i = 0, i < (box->data_count), i = i + 1)
+	{
+		id = i@tyid;
+		if(ty_is_struct(id))
+		{
+			cg_struct_sig(id);
+		}
+	}
+	for(i = 0, i < (box->data_count), i = i + 1)
+	{
+		id = i@tyid;
+		if(ty_is_struct(id))
+		{
+			cg_struct_def(id);
+		}
+	}
+};
+
+cg_struct_sig ::= func(type : tyid -> v0)
+{
+	t ::= ty_unwrap(type);
+	s ::= ref(t->strct);
+	// goal: set s->cg to something
+	name_zstr ::= sstr2zstr(t->name, t->name_len, string_arena);
+	s->cg = LLVMStructCreateNamed(LLVMGetGlobalContext(), sstr2zstr(t->name, t->name_len, string_arena));
+};
+
+cg_struct_def ::= func(type : tyid -> v0)
+{
+	t ::= ty_unwrap(type);
+	s ::= ref(t->strct);
+	i : u64 mut;
+
+	memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
+	for(i = 0, i < (s->members_count), i = i + 1)
+	{
+		deref(memarr # i) = cg_type(deref(s->members # i));
+	}
+	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
+};
+
+cg_all_functions ::= func(scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->functions_count), i = i + 1)
+	{
+		cg_func_sig(scope->functions # i);
+	}
+	for(i = 0, i < (scope->functions_count), i = i + 1)
+	{
+		cg_func_def(scope->functions # i);
+	}
+};
+
+cg_func_sig ::= func(fn : function mut? -> v0)
+{
+};
+
+cg_func_def ::= func(fn : function mut? -> v0)
 {
 };
 

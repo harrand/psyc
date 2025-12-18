@@ -33,6 +33,8 @@ structty ::= struct
 	member_name_lens : u64 mut?;
 	members_count : u64;
 	node : ast?;
+	cg : u64;
+	db : u64;
 };
 
 fnty ::= struct
@@ -111,6 +113,11 @@ tyid_bool_literal ::= func(-> tyid)
 	return ty_set_qual(tyid.bool, tyqual.qual_static);
 };
 
+ty_is_bad ::= func(id : tyid -> bool)
+{
+	return ty_unwrap(id)->tag == zero;
+};
+
 ty_is_char ::= func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
@@ -121,6 +128,11 @@ ty_is_char ::= func(id : tyid -> bool)
 ty_is_string_literal ::= func(id : tyid -> bool)
 {
 	return id == tyid_string_literal();
+};
+
+ty_is_prim ::= func(id : tyid -> bool)
+{
+	return ty_unwrap(id)->tag == (tytag.prim);
 };
 
 ty_is_enum ::= func(id : tyid -> bool)
@@ -138,14 +150,19 @@ ty_is_ptr ::= func(id : tyid -> bool)
 	return ty_unwrap(id)->tag == (tytag.ptr);
 };
 
+ty_is_arr ::= func(id : tyid -> bool)
+{
+	return ty_unwrap(id)->tag == (tytag.arr);
+};
+
+ty_is_fn ::= func(id : tyid -> bool)
+{
+	return ty_unwrap(id)->tag == (tytag.fn);
+};
+
 ty_underlying ::= func(id : tyid -> tyid)
 {
 	return ty_unwrap(id)->base;
-};
-
-ty_is_prim ::= func(id : tyid -> bool)
-{
-	return ty_unwrap(id)->tag == (tytag.prim);
 };
 
 // integral size in bits. zero if not integral.
@@ -601,7 +618,20 @@ ty_node ::= func(node : ast? -> tyid)
 			cur_param_node ::= ast_get_child(node, i);
 			// remember the param is a decl
 			// its first child is the typename
-			deref(fn_params # i) = ty_node(ast_get_child(cur_param_node, 0));
+			cur_param_ty ::= ty_node(ast_get_child(cur_param_node, 0));
+			if(ty_is_bad(cur_param_ty))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("parameter ");
+				putuint(i);
+				putzstr(" of function type yielded ");
+				putty(cur_param_ty);
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			deref(fn_params # i) = cur_param_ty;
 		}
 		return ty_fn(retty, fn_params, params_count, typename.quals);
 	}
