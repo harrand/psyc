@@ -90,6 +90,29 @@ scope_add_variable ::= func(scope : lexical_scope mut? mut, v : variable -> v0)
 	scope->variables_count = (scope->variables_count + 1);
 };
 
+scope_find_variable ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> variable?)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->variables_count), i = i + 1)
+	{
+		cur ::= scope->variables # i;
+		decl ::= cur->node->decl;
+		if(decl.name_len == name_len)
+		{
+			if(streql_n(decl.name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	parent ::= scope_get_parent(scope);
+	if(parent != zero)
+	{
+		return scope_find_variable(parent, name, name_len);
+	}
+	return zero;
+};
+
 scope_add_structure ::= func(scope : lexical_scope mut? mut, fn : structure -> v0)
 {
 	// naughty secret here:

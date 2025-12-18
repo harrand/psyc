@@ -2,6 +2,7 @@ valtag ::= enum
 {
 	.s := 1;
 	.d := 2;
+	.d_var := 3;
 };
 
 sval_tag ::= enum
@@ -34,6 +35,16 @@ val_is_valid ::= func(v : val -> bool)
 	return v.tag != zero;
 };
 
+val_runtime_from_variable ::= func(var : variable mut? -> val)
+{
+	return val
+	{
+		.tag := valtag.d_var;
+		.type := var->type;
+		.cg := var->cg;
+	};
+};
+
 val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
@@ -63,6 +74,41 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 			return cast_from_val;
 		}
 		return val_convert_to(cast_from_val, ty_typename_node(cast_to_node), node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.symbol))
+	{
+		if(scope == zero)
+		{
+			psyc_panic_begin(node->loc);
+			putzstr("call to val_node on a symbol but no scope was provided. must provide a scope so i have somewhere to search for the variable you're trying to reference.");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		sym ::= node->symbol;
+		var ::= scope_find_variable(scope, sym.data, sym.len);
+		if(var == zero)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("unrecognised variable name ");
+			putchar('"');
+			putbytes(sym.data, sym.len);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(ty_has_qual(var->type, tyqual.qual_static))
+		{
+			// its a static variable
+			// let's just get its initialiser now
+			return var->init;
+		}
+		// not a static variable
+		// must do some cg now.
+		return val_runtime_from_variable(var);
 	}
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
