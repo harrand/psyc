@@ -39,6 +39,14 @@ cg_end ::= func(-> v0)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+
+	if(prog.compile_args.verbose_codegen)
+	{
+		putzstr("LLVM IR:");
+		putchar(10);
+		putzstr(LLVMPrintModuleToString(prog.cg));
+		putchar(10);
+	}
 };
 
 cg_type ::= func(type : tyid -> u64)
@@ -185,14 +193,17 @@ llvm_add_function_string_attribute ::= func(fn : function mut?, attrib_name_zstr
 
 cg_func_sig ::= func(fn : function mut? -> v0)
 {
-	type ::= ty_unwrap(fn->type);
 	is_extern ::= fn->node->function.is_extern;
-	name_zstr ::= sstr2zstr(type->name, type->name_len, string_arena);
+	name_zstr ::= sstr2zstr(fn->name, fn->name_len, string_arena);
 	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type));
 };
 
 cg_func_def ::= func(fn : function mut? -> v0)
 {
+	if(fn->node->function.is_extern)
+	{
+		return;
+	}
 	// todo: function implementation contents
 	llvm_add_function_string_attribute(fn, "no-stack-arg-probe");
 	llvm_add_function_string_attribute(fn, "no-builtin-memset");
