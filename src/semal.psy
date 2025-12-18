@@ -35,7 +35,7 @@ semal_struct ::= func(type : tyid -> v0)
 		deref(s->strct.member_name_lens # i) = (decl.name_len);
 		// typename is first child of the decl
 		typename_node ::= ast_get_child(child, 0);
-		cur_ty ::= ty_node(typename_node);
+		cur_ty ::= ty_typename_node(typename_node);
 		if(cur_ty == zero)
 		{
 			// dodgy member type.
@@ -85,5 +85,58 @@ semal_function ::= func(fn : function mut? -> v0)
 {
 	// function typename is first child of node
 	function_typename_node ::= ast_get_child(fn->node, 0);
-	fn->type = ty_node(function_typename_node);
+	fn->type = ty_typename_node(function_typename_node);
+
+	// also go through the scope and semal all the typenames
+	i : u64 mut;
+	funcscope ::= fn->scope@lexical_scope mut?;
+	for(i = 0, i < (funcscope->variables_count), i = i + 1)
+	{
+		semal_variable(funcscope->variables # i);
+	}
+};
+
+semal_variable ::= func(var : variable mut? -> v0)
+{
+	decl ::= var->node->decl;
+	// set the typename of a variable
+	var_typename_node ::= ast_get_child(var->node, 0);
+	typename ::= var_typename_node->typename;
+	if(var->node->children_count > 1)
+	{
+		var->init = val_node(ast_get_child(var->node, 1));
+	}
+	// handle the special typename bits
+	if(typename.descriptor == (ast_typename_descriptor.deduced))
+	{
+		if(!val_is_valid(var->init))
+		{
+			psyc_error_begin(var->node->loc);
+			putzstr("variable ");
+			putchar('"');
+			putbytes(decl.name, decl.name_len);
+			putchar('"');
+			putzstr(" is of deduced type, but it did not have a valid initialiser");
+		}
+		var->type = (var->init.type);
+	}
+	else
+	{
+		if(typename.descriptor == (ast_typename_descriptor.inferred_from))
+		{
+			inferred_expr_node ::= ast_get_child(var_typename_node, 0);
+			// todo: have a way to call val_node but for typeinfo only to avoid wasting computation.
+			var->type = (val_node(inferred_expr_node).type);
+		}
+		else
+		{
+			// ok this typename relies on no program state so just call the ty_tyname thing on it
+			var->type = ty_typename_node(var_typename_node);
+		}
+	}
+	putzstr("variable ");
+	putbytes(decl.name, decl.name_len);
+	putzstr(" is of type: ");
+	putty(var->type);
+	putchar(10);
 };
