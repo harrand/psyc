@@ -231,6 +231,11 @@ cg_func_def ::= func(fn : function mut? -> v0)
 		}
 	}
 
+	for(i = 1, i < (fn->node->children_count), i = i + 1)
+	{
+		cg_node(ast_get_child(fn->node, i), funcscope);
+	}
+
 	LLVMClearInsertionPosition(ir);
 };
 
@@ -333,4 +338,48 @@ cg_deref ::= func(v : val?, source : ast? -> val)
 		.type := underlying_ty;
 		.cg := LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
 	};
+};
+
+cg_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	// we naturally reached a local variable decl.  // remember these have been hoisted before so the alloca exists.
+	decl ::= node->decl;
+	var ::= scope_find_variable(scope, decl.name, decl.name_len);
+	if(val_is_valid(var->init))
+	{
+		// alloca is var->cg
+		// get a dynamic value for sure.
+		if(val_is_static(var->init))
+		{
+			val_static2dynamic(ref(var->init), node);
+		}
+		// do the store
+		LLVMBuildStore(ir, var->init.cg, var->cg);
+	}
+	// otherwise do nothing.
+	// todo: debug location goes here though.
+	return val_runtime_from_variable(var);
+};
+
+cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	if(ast_is_stmt(node, ast_stmt_tag.decl))
+	{
+		return cg_decl(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.ret))
+	{
+		// return stmt.
+		if(node->children_count == 0)
+		{
+			LLVMBuildRetVoid(ir);
+			return zero;
+		}
+		else
+		{
+			retval ::= cg_node(ast_get_child(node, 0), scope);
+			LLVMBuildRet(ir, retval.cg);
+		}
+	}
+	return val_node(node, scope);
 };
