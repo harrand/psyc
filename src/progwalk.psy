@@ -82,19 +82,23 @@ progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	if(already != zero)
 	{
 		psyc_error_begin(node->loc);
-		putzstr("duplicate struct ");
+		putzstr("duplicate declaration of struct named ");
 		putchar('"');
 		putbytes(structdata.name, structdata.name_len);
 		putchar('"');
 		putchar(10);
-		ast_print_annotated_source(program_current_source_file().src, node, 1, underline_colour.red);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_colour_blue();
 		putchar(10);
-		putzstr("previous definition was ");
+		putzstr("struct ");
+		putchar('"');
+		putbytes(structdata.name, structdata.name_len);
+		putchar('"');
+		putzstr(" was previously defined at ");
 		putloc(already->node->loc);
-		putchar(':');
-		already_src ::= program_find_source_file(already->node->loc.file);
+		putzstr(":");
 		putchar(10);
-		ast_print_annotated_source(already_src->src, already->node, 1, underline_colour.red);
+		ast_print_annotated_source(program_find_source_file(already->node->loc.file)->src, already->node, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
@@ -115,6 +119,31 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 		if(ast_is_stmt(child, ast_stmt_tag.decl))
 		{
 			// yes this decl needs to be hoisted
+			decl ::= child->decl;
+			already_exists ::= scope_find_variable(func_scope, decl.name, decl.name_len);
+			if(already_exists != zero)
+			{
+				psyc_error_begin(child->loc);
+				putzstr("duplicate declaration of variable named ");
+				putchar('"');
+				putbytes(decl.name, decl.name_len);
+				putchar('"');
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				psyc_colour_blue();
+				putchar(10);
+				putzstr("variable ");
+				putchar('"');
+				putbytes(decl.name, decl.name_len);
+				putchar('"');
+				putzstr(" was previously defined at ");
+				putloc(already_exists->node->loc);
+				putzstr(":");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(already_exists->node->loc.file)->src, already_exists->node, 1, underline_colour.blue);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 			scope_add_variable(func_scope, variable
 			{
 				.node := child;
@@ -165,6 +194,34 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	// and then shove them in the scope.
 	progwalk_search_function_descendents_for_locals(node, 1, 0, func_scope);
 
+	already_exists ::= scope_find_function(func_scope, ast_fn.name, ast_fn.name_len);
+	if(already_exists != zero)
+	{
+		psyc_error_begin(node->loc);
+		putzstr("duplicate declaration of function named ");
+		putchar('"');
+		putbytes(ast_fn.name, ast_fn.name_len);
+		putchar('"');
+		putchar(10);
+		// printing the nodes directly here prints out the whole function which sucks
+		// so if we print the functions first child its the typename which covers the signature line only
+		node_child ::= ast_get_child(node, 0);
+		ast_print_annotated_source(program_find_source_file(node_child->loc.file)->src, node_child, 1, underline_colour.red);
+		psyc_colour_blue();
+		putchar(10);
+		putzstr("function ");
+		putchar('"');
+		putbytes(ast_fn.name, ast_fn.name_len);
+		putchar('"');
+		putzstr(" was previously defined at ");
+		putloc(already_exists->node->loc);
+		putzstr(":");
+		putchar(10);
+		already_child ::= ast_get_child(already_exists->node, 0);
+		ast_print_annotated_source(program_find_source_file(already_child->loc.file)->src, already_child, 1, underline_colour.blue);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	scope_add_function(scope, function
 	{
 		.node := node;

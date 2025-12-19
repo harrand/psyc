@@ -147,6 +147,29 @@ scope_add_structure ::= func(scope : lexical_scope mut? mut, fn : structure -> v
 	scope->structures_count = (scope->structures_count + 1);
 };
 
+scope_find_function ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> function?)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->functions_count), i = i + 1)
+	{
+		cur ::= scope->functions # i;
+		fn ::= cur->node->function;
+		if(fn.name_len == name_len)
+		{
+			if(streql_n(fn.name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	parent ::= scope_get_parent(scope);
+	if(parent != zero)
+	{
+		return scope_find_function(parent, name, name_len);
+	}
+	return zero;
+};
+
 scope_add_function ::= func(scope : lexical_scope mut? mut, fn : function -> v0)
 {
 	// naughty secret here:
