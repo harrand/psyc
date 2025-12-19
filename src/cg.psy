@@ -296,25 +296,13 @@ cg_convert_to ::= func(v : val?, to : tyid, source : ast? -> u64)
 
 cg_ref ::= func(v : val?, source : ast? -> val)
 {
-	// this is easy
-	// firstly the val should be of tag d_var.
-	if(v->tag == (valtag.d_lvalue))
+	// sneakily change tag to .d so we're pretending its not a variable anymore
+	// but the cg value is unchanged (variables are alloca pointers in llvm)
+	// and we change the type to a pointer.
+	return val
 	{
-		// sneakily change tag to .d so we're pretending its not a variable anymore
-		// but the cg value is unchanged (variables are alloca pointers in llvm)
-		// and we change the type to a pointer.
-		return val
-		{
-			.tag := valtag.d_rvalue;
-			.type := ty_ptr(v->type, zero);
-			.cg := v->cg;
-		};
-	}
-	psyc_error_begin(source->loc);
-	putzstr("ref keyword is invalid because you can only ref an lvalue");
-	putchar(10);
-	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
-	psyc_diag_end();
-	psyc_exit_failure();
-	return zero;
+		.tag := valtag.d_rvalue;
+		.type := ty_ptr(v->type, zero);
+		.cg := v->cg;
+	};
 };

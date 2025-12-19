@@ -1,8 +1,9 @@
 valtag ::= enum
 {
-	.s := 1;
-	.d_rvalue := 2;
-	.d_lvalue := 3;
+	.s_rvalue := 1;
+	.s_lvalue := 2;
+	.d_rvalue := 3;
+	.d_lvalue := 4;
 };
 
 sval_tag ::= enum
@@ -33,6 +34,26 @@ val ::= struct
 val_is_valid ::= func(v : val -> bool)
 {
 	return v.tag != zero;
+};
+
+val_is_static ::= func(v : val -> bool)
+{
+	return (v.tag == (valtag.s_lvalue)) || (v.tag == (valtag.s_rvalue));
+};
+
+val_is_dynamic ::= func(v : val -> bool)
+{
+	return (v.tag == (valtag.d_lvalue)) || (v.tag == (valtag.d_rvalue));
+};
+
+val_is_lvalue ::= func(v : val -> bool)
+{
+	return (v.tag == (valtag.s_lvalue)) || (v.tag == (valtag.d_lvalue));
+};
+
+val_is_rvalue ::= func(v : val -> bool)
+{
+	return (v.tag == (valtag.s_rvalue)) || (v.tag == (valtag.d_rvalue));
 };
 
 val_runtime_from_variable ::= func(var : variable mut? -> val)
@@ -104,7 +125,11 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 		{
 			// its a static variable
 			// let's just get its initialiser now
-			return var->init;
+			// we get its initialiser
+			// but as an lvalue because we are the variable
+			retval : val mut := var->init;
+			retval.tag = (valtag.s_lvalue);
+			return retval;
 		}
 		// not a static variable
 		// must do some cg now.
@@ -136,10 +161,19 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 
 val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 {
-	s ::= v->tag == (valtag.s);
+	s ::= val_is_static(deref v);
 	// check for 'ref' as this one has special functionality
 	if(op == (ast_unop.reference))
 	{
+		if(!val_is_lvalue(deref v))
+		{
+			psyc_error_begin(source->loc);
+			putzstr("ref keyword is invalid because you can only ref an lvalue");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		if(s)
 		{
 			return s_ref(v, source);
@@ -196,8 +230,8 @@ val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 
 val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -> val)
 {
-	lhs_s ::= lhs->tag == (valtag.s);
-	rhs_s ::= rhs->tag == (valtag.s);
+	lhs_s ::= val_is_static(deref lhs);
+	rhs_s ::= val_is_static(deref rhs);
 	s ::= lhs_s && rhs_s;
 	if(lhs_s && (!rhs_s))
 	{
@@ -225,8 +259,8 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 	// these types are immediately wrong if these are zero values so lets check that now.
 	lhs_type : tyid mut := lhs->type;
 	rhs_type : tyid mut := rhs->type;
-	lhs_is_zero ::= (lhs->tag == (valtag.s)) && (lhs->s.tag == (sval_tag.zero_value));
-	rhs_is_zero ::= (rhs->tag == (valtag.s)) && (rhs->s.tag == (sval_tag.zero_value));
+	lhs_is_zero ::= lhs_s && (lhs->s.tag == (sval_tag.zero_value));
+	rhs_is_zero ::= rhs_s && (rhs->s.tag == (sval_tag.zero_value));
 	if(lhs_is_zero && (!rhs_is_zero))
 	{
 		lhs_type = rhs_type;
@@ -389,7 +423,7 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 zero_as ::= func(to : tyid, source : ast? -> val)
 {
 	ret : val mut := zero;
-	ret.tag = (valtag.s);
+	ret.tag = (valtag.s_rvalue);
 	ret.type = to;
 	ret.s.tag = (sval_tag.primitive);
 	ret.s.primitive = zero;
@@ -420,7 +454,7 @@ integer_as ::= func(n : s64 weak, to : tyid -> val)
 {
 	return val
 	{
-		.tag := valtag.s;
+		.tag := valtag.s_rvalue;
 		.type := to;
 		.s := sval
 		{
@@ -438,7 +472,7 @@ float_as ::= func(n : f64 weak, to : tyid -> val)
 {
 	return val
 	{
-		.tag := valtag.s;
+		.tag := valtag.s_rvalue;
 		.type := to;
 		.s := sval
 		{
@@ -456,7 +490,7 @@ string_as ::= func(chars : u8?, chars_len : u64 -> val)
 {
 	return val
 	{
-		.tag := valtag.s;
+		.tag := valtag.s_rvalue;
 		.type := tyid_string_literal();
 		.s := sval
 		{
@@ -477,7 +511,7 @@ char_as ::= func(char : u8 -> val)
 	deref(chardata # 0) = char;
 	return val
 	{
-		.tag := valtag.s;
+		.tag := valtag.s_rvalue;
 		.type := tyid_char_literal();
 		.s := sval
 		{
@@ -496,7 +530,7 @@ bool_as ::= func(b : bool -> val)
 {
 	return val
 	{
-		.tag := valtag.s;
+		.tag := valtag.s_rvalue;
 		.type := tyid_bool_literal();
 		.s := sval
 		{
@@ -538,7 +572,7 @@ literal_as ::= func(literal : ast_literal -> val)
 val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 {
 	ret : val mut := v;
-	if(ret.tag == (valtag.s))
+	if(val_is_static(ret))
 	{
 		toty ::= ty_unwrap(to);
 		if(ret.s.tag == (sval_tag.zero_value))
@@ -726,7 +760,7 @@ val_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 val_static2dynamic ::= func(v : val mut?, source : ast? -> v0)
 {
 	// v->cg needs to exist
-	if(v->tag == (valtag.s))
+	if(val_is_static(deref v))
 	{
 		if(v->cg == zero)
 		{
@@ -738,7 +772,7 @@ val_static2dynamic ::= func(v : val mut?, source : ast? -> v0)
 
 val_must_get_integer_literal ::= func(v : val, source : ast? -> s64 weak)
 {
-	if(v.tag != (valtag.s))
+	if(!val_is_static(v))
 	{
 		psyc_error_begin(source->loc);
 		putzstr("expected value to yield a statically-known integer literal, but it was instead a runtime ");
@@ -774,7 +808,7 @@ val_must_get_integer_literal ::= func(v : val, source : ast? -> s64 weak)
 
 val_must_get_boolean_literal ::= func(v : val, source : ast? -> bool)
 {
-	if(v.tag != (valtag.s))
+	if(!val_is_static(v))
 	{
 		psyc_error_begin(source->loc);
 		putzstr("expected value to yield a statically-known boolean literal, but it was instead a runtime ");
