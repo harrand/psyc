@@ -211,18 +211,34 @@ cg_func_def ::= func(fn : function mut? -> v0)
 
 	// ok we have a scope
 	funcscope ::= fn->scope@lexical_scope mut?;
+	funcscope->cg = LLVMAppendBasicBlock(fn->cg, "entry");
+	LLVMPositionBuilderAtEnd(ir, funcscope->cg);
 	// all local variables will be in this scope
 	// so lets do them now.
 	i : u64 mut;
 	for(i = 0, i < (funcscope->variables_count), i = i + 1)
 	{
-		var ::= funcscope->variables # i;
+		cg_local_variable(funcscope->variables # i);
 	}
+	last_child ::= ast_get_last_child_if_ret(fn->node);
+	if(last_child == zero)
+	{
+		// if we return void then just add a retvoid here
+		// otherwise, error out because we must end with a return.
+		if(ty_is_v0(ty_unwrap(fn->type)->fn.return_type))
+		{
+			LLVMBuildRetVoid(ir);
+		}
+	}
+
+	LLVMClearInsertionPosition(ir);
 };
 
 cg_local_variable ::= func(var : variable mut? -> v0)
 {
 	// do an alloca
+	decl ::= var->node->decl;
+	var->cg = LLVMBuildAlloca(ir, cg_type(var->type), sstr2zstr(decl.name, decl.name_len, string_arena));
 };
 
 cg_integral_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
