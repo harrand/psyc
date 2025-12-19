@@ -304,11 +304,17 @@ cg_ref ::= func(v : val?, source : ast? -> val)
 		.tag := valtag.d_rvalue;
 		.type := ty_ptr(v->type, zero);
 		.cg := v->cg;
+		.d_underlying_tag := v->tag;
 	};
 };
 
 cg_deref ::= func(v : val?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
-	return zero;
+	underlying_ty ::= ty_underlying(v->type);
+	return val
+	{
+		.tag := v->d_underlying_tag;
+		.type := underlying_ty;
+		.cg := LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+	};
 };
