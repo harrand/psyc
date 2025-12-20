@@ -249,13 +249,47 @@ cg_local_variable ::= func(var : variable mut? -> v0)
 
 cg_integral_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	ret : val mut := cg_load_if_lvalue(deref v);
+	if(op == (ast_unop.minus))
+	{
+		ret.cg = LLVMBuildNeg(ir, v->cg, "");
+		return ret;
+	}
+	if(op == (ast_unop.bitwise_invert))
+	{
+		ret.cg = LLVMBuildNot(ir, v->cg, "");
+		return ret;
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of cg_integral_unop for ast_unop.");
+	putzstr(__enumname(op));
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
 cg_integral_arith_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	// assume lhs and rhs are pre-converted to the corect types.
+	lhsv ::= cg_load_if_lvalue(deref lhs);
+	rhsv ::= cg_load_if_lvalue(deref rhs);
+	ret : val mut := lhsv;
+	// dont worry about assign here. handled elsewhere in cg coz its a special case.
+	if(op == (ast_biop.add))
+	{
+		ret.cg = LLVMBuildAdd(ir, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of cg_integral_arith_biop for ast_biop.");
+	putzstr(__enumname(op));
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
