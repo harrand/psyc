@@ -220,6 +220,12 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	{
 		cg_local_variable(funcscope->variables # i);
 	}
+
+	for(i = 1, i < (fn->node->children_count), i = i + 1)
+	{
+		cg_node(ast_get_child(fn->node, i), funcscope);
+	}
+
 	last_child ::= ast_get_last_child_if_ret(fn->node);
 	if(last_child == zero)
 	{
@@ -229,11 +235,6 @@ cg_func_def ::= func(fn : function mut? -> v0)
 		{
 			LLVMBuildRetVoid(ir);
 		}
-	}
-
-	for(i = 1, i < (fn->node->children_count), i = i + 1)
-	{
-		cg_node(ast_get_child(fn->node, i), funcscope);
 	}
 
 	LLVMClearInsertionPosition(ir);
@@ -419,11 +420,79 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
 
 	// need the parent function...
+	parent_fn ::= scope_get_parent_function(scope);
+	if(parent_fn == zero)
+	{
+		psyc_error_begin(node->loc);
+		putzstr("if statements that are not static are not allowed within the global scope");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 
-	psyc_panic_begin(node->loc);
-	putzstr("todo: runtime if");
-	psyc_diag_end();
-	psyc_exit_failure();
+	else_node ::= ast_get_last_child_if_else(node);
+
+	old_block ::= LLVMGetInsertBlock(ir);
+	ifscope ::= LLVMAppendBasicBlock(parent_fn->cg, "if");
+	elsescope : u64 mut := zero;
+
+	if(else_node != zero)
+	{
+		elsescope = LLVMAppendBasicBlock(parent_fn->cg, "else");
+	}
+	ifcont ::= LLVMAppendBasicBlock(parent_fn->cg, "ifcont");
+	if(else_node == zero)
+	{
+		elsescope = ifcont;
+	}
+	i : u64 mut;
+
+	// make the branch
+	// if there is no else block then elsescope is just ifcont
+	LLVMBuildCondBr(ir, cond_val.cg, ifscope, elsescope);
+	// populate the if and else blocks now
+
+	// if
+	LLVMPositionBuilderAtEnd(ir, ifscope);
+	was_return : bool mut := false;
+	child : ast mut? mut := zero;
+
+	ifnode_last_child : u64 mut := node->children_count;
+	if(else_node != zero)
+	{
+		ifnode_last_child = (ifnode_last_child - 1);
+	}
+	for(i = 1, i < ifnode_last_child, i = i + 1)
+	{
+		child = ast_get_child(node, i);
+		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
+		cg_node(child, scope);
+	}
+	if(!was_return)
+	{
+		// need to add an implicit jump to ifcont
+		LLVMBuildBr(ir, ifcont);
+	}
+
+	// else
+	if(else_node != zero)
+	{
+		LLVMPositionBuilderAtEnd(ir, elsescope);
+		for(i = 0, i < (else_node->children_count), i = i + 1)
+		{
+			child = ast_get_child(else_node, i);
+			was_return = ast_is_stmt(child, ast_stmt_tag.ret);
+			cg_node(child, scope);
+		}
+		if(!was_return)
+		{
+			// need to add an implicit jump to ifcont
+			LLVMBuildBr(ir, ifcont);
+		}
+	}
+	
+	LLVMPositionBuilderAtEnd(ir, ifcont);
 	return zero;
 };
 
