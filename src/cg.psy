@@ -1,4 +1,4 @@
-ir : u64 mut;
+ir : u64 mut := zero;
 
 codegen ::= func(-> v0)
 {
@@ -326,7 +326,133 @@ cg_sval ::= func(v : val?, source : ast? -> u64)
 
 cg_convert_to ::= func(v : val?, to : tyid, source : ast? -> u64)
 {
-	psyc_nyi(source->loc);
+	// v is guaranteed to be a dynamic value.
+	from ::= v->type;
+	from_size ::= ty_integral_size(from) + ty_floating_point_size(from);
+	from_signed ::= ty_is_signed_integral(from);
+	to_size ::= ty_integral_size(to) + ty_floating_point_size(to);
+	to_signed ::= ty_is_signed_integral(to);
+	cgto ::= cg_type(to);
+	if(ty_is_integral(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// i2i
+			if(from_size < to_size)
+			{
+				// expanding to larger size
+				if(from_signed)
+				{
+					return LLVMBuildSExt(ir, v->cg, cgto, "");
+				}
+				return LLVMBuildZExt(ir, v->cg, cgto, "");
+			}
+			if(from_size > to_size)
+			{
+				// truncating to smaller size
+				return LLVMBuildTrunc(ir, v->cg, cgto, "");
+			}
+			// nothing
+			return v->cg;
+		}
+		if(ty_is_floating_point(to))
+		{
+			// i2f
+			if(from_signed)
+			{
+				return LLVMBuildSIToFP(ir, v->cg, cgto, "");
+			}
+			return LLVMBuildUIToFP(ir, v->cg, cgto, "");
+		}
+		if(ty_is_ptr(to))
+		{
+			// i2p
+			return LLVMBuildIntToPtr(ir, v->cg, cgto, "");
+		}
+		if(ty_is_enum(to))
+		{
+			// trivial
+			return cg_convert_to(v, tyid.s64, source);
+		}
+		if(ty_is_bool(to))
+		{
+			return LLVMBuildTrunc(ir, v->cg, cgto, "");
+		}
+	}
+	if(ty_is_floating_point(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// f2i
+			if(to_signed)
+			{
+				return LLVMBuildFPToSI(ir, v->cg, cgto, "");
+			}
+			return LLVMBuildFPToUI(ir, v->cg, cgto, "");
+		}
+		if(ty_is_floating_point(to))
+		{
+			// f2f
+			if(from_size > to_size)
+			{
+				// shrink
+				return LLVMBuildFPTrunc(ir, v->cg, cgto, "");
+			}
+			if(from_size < to_size)
+			{
+				// expand
+				return LLVMBuildFPExt(ir, v->cg, cgto, "");
+			}
+			return v->cg;
+		}
+	}
+	if(ty_is_bool(from))
+	{
+		// b2i
+		return LLVMBuildZExt(ir, v->cg, cgto, "");
+	}
+	if(ty_is_enum(from))
+	{
+		// can only be e2i
+		return cg_convert_to(v, tyid.s64, source);
+	}
+	if(ty_is_ptr(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// p2i
+			return LLVMBuildPtrToInt(ir, v->cg, cgto, "");
+		}
+		if(ty_is_fn(to))
+		{
+			// p2fn. trivial.
+			return v->cg;
+		}
+		if(ty_is_ptr(to))
+		{
+			// p2p. trivial.
+			return v->cg;
+		}
+	}
+	if(ty_is_fn(from))
+	{
+		// can only be fn2p. trivial.
+		return v->cg;
+	}
+
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of cg_convert_to. converting from ");
+	putchar('"');
+	putty(from);
+	putchar('"');
+	putzstr(" to ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
@@ -354,11 +480,16 @@ cg_deref ::= func(v : val?, source : ast? -> val)
 	{
 		rettag = ((v->underlying@val?)->tag);
 	}
+	cg : u64 mut := 0;
+	if(ir != zero)
+	{
+		cg = LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+	}
 	return val
 	{
 		.tag := rettag;
 		.type := underlying_ty;
-		.cg := LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+		.cg := cg;
 		.underlying := zero;
 	};
 };
@@ -368,6 +499,13 @@ cg_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	// we naturally reached a local variable decl.  // remember these have been hoisted before so the alloca exists.
 	decl ::= node->decl;
 	var ::= scope_find_variable(scope, decl.name, decl.name_len);
+	// if var->init is already valid its because it was statically computed during semal
+	// however if its invalid that doesnt necessarily mean we dont have one
+	if(!val_is_valid(var->init) && (var->node->children_count > 1))
+	{
+		// probably its a runtime value
+		var->init = val_node(ast_get_child(var->node, 1), scope);
+	}
 	if(val_is_valid(var->init))
 	{
 		// alloca is var->cg
@@ -504,21 +642,79 @@ cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	}
 	if(ast_is_stmt(node, ast_stmt_tag.ret))
 	{
+		parent_fn ::= scope_get_parent_function(scope);
+		if(parent_fn == zero)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("return statements are not allowed within the global scope");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		parent_retty ::= ty_unwrap(parent_fn->type)->fn.return_type;
 		// return stmt.
 		if(node->children_count == 0)
 		{
+			if(!ty_is_v0(parent_retty))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("return statement within function ");
+				putchar('"');
+				putbytes(parent_fn->node->function.name, parent_fn->node->function.name_len);
+				putchar('"');
+				putzstr(" must return a value");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 			LLVMBuildRetVoid(ir);
 			return zero;
 		}
 		else
 		{
-			retval ::= cg_node(ast_get_child(node, 0), scope);
+			if(ty_is_v0(parent_retty))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("return statement within function ");
+				putchar('"');
+				putbytes(parent_fn->node->function.name, parent_fn->node->function.name_len);
+				putchar('"');
+				putzstr(" must not return anything");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			retval ::= val_convert_to(cg_node(ast_get_child(node, 0), scope), parent_retty, node);
 			LLVMBuildRet(ir, retval.cg);
+			return retval;
 		}
 	}
 	if(ast_is_stmt(node, ast_stmt_tag.if_block))
 	{
 		return cg_if(node, scope);
+	}
+	if(ast_is_biop(node, ast_biop.assign))
+	{
+		// lhs is either a pointer or an lvalue
+		lhs_val ::= cg_node(ast_get_child(node, 0), scope);
+		rhs_val : val mut := cg_node(ast_get_child(node, 1), scope);
+		val_static2dynamic(ref rhs_val, node);
+		rhs_val = cg_load_if_lvalue(rhs_val);
+		if(!ty_is_ptr(lhs_val.type) && !val_is_lvalue(lhs_val))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("lhs of assignment must either be a pointer or an lvalue");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		// ok we just literally do the store
+		LLVMBuildStore(ir, rhs_val.cg, lhs_val.cg);
+		return lhs_val;
 	}
 	ret : val mut := val_node(node, scope);
 	val_static2dynamic(ref ret, node);

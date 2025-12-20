@@ -58,13 +58,15 @@ val_is_rvalue ::= func(v : val -> bool)
 
 val_runtime_from_variable ::= func(var : variable mut? -> val)
 {
-	return val
+	v ::= val mut
 	{
 		.tag := valtag.d_lvalue;
 		.type := var->type;
 		.cg := var->cg;
 		.underlying := zero;
 	};
+	val_static2dynamic(ref v, var->node);
+	return v;
 };
 
 val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
@@ -122,7 +124,7 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		if(ty_has_qual(var->type, tyqual.qual_static))
+		if(ty_has_qual(var->type, tyqual.qual_static) && !ty_has_qual(var->type, tyqual.qual_mut))
 		{
 			// its a static variable
 			// let's just get its initialiser now
