@@ -69,7 +69,7 @@ val_runtime_from_variable ::= func(var : variable mut? -> val)
 	return v;
 };
 
-val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
+val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> val)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
@@ -77,20 +77,24 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 	}
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
-		operand ::= val_node(ast_get_child(node, 0), scope);
-		return val_unop(node->unop, ref operand, node);
+		operand ::= val_node(ast_get_child(node, 0), scope, type_only);
+		return val_unop(node->unop, ref operand, type_only, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.biop))
 	{
-		lhs ::= val_node(ast_get_child(node, 0), scope);
-		rhs ::= val_node(ast_get_child(node, 1), scope);
-		return val_biop(node->biop, ref lhs, ref rhs, node);
+		lhs ::= val_node(ast_get_child(node, 0), scope, type_only);
+		rhs ::= val_node(ast_get_child(node, 1), scope, type_only);
+		return val_biop(node->biop, ref lhs, ref rhs, type_only, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.cast))
 	{
-		cast_from_val : val mut := val_node(ast_get_child(node, 0), scope);
-		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
 		cast_to_node ::= ast_get_child(node, 1);
+		if(type_only)
+		{
+			return val{.tag := zero; .type := ty_typename_node(cast_to_node);};
+		}
+		cast_from_val : val mut := val_node(ast_get_child(node, 0), scope, false);
+		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
 		if(ast_is_weakness_idiom(cast_to_node))
 		{
 			// its the weakness idiom! i.e foo@_
@@ -124,6 +128,10 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
+		if(type_only)
+		{
+			return val{.tag := zero; .type := var->type;};
+		}
 		if(ty_has_qual(var->type, tyqual.qual_static) && !ty_has_qual(var->type, tyqual.qual_mut))
 		{
 			// its a static variable
@@ -140,7 +148,7 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 	}
 	if(ast_is_expr(node, ast_expr_tag.dereference))
 	{
-		deref_operand ::= val_node(ast_get_child(node, 0), scope);
+		deref_operand ::= val_node(ast_get_child(node, 0), scope, type_only);
 		// this must be a pointer type
 		if(!ty_is_ptr(deref_operand.type))
 		{
@@ -153,6 +161,10 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
 			psyc_diag_end();
 			psyc_exit_failure();
+		}
+		if(type_only)
+		{
+			return val{.tag := zero; .type := ty_unwrap(deref_operand.type)->base;};
 		}
 		if(val_is_static(deref_operand))
 		{
@@ -189,12 +201,16 @@ val_node ::= func(node : ast?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
+val_unop ::= func(op : ast_unop, v : val mut?, type_only : bool, source : ast? -> val)
 {
 	s ::= val_is_static(deref v);
 	// check for 'ref' as this one has special functionality
 	if(op == (ast_unop.reference))
 	{
+		if(type_only)
+		{
+			return val{.tag := zero; .type := ty_ptr(v->type, zero);};
+		}
 		if(!val_is_lvalue(deref v))
 		{
 			psyc_error_begin(source->loc);
@@ -212,6 +228,10 @@ val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 		{
 			return cg_ref(v, source);
 		}
+	}
+	if(type_only)
+	{
+		return val{.tag := zero; .type := v->type;};
 	}
 	if(ty_is_integral(v->type))
 	{
@@ -258,7 +278,7 @@ val_unop ::= func(op : ast_unop, v : val mut?, source : ast? -> val)
 	return zero;
 };
 
-val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -> val)
+val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, type_only : bool, source : ast? -> val)
 {
 	lhs_s ::= val_is_static(deref lhs);
 	rhs_s ::= val_is_static(deref rhs);
@@ -272,7 +292,7 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 	{
 		val_static2dynamic(rhs, source);
 	}
-	if(!s)
+	if(!s && !type_only)
 	{
 		// better have 2 valid cg's
 		if((lhs->cg == 0) || (rhs->cg == 0))
@@ -340,6 +360,10 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
+		if(type_only)
+		{
+			return val{.tag := zero; .type := arith_ty;};
+		}
 		// okay great
 		deref(lhs) = val_convert_to(deref lhs, arith_ty, source);
 		deref(rhs) = val_convert_to(deref rhs, arith_ty, source);
@@ -387,6 +411,10 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 		(op == (ast_biop.compare_greater_equal))
 	)
 	{
+		if(type_only)
+		{
+			return val{.tag := zero; .type := tyid.bool;};
+		}
 		// still use arithmetic type
 		if(arith_ty == zero)
 		{
