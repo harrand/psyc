@@ -304,6 +304,50 @@ cg_integral_arith_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, s
 		}
 		return ret;
 	}
+	if(op == (ast_biop.bitwise_or))
+	{
+		ret.cg = LLVMBuildOr(ir, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.bitwise_and))
+	{
+		ret.cg = LLVMBuildAnd(ir, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.xor))
+	{
+		ret.cg = LLVMBuildXor(ir, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.bitshift_left))
+	{
+		ret.cg = LLVMBuildShl(ir, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.bitshift_right))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildAShr(ir, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildLShr(ir, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
+	if(op == (ast_biop.modulo))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildSRem(ir, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildURem(ir, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
 	
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of cg_integral_arith_biop for ast_biop.");
