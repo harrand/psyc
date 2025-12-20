@@ -48,6 +48,8 @@ s_bool_cmp_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source :
 
 s_ref ::= func(v : val mut?, source : ast? -> val)
 {
+	valcpy : val mut? := arena_alloc(global_arena, __sizeof(val));
+	memcopy(valcpy, v, __sizeof(val));
 	return val
 	{
 		.tag := valtag.s_rvalue;
@@ -55,15 +57,15 @@ s_ref ::= func(v : val mut?, source : ast? -> val)
 		.s := sval
 		{
 			.tag := sval_tag.pointer;
-			.underlying := v;
 		};
 		.cg := zero;
+		.underlying := valcpy;
 	};
 };
 
 s_deref ::= func(v : val mut?, source : ast? -> val)
 {
-	return deref(v->s.underlying@val?);
+	return deref(v->underlying@val?);
 };
 
 // the below apply functions happen directly to the actual arithmetic types instead of values

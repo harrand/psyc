@@ -305,6 +305,16 @@ cg_bool_cmp_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source 
 // note: ignore v->cg at this point as it cannot be trusted and is 99% going to be zero anyway.
 cg_sval ::= func(v : val?, source : ast? -> u64)
 {
+	s ::= v->s;
+	// zero_values shouldnt exist at this point, if they do then the code is invalid
+	if(ty_is_integral(v->type))
+	{
+		return LLVMConstInt(cg_type(v->type), s.primitive.integer, false@s32);
+	}
+	if(ty_is_floating_point(v->type))
+	{
+		return LLVMConstReal(cg_type(v->type), s.primitive.floating_point);
+	}
 	psyc_nyi(source->loc);
 	return zero;
 };
@@ -320,23 +330,31 @@ cg_ref ::= func(v : val?, source : ast? -> val)
 	// sneakily change tag to .d so we're pretending its not a variable anymore
 	// but the cg value is unchanged (variables are alloca pointers in llvm)
 	// and we change the type to a pointer.
+	valcpy : val mut? := arena_alloc(global_arena, __sizeof(val));
+	memcopy(valcpy, v, __sizeof(val));
 	return val
 	{
 		.tag := valtag.d_rvalue;
 		.type := ty_ptr(v->type, zero);
 		.cg := v->cg;
-		.d_underlying_tag := v->tag;
+		.underlying := valcpy;
 	};
 };
 
 cg_deref ::= func(v : val?, source : ast? -> val)
 {
 	underlying_ty ::= ty_underlying(v->type);
+	rettag : valtag mut := valtag.d_rvalue;
+	if(v->underlying != zero)
+	{
+		rettag = ((v->underlying@val?)->tag);
+	}
 	return val
 	{
-		.tag := v->d_underlying_tag;
+		.tag := rettag;
 		.type := underlying_ty;
 		.cg := LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+		.underlying := zero;
 	};
 };
 

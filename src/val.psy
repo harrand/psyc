@@ -20,7 +20,6 @@ sval ::= struct
 	tag : sval_tag;
 	primitive : ast_literal;
 	// note: actually a val mut?
-	underlying : v0? weak;
 };
 
 val ::= struct
@@ -29,7 +28,7 @@ val ::= struct
 	type : tyid;
 	s : sval;
 	cg : u64;
-	d_underlying_tag : valtag;
+	underlying : v0? weak;
 };
 
 val_is_valid ::= func(v : val -> bool)
@@ -64,6 +63,7 @@ val_runtime_from_variable ::= func(var : variable mut? -> val)
 		.tag := valtag.d_lvalue;
 		.type := var->type;
 		.cg := var->cg;
+		.underlying := zero;
 	};
 };
 
@@ -285,17 +285,17 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 	}
 	// so this one is a little more complicated as we need to deal with zero-value.
 	// these types are immediately wrong if these are zero values so lets check that now.
-	lhs_type : tyid mut := lhs->type;
-	rhs_type : tyid mut := rhs->type;
+	lhs_type ::= ref(lhs->type);
+	rhs_type ::= ref(rhs->type);
 	lhs_is_zero ::= lhs_s && (lhs->s.tag == (sval_tag.zero_value));
 	rhs_is_zero ::= rhs_s && (rhs->s.tag == (sval_tag.zero_value));
 	if(lhs_is_zero && (!rhs_is_zero))
 	{
-		lhs_type = rhs_type;
+		deref(lhs_type) = deref(rhs_type);
 	}
 	if((!lhs_is_zero) && rhs_is_zero)
 	{
-		rhs_type = lhs_type;
+		deref(rhs_type) = deref(lhs_type);
 	}
 	if(lhs_is_zero && rhs_is_zero)
 	{
@@ -309,7 +309,7 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 		psyc_exit_failure();
 	}
 
-	arith_ty ::= ty_of_arithmetic(lhs_type, rhs_type);
+	arith_ty ::= ty_of_arithmetic(deref lhs_type, deref rhs_type);
 	// list all the ops that ty_of_arithmetic will help with
 	if(
 		(op == (ast_biop.add)) ||
@@ -330,9 +330,9 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 			putzstr("binary ");
 			putzstr(__enumname(op));
 			putzstr(" operation is not valid on a ");
-			putty(lhs_type);
+			putty(deref lhs_type);
 			putzstr(" and a ");
-			putty(rhs_type);
+			putty(deref rhs_type);
 			putchar(10);
 			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 			psyc_diag_end();
@@ -392,9 +392,9 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -
 			putzstr("binary ");
 			putzstr(__enumname(op));
 			putzstr(" operation is not valid on a ");
-			putty(lhs_type);
+			putty(deref lhs_type);
 			putzstr(" and a ");
-			putty(rhs_type);
+			putty(deref rhs_type);
 			putchar(10);
 			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 			psyc_diag_end();
@@ -494,6 +494,7 @@ integer_as ::= func(n : s64 weak, to : tyid -> val)
 			};
 		};
 		.cg := zero;
+		.underlying := zero;
 	};
 };
 
@@ -513,6 +514,7 @@ float_as ::= func(n : f64 weak, to : tyid -> val)
 			};
 		};
 		.cg := zero;
+		.underlying := zero;
 	};
 };
 
@@ -533,6 +535,7 @@ string_as ::= func(chars : u8?, chars_len : u64 -> val)
 			};
 		};
 		.cg := zero;
+		.underlying := zero;
 	};
 };
 
@@ -555,6 +558,7 @@ char_as ::= func(char : u8 -> val)
 			};
 		};
 		.cg := zero;
+		.underlying := zero;
 	};
 };
 
@@ -574,6 +578,7 @@ bool_as ::= func(b : bool -> val)
 			};
 		};
 		.cg := zero;
+		.underlying := zero;
 	};
 };
 
