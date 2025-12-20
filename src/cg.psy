@@ -315,6 +315,10 @@ cg_sval ::= func(v : val?, source : ast? -> u64)
 	{
 		return LLVMConstReal(cg_type(v->type), s.primitive.floating_point);
 	}
+	if(ty_is_bool(v->type))
+	{
+		return LLVMConstInt(cg_type(v->type), s.primitive.boolean@s64, false@s32);
+	}
 	psyc_nyi(source->loc);
 	return zero;
 };
@@ -379,6 +383,50 @@ cg_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return val_runtime_from_variable(var);
 };
 
+cg_static_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	// note form progwalk: if this is a static_if then we ignore the condition and just cg_node all the children
+	// progwalk handles the condition and clears out the children as necessary (also handles else so this code is really simple hooray!)
+	i : u64 mut;
+	for(i = 1, i < (node->children_count), i = i + 1)
+	{
+		cg_node(ast_get_child(node, i), scope);
+	}
+	return zero;
+};
+
+cg_load_if_lvalue ::= func(v : val -> val)
+{
+	ret : val mut := v;
+	if(val_is_lvalue(v))
+	{
+		ret.cg = LLVMBuildLoad2(ir, cg_type(ret.type), ret.cg, "");
+		ret.tag = (valtag.d_rvalue);
+	}
+	return ret;
+};
+
+cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	if_blk ::= node->ifblk;
+	if(if_blk.is_static)
+	{
+		return cg_static_if(node, scope);
+	}
+	// ok runtime if...
+	// get the condition
+	cond_node ::= ast_get_child(node, 0);
+	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
+
+	// need the parent function...
+
+	psyc_panic_begin(node->loc);
+	putzstr("todo: runtime if");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 {
 	if(ast_is_stmt(node, ast_stmt_tag.decl))
@@ -399,5 +447,11 @@ cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 			LLVMBuildRet(ir, retval.cg);
 		}
 	}
-	return val_node(node, scope);
+	if(ast_is_stmt(node, ast_stmt_tag.if_block))
+	{
+		return cg_if(node, scope);
+	}
+	ret : val mut := val_node(node, scope);
+	val_static2dynamic(ref ret, node);
+	return ret;
 };
