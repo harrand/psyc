@@ -361,7 +361,68 @@ cg_integral_arith_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, s
 
 cg_integral_cmp_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	// assume lhs and rhs are pre-converted to the corect types.
+	lhsv ::= cg_load_if_lvalue(deref lhs);
+	rhsv ::= cg_load_if_lvalue(deref rhs);
+	ret : val mut := lhsv;
+	if(op == (ast_biop.compare_equal))
+	{
+		ret.cg = LLVMBuildICmp(ir, LLVMIntEQ, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.compare_not_equal))
+	{
+		ret.cg = LLVMBuildICmp(ir, LLVMIntNE, lhsv.cg, rhsv.cg, "");
+		return ret;
+	}
+	if(op == (ast_biop.compare_less))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntSLT, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntULT, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
+	if(op == (ast_biop.compare_less_equal))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntSLE, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntULE, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
+	if(op == (ast_biop.compare_greater))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntSGT, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntUGT, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
+	if(op == (ast_biop.compare_greater_equal))
+	{
+		if(ty_is_signed_integral(lhsv.type))
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntSGE, lhsv.cg, rhsv.cg, "");
+		}
+		else
+		{
+			ret.cg = LLVMBuildICmp(ir, LLVMIntUGE, lhsv.cg, rhsv.cg, "");
+		}
+		return ret;
+	}
 	return zero;
 };
 
