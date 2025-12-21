@@ -599,12 +599,14 @@ cg_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	// we naturally reached a local variable decl.  // remember these have been hoisted before so the alloca exists.
 	decl ::= node->decl;
 	var ::= scope_find_variable(scope, decl.name, decl.name_len);
-	// if var->init is already valid its because it was statically computed during semal
-	// however if its invalid that doesnt necessarily mean we dont have one
-	if(!val_is_valid(var->init) && (var->node->children_count > 1))
+	// so we have var->init
+	// check if its valid (it could either be unset i.e tagzero or a type-only val (valtag.ty)
+	if(val_is_type_only(var->init))
 	{
-		// probably its a runtime value
-		var->init = val_node(ast_get_child(var->node, 1), scope, false);
+		// the val is typeonly.
+		// this means it wasnt computable at compile-time.
+		// so we need to codegen the init
+		var->init = cg_node(ast_get_child(var->node, 1), scope);
 	}
 	if(val_is_valid(var->init))
 	{

@@ -4,6 +4,7 @@ valtag ::= enum
 	.s_lvalue := 2;
 	.d_rvalue := 3;
 	.d_lvalue := 4;
+	.ty := 5;
 };
 
 sval_tag ::= enum
@@ -33,7 +34,12 @@ val ::= struct
 
 val_is_valid ::= func(v : val -> bool)
 {
-	return v.tag != zero;
+	return (v.tag != zero) && (v.tag != (valtag.ty));
+};
+
+val_is_type_only ::= func(v : val -> bool)
+{
+	return v.tag == (valtag.ty);
 };
 
 val_is_static ::= func(v : val -> bool)
@@ -91,7 +97,7 @@ val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> v
 		cast_to_node ::= ast_get_child(node, 1);
 		if(type_only)
 		{
-			return val{.tag := zero; .type := ty_typename_node(cast_to_node);};
+			return val{.tag := valtag.ty; .type := ty_typename_node(cast_to_node);};
 		}
 		cast_from_val : val mut := val_node(ast_get_child(node, 0), scope, false);
 		cast_from_val.type = ty_set_qual(cast_from_val.type, tyqual.qual_weak);
@@ -130,7 +136,7 @@ val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> v
 		}
 		if(type_only)
 		{
-			return val{.tag := zero; .type := var->type;};
+			return val{.tag := valtag.ty; .type := var->type;};
 		}
 		if(ty_has_qual(var->type, tyqual.qual_static) && !ty_has_qual(var->type, tyqual.qual_mut))
 		{
@@ -164,7 +170,7 @@ val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> v
 		}
 		if(type_only)
 		{
-			return val{.tag := zero; .type := ty_unwrap(deref_operand.type)->base;};
+			return val{.tag := valtag.ty; .type := ty_unwrap(deref_operand.type)->base;};
 		}
 		if(val_is_static(deref_operand))
 		{
@@ -209,7 +215,7 @@ val_unop ::= func(op : ast_unop, v : val mut?, type_only : bool, source : ast? -
 	{
 		if(type_only)
 		{
-			return val{.tag := zero; .type := ty_ptr(v->type, zero);};
+			return val{.tag := valtag.ty; .type := ty_ptr(v->type, zero);};
 		}
 		if(!val_is_lvalue(deref v))
 		{
@@ -231,7 +237,7 @@ val_unop ::= func(op : ast_unop, v : val mut?, type_only : bool, source : ast? -
 	}
 	if(type_only)
 	{
-		return val{.tag := zero; .type := v->type;};
+		return val{.tag := valtag.ty; .type := v->type;};
 	}
 	if(ty_is_integral(v->type))
 	{
@@ -362,7 +368,7 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, type_only : boo
 		}
 		if(type_only)
 		{
-			return val{.tag := zero; .type := arith_ty;};
+			return val{.tag := valtag.ty; .type := arith_ty;};
 		}
 		// okay great
 		deref(lhs) = val_convert_to(deref lhs, arith_ty, source);
@@ -413,7 +419,7 @@ val_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, type_only : boo
 	{
 		if(type_only)
 		{
-			return val{.tag := zero; .type := tyid.bool;};
+			return val{.tag := valtag.ty; .type := tyid.bool;};
 		}
 		// still use arithmetic type
 		if(arith_ty == zero)
