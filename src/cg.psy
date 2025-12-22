@@ -467,6 +467,7 @@ cg_bool_cmp_biop ::= func(op : ast_biop, lhs : val mut?, rhs : val mut?, source 
 // note: ignore v->cg at this point as it cannot be trusted and is 99% going to be zero anyway.
 cg_sval ::= func(v : val?, source : ast? -> u64)
 {
+	i : u64 mut;
 	s ::= v->s;
 	// zero_values shouldnt exist at this point, if they do then the code is invalid
 	if(ty_is_integral(v->type))
@@ -484,6 +485,34 @@ cg_sval ::= func(v : val?, source : ast? -> u64)
 	if(ty_is_bool(v->type))
 	{
 		return LLVMConstInt(cg_type(v->type), s.primitive.boolean@s64, false@s32);
+	}
+	if(ty_is_arr(v->type))
+	{
+		array_len ::= v->array_elements_count;
+		array_vals : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * array_len);
+		for(i = 0, i < array_len, i = i + 1)
+		{
+			deref(array_vals # i) = cg_sval(v->array_elements@val? # i, source);
+		}
+		return LLVMConstArray(cg_type(ty_underlying(v->type)), array_vals, array_len@_);
+	}
+	if(ty_is_struct(v->type))
+	{
+		vals_len ::= ty_unwrap(v->type)->strct.members_count;
+		struct_vals : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * vals_len);
+		for(i = 0, i < vals_len, i = i + 1)
+		{
+			cur_val ::= deref(v->struct_initialisers@val mut? # i);
+			if(cur_val.tag == zero)
+			{
+				deref(struct_vals # i) = LLVMGetUndef(cg_type(deref(ty_unwrap(v->type)->strct.members # i)));
+			}
+			else
+			{
+				deref(struct_vals # i) = cg_sval(ref cur_val, source);
+			}
+		}
+		return LLVMConstNamedStruct(cg_type(v->type), struct_vals, vals_len@_);
 	}
 	psyc_nyi(source->loc);
 	return zero;

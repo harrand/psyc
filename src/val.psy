@@ -32,6 +32,8 @@ val ::= struct
 	underlying : v0? weak;
 	struct_initialisers_count : u64;
 	struct_initialisers : v0? weak;
+	array_elements_count : u64;
+	array_elements : v0? weak;
 };
 
 val_is_valid ::= func(v : val -> bool)
@@ -527,6 +529,19 @@ zero_as ::= func(to : tyid, source : ast? -> val)
 		ret.s.primitive.tag = (ast_literal_tag.floating_point);
 		return ret;
 	}
+	if(ty_is_arr(to))
+	{
+		array_len ::= ty_unwrap(to)->array_len;
+		ret.s.tag = (sval_tag.array);
+		ret.array_elements_count = array_len;
+		ret.array_elements = arena_alloc(global_arena, __sizeof(val) * array_len);
+		i : u64 mut;
+		for(i = 0, i < array_len, i = i + 1)
+		{
+			deref((ret.array_elements@val mut?) # i) = zero_as(ty_underlying(to), source);
+		}
+		return ret;
+	}
 	psyc_panic_begin(source->loc);
 	putzstr("missing codepath in zero_as for a zero_value converting to ");
 	putchar('"');
@@ -962,10 +977,15 @@ val_blkinit ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	};
 	init_ptr ::= structdata.struct_initialisers@val mut?;
 	i : u64 mut;
+	for(i = 0, i < memcount, i = i + 1)
+	{
+		deref(structdata.struct_initialisers@val mut? # i) = zero;
+	}
 	for(i = 1, i < (node->children_count), i = i + 1)
 	{
 		desiginit_node ::= ast_get_child(node, i);
 		desiginit ::= desiginit_node->desiginit;
+		desiginit_value_node ::= ast_get_child(desiginit_node, 0);
 		maybe_member_idx ::= ty_get_struct_member_id(structinit_type, desiginit.name, desiginit.name_len);
 		if(maybe_member_idx == -1)
 		{
@@ -983,7 +1003,14 @@ val_blkinit ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 			psyc_exit_failure();
 		}
 		member_ty ::= deref(ty_unwrap(structinit_type)->strct.members # maybe_member_idx);
-		deref(init_ptr # maybe_member_idx) = val_convert_to(val_node(ast_get_child(desiginit_node, 0), scope, false), member_ty, node);
+		if(ast_is_expr(desiginit_value_node, ast_expr_tag.zero_value))
+		{
+			deref(init_ptr # maybe_member_idx) = zero_as(member_ty, node);
+		}
+		else
+		{
+			deref(init_ptr # maybe_member_idx) = val_convert_to(val_node(desiginit_value_node, scope, false), member_ty, node);
+		}
 	}
 	return structdata;
 };
