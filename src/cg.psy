@@ -640,6 +640,16 @@ cg_ref ::= func(v : val?, source : ast? -> val)
 cg_deref ::= func(v : val?, do_load : bool, source : ast? -> val)
 {
 	val_static2dynamic(v, source);
+	if(!ty_is_ptr(v->type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("dereference operand must always be a pointer type. this is a ");
+		putty(v->type);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	underlying_ty ::= ty_underlying(v->type);
 	rettag : valtag mut := valtag.d_rvalue;
 	if(v->underlying != zero)
@@ -728,10 +738,6 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 		return cg_static_if(node, scope);
 	}
 	// ok runtime if...
-	// get the condition
-	cond_node ::= ast_get_child(node, 0);
-	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
-
 	// need the parent function...
 	parent_fn ::= scope_get_parent_function(scope);
 	if(parent_fn == zero)
@@ -744,9 +750,13 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 		psyc_exit_failure();
 	}
 
+	// get the condition
+	cond_node ::= ast_get_child(node, 0);
+	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
+
+
 	else_node ::= ast_get_last_child_if_else(node);
 
-	old_block ::= LLVMGetInsertBlock(ir);
 	ifscope ::= LLVMAppendBasicBlock(parent_fn->cg, "if");
 	elsescope : u64 mut := zero;
 
@@ -806,6 +816,103 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	}
 	
 	LLVMPositionBuilderAtEnd(ir, ifcont);
+	return zero;
+};
+
+cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	// need the parent function...
+	parent_fn ::= scope_get_parent_function(scope);
+	if(parent_fn == zero)
+	{
+		psyc_error_begin(node->loc);
+		putzstr("while statements are not allowed within the global scope");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	// get the condition
+	cond_node ::= ast_get_child(node, 0);
+	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
+
+	whilescope ::= LLVMAppendBasicBlock(parent_fn->cg, "while");
+	whilecont ::= LLVMAppendBasicBlock(parent_fn->cg, "whilecont");
+	i : u64 mut;
+
+	// make the branch
+	LLVMBuildCondBr(ir, cond_val.cg, whilescope, whilecont);
+	// populate the while block now
+
+	// while
+	LLVMPositionBuilderAtEnd(ir, whilescope);
+	was_return : bool mut := false;
+	child : ast mut? mut := zero;
+
+	for(i = 1, i < (node->children_count), i = i + 1)
+	{
+		child = ast_get_child(node, i);
+		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
+		cg_node(child, scope);
+	}
+	if(!was_return)
+	{
+		// loop back if cond is still true, otherwise whilecont
+		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
+		LLVMBuildCondBr(ir, new_cond_val.cg, whilescope, whilecont);
+	}
+	
+	LLVMPositionBuilderAtEnd(ir, whilecont);
+	return zero;
+};
+
+cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	// need the parent function...
+	parent_fn ::= scope_get_parent_function(scope);
+	if(parent_fn == zero)
+	{
+		psyc_error_begin(node->loc);
+		putzstr("for statements are not allowed within the global scope");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	init_node ::= ast_get_child(node, 0);
+	cond_node ::= ast_get_child(node, 1);
+	iter_node ::= ast_get_child(node, 2);
+	// first just do the init
+	cg_node(init_node, scope);
+	forscope ::= LLVMAppendBasicBlock(parent_fn->cg, "for");
+	forcont ::= LLVMAppendBasicBlock(parent_fn->cg, "forcont");
+	i : u64 mut;
+
+	initial_cond_val ::= cg_node(cond_node, scope);
+	LLVMBuildCondBr(ir, initial_cond_val.cg, forscope, forcont);
+
+	// populate the for block
+	LLVMPositionBuilderAtEnd(ir, forscope);
+	was_return : bool mut := false;
+	child : ast mut? mut := zero;
+
+	for(i = 3, i < (node->children_count), i = i + 1)
+	{
+		child = ast_get_child(node, i);
+		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
+		cg_node(child, scope);
+	}
+	cg_node(iter_node, scope);
+	if(!was_return)
+	{
+		// loop back if cond is still true, otherwise forcont
+		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, cond_node);
+		LLVMBuildCondBr(ir, new_cond_val.cg, forscope, forcont);
+	}
+
+	LLVMPositionBuilderAtEnd(ir, forcont);
 	return zero;
 };
 
@@ -870,6 +977,14 @@ cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	if(ast_is_stmt(node, ast_stmt_tag.if_block))
 	{
 		return cg_if(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.while_block))
+	{
+		return cg_while(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.for_block))
+	{
+		return cg_for(node, scope);
 	}
 	if(ast_is_biop(node, ast_biop.assign))
 	{
