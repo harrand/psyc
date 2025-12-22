@@ -13,7 +13,7 @@ sval_tag ::= enum
 	.primitive := 2;
 	.pointer := 3;
 	.array := 4;
-	//.structure := 4;
+	.structure := 4;
 };
 
 sval ::= struct
@@ -30,6 +30,8 @@ val ::= struct
 	s : sval;
 	cg : u64;
 	underlying : v0? weak;
+	struct_initialisers_count : u64;
+	struct_initialisers : v0? weak;
 };
 
 val_is_valid ::= func(v : val -> bool)
@@ -195,6 +197,27 @@ val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> v
 			psyc_exit_failure();
 		}
 		psyc_nyi(node->loc);
+	}
+	if(ast_is_expr(node, ast_expr_tag.blkinit))
+	{
+		structinit_type ::= ty_typename_node(ast_get_child(node, 0));
+		if(!ty_is_struct(structinit_type))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("blkinit was expected to be of struct-type, but instead was of type ");
+			putchar('"');
+			putty(structinit_type);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(type_only)
+		{
+			return val{.tag := valtag.ty; .type := structinit_type;};
+		}
+		return val_blkinit(node, scope);
 	}
 	if(ast_is_expr(node, ast_expr_tag.field))
 	{
@@ -918,4 +941,49 @@ val_must_get_boolean_literal ::= func(v : val, source : ast? -> bool)
 		psyc_exit_failure();
 	}
 	return v.s.primitive.boolean;
+};
+
+val_blkinit ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+{
+	structinit_type ::= ty_typename_node(ast_get_child(node, 0));
+	memcount ::= ty_unwrap(structinit_type)->strct.members_count;
+	structdata ::= val mut
+	{
+		.tag := valtag.s_lvalue;
+		.type := structinit_type;
+		.s := sval
+		{
+			.tag := sval_tag.structure;
+		};
+		.cg := zero;
+		.underlying := zero;
+		.struct_initialisers_count := memcount;
+		.struct_initialisers := arena_alloc(global_arena, __sizeof(val) * memcount);
+	};
+	init_ptr ::= structdata.struct_initialisers@val mut?;
+	i : u64 mut;
+	for(i = 1, i < (node->children_count), i = i + 1)
+	{
+		desiginit_node ::= ast_get_child(node, i);
+		desiginit ::= desiginit_node->desiginit;
+		maybe_member_idx ::= ty_get_struct_member_id(structinit_type, desiginit.name, desiginit.name_len);
+		if(maybe_member_idx == -1)
+		{
+			putzstr("desiginit is invalid because type ");
+			putchar('"');
+			putty(structinit_type);
+			putchar('"');
+			putzstr(" has no member named ");
+			putchar('"');
+			putbytes(desiginit.name, desiginit.name_len);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		member_ty ::= deref(ty_unwrap(structinit_type)->strct.members # maybe_member_idx);
+		deref(init_ptr # maybe_member_idx) = val_convert_to(val_node(ast_get_child(desiginit_node, 0), scope, false), member_ty, node);
+	}
+	return structdata;
 };

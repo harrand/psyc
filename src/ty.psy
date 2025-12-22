@@ -165,6 +165,28 @@ ty_underlying ::= func(id : tyid -> tyid)
 	return ty_unwrap(id)->base;
 };
 
+ty_get_struct_member_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
+{
+	i : u64 mut;
+	if(ty_is_struct(id))
+	{
+		strct ::= ty_unwrap(id)->strct;
+		for(i = 0, i < (strct.members_count), i = i + 1)
+		{
+			memname ::= deref(strct.member_names # i);
+			memlen ::= deref(strct.member_name_lens # i);
+			if(memlen == name_len)	
+			{
+				if(streql_n(memname, name, memlen))
+				{
+					return i;
+				}
+			}
+		}
+	}
+	return -1;
+};
+
 // integral size in bits. zero if not integral.
 ty_integral_size ::= func(id : tyid -> u64)
 {
