@@ -473,6 +473,10 @@ cg_sval ::= func(v : val?, source : ast? -> u64)
 	{
 		return LLVMConstInt(cg_type(v->type), s.primitive.integer, false@s32);
 	}
+	if(ty_is_ptr(v->type))
+	{
+		return LLVMConstIntToPtr(LLVMConstInt(LLVMInt64Type(), s.primitive.integer, false@s32), cg_type(v->type));
+	}
 	if(ty_is_floating_point(v->type))
 	{
 		return LLVMConstReal(cg_type(v->type), s.primitive.floating_point);
@@ -633,8 +637,9 @@ cg_ref ::= func(v : val?, source : ast? -> val)
 	};
 };
 
-cg_deref ::= func(v : val?, source : ast? -> val)
+cg_deref ::= func(v : val?, do_load : bool, source : ast? -> val)
 {
+	val_static2dynamic(v, source);
 	underlying_ty ::= ty_underlying(v->type);
 	rettag : valtag mut := valtag.d_rvalue;
 	if(v->underlying != zero)
@@ -644,7 +649,14 @@ cg_deref ::= func(v : val?, source : ast? -> val)
 	cg : u64 mut := 0;
 	if(ir != zero)
 	{
-		cg = LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+		if(do_load)
+		{
+			cg = LLVMBuildLoad2(ir, cg_type(underlying_ty), v->cg, "");
+		}
+		else
+		{
+			cg = v->cg;
+		}
 	}
 	return val
 	{
@@ -862,14 +874,45 @@ cg_node ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	if(ast_is_biop(node, ast_biop.assign))
 	{
 		// lhs is either a pointer or an lvalue
-		lhs_val ::= cg_node(ast_get_child(node, 0), scope);
+		lhs_node ::= ast_get_child(node, 0);
+		lhs_is_deref ::= ast_is_expr(lhs_node, ast_expr_tag.dereference);
+		lhs_val : val mut := zero;
+		if(lhs_is_deref)
+		{
+			// dont do the load here because the lhs deref is a store!
+			// just val_node the deref operand
+			deref_operand_val ::= cg_node(ast_get_child(lhs_node, 0), scope);
+			lhs_val = cg_deref(ref deref_operand_val, false, lhs_node);
+		}
+		else
+		{
+			lhs_val = cg_node(lhs_node, scope);
+		}
+		if(ty_has_qual(lhs_val.type, tyqual.qual_static))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("lhs of assignment must not have the 'static' qualifier");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(!ty_has_qual(lhs_val.type, tyqual.qual_mut))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("lhs of assignment must not have 'mut' qualifier");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		rhs_val : val mut := cg_node(ast_get_child(node, 1), scope);
 		val_static2dynamic(ref rhs_val, node);
 		rhs_val = cg_load_if_lvalue(rhs_val);
-		if(!ty_is_ptr(lhs_val.type) && !val_is_lvalue(lhs_val))
+		if(!val_is_lvalue(lhs_val) && !lhs_is_deref)
 		{
 			psyc_error_begin(node->loc);
-			putzstr("lhs of assignment must either be a pointer or an lvalue");
+			putzstr("lhs of assignment must either be an lvalue or some dereference");
 			putchar(10);
 			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
 			psyc_diag_end();

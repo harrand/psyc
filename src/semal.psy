@@ -109,7 +109,7 @@ semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
 	// handle the special typename bits
 	if(typename.descriptor == (ast_typename_descriptor.deduced))
 	{
-		if(!val_is_valid(var->init))
+		if(!val_is_valid(var->init) && !val_is_type_only(var->init))
 		{
 			psyc_error_begin(var->node->loc);
 			putzstr("variable ");
@@ -117,6 +117,10 @@ semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
 			putbytes(decl.name, decl.name_len);
 			putchar('"');
 			putzstr(" is of deduced type, but it did not have a valid initialiser");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(var->node->loc.file)->src, var->node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
 		}
 		var->type = (var->init.type);
 	}

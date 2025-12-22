@@ -172,14 +172,16 @@ val_node ::= func(node : ast?, scope : lexical_scope mut?, type_only : bool -> v
 		{
 			return val{.tag := valtag.ty; .type := ty_unwrap(deref_operand.type)->base;};
 		}
-		if(val_is_static(deref_operand))
+		if(ir == zero)
 		{
-			return s_deref(ref deref_operand, node);
+			psyc_panic_begin(node->loc);
+			putzstr("deref expressions that are analysed at compile-time must only be done through a call to val_node with type_only = true");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
 		}
-		else
-		{
-			return cg_deref(ref deref_operand, node);
-		}
+		return cg_deref(ref deref_operand, true, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
