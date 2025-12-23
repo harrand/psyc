@@ -588,6 +588,28 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		deref_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
 		return val_deref(deref_operand, resolution, node);
 	}
+	if(ast_is_expr(node, ast_expr_tag.cast))
+	{
+		cast_from : val mut := val_node(ast_get_child(node, 0), scope, resolution);
+		// make cast_from weak
+		cast_from.type = ty_set_qual(cast_from.type, tyqual.qual_weak);
+		cast_to_node ::= ast_get_child(node, 1);
+		if(ast_is_weakness_idiom(cast_to_node))
+		{
+			// just the weakness idiom!
+			if(resolution == (val_resolution.type_only))
+			{
+				return type_as_val(cast_from.type);
+			}
+			if(resolution == (val_resolution.runtime_only))
+			{
+				return val_dynamic(cast_from, node);
+			}
+			return cast_from;
+		}
+		cast_to ::= ty_typename_node(cast_to_node);
+		return val_convert_to(cast_from, cast_to, resolution, node);
+	}
 	psyc_panic_begin(node->loc);
 	putzstr("control reached end of val_node");
 	putchar(10);
@@ -820,7 +842,7 @@ val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source 
 	if(v.known == (valknown.compile_time) && !v_is_static_function_reference)
 	{
 		// compile time transformation
-		static_return ::= s_convert_to2(v, to, source);
+		static_return ::= s_convert_to(v, to, source);
 		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(static_return, source);
