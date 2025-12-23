@@ -38,6 +38,12 @@ val2compile_time ::= struct
 	// if the value isnt a funcref these are guaranteed to be zero.
 	funcref_name : u8?;
 	funcref_name_len : u64;
+	// might be populated if the value is an lvalue. if this is populated then it refers to a variable in the current scope.
+	// this is how variable references are expressed in vals
+	varref_name : u8?;
+	varref_name_len : u64;
+	// populated if the type is a pointer and was created via a 'ref' unop.
+	valueref : v0? weak;
 };
 
 val2runtime ::= struct
@@ -208,6 +214,9 @@ integer_as_val2 ::= func(n : s64 weak -> val2)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
@@ -229,6 +238,9 @@ float_as_val2 ::= func(n : f64 weak -> val2)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
@@ -250,6 +262,9 @@ string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
@@ -273,6 +288,9 @@ char_as_val2 ::= func(char : u8 -> val2)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
@@ -294,6 +312,9 @@ bool_as_val2 ::= func(b : bool -> val2)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
@@ -324,6 +345,30 @@ literal_as_val2 ::= func(literal : ast_literal -> val2)
 	return zero;
 };
 
+variable_as_val2 ::= func(var : variable?, source : ast? -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.lvalue;
+		.type := var->type;
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := zero;
+			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
+			.varref_name := var->node->decl.name;
+			.varref_name_len := var->node->decl.name_len;
+			.valueref := zero;
+		};
+		.runtime := zero;
+	};
+};
+
 function_as_val2 ::= func(fn : function?, source : ast? -> val2)
 {
 	return val2
@@ -340,9 +385,39 @@ function_as_val2 ::= func(fn : function?, source : ast? -> val2)
 			.members := zero;
 			.funcref_name := fn->name;
 			.funcref_name_len := fn->name_len;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
 		};
 		.runtime := zero;
 	};
+};
+
+// get a statically-known reference to 'v'
+ref_as_val2 ::= func(v : val2, source : ast? -> val2)
+{
+	ret ::= val2 mut
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := ty_ptr(v.type, zero);
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := zero;
+			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := arena_alloc(global_arena, __sizeof(val2));
+		};
+		.runtime := zero;
+	};
+	deref(ret.compile_time.valueref@val2 mut?) = v;
+	return ret;
 };
 
 type_as_val2 ::= func(type : tyid -> val2)
@@ -442,18 +517,124 @@ val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolu
 	return zero;
 };
 
+// get a value from a symbol reference.
+val_symbol2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolution -> val2)
+{
+	sym ::= node->symbol;
+	// could be:
+	// a variable name
+	// a function name
+	ret : val2 mut := zero;
+
+	maybe_variable ::= scope_find_variable(scope, sym.data, sym.len);
+	if(maybe_variable != zero)
+	{
+		if(resolution == (val2_resolution.type_only))
+		{
+			return type_as_val2(maybe_variable->type);
+		}
+		ret = variable_as_val2(maybe_variable, node);
+		if(resolution == (val2_resolution.runtime_only))
+		{
+			return val2_dynamic(ret, node);
+		}
+		return ret;
+	}
+	maybe_function ::= scope_find_function(scope, sym.data, sym.len);
+	if(maybe_function != zero)
+	{
+		if(resolution == (val2_resolution.type_only))
+		{
+			return type_as_val2(maybe_function->type);
+		}
+		ret = function_as_val2(maybe_function, node);
+		if(resolution == (val2_resolution.runtime_only))
+		{
+			return val2_dynamic(ret, node);
+		}
+		return ret;
+	}
+	psyc_error_begin(node->loc);
+	putzstr("unknown symbol ");
+	putchar('"');
+	putbytes(sym.data, sym.len);
+	putchar('"');
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
 val_unop2 ::= func(op : ast_unop, v : val2, resolution : val2_resolution, source : ast? -> val2)
 {
 	if(op == (ast_unop.reference))
 	{
-		return val_ref2(v, resolution, source);
+		return val_unop_ref2(v, resolution, source);
 	}
+	if(op == (ast_unop.minus))
+	{
+		//return val_unop_minus2(v, resolution, source);
+	}
+	if(op == (ast_unop.bitwise_invert))
+	{
+		//return val_unop_minus2(v, resolution, source);
+	}
+	if(op == (ast_unop.logical_invert))
+	{
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of val_unop2 for val_unop.");
+	putzstr(__enumname(op));
+	putzstr(" (");
+	putsint(op@s64);
+	putzstr(")");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
+
 	return zero;
 };
 
-val_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+val_unop_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
 {
-	return zero;
+	if(v.hand != (val2hand.lvalue))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("can only create a reference to an lvalue");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val2_resolution.type_only))
+	{
+		return type_as_val2(ty_ptr(v.type, zero));
+	}
+	if(v.known == (val2known.compile_time))
+	{
+		// compile time
+		ret ::= ref_as_val2(v, source);
+
+		if(resolution == (val2_resolution.runtime_only))
+		{
+			// convert to runtime value
+			return val2_dynamic(ret, source);
+		}
+		return ret;
+	}
+	if(resolution == (val2_resolution.compile_time_only))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("this 'ref' unary operator is in a context that must be evaluated at compile-time, but the operand is not statically-known");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// runtime
+	return cg_ref2(v, source);
 };
 
 val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, source : ast? -> val2)
@@ -660,7 +841,6 @@ putval2 ::= func(v : val2 -> v0)
 		putchar(10);
 		putchar(9);
 	}
-	putzstr("}");
 
 	putchar(10);
 	putchar(9);
@@ -680,6 +860,24 @@ putval2 ::= func(v : val2 -> v0)
 	putchar(9);
 	putzstr(".funcref_name_len := ");
 	putuint(v.compile_time.funcref_name_len);
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".valueref := ");
+	if(v.compile_time.valueref == zero)
+	{
+		putzstr("zero");
+	}
+	else
+	{
+		putzstr("<some other val2>");
+	}
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr("}");
 	
 	putchar(10);
 	putchar(9);
