@@ -105,6 +105,8 @@ string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
 
 char_as_val2 ::= func(char : u8 -> val2)
 {
+	chardata : u8 mut? := arena_alloc(string_arena, 1);
+	deref(chardata # 0) = char;
 	return val2
 	{
 		.tag := val2tag.typed_value;
@@ -114,7 +116,7 @@ char_as_val2 ::= func(char : u8 -> val2)
 		.compile_time := val2compile_time
 		{
 			.is_zero := false;
-			.primitive := ast_literal{.tag := ast_literal_tag.char; .integer := char@_;};
+			.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := chardata; .chars_len := 1;};
 			.members_count := zero;
 			.members := zero;
 		};
@@ -203,8 +205,67 @@ val_convert_to2 ::= func(v : val2, to : tyid, source : ast? -> val2)
 
 zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 {
-	psyc_nyi(source->loc);
-	return zero;
+	i : u64 mut;
+	ret ::= val2 mut
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := to;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+
+	toty ::= ty_unwrap(to);
+	if(ty_is_struct(to))
+	{
+		// create all the members as zeros
+		ret.compile_time.members_count = (toty->strct.members_count);
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val2) * (ret.compile_time.members_count));
+		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
+		{
+			memty ::= deref(toty->strct.members # i);
+			deref(ret.compile_time.members@val2 mut? # i) = zero_as_val2(memty, source);
+		}
+	}
+	if(ty_is_arr(to))
+	{
+		// create all the elements as zeros
+		ret.compile_time.members_count = (toty->array_len);
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val2) * (ret.compile_time.members_count));
+		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
+		{
+			deref(ret.compile_time.members@val2 mut? # i) = zero_as_val2(ty_underlying(to), source);
+		}
+	}
+	if(ty_is_ptr(to))
+	{
+		// hmm, maybe just a compile_time.primitive.integer? but that doesnt really make any sense.
+		psyc_nyi(source->loc);
+	}
+	if(ty_is_enum(to))
+	{
+		// hmm, maybe just a compile_time.primitive.integer?
+		psyc_nyi(source->loc);
+	}
+	if(ty_is_prim(to))
+	{
+		literal : ast_literal mut := zero;
+		if(ty_is_integral(to))
+		{
+			literal.tag = (ast_literal_tag.integer);
+		}
+		if(ty_is_floating_point(to))
+		{
+			literal.tag = (ast_literal_tag.floating_point);
+		}
+		if(ty_is_bool(to))
+		{
+			literal.tag = (ast_literal_tag.boolean);
+		}
+		return literal_as_val2(literal);
+	}
+	return ret;
 };
 
 putval2 ::= func(v : val2 -> v0)
