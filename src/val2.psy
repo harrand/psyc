@@ -1,12 +1,10 @@
-// things to finish off:
-// - zero_as_val2 (enums: easy, ptrs: hard, functions?)
-// - s_convert_to (s64 -> enum, enum -> s64, functions?)
-
 // all expressions are either an lvalue or an rvalue. never both, never neither
 val2tag ::= enum
 {
 	.invalid := 0;
 	.type_only := 1;
+	// almost certainly this is 'zero'
+	.value_only := 2;
 	.typed_value := 2;
 };
 
@@ -24,6 +22,8 @@ val2hand ::= enum
 
 val2compile_time ::= struct
 {
+	// val_node2 will generate .is_zero = true on an ast_expr.zero_value
+	// but if the value ever undergoes any conversions this will be converted to a typed value
 	is_zero : bool;
 	// populated if the type is a primitive
 	primitive : ast_literal;
@@ -32,6 +32,12 @@ val2compile_time ::= struct
 	// array: members_count == ty.array_len, members[i] corresponds to the i'th element. members[i] cannot be invalid
 	members_count : u64;
 	members : v0? weak;
+	// populated if the type is a function type and was created as a reference to a function
+	// note: not all function type values known at compile-time will be a reference to the function
+	// e.g 59@func(-> v0) will be a statically-known value of function type but its actually a primitive (int59) under-the-hood
+	// if the value isnt a funcref these are guaranteed to be zero.
+	funcref_name : u8?;
+	funcref_name_len : u64;
 };
 
 val2runtime ::= struct
@@ -50,6 +56,140 @@ val2 ::= struct
 	runtime : val2runtime;
 };
 
+// some functions return vals and take one of these
+// resolutions describe the nature of the evaluation of the val you want to take place
+val2_resolution ::= enum
+{
+	// the val must be a statically-known value and must not generate any runtime code (error if i cant do this at compile-time)
+	.compile_time_only := 1;
+	// the val must be a runtime value (even if the evaluation yielded a static value please convert it to a runtime value)
+	.runtime_only := 2;
+	// i dont really care, do what you need to do.
+	.runtime_or_compile_time := 3;
+};
+
+val_is_valid2 ::= func(v : val2 -> bool)
+{
+	return v.tag != (val2tag.invalid);
+};
+
+// this call is only valid on integers known at compile time.
+val_must_get_integer2 ::= func(v : val2, source : ast? -> s64 weak)
+{
+	// doing a ty_is_integral check here is *not* reasonable
+	// because enums for example also are integral literals under the hood, and its perfectly reasonable to request an enum value this way at compile time.
+	// however, qual_static *is* a reasonable check
+	if(!(ty_is_integral(v.type) || ty_is_enum(v.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be either an integral or enum type, but instead was a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_has_qual(v.type, tyqual.qual_static))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be statically known (i.e contain the 'static' qualifier), but was of type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// these checks are for sanity reasons only
+	// if the above 2 checks pass then these always should.
+	if(v.tag != (val2tag.typed_value))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was val2tag.");
+		putzstr(__enumname(v.tag));
+		putzstr(" (");
+		putsint(v.tag@s64);
+		putzstr(")");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.known != (val2known.compile_time))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to be known at compile-time as it has the static qualifier (");
+		putty(v.type);
+		putzstr("), but its value was not known at compile time:");
+		putval2(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return v.compile_time.primitive.integer;
+};
+
+// this call is only valid on integers known at compile time.
+val_must_get_boolean2 ::= func(v : val2, source : ast? -> bool)
+{
+	if(!ty_is_bool(v.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be a statically-known boolean, but instead was a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_has_qual(v.type, tyqual.qual_static))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be statically known (i.e contain the 'static' qualifier), but was of type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// these checks are for sanity reasons only
+	// if the above 2 checks pass then these always should.
+	if(v.tag != (val2tag.typed_value))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was val2tag.");
+		putzstr(__enumname(v.tag));
+		putzstr(" (");
+		putsint(v.tag@s64);
+		putzstr(")");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.known != (val2known.compile_time))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to be known at compile-time as it has the static qualifier (");
+		putty(v.type);
+		putzstr("), but its value was not known at compile time:");
+		putval2(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return v.compile_time.primitive.boolean;
+};
+
 integer_as_val2 ::= func(n : s64 weak -> val2)
 {
 	return val2
@@ -64,6 +204,8 @@ integer_as_val2 ::= func(n : s64 weak -> val2)
 			.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := n;};
 			.members_count := zero;
 			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
 		};
 		.runtime := zero;
 	};
@@ -83,6 +225,8 @@ float_as_val2 ::= func(n : f64 weak -> val2)
 			.primitive := ast_literal{.tag := ast_literal_tag.floating_point; .floating_point := n;};
 			.members_count := zero;
 			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
 		};
 		.runtime := zero;
 	};
@@ -102,6 +246,8 @@ string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
 			.primitive := ast_literal{.tag := ast_literal_tag.string; .chars := chars; .chars_len := chars_len;};
 			.members_count := zero;
 			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
 		};
 		.runtime := zero;
 	};
@@ -123,6 +269,8 @@ char_as_val2 ::= func(char : u8 -> val2)
 			.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := chardata; .chars_len := 1;};
 			.members_count := zero;
 			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
 		};
 		.runtime := zero;
 	};
@@ -142,6 +290,8 @@ bool_as_val2 ::= func(b : bool -> val2)
 			.primitive := ast_literal{.tag := ast_literal_tag.boolean; .boolean := b;};
 			.members_count := zero;
 			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
 		};
 		.runtime := zero;
 	};
@@ -172,68 +322,25 @@ literal_as_val2 ::= func(literal : ast_literal -> val2)
 	return zero;
 };
 
-val_node2 ::= func(node : ast?, scope : lexical_scope?, required_tag : val2tag, required_known : val2known -> val2)
+function_as_val2 ::= func(fn : function?, source : ast? -> val2)
 {
-	return zero;
-};
-
-val_convert_to2 ::= func(v : val2, to : tyid, source : ast? -> val2)
-{
-	if(v.tag != (val2tag.typed_value))
+	return val2
 	{
-		// either invalid value or type-only
-		psyc_panic_begin(source->loc);
-		putzstr("attempt to convert the following non-typed-value to type ");
-		putchar('"');
-		putty(to);
-		putchar('"');
-		putzstr(":");
-		putchar(10);
-		putval2(v);
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	if(v.known == (val2known.compile_time))
-	{
-		// check for zero-ness
-		if(v.compile_time.is_zero)
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := fn->type;
+		.compile_time := val2compile_time
 		{
-			// yep
-			return zero_as_val2(to, source);
-		}
-	}
-	// ok at this point we definitely should have 2 perfectly valid types.
-	ty_ensure_convertible_to(v.type, to, source);
-	// so we are about to split off to runtime and compile-time code paths
-	// however its not quite that simple
-	// lets say i for example have a u64 that i want to convert to a pointer
-	// yes in theory thats doable at compile time, but the concept of a pointer at compile time doesnt really exist.
-	// so in that case we actually want to convert the static val to a dynamic val and do a runtime transformation via codegen.
-	if(ty_is_ptr(to))
-	{
-		return val_convert_to2(val2_dynamic(v, source), to, source);
-	}
-
-	// todo HH: sometimes a conversion will be requested but in a context that *only* supports compile time
-	// so in that case a runtime requirement should be an error i.e "cannot perform this conversion at compile time"
-	if(v.known == (val2known.compile_time))
-	{
-		// compile time transformation
-	}
-	else
-	{
-		// runtime transformation
-	}
-	return zero;
-};
-
-val2_dynamic ::= func(v : val2, source : ast? -> val2)
-{
-	// pass any val into here and the result is guaranteed to be a runtime-computed value
-	psyc_nyi(source->loc);
-	return zero;
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := zero;
+			.members := zero;
+			.funcref_name := fn->name;
+			.funcref_name_len := fn->name_len;
+		};
+		.runtime := zero;
+	};
 };
 
 zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
@@ -273,13 +380,27 @@ zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 	}
 	if(ty_is_ptr(to))
 	{
-		// hmm, maybe just a compile_time.primitive.integer? but that doesnt really make any sense.
-		psyc_nyi(source->loc);
+		// so this one is pretty mad
+		// the intention is as follows:
+		// - this yields a val2 that is of ptr type but is an integral literal under-the-hood
+		// - anything that attempts to use it will understand that a pointer value known at compile_time is an integral literal under the hood
+		// - all is right with the world
+		literal.tag = (ast_literal_tag.integer);
 	}
 	if(ty_is_enum(to))
 	{
-		// hmm, maybe just a compile_time.primitive.integer?
-		psyc_nyi(source->loc);
+		// same as the ptr case above.
+		literal.tag = (ast_literal_tag.integer);
+	}
+	if(ty_is_fn(to))
+	{
+		// same as the ptr case above
+		literal.tag = (ast_literal_tag.integer);
+		// i know this one seems particularly mad
+		// but remember this is static compile time madness
+		// i.e zero@func(-> v0)
+		// in terms of providence this is not anywhere near a real function
+		// so most likely this codepath is only really being called on embedded with very specific magical functions existing at a specific address.
 	}
 	if(ty_is_prim(to))
 	{
@@ -296,9 +417,101 @@ zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 		{
 			literal.tag = (ast_literal_tag.boolean);
 		}
-		return literal_as_val2(literal);
+		// get the value
+		ret.compile_time = (literal_as_val2(literal).compile_time);
 	}
 	return ret;
+};
+
+val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolution -> val2)
+{
+	// given any node, give me a value.
+	// if resolution == val2_resolution.compile_time_only, error out if we need to generate runtime code
+	// if resolution == val2.runtime_only, ensure the return value is val2_dynamic'd
+	return zero;
+};
+
+val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, source : ast? -> val2)
+{
+	// check for zero-ness
+	if(v.tag == (val2tag.value_only))
+	{
+		if((v.known == (val2known.compile_time)) && (v.compile_time.is_zero))
+		{
+			return zero_as_val2(to, source);
+		}
+		// what? value_only but not zero?
+		psyc_panic_begin(source->loc);
+		putzstr("attempt to convert the following non-typed-value to type ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(":");
+		putchar(10);
+		putval2(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.tag != (val2tag.typed_value))
+	{
+		// either invalid value or type-only
+		psyc_panic_begin(source->loc);
+		putzstr("expected a typed-value when converting from a value to type ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(":");
+		putchar(10);
+		putval2(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// ok at this point we definitely should have 2 perfectly valid types.
+	ty_ensure_convertible_to(v.type, to, source);
+	// so we are about to split off to runtime and compile-time code paths
+
+	// todo HH: sometimes a conversion will be requested but in a context that *only* supports compile time
+	// so in that case a runtime requirement should be an error i.e "cannot perform this conversion at compile time"
+	// example: a function-type static value that is a function-reference under the hood
+	// e.g 'symbol expression 'foo' (where foo is a function)' but not '500@func(-> v0)'
+	v_is_static_function_reference ::= (ty_is_fn(v.type)) && (v.known == (val2known.compile_time) && (v.compile_time.funcref_name != zero));
+	if(v.known == (val2known.compile_time) && !v_is_static_function_reference)
+	{
+		// compile time transformation
+		static_return ::= s_convert_to2(v, to, source);
+		if(resolution == (val2_resolution.runtime_only))
+		{
+			return val2_dynamic(static_return, source);
+		}
+		return static_return;
+	}
+	// runtime transformation
+	if(resolution == (val2_resolution.compile_time_only))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("the following conversion to type ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(" must be done at compile-time, but cannot:");
+		putchar(10);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return cg_convert_to2(v, to, source);
+};
+
+val2_dynamic ::= func(v : val2, source : ast? -> val2)
+{
+	// pass any val into here and the result is guaranteed to be a runtime-computed value
+	psyc_nyi(source->loc);
+	return zero;
 };
 
 putval2 ::= func(v : val2 -> v0)
@@ -418,6 +631,25 @@ putval2 ::= func(v : val2 -> v0)
 		putchar(9);
 	}
 	putzstr("}");
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".funcref_name := ");
+	if(v.compile_time.funcref_name == zero)
+	{
+		putzstr("zero");
+	}
+	else
+	{
+		putbytes(v.compile_time.funcref_name, v.compile_time.funcref_name_len);
+	}
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".funcref_name_len := ");
+	putuint(v.compile_time.funcref_name_len);
 	
 	putchar(10);
 	putchar(9);

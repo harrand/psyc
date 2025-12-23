@@ -1,4 +1,4 @@
-s_convert_to ::= func(v : val2 mut, to : tyid, source : ast? -> val2)
+s_convert_to2 ::= func(v : val2 mut, to : tyid, source : ast? -> val2)
 {
 	// conversions always produce an rvalue
 	ret ::= val2 mut
@@ -53,11 +53,21 @@ s_convert_to ::= func(v : val2 mut, to : tyid, source : ast? -> val2)
 		// s64 to enum:
 		if(ty_matches_ignore_quals(from, tyid.s64) && ty_is_enum(to))
 		{
-			// todo: s64 -> enum
-			psyc_nyi(source->loc);
+			// enum is still an integral literal under-the-hood
+			ret.compile_time = (v.compile_time);
 		}
-		// u64 to ptr is also a valid conversion but we have decided in val_convert_to2 that to-pointer conversions are not possible at compile-time.
-		// so we ignore that case here.
+		// u64 to ptr:
+		if(ty_matches_ignore_quals(from, tyid.u64) && ty_is_ptr(to))
+		{
+			// ptr is still an integral literal under-the-hood (pointer address)
+			ret.compile_time = (v.compile_time);
+		}
+		// u64 to function:
+		if(ty_matches_ignore_quals(from, tyid.u64) && ty_is_fn(to))
+		{
+			// fn is still an integral literal under-the-hood (pointer address)
+			ret.compile_time = (v.compile_time);
+		}
 	}
 	if(ty_is_floating_point(from))
 	{
@@ -127,8 +137,51 @@ s_convert_to ::= func(v : val2 mut, to : tyid, source : ast? -> val2)
 		}
 		if(ty_matches_ignore_quals(to, tyid.s64))
 		{
-			// todo: enum -> s64
-			psyc_nyi(source->loc);
+			// e2i
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+	}
+	if(ty_is_ptr(from))
+	{
+		if(ty_matches_ignore_quals(to, tyid.u64))
+		{
+			// p2i
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_is_ptr(to))
+		{
+			// p2p
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_is_fn(to))
+		{
+			// p2fn
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+	}
+	if(ty_is_fn(from))
+	{
+		if(ty_matches_ignore_quals(to, tyid.u64))
+		{
+			// fn2i
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_is_ptr(to))
+		{
+			// fn2p
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_is_fn(to))
+		{
+			// fn2fn
+			ret.compile_time = (v.compile_time);
+			return ret;
 		}
 	}
 	// structs dont convert to anything

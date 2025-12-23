@@ -417,6 +417,7 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 			// when can a prim convert to a non-prim?
 			// s64 weak converts to enums
 			// u64 weak converts to pointers.
+			// u64 weak converts to functions.
 			// nothing else.
 			if(fromprim == (tyid.s64))
 			{
@@ -432,6 +433,14 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 			if(fromprim == (tyid.u64))
 			{
 				if(toty->tag == (tytag.ptr))
+				{
+					if(either_is_weak)
+					{
+						return tyconv.yes_needs_convert;
+					}
+					return tyconv.no_but_yes_with_weak;
+				}
+				if(toty->tag == (tytag.fn))
 				{
 					if(either_is_weak)
 					{
@@ -475,7 +484,67 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 		}
 		if(ty_is_ptr(to))
 		{
-			// two pointers
+			// p2p
+			if((!from_is_static) && to_is_static)
+			{
+				return tyconv.no_cant_add_staticness;
+			}
+			// should we use yes_needs_convert?
+			// no, because we assume our codegen treats all pointers the same.
+			if(either_is_weak)
+			{
+				return tyconv.yes;
+			}
+			return tyconv.no_but_yes_with_weak;
+		}
+		if(ty_is_fn(to))
+		{
+			// p2fn
+			if((!from_is_static) && to_is_static)
+			{
+				return tyconv.no_cant_add_staticness;
+			}
+			// should we use yes_needs_convert?
+			// yes
+			if(either_is_weak)
+			{
+				return tyconv.yes_needs_convert;
+			}
+			return tyconv.no_but_yes_with_weak;
+		}
+	}
+	// ptrs can convert to u64
+	if(ty_is_fn(from))
+	{
+		if(ty_is_prim(to))
+		{
+			if(toprim == (tyid.u64))
+			{
+				if(either_is_weak)
+				{
+					return tyconv.yes_needs_convert;
+				}
+				return tyconv.no_but_yes_with_weak;
+			}
+		}
+		if(ty_is_ptr(to))
+		{
+			// fn2p
+			if((!from_is_static) && to_is_static)
+			{
+				return tyconv.no_cant_add_staticness;
+			}
+			// should we use yes_needs_convert?
+			// yes
+			if(either_is_weak)
+			{
+				return tyconv.yes_needs_convert;
+			}
+			return tyconv.no_but_yes_with_weak;
+		}
+		if(ty_is_fn(to))
+		{
+			// fn2fn
 			if((!from_is_static) && to_is_static)
 			{
 				return tyconv.no_cant_add_staticness;
