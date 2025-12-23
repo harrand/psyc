@@ -1,0 +1,339 @@
+// all expressions are either an lvalue or an rvalue. never both, never neither
+val2tag ::= enum
+{
+	.invalid := 0;
+	.type_only := 1;
+	.typed_value := 2;
+};
+
+val2known ::= enum
+{
+	.compile_time := 1;
+	.runtime := 2;
+};
+
+val2hand ::= enum
+{
+	.lvalue := 1;
+	.rvalue := 2;
+};
+
+val2compile_time ::= struct
+{
+	is_zero : bool;
+	// populated if the type is a primitive
+	primitive : ast_literal;
+	// populated if the type is a struct or array
+	// struct: members_count == ty.strct.members_count, members[i] corresponds to the i'th data member. if members[i] is invalid => means undefined value
+	// array: members_count == ty.array_len, members[i] corresponds to the i'th element. members[i] cannot be invalid
+	members_count : u64;
+	members : v0? weak;
+};
+
+val2runtime ::= struct
+{
+	cg : u64;
+	db : u64;
+};
+
+val2 ::= struct
+{
+	tag : val2tag;
+	known : val2known;
+	hand : val2hand;
+	type : tyid;
+	compile_time : val2compile_time;
+	runtime : val2runtime;
+};
+
+integer_as_val2 ::= func(n : s64 weak -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := tyid_integral_literal();
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := n;};
+			.members_count := zero;
+			.members := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+float_as_val2 ::= func(n : f64 weak -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := tyid_floating_point_literal();
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := ast_literal{.tag := ast_literal_tag.floating_point; .floating_point := n;};
+			.members_count := zero;
+			.members := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := tyid_string_literal();
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := ast_literal{.tag := ast_literal_tag.string; .chars := chars; .chars_len := chars_len;};
+			.members_count := zero;
+			.members := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+char_as_val2 ::= func(char : u8 -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := tyid_char_literal();
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := ast_literal{.tag := ast_literal_tag.char; .integer := char@_;};
+			.members_count := zero;
+			.members := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+bool_as_val2 ::= func(b : bool -> val2)
+{
+	return val2
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := tyid_bool_literal();
+		.compile_time := val2compile_time
+		{
+			.is_zero := false;
+			.primitive := ast_literal{.tag := ast_literal_tag.boolean; .boolean := b;};
+			.members_count := zero;
+			.members := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+literal_as_val2 ::= func(literal : ast_literal -> val2)
+{
+	if(literal.tag == (ast_literal_tag.integer))
+	{
+		return integer_as_val2(literal.integer);
+	}
+	if(literal.tag == (ast_literal_tag.floating_point))
+	{
+		return float_as_val2(literal.floating_point);
+	}
+	if(literal.tag == (ast_literal_tag.char))
+	{
+		return char_as_val2(deref(literal.chars # 0));
+	}
+	if(literal.tag == (ast_literal_tag.string))
+	{
+		return string_as_val2(literal.chars, literal.chars_len);
+	}
+	if(literal.tag == (ast_literal_tag.boolean))
+	{
+		return bool_as_val2(literal.boolean);
+	}
+	return zero;
+};
+
+val_node2 ::= func(node : ast?, scope : lexical_scope?, required_tag : val2tag, required_known : val2known -> val2)
+{
+	return zero;
+};
+
+val_convert_to2 ::= func(v : val2, to : tyid, source : ast? -> val2)
+{
+	if(v.tag != (val2tag.typed_value))
+	{
+		// either invalid value or type-only
+		psyc_panic_begin(source->loc);
+		putzstr("attempt to convert the following non-typed-value to type ");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		putzstr(":");
+		putchar(10);
+		putval2(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.known == (val2known.compile_time))
+	{
+		// check for zero-ness
+		if(v.compile_time.is_zero)
+		{
+			// yep
+			return zero_as_val2(to, source);
+		}
+	}
+	return zero;
+};
+
+zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
+{
+	psyc_nyi(source->loc);
+	return zero;
+};
+
+putval2 ::= func(v : val2 -> v0)
+{
+	// val{
+	// .tag := ...
+	// ...
+	// }
+	putzstr("val{");
+	putchar(10);
+	putchar(9);
+	putzstr(".tag := val2tag.");
+	putzstr(__enumname(v.tag));
+	putzstr(" (");
+	putsint(v.tag@s64);
+	putzstr(")");
+
+	putchar(10);
+	putchar(9);
+	putzstr(".known := val2known.");
+	putzstr(__enumname(v.known));
+	putzstr(" (");
+	putsint(v.known@s64);
+	putzstr(")");
+
+	putchar(10);
+	putchar(9);
+	putzstr(".hand := val2hand.");
+	putzstr(__enumname(v.hand));
+	putzstr(" (");
+	putsint(v.hand@s64);
+	putzstr(")");
+
+	putchar(10);
+	putchar(9);
+	putzstr(".type := ");
+	putty(v.type);
+	putzstr(" (");
+	putsint(v.type@s64);
+	putzstr(")");
+
+	putchar(10);
+	putchar(9);
+	putzstr(".compile_time := {");
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".is_zero := ");
+	if(v.compile_time.is_zero)
+	{
+		putzstr("true");
+	}
+	else
+	{
+		putzstr("false");
+	}
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".primitive := ");
+	if(v.compile_time.primitive.tag == zero)
+	{
+		putzstr("<invalid>");
+	}
+	if(v.compile_time.primitive.tag == (ast_literal_tag.integer))
+	{
+		putsint(v.compile_time.primitive.integer);
+	}
+	if(v.compile_time.primitive.tag == (ast_literal_tag.floating_point))
+	{
+		putfloat(v.compile_time.primitive.floating_point);
+	}
+	if(v.compile_time.primitive.tag == (ast_literal_tag.char))
+	{
+		putzstr("'");
+		putbytes(v.compile_time.primitive.chars, v.compile_time.primitive.chars_len);
+		putzstr("'");
+	}
+	if(v.compile_time.primitive.tag == (ast_literal_tag.string))
+	{
+		putchar('"');
+		putbytes(v.compile_time.primitive.chars, v.compile_time.primitive.chars_len);
+		putchar('"');
+	}
+	if(v.compile_time.primitive.tag == (ast_literal_tag.boolean))
+	{
+		if(v.compile_time.primitive.boolean)
+		{
+			putzstr("true");
+		}
+		else
+		{
+			putzstr("false");
+		}
+	}
+	putzstr(" (");
+	putzstr(__enumname(v.compile_time.primitive.tag));
+	putzstr(" (");
+	putsint(v.compile_time.primitive.tag@s64);
+	putzstr("))");
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".members_count := ");
+	putuint(v.compile_time.members_count);
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".members := {");
+	if(v.compile_time.members_count > 0)
+	{
+		putuint(v.compile_time.members_count);
+		putzstr(" subvalues...");
+		putchar(10);
+		putchar(9);
+	}
+	putzstr("}");
+	
+	putchar(10);
+	putchar(9);
+	putzstr(".runtime := LLVMValueRef(");
+	putuint(v.runtime.cg);
+	putzstr("), LLVMDebugRef(");
+	putuint(v.runtime.db);
+	putzstr(")");
+
+	putchar(10);
+	putzstr("}");
+	putchar(10);
+};
