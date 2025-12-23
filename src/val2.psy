@@ -60,6 +60,8 @@ val2 ::= struct
 // resolutions describe the nature of the evaluation of the val you want to take place
 val2_resolution ::= enum
 {
+	// the val must be a type-only value and do not attempt to do any static computation/generate any runtime code.
+	.type_only := 0;
 	// the val must be a statically-known value and must not generate any runtime code (error if i cant do this at compile-time)
 	.compile_time_only := 1;
 	// the val must be a runtime value (even if the evaluation yielded a static value please convert it to a runtime value)
@@ -343,6 +345,14 @@ function_as_val2 ::= func(fn : function?, source : ast? -> val2)
 	};
 };
 
+type_as_val2 ::= func(type : tyid -> val2)
+{
+	ret : val2 mut := zero;
+	ret.tag = (val2tag.type_only);
+	ret.type = type;
+	return ret;
+};
+
 zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 {
 	i : u64 mut;
@@ -426,13 +436,33 @@ zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolution -> val2)
 {
 	// given any node, give me a value.
+	// if resolution == val2_resolution.type_only, only return a type.
 	// if resolution == val2_resolution.compile_time_only, error out if we need to generate runtime code
 	// if resolution == val2.runtime_only, ensure the return value is val2_dynamic'd
 	return zero;
 };
 
+val_unop2 ::= func(op : ast_unop, v : val2, resolution : val2_resolution, source : ast? -> val2)
+{
+	if(op == (ast_unop.reference))
+	{
+		return val_ref2(v, resolution, source);
+	}
+	return zero;
+};
+
+val_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+{
+	return zero;
+};
+
 val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, source : ast? -> val2)
 {
+	if(resolution == (val2_resolution.type_only))
+	{
+		ty_ensure_convertible_to(v.type, to, source);
+		return type_as_val2(to);
+	}
 	// check for zero-ness
 	if(v.tag == (val2tag.value_only))
 	{
@@ -454,6 +484,7 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	ty_ensure_convertible_to(v.type, to, source);
 	if(v.tag != (val2tag.typed_value))
 	{
 		// either invalid value or type-only
@@ -471,7 +502,6 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		psyc_exit_failure();
 	}
 	// ok at this point we definitely should have 2 perfectly valid types.
-	ty_ensure_convertible_to(v.type, to, source);
 	// so we are about to split off to runtime and compile-time code paths
 
 	// todo HH: sometimes a conversion will be requested but in a context that *only* supports compile time
