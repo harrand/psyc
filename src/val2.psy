@@ -634,7 +634,54 @@ val_unop_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> 
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_ref2(v, source);
+	return cg_ref2(val2_dynamic(v, source), source);
+};
+
+val_unop_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+{
+	if(!ty_is_ptr(v.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("cannot dereference a value of non-pointer type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val2_resolution.type_only))
+	{
+		return type_as_val2(ty_underlying(v.type));
+	}
+	has_valueref ::= v.compile_time.valueref != zero;
+	if(v.known == (val2known.compile_time) && has_valueref)
+	{
+		// compile time
+		// we COULD have a valueref
+		if(v.compile_time.valueref != zero)
+		{
+			// yep we have a direct match.
+			ret ::= deref(v.compile_time.valueref@val2?);
+			if(resolution == (val2_resolution.runtime_only))
+			{
+				return val2_dynamic(ret, source);
+			}
+			return ret;
+		}
+	}
+	if(resolution == (val2_resolution.compile_time_only) && !has_valueref)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("dereference operator exists in a context that must be evaluated at compile-time, but the dereference cannot be performed at compile-time unless it was created directly via 'ref something'");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// need to do it at runtime.
+	return cg_deref2(val2_dynamic(v, source), source);
 };
 
 val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, source : ast? -> val2)
@@ -715,7 +762,7 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return cg_convert_to2(v, to, source);
+	return cg_convert_to2(val2_dynamic(v, source), to, source);
 };
 
 val2_dynamic ::= func(v : val2, source : ast? -> val2)
