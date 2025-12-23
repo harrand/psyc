@@ -1,3 +1,7 @@
+// things to finish off:
+// - zero_as_val2 (enums: easy, ptrs: hard, functions?)
+// - s_convert_to (s64 -> enum, enum -> s64, functions?)
+
 // all expressions are either an lvalue or an rvalue. never both, never neither
 val2tag ::= enum
 {
@@ -200,6 +204,35 @@ val_convert_to2 ::= func(v : val2, to : tyid, source : ast? -> val2)
 			return zero_as_val2(to, source);
 		}
 	}
+	// ok at this point we definitely should have 2 perfectly valid types.
+	ty_ensure_convertible_to(v.type, to, source);
+	// so we are about to split off to runtime and compile-time code paths
+	// however its not quite that simple
+	// lets say i for example have a u64 that i want to convert to a pointer
+	// yes in theory thats doable at compile time, but the concept of a pointer at compile time doesnt really exist.
+	// so in that case we actually want to convert the static val to a dynamic val and do a runtime transformation via codegen.
+	if(ty_is_ptr(to))
+	{
+		return val_convert_to2(val2_dynamic(v, source), to, source);
+	}
+
+	// todo HH: sometimes a conversion will be requested but in a context that *only* supports compile time
+	// so in that case a runtime requirement should be an error i.e "cannot perform this conversion at compile time"
+	if(v.known == (val2known.compile_time))
+	{
+		// compile time transformation
+	}
+	else
+	{
+		// runtime transformation
+	}
+	return zero;
+};
+
+val2_dynamic ::= func(v : val2, source : ast? -> val2)
+{
+	// pass any val into here and the result is guaranteed to be a runtime-computed value
+	psyc_nyi(source->loc);
 	return zero;
 };
 

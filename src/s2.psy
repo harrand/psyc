@@ -1,0 +1,147 @@
+s_convert_to ::= func(v : val2 mut, to : tyid, source : ast? -> val2)
+{
+	// conversions always produce an rvalue
+	ret ::= val2 mut
+	{
+		.tag := val2tag.typed_value;
+		.known := val2known.compile_time;
+		.hand := val2hand.rvalue;
+		.type := to;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	// convert v to type to
+	// already confirmed its a valid conversion so any invalid codepaths in this code are compiler bugs.
+	from ::= v.type;
+	if(ty_is_char(from))
+	{
+		// we're converting from u8 to something else
+		// remember this is an integral type but chars are stored differently in static values
+		// so what we will do is just pretend we are an integer for now
+		v.compile_time.primitive.tag = (ast_literal_tag.integer);
+		v.compile_time.primitive.integer = (deref(v.compile_time.primitive.chars)@_);
+	}
+	if(ty_is_integral(from))
+	{
+		if(ty_is_char(to))
+		{
+			// i2i (char)
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
+			deref(ret.compile_time.primitive.chars) = (v.compile_time.primitive.integer@_);
+			return ret;
+		}
+		if(ty_is_integral(to))
+		{
+			// i2i
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_is_floating_point(to))
+		{
+			// i2f
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.floating_point; .floating_point := (v.compile_time.primitive.integer@_);};};
+			return ret;
+		}
+		if(ty_is_bool(to))
+		{
+			// i2f
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.boolean; .boolean := (v.compile_time.primitive.integer != 0);};};
+			return ret;
+		}
+
+		// special checks
+		// s64 to enum:
+		if(ty_matches_ignore_quals(from, tyid.s64) && ty_is_enum(to))
+		{
+			// todo: s64 -> enum
+			psyc_nyi(source->loc);
+		}
+		// u64 to ptr is also a valid conversion but we have decided in val_convert_to2 that to-pointer conversions are not possible at compile-time.
+		// so we ignore that case here.
+	}
+	if(ty_is_floating_point(from))
+	{
+		if(ty_is_char(to))
+		{
+			// f2i (char)
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
+			deref(ret.compile_time.primitive.chars) = (v.compile_time.primitive.floating_point@s64@_);
+			return ret;
+		}
+		if(ty_is_integral(to))
+		{
+			// f2i
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := (v.compile_time.primitive.floating_point@_);};};
+			return ret;
+		}
+		if(ty_is_floating_point(to))
+		{
+			// f2f
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+	}
+	if(ty_is_bool(from))
+	{
+		if(ty_is_char(to))
+		{
+			// b2i (char)
+			ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
+			if(v.compile_time.primitive.boolean)
+			{
+				deref(ret.compile_time.primitive.chars) = 1;
+			}
+			else
+			{
+				deref(ret.compile_time.primitive.chars) = 0;
+			}
+			return ret;
+		}
+		if(ty_is_integral(to))
+		{
+			// b2i
+			if(v.compile_time.primitive.boolean)
+			{
+				ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := 1;};};
+			}
+			else
+			{
+				ret.compile_time = val2compile_time{.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := 0;};};
+			}
+			return ret;
+		}
+		if(ty_is_bool(to))
+		{
+			// b2b
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+	}
+	if(ty_is_enum(from))
+	{
+		if(ty_is_enum(to))
+		{
+			// e2e
+			ret.compile_time = (v.compile_time);
+			return ret;
+		}
+		if(ty_matches_ignore_quals(to, tyid.s64))
+		{
+			// todo: enum -> s64
+			psyc_nyi(source->loc);
+		}
+	}
+	// structs dont convert to anything
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of s_convert_to type ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putzstr(" for: ");
+	putval2(v);
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
