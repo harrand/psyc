@@ -42,24 +42,12 @@ builtin_fn_param ::= func(node : ast?, id : u64 -> val)
 		return zero;
 	}
 	child ::= ast_get_child(node, id);
-	return val_node(child, zero, false);
+	return val_node(child, zero, val_resolution.compile_time_only);
 };
 
-builtin_static_param ::= func(node : ast?, id : u64, type : tyid -> sval)
+builtin_static_param ::= func(node : ast?, id : u64, type : tyid -> val)
 {
-	v ::= val_convert_to(builtin_fn_param(node, id), type, node);
-	if(!val_is_static(v))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("the code below must be a statically-known ");
-		putty(type);
-		putzstr(" but it is not statically known");
-		psyc_diag_end();
-		psyc_exit_failure();
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-	}
-	return v.s;
+	return val_convert_to(builtin_fn_param(node, id), type, val_resolution.compile_time_only, node);
 };
 
 builtin_has_param ::= func(node : ast?, id : u64 -> bool)

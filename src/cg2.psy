@@ -1,28 +1,28 @@
-cg_convert_to2 ::= func(v : val2, to : tyid, source : ast? -> val2)
+cg_convert_to2 ::= func(v : val, to : tyid, source : ast? -> val)
 {
 	psyc_nyi(source->loc);
 	return zero;
 };
 
-cg_ref2 ::= func(v : val2, scope : lexical_scope?, source : ast? -> val2)
+cg_ref2 ::= func(v : val, scope : lexical_scope?, source : ast? -> val)
 {
 	// i have some value. its guaranteed to be an lvalue (i.e a direct variable)
-	// it just got val2_dynamic'd
+	// it just got val_dynamic'd
 	// so the runtime cg would be the alloca.
-	// well we just return a runtime val2 with the cg still being the alloca
+	// well we just return a runtime val with the cg still being the alloca
 	// but its an rvalue and its type is ref(v.type)
-	ret : val2 mut := v;
+	ret : val mut := v;
 	ret.type = ty_ptr(v.type, zero);
-	ret.hand = (val2hand.rvalue);
+	ret.hand = (valhand.rvalue);
 	return ret;
 };
 
-cg_deref2 ::= func(v : val2, source : ast? -> val2)
+cg_deref2 ::= func(v : val, source : ast? -> val)
 {
 	// i need to deref something
 	// i definitely have a pointer.
-	ret : val2 mut := v;
+	ret : val mut := v;
 	ret.type = ty_underlying(v.type);
-	ret.runtime = val2runtime{.cg := LLVMBuildLoad2(ir, cg_type(ret.type), v.runtime.cg, "");};
+	ret.runtime = valruntime{.cg := LLVMBuildLoad2(ir, cg_type(ret.type), v.runtime.cg, "");};
 	return zero;
 };

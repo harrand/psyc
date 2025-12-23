@@ -1,5 +1,5 @@
 // all expressions are either an lvalue or an rvalue. never both, never neither
-val2tag ::= enum
+valtag ::= enum
 {
 	.invalid := 0;
 	.type_only := 1;
@@ -8,21 +8,21 @@ val2tag ::= enum
 	.typed_value := 3;
 };
 
-val2known ::= enum
+valknown ::= enum
 {
 	.compile_time := 1;
 	.runtime := 2;
 };
 
-val2hand ::= enum
+valhand ::= enum
 {
 	.lvalue := 1;
 	.rvalue := 2;
 };
 
-val2compile_time ::= struct
+valcompile_time ::= struct
 {
-	// val_node2 will generate .is_zero = true on an ast_expr.zero_value
+	// val_node will generate .is_zero = true on an ast_expr.zero_value
 	// but if the value ever undergoes any conversions this will be converted to a typed value
 	is_zero : bool;
 	// populated if the type is a primitive
@@ -46,24 +46,24 @@ val2compile_time ::= struct
 	valueref : v0? weak;
 };
 
-val2runtime ::= struct
+valruntime ::= struct
 {
 	cg : u64;
 };
 
-val2 ::= struct
+val ::= struct
 {
-	tag : val2tag;
-	known : val2known;
-	hand : val2hand;
+	tag : valtag;
+	known : valknown;
+	hand : valhand;
 	type : tyid;
-	compile_time : val2compile_time;
-	runtime : val2runtime;
+	compile_time : valcompile_time;
+	runtime : valruntime;
 };
 
 // some functions return vals and take one of these
 // resolutions describe the nature of the evaluation of the val you want to take place
-val2_resolution ::= enum
+val_resolution ::= enum
 {
 	// the val must be a type-only value and do not attempt to do any static computation/generate any runtime code.
 	.type_only := 0;
@@ -75,13 +75,13 @@ val2_resolution ::= enum
 	.runtime_or_compile_time := 3;
 };
 
-val_is_valid2 ::= func(v : val2 -> bool)
+val_is_valid ::= func(v : val -> bool)
 {
-	return v.tag != (val2tag.invalid);
+	return v.tag != (valtag.invalid);
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_integer2 ::= func(v : val2, source : ast? -> s64 weak)
+val_must_get_integer ::= func(v : val, source : ast? -> s64 weak)
 {
 	// doing a ty_is_integral check here is *not* reasonable
 	// because enums for example also are integral literals under the hood, and its perfectly reasonable to request an enum value this way at compile time.
@@ -112,10 +112,10 @@ val_must_get_integer2 ::= func(v : val2, source : ast? -> s64 weak)
 	}
 	// these checks are for sanity reasons only
 	// if the above 2 checks pass then these always should.
-	if(v.tag != (val2tag.typed_value))
+	if(v.tag != (valtag.typed_value))
 	{
 		psyc_panic_begin(source->loc);
-		putzstr("expected value to statically known, but the value was unable to be determined at all (it was val2tag.");
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
 		putzstr(__enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
@@ -125,13 +125,13 @@ val_must_get_integer2 ::= func(v : val2, source : ast? -> s64 weak)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(v.known != (val2known.compile_time))
+	if(v.known != (valknown.compile_time))
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to be known at compile-time as it has the static qualifier (");
 		putty(v.type);
 		putzstr("), but its value was not known at compile time:");
-		putval2(v);
+		putval(v);
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
@@ -141,7 +141,7 @@ val_must_get_integer2 ::= func(v : val2, source : ast? -> s64 weak)
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_boolean2 ::= func(v : val2, source : ast? -> bool)
+val_must_get_boolean ::= func(v : val, source : ast? -> bool)
 {
 	if(!ty_is_bool(v.type))
 	{
@@ -169,10 +169,10 @@ val_must_get_boolean2 ::= func(v : val2, source : ast? -> bool)
 	}
 	// these checks are for sanity reasons only
 	// if the above 2 checks pass then these always should.
-	if(v.tag != (val2tag.typed_value))
+	if(v.tag != (valtag.typed_value))
 	{
 		psyc_panic_begin(source->loc);
-		putzstr("expected value to statically known, but the value was unable to be determined at all (it was val2tag.");
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
 		putzstr(__enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
@@ -182,13 +182,13 @@ val_must_get_boolean2 ::= func(v : val2, source : ast? -> bool)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(v.known != (val2known.compile_time))
+	if(v.known != (valknown.compile_time))
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to be known at compile-time as it has the static qualifier (");
 		putty(v.type);
 		putzstr("), but its value was not known at compile time:");
-		putval2(v);
+		putval(v);
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
@@ -197,15 +197,72 @@ val_must_get_boolean2 ::= func(v : val2, source : ast? -> bool)
 	return v.compile_time.primitive.boolean;
 };
 
-integer_as_val2 ::= func(n : s64 weak -> val2)
+val_must_get_string ::= func(v : val, source : ast?, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)
 {
-	return val2
+	if(!ty_is_string_literal(v.type))
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be a statically-known string literal, but instead was a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_has_qual(v.type, tyqual.qual_static))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be statically known (i.e contain the 'static' qualifier), but was of type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// these checks are for sanity reasons only
+	// if the above 2 checks pass then these always should.
+	if(v.tag != (valtag.typed_value))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
+		putzstr(__enumname(v.tag));
+		putzstr(" (");
+		putsint(v.tag@s64);
+		putzstr(")");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.known != (valknown.compile_time))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to be known at compile-time as it has the static qualifier (");
+		putty(v.type);
+		putzstr("), but its value was not known at compile time:");
+		putval(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	deref(out_str) = (v.compile_time.primitive.chars);
+	deref(out_len) = (v.compile_time.primitive.chars_len);
+};
+
+integer_as_val ::= func(n : s64 weak -> val)
+{
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := tyid_integral_literal();
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := n;};
@@ -221,15 +278,15 @@ integer_as_val2 ::= func(n : s64 weak -> val2)
 	};
 };
 
-float_as_val2 ::= func(n : f64 weak -> val2)
+float_as_val ::= func(n : f64 weak -> val)
 {
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := tyid_floating_point_literal();
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.floating_point; .floating_point := n;};
@@ -245,15 +302,15 @@ float_as_val2 ::= func(n : f64 weak -> val2)
 	};
 };
 
-string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
+string_as_val ::= func(chars : u8?, chars_len : u64 -> val)
 {
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := tyid_string_literal();
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.string; .chars := chars; .chars_len := chars_len;};
@@ -269,17 +326,17 @@ string_as_val2 ::= func(chars : u8?, chars_len : u64 -> val2)
 	};
 };
 
-char_as_val2 ::= func(char : u8 -> val2)
+char_as_val ::= func(char : u8 -> val)
 {
 	chardata : u8 mut? := arena_alloc(string_arena, 1);
 	deref(chardata # 0) = char;
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := tyid_char_literal();
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := chardata; .chars_len := 1;};
@@ -295,15 +352,15 @@ char_as_val2 ::= func(char : u8 -> val2)
 	};
 };
 
-bool_as_val2 ::= func(b : bool -> val2)
+bool_as_val ::= func(b : bool -> val)
 {
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := tyid_bool_literal();
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.boolean; .boolean := b;};
@@ -319,40 +376,40 @@ bool_as_val2 ::= func(b : bool -> val2)
 	};
 };
 
-literal_as_val2 ::= func(literal : ast_literal -> val2)
+literal_as_val ::= func(literal : ast_literal -> val)
 {
 	if(literal.tag == (ast_literal_tag.integer))
 	{
-		return integer_as_val2(literal.integer);
+		return integer_as_val(literal.integer);
 	}
 	if(literal.tag == (ast_literal_tag.floating_point))
 	{
-		return float_as_val2(literal.floating_point);
+		return float_as_val(literal.floating_point);
 	}
 	if(literal.tag == (ast_literal_tag.char))
 	{
-		return char_as_val2(deref(literal.chars # 0));
+		return char_as_val(deref(literal.chars # 0));
 	}
 	if(literal.tag == (ast_literal_tag.string))
 	{
-		return string_as_val2(literal.chars, literal.chars_len);
+		return string_as_val(literal.chars, literal.chars_len);
 	}
 	if(literal.tag == (ast_literal_tag.boolean))
 	{
-		return bool_as_val2(literal.boolean);
+		return bool_as_val(literal.boolean);
 	}
 	return zero;
 };
 
-variable_as_val2 ::= func(var : variable?, source : ast? -> val2)
+variable_as_val ::= func(var : variable?, source : ast? -> val)
 {
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.lvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.lvalue;
 		.type := var->type;
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := zero;
@@ -368,15 +425,15 @@ variable_as_val2 ::= func(var : variable?, source : ast? -> val2)
 	};
 };
 
-function_as_val2 ::= func(fn : function?, source : ast? -> val2)
+function_as_val ::= func(fn : function?, source : ast? -> val)
 {
-	return val2
+	return val
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := fn->type;
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := zero;
@@ -393,15 +450,15 @@ function_as_val2 ::= func(fn : function?, source : ast? -> val2)
 };
 
 // get a statically-known reference to 'v'
-ref_as_val2 ::= func(v : val2, source : ast? -> val2)
+ref_as_val ::= func(v : val, source : ast? -> val)
 {
-	ret ::= val2 mut
+	ret ::= val mut
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := ty_ptr(v.type, zero);
-		.compile_time := val2compile_time
+		.compile_time := valcompile_time
 		{
 			.is_zero := false;
 			.primitive := zero;
@@ -411,30 +468,30 @@ ref_as_val2 ::= func(v : val2, source : ast? -> val2)
 			.funcref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
-			.valueref := arena_alloc(global_arena, __sizeof(val2));
+			.valueref := arena_alloc(global_arena, __sizeof(val));
 		};
 		.runtime := zero;
 	};
-	deref(ret.compile_time.valueref@val2 mut?) = v;
+	deref(ret.compile_time.valueref@val mut?) = v;
 	return ret;
 };
 
-type_as_val2 ::= func(type : tyid -> val2)
+type_as_val ::= func(type : tyid -> val)
 {
-	ret : val2 mut := zero;
-	ret.tag = (val2tag.type_only);
+	ret : val mut := zero;
+	ret.tag = (valtag.type_only);
 	ret.type = type;
 	return ret;
 };
 
-zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
+zero_as_val ::= func(to : tyid, source : ast? -> val)
 {
 	i : u64 mut;
-	ret ::= val2 mut
+	ret ::= val mut
 	{
-		.tag := val2tag.typed_value;
-		.known := val2known.compile_time;
-		.hand := val2hand.rvalue;
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
 		.type := to;
 		.compile_time := zero;
 		.runtime := zero;
@@ -445,28 +502,28 @@ zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 	{
 		// create all the members as zeros
 		ret.compile_time.members_count = (toty->strct.members_count);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val2) * (ret.compile_time.members_count));
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
 		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
 		{
 			memty ::= deref(toty->strct.members # i);
-			deref(ret.compile_time.members@val2 mut? # i) = zero_as_val2(memty, source);
+			deref(ret.compile_time.members@val mut? # i) = zero_as_val(memty, source);
 		}
 	}
 	if(ty_is_arr(to))
 	{
 		// create all the elements as zeros
 		ret.compile_time.members_count = (toty->array_len);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val2) * (ret.compile_time.members_count));
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
 		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
 		{
-			deref(ret.compile_time.members@val2 mut? # i) = zero_as_val2(ty_underlying(to), source);
+			deref(ret.compile_time.members@val mut? # i) = zero_as_val(ty_underlying(to), source);
 		}
 	}
 	if(ty_is_ptr(to))
 	{
 		// so this one is pretty mad
 		// the intention is as follows:
-		// - this yields a val2 that is of ptr type but is an integral literal under-the-hood
+		// - this yields a val that is of ptr type but is an integral literal under-the-hood
 		// - anything that attempts to use it will understand that a pointer value known at compile_time is an integral literal under the hood
 		// - all is right with the world
 		literal.tag = (ast_literal_tag.integer);
@@ -502,37 +559,37 @@ zero_as_val2 ::= func(to : tyid, source : ast? -> val2)
 			literal.tag = (ast_literal_tag.boolean);
 		}
 		// get the value
-		ret.compile_time = (literal_as_val2(literal).compile_time);
+		ret.compile_time = (literal_as_val(literal).compile_time);
 	}
 	return ret;
 };
 
-val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolution -> val2)
+val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
 {
 	// given any node, give me a value.
-	// if resolution == val2_resolution.type_only, only return a type.
-	// if resolution == val2_resolution.compile_time_only, error out if we need to generate runtime code
-	// if resolution == val2.runtime_only, ensure the return value is val2_dynamic'd
+	// if resolution == val_resolution.type_only, only return a type.
+	// if resolution == val_resolution.compile_time_only, error out if we need to generate runtime code
+	// if resolution == val.runtime_only, ensure the return value is val_dynamic'd
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
-		return literal_as_val2(node->literal);
+		return literal_as_val(node->literal);
 	}
 	if(ast_is_expr(node, ast_expr_tag.symbol))
 	{
-		return val_symbol2(node, scope, resolution);
+		return val_symbol(node, scope, resolution);
 	}
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
-		unoperand ::= val_node2(ast_get_child(node, 0), scope, resolution);
-		return val_unop2(node->unop, unoperand, scope, resolution, node);
+		unoperand ::= val_node(ast_get_child(node, 0), scope, resolution);
+		return val_unop(node->unop, unoperand, scope, resolution, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.dereference))
 	{
-		deref_operand ::= val_node2(ast_get_child(node, 0), scope, resolution);
-		return val_deref2(deref_operand, resolution, node);
+		deref_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
+		return val_deref(deref_operand, resolution, node);
 	}
 	psyc_panic_begin(node->loc);
-	putzstr("control reached end of val_node2");
+	putzstr("control reached end of val_node");
 	putchar(10);
 	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
 	psyc_diag_end();
@@ -541,39 +598,39 @@ val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolu
 };
 
 // get a value from a symbol reference.
-val_symbol2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolution -> val2)
+val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
 {
 	sym ::= node->symbol;
 	// could be:
 	// a variable name
 	// a function name
-	ret : val2 mut := zero;
+	ret : val mut := zero;
 
 	maybe_variable ::= scope_find_variable(scope, sym.data, sym.len);
 	if(maybe_variable != zero)
 	{
-		if(resolution == (val2_resolution.type_only))
+		if(resolution == (val_resolution.type_only))
 		{
-			return type_as_val2(maybe_variable->type);
+			return type_as_val(maybe_variable->type);
 		}
-		ret = variable_as_val2(maybe_variable, node);
-		if(resolution == (val2_resolution.runtime_only))
+		ret = variable_as_val(maybe_variable, node);
+		if(resolution == (val_resolution.runtime_only))
 		{
-			return val2_dynamic(ret, node);
+			return val_dynamic(ret, node);
 		}
 		return ret;
 	}
 	maybe_function ::= scope_find_function(scope, sym.data, sym.len);
 	if(maybe_function != zero)
 	{
-		if(resolution == (val2_resolution.type_only))
+		if(resolution == (val_resolution.type_only))
 		{
-			return type_as_val2(maybe_function->type);
+			return type_as_val(maybe_function->type);
 		}
-		ret = function_as_val2(maybe_function, node);
-		if(resolution == (val2_resolution.runtime_only))
+		ret = function_as_val(maybe_function, node);
+		if(resolution == (val_resolution.runtime_only))
 		{
-			return val2_dynamic(ret, node);
+			return val_dynamic(ret, node);
 		}
 		return ret;
 	}
@@ -589,25 +646,25 @@ val_symbol2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_reso
 	return zero;
 };
 
-val_unop2 ::= func(op : ast_unop, v : val2, scope : lexical_scope?, resolution : val2_resolution, source : ast? -> val2)
+val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(op == (ast_unop.reference))
 	{
-		return val_unop_ref2(v, scope, resolution, source);
+		return val_unop_ref(v, scope, resolution, source);
 	}
 	if(op == (ast_unop.minus))
 	{
-		//return val_unop_minus2(v, resolution, source);
+		//return val_unop_minus(v, resolution, source);
 	}
 	if(op == (ast_unop.bitwise_invert))
 	{
-		//return val_unop_minus2(v, resolution, source);
+		//return val_unop_minus(v, resolution, source);
 	}
 	if(op == (ast_unop.logical_invert))
 	{
 	}
 	psyc_panic_begin(source->loc);
-	putzstr("control reached end of val_unop2 for val_unop.");
+	putzstr("control reached end of val_unop for val_unop.");
 	putzstr(__enumname(op));
 	putzstr(" (");
 	putsint(op@s64);
@@ -620,9 +677,9 @@ val_unop2 ::= func(op : ast_unop, v : val2, scope : lexical_scope?, resolution :
 	return zero;
 };
 
-val_unop_ref2 ::= func(v : val2, scope : lexical_scope?, resolution : val2_resolution, source : ast? -> val2)
+val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	if(v.hand != (val2hand.lvalue))
+	if(v.hand != (valhand.lvalue))
 	{
 		psyc_error_begin(source->loc);
 		putzstr("can only create a reference to an lvalue");
@@ -631,23 +688,23 @@ val_unop_ref2 ::= func(v : val2, scope : lexical_scope?, resolution : val2_resol
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(resolution == (val2_resolution.type_only))
+	if(resolution == (val_resolution.type_only))
 	{
-		return type_as_val2(ty_ptr(v.type, zero));
+		return type_as_val(ty_ptr(v.type, zero));
 	}
-	if(v.known == (val2known.compile_time))
+	if(v.known == (valknown.compile_time))
 	{
 		// compile time
-		ret ::= ref_as_val2(v, source);
+		ret ::= ref_as_val(v, source);
 
-		if(resolution == (val2_resolution.runtime_only))
+		if(resolution == (val_resolution.runtime_only))
 		{
 			// convert to runtime value
-			return val2_dynamic(ret, source);
+			return val_dynamic(ret, source);
 		}
 		return ret;
 	}
-	if(resolution == (val2_resolution.compile_time_only))
+	if(resolution == (val_resolution.compile_time_only))
 	{
 		psyc_error_begin(source->loc);
 		putzstr("this 'ref' unary operator is in a context that must be evaluated at compile-time, but the operand is not statically-known");
@@ -657,10 +714,10 @@ val_unop_ref2 ::= func(v : val2, scope : lexical_scope?, resolution : val2_resol
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_ref2(val2_dynamic(v, source), scope, source);
+	return cg_ref2(val_dynamic(v, source), scope, source);
 };
 
-val_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
 {
 	if(!ty_is_ptr(v.type))
 	{
@@ -674,27 +731,27 @@ val_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(resolution == (val2_resolution.type_only))
+	if(resolution == (val_resolution.type_only))
 	{
-		return type_as_val2(ty_underlying(v.type));
+		return type_as_val(ty_underlying(v.type));
 	}
 	has_valueref ::= v.compile_time.valueref != zero;
-	if(v.known == (val2known.compile_time) && has_valueref)
+	if(v.known == (valknown.compile_time) && has_valueref)
 	{
 		// compile time
 		// we COULD have a valueref
 		if(v.compile_time.valueref != zero)
 		{
 			// yep we have a direct match.
-			ret ::= deref(v.compile_time.valueref@val2?);
-			if(resolution == (val2_resolution.runtime_only))
+			ret ::= deref(v.compile_time.valueref@val?);
+			if(resolution == (val_resolution.runtime_only))
 			{
-				return val2_dynamic(ret, source);
+				return val_dynamic(ret, source);
 			}
 			return ret;
 		}
 	}
-	if(resolution == (val2_resolution.compile_time_only) && !has_valueref)
+	if(resolution == (val_resolution.compile_time_only) && !has_valueref)
 	{
 		psyc_error_begin(source->loc);
 		putzstr("dereference operator exists in a context that must be evaluated at compile-time, but the dereference cannot be performed at compile-time unless it was created directly via 'ref something'");
@@ -704,22 +761,22 @@ val_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val
 		psyc_exit_failure();
 	}
 	// need to do it at runtime.
-	return cg_deref2(val2_dynamic(v, source), source);
+	return cg_deref2(val_dynamic(v, source), source);
 };
 
-val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, source : ast? -> val2)
+val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source : ast? -> val)
 {
-	if(resolution == (val2_resolution.type_only))
+	if(resolution == (val_resolution.type_only))
 	{
 		ty_ensure_convertible_to(v.type, to, source);
-		return type_as_val2(to);
+		return type_as_val(to);
 	}
 	// check for zero-ness
-	if(v.tag == (val2tag.value_only))
+	if(v.tag == (valtag.value_only))
 	{
-		if((v.known == (val2known.compile_time)) && (v.compile_time.is_zero))
+		if((v.known == (valknown.compile_time)) && (v.compile_time.is_zero))
 		{
-			return zero_as_val2(to, source);
+			return zero_as_val(to, source);
 		}
 		// what? value_only but not zero?
 		psyc_panic_begin(source->loc);
@@ -729,14 +786,14 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		putchar('"');
 		putzstr(":");
 		putchar(10);
-		putval2(v);
+		putval(v);
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
 	ty_ensure_convertible_to(v.type, to, source);
-	if(v.tag != (val2tag.typed_value))
+	if(v.tag != (valtag.typed_value))
 	{
 		// either invalid value or type-only
 		psyc_panic_begin(source->loc);
@@ -746,7 +803,7 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		putchar('"');
 		putzstr(":");
 		putchar(10);
-		putval2(v);
+		putval(v);
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
@@ -759,19 +816,19 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 	// so in that case a runtime requirement should be an error i.e "cannot perform this conversion at compile time"
 	// example: a function-type static value that is a function-reference under the hood
 	// e.g 'symbol expression 'foo' (where foo is a function)' but not '500@func(-> v0)'
-	v_is_static_function_reference ::= (ty_is_fn(v.type)) && (v.known == (val2known.compile_time) && (v.compile_time.funcref_name != zero));
-	if(v.known == (val2known.compile_time) && !v_is_static_function_reference)
+	v_is_static_function_reference ::= (ty_is_fn(v.type)) && (v.known == (valknown.compile_time) && (v.compile_time.funcref_name != zero));
+	if(v.known == (valknown.compile_time) && !v_is_static_function_reference)
 	{
 		// compile time transformation
 		static_return ::= s_convert_to2(v, to, source);
-		if(resolution == (val2_resolution.runtime_only))
+		if(resolution == (val_resolution.runtime_only))
 		{
-			return val2_dynamic(static_return, source);
+			return val_dynamic(static_return, source);
 		}
 		return static_return;
 	}
 	// runtime transformation
-	if(resolution == (val2_resolution.compile_time_only))
+	if(resolution == (val_resolution.compile_time_only))
 	{
 		psyc_error_begin(source->loc);
 		putzstr("the following conversion to type ");
@@ -785,17 +842,17 @@ val_convert_to2 ::= func(v : val2, to : tyid, resolution : val2_resolution, sour
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return cg_convert_to2(val2_dynamic(v, source), to, source);
+	return cg_convert_to2(val_dynamic(v, source), to, source);
 };
 
-val2_dynamic ::= func(v : val2, source : ast? -> val2)
+val_dynamic ::= func(v : val, source : ast? -> val)
 {
 	// pass any val into here and the result is guaranteed to be a runtime-computed value
 	psyc_nyi(source->loc);
 	return zero;
 };
 
-putval2 ::= func(v : val2 -> v0)
+putval ::= func(v : val -> v0)
 {
 	// val{
 	// .tag := ...
@@ -804,7 +861,7 @@ putval2 ::= func(v : val2 -> v0)
 	putzstr("val{");
 	putchar(10);
 	putchar(9);
-	putzstr(".tag := val2tag.");
+	putzstr(".tag := valtag.");
 	putzstr(__enumname(v.tag));
 	putzstr(" (");
 	putsint(v.tag@s64);
@@ -812,7 +869,7 @@ putval2 ::= func(v : val2 -> v0)
 
 	putchar(10);
 	putchar(9);
-	putzstr(".known := val2known.");
+	putzstr(".known := valknown.");
 	putzstr(__enumname(v.known));
 	putzstr(" (");
 	putsint(v.known@s64);
@@ -820,7 +877,7 @@ putval2 ::= func(v : val2 -> v0)
 
 	putchar(10);
 	putchar(9);
-	putzstr(".hand := val2hand.");
+	putzstr(".hand := valhand.");
 	putzstr(__enumname(v.hand));
 	putzstr(" (");
 	putsint(v.hand@s64);
@@ -941,7 +998,7 @@ putval2 ::= func(v : val2 -> v0)
 	}
 	else
 	{
-		putzstr("<some other val2>");
+		putzstr("<some other val>");
 	}
 
 	putchar(10);
