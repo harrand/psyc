@@ -513,6 +513,30 @@ val_node2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_resolu
 	// if resolution == val2_resolution.type_only, only return a type.
 	// if resolution == val2_resolution.compile_time_only, error out if we need to generate runtime code
 	// if resolution == val2.runtime_only, ensure the return value is val2_dynamic'd
+	if(ast_is_expr(node, ast_expr_tag.literal))
+	{
+		return literal_as_val2(node->literal);
+	}
+	if(ast_is_expr(node, ast_expr_tag.symbol))
+	{
+		return val_symbol2(node, scope, resolution);
+	}
+	if(ast_is_expr(node, ast_expr_tag.unop))
+	{
+		unoperand ::= val_node2(ast_get_child(node, 0), scope, resolution);
+		return val_unop2(node->unop, unoperand, scope, resolution, node);
+	}
+	if(ast_is_expr(node, ast_expr_tag.dereference))
+	{
+		deref_operand ::= val_node2(ast_get_child(node, 0), scope, resolution);
+		return val_deref2(deref_operand, resolution, node);
+	}
+	psyc_panic_begin(node->loc);
+	putzstr("control reached end of val_node2");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
@@ -636,7 +660,7 @@ val_unop_ref2 ::= func(v : val2, scope : lexical_scope?, resolution : val2_resol
 	return cg_ref2(val2_dynamic(v, source), scope, source);
 };
 
-val_unop_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+val_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
 {
 	if(!ty_is_ptr(v.type))
 	{
