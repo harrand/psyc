@@ -49,7 +49,6 @@ val2compile_time ::= struct
 val2runtime ::= struct
 {
 	cg : u64;
-	db : u64;
 };
 
 val2 ::= struct
@@ -566,11 +565,11 @@ val_symbol2 ::= func(node : ast?, scope : lexical_scope?, resolution : val2_reso
 	return zero;
 };
 
-val_unop2 ::= func(op : ast_unop, v : val2, resolution : val2_resolution, source : ast? -> val2)
+val_unop2 ::= func(op : ast_unop, v : val2, scope : lexical_scope?, resolution : val2_resolution, source : ast? -> val2)
 {
 	if(op == (ast_unop.reference))
 	{
-		return val_unop_ref2(v, resolution, source);
+		return val_unop_ref2(v, scope, resolution, source);
 	}
 	if(op == (ast_unop.minus))
 	{
@@ -597,7 +596,7 @@ val_unop2 ::= func(op : ast_unop, v : val2, resolution : val2_resolution, source
 	return zero;
 };
 
-val_unop_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
+val_unop_ref2 ::= func(v : val2, scope : lexical_scope?, resolution : val2_resolution, source : ast? -> val2)
 {
 	if(v.hand != (val2hand.lvalue))
 	{
@@ -634,7 +633,7 @@ val_unop_ref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> 
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_ref2(val2_dynamic(v, source), source);
+	return cg_ref2(val2_dynamic(v, source), scope, source);
 };
 
 val_unop_deref2 ::= func(v : val2, resolution : val2_resolution, source : ast? -> val2)
@@ -930,8 +929,6 @@ putval2 ::= func(v : val2 -> v0)
 	putchar(9);
 	putzstr(".runtime := LLVMValueRef(");
 	putuint(v.runtime.cg);
-	putzstr("), LLVMDebugRef(");
-	putuint(v.runtime.db);
 	putzstr(")");
 
 	putchar(10);
