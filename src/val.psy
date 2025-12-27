@@ -784,7 +784,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	}
 	if(op == (ast_biop.add))
 	{
-		psyc_nyi(source->loc);
+		return val_unop_add(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop.sub))
 	{
@@ -846,6 +846,64 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	psyc_exit_failure();
 
 	return zero;
+};
+
+val_unop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(type == zero)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("cannot perform the 'add' operator on a ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		putzstr(" and ");
+		putchar('"');
+		putty(rhs.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(type);
+	}
+	lhsconv ::= val_convert_to(lhs, type, resolution, source);
+	rhsconv ::= val_convert_to(rhs, type, resolution, source);
+	if(((lhs.known) != (rhs.known)) || (resolution == (val_resolution.runtime_only)))
+	{
+		// one of them is runtime or we are runtime_only
+		// do it runtime mode.
+		return val_unop_add(val_dynamic(lhs, source), val_dynamic(rhs, source), scope, resolution, source);
+	}
+	// guaranteed that their knowns are the same
+	if(lhs.known == (valknown.compile_time))
+	{
+		// compile time
+		if(ty_is_integral(type))
+		{
+			retval ::= integer_as_val(val_must_get_integer(lhsconv, source) + val_must_get_integer(rhsconv, source));
+			return val_convert_to(retval, type, resolution, source);
+		}
+		// do a return
+	}
+	// runtime
+	if(resolution == (val_resolution.compile_time_only))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("this 'add' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// runtime
+	psyc_nyi(source->loc);
+	return zero;
+	//return cg_ref(val_dynamic(v, source), scope, source);
 };
 
 val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
