@@ -144,6 +144,63 @@ val_must_get_integer ::= func(v : val, source : ast? -> s64 weak)
 	return v.compile_time.primitive.integer;
 };
 
+// this call is only valid on floats known at compile time.
+val_must_get_float ::= func(v : val, source : ast? -> f64 weak)
+{
+	if(!ty_is_floating_point(v.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be a floating point type, but instead was a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(!ty_has_qual(v.type, tyqual.qual_static))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("expected value to be statically known (i.e contain the 'static' qualifier), but was of type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// these checks are for sanity reasons only
+	// if the above 2 checks pass then these always should.
+	if(v.tag != (valtag.typed_value))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
+		putzstr(__enumname(v.tag));
+		putzstr(" (");
+		putsint(v.tag@s64);
+		putzstr(")");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(v.known != (valknown.compile_time))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("expected value to be known at compile-time as it has the static qualifier (");
+		putty(v.type);
+		putzstr("), but its value was not known at compile time:");
+		putval(v);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return v.compile_time.primitive.floating_point;
+};
+
 // this call is only valid on integers known at compile time.
 val_must_get_boolean ::= func(v : val, source : ast? -> bool)
 {
@@ -823,7 +880,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	}
 	if(op == (ast_biop.add))
 	{
-		return val_unop_add(lhs, rhs, scope, resolution, source);
+		return val_biop_add(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop.sub))
 	{
@@ -887,7 +944,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	return zero;
 };
 
-val_unop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	type ::= ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
@@ -916,7 +973,7 @@ val_unop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
-		return val_unop_add(val_dynamic(lhs, source), val_dynamic(rhs, source), scope, resolution, source);
+		return val_biop_add(val_dynamic(lhs, source), val_dynamic(rhs, source), scope, resolution, source);
 	}
 	// guaranteed that their knowns are the same
 	if(lhs.known == (valknown.compile_time))
@@ -924,8 +981,11 @@ val_unop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 		// compile time
 		if(ty_is_integral(type))
 		{
-			retval ::= integer_as_val(val_must_get_integer(lhsconv, source) + val_must_get_integer(rhsconv, source));
-			return val_convert_to(retval, type, resolution, source);
+			return val_convert_to(integer_as_val(val_must_get_integer(lhsconv, source) + val_must_get_integer(rhsconv, source)), type, resolution, source);
+		}
+		if(ty_is_floating_point(type))
+		{
+			return val_convert_to(float_as_val(val_must_get_float(lhsconv, source) + val_must_get_float(rhsconv, source)), type, resolution, source);
 		}
 		// do a return
 	}
