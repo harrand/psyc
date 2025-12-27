@@ -302,3 +302,27 @@ cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
 	v.runtime.cg = LLVMBuildInsertValue(ir, v.runtime.cg, init.runtime.cg, memidx@u32, "");
 	return v;
 };
+
+cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := lhs.type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	// guaranteed to be the same type
+	if(ty_is_integral(lhs.type))
+	{
+		ret.runtime.cg = LLVMBuildAdd(ir, lhs.runtime.cg, rhs.runtime.cg, "");
+	}
+	else
+	{
+		ret.runtime.cg = LLVMBuildFAdd(ir, lhs.runtime.cg, rhs.runtime.cg, "");
+	}
+
+	return ret;
+};
