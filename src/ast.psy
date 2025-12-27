@@ -223,10 +223,20 @@ ast_call ::= struct
 	call_name_len : u64;
 };
 
+ast_desiginit_descriptor ::= enum
+{
+	// i.e .foo := 5 (for struct blkinits)
+	.symbol := 1;
+	// i.e .1 := 5 (for array blkinits)
+	.integer := 2;
+};
+
 ast_desiginit ::= struct
 {
-	name : u8?;
-	name_len : u64;
+	descriptor : ast_desiginit_descriptor;
+	integer : s64;
+	symbol : u8?;
+	symbol_len : u64;
 };
 
 ast_if ::= struct
@@ -822,7 +832,14 @@ ast_verbose_print ::= func(n : ast, indent : u64 -> v0)
 		if(n.stmt == (ast_stmt_tag.desiginit))
 		{
 			putzstr(".");
-			putbytes(n.desiginit.name, n.desiginit.name_len);
+			if(n.desiginit.descriptor == (ast_desiginit_descriptor.integer))
+			{
+				putsint(n.desiginit.integer);
+			}
+			else
+			{
+				putbytes(n.desiginit.symbol, n.desiginit.symbol_len);
+			}
 		}
 	}
 	if(n.tag == (ast_tag.typename))

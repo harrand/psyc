@@ -262,8 +262,17 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 		ent ::= ast_get_child(node, i);
 		ent_val ::= val_convert_to(val_node(ast_get_child(ent, 0), zero, val_resolution.compile_time_only), tyid_integral_literal(), val_resolution.compile_time_only, ent);
 		desig ::= ent->desiginit;
-		deref(retty.enm.entry_names # i) = (desig.name);
-		deref(retty.enm.entry_name_lens # i) = (desig.name_len);
+		if(desig.descriptor != (ast_desiginit_descriptor.symbol))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("enum entry designator must be a symbol (name), not a number");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		deref(retty.enm.entry_names # i) = (desig.symbol);
+		deref(retty.enm.entry_name_lens # i) = (desig.symbol_len);
 		deref(retty.enm.entries # i) = val_must_get_integer(ent_val, ent);
 	}
 	scope_add_enumeration(scope, enumeration

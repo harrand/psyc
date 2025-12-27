@@ -1114,8 +1114,46 @@ rule_token_dot_token_symbol_token_initialiser2desiginitwip ::= func(nodes : ast 
 		.tag := ast_tag.desiginitwip;
 		.desiginit := ast_desiginit
 		{
-			.name := parse_state.src # (lexeme.off);
-			.name_len := lexeme.len;
+			.descriptor := ast_desiginit_descriptor.symbol;
+			.symbol := parse_state.src # (lexeme.off);
+			.symbol_len := lexeme.len;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(desiginit_node);
+	};
+};
+
+rule_token_dot_token_numeric_literal_token_initialiser2desiginitwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// .5 := 
+	// turn into desiginitwip
+	lexeme ::= (nodes # 1)->utok.tok.lexeme;
+	index ::= interpret_numeric_literal(parse_state.src, lexeme);
+	if(index.tag != (ast_literal_tag.integer))
+	{
+		psyc_error_begin((nodes # 0)->loc);
+		putzstr("a designated initialiser index must be an integral literal, you have provided a ");
+		putzstr(__enumname(index.tag));
+		putchar(10);
+		ast_print_annotated_source(parse_state.src, nodes # 0, nodes_count, underline_colour.red);
+		parse_print_state();
+		psyc_diag_end();
+		psyc_exit_failure();
+		return zero;
+	}
+	desiginit_node ::= ast
+	{
+		.tag := ast_tag.desiginitwip;
+		.desiginit := ast_desiginit
+		{
+			.descriptor := ast_desiginit_descriptor.integer;
+			.integer := index.integer;
 		};
 		.children := zero;
 		.children_count := zero;

@@ -1036,22 +1036,72 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 		child ::= ast_get_child(node, i + 1);
 		desig ::= child->desiginit;
 		init_value : val mut := val_node(ast_get_child(child, 0), scope, resolution);
-		memidx ::= ty_get_struct_member_id(inittype, desig.name, desig.name_len);
-		if(memidx == -1)
+		memidx : u64 mut := 0;
+		if(ty_is_struct(inittype))
 		{
-			psyc_error_begin(child->loc);
-			putzstr("type of block initialiser ");
-			putchar('"');
-			putty(inittype);
-			putchar('"');
-			putzstr(" had no such member named ");
-			putchar('"');
-			putbytes(desig.name, desig.name_len);
-			putchar('"');
-			putchar(10);
-			ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
-			psyc_diag_end();
-			psyc_exit_failure();
+			if(desig.descriptor != (ast_desiginit_descriptor.symbol))
+			{
+				psyc_error_begin(child->loc);
+				putzstr("all initialisers for struct type ");
+				putchar('"');
+				putty(inittype);
+				putchar('"');
+				putzstr(" must be symbols (names), not integers");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			memidx = ty_get_struct_member_id(inittype, desig.symbol, desig.symbol_len);
+			if(memidx == -1)
+			{
+				psyc_error_begin(child->loc);
+				putzstr("type of block initialiser ");
+				putchar('"');
+				putty(inittype);
+				putchar('"');
+				putzstr(" had no such member named ");
+				putchar('"');
+				putbytes(desig.symbol, desig.symbol_len);
+				putchar('"');
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+		else
+		{
+			if(desig.descriptor != (ast_desiginit_descriptor.integer))
+			{
+				psyc_error_begin(child->loc);
+				putzstr("all initialisers for array type ");
+				putchar('"');
+				putty(inittype);
+				putchar('"');
+				putzstr(" must be integers, not symbols (names)");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			memidx = (desig.integer@_);
+			if(memidx >= (ty_unwrap(inittype)->array_len))
+			{
+				psyc_error_begin(child->loc);
+				putzstr("initialiser index ");
+				putchar('"');
+				putuint(memidx);
+				putchar('"');
+				putzstr(" is out-of-range of array type ");
+				putchar('"');
+				putty(inittype);
+				putchar('"');
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 		}
 		// also we have a thing to check
 		// an empty blkinit is obviously evaluable at compile time
@@ -1064,11 +1114,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 			if(resolution == (val_resolution.compile_time_only))
 			{
 				psyc_error_begin(child->loc);
-				putzstr("block initialiser is in a context such that it must be evaluated at compile-time, but the initialiser for member ");
-				putchar('"');
-				putbytes(desig.name, desig.name_len);
-				putchar('"');
-				putzstr(" cannot be evaluted at compile-time");
+				putzstr("block initialiser is in a context such that it must be evaluated at compile-time, but the initialiser cannot be evaluted at compile-time");
 				putchar(10);
 				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
 				psyc_diag_end();
@@ -1076,7 +1122,14 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 			}
 			retval = val_dynamic(retval, child);
 		}
-		init_value = val_convert_to(init_value, deref(ty_unwrap(inittype)->strct.members # memidx), resolution, child);
+		if(ty_is_struct(inittype))
+		{
+			init_value = val_convert_to(init_value, deref(ty_unwrap(inittype)->strct.members # memidx), resolution, child);
+		}
+		else
+		{
+			init_value = val_convert_to(init_value, ty_underlying(inittype), resolution, child);
+		}
 
 		// add it to the blkinit
 		if(resolution != (val_resolution.type_only))
