@@ -997,7 +997,17 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	i : u64 mut;
 	// todo: array support
 	// (will also need to supprot arrays in s/cg functions called here too)
-	inittype ::= ty_typename_node(ast_get_child(node, 0));
+	typename_node ::= ast_get_child(node, 0);
+	inittype ::= ty_typename_node(typename_node);
+	if(!(ty_is_struct(inittype) || (ty_is_arr(inittype))))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("block-initialiser type must be a struct (todo: or array)");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(typename_node->loc.file)->src, typename_node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	retval : val mut := zero;
 	if(resolution == (val_resolution.compile_time_only))
 	{
