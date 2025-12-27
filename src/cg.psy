@@ -305,17 +305,18 @@ cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
 
 cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
+	type ::= lhs.type;
 	ret ::= val mut
 	{
 		.tag := valtag.typed_value;
 		.known := valknown.runtime;
 		.hand := valhand.rvalue;
-		.type := lhs.type;
+		.type := type;
 		.compile_time := zero;
 		.runtime := zero;
 	};
 	// guaranteed to be the same type
-	if(ty_is_integral(lhs.type))
+	if(ty_is_integral(type))
 	{
 		ret.runtime.cg = LLVMBuildAdd(ir, lhs.runtime.cg, rhs.runtime.cg, "");
 	}
