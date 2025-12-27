@@ -201,3 +201,30 @@ s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 	psyc_exit_failure();
 	return zero;
 };
+
+// note the members array of val.compile_time.members is correctly sized but of an indeterminate value that you *must* overwrite
+s_empty_blkinit ::= func(type : tyid -> val)
+{
+	// todo: support arrays for this too
+	memcount ::= ty_unwrap(type)->strct.members_count;
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := valcompile_time
+		{
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := memcount;
+			.members := arena_alloc(global_arena, __sizeof(val) * memcount);
+			.funcref_name := zero;
+			.funcref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
+		};
+		.runtime := zero;
+	};
+};

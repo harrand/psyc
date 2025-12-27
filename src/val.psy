@@ -620,6 +620,10 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		cast_to ::= ty_typename_node(cast_to_node);
 		return val_convert_to(cast_from, cast_to, resolution, node);
 	}
+	if(ast_is_expr(node, ast_expr_tag.blkinit))
+	{
+		return val_blkinit(node, resolution);
+	}
 	psyc_panic_begin(node->loc);
 	putzstr("control reached end of val_node");
 	putchar(10);
@@ -951,6 +955,33 @@ val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
 	}
 	// need to do it at runtime.
 	return cg_deref(val_dynamic(v, source), source);
+};
+
+val_blkinit ::= func(node : ast?, resolution : val_resolution -> val)
+{
+	i : u64 mut;
+	// todo: array support
+	// (will also need to supprot arrays in s/cg functions called here too)
+	inittype ::= ty_typename_node(ast_get_child(node, 0));
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(inittype);
+	}
+	retval : val mut := zero;
+	if(resolution == (val_resolution.compile_time_only))
+	{
+		// compile time
+		retval = s_empty_blkinit(inittype);
+		// how do we want to handle accessing undef values (via blkinits) at compile time?
+		// error out would be ideal, but just setting them all as zero-value here would be easier
+	}
+	else
+	{
+		// runtime
+		retval = cg_empty_blkinit(inittype);
+	}
+	// remember *all* typechecking must happen here.
+	return zero;
 };
 
 val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source : ast? -> val)
