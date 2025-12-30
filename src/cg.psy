@@ -249,7 +249,160 @@ cg_local_variable ::= func(var : variable mut? -> v0)
 
 cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	// conversions always produce an rvalue
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := to;
+		.compile_time := zero;
+		.runtime := cg_load_if_lvalue(v).runtime;
+	};
+	// v is guaranteed to be a dynamic value.
+	from ::= v.type;
+	from_size ::= ty_integral_size(from) + ty_floating_point_size(from);
+	from_signed ::= ty_is_signed_integral(from);
+	to_size ::= ty_integral_size(to) + ty_floating_point_size(to);
+	to_signed ::= ty_is_signed_integral(to);
+	cgto ::= cg_type(to);
+	if(ty_is_integral(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// i2i
+			if(from_size < to_size)
+			{
+				// expanding to larger size
+				if(from_signed)
+				{
+					ret.runtime.cg = LLVMBuildSExt(ir, ret.runtime.cg, cgto, "");
+				}
+				else
+				{
+					ret.runtime.cg = LLVMBuildZExt(ir, ret.runtime.cg, cgto, "");
+				}
+				return ret;
+			}
+			if(from_size > to_size)
+			{
+				// truncating to smaller size
+				ret.runtime.cg = LLVMBuildTrunc(ir, ret.runtime.cg, cgto, "");
+			}
+			// nothing
+			return ret;
+		}
+		if(ty_is_floating_point(to))
+		{
+			// i2f
+			if(from_signed)
+			{
+				ret.runtime.cg = LLVMBuildSIToFP(ir, ret.runtime.cg, cgto, "");
+			}
+			else
+			{
+				ret.runtime.cg = LLVMBuildUIToFP(ir, ret.runtime.cg, cgto, "");
+			}
+			return ret;
+		}
+		if(ty_is_ptr(to))
+		{
+			// i2p
+			ret.runtime.cg = LLVMBuildIntToPtr(ir, ret.runtime.cg, cgto, "");
+			return ret;
+		}
+		if(ty_is_enum(to))
+		{
+			// trivial
+			return cg_convert_to(v, tyid.s64, source);
+		}
+		if(ty_is_bool(to))
+		{
+			ret.runtime.cg = LLVMBuildTrunc(ir, ret.runtime.cg, cgto, "");
+			return ret;
+		}
+	}
+	if(ty_is_floating_point(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// f2i
+			if(to_signed)
+			{
+				ret.runtime.cg = LLVMBuildFPToSI(ir, ret.runtime.cg, cgto, "");
+			}
+			else
+			{
+				ret.runtime.cg = LLVMBuildFPToUI(ir, ret.runtime.cg, cgto, "");
+			}
+			return ret;
+		}
+		if(ty_is_floating_point(to))
+		{
+			// f2f
+			if(from_size > to_size)
+			{
+				// shrink
+				ret.runtime.cg = LLVMBuildFPTrunc(ir, ret.runtime.cg, cgto, "");
+			}
+			if(from_size < to_size)
+			{
+				// expand
+				ret.runtime.cg = LLVMBuildFPExt(ir, ret.runtime.cg, cgto, "");
+			}
+			return ret;
+		}
+	}
+	if(ty_is_bool(from))
+	{
+		// b2i
+		ret.runtime.cg = LLVMBuildZExt(ir, ret.runtime.cg, cgto, "");
+		return ret;
+	}
+	if(ty_is_enum(from))
+	{
+		// can only be e2i
+		ret.runtime.cg = (cg_convert_to(v, tyid.s64, source).runtime.cg);
+		return ret;
+	}
+	if(ty_is_ptr(from))
+	{
+		if(ty_is_integral(to))
+		{
+			// p2i
+			ret.runtime.cg =  LLVMBuildPtrToInt(ir, ret.runtime.cg, cgto, "");
+			return ret;
+		}
+		if(ty_is_fn(to))
+		{
+			// p2fn. trivial.
+			return ret;
+		}
+		if(ty_is_ptr(to))
+		{
+			// p2p. trivial.
+			return ret;
+		}
+	}
+	if(ty_is_fn(from))
+	{
+		// can only be fn2p. trivial.
+		return ret;
+	}
+
+	psyc_panic_begin(source->loc);
+	putzstr("control reached end of cg_convert_to. converting from ");
+	putchar('"');
+	putty(from);
+	putchar('"');
+	putzstr(" to ");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
@@ -295,6 +448,31 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 	}
 	psyc_nyi(source->loc);
 	return zero;
+};
+
+cg_members ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+{
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := v.hand;
+		.type := v.type;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := LLVMGetUndef(cg_type(v.type));};
+	};
+	// given a value with compile_time.members set
+	// return a dynamic value
+	is_struct ::= ty_is_struct(v.type);
+	// if its not a struct its an array.
+	memcount ::= v.compile_time.members_count;
+	i : u64 mut;
+	for(i = 0, i < memcount, i = i + 1)
+	{
+		memval ::= val_dynamic(deref(v.compile_time.members@val? # i), scope, source);
+		ret.runtime.cg = LLVMBuildInsertValue(ir, ret.runtime.cg, memval.runtime.cg, i@u32, "");
+	}
+	return ret;
 };
 
 // return a runtime val representation of a function
@@ -454,7 +632,7 @@ cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
 
 cg_biop_assign ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
-	LLVMBuildStore(ir, rhs.runtime.cg, lhs.runtime.cg);
+	LLVMBuildStore(ir, cg_load_if_lvalue(rhs).runtime.cg, lhs.runtime.cg);
 	return lhs;
 };
 
@@ -473,11 +651,11 @@ cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
 	// guaranteed to be the same type
 	if(ty_is_integral(type))
 	{
-		ret.runtime.cg = LLVMBuildAdd(ir, lhs.runtime.cg, rhs.runtime.cg, "");
+		ret.runtime.cg = LLVMBuildAdd(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
 	}
 	else
 	{
-		ret.runtime.cg = LLVMBuildFAdd(ir, lhs.runtime.cg, rhs.runtime.cg, "");
+		ret.runtime.cg = LLVMBuildFAdd(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
 	}
 
 	return ret;

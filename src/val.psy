@@ -665,12 +665,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	// if resolution == val.runtime_only, ensure the return value is val_dynamic'd
 	if(ast_is_expr(node, ast_expr_tag.zero_value))
 	{
-		retval = zero_val();
-		if(resolution == (val_resolution.runtime_only))
-		{
-			return val_dynamic(retval, scope, node);
-		}
-		return retval;
+		return zero_val();
 	}
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
@@ -990,7 +985,8 @@ val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	{
 		return type_as_val(lhs.type);
 	}
-	if(((lhs.known) != (rhsconv.known)) || (resolution == (val_resolution.runtime_only)))
+	need_runtime_conversion ::= (lhs.known != rhsconv.known) || (((lhs.known != (valknown.runtime)) || (rhs.known != (valknown.runtime))) && (resolution == (val_resolution.runtime_only)));
+	if(need_runtime_conversion)
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
@@ -1036,7 +1032,8 @@ val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 	{
 		return type_as_val(type);
 	}
-	if(((lhs.known) != (rhs.known)) || (resolution == (val_resolution.runtime_only)))
+	need_runtime_conversion ::= (lhs.known != rhsconv.known) || (((lhs.known != (valknown.runtime)) || (rhs.known != (valknown.runtime))) && (resolution == (val_resolution.runtime_only)));
+	if(need_runtime_conversion)
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
@@ -1239,13 +1236,22 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 			}
 			retval = val_dynamic(retval, scope, child);
 		}
+		to : tyid mut;
 		if(ty_is_struct(inittype))
 		{
-			init_value = val_convert_to(init_value, deref(ty_unwrap(inittype)->strct.members # memidx), scope, resolution, child);
+			to = deref(ty_unwrap(inittype)->strct.members # memidx);
 		}
 		else
 		{
-			init_value = val_convert_to(init_value, ty_underlying(inittype), scope, resolution, child);
+			to = ty_underlying(inittype);
+		}
+		if(val_is_zero_val(init_value))
+		{
+			init_value = zero_as_val(to, child);
+		}
+		else
+		{
+			init_value = val_convert_to(init_value, to, scope, resolution, child);
 		}
 
 		// add it to the blkinit
@@ -1365,6 +1371,10 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("attempt to val_dynamic 'zero'. doesnt work like that, need to call zero_as_val im afraid...");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
 	if(v.compile_time.funcref_name != zero)
 	{
@@ -1378,6 +1388,10 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	if(v.compile_time.valueref != zero)
 	{
 		return cg_ref(val_dynamic(deref(v.compile_time.valueref@val?), scope, source), source);
+	}
+	if(v.compile_time.members != zero)
+	{
+		return cg_members(v, scope, source);
 	}
 	if(ty_is_prim(v.type))
 	{
