@@ -766,12 +766,33 @@ ty_typename_node ::= func(node : ast? -> tyid)
 	return zero;
 };
 
+ty_discard_static_unless ::= func(type : tyid, cond : bool -> tyid)
+{
+	// if cond is true keep all quals
+	// if false keep all qualifiers except static
+	if(cond)
+	{
+		return type;
+	}
+	retty : tyid mut := ty_clear_all_quals(type);
+	if(ty_has_qual(type, tyqual.qual_weak))
+	{
+		retty = ty_set_qual(retty, tyqual.qual_weak);
+	}
+	if(ty_has_qual(type, tyqual.qual_mut))
+	{
+		retty = ty_set_qual(retty, tyqual.qual_mut);
+	}
+	return retty;
+};
+
 // given two primitive types which we want to add/sub/mul/div/shr/etc...
 // return the type that both should be converted to
 // you can always assume the returned type matches one of the operands.
 // return zero if arithmetic operations are not defined for this type combination
 ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 {
+	retty : tyid mut;
 	both_are_static ::= ty_has_qual(lhs, tyqual.qual_static) && ty_has_qual(rhs, tyqual.qual_static);
 	if(ty_is_bool(lhs) || ty_is_bool(rhs))
 	{
@@ -779,11 +800,7 @@ ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 		// we dont be supporting true + 5 no thank you. cast it if you absolutely must.
 		if(ty_is_bool(lhs) && ty_is_bool(rhs))
 		{
-			if(both_are_static)
-			{
-				return ty_set_qual(tyid.bool, tyqual.qual_static);
-			}
-			return tyid.bool;
+			return ty_discard_static_unless(ty_set_qual(tyid.bool, tyqual.qual_static), both_are_static);
 		}
 		return zero;
 	}
@@ -798,17 +815,17 @@ ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 
 	if(lhs_floating_point && rhs_integral)
 	{
-		return lhs;
+		return ty_discard_static_unless(lhs, both_are_static);
 	}
 	if(lhs_integral && rhs_floating_point)
 	{
-		return rhs;
+		return ty_discard_static_unless(rhs, both_are_static);
 	}
 	if((lhs_integral && rhs_integral) || (lhs_floating_point && rhs_floating_point))
 	{
 		if(lhs_arithmetic_size < rhs_arithmetic_size)
 		{
-			return rhs;
+			return ty_discard_static_unless(rhs, both_are_static);
 		}
 		if(lhs_arithmetic_size == rhs_arithmetic_size)
 		{
@@ -818,20 +835,16 @@ ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
 				if(lhs_signed)
 				{
 					// rhs is unsigned
-					return rhs;
+					return ty_discard_static_unless(rhs, both_are_static);
 				}
 				// lhs is unsigned
-				return lhs;
+				return ty_discard_static_unless(lhs, both_are_static);
 			}
 		}
 		// well theyre just the same type excluding qualifiers.
 		// if both are static then set static, otherwise remove static
 		// static + nonstatic = nonstatic after all
-		if(both_are_static)
-		{
-			return ty_set_qual(ty_clear_all_quals(lhs), tyqual.qual_static);
-		}
-		return ty_clear_all_quals(lhs);
+		return ty_discard_static_unless(lhs, both_are_static);
 	}
 	return zero;
 };
