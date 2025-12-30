@@ -881,16 +881,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 {
 	if(op == (ast_biop.assign))
 	{
-		if(lhs.hand != (valhand.lvalue))
-		{
-			psyc_error_begin(source->loc);
-			putzstr("lhs of assignment must always be an lvalue");
-			putchar(10);
-			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
-		psyc_nyi(source->loc);
+		return val_biop_assign(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop.compare_equal))
 	{
@@ -982,6 +973,44 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	return zero;
 };
 
+val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	if(lhs.hand != (valhand.lvalue))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("lhs of assignment must always be an lvalue");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// rhs must convert to lhs
+	rhsconv ::= val_convert_to(rhs, lhs.type, scope, resolution, source);
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(lhs.type);
+	}
+	if(((lhs.known) != (rhsconv.known)) || (resolution == (val_resolution.runtime_only)))
+	{
+		// one of them is runtime or we are runtime_only
+		// do it runtime mode.
+		return val_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhsconv, scope, source), scope, resolution, source);
+	}
+	if(lhs.known == (valknown.compile_time))
+	{
+		lhs_is_variable ::= (lhs.compile_time.varref_name != zero);
+		// at compile time we can only do an assignment to a variable directly (not e.g to an array element im afraid)
+		if(!lhs_is_variable)
+		{
+			// do it runtime mode.
+			return val_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhsconv, scope, source), scope, resolution, source);
+		}
+		return s_biop_assign(lhs, rhsconv, scope, source);
+	}
+	// runtime
+	return cg_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
+};
+
 val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	type ::= ty_of_arithmetic(lhs.type, rhs.type);
@@ -1001,12 +1030,12 @@ val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	lhsconv ::= val_convert_to(lhs, type, scope, resolution, source);
+	rhsconv ::= val_convert_to(rhs, type, scope, resolution, source);
 	if(resolution == (val_resolution.type_only))
 	{
 		return type_as_val(type);
 	}
-	lhsconv ::= val_convert_to(lhs, type, scope, resolution, source);
-	rhsconv ::= val_convert_to(rhs, type, scope, resolution, source);
 	if(((lhs.known) != (rhs.known)) || (resolution == (val_resolution.runtime_only)))
 	{
 		// one of them is runtime or we are runtime_only
