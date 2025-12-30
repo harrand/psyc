@@ -661,6 +661,31 @@ cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
+cg_biop_mul ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	type ::= lhs.type;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	// guaranteed to be the same type
+	if(ty_is_integral(type))
+	{
+		ret.runtime.cg = LLVMBuildMul(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+	}
+	else
+	{
+		ret.runtime.cg = LLVMBuildFMul(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+	}
+
+	return ret;
+};
+
 cg_load_if_lvalue ::= func(v : val -> val)
 {
 	ret : val mut := v;

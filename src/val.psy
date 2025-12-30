@@ -912,7 +912,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	}
 	if(op == (ast_biop.mul))
 	{
-		psyc_nyi(source->loc);
+		return val_biop_mul(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop.div))
 	{
@@ -1007,13 +1007,15 @@ val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	return cg_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
 {
 	type ::= ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
 	{
 		psyc_error_begin(source->loc);
-		putzstr("cannot perform the 'add' operator on a ");
+		putzstr("cannot perform the '");
+		putzstr(__enumname(op));
+		putzstr("' operator on a ");
 		putchar('"');
 		putty(lhs.type);
 		putchar('"');
@@ -1037,26 +1039,38 @@ val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
-		return val_biop_add(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source);
+		return val_arith_biop(op, val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source, s, cg);
 	}
 	// guaranteed that their knowns are the same
 	if(lhs.known == (valknown.compile_time))
 	{
 		// compile time
-		return s_biop_add(lhsconv, rhsconv, scope, source);
+		return s(lhsconv, rhsconv, scope, source);
 	}
 	// runtime
 	if(resolution == (val_resolution.compile_time_only))
 	{
 		psyc_error_begin(source->loc);
-		putzstr("this 'add' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
+		putzstr("this '");
+		putzstr(__enumname(op));
+		putzstr("' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_biop_add(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
+	return cg(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
+};
+
+val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	return val_arith_biop(ast_biop.add, lhs, rhs, scope, resolution, source, s_biop_add, cg_biop_add);
+};
+
+val_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	return val_arith_biop(ast_biop.mul, lhs, rhs, scope, resolution, source, s_biop_mul, cg_biop_mul);
 };
 
 val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
