@@ -668,7 +668,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		retval = zero_val();
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(retval, node);
+			return val_dynamic(retval, scope, node);
 		}
 		return retval;
 	}
@@ -677,7 +677,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		retval = literal_as_val(node->literal);
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(retval, node);
+			return val_dynamic(retval, scope, node);
 		}
 		return retval;
 	}
@@ -717,7 +717,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	if(ast_is_expr(node, ast_expr_tag.dereference))
 	{
 		deref_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
-		return val_deref(deref_operand, resolution, node);
+		return val_deref(deref_operand, resolution, scope, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.cast))
 	{
@@ -734,12 +734,12 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 			}
 			if(resolution == (val_resolution.runtime_only))
 			{
-				return val_dynamic(cast_from, node);
+				return val_dynamic(cast_from, scope, node);
 			}
 			return cast_from;
 		}
 		cast_to ::= ty_typename_node(cast_to_node);
-		return val_convert_to(cast_from, cast_to, resolution, node);
+		return val_convert_to(cast_from, cast_to, scope, resolution, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.blkinit))
 	{
@@ -773,7 +773,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 		ret = variable_as_val(maybe_variable, node);
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(ret, node);
+			return val_dynamic(ret, scope, node);
 		}
 		return ret;
 	}
@@ -787,7 +787,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 		ret = function_as_val(maybe_function, node);
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(ret, node);
+			return val_dynamic(ret, scope, node);
 		}
 		return ret;
 	}
@@ -860,7 +860,7 @@ val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resoluti
 		if(resolution == (val_resolution.runtime_only))
 		{
 			// convert to runtime value
-			return val_dynamic(ret, source);
+			return val_dynamic(ret, scope, source);
 		}
 		return ret;
 	}
@@ -874,7 +874,7 @@ val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resoluti
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_ref(val_dynamic(v, source), scope, source);
+	return cg_ref(val_dynamic(v, scope, source), source);
 };
 
 val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -996,19 +996,19 @@ val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 	{
 		return type_as_val(type);
 	}
-	lhsconv ::= val_convert_to(lhs, type, resolution, source);
-	rhsconv ::= val_convert_to(rhs, type, resolution, source);
+	lhsconv ::= val_convert_to(lhs, type, scope, resolution, source);
+	rhsconv ::= val_convert_to(rhs, type, scope, resolution, source);
 	if(((lhs.known) != (rhs.known)) || (resolution == (val_resolution.runtime_only)))
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
-		return val_biop_add(val_dynamic(lhs, source), val_dynamic(rhs, source), scope, resolution, source);
+		return val_biop_add(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source);
 	}
 	// guaranteed that their knowns are the same
 	if(lhs.known == (valknown.compile_time))
 	{
 		// compile time
-		return s_biop_add(lhsconv, rhsconv, source);
+		return s_biop_add(lhsconv, rhsconv, scope, source);
 	}
 	// runtime
 	if(resolution == (val_resolution.compile_time_only))
@@ -1021,10 +1021,10 @@ val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution :
 		psyc_exit_failure();
 	}
 	// runtime
-	return cg_biop_add(val_dynamic(lhsconv, source), val_dynamic(rhsconv, source), source);
+	return cg_biop_add(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
 };
 
-val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
+val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
 {
 	if(!ty_is_ptr(v.type))
 	{
@@ -1053,7 +1053,7 @@ val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
 			ret ::= deref(v.compile_time.valueref@val?);
 			if(resolution == (val_resolution.runtime_only))
 			{
-				return val_dynamic(ret, source);
+				return val_dynamic(ret, scope, source);
 			}
 			return ret;
 		}
@@ -1068,7 +1068,7 @@ val_deref ::= func(v : val, resolution : val_resolution, source : ast? -> val)
 		psyc_exit_failure();
 	}
 	// need to do it at runtime.
-	return cg_deref(val_dynamic(v, source), source);
+	return cg_deref(val_dynamic(v, scope, source), source);
 };
 
 val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
@@ -1199,15 +1199,15 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
-			retval = val_dynamic(retval, child);
+			retval = val_dynamic(retval, scope, child);
 		}
 		if(ty_is_struct(inittype))
 		{
-			init_value = val_convert_to(init_value, deref(ty_unwrap(inittype)->strct.members # memidx), resolution, child);
+			init_value = val_convert_to(init_value, deref(ty_unwrap(inittype)->strct.members # memidx), scope, resolution, child);
 		}
 		else
 		{
-			init_value = val_convert_to(init_value, ty_underlying(inittype), resolution, child);
+			init_value = val_convert_to(init_value, ty_underlying(inittype), scope, resolution, child);
 		}
 
 		// add it to the blkinit
@@ -1219,7 +1219,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 			}
 			else
 			{
-				retval = cg_blkinit_add(retval, memidx, val_dynamic(init_value, child));
+				retval = cg_blkinit_add(retval, memidx, val_dynamic(init_value, scope, child));
 			}
 		}
 	}
@@ -1231,7 +1231,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	return retval;
 };
 
-val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source : ast? -> val)
+val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)
 {
 	if(resolution == (val_resolution.type_only))
 	{
@@ -1293,7 +1293,7 @@ val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source 
 		static_return ::= s_convert_to(v, to, source);
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(static_return, source);
+			return val_dynamic(static_return, scope, source);
 		}
 		return static_return;
 	}
@@ -1312,10 +1312,10 @@ val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return cg_convert_to(val_dynamic(v, source), to, source);
+	return cg_convert_to(val_dynamic(v, scope, source), to, source);
 };
 
-val_dynamic ::= func(v : val, source : ast? -> val)
+val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// pass any val into here and the result is guaranteed to be a runtime-computed value
 	if(v.known == (valknown.runtime))
@@ -1331,7 +1331,15 @@ val_dynamic ::= func(v : val, source : ast? -> val)
 	if(v.compile_time.funcref_name != zero)
 	{
 		// its a reference to a function
-		return cg_funcref(scope_find_function(program_scope(), v.compile_time.funcref_name, v.compile_time.funcref_name_len));
+		return cg_funcref(scope_find_function(scope, v.compile_time.funcref_name, v.compile_time.funcref_name_len));
+	}
+	if(v.compile_time.varref_name != zero)
+	{
+		return cg_varref(scope_find_variable(scope, v.compile_time.varref_name, v.compile_time.varref_name_len));
+	}
+	if(v.compile_time.valueref != zero)
+	{
+		return cg_ref(val_dynamic(deref(v.compile_time.valueref@val?), scope, source), source);
 	}
 	if(ty_is_prim(v.type))
 	{

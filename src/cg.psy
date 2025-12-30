@@ -311,6 +311,20 @@ cg_funcref ::= func(fn : function? -> val)
 	};
 };
 
+// return a runtime val representation of a variable
+cg_varref ::= func(v : variable? -> val)
+{
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.lvalue;
+		.type := v->type;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := v->cg;};
+	};
+};
+
 cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 {
 	if(ast_is_stmt(node, ast_stmt_tag.ret))
@@ -360,7 +374,7 @@ cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
-			retval ::= val_convert_to(cg_node(ast_get_child(node, 0), scope), parent_retty, val_resolution.runtime_only, node);
+			retval ::= val_convert_to(cg_node(ast_get_child(node, 0), scope), parent_retty, scope, val_resolution.runtime_only, node);
 			LLVMBuildRet(ir, retval.runtime.cg);
 			return retval;
 		}
@@ -380,7 +394,7 @@ cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 	return val_node(node, scope, val_resolution.runtime_only);
 };
 
-cg_ref ::= func(v : val, scope : lexical_scope?, source : ast? -> val)
+cg_ref ::= func(v : val, source : ast? -> val)
 {
 	// i have some value. its guaranteed to be an lvalue (i.e a direct variable)
 	// it just got val_dynamic'd
@@ -512,7 +526,7 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 
 	// get the condition
 	cond_node ::= ast_get_child(node, 0);
-	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, val_resolution.runtime_only, cond_node);
+	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 
 	else_node ::= ast_get_last_child_if_else(node);
 
@@ -594,7 +608,7 @@ cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 
 	// get the condition
 	cond_node ::= ast_get_child(node, 0);
-	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, val_resolution.runtime_only, cond_node);
+	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 
 	whilescope ::= LLVMAppendBasicBlock(parent_fn->cg, "while");
 	whilecont ::= LLVMAppendBasicBlock(parent_fn->cg, "whilecont");
@@ -618,7 +632,7 @@ cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	if(!was_return)
 	{
 		// loop back if cond is still true, otherwise whilecont
-		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, val_resolution.runtime_only, cond_node);
+		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 		LLVMBuildCondBr(ir, new_cond_val.runtime.cg, whilescope, whilecont);
 	}
 	
@@ -667,7 +681,7 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	if(!was_return)
 	{
 		// loop back if cond is still true, otherwise forcont
-		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, val_resolution.runtime_only, cond_node);
+		new_cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 		LLVMBuildCondBr(ir, new_cond_val.runtime.cg, forscope, forcont);
 	}
 
