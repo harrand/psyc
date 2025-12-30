@@ -6,6 +6,7 @@ codegen ::= func(-> v0)
 	cg_begin();
 
 	cg_all_structs();
+	cg_all_asms(program_scope());
 	cg_all_functions(program_scope());
 	cg_end();
 	psyc_timed_end();
@@ -172,6 +173,15 @@ cg_struct_def ::= func(type : tyid -> v0)
 	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
 };
 
+cg_all_asms ::= func(scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->assemblys_count), i = i + 1)
+	{
+		cg_asm(scope->assemblys # i);
+	}
+};
+
 cg_all_functions ::= func(scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
@@ -189,6 +199,11 @@ llvm_add_function_string_attribute ::= func(fn : function mut?, attrib_name_zstr
 {
 	attr ::= LLVMCreateStringAttribute(LLVMGetGlobalContext(), attrib_name_zstr, zstrlen(attrib_name_zstr)@u32, "", 0);
 	LLVMAddAttributeAtIndex(fn->cg, LLVMAttributeFunctionIndex, attr);
+};
+
+cg_asm ::= func(assembly : assembly mut? -> v0)
+{
+	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
 };
 
 cg_func_sig ::= func(fn : function mut? -> v0)

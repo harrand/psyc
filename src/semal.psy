@@ -3,6 +3,7 @@ semal ::= func(-> v0)
 	psyc_timed_begin(psyc_stage.semantic);
 	semal_all_structs();
 	semal_all_functions();
+	semal_all_assemblys();
 	psyc_timed_end();
 };
 
@@ -69,6 +70,57 @@ semal_struct ::= func(type : tyid -> v0)
 		}
 		deref(s->strct.members # i) = cur_ty;
 	}
+};
+
+semal_all_assemblys ::= func(-> v0)
+{
+	i : u64 mut;
+	progscope ::= program_scope();
+	for(i = 0, i < (progscope->assemblys_count), i = i + 1)
+	{
+		semal_assembly(progscope->assemblys # i);
+	}
+};
+
+assembly_constraint_count_inputs ::= func(str : u8?, len : u64 -> u64)
+{
+	count : u64 mut := 0;
+	cursor : u64 mut := 0;
+	start : bool mut := true;
+	while(cursor < len)
+	{
+		char ::= deref(str # cursor);
+		if(!start)
+		{
+			if(char == ',')
+			{
+				start = true;
+			}
+		}
+		else
+		{
+			// if its a { or a digit, its an input
+			start = false;
+			if((char == '{') || (char == '*') || isdigit(char))
+			{
+				count = count + 1;
+			}
+		}
+		cursor = cursor + 1;
+	}
+	return count;
+};
+
+semal_assembly ::= func(as : assembly mut? -> v0)
+{
+	i : u64 mut;
+	input_count ::= assembly_constraint_count_inputs(as->constraints, as->constraints_len);
+	params : tyid mut? := arena_alloc(global_arena, input_count * __sizeof(tyid));
+	for(i = 0, i < input_count, i = i + 1)
+	{
+		deref(params # i) = ty_set_qual(tyid.s64, tyqual.qual_weak);
+	}
+	as->type = ty_fn(ty_set_qual(tyid.s64, tyqual.qual_weak), params, input_count, zero);
 };
 
 semal_all_functions ::= func(-> v0)
