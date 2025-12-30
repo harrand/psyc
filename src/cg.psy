@@ -411,10 +411,18 @@ cg_deref ::= func(v : val, source : ast? -> val)
 {
 	// i need to deref something
 	// i definitely have a pointer.
+	// we maintain lvalue-ness (so deref(foo) = 5 works)
+
+	// so we *dont* do a load here
+	// we just pretend that its an lvalue
 	ret : val mut := v;
 	ret.type = ty_underlying(v.type);
-	ret.runtime = valruntime{.cg := LLVMBuildLoad2(ir, cg_type(ret.type), v.runtime.cg, "");};
-	return zero;
+	ret.hand = (valhand.lvalue);
+	return ret;
+
+	//ret : val mut := v;
+	//ret.type = ty_underlying(v.type);
+	//ret.runtime = valruntime{.cg := LLVMBuildLoad2(ir, cg_type(ret.type), v.runtime.cg, "");};
 };
 
 cg_undef_as ::= func(type : tyid -> val)
