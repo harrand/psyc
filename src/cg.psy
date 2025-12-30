@@ -299,10 +299,6 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 
 cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 {
-	if(ast_is_stmt(node, ast_stmt_tag.decl))
-	{
-		return cg_decl(node, scope);
-	}
 	if(ast_is_stmt(node, ast_stmt_tag.ret))
 	{
 		parent_fn ::= scope_get_parent_function(scope);
@@ -456,20 +452,15 @@ cg_load_if_lvalue ::= func(v : val -> val)
 	return ret;
 };
 
-cg_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 {
-	// we naturally reached a local variable decl.
-	// remember these have been hoisted before so the alloca exists.
-	decl ::= node->decl;
-	var ::= scope_find_variable(scope, decl.name, decl.name_len);
 	if(var->node->children_count == 2)
 	{
-		// has an init
-		init_node ::= ast_get_child(var->node, 1);
-		init_val ::= cg_load_if_lvalue(cg_node(init_node, scope));
-		LLVMBuildStore(ir, init_val.runtime.cg, var->cg);
+		// has an initialiser
+		init ::= cg_load_if_lvalue(cg_node(ast_get_child(var->node, 1), scope));
+		LLVMBuildStore(ir, init.runtime.cg, var->cg);
 	}
-	// todo: debug location goes here though.
+	// todo: debug declare the variable here.
 	return zero;
 };
 

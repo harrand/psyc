@@ -685,6 +685,24 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	{
 		return val_symbol(node, scope, resolution);
 	}
+	if(ast_is_stmt(node, ast_stmt_tag.decl))
+	{
+		var ::= scope_find_variable(scope, node->decl.name, node->decl.name_len);
+		if(var == zero)
+		{
+			psyc_panic_begin(node->loc);
+			putzstr("scope_find_variable on decl statement could not find the variable. it probably wasnt hoisted correctly");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(resolution == (val_resolution.compile_time_only))
+		{
+			return s_decl(var, scope);
+		}
+		return cg_decl(var, scope);
+	}
 	if(ast_is_expr(node, ast_expr_tag.biop))
 	{
 		lhs_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
