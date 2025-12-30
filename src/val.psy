@@ -658,17 +658,28 @@ zero_as_val ::= func(to : tyid, source : ast? -> val)
 
 val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
 {
+	retval : val mut;
 	// given any node, give me a value.
 	// if resolution == val_resolution.type_only, only return a type.
 	// if resolution == val_resolution.compile_time_only, error out if we need to generate runtime code
 	// if resolution == val.runtime_only, ensure the return value is val_dynamic'd
 	if(ast_is_expr(node, ast_expr_tag.zero_value))
 	{
-		return zero_val();
+		retval = zero_val();
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(retval, node);
+		}
+		return retval;
 	}
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
-		return literal_as_val(node->literal);
+		retval = literal_as_val(node->literal);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(retval, node);
+		}
+		return retval;
 	}
 	if(ast_is_expr(node, ast_expr_tag.symbol))
 	{
@@ -1289,6 +1300,21 @@ val_convert_to ::= func(v : val, to : tyid, resolution : val_resolution, source 
 val_dynamic ::= func(v : val, source : ast? -> val)
 {
 	// pass any val into here and the result is guaranteed to be a runtime-computed value
+	if(v.known == (valknown.runtime))
+	{
+		return v;
+	}
+	// this will be a long list...
+	if(val_is_zero_val(v))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("attempt to val_dynamic 'zero'. doesnt work like that, need to call zero_as_val im afraid...");
+	}
+	if(ty_is_prim(v.type))
+	{
+		// its a primitive type...
+		return cg_prim(v.type, v.compile_time.primitive, source);
+	}
 	psyc_nyi(source->loc);
 	return zero;
 };
