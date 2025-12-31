@@ -22,6 +22,11 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 	{
 		child ::= ast_get_child(node, i);
 		progwalk_node(child, file_scope);
+		if(ast_is_stmt(child, ast_stmt_tag.decl))
+		{
+			// global variable
+			progwalk_global_variable_decl(child, file_scope);
+		}
 	}
 	return file_scope;
 };
@@ -379,4 +384,16 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 		}
 		// and yes, when you're codegenning you ignore the condition of a static-if and just codegen its children as if they were part of the parent scope (this was known as a composite in psyc 1.x)
 	}
+};
+
+progwalk_global_variable_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+{
+	scope_add_variable(scope, variable
+	{
+		.node := node;
+		.type := zero;
+		.compile_time_storage := zero;
+		.cg := zero;
+		.db := zero;			
+	});
 };

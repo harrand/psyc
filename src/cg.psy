@@ -6,6 +6,7 @@ codegen ::= func(-> v0)
 	cg_begin();
 
 	cg_all_structs();
+	cg_global_variables(program_scope());
 	cg_all_asms(program_scope());
 	cg_all_functions(program_scope());
 	cg_end();
@@ -173,6 +174,15 @@ cg_struct_def ::= func(type : tyid -> v0)
 	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
 };
 
+cg_global_variables ::= func(scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->variables_count), i = i + 1)
+	{
+		cg_global_variable(scope->variables # i);
+	}
+};
+
 cg_all_asms ::= func(scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
@@ -253,6 +263,32 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	}
 
 	LLVMClearInsertionPosition(ir);
+};
+
+cg_global_variable ::= func(var : variable mut? -> v0)
+{
+	decl ::= var->node->decl;
+	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
+	type ::= var->type;
+	var->cg = LLVMAddGlobal(prog.cg, cg_type(type), name_zstr);
+
+	is_const ::= ty_has_qual(type, tyqual.qual_static) || !ty_has_qual(type, tyqual.qual_mut);
+	LLVMSetGlobalConstant(var->cg, is_const@s32);
+	LLVMSetLinkage(var->cg, LLVMPrivateLinkage);
+	LLVMSetExternallyInitialized(var->cg, false@s32);
+
+	if(var->node->children_count <= 1)
+	{
+		psyc_error_begin(var->node->loc);
+		putzstr("all global variables *must* have an initializer");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(var->node->loc.file)->src, var->node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	init_node ::= ast_get_child(var->node, 1);
+	init_val ::= val_convert_to(cg_node(init_node, program_scope()), type, program_scope(), val_resolution.runtime_only, init_node);
+	LLVMSetInitializer(var->cg, init_val.runtime.cg);
 };
 
 cg_local_variable ::= func(var : variable mut? -> v0)
