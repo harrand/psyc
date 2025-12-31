@@ -941,6 +941,10 @@ val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : v
 
 val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(ty_ptr(v.type, zero));
+	}
 	if(v.hand != (valhand.lvalue))
 	{
 		psyc_error_begin(source->loc);
@@ -949,10 +953,6 @@ val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resoluti
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
-	}
-	if(resolution == (val_resolution.type_only))
-	{
-		return type_as_val(ty_ptr(v.type, zero));
 	}
 	if(v.known == (valknown.compile_time))
 	{
