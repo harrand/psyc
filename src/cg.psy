@@ -1006,6 +1006,45 @@ cg_load_if_lvalue ::= func(v : val -> val)
 	return ret;
 };
 
+cg_field ::= func(lhs : val, memidx : u64 -> val)
+{
+	// lhs is for sure a struct
+	// now remember if the lhs is an lvalue then the return value is also an lvalue
+	memty : tyid mut := deref(ty_unwrap(lhs.type)->strct.members # memidx);
+	// weak doesnt transfer, but static + mut do
+	if(ty_has_qual(lhs.type, tyqual.qual_static))
+	{
+		memty = ty_set_qual(memty, tyqual.qual_static);
+	}
+	if(ty_has_qual(lhs.type, tyqual.qual_mut))
+	{
+		memty = ty_set_qual(memty, tyqual.qual_mut);
+	}
+	if(lhs.hand == (valhand.rvalue))
+	{
+		// rvalue, this is an extractvalue
+		return val
+		{
+			.tag := valtag.typed_value;
+			.known := valknown.runtime;
+			.hand := valhand.rvalue;
+			.type := memty;
+			.compile_time := zero;
+			.runtime := valruntime{.cg := LLVMBuildExtractValue(ir, lhs.runtime.cg, memidx@u32, "");};
+		};
+	}
+	// lvalue, this is a gep
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.lvalue;
+		.type := memty;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := LLVMBuildStructGEP2(ir, cg_type(lhs.type), lhs.runtime.cg, memidx@u32, "");};
+	};
+};
+
 cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 {
 	if(var->node->children_count == 2)

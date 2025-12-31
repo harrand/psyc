@@ -709,6 +709,18 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		unoperand ::= val_node(ast_get_child(node, 0), scope, resolution);
 		return val_unop(node->unop, unoperand, scope, resolution, node);
 	}
+	if(ast_is_expr(node, ast_expr_tag.field))
+	{
+		field_lhs ::= val_node(ast_get_child(node, 0), scope, resolution);
+		field_rhs_node ::= ast_get_child(node, 1);
+		return val_field(field_lhs, field_rhs_node, scope, resolution);
+	}
+	if(ast_is_expr(node, ast_expr_tag.ptrfield))
+	{
+		ptr_field_lhs ::= val_node(ast_get_child(node, 0), scope, resolution);
+		ptr_field_rhs_node ::= ast_get_child(node, 1);
+		return val_ptr_field(ptr_field_lhs, ptr_field_rhs_node, scope, resolution);
+	}
 	if(ast_is_expr(node, ast_expr_tag.dereference))
 	{
 		deref_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
@@ -799,6 +811,97 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
 	psyc_diag_end();
 	psyc_exit_failure();
+	return zero;
+};
+
+val_ptr_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+{
+	// todo: source should be the lhs node not the rhs one. any error message generated will be misleading.
+	return val_field(val_deref(lhs, resolution, scope, rhs_node), rhs_node, scope, resolution);
+};
+
+val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+{
+	type ::= lhs.type;
+	// lhs must be a struct type
+	if(!ty_is_struct(type))
+	{
+		psyc_error_begin(rhs_node->loc);
+		putzstr("lhs of field expression must be a struct type. in this case it is a ");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// rhs must either be a symbol reference or a call
+	if(ast_is_expr(rhs_node, ast_expr_tag.call))
+	{
+		psyc_nyi(rhs_node->loc);
+		return zero;
+	}
+	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
+	{
+		memidx ::= ty_get_struct_member_id(type, rhs_node->symbol.data, rhs_node->symbol.len);
+		if(memidx == -1)
+		{
+			psyc_error_begin(rhs_node->loc);
+			putzstr("struct type ");
+			putchar('"');
+			putty(type);
+			putchar('"');
+			putzstr(" had no such member named ");
+			putchar('"');
+			putbytes(rhs_node->symbol.data, rhs_node->symbol.len);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		memty : tyid mut := deref(ty_unwrap(type)->strct.members # memidx);
+		// let's do it at compile time!
+		// remember to maintain qualifiers
+		if(ty_has_qual(lhs.type, tyqual.qual_static))
+		{
+			memty = ty_set_qual(memty, tyqual.qual_static);
+		}
+		if(ty_has_qual(lhs.type, tyqual.qual_mut))
+		{
+			memty = ty_set_qual(memty, tyqual.qual_mut);
+		}
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(memty);
+		}
+		
+		lhs_is_static_struct_literal ::= lhs.compile_time.members != zero;
+		if(lhs.known == (valknown.compile_time) && lhs_is_static_struct_literal && (resolution != (val_resolution.runtime_only)))
+		{
+			retval : val mut := deref(lhs.compile_time.members@val? # memidx);
+			retval.type = memty;
+		}
+		// do it at runtime
+		if(resolution == (val_resolution.compile_time_only))
+		{
+			psyc_error_begin(rhs_node->loc);
+			putzstr("this field expression is in a context that must be evaluated at compile-time, but the operand is not statically-known");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return cg_field(val_dynamic(lhs, scope, rhs_node), memidx);
+	}
+	psyc_error_begin(rhs_node->loc);
+	putzstr("rhs of field expression must be a symbol expression or a call");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
+	
 	return zero;
 };
 
