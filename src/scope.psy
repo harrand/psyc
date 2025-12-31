@@ -228,6 +228,30 @@ scope_add_enumeration ::= func(scope : lexical_scope mut? mut, en : enumeration 
 	scope->enumerations_count = (scope->enumerations_count + 1);
 };
 
+scope_find_assembly ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> assembly?)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->assemblys_count), i = i + 1)
+	{
+		cur ::= scope->assemblys # i;
+		fn ::= cur->node->assembly;
+		if(fn.name_len == name_len)
+		{
+			if(streql_n(fn.name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	parent ::= scope_get_parent(scope);
+	if(parent != zero)
+	{
+		return scope_find_assembly(parent, name, name_len);
+	}
+	return zero;
+};
+
+
 scope_add_assembly ::= func(scope : lexical_scope mut? mut, as : assembly -> v0)
 {
 	// naughty secret here:
