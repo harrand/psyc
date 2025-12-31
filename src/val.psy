@@ -740,6 +740,10 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	{
 		return val_blkinit(node, scope, resolution);
 	}
+	if(ast_is_expr(node, ast_expr_tag.call))
+	{
+		return val_call(node, scope, resolution);
+	}
 	psyc_panic_begin(node->loc);
 	putzstr("control reached end of val_node");
 	putchar(10);
@@ -1345,6 +1349,74 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 		return type_as_val(inittype);
 	}
 	return retval;
+};
+
+val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+{
+	// its either a:
+	// - assembly
+	// - function
+	// - or builtin
+	maybe_fn ::= scope_find_function(scope, node->call.call_name, node->call.call_name_len);
+	if(maybe_fn != zero)
+	{
+		return val_call_fn(node, maybe_fn, scope, resolution);
+	}
+	psyc_error_begin(node->loc);
+	putzstr("unknown callable ");
+	putchar('"');
+	putbytes(node->call.call_name, node->call.call_name_len);
+	putchar('"');
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+val_call_fn ::= func(node : ast?, fn : function?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+{
+	fty ::= ty_unwrap(fn->type)->fn;
+	call_param_count ::= node->children_count;
+	if(call_param_count != (fty.params_count))
+	{
+		psyc_error_begin(node->loc);
+		putzstr("function ");
+		putchar('"');
+		putbytes(fn->name, fn->name_len);
+		putchar('"');
+		putzstr(" expects ");
+		putuint(fty.params_count);
+		putzstr(" args but you have passed ");
+		putuint(call_param_count);
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
+	i : u64 mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		param_node ::= ast_get_child(node, i);
+		param_val ::= val_convert_to(val_node(param_node, scope, resolution), deref(fty.param_types # i), scope, resolution, param_node);
+		deref(vals # i) = param_val;
+	}
+
+	if(ty_has_qual(fn->type, tyqual.qual_static))
+	{
+		// todo: static functions?
+		psyc_panic_begin(node->loc);
+		putzstr("static functions are NYI");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	cg_call(fn, vals, scope, node);
+
+	return zero;
 };
 
 val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)

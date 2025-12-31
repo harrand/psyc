@@ -1178,3 +1178,31 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	LLVMPositionBuilderAtEnd(ir, forcont);
 	return zero;
 };
+
+cg_call ::= func(fn : function?, params : val?, scope : lexical_scope mut?, source : ast? -> val)
+{
+	return cg_call_inner(fn->cg, params, fn->type, scope, source);
+};
+
+cg_call_inner ::= func(callable_cg : u64, params : val?, callable_ty : tyid, scope : lexical_scope mut?, source : ast? -> val)
+{
+	i : u64 mut;
+	fty ::= ty_unwrap(callable_ty)->fn;
+	param_cgs : u64 mut? := __stack_push(fty.params_count * __sizeof(u64));
+	for(i = 0, i < (fty.params_count), i = i + 1)
+	{
+		deref(param_cgs # i) = (val_dynamic(deref(params # i), scope, source).runtime.cg);
+	}
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := fty.return_type;
+		.compile_time := zero;
+		.runtime := valruntime
+		{
+			.cg := LLVMBuildCall2(ir, cg_type(callable_ty), callable_cg, param_cgs, (fty.params_count)@u32, "");
+		};
+	};
+};
