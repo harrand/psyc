@@ -253,7 +253,15 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	i : u64 mut;
 	for(i = 0, i < (funcscope->variables_count), i = i + 1)
 	{
-		cg_local_variable(funcscope->variables # i);
+		func_var ::= funcscope->variables # i;
+		if(func_var->param_idx == -1)
+		{
+			cg_local_variable(func_var);
+		}
+		else
+		{
+			cg_function_param(fn, func_var);
+		}
 	}
 
 	for(i = 1, i < (fn->node->children_count), i = i + 1)
@@ -306,6 +314,18 @@ cg_local_variable ::= func(var : variable mut? -> v0)
 	// do an alloca
 	decl ::= var->node->decl;
 	var->cg = LLVMBuildAlloca(ir, cg_type(var->type), sstr2zstr(decl.name, decl.name_len, string_arena));
+};
+
+cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
+{
+	// ok this ones special
+	param_cg ::= LLVMGetParam(fn->cg, var->param_idx@_);
+	// param_cg is the param register value
+	// we want to make our own backing alloca
+	// and immediately store that in there.
+	cg_local_variable(var);
+	// do the store
+	LLVMBuildStore(ir, param_cg, var->cg);
 };
 
 cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)

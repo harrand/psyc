@@ -156,6 +156,7 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 				// need to defer typing this till after progwalk because it could e.g be a struct that isnt declared yet.
 				.type := zero;
 				.compile_time_storage := zero;
+				.param_idx := -1;
 				.cg := zero;
 				.db := zero;			
 			});
@@ -199,7 +200,30 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 		.parent_id := scope->id;
 	};
 
-	// so we need to iterate over every child node (aside from child 0 which is the typename)
+	// we want to back all parameters
+	// this is guaranteed to be a function typename
+	typename_node ::= ast_get_child(node, 0);
+	// child count is number of parameters + return type
+	param_count ::= typename_node->children_count - 1;
+	// each of these params are actually decls
+	i : u64 mut;
+	for(i = 0, i < param_count, i = i + 1)
+	{
+		param_node ::= ast_get_child(typename_node, i);
+		// assume this is a decl
+		param_decl ::= param_node->decl;
+		scope_add_variable(func_scope, variable
+		{
+			.node := param_node;
+			.type := zero;
+			.compile_time_storage := zero;
+			.param_idx := i;
+			.cg := zero;
+			.db := zero;
+		});
+	}
+	
+	// so we need to iterate over every child node (aside from child 0-N which is the typename and params)
 	// and catch all local variables
 	// and then shove them in the scope.
 	progwalk_search_function_descendents_for_locals(node, 1, 0, func_scope);
@@ -393,6 +417,7 @@ progwalk_global_variable_decl ::= func(node : ast mut?, scope : lexical_scope mu
 		.node := node;
 		.type := zero;
 		.compile_time_storage := zero;
+		.param_idx := -1;
 		.cg := zero;
 		.db := zero;			
 	});
