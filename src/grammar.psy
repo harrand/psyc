@@ -9,9 +9,13 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_parentheses_expr);
 
 	grammar_deref();
+	foreach_expr(grammar_call_base_expr);
 	grammar_call();
 	grammar_call_param();
 	foreach_expr(grammar_call_param_expr);
+	//grammar_call_old();
+	//grammar_call_old_param();
+	//foreach_expr(grammar_call_old_param_expr);
 	foreach_expr(grammar_deref_expr);
 
 	grammar_typename();
@@ -317,19 +321,22 @@ grammar_deref ::= func(-> v0)
 	grammar_rule{.fn := rule_stash;});
 };
 
-grammar_call ::= func(-> v0)
+grammar_call_base_expr ::= func(exp : ast_expr_tag -> v0)
 {
 	grammar_hashtable_insert(state1(
-		token(lex_token.symbol),
+		expr(exp),
 	token(lex_token.oparen), zero),
 	grammar_rule{.fn := rule_shift1;});
 
 	grammar_hashtable_insert(state2(
-		token(lex_token.symbol),
+		expr(exp),
 		token(lex_token.oparen),
 	zero, zero),
-	grammar_rule{.fn := rule_token_symbol_token_oparen2callwip;});
+	grammar_rule{.fn := rule_expr_x_token_oparen2callwip;});
+};
 
+grammar_call ::= func(-> v0)
+{
 	grammar_hashtable_insert(state1(
 		node(ast_tag.callwip),
 	zero, zero),

@@ -51,7 +51,18 @@ invoke_build_instruction ::= func(node : ast?, scope : lexical_scope? -> v0)
 {
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
-		maybe_builtin ::= builtin_match_name(node->call.call_name, node->call.call_name_len);
+		callname_node ::= ast_get_child(node, 0);
+		if(!ast_is_expr(callname_node, ast_expr_tag.symbol))
+		{
+			psyc_error_begin(callname_node->loc);
+			putzstr("in a static context, all calls must be to a symbol expression");
+			putchar(10);
+			ast_print_annotated_source(program_current_source_file().src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		callname_sym ::= callname_node->symbol;
+		maybe_builtin ::= builtin_match_name(callname_sym.data, callname_sym.len);
 		if(maybe_builtin != zero)
 		{
 			builtin_get(maybe_builtin).on_call_static(node);
@@ -60,7 +71,8 @@ invoke_build_instruction ::= func(node : ast?, scope : lexical_scope? -> v0)
 		{
 			// the call isnt a builtin
 			// how about another build region, Murray?
-			find_and_invoke_build_region(scope, node->call.call_name, node->call.call_name_len, node);
+			// but it better be a symbol expression
+			find_and_invoke_build_region(scope, callname_sym.data, callname_sym.len, node);
 		}
 		return;
 	}

@@ -510,6 +510,30 @@ function_as_val ::= func(fn : function?, source : ast? -> val)
 	};
 };
 
+assembly_as_val ::= func(as : assembly?, source : ast? -> val)
+{
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := as->type;
+		.compile_time := valcompile_time
+		{
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := zero;
+			.members := zero;
+			.funcref_name := as->name;
+			.funcref_name_len := as->name_len;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
+		};
+		.runtime := zero;
+	};
+};
+
 // get a statically-known reference to 'v'
 ref_as_val ::= func(v : val, source : ast? -> val)
 {
@@ -772,6 +796,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	// could be:
 	// a variable name
 	// a function name
+	// an asm name
 	ret : val mut := zero;
 
 	maybe_variable ::= scope_find_variable(scope, sym.data, sym.len);
@@ -796,6 +821,20 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 			return type_as_val(maybe_function->type);
 		}
 		ret = function_as_val(maybe_function, node);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(ret, scope, node);
+		}
+		return ret;
+	}
+	maybe_asm ::= scope_find_assembly(scope, sym.data, sym.len);
+	if(maybe_asm != zero)
+	{
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(maybe_asm->type);
+		}
+		ret = assembly_as_val(maybe_asm, node);
 		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(ret, scope, node);
@@ -1456,44 +1495,29 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 
 val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
-	// its either a:
-	// - assembly
-	// - function
-	// - or builtin
-	maybe_fn ::= scope_find_function(scope, node->call.call_name, node->call.call_name_len);
-	if(maybe_fn != zero)
+	callee_node ::= ast_get_child(node, 0);
+	callee_val ::= val_node(callee_node, scope, resolution);
+	// make sure the callee is callable
+	if(!ty_is_fn(callee_val.type))
 	{
-		return val_call_fn(node, maybe_fn, scope, resolution);
+		psyc_error_begin(node->loc);
+		putzstr("cannot call non-function type ");
+		putchar('"');
+		putty(callee_val.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+		return zero;
 	}
-	maybe_asm ::= scope_find_assembly(scope, node->call.call_name, node->call.call_name_len);
-	if(maybe_asm != zero)
-	{
-		return val_call_asm(node, maybe_asm, scope, resolution);
-	}
-	psyc_error_begin(node->loc);
-	putzstr("unknown callable ");
-	putchar('"');
-	putbytes(node->call.call_name, node->call.call_name_len);
-	putchar('"');
-	putchar(10);
-	ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-	psyc_diag_end();
-	psyc_exit_failure();
-	return zero;
-};
 
-val_call_fn ::= func(node : ast?, fn : function?, scope : lexical_scope mut?, resolution : val_resolution -> val)
-{
-	fty ::= ty_unwrap(fn->type)->fn;
-	call_param_count ::= node->children_count;
+	fty ::= ty_unwrap(callee_val.type)->fn;
+	call_param_count ::= node->children_count - 1;
 	if(call_param_count != (fty.params_count))
 	{
 		psyc_error_begin(node->loc);
-		putzstr("function ");
-		putchar('"');
-		putbytes(fn->name, fn->name_len);
-		putchar('"');
-		putzstr(" expects ");
+		putzstr("callable expects ");
 		putuint(fty.params_count);
 		putzstr(" args but you have passed ");
 		putuint(call_param_count);
@@ -1502,12 +1526,12 @@ val_call_fn ::= func(node : ast?, fn : function?, scope : lexical_scope mut?, re
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-
+	
 	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
 	i : u64 mut;
 	for(i = 0, i < call_param_count, i = i + 1)
 	{
-		param_node ::= ast_get_child(node, i);
+		param_node ::= ast_get_child(node, i + 1);
 		param_val ::= val_convert_to(val_node(param_node, scope, resolution), deref(fty.param_types # i), scope, resolution, param_node);
 		deref(vals # i) = param_val;
 	}
@@ -1516,54 +1540,8 @@ val_call_fn ::= func(node : ast?, fn : function?, scope : lexical_scope mut?, re
 	{
 		return type_as_val(fty.return_type);
 	}
-	if(ty_has_qual(fn->type, tyqual.qual_static))
-	{
-		// todo: static functions?
-		psyc_panic_begin(node->loc);
-		putzstr("static functions are NYI");
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-	return cg_call_fn(fn, vals, scope, node);
-};
-
-val_call_asm ::= func(node : ast?, as : assembly?, scope : lexical_scope mut?, resolution : val_resolution -> val)
-{
-	fty ::= ty_unwrap(as->type)->fn;
-	call_param_count ::= node->children_count;
-	if(call_param_count != (fty.params_count))
-	{
-		psyc_error_begin(node->loc);
-		putzstr("assembly ");
-		putchar('"');
-		putbytes(as->name, as->name_len);
-		putchar('"');
-		putzstr(" expects ");
-		putuint(fty.params_count);
-		putzstr(" args but you have passed ");
-		putuint(call_param_count);
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
-	}
-
-	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
-	i : u64 mut;
-	for(i = 0, i < call_param_count, i = i + 1)
-	{
-		param_node ::= ast_get_child(node, i);
-		param_val ::= val_convert_to(val_node(param_node, scope, resolution), deref(fty.param_types # i), scope, resolution, param_node);
-		deref(vals # i) = param_val;
-	}
-
-	if(resolution == (val_resolution.type_only))
-	{
-		return type_as_val(fty.return_type);
-	}
-	return cg_call_asm(as, vals, scope, node);
+	// todo: static callables?
+	return cg_call(val_dynamic(callee_val, scope, node), vals, scope, node);
 };
 
 val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)
@@ -1669,8 +1647,28 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	}
 	if(v.compile_time.funcref_name != zero)
 	{
-		// its a reference to a function
-		return cg_funcref(scope_find_function(scope, v.compile_time.funcref_name, v.compile_time.funcref_name_len));
+		// its a refernce to a function (or assembly)
+		maybe_fn ::= scope_find_function(scope, v.compile_time.funcref_name, v.compile_time.funcref_name_len);
+		if(maybe_fn != zero)
+		{
+			return cg_funcref(maybe_fn);
+		}
+		maybe_asm ::= scope_find_assembly(scope, v.compile_time.funcref_name, v.compile_time.funcref_name_len);
+		if(maybe_asm != zero)
+		{
+			return cg_asmref(maybe_asm);
+		}
+		psyc_panic_begin(source->loc);
+		putzstr("couldnt figure out what v.compile_time.funcref_name = ");
+		putchar('"');
+		putbytes(v.compile_time.funcref_name, v.compile_time.funcref_name_len);
+		putchar('"');
+		putzstr(" referred to, but this should've been caught earlier. please submit a compiler bug report.");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+		
 	}
 	if(v.compile_time.varref_name != zero)
 	{

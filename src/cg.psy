@@ -540,6 +540,20 @@ cg_funcref ::= func(fn : function? -> val)
 	};
 };
 
+// return a runtime val representation of a function
+cg_asmref ::= func(as : assembly? -> val)
+{
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := as->type;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := as->cg;};
+	};
+};
+
 // return a runtime val representation of a variable
 cg_varref ::= func(v : variable? -> val)
 {
@@ -1254,20 +1268,10 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_call_fn ::= func(fn : function?, params : val?, scope : lexical_scope mut?, source : ast? -> val)
-{
-	return cg_call_inner(fn->cg, params, fn->type, scope, source);
-};
-
-cg_call_asm ::= func(as : assembly?, params : val?, scope : lexical_scope mut?, source : ast? -> val)
-{
-	return cg_call_inner(as->cg, params, as->type, scope, source);
-};
-
-cg_call_inner ::= func(callable_cg : u64, params : val?, callable_ty : tyid, scope : lexical_scope mut?, source : ast? -> val)
+cg_call ::= func(callee : val, params : val?, scope : lexical_scope mut?, source : ast? -> val)
 {
 	i : u64 mut;
-	fty ::= ty_unwrap(callable_ty)->fn;
+	fty ::= ty_unwrap(callee.type)->fn;
 	param_cgs : u64 mut? := __stack_push(fty.params_count * __sizeof(u64));
 	for(i = 0, i < (fty.params_count), i = i + 1)
 	{
@@ -1282,7 +1286,7 @@ cg_call_inner ::= func(callable_cg : u64, params : val?, callable_ty : tyid, sco
 		.compile_time := zero;
 		.runtime := valruntime
 		{
-			.cg := LLVMBuildCall2(ir, cg_type(callable_ty), callable_cg, param_cgs, (fty.params_count)@u32, "");
+			.cg := LLVMBuildCall2(ir, cg_type(callee.type), callee.runtime.cg, param_cgs, (fty.params_count)@u32, "");
 		};
 	};
 };

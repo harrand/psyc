@@ -37,11 +37,11 @@ builtin_match_name ::= func(name : u8?, name_len : u64 -> builtin)
 
 builtin_fn_param ::= func(node : ast?, id : u64 -> val)
 {
-	if(node->children_count <= id)
+	if(node->children_count - 1 <= id)
 	{
 		return zero;
 	}
-	child ::= ast_get_child(node, id);
+	child ::= ast_get_child(node, 1 + id);
 	return val_node(child, zero, val_resolution.compile_time_only);
 };
 
@@ -52,12 +52,14 @@ builtin_static_param ::= func(node : ast?, id : u64, type : tyid -> val)
 
 builtin_has_param ::= func(node : ast?, id : u64 -> bool)
 {
-	return node->children_count > id;
+	return (node->children_count - 1) > id;
 };
 
 builtin_require_params ::= func(node : ast?, min : u64, max : u64 -> v0)
 {
-	count ::= node->children_count;
+	builtin_name_sym ::= ast_get_child(node, 0)->symbol;
+	// remember: call node child 0 is the callee, so param count is children_count - 1
+	count ::= node->children_count - 1;
 	if((min <= count) && (count <= max))
 	{
 		return;
@@ -65,7 +67,7 @@ builtin_require_params ::= func(node : ast?, min : u64, max : u64 -> v0)
 	psyc_error_begin(node->loc);
 	putzstr("invalid call to builtin ");
 	putchar('"');
-	putbytes(node->call.call_name, node->call.call_name_len);
+	putbytes(builtin_name_sym.data, builtin_name_sym.len);
 	putchar('"');
 	putzstr(" - expected ");
 	putuint(min);

@@ -215,28 +215,47 @@ rule_token_oparen_expr_x_token_cparen2expr ::= func(nodes : ast mut?, nodes_coun
 	};
 };
 
-rule_token_symbol_token_oparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+rule_expr_x_token_oparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
-	// foo(
-	lexeme ::= (nodes # 0)->utok.tok.lexeme;
-	callnode ::= ast
+	// expr(
+	expr_node ::= nodes # 0;
+	callnode ::= ast mut
 	{
 		.tag := ast_tag.callwip;
-		.call := ast_call
-		{
-			.call_name := parse_state.src # (lexeme.off);
-			.call_name_len := lexeme.len;
-		};
 		.children := zero;
 		.children_count := zero;
 		.children_cap := zero;
 	};
+	ast_add_child(ref callnode, deref expr_node, global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
 		.reduce := reduce_replace_all_with(callnode);
 	};
 };
+
+//rule_token_symbol_token_oparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+//{
+//	// foo(
+//	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+//	callnode ::= ast
+//	{
+//		.tag := ast_tag.callwip;
+//		.call := ast_call
+//		{
+//			.call_name := parse_state.src # (lexeme.off);
+//			.call_name_len := lexeme.len;
+//		};
+//		.children := zero;
+//		.children_count := zero;
+//		.children_cap := zero;
+//	};
+//	return rule_result
+//	{
+//		.tag := rule.reduce;
+//		.reduce := reduce_replace_all_with(callnode);
+//	};
+//};
 
 rule_callwip_token_cparen2call ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
@@ -245,7 +264,6 @@ rule_callwip_token_cparen2call ::= func(nodes : ast mut?, nodes_count : u64 -> r
 	callwip_node ::= nodes # 0;
 	callwip_node->tag = (ast_tag.expr);
 	callwip_node->expr = (ast_expr_tag.call);
-	// callwip_node->call was already populated while in its callwip state.
 	callwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
@@ -300,10 +318,11 @@ rule_call_expect_comma_or_cparen_token_comma2callwip ::= func(nodes : ast mut?, 
 rule_error_call_comma_followed_by_cparen ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	call_node ::= nodes # 0;
+	builtin_name_sym ::= ast_get_child(call_node, 0)->symbol;
 	psyc_error_begin((nodes # 1)->loc);
 	putzstr("in call to ");
 	putchar('"');
-	putbytes(call_node->call.call_name, call_node->call.call_name_len);
+	putbytes(builtin_name_sym.data, builtin_name_sym.len);
 	putchar('"');
 	putzstr(", a ',' must be followed by another parameter");
 	putchar(10);
