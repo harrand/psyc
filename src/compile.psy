@@ -12,12 +12,22 @@ add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope
 	return nodes;
 };
 
+add_source_data_to_compilation ::= func(path : u8?, src : u8? -> ast)
+{
+	file ::= source_file
+	{
+		.src := src;
+		.path := path;
+	};
+	program_push_source_file(file);
+	ret ::= add_source_file_inner(file, zero);
+	return ret;
+};
+
 add_source_file_to_compilation ::= func(path : u8? -> ast)
 {
 	src ::= fully_read_file(path);
-	program_push_source_file(src);
-	ret ::= add_source_file_inner(src, zero);
-	return ret;
+	return add_source_data_to_compilation(path, src.src);
 };
 
 add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> ast)
@@ -38,6 +48,15 @@ add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u6
 add_entrypoint_to_compilation ::= func(-> v0)
 {
 	// todo: entrypoint
+	static if(_win32)
+	{
+		entrypoint_data ::= __embed("./runtime/entrypoint_win32_2.psy");
+	}
+	else
+	{
+		entrypoint_data ::= __embed("./runtime/entrypoint_linux_2.psy");
+	}
+	add_source_data_to_compilation("entrypoint.psy", sstr2zstr(entrypoint_data.data, entrypoint_data.size, global_arena));
 };
 
 add_preload_to_compilation ::= func(-> v0)
@@ -56,7 +75,7 @@ compile_program ::= func(-> v0)
 	add_preload_to_compilation();
 	if(prog.type == (program_type.executable))
 	{
-		add_entrypoint_to_compilation();
+		//add_entrypoint_to_compilation();
 	}
 
 	while(prog.queued_build_paths_count > 0)
