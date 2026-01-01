@@ -21,6 +21,9 @@ grammar_install ::= func(-> v0)
 	grammar_typename();
 	foreach_expr(grammar_typename_array_length_expr);
 
+	grammar_sizeof();
+	grammar_alignof();
+
 	grammar_typeof();
 	foreach_expr(grammar_typeof_expr);
 
@@ -454,6 +457,16 @@ grammar_typename ::= func(-> v0)
 	zero, assembly(ast_assembly_tag.wip)),
 	grammar_rule{.fn := rule_token_symbol2typename_wip;});
 
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, token(lex_token.keyword_sizeof)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
+	grammar_hashtable_insert(state1(
+		token(lex_token.symbol),
+	zero, token(lex_token.keyword_alignof)),
+	grammar_rule{.fn := rule_token_symbol2typename_wip;});
+
 	// blkinits start with a typename so its a bit weird:
 	// symbol followed by the following lookahead means typename:
 	// 1. {
@@ -683,6 +696,44 @@ grammar_typename_array_length_expr ::= func(exprtag : ast_expr_tag -> v0)
 		token(lex_token.cbrack),
 	zero, zero),
 	grammar_rule{.fn := rule_typename_array_await_length_expr_token_semicol2wip;});
+};
+
+grammar_sizeof ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_sizeof),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, token(lex_token.keyword_sizeof)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_sizeof),
+		typename(ast_typename_tag.finalised),
+	zero, zero),
+	grammar_rule{.fn := rule_keyword_sizeof_typename2sizeof;});
+};
+
+grammar_alignof ::= func(-> v0)
+{
+	grammar_hashtable_insert(state1(
+		token(lex_token.keyword_alignof),
+	zero, zero),
+	grammar_rule{.fn := rule_stash;});
+
+	grammar_hashtable_insert(state1(
+		typename(ast_typename_tag.finalised),
+	zero, token(lex_token.keyword_alignof)),
+	grammar_rule{.fn := rule_unstash;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_alignof),
+		typename(ast_typename_tag.finalised),
+	zero, zero),
+	grammar_rule{.fn := rule_keyword_alignof_typename2alignof;});
 };
 
 grammar_typeof ::= func(-> v0)

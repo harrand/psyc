@@ -704,6 +704,54 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	{
 		return val_symbol(node, scope, resolution);
 	}
+	if(ast_is_expr(node, ast_expr_tag.sizeof_t))
+	{
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(tyid_integral_literal());
+		}
+		if(resolution == (val_resolution.compile_time_only))
+		{
+			// note: even though cg_sizeof actually produces a compile-time value it currently relies on cg_begin having been called
+			// which is not the case in a static context (currently in a build region)
+			// you should pretty easily be able to fix this by just calling cg_begin earlier.
+			psyc_panic_begin(node->loc);
+			putzstr("support for sizeof expressions within static contexts are not yet implemented.");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(cg_sizeof(ty_typename_node(ast_get_child(node, 0))), scope, node);
+		}
+		return cg_sizeof(ty_typename_node(ast_get_child(node, 0)));
+	}
+	if(ast_is_expr(node, ast_expr_tag.alignof_t))
+	{
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(tyid_integral_literal());
+		}
+		if(resolution == (val_resolution.compile_time_only))
+		{
+			// note: even though cg_sizeof actually produces a compile-time value it currently relies on cg_begin having been called
+			// which is not the case in a static context (currently in a build region)
+			// you should pretty easily be able to fix this by just calling cg_begin earlier.
+			psyc_panic_begin(node->loc);
+			putzstr("support for alignof expressions within static contexts are not yet implemented.");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(cg_alignof(ty_typename_node(ast_get_child(node, 0))), scope, node);
+		}
+		return cg_alignof(ty_typename_node(ast_get_child(node, 0)));
+	}
 	if(ast_is_stmt(node, ast_stmt_tag.decl))
 	{
 		var ::= scope_find_variable(scope, node->decl.name, node->decl.name_len);
