@@ -705,6 +705,28 @@ cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
 	return v;
 };
 
+cg_unop_minus ::= func(v : val, source : ast? -> val)
+{
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := v.type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	if(ty_is_floating_point(v.type))
+	{
+		ret.runtime.cg = LLVMBuildFNeg(ir, v.runtime.cg, "");
+	}
+	else
+	{
+		ret.runtime.cg = LLVMBuildNeg(ir, v.runtime.cg, "");
+	}
+	return ret;
+};
+
 cg_biop_assign ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
 	LLVMBuildStore(ir, cg_load_if_lvalue(rhs).runtime.cg, lhs.runtime.cg);

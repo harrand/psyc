@@ -1004,8 +1004,7 @@ val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : v
 	}
 	if(op == (ast_unop.minus))
 	{
-		//return val_unop_minus(v, resolution, source);
-		psyc_nyi(source->loc);
+		return val_unop_minus(v, scope, resolution, source);
 	}
 	if(op == (ast_unop.bitwise_invert))
 	{
@@ -1068,6 +1067,40 @@ val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resoluti
 	}
 	// runtime
 	return cg_ref(val_dynamic(v, scope, source), source);
+};
+
+val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	// should be a floating point or integral type
+	if((!ty_is_integral(v.type)) && (!ty_is_floating_point(v.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("unary 'minus' (-) operator requires an integral or floating-point operand. you have provided a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(v.type);
+	}
+	retval : val mut := v;
+	if(v.known == (valknown.compile_time))
+	{
+		// compile time
+		retval = s_unop_minus(v, scope, source);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(retval, scope, source);
+		}
+		return retval;
+	}
+	// runtime
+	return cg_unop_minus(v, source);
 };
 
 val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
