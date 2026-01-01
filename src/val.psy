@@ -818,6 +818,10 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 			return cast_from;
 		}
 		cast_to ::= ty_typename_node(cast_to_node);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(val_convert_to(cast_from, cast_to, scope, resolution, node), scope, node);
+		}
 		return val_convert_to(cast_from, cast_to, scope, resolution, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.blkinit))
@@ -1146,7 +1150,7 @@ val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, r
 	}
 	if(op == (ast_biop.at))
 	{
-		psyc_nyi(source->loc);
+		return val_biop_at(lhs, rhs, scope, resolution, source);
 	}
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of val_biop for val_biop.");
@@ -1312,6 +1316,78 @@ val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 		psyc_exit_failure();
 	}
 	return val_arith_biop(ast_biop.modulo, lhs, rhs, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
+};
+
+val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	// lhs must be either an array or pointer
+	if((!ty_is_ptr(lhs.type)) && (!ty_is_arr(lhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("lhs of the 'at' (#) operator must be either a pointer or array type, you have passed a ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// cool
+	retty : tyid mut := ty_ptr(ty_underlying(lhs.type), zero);
+	// what qualifiers get carried over?
+	// for now, nothing
+	// note: this would need to be reflected in cg_biop_at if you change retty.
+
+	// rhs must be an integral type
+	if(!ty_is_integral(rhs.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("rhs of the 'at' (#) operator must be an integral type, you have passed a ");
+		putchar('"');
+		putty(rhs.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(retty);
+	}
+	// if both values are known at compile-time, then we will do a compile-time transformation
+	is_doable_at_compile_time : bool mut := (lhs.known == (valknown.compile_time)) && (rhs.known == (valknown.compile_time));
+	// but if its a pointer value via 'ref' then we cant do it at compile time
+	if(lhs.compile_time.valueref != zero)
+	{
+		is_doable_at_compile_time = false;
+	}
+	if(is_doable_at_compile_time)
+	{
+		rhs_index ::= val_must_get_integer(rhs, source);
+		if(ty_is_arr(lhs.type))
+		{
+			// cool just return the element.
+			return val_convert_to(deref(lhs.compile_time.members@val? # rhs_index), retty, scope, resolution, source);
+		}
+		// todo: remove this panic when cg_sizeof is allowed to be done at compile time (requires cg_begin to be called ealier)
+		psyc_panic_begin(source->loc);
+		putzstr("support for 'at' expressions of pointers derived from integer literals is not properly implemented. please submit a feature request if supporting this is important to you");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+		// ok its a pointer
+		// we know its not a valueref so we can assume its a literal address (pointer arithmetic)
+		address ::= rhs.compile_time.primitive.integer;
+		// add sizeof(lhs) * rhs_index
+		sizeof_lhs ::= val_must_get_integer(cg_sizeof(lhs.type), source);
+		// this is a pointer compile-time value as an address (integer literal under-the-hood) whose address has been manually offsetted.
+		return s_convert_to(integer_as_val(address + (rhs_index * sizeof_lhs)), retty, source);
+	}
+	// otherwise it must be a runtime thing.
+	return cg_biop_at(lhs, rhs, source);
 };
 
 val_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)

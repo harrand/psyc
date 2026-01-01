@@ -1071,6 +1071,41 @@ cg_biop_compare_greater ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
+cg_biop_at ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	// basically going to involve a GEP
+	// i still dont really understand GEP so im basically copypasta-ing this code from the old impl
+	// handles arrays and pointers slightly differently. im not sure why, but it must be done or it doesnt work
+	index_list ::= u64[2]
+	{
+		LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+		cg_load_if_lvalue(rhs).runtime.cg;
+	};
+
+	lhsreal : val mut := lhs;
+	if(ty_is_ptr(lhs.type))
+	{
+		lhsreal = cg_load_if_lvalue(lhs);
+	}
+
+	cgty : u64 mut := cg_type(lhs.type);
+	index_list_offset : u64 mut := 0;
+	if(ty_is_ptr(lhs.type))
+	{
+		cgty = cg_type(ty_underlying(lhs.type));
+		index_list_offset = 1;
+	}
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := ty_ptr(ty_underlying(lhs.type), zero);
+		.compile_time := zero;
+		.runtime := valruntime{.cg := LLVMBuildGEP2(ir, cgty, lhsreal.runtime.cg, index_list # index_list_offset, (__sizeof(index_list) / __sizeof(deref(index_list # 0))) - index_list_offset, "");};
+	};
+};
+
 cg_load_if_lvalue ::= func(v : val -> val)
 {
 	ret : val mut := v;
