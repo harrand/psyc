@@ -815,10 +815,10 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	if(ast_is_expr(node, ast_expr_tag.countof_t))
 	{
 		countof_type ::= ty_typename_node(ast_get_child(node, 0), scope);
-		if((!ty_is_struct(countof_type)) && (!ty_is_arr(countof_type)) && (!ty_is_fn(countof_type)))
+		if((!ty_is_struct(countof_type)) && (!ty_is_arr(countof_type)) && (!ty_is_enum(countof_type)) && (!ty_is_fn(countof_type)))
 		{
 			psyc_error_begin(node->loc);
-			putzstr("'countof' expressions are only valid on struct, array or function typenames. you have passed a ");
+			putzstr("'countof' expressions are only valid on struct, array, enum or function typenames. you have passed a ");
 			putchar('"');
 			putty(countof_type);
 			putchar('"');
@@ -840,6 +840,10 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		if(ty_is_arr(countof_type))
 		{
 			countof_val = integer_as_val(tyu->array_len);
+		}
+		if(ty_is_enum(countof_type))
+		{
+			countof_val = integer_as_val(tyu->enm.entries_count);
 		}
 		if(ty_is_fn(countof_type))
 		{
