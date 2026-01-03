@@ -12,6 +12,7 @@ endif
 
 syntax match psy_builtin /\<__\w\+\>/
 syntax match psy_funcname /\<\h\w*\>\ze\s*:\s*func/
+syntax match psy_asmname /\<\h\w*\>\ze\s*:\s*asm/
 syntax match psy_typename /\<\h\w*\>\ze\s*:\s*\(struct\|enum\)/
 syntax match psy_comments /\/\/.*/ containedin=ALL
 syntax match psy_operators /::=\|:=\|<=\|>=\|==\|[-+*\/=<>@#]/
@@ -36,6 +37,7 @@ syntax keyword psy_funcs func macro asm
 syntax keyword psy_types struct enum v0 s8 s16 s32 s64 u8 u16 u32 u64 bool embed_data srcloc program_args _atomic_op _atomic_ordering barrier
 
 hi link psy_funcname Function
+hi link psy_asmname Function
 hi link psy_typename Type
 hi link psy_types Type
 hi link psy_comments Comment
