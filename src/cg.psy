@@ -493,6 +493,19 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 	// zero_values shouldnt exist at this point, if they do then the code is invalid
 	if(ty_is_integral(type))
 	{
+		// char literal then
+		if(prim.tag == (ast_literal_tag.char))
+		{
+			return val
+			{
+				.tag := valtag.typed_value;
+				.known := valknown.runtime;
+				.hand := valhand.rvalue;
+				.type := type;
+				.compile_time := zero;
+				.runtime := valruntime{.cg := LLVMConstInt(cg_type(type), deref(prim.chars), false@s32);};
+			};
+		}
 		return val
 		{
 			.tag := valtag.typed_value;
@@ -505,6 +518,26 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 	}
 	if(ty_is_ptr(type))
 	{
+		// string literal then
+		if(prim.tag == (ast_literal_tag.string))	
+		{
+			strval ::= LLVMConstString(prim.chars, prim.chars_len@u32, false@s32);		
+			strglob ::= LLVMAddGlobal(prog.cg, LLVMTypeOf(strval), "");
+			LLVMSetLinkage(strglob, LLVMPrivateLinkage);
+			LLVMSetExternallyInitialized(strglob, 0);
+			LLVMSetGlobalConstant(strglob, true@s32);
+			LLVMSetInitializer(strglob, strval);	
+			return val
+			{
+				.tag := valtag.typed_value;
+				.known := valknown.runtime;
+				.hand := valhand.rvalue;
+				.type := type;
+				.compile_time := zero;
+				.runtime := valruntime{.cg := strglob;};
+			};
+		}
+		// assume integer
 		return val
 		{
 			.tag := valtag.typed_value;
@@ -698,9 +731,9 @@ cg_deref ::= func(v : val, source : ast? -> val)
 	// i definitely have a pointer.
 	// we maintain lvalue-ness (so deref(foo) = 5 works)
 
-	// so we *dont* do a load here
+	// so we *dont* do a load here on the actual thing (but if the v itself is an lvalue the its a pointer variable and we do load that)
 	// we just pretend that its an lvalue
-	ret : val mut := v;
+	ret : val mut := cg_load_if_lvalue(v);
 	ret.type = ty_underlying(v.type);
 	ret.hand = (valhand.lvalue);
 	return ret;
