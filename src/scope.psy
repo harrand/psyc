@@ -66,7 +66,7 @@ scope_find_structure ::= func(scope : lexical_scope mut?, name : u8?, name_len :
 	return zero;
 };
 
-scope_add_variable ::= func(scope : lexical_scope mut? mut, v : variable -> v0)
+scope_add_variable ::= func(scope : lexical_scope mut? mut, v : variable -> variable mut?)
 {
 	// naughty secret here:
 	// if the scope is a file scope
@@ -91,8 +91,10 @@ scope_add_variable ::= func(scope : lexical_scope mut? mut, v : variable -> v0)
 		scope->variables = arena_alloc(global_arena, scope->variables_cap * __sizeof(deref(scope->variables)));
 		memcopy(scope->variables, olddata, oldcap * __sizeof(deref(scope->variables)));
 	}
-	deref(scope->variables # (scope->variables_count)) = v;
+	retptr ::= scope->variables # (scope->variables_count);
+	deref(retptr) = v;
 	scope->variables_count = (scope->variables_count + 1);
+	return retptr;
 };
 
 scope_find_variable ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> variable mut?)

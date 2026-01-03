@@ -1,0 +1,142 @@
+embed_data : struct
+{
+	data : u8?;
+	size : u64;
+};
+
+srcloc : struct
+{
+	file : u8?;
+	line : u64;
+	column : u64;
+};
+
+_atomic_ordering : enum
+{
+	.monotonic := 2;
+	.acquire := 3;
+	.release := 4;
+	.acqrel := 5;
+	.seqcst := 6;
+};
+
+_atomic_op : enum
+{
+	.xchg := 0;
+	.add := 1;
+	.sub := 2;
+	.and := 3;
+	.nand := 4;
+	.or := 5;
+	.xor := 6;
+	.smax := 7;
+	.smin := 8;
+	.umax := 9;
+	.umin := 10;
+};
+
+program_args : struct
+{
+	argc : s32;
+	argv : u8??;
+	envp : u8??;
+	thread_id : u32;
+};
+
+static_if(_win32)
+{
+	SYSTEM_INFO : struct
+	{
+		dwOemId : u32;
+		dwPageSize : u32;
+		lpMinimumApplicationAddress : v0?;
+		lpMaximumApplicationAddress : v0?;
+		dwActiveProcessorMask : s64;
+		dwNumberOfProcessors : u32;
+		dwProcessorType : u32;
+		dwAllocationGranularity : u32;
+		wProcessorLevel : u16;
+		wProcessorRevision : u16;
+	};
+	GetSystemInfo : func(lpSystemInfo : SYSTEM_INFO mut? -> v0) extern;
+	Sleep : func(dwMilliSeconds : u32 -> v0) extern;
+}
+else
+{
+	syscall0 : asm("={rax},0,~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall1 : asm("={rax},0,{rdi}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall2 : asm("={rax},0,{rdi}, {rsi}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall3 : asm("={rax},0,{rdi}, {rsi}, {rdx}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall4 : asm("={rax},0,{rdi}, {rsi}, {rdx}, {r10}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall5 : asm("={rax},0,{rdi}, {rsi}, {rdx}, {r10}, {r8}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	syscall6 : asm("={rax},0,{rdi}, {rsi}, {rdx}, {r10}, {r8}, {r9}, ~{rcx},~{r11},~{memory}" -> u64 weak)
+	{
+		syscall
+	};
+
+	impl_mask_count_bits : func(mask : u64?, nbytes : u64 -> u32)
+	{
+		count : u32 mut := 0;
+		nwords ::= nbytes / sizeof u64;
+		i : u64 mut;
+		for i = 0; i < nwords; i = i + 1;
+		{
+			v : u64 mut := [mask # i];
+			while v > 0
+			{
+				count = (count + ((v & 1)@_));
+				v = (v >> 1);
+			}
+		}
+		return count;
+	};
+
+	timespec : struct
+	{
+		tv_sec : u64;
+		tv_nsec : u64;
+	};
+}
+
+// how many logical cores does the host machine have
+hardware_thread_count : func( -> u32)
+{
+	static_if(_win32)
+	{
+		info ::= zero@SYSTEM_INFO mut;
+		GetSystemInfo(ref info);
+		return info.dwNumberOfProcessors;
+	}
+	else
+	{
+		sys_sched_getaffinity ::= 204;
+		mask : u64[16] := zero;
+		// assume never fails even though it can xD
+		syscall3(sys_sched_getaffinity, 0, sizeof mask, mask # 0);
+		return impl_mask_count_bits(mask # 0, sizeof mask);
+	}
+};

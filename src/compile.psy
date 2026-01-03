@@ -59,9 +59,121 @@ add_entrypoint_to_compilation ::= func(-> v0)
 	add_source_data_to_compilation("entrypoint.psy", sstr2zstr(entrypoint_data.data, entrypoint_data.size, global_arena));
 };
 
+win32_node : ast mut := zero;
+linux_node : ast mut := zero;
+add_platform_to_compilation ::= func(-> v0)
+{
+	win32_node = ast
+	{
+		.tag := ast_tag.stmt;
+		.stmt := ast_stmt_tag.decl;
+		.decl := ast_decl
+		{
+			.tag := ast_decl_tag.finalised;
+			.name := "_win32";
+			.name_len := 6;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref win32_node, ast
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.finalised;
+			.quals := tyqual.qual_static;
+			.descriptor := ast_typename_descriptor.base;
+			.basename := "bool";
+			.basename_len := 4;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+	ast_add_child(ref win32_node, ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.boolean;
+			.boolean := _win32;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+
+	linux_node = ast mut
+	{
+		.tag := ast_tag.stmt;
+		.stmt := ast_stmt_tag.decl;
+		.decl := ast_decl
+		{
+			.tag := ast_decl_tag.finalised;
+			.name := "_linux";
+			.name_len := 6;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref linux_node, ast
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.finalised;
+			.quals := tyqual.qual_static;
+			.descriptor := ast_typename_descriptor.base;
+			.basename := "bool";
+			.basename_len := 4;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+	ast_add_child(ref linux_node, ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.boolean;
+			.boolean := _linux;
+		};
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+
+	semal_variable(scope_add_variable(program_scope(), variable
+	{
+		.node := ref win32_node;
+		.type := zero;
+		.compile_time_storage := zero;
+		.param_idx := -1;
+		.cg := zero;
+		.db := zero;
+	}), program_scope());
+
+	semal_variable(scope_add_variable(program_scope(), variable
+	{
+		.node := ref linux_node;
+		.type := zero;
+		.compile_time_storage := zero;
+		.param_idx := -1;
+		.cg := zero;
+		.db := zero;
+	}), program_scope());
+};
+
 add_preload_to_compilation ::= func(-> v0)
 {
-	// todo: preload
+	preload_data ::= __embed("./runtime/preload2.psy");
+	add_source_data_to_compilation("preload.psy", sstr2zstr(preload_data.data, preload_data.size, global_arena));
 };
 
 compile_program ::= func(-> v0)
@@ -71,11 +183,12 @@ compile_program ::= func(-> v0)
 	args ::= ref(prog.compile_args);
 
 	default_config ::= "default";
-	add_build_file_to_compilation(prog.compile_args.build_file, default_config, zstrlen(default_config));
+	add_platform_to_compilation();
 	add_preload_to_compilation();
+	add_build_file_to_compilation(prog.compile_args.build_file, default_config, zstrlen(default_config));
 	if(prog.type == (program_type.executable))
 	{
-		//add_entrypoint_to_compilation();
+		add_entrypoint_to_compilation();
 	}
 
 	while(prog.queued_build_paths_count > 0)
