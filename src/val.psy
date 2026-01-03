@@ -643,11 +643,13 @@ zero_as_val ::= func(to : tyid, source : ast? -> val)
 		// - anything that attempts to use it will understand that a pointer value known at compile_time is an integral literal under the hood
 		// - all is right with the world
 		literal.tag = (ast_literal_tag.integer);
+		ret.compile_time = (literal_as_val(literal).compile_time);
 	}
 	if(ty_is_enum(to))
 	{
 		// same as the ptr case above.
 		literal.tag = (ast_literal_tag.integer);
+		ret.compile_time = (literal_as_val(literal).compile_time);
 	}
 	if(ty_is_fn(to))
 	{
@@ -658,6 +660,7 @@ zero_as_val ::= func(to : tyid, source : ast? -> val)
 		// i.e zero@func(-> v0)
 		// in terms of providence this is not anywhere near a real function
 		// so most likely this codepath is only really being called on embedded with very specific magical functions existing at a specific address.
+		ret.compile_time = (literal_as_val(literal).compile_time);
 	}
 	if(ty_is_prim(to))
 	{
@@ -1269,26 +1272,34 @@ val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	return cg_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
+val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
 {
-	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
 	{
-		psyc_error_begin(source->loc);
-		putzstr("cannot perform the '");
-		putzstr(__enumname(op));
-		putzstr("' operator on a ");
-		putchar('"');
-		putty(lhs.type);
-		putchar('"');
-		putzstr(" and ");
-		putchar('"');
-		putty(rhs.type);
-		putchar('"');
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
+		if(allow_pointers && ty_is_ptr(lhs.type) && ty_is_ptr(rhs.type))
+		{
+			// if both are pointers then just defer to lhs's type and hope they're comparable
+			type = lhs.type;
+		}
+		else
+		{
+			psyc_error_begin(source->loc);
+			putzstr("cannot perform the '");
+			putzstr(__enumname(op));
+			putzstr("' operator on a ");
+			putchar('"');
+			putty(lhs.type);
+			putchar('"');
+			putzstr(" and ");
+			putchar('"');
+			putty(rhs.type);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 	}
 	lhsconv ::= val_convert_to(lhs, type, scope, resolution, source);
 	rhsconv ::= val_convert_to(rhs, type, scope, resolution, source);
@@ -1301,7 +1312,7 @@ val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_sco
 	{
 		// one of them is runtime or we are runtime_only
 		// do it runtime mode.
-		return val_arith_biop(op, val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source, s, cg);
+		return val_arith_biop(op, val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), allow_pointers, scope, resolution, source, s, cg);
 	}
 	// guaranteed that their knowns are the same
 	if(lhs.known == (valknown.compile_time))
@@ -1327,32 +1338,32 @@ val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_sco
 
 val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.add, lhs, rhs, scope, resolution, source, s_biop_add, cg_biop_add);
+	return val_arith_biop(ast_biop.add, lhs, rhs, false, scope, resolution, source, s_biop_add, cg_biop_add);
 };
 
 val_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.sub, lhs, rhs, scope, resolution, source, s_biop_sub, cg_biop_sub);
+	return val_arith_biop(ast_biop.sub, lhs, rhs, false, scope, resolution, source, s_biop_sub, cg_biop_sub);
 };
 
 val_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.mul, lhs, rhs, scope, resolution, source, s_biop_mul, cg_biop_mul);
+	return val_arith_biop(ast_biop.mul, lhs, rhs, false, scope, resolution, source, s_biop_mul, cg_biop_mul);
 };
 
 val_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.div, lhs, rhs, scope, resolution, source, s_biop_div, cg_biop_div);
+	return val_arith_biop(ast_biop.div, lhs, rhs, false, scope, resolution, source, s_biop_div, cg_biop_div);
 };
 
 val_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.bitwise_or, lhs, rhs, scope, resolution, source, s_biop_bitwise_or, cg_biop_bitwise_or);
+	return val_arith_biop(ast_biop.bitwise_or, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_or, cg_biop_bitwise_or);
 };
 
 val_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.bitwise_and, lhs, rhs, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
+	return val_arith_biop(ast_biop.bitwise_and, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
 };
 
 val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -1366,7 +1377,7 @@ val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return val_arith_biop(ast_biop.modulo, lhs, rhs, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
+	return val_arith_biop(ast_biop.modulo, lhs, rhs, false, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
 };
 
 val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -1443,32 +1454,32 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 
 val_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_equal, lhs, rhs, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
+	return val_arith_biop(ast_biop.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
 };
 
 val_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_not_equal, lhs, rhs, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
+	return val_arith_biop(ast_biop.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
 };
 
 val_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_less, lhs, rhs, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
+	return val_arith_biop(ast_biop.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
 };
 
 val_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_less_equal, lhs, rhs, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
+	return val_arith_biop(ast_biop.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
 };
 
 val_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_greater, lhs, rhs, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
+	return val_arith_biop(ast_biop.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
 };
 
 val_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_greater_equal, lhs, rhs, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
+	return val_arith_biop(ast_biop.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
 };
 
 val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
@@ -1881,7 +1892,32 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 		// its a primitive type...
 		return cg_prim(v.type, v.compile_time.primitive, source);
 	}
-	psyc_nyi(source->loc);
+	if(ty_is_ptr(v.type))
+	{
+		// its a pointer type but a non-varref/valueref etc
+		// meaning that i expect it to be an integer literal
+		if(v.compile_time.primitive.tag != (ast_literal_tag.integer))
+		{
+			psyc_panic_begin(source->loc);
+			putzstr("seemingly malformed val passed to val_dynamic - its a non valueref/varref etc. pointer value at compile-time which ought to be an integer literal (address) but is not a primitive either...");
+			putchar(10);
+			putval(v);
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+			return zero;
+		}
+		return cg_prim(v.type, v.compile_time.primitive, source);
+	}
+	psyc_panic_begin(source->loc);
+	putzstr("dont know how to val_dynamic the following:");
+	putchar(10);
+	putval(v);
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
