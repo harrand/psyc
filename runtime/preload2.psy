@@ -40,7 +40,6 @@ program_args : struct
 	argc : s32;
 	argv : u8??;
 	envp : u8??;
-	thread_id : u32;
 };
 
 static_if(_win32)
@@ -122,21 +121,3 @@ else
 	};
 }
 
-// how many logical cores does the host machine have
-hardware_thread_count : func( -> u32)
-{
-	static_if(_win32)
-	{
-		info ::= zero@SYSTEM_INFO mut;
-		GetSystemInfo(ref info);
-		return info.dwNumberOfProcessors;
-	}
-	else
-	{
-		sys_sched_getaffinity ::= 204;
-		mask : u64[16] := zero;
-		// assume never fails even though it can xD
-		syscall3(sys_sched_getaffinity, 0, sizeof mask, mask # 0);
-		return impl_mask_count_bits(mask # 0, sizeof mask);
-	}
-};

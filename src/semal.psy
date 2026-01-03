@@ -203,7 +203,14 @@ semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
 	}
 	if(has_init)
 	{
-		init_type ::= (val_node(ast_get_child(var->node, 1), scope, val_resolution.type_only).type);
-		ty_ensure_convertible_to(init_type, var->type, var->node);
+		init_node ::= ast_get_child(var->node, 1);
+		// check for 'zero' as initialiser
+		// we cant check its type is comparable because zero has no type
+		// so we check it as a special-case here (and dont do any typechecking if its zero coz thats always valid)
+		if(!ast_is_expr(init_node, ast_expr_tag.zero_value))
+		{
+			init_type ::= (val_node(init_node, scope, val_resolution.type_only).type);
+			ty_ensure_convertible_to(init_type, var->type, var->node);
+		}
 	}
 };
