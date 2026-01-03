@@ -85,7 +85,7 @@ val_is_valid ::= func(v : val -> bool)
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_integer ::= func(v : val, source : ast? -> s64 weak)
+val_must_get_integer ::= func(v : val, scope : lexical_scope?, source : ast? -> s64 weak)
 {
 	// doing a ty_is_integral check here is *not* reasonable
 	// because enums for example also are integral literals under the hood, and its perfectly reasonable to request an enum value this way at compile time.
@@ -141,11 +141,15 @@ val_must_get_integer ::= func(v : val, source : ast? -> s64 weak)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	if(v.compile_time.varref_name != zero)
+	{
+		return val_must_get_integer(val_must_get_varref_initialiser(v, scope, source), scope, source);
+	}
 	return v.compile_time.primitive.integer;
 };
 
 // this call is only valid on floats known at compile time.
-val_must_get_float ::= func(v : val, source : ast? -> f64 weak)
+val_must_get_float ::= func(v : val, scope : lexical_scope?, source : ast? -> f64 weak)
 {
 	if(!ty_is_floating_point(v.type))
 	{
@@ -198,11 +202,15 @@ val_must_get_float ::= func(v : val, source : ast? -> f64 weak)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	if(v.compile_time.varref_name != zero)
+	{
+		return val_must_get_float(val_must_get_varref_initialiser(v, scope, source), scope, source);
+	}
 	return v.compile_time.primitive.floating_point;
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_boolean ::= func(v : val, source : ast? -> bool)
+val_must_get_boolean ::= func(v : val, scope : lexical_scope?, source : ast? -> bool)
 {
 	if(!ty_is_bool(v.type))
 	{
@@ -255,10 +263,14 @@ val_must_get_boolean ::= func(v : val, source : ast? -> bool)
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
+	if(v.compile_time.varref_name != zero)
+	{
+		return val_must_get_boolean(val_must_get_varref_initialiser(v, scope, source), scope, source);
+	}
 	return v.compile_time.primitive.boolean;
 };
 
-val_must_get_string ::= func(v : val, source : ast?, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)
+val_must_get_string ::= func(v : val, scope : lexical_scope?, source : ast?, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)
 {
 	if(!ty_is_string_literal(v.type))
 	{
@@ -310,6 +322,11 @@ val_must_get_string ::= func(v : val, source : ast?, out_str : u8 mut? mut?, out
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
+	}
+	if(v.compile_time.varref_name != zero)
+	{
+		val_must_get_string(val_must_get_varref_initialiser(v, scope, source), scope, source, out_str, out_len);
+		return;
 	}
 	deref(out_str) = (v.compile_time.primitive.chars);
 	deref(out_len) = (v.compile_time.primitive.chars_len);
@@ -460,6 +477,46 @@ literal_as_val ::= func(literal : ast_literal -> val)
 		return bool_as_val(literal.boolean);
 	}
 	return zero;
+};
+
+// given a val that is a varref to some variable visible in 'scope', get the initialiser and assert that its statically known
+val_must_get_varref_initialiser ::= func(varref : val, scope : lexical_scope?, source : ast? -> val)
+{
+	var ::= scope_find_variable(scope, varref.compile_time.varref_name, varref.compile_time.varref_name_len);
+	if(!ty_has_qual(var->type, tyqual.qual_static))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("attempt to retrieve initialiser of variable ");
+		putchar('"');
+		putbytes(varref.compile_time.varref_name, varref.compile_time.varref_name_len);
+		putchar('"');
+		putzstr(" as the value referring to it has the 'static' qualifier, but this variable itself is of a non-static type ");
+		putchar('"');
+		putty(var->type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(var->compile_time_storage.known != (valknown.compile_time))
+	{
+		psyc_panic_begin(source->loc);
+		putzstr("attempt to retrieve initialiser of variable ");
+		putchar('"');
+		putbytes(varref.compile_time.varref_name, varref.compile_time.varref_name_len);
+		putchar('"');
+		putzstr(" as the value referring to it has the 'static' qualifier, and while this variable also is of static-type ");
+		putchar('"');
+		putty(var->type);
+		putchar('"');
+		putzstr(" its initialiser was not statically-known.");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	return var->compile_time_storage;
 };
 
 variable_as_val ::= func(var : variable?, source : ast? -> val)
@@ -1427,7 +1484,7 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 	}
 	if(is_doable_at_compile_time)
 	{
-		rhs_index ::= val_must_get_integer(rhs, source);
+		rhs_index ::= val_must_get_integer(rhs, scope, source);
 		if(ty_is_arr(lhs.type))
 		{
 			// cool just return the element.
@@ -1444,7 +1501,7 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 		// we know its not a valueref so we can assume its a literal address (pointer arithmetic)
 		address ::= rhs.compile_time.primitive.integer;
 		// add sizeof(lhs) * rhs_index
-		sizeof_lhs ::= val_must_get_integer(cg_sizeof(lhs.type), source);
+		sizeof_lhs ::= val_must_get_integer(cg_sizeof(lhs.type), scope, source);
 		// this is a pointer compile-time value as an address (integer literal under-the-hood) whose address has been manually offsetted.
 		return s_convert_to(integer_as_val(address + (rhs_index * sizeof_lhs)), retty, source);
 	}
