@@ -690,7 +690,7 @@ ty_fn ::= func(ret_id : tyid, param_ids : tyid?, params_count : u64, quals : tyq
 	return ty_set_qual(tybox_add_function(ref(prog.types), ret_id, param_ids, params_count), quals);
 };
 
-ty_typename_node ::= func(node : ast? -> tyid)
+ty_typename_node ::= func(node : ast?, scope : lexical_scope? -> tyid)
 {
 	// very specifically only for nodes of ast_tag.typename;
 	typename ::= node->typename;
@@ -703,18 +703,18 @@ ty_typename_node ::= func(node : ast? -> tyid)
 		arrlen_node ::= ast_get_child(node, 1);
 		arrlen_val ::= val_node(arrlen_node, zero, val_resolution.compile_time_only);
 		arrlen ::= val_must_get_integer(arrlen_val, program_scope(), arrlen_node);
-		return ty_arr(ty_typename_node(ast_get_child(node, 0)), arrlen@u64, typename.quals);
+		return ty_arr(ty_typename_node(ast_get_child(node, 0), scope), arrlen@u64, typename.quals);
 	}
 	if(typename.descriptor == (ast_typename_descriptor.pointer))
 	{
-		return ty_ptr(ty_typename_node(ast_get_child(node, 0)), typename.quals);
+		return ty_ptr(ty_typename_node(ast_get_child(node, 0), scope), typename.quals);
 	}
 	if(typename.descriptor == (ast_typename_descriptor.function))
 	{
 		// param nodes are 0-(n-1)
 		// ret node is n-1
 		retty_typename_node ::= ast_get_child(node, node->children_count - 1);
-		retty ::= ty_typename_node(retty_typename_node);
+		retty ::= ty_typename_node(retty_typename_node, scope);
 		params_count ::= node->children_count - 1;
 		fn_params : tyid mut? := arena_alloc(global_arena, __sizeof(tyid) * params_count);
 		i : u64 mut;
@@ -723,7 +723,7 @@ ty_typename_node ::= func(node : ast? -> tyid)
 			cur_param_node ::= ast_get_child(node, i);
 			// remember the param is a decl
 			// its first child is the typename
-			cur_param_ty ::= ty_typename_node(ast_get_child(cur_param_node, 0));
+			cur_param_ty ::= ty_typename_node(ast_get_child(cur_param_node, 0), scope);
 			if(ty_is_bad(cur_param_ty))
 			{
 				psyc_error_begin(node->loc);
@@ -756,6 +756,10 @@ ty_typename_node ::= func(node : ast? -> tyid)
 		ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
 		psyc_diag_end();
 		psyc_exit_failure();
+	}
+	if(typename.descriptor == (ast_typename_descriptor.inferred_from))
+	{
+		return ty_set_qual(val_node(ast_get_child(node, 0), scope, val_resolution.type_only).type, typename.quals);
 	}
 	psyc_panic_begin(node->loc);
 	putzstr("failed to convert this typename node to a tyid");

@@ -784,9 +784,9 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		}
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(cg_sizeof(ty_typename_node(ast_get_child(node, 0))), scope, node);
+			return val_dynamic(cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope)), scope, node);
 		}
-		return cg_sizeof(ty_typename_node(ast_get_child(node, 0)));
+		return cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope));
 	}
 	if(ast_is_expr(node, ast_expr_tag.alignof_t))
 	{
@@ -808,13 +808,13 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		}
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(cg_alignof(ty_typename_node(ast_get_child(node, 0))), scope, node);
+			return val_dynamic(cg_alignof(ty_typename_node(ast_get_child(node, 0), scope)), scope, node);
 		}
-		return cg_alignof(ty_typename_node(ast_get_child(node, 0)));
+		return cg_alignof(ty_typename_node(ast_get_child(node, 0), scope));
 	}
 	if(ast_is_expr(node, ast_expr_tag.countof_t))
 	{
-		countof_type ::= ty_typename_node(ast_get_child(node, 0));
+		countof_type ::= ty_typename_node(ast_get_child(node, 0), scope);
 		if((!ty_is_struct(countof_type)) && (!ty_is_arr(countof_type)) && (!ty_is_fn(countof_type)))
 		{
 			psyc_error_begin(node->loc);
@@ -916,7 +916,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 			}
 			return cast_from;
 		}
-		cast_to ::= ty_typename_node(cast_to_node);
+		cast_to ::= ty_typename_node(cast_to_node, scope);
 		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(val_convert_to(cast_from, cast_to, scope, resolution, node), scope, node);
@@ -1631,7 +1631,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	// todo: array support
 	// (will also need to supprot arrays in s/cg functions called here too)
 	typename_node ::= ast_get_child(node, 0);
-	inittype ::= ty_typename_node(typename_node);
+	inittype ::= ty_typename_node(typename_node, scope);
 	if(!(ty_is_struct(inittype) || (ty_is_arr(inittype))))
 	{
 		psyc_error_begin(node->loc);

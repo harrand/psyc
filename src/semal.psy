@@ -37,7 +37,7 @@ semal_struct ::= func(type : tyid -> v0)
 		deref(s->strct.member_name_lens # i) = (decl.name_len);
 		// typename is first child of the decl
 		typename_node ::= ast_get_child(child, 0);
-		cur_ty ::= ty_typename_node(typename_node);
+		cur_ty ::= ty_typename_node(typename_node, program_scope());
 		if(cur_ty == zero)
 		{
 			// dodgy member type.
@@ -148,7 +148,7 @@ semal_function ::= func(fn : function mut? -> v0)
 {
 	// function typename is first child of node
 	function_typename_node ::= ast_get_child(fn->node, 0);
-	fn->type = ty_typename_node(function_typename_node);
+	fn->type = ty_typename_node(function_typename_node, program_scope());
 
 	// also go through the scope and semal all the typenames
 	i : u64 mut;
@@ -188,18 +188,7 @@ semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
 	}
 	else
 	{
-		if(typename.descriptor == (ast_typename_descriptor.inferred_from))
-		{
-			// the child of the typename node is going to be some expression of some type.
-			inferred_expr_node ::= ast_get_child(var_typename_node, 0);
-			// thats our type (but also add any additional qualifiers)
-			var->type = ty_set_qual(val_node(inferred_expr_node, scope, val_resolution.type_only).type, typename.quals);
-		}
-		else
-		{
-			// ok this typename relies on no program state so just call the ty_tyname thing on it
-			var->type = ty_typename_node(var_typename_node);
-		}
+		var->type = ty_typename_node(var_typename_node, scope);
 	}
 	if(has_init)
 	{
