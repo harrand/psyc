@@ -14,7 +14,7 @@ impl_win32_get_args : func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
 
 	if(wide_argv == zero)
 	{
-		deref(oargc) = 0;
+		[oargc] = 0;
 	}
 
 	args_cap : u64 mut := wide_argc@_;
@@ -27,16 +27,16 @@ impl_win32_get_args : func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
 		size_needed ::= WideCharToMultiByte(0, 0, [wide_argv # i], -1, zero, 0, zero, zero);
 		if(size_needed > 0)
 		{
-			deref(args # args_size) = LocalAlloc(zero, __sizeof(u8) * size_needed);
-			WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
+			[args # args_size] = LocalAlloc(zero, sizeof u8 * size_needed);
+			WideCharToMultiByte(0, 0, [wide_argv # i], -1, [args # args_size], size_needed, zero, zero);
 			args_size = args_size + 1;
 		}
 	}
 
 	LocalFree(wide_argv@u64);
 
-	deref(oargc) = wide_argc;
-	deref(oargv) = args@_;
+	[oargc] = wide_argc;
+	[oargv] = (args@_);
 };
 
 _psymain : func(-> v0)
