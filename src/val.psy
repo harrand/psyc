@@ -1103,8 +1103,26 @@ val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolu
 	return cg_unop_minus(v, source);
 };
 
-val_biop ::= func(op : ast_biop, lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop ::= func(op : ast_biop, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
+	// in a biop, 'zero' is always handled the same way
+	if(val_is_zero_val(lhs) && val_is_zero_val(rhs))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("both sides of a binary operation cannot be 'zero', as there is no way to determine the resultant type");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(val_is_zero_val(lhs))
+	{
+		lhs = zero_as_val(rhs.type, source);
+	}
+	if(val_is_zero_val(rhs))
+	{
+		rhs = zero_as_val(lhs.type, source);
+	}
 	if(op == (ast_biop.assign))
 	{
 		return val_biop_assign(lhs, rhs, scope, resolution, source);
