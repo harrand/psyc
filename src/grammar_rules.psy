@@ -655,6 +655,26 @@ rule_keyword_alignof_typename2alignof ::= func(nodes : ast mut?, nodes_count : u
 	};
 };
 
+rule_keyword_countof_typename2countof ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
+{
+	// countof typename
+	tyname_node ::= nodes # 1;
+	expr_node ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.countof_t;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref expr_node, deref tyname_node, global_arena);
+	return rule_result
+	{
+		.tag := rule.reduce;
+		.reduce := reduce_replace_all_with(expr_node);
+	};
+};
+
 rule_keyword_func_keyword_oparen2function_await_param_or_arrow ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// func(

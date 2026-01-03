@@ -812,6 +812,45 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		}
 		return cg_alignof(ty_typename_node(ast_get_child(node, 0)));
 	}
+	if(ast_is_expr(node, ast_expr_tag.countof_t))
+	{
+		countof_type ::= ty_typename_node(ast_get_child(node, 0));
+		if((!ty_is_struct(countof_type)) && (!ty_is_arr(countof_type)) && (!ty_is_fn(countof_type)))
+		{
+			psyc_error_begin(node->loc);
+			putzstr("'countof' expressions are only valid on struct, array or function typenames. you have passed a ");
+			putchar('"');
+			putty(countof_type);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(tyid_integral_literal());
+		}
+		countof_val : val mut := zero;
+		tyu ::= ty_unwrap(countof_type);
+		if(ty_is_struct(countof_type))
+		{
+			countof_val = integer_as_val(tyu->strct.members_count);
+		}
+		if(ty_is_arr(countof_type))
+		{
+			countof_val = integer_as_val(tyu->array_len);
+		}
+		if(ty_is_fn(countof_type))
+		{
+			countof_val = integer_as_val(tyu->fn.params_count);
+		}
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(countof_val, scope, node);
+		}
+		return countof_val;
+	}
 	if(ast_is_stmt(node, ast_stmt_tag.decl))
 	{
 		var ::= scope_find_variable(scope, node->decl.name, node->decl.name_len);
