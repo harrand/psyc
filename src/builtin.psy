@@ -1,142 +1,150 @@
-builtin_type ::= enum
+builtin_entry ::= struct
 {
-	.static_builtin := 1;
-	.runtime_builtin := 2;
+	name_zstr : u8?;
+	type : tyid;
+	invoke_compile_time : func(params : val?, scope : lexical_scope?, source : ast? -> val);
+	invoke_runtime : func(params : val?, scope : lexical_scope?, source : ast? -> val);
 };
 
-builtin_data ::= struct
+builtins : builtin_entry mut? mut := zero;
+builtins_count : u64 mut := zero;
+builtins_cap : u64 mut := zero;
+
+add_builtin ::= func(b : builtin_entry -> v0)
 {
-	on_call_static : func(node : ast? -> v0);
-	// todo: use whatever signature you want here.
-	on_call_runtime : func(-> v0);
+	if(builtins == zero)
+	{
+		builtins_cap = 8;
+		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
+	}
+	while(builtins_count >= builtins_cap)
+	{
+		oldcap ::= builtins_cap;
+		olddata ::= builtins;
+		builtins_cap = (builtins_cap * 2);
+		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
+		memcopy(builtins, olddata, __sizeof(builtin_entry) * oldcap);
+	}
+	deref(builtins # builtins_count) = b;
+	builtins_count = (builtins_count + 1);
 };
 
-builtin_install ::= func(id : builtin, data : builtin_data -> v0)
+builtin_setup ::= func(-> v0)
 {
-	deref(builtin_table # (id@s64 - 1)) = data;
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "assert";
+		.type := ty_makefn1(tyid_bool_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_assert;
+		.invoke_runtime := zero;
+	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "add_source_file";
+		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_add_source_file;
+		.invoke_runtime := zero;
+	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "add_build_file";
+		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_add_build_file;
+		.invoke_runtime := zero;
+	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "executable";
+		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_executable;
+		.invoke_runtime := zero;
+	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "optimization";
+		.type := ty_makefn1(tyid_integral_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_optimization;
+		.invoke_runtime := zero;
+	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "debug_symbols";
+		.type := ty_makefn1(tyid_bool_literal(), tyid.v0);
+		.invoke_compile_time := s_builtin_debug_symbols;
+		.invoke_runtime := zero;
+	});
 };
 
-builtin_match_name ::= func(name : u8?, name_len : u64 -> builtin)
+builtin_find ::= func(name : u8?, name_len : u64 -> builtin_entry?)
 {
 	i : u64 mut;
-	for(i = 0, i < __countof(builtin), i = i + 1)
+	for(i = 0, i < builtins_count, i = i + 1)
 	{
-		id ::= (i + 1)@s64@builtin;
-		cur_name ::= __enumname(id);
-		cur_name_len ::= zstrlen(cur_name);
-		if(cur_name_len == name_len)
+		cur ::= builtins # i;
+		if(zstrlen(cur->name_zstr) == name_len)
 		{
-			if(streql_n(cur_name, name, name_len))
+			if(streql_n(cur->name_zstr, name, name_len))
 			{
-				return id;
+				return cur;
 			}
 		}
 	}
 	return zero;
 };
 
-builtin_fn_param ::= func(node : ast?, id : u64 -> val)
+builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	if(node->children_count - 1 <= id)
+	all_params_compile_time : bool mut := true;
+	params_count ::= ty_unwrap(b.type)->fn.params_count;
+	i : u64 mut;
+	for(i = 0, i < params_count, i = i + 1)
 	{
-		return zero;
+		if(deref(params # i).known != (valknown.compile_time))
+		{
+			all_params_compile_time = false;
+		}
 	}
-	child ::= ast_get_child(node, 1 + id);
-	return val_node(child, zero, val_resolution.compile_time_only);
-};
-
-builtin_static_param ::= func(node : ast?, id : u64, type : tyid -> val)
-{
-	return val_convert_to(builtin_fn_param(node, id), type, zero, val_resolution.compile_time_only, node);
-};
-
-builtin_has_param ::= func(node : ast?, id : u64 -> bool)
-{
-	return (node->children_count - 1) > id;
-};
-
-builtin_require_params ::= func(node : ast?, min : u64, max : u64 -> v0)
-{
-	builtin_name_sym ::= ast_get_child(node, 0)->symbol;
-	// remember: call node child 0 is the callee, so param count is children_count - 1
-	count ::= node->children_count - 1;
-	if((min <= count) && (count <= max))
+	if((b.invoke_compile_time != zero) && all_params_compile_time && (resolution != (val_resolution.runtime_only)))
 	{
-		return;
+		// do a compile-time invocation
+		return b.invoke_compile_time(params, scope, source);
 	}
-	psyc_error_begin(node->loc);
-	putzstr("invalid call to builtin ");
-	putchar('"');
-	putbytes(builtin_name_sym.data, builtin_name_sym.len);
-	putchar('"');
-	putzstr(" - expected ");
-	putuint(min);
-	if(min != max)
+	// have to do a runtime invocation
+	if(resolution == (val_resolution.compile_time_only))
 	{
-		putzstr("-");
-		putuint(max);
+		psyc_error_begin(source->loc);
+		putzstr("builtin ");
+		putchar('"');
+		putzstr(b.name_zstr);
+		putchar('"');
+		putzstr(" invoked in a context where it must be performed at compile-time but this cannot be done");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
 	}
-	putzstr(" param(s), but got ");
-	putuint(count);
-	putchar(10);
-	ast_print_annotated_source(program_current_source_file().src, node, 1, underline_colour.red);
-	psyc_diag_end();
-	psyc_exit_failure();
+	if(b.invoke_runtime == zero)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("builtin ");
+		putchar('"');
+		putzstr(b.name_zstr);
+		putchar('"');
+		putzstr(" can only be invoked at compile-time");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// make them all dynamic params
+	for(i = 0, i < params_count, i = i + 1)
+	{
+		deref(params # i) = val_dynamic(deref(params # i), scope, source);
+	}
+	return b.invoke_runtime(params, scope, source);
 };
-
-builtin_get ::= func(b : builtin -> builtin_data)
-{
-	return deref(builtin_table # (b@s64 - 1));
-};
-
-builtin ::= enum
-{
-	.assert := 1;
-	.add_source_file := 2;
-	.add_build_file := 3;
-	.executable := 4;
-	.optimization := 5;
-	.debug_symbols := 6;
-};
-// todo: use __countof here
-builtin_table : builtin_data mut[6] mut := zero;
-
-builtin_setup ::= func(-> v0)
-{
-	builtin_install(builtin.assert, builtin_data
-	{
-		.on_call_static := builtin_assert_static;
-		.on_call_runtime := zero;
-	});
-
-	builtin_install(builtin.add_source_file, builtin_data
-	{
-		.on_call_static := builtin_add_source_file_static;
-		.on_call_runtime := zero;
-	});
-
-	builtin_install(builtin.add_build_file, builtin_data
-	{
-		.on_call_static := builtin_add_build_file_static;
-		.on_call_runtime := zero;
-	});
-
-	builtin_install(builtin.executable, builtin_data
-	{
-		.on_call_static := builtin_executable_static;
-		.on_call_runtime := zero;
-	});
-
-	builtin_install(builtin.optimization, builtin_data
-	{
-		.on_call_static := builtin_optimization_static;
-		.on_call_runtime := zero;
-	});
-
-	builtin_install(builtin.debug_symbols, builtin_data
-	{
-		.on_call_static := builtin_debug_symbols_static;
-		.on_call_runtime := zero;
-	});
-};
-
