@@ -429,13 +429,40 @@ s_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 
 s_builtin_assert ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	cond ::= val_must_get_boolean(deref(params # 0), scope, source);
+	if(!cond)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("static assert failure: condition was false");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
 	return zero;
 };
 
 s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	path_strdata : u8 mut? mut;
+	path_strlen : u64 mut;
+	val_must_get_string(deref(params # 0), scope, source, ref path_strdata, ref path_strlen);
+	path_zstr ::= sstr2zstr(path_strdata, path_strlen, string_arena);
+
+	if(!file_exists(path_zstr))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("source file ");
+		putchar('"');
+		putzstr(path_zstr);
+		putchar('"');
+		putzstr(" could not be found:");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	program_queue_source_file(path_strdata, path_strlen);
 	return zero;
 };
 
@@ -447,18 +474,21 @@ s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source 
 
 s_builtin_executable ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	name_strdata : u8 mut? mut;
+	name_strlen : u64 mut;
+	val_must_get_string(deref(params # 0), scope, source, ref name_strdata, ref name_strlen);
+	prog.output.name = sstr2zstr(name_strdata, name_strlen, string_arena);
 	return zero;
 };
 
 s_builtin_optimization ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	prog.optimization = (val_must_get_integer(deref(params # 0), scope, source)@program_optimization);
 	return zero;
 };
 
 s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	prog.debug_symbols = val_must_get_boolean(deref(params # 0), scope, source);
 	return zero;
 };
