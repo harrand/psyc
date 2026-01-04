@@ -42,6 +42,9 @@ valcompile_time ::= struct
 	// if the value isnt a funcref these are guaranteed to be zero.
 	funcref_name : u8?;
 	funcref_name_len : u64;
+	// populated if the type is a function type and was created as a reference to a builtin
+	builtinref_name : u8?;
+	builtinref_name_len : u64;
 	// might be populated if the value is an lvalue. if this is populated then it refers to a variable in the current scope.
 	// this is how variable references are expressed in vals
 	varref_name : u8?;
@@ -348,6 +351,8 @@ integer_as_val ::= func(n : s64 weak -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -372,6 +377,8 @@ float_as_val ::= func(n : f64 weak -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -396,6 +403,8 @@ string_as_val ::= func(chars : u8?, chars_len : u64 -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -422,6 +431,8 @@ char_as_val ::= func(char : u8 -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -446,6 +457,8 @@ bool_as_val ::= func(b : bool -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -535,6 +548,8 @@ variable_as_val ::= func(var : variable?, source : ast? -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := var->node->decl.name;
 			.varref_name_len := var->node->decl.name_len;
 			.valueref := zero;
@@ -559,6 +574,8 @@ function_as_val ::= func(fn : function?, source : ast? -> val)
 			.members := zero;
 			.funcref_name := fn->name;
 			.funcref_name_len := fn->name_len;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -583,6 +600,34 @@ assembly_as_val ::= func(as : assembly?, source : ast? -> val)
 			.members := zero;
 			.funcref_name := as->name;
 			.funcref_name_len := as->name_len;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
+			.varref_name := zero;
+			.varref_name_len := zero;
+			.valueref := zero;
+		};
+		.runtime := zero;
+	};
+};
+
+builtin_as_val ::= func(b : builtin_entry? -> val)
+{
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := b->type;
+		.compile_time := valcompile_time
+		{
+			.is_zero := false;
+			.primitive := zero;
+			.members_count := zero;
+			.members := zero;
+			.funcref_name := zero;
+			.funcref_name_len := zero;
+			.builtinref_name := b->name_zstr;
+			.builtinref_name_len := zstrlen(b->name_zstr);
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -608,6 +653,8 @@ ref_as_val ::= func(v : val, source : ast? -> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := arena_alloc(global_arena, __sizeof(val));
@@ -643,6 +690,8 @@ zero_val ::= func(-> val)
 			.members := zero;
 			.funcref_name := zero;
 			.funcref_name_len := zero;
+			.builtinref_name := zero;
+			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
 			.valueref := zero;
@@ -952,6 +1001,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	// a variable name
 	// a function name
 	// an asm name
+	// a builtin
 	ret : val mut := zero;
 
 	maybe_variable ::= scope_find_variable(scope, sym.data, sym.len);
@@ -995,6 +1045,11 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 			return val_dynamic(ret, scope, node);
 		}
 		return ret;
+	}
+	maybe_builtin ::= builtin_find(sym.data, sym.len);
+	if(maybe_builtin != zero)
+	{
+		return builtin_as_val(maybe_builtin);
 	}
 	psyc_error_begin(node->loc);
 	putzstr("unknown symbol ");
@@ -1845,6 +1900,12 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 	{
 		return type_as_val(fty.return_type);
 	}
+	if(callee_val.compile_time.builtinref_name != zero)
+	{
+		// ah this is a builtin
+		the_builtin ::= builtin_find(callee_val.compile_time.builtinref_name, callee_val.compile_time.builtinref_name_len);
+		return builtin_invoke(deref the_builtin, vals, scope, resolution, node);
+	}
 	// todo: static callables?
 	return cg_call(val_dynamic(callee_val, scope, node), vals, scope, node);
 };
@@ -2157,6 +2218,25 @@ putval ::= func(v : val -> v0)
 	putchar(9);
 	putzstr(".funcref_name_len := ");
 	putuint(v.compile_time.funcref_name_len);
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".builtinref_name := ");
+	if(v.compile_time.builtinref_name == zero)
+	{
+		putzstr("zero");
+	}
+	else
+	{
+		putbytes(v.compile_time.builtinref_name, v.compile_time.builtinref_name_len);
+	}
+
+	putchar(10);
+	putchar(9);
+	putchar(9);
+	putzstr(".builtinref_name_len := ");
+	putuint(v.compile_time.builtinref_name_len);
 
 	putchar(10);
 	putchar(9);
