@@ -51,7 +51,7 @@ cg_end ::= func(-> v0)
 	}
 };
 
-cg_type ::= func(type : tyid -> u64)
+cg_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 {
 	t ::= ty_clear_all_quals(type);
 	if(ty_is_prim(t))
@@ -91,7 +91,7 @@ cg_type ::= func(type : tyid -> u64)
 	}
 	if(ty_is_enum(t))
 	{
-		return cg_type(tyid.s64);
+		return cg_type(tyid.s64, should_ref_function_type);
 	}
 	if(ty_is_struct(t))
 	{
@@ -99,23 +99,28 @@ cg_type ::= func(type : tyid -> u64)
 	}
 	if(ty_is_ptr(t))
 	{
-		return LLVMPointerType(cg_type(ty_underlying(t)), 0);
+		return LLVMPointerType(cg_type(ty_underlying(t), should_ref_function_type), 0);
 	}
 	if(ty_is_arr(t))
 	{
-		return LLVMArrayType(cg_type(ty_underlying(t)), ty_unwrap(t)->array_len@u32);
+		return LLVMArrayType(cg_type(ty_underlying(t), should_ref_function_type), ty_unwrap(t)->array_len@u32);
 	}
 	if(ty_is_fn(t))
 	{
 		fntype ::= ty_unwrap(t);
 		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fntype->fn.params_count));
-		ret_cg ::= cg_type(fntype->fn.return_type);
+		ret_cg ::= cg_type(fntype->fn.return_type, true);
 		i : u64 mut;
 		for(i = 0, i < (fntype->fn.params_count), i = i + 1)
 		{
-			deref(paramdata # i) = cg_type(deref(fntype->fn.param_types # i));
+			deref(paramdata # i) = cg_type(deref(fntype->fn.param_types # i), true);
 		}
-		return LLVMFunctionType(ret_cg, paramdata, fntype->fn.params_count@u32, false@s32);
+		llvm_fnty ::= LLVMFunctionType(ret_cg, paramdata, fntype->fn.params_count@u32, false@s32);
+		if(should_ref_function_type)
+		{
+			return LLVMPointerType(llvm_fnty, 0);
+		}
+		return llvm_fnty;
 	}
 	psyc_panic_begin(zero);
 	putzstr("attempt to resolve ");
@@ -130,12 +135,12 @@ cg_type ::= func(type : tyid -> u64)
 
 cg_sizeof ::= func(type : tyid -> val)
 {
-	return integer_as_val(LLVMABISizeOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type)));
+	return integer_as_val(LLVMABISizeOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
 };
 
 cg_alignof ::= func(type : tyid -> val)
 {
-	return integer_as_val(LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type)));
+	return integer_as_val(LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
 };
 
 cg_all_structs ::= func(-> v0)
@@ -179,7 +184,7 @@ cg_struct_def ::= func(type : tyid -> v0)
 	memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
 	for(i = 0, i < (s->members_count), i = i + 1)
 	{
-		deref(memarr # i) = cg_type(deref(s->members # i));
+		deref(memarr # i) = cg_type(deref(s->members # i), true);
 	}
 	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
 };
@@ -223,14 +228,14 @@ llvm_add_function_string_attribute ::= func(fn : function mut?, attrib_name_zstr
 
 cg_asm ::= func(assembly : assembly mut? -> v0)
 {
-	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
+	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
 };
 
 cg_func_sig ::= func(fn : function mut? -> v0)
 {
 	is_extern ::= fn->node->function.is_extern;
 	name_zstr ::= sstr2zstr(fn->name, fn->name_len, string_arena);
-	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type));
+	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
 };
 
 cg_func_def ::= func(fn : function mut? -> v0)
@@ -288,7 +293,7 @@ cg_global_variable ::= func(var : variable mut? -> v0)
 	decl ::= var->node->decl;
 	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
 	type ::= var->type;
-	var->cg = LLVMAddGlobal(prog.cg, cg_type(type), name_zstr);
+	var->cg = LLVMAddGlobal(prog.cg, cg_type(type, true), name_zstr);
 
 	is_const ::= ty_has_qual(type, tyqual.qual_static) || !ty_has_qual(type, tyqual.qual_mut);
 	LLVMSetGlobalConstant(var->cg, is_const@s32);
@@ -313,7 +318,7 @@ cg_local_variable ::= func(var : variable mut? -> v0)
 {
 	// do an alloca
 	decl ::= var->node->decl;
-	var->cg = LLVMBuildAlloca(ir, cg_type(var->type), sstr2zstr(decl.name, decl.name_len, string_arena));
+	var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
 };
 
 cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
@@ -346,7 +351,7 @@ cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 	from_signed ::= ty_is_signed_integral(from);
 	to_size ::= ty_integral_size(to) + ty_floating_point_size(to);
 	to_signed ::= ty_is_signed_integral(to);
-	cgto ::= cg_type(to);
+	cgto ::= cg_type(to, true);
 	if(ty_is_integral(from))
 	{
 		if(ty_is_integral(to))
@@ -475,6 +480,11 @@ cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 		// can only be itself. trivial.
 		return ret;
 	}
+	if(ty_is_struct(from))
+	{
+		// can only be itself. trivial.
+		return ret;
+	}
 
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of cg_convert_to. converting from ");
@@ -508,7 +518,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 				.hand := valhand.rvalue;
 				.type := type;
 				.compile_time := zero;
-				.runtime := valruntime{.cg := LLVMConstInt(cg_type(type), deref(prim.chars), false@s32);};
+				.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, true), deref(prim.chars), false@s32);};
 			};
 		}
 		return val
@@ -518,7 +528,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 			.hand := valhand.rvalue;
 			.type := type;
 			.compile_time := zero;
-			.runtime := valruntime{.cg := LLVMConstInt(cg_type(type), prim.integer, false@s32);};
+			.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, false), prim.integer, false@s32);};
 		};
 	}
 	if(ty_is_ptr(type))
@@ -550,7 +560,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 			.hand := valhand.rvalue;
 			.type := type;
 			.compile_time := zero;
-			.runtime := valruntime{.cg := LLVMConstIntToPtr(LLVMConstInt(LLVMInt64Type(), prim.integer, false@s32), cg_type(type));};
+			.runtime := valruntime{.cg := LLVMConstIntToPtr(LLVMConstInt(LLVMInt64Type(), prim.integer, false@s32), cg_type(type, true));};
 		};
 	}
 	if(ty_is_floating_point(type))
@@ -562,7 +572,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 			.hand := valhand.rvalue;
 			.type := type;
 			.compile_time := zero;
-			.runtime := valruntime{.cg :=  LLVMConstReal(cg_type(type), prim.floating_point);};
+			.runtime := valruntime{.cg :=  LLVMConstReal(cg_type(type, true), prim.floating_point);};
 		};
 	}
 	if(ty_is_bool(type))
@@ -574,7 +584,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 			.hand := valhand.rvalue;
 			.type := type;
 			.compile_time := zero;
-			.runtime := valruntime{.cg := LLVMConstInt(cg_type(type), prim.boolean@s64, false@s32);};
+			.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, true), prim.boolean@s64, false@s32);};
 		};
 	}
 	psyc_nyi(source->loc);
@@ -590,7 +600,7 @@ cg_members ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 		.hand := v.hand;
 		.type := v.type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := LLVMGetUndef(cg_type(v.type));};
+		.runtime := valruntime{.cg := LLVMGetUndef(cg_type(v.type, true));};
 	};
 	// given a value with compile_time.members set
 	// return a dynamic value
@@ -759,7 +769,7 @@ cg_undef_as ::= func(type : tyid -> val)
 		.compile_time := zero;
 		.runtime := valruntime
 		{
-			.cg := LLVMGetUndef(cg_type(type));
+			.cg := LLVMGetUndef(cg_type(type, true));
 		};
 	};
 };
@@ -1180,11 +1190,11 @@ cg_biop_at ::= func(lhs : val, rhs : val, source : ast? -> val)
 		lhsreal = cg_load_if_lvalue(lhs);
 	}
 
-	cgty : u64 mut := cg_type(lhs.type);
+	cgty : u64 mut := cg_type(lhs.type, true);
 	index_list_offset : u64 mut := 0;
 	if(ty_is_ptr(lhs.type))
 	{
-		cgty = cg_type(ty_underlying(lhs.type));
+		cgty = cg_type(ty_underlying(lhs.type), true);
 		index_list_offset = 1;
 	}
 	return val
@@ -1203,7 +1213,7 @@ cg_load_if_lvalue ::= func(v : val -> val)
 	ret : val mut := v;
 	if(v.hand == (valhand.lvalue))
 	{
-		ret.runtime.cg = LLVMBuildLoad2(ir, cg_type(ret.type), ret.runtime.cg, "");
+		ret.runtime.cg = LLVMBuildLoad2(ir, cg_type(ret.type, true), ret.runtime.cg, "");
 		ret.hand = (valhand.rvalue);
 	}
 	return ret;
@@ -1244,7 +1254,7 @@ cg_field ::= func(lhs : val, memidx : u64 -> val)
 		.hand := valhand.lvalue;
 		.type := memty;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := LLVMBuildStructGEP2(ir, cg_type(lhs.type), lhs.runtime.cg, memidx@u32, "");};
+		.runtime := valruntime{.cg := LLVMBuildStructGEP2(ir, cg_type(lhs.type, true), lhs.runtime.cg, memidx@u32, "");};
 	};
 };
 
@@ -1458,8 +1468,9 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_call ::= func(callee : val, params : val?, scope : lexical_scope mut?, source : ast? -> val)
+cg_call ::= func(callee : val mut, params : val?, scope : lexical_scope mut?, source : ast? -> val)
 {
+	callee = cg_load_if_lvalue(callee);
 	i : u64 mut;
 	fty ::= ty_unwrap(callee.type)->fn;
 	param_cgs : u64 mut? := __stack_push(fty.params_count * __sizeof(u64));
@@ -1476,7 +1487,8 @@ cg_call ::= func(callee : val, params : val?, scope : lexical_scope mut?, source
 		.compile_time := zero;
 		.runtime := valruntime
 		{
-			.cg := LLVMBuildCall2(ir, cg_type(callee.type), callee.runtime.cg, param_cgs, (fty.params_count)@u32, "");
+			// this cg_type might want false for ref_function_types
+			.cg := LLVMBuildCall2(ir, cg_type(callee.type, false), callee.runtime.cg, param_cgs, (fty.params_count)@u32, "");
 		};
 	};
 };

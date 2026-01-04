@@ -25,18 +25,6 @@ print_sstr : func(str : u8?, len : u64 -> v0)
 	}
 };
 
-my_funny_struct : struct
-{
-	foo : u64;
-};
-member_names : u8? static[countof my_funny_struct] := zero;
-//epic_colours : enum
-//{
-//	.red := 1;
-//	.blue := 2;
-//};
-//colour_codes : u64[countof typeof epic_colours] := zero;
-
 print_zstr : func(zstr : u8? weak -> v0)
 {
 	count : u64 mut := 0;
@@ -49,6 +37,31 @@ print_zstr : func(zstr : u8? weak -> v0)
 	print_sstr(zstr, count);
 };
 
+double_callback : struct
+{
+	c : callback;
+};
+
+callback : struct
+{
+	test : func(-> v0);
+};
+
+test1 : func(-> v0)
+{
+	print_zstr("test1");
+};
+
+test2 : func(-> v0)
+{
+	print_zstr("test2");
+};
+
+call_indirect : func(fn : func(-> v0) -> v0)
+{
+	fn();
+};
+
 main : func(args : program_args? -> s32)
 {
 	str ::= "hello world!";
@@ -59,5 +72,15 @@ main : func(args : program_args? -> s32)
 		[my_str # i] = [str # i];
 	}
 	print_zstr(my_str # 0);
+
+	c : callback mut;
+	c.test = test1;
+	c.test();
+	c.test = test2;
+	c.test();
+
+	d ::= double_callback{.c := c;};
+	d.c.test();
+	call_indirect(test1);
 	return 0;
 };
