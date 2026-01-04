@@ -30,7 +30,7 @@ syn match psy_call "\w\(\w\)*("he=e-1,me=e-1
 syn region psy_string_literal start=+"+ skip=+\\"+ end=+"+
 syn region psy_char_literal start=+'+ skip=+\\'+ end=+'+
 
-syntax keyword psy_keywords defer ref if else while for return sizeof alignof countof nameof typeof
+syntax keyword psy_keywords defer ref if static_if else while for return sizeof alignof countof nameof typeof
 syntax keyword psy_modifiers mut weak static
 syntax keyword psy_constants true false zero extern _config _win32 _linux
 syntax keyword psy_funcs func macro asm
