@@ -1,0 +1,93 @@
+builtin_entry ::= struct
+{
+	name_zstr : u8?;
+	type : tyid;
+	invoke_compile_time : func(params : val?, scope : lexical_scope?, source : ast? -> val);
+	invoke_runtime : func(params : val?, scope : lexical_scope?, source : ast? -> val);
+};
+
+builtins : builtin_entry mut? mut := zero;
+builtins_count : u64 mut := zero;
+builtins_cap : u64 mut := zero;
+
+add_builtin ::= func(b : builtin_entry -> v0)
+{
+	if(builtins == zero)
+	{
+		builtins_cap = 8;
+		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
+	}
+	while(builtins_count >= builtins_cap)
+	{
+		oldcap ::= builtins_cap;
+		olddata ::= builtins;
+		builtins_cap = (builtins_cap * 2);
+		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
+		memcopy(builtins, olddata, __sizeof(builtin_entry) * oldcap);
+	}
+	deref(builtins # builtins_count) = b;
+	builtins_count = (builtins_count + 1);
+};
+
+builtin_setup2 ::= func(-> v0)
+{
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "assert";
+		.type := ty_makefn1(tyid.bool, tyid.v0);
+		.invoke_compile_time := s_builtin_assert;
+		.invoke_runtime := zero;
+	});
+};
+
+builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	all_params_compile_time : bool mut := true;
+	params_count ::= ty_unwrap(b.type)->fn.params_count;
+	i : u64 mut;
+	for(i = 0, i < params_count, i = i + 1)
+	{
+		if(deref(params # i).known != (valknown.compile_time))
+		{
+			all_params_compile_time = false;
+		}
+	}
+	if((b.invoke_compile_time != zero) && all_params_compile_time && (resolution != (val_resolution.runtime_only)))
+	{
+		// do a compile-time invocation
+		return b.invoke_compile_time(params, scope, source);
+	}
+	// have to do a runtime invocation
+	if(resolution == (val_resolution.compile_time_only))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("builtin ");
+		putchar('"');
+		putzstr(b.name_zstr);
+		putchar('"');
+		putzstr(" invoked in a context where it must be performed at compile-time but this cannot be done");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(b.invoke_runtime == zero)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("builtin ");
+		putchar('"');
+		putzstr(b.name_zstr);
+		putchar('"');
+		putzstr(" can only be invoked at compile-time");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// make them all dynamic params
+	for(i = 0, i < params_count, i = i + 1)
+	{
+		deref(params # i) = val_dynamic(deref(params # i), scope, source);
+	}
+	return b.invoke_runtime(params, scope, source);
+};
