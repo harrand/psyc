@@ -64,7 +64,7 @@ grammar_install ::= func(-> v0)
 	foreach_expr(grammar_while_expr);
 
 	grammar_for();
-	foreach_stmt(grammar_for_stmt);
+	foreach_expr(grammar_for_expr);
 
 	grammar_asm();
 
@@ -1466,6 +1466,17 @@ grammar_for ::= func(-> v0)
 {
 	grammar_hashtable_insert(state1(
 		token(lex_token.keyword_for),
+	token(lex_token.oparen), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		token(lex_token.keyword_for),
+		token(lex_token.oparen),
+	zero, zero),
+	grammar_rule{.fn := rule_keyword_for_oparen2wipfor0;});
+
+	grammar_hashtable_insert(state1(
+		node(ast_tag.forwip0),
 	zero, zero),
 	grammar_rule{.fn := rule_stash;});
 
@@ -1496,47 +1507,59 @@ grammar_for ::= func(-> v0)
 	grammar_rule{.fn := rule_forwip_token_cbrace2stmt;});
 };
 
-grammar_for_stmt ::= func(stmttag : ast_stmt_tag -> v0)
+grammar_for_expr ::= func(exprtag : ast_expr_tag -> v0)
 {
-	grammar_hashtable_insert(state1(
-		stmt(stmttag),
-	zero, token(lex_token.keyword_for)),
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.semicol),
+	zero, node(ast_tag.forwip0)),
 	grammar_rule{.fn := rule_unstash;});
 
-	grammar_hashtable_insert(state2(
-		token(lex_token.keyword_for),
-		stmt(stmttag),
+	grammar_hashtable_insert(state3(
+		node(ast_tag.forwip0),
+		expr(exprtag),
+		token(lex_token.semicol),
 	zero, zero),
-	grammar_rule{.fn := rule_token_keyword_for_stmt_x2forwip1;});
+	grammar_rule{.fn := rule_forwip0_expr_x_token_semicol2forwip1;});
 
-	grammar_hashtable_insert(state1(
-		stmt(stmttag),
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.semicol),
 	zero, node(ast_tag.forwip1)),
 	grammar_rule{.fn := rule_unstash;});
 
-	grammar_hashtable_insert(state2(
+	grammar_hashtable_insert(state3(
 		node(ast_tag.forwip1),
-		stmt(stmttag),
+		expr(exprtag),
+		token(lex_token.semicol),
 	zero, zero),
-	grammar_rule{.fn := rule_forwip1_stmt_x2forwip2;});
+	grammar_rule{.fn := rule_forwip1_expr_x_token_semicol2forwip2;});
 
 	grammar_hashtable_insert(state1(
-		stmt(stmttag),
+		expr(exprtag),
+	token(lex_token.cparen), zero),
+	grammar_rule{.fn := rule_shift1;});
+
+	grammar_hashtable_insert(state2(
+		expr(exprtag),
+		token(lex_token.cparen),
 	zero, node(ast_tag.forwip2)),
 	grammar_rule{.fn := rule_unstash;});
 
-	grammar_hashtable_insert(state2(
+	grammar_hashtable_insert(state3(
 		node(ast_tag.forwip2),
-		stmt(stmttag),
+		expr(exprtag),
+		token(lex_token.cparen),
 	token(lex_token.obrace), zero),
 	grammar_rule{.fn := rule_shift1;});
 
-	grammar_hashtable_insert(state3(
+	grammar_hashtable_insert(state4(
 		node(ast_tag.forwip2),
-		stmt(stmttag),
+		expr(exprtag),
+		token(lex_token.cparen),
 		token(lex_token.obrace),
 	zero, zero),
-	grammar_rule{.fn := rule_forwip2_stmt_x_token_obrace2forwip;});
+	grammar_rule{.fn := rule_forwip2_expr_x_token_cparen_token_obrace2forwip;});
 };
 
 grammar_asm ::= func(-> v0)
