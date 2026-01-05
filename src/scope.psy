@@ -201,6 +201,29 @@ scope_add_function ::= func(scope : lexical_scope mut? mut, fn : function -> v0)
 	scope->functions_count = (scope->functions_count + 1);
 };
 
+scope_find_enumeration ::= func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> enumeration?)
+{
+	i : u64 mut;
+	for(i = 0, i < (scope->enumerations_count), i = i + 1)
+	{
+		cur ::= scope->enumerations # i;
+		typedata ::= tybox_at(ref(prog.types), cur->type);
+		if(typedata->name_len == name_len)
+		{
+			if(streql_n(typedata->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	parent ::= scope_get_parent(scope);
+	if(parent != zero)
+	{
+		return scope_find_enumeration(parent, name, name_len);
+	}
+	return zero;
+};
+
 scope_add_enumeration ::= func(scope : lexical_scope mut? mut, en : enumeration -> v0)
 {
 	// naughty secret here:

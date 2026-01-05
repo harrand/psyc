@@ -1051,6 +1051,11 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	{
 		return builtin_as_val(maybe_builtin);
 	}
+	maybe_enum ::= scope_find_enumeration(scope, sym.data, sym.len);
+	if(maybe_enum != zero)
+	{
+		return type_as_val(maybe_enum->type);
+	}
 	psyc_error_begin(node->loc);
 	putzstr("unknown symbol ");
 	putchar('"');
@@ -1073,10 +1078,10 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 {
 	type ::= lhs.type;
 	// lhs must be a struct type
-	if(!ty_is_struct(type))
+	if((!ty_is_struct(type)) && (!ty_is_enum(type)))
 	{
 		psyc_error_begin(rhs_node->loc);
-		putzstr("lhs of field expression must be a struct type. in this case it is a ");
+		putzstr("lhs of field expression must be a struct or enum type. in this case it is a ");
 		putchar('"');
 		putty(type);
 		putchar('"');
@@ -1085,15 +1090,60 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	// rhs must either be a symbol reference or a call
-	if(ast_is_expr(rhs_node, ast_expr_tag.call))
-	{
-		psyc_nyi(rhs_node->loc);
-		return zero;
-	}
+	retval : val mut := zero;
 	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
 	{
-		memidx ::= ty_get_struct_member_id(type, rhs_node->symbol.data, rhs_node->symbol.len);
+		memidx : u64 mut;
+		if(ty_is_enum(type))
+		{
+			// the lhs is of enum type but it needs to be a type_only - thats what val_symbol would return on the enum typename itself
+			// but if the val_symbol got a variable that was of enum type then we would want to error out on that
+			if(lhs.tag != (valtag.type_only))
+			{
+				psyc_error_begin(rhs_node->loc);
+				putzstr("lhs of field expression was a value of enum type ");
+				putchar('"');
+				putty(type);
+				putchar('"');
+				putzstr(", expected it to either be a value of struct-type or an the actual enum typename itself");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			if(resolution == (val_resolution.type_only))
+			{
+				return type_as_val(type);
+			}
+			// enum has a much simpler codepath
+			memidx = ty_get_enum_entry_id(type, rhs_node->symbol.data, rhs_node->symbol.len);
+			if(memidx == -1)
+			{
+				psyc_error_begin(rhs_node->loc);
+				putzstr("enum type ");
+				putchar('"');
+				putty(type);
+				putchar('"');
+				putzstr(" had no such member named ");
+				putchar('"');
+				putbytes(rhs_node->symbol.data, rhs_node->symbol.len);
+				putchar('"');
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(rhs_node->loc.file)->src, rhs_node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			entry_value_int ::= deref(ty_unwrap(type)->enm.entries # memidx);
+			retval = integer_as_val(entry_value_int);
+			retval.type = type;
+			if(resolution == (val_resolution.runtime_only))
+			{
+				return val_dynamic(retval, scope, rhs_node);
+			}
+			return retval;
+		}
+		// it must be a struct then
+		memidx = ty_get_struct_member_id(type, rhs_node->symbol.data, rhs_node->symbol.len);
 		if(memidx == -1)
 		{
 			psyc_error_begin(rhs_node->loc);
@@ -1129,7 +1179,7 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 		lhs_is_static_struct_literal ::= lhs.compile_time.members != zero;
 		if(lhs.known == (valknown.compile_time) && lhs_is_static_struct_literal && (resolution != (val_resolution.runtime_only)))
 		{
-			retval : val mut := deref(lhs.compile_time.members@val? # memidx);
+			retval = deref(lhs.compile_time.members@val? # memidx);
 			retval.type = memty;
 		}
 		// do it at runtime
@@ -2052,7 +2102,7 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	{
 		return cg_members(v, scope, source);
 	}
-	if(ty_is_prim(v.type))
+	if(ty_is_prim(v.type) || ty_is_enum(v.type))
 	{
 		// its a primitive type...
 		return cg_prim(v.type, v.compile_time.primitive, source);

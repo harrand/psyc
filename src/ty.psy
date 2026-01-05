@@ -166,6 +166,28 @@ ty_underlying ::= func(id : tyid -> tyid)
 	return ty_unwrap(id)->base;
 };
 
+ty_get_enum_entry_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
+{
+	i : u64 mut;
+	if(ty_is_enum(id))
+	{
+		enm ::= ty_unwrap(id)->enm;
+		for(i = 0, i < (enm.entries_count), i = i + 1)
+		{
+			entname ::= deref(enm.entry_names # i);
+			entname_len ::= deref(enm.entry_name_lens # i);
+			if(entname_len == name_len)
+			{
+				if(streql_n(entname, name, name_len))
+				{
+					return i;
+				}
+			}
+		}
+	}
+	return -1;
+};
+
 ty_get_struct_member_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
 {
 	i : u64 mut;
