@@ -514,9 +514,15 @@ s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source :
 	return zero;
 };
 
+s_impl_curdir : u8? mut := zero;
 s_impl_add_source_file ::= func(path : u8? -> v0)
 {
-	program_queue_source_file(path, zstrlen(path));
+	parented_path_len ::= zstrlen(s_impl_curdir) + 1 + zstrlen(path);
+	parented_path : u8 mut? := arena_alloc(string_arena, parented_path_len);
+	memcopy(parented_path, s_impl_curdir, zstrlen(s_impl_curdir));
+	deref(parented_path # zstrlen(s_impl_curdir)) = '/';
+	memcopy(parented_path # (1 + zstrlen(s_impl_curdir)), path, zstrlen(path));
+	program_queue_source_file(parented_path, parented_path_len);
 };
 
 s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
@@ -525,6 +531,7 @@ s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, s
 	dir_strlen : u64 mut;
 	val_must_get_string(deref(params # 0), scope, source, ref dir_strdata, ref dir_strlen);
 	dir_zstr ::= sstr2zstr(dir_strdata, dir_strlen, string_arena);
+	s_impl_curdir = dir_zstr;
 	directory_iterate(dir_zstr, s_impl_add_source_file, string_arena);
 	return zero;
 };

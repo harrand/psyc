@@ -236,8 +236,19 @@ program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
 		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.queued_source_paths)));
 		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.queued_source_path_lens)));
 	}
-	deref(prog.queued_source_paths # (prog.queued_source_paths_count)) = path;
-	deref(prog.queued_source_path_lens # (prog.queued_source_paths_count)) = path_len;
+	// let's have a nice absolute path so if our cwd changes its no biggie
+	cwd : u8? mut;
+	cwdlen : u64 mut;
+	directory_get_cwd(ref cwd, ref cwdlen, string_arena);
+	absolute_path_len ::= cwdlen + path_len;
+	absolute_path : u8 mut? := arena_alloc(string_arena, absolute_path_len);
+	memcopy(absolute_path # 0, cwd, cwdlen);
+	// cwdlen - 1 because it includes the null terminator for some god-forsaken reason
+	deref(absolute_path # (cwdlen - 1)) = '/';
+	memcopy(absolute_path # cwdlen, path, path_len);
+	
+	deref(prog.queued_source_paths # (prog.queued_source_paths_count)) = absolute_path;
+	deref(prog.queued_source_path_lens # (prog.queued_source_paths_count)) = absolute_path_len;
 	prog.queued_source_paths_count = (prog.queued_source_paths_count + 1);
 };
 

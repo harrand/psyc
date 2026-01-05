@@ -1266,7 +1266,15 @@ cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 	{
 		// has an initialiser
 		init_node ::= ast_get_child(var->node, 1);
-		init ::= cg_load_if_lvalue(cg_node(init_node, scope));
+		init : val mut := zero;
+		if(ast_is_expr(init_node, ast_expr_tag.zero_value))
+		{
+			init = val_dynamic(zero_as_val(var->type, init_node), scope, init_node);
+		}
+		else
+		{
+			init = cg_load_if_lvalue(cg_node(init_node, scope));
+		}
 		LLVMBuildStore(ir, init.runtime.cg, var->cg);
 	}
 	// todo: debug declare the variable here.
