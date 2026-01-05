@@ -39,7 +39,13 @@ add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u6
 	node ::= add_source_file_inner(src, ref file_scope);
 
 	psyc_timed_begin(psyc_stage.build);
+	// for a build file specifically we set the cwd to its parent directory when doing its build region
+	oldcwd : u8? mut;
+	oldcwdlen : u64 mut;
+	directory_get_cwd(ref oldcwd, ref oldcwdlen, string_arena);
+	directory_set_cwd(path, path_get_parent_len(path, zstrlen(path)), string_arena);
 	find_and_invoke_build_region(file_scope, config, config_len, zero);
+	directory_set_cwd(oldcwd, oldcwdlen, string_arena);
 	psyc_timed_end();
 
 	return node;
@@ -201,7 +207,9 @@ compile_program ::= func(-> v0)
 		cur_build_len ::= deref(prog.queued_build_path_lens # (prog.queued_build_paths_count - 1));
 		cur_build_config ::= deref(prog.queued_build_path_configs # (prog.queued_build_paths_count - 1));
 		build_path_zstr ::= sstr2zstr(cur_build_path, cur_build_len, string_arena);
+
 		add_build_file_to_compilation(build_path_zstr, cur_build_config, zstrlen(cur_build_config));
+
 		prog.queued_build_paths_count = (prog.queued_build_paths_count - 1);
 	}
 

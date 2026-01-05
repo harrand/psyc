@@ -471,7 +471,25 @@ s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source
 
 s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	psyc_nyi(source->loc);
+	path_strdata : u8 mut? mut;
+	path_strlen : u64 mut;
+	val_must_get_string(deref(params # 0), scope, source, ref path_strdata, ref path_strlen);
+	path_zstr ::= sstr2zstr(path_strdata, path_strlen, string_arena);
+
+	if(!file_exists(path_zstr))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("build file ");
+		putchar('"');
+		putzstr(path_zstr);
+		putchar('"');
+		putzstr(" could not be found:");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	program_queue_build_file(path_strdata, path_strlen, "default");
 	return zero;
 };
 
@@ -493,5 +511,20 @@ s_builtin_optimization ::= func(params : val?, scope : lexical_scope?, source : 
 s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	prog.debug_symbols = val_must_get_boolean(deref(params # 0), scope, source);
+	return zero;
+};
+
+s_impl_add_source_file ::= func(path : u8? -> v0)
+{
+	program_queue_source_file(path, zstrlen(path));
+};
+
+s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	dir_strdata : u8 mut? mut;
+	dir_strlen : u64 mut;
+	val_must_get_string(deref(params # 0), scope, source, ref dir_strdata, ref dir_strlen);
+	dir_zstr ::= sstr2zstr(dir_strdata, dir_strlen, string_arena);
+	directory_iterate(dir_zstr, s_impl_add_source_file, string_arena);
 	return zero;
 };
