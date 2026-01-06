@@ -926,7 +926,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	{
 		lhs_operand ::= val_node(ast_get_child(node, 0), scope, resolution);
 		rhs_operand ::= val_node(ast_get_child(node, 1), scope, resolution);
-		return val_biop(node->biop, lhs_operand, rhs_operand, scope, resolution, node);
+		return val_biop(node->biop.op, lhs_operand, rhs_operand, scope, resolution, node);
 	}
 	if(ast_is_expr(node, ast_expr_tag.unop))
 	{
@@ -1311,7 +1311,7 @@ val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolu
 	return cg_unop_minus(v, source);
 };
 
-val_biop ::= func(op : ast_biop, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// in a biop, 'zero' is always handled the same way
 	if(val_is_zero_val(lhs) && val_is_zero_val(rhs))
@@ -1331,83 +1331,83 @@ val_biop ::= func(op : ast_biop, lhs : val mut, rhs : val mut, scope : lexical_s
 	{
 		rhs = zero_as_val(lhs.type, source);
 	}
-	if(op == (ast_biop.assign))
+	if(op == (ast_biop_op.assign))
 	{
 		return val_biop_assign(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_equal))
+	if(op == (ast_biop_op.compare_equal))
 	{
 		return val_biop_compare_equal(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_not_equal))
+	if(op == (ast_biop_op.compare_not_equal))
 	{
 		return val_biop_compare_not_equal(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_less))
+	if(op == (ast_biop_op.compare_less))
 	{
 		return val_biop_compare_less(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_less_equal))
+	if(op == (ast_biop_op.compare_less_equal))
 	{
 		return val_biop_compare_less_equal(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_greater))
+	if(op == (ast_biop_op.compare_greater))
 	{
 		return val_biop_compare_greater(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.compare_greater_equal))
+	if(op == (ast_biop_op.compare_greater_equal))
 	{
 		return val_biop_compare_greater_equal(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.add))
+	if(op == (ast_biop_op.add))
 	{
 		return val_biop_add(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.sub))
+	if(op == (ast_biop_op.sub))
 	{
 		return val_biop_sub(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.mul))
+	if(op == (ast_biop_op.mul))
 	{
 		return val_biop_mul(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.div))
+	if(op == (ast_biop_op.div))
 	{
 		return val_biop_div(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.bitwise_or))
+	if(op == (ast_biop_op.bitwise_or))
 	{
 		return val_biop_bitwise_or(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.bitwise_and))
+	if(op == (ast_biop_op.bitwise_and))
 	{
 		return val_biop_bitwise_and(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.logical_or))
+	if(op == (ast_biop_op.logical_or))
 	{
 		psyc_nyi(source->loc);
 	}
-	if(op == (ast_biop.logical_and))
+	if(op == (ast_biop_op.logical_and))
 	{
 		psyc_nyi(source->loc);
 	}
-	if(op == (ast_biop.xor))
+	if(op == (ast_biop_op.xor))
 	{
 		psyc_nyi(source->loc);
 	}
-	if(op == (ast_biop.bitshift_left))
+	if(op == (ast_biop_op.bitshift_left))
 	{
 		psyc_nyi(source->loc);
 	}
-	if(op == (ast_biop.bitshift_right))
+	if(op == (ast_biop_op.bitshift_right))
 	{
 		psyc_nyi(source->loc);
 	}
-	if(op == (ast_biop.modulo))
+	if(op == (ast_biop_op.modulo))
 	{
 		return val_biop_modulo(lhs, rhs, scope, resolution, source);
 	}
-	if(op == (ast_biop.at))
+	if(op == (ast_biop_op.at))
 	{
 		return val_biop_at(lhs, rhs, scope, resolution, source);
 	}
@@ -1477,7 +1477,7 @@ val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	return cg_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
+val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
 {
 	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
@@ -1543,32 +1543,32 @@ val_arith_biop ::= func(op : ast_biop, lhs : val, rhs : val, allow_pointers : bo
 
 val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.add, lhs, rhs, false, scope, resolution, source, s_biop_add, cg_biop_add);
+	return val_arith_biop(ast_biop_op.add, lhs, rhs, false, scope, resolution, source, s_biop_add, cg_biop_add);
 };
 
 val_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.sub, lhs, rhs, false, scope, resolution, source, s_biop_sub, cg_biop_sub);
+	return val_arith_biop(ast_biop_op.sub, lhs, rhs, false, scope, resolution, source, s_biop_sub, cg_biop_sub);
 };
 
 val_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.mul, lhs, rhs, false, scope, resolution, source, s_biop_mul, cg_biop_mul);
+	return val_arith_biop(ast_biop_op.mul, lhs, rhs, false, scope, resolution, source, s_biop_mul, cg_biop_mul);
 };
 
 val_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.div, lhs, rhs, false, scope, resolution, source, s_biop_div, cg_biop_div);
+	return val_arith_biop(ast_biop_op.div, lhs, rhs, false, scope, resolution, source, s_biop_div, cg_biop_div);
 };
 
 val_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.bitwise_or, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_or, cg_biop_bitwise_or);
+	return val_arith_biop(ast_biop_op.bitwise_or, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_or, cg_biop_bitwise_or);
 };
 
 val_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.bitwise_and, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
+	return val_arith_biop(ast_biop_op.bitwise_and, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
 };
 
 val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -1582,7 +1582,7 @@ val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	return val_arith_biop(ast_biop.modulo, lhs, rhs, false, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
+	return val_arith_biop(ast_biop_op.modulo, lhs, rhs, false, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
 };
 
 val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -1659,32 +1659,32 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 
 val_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
+	return val_arith_biop(ast_biop_op.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
 };
 
 val_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
+	return val_arith_biop(ast_biop_op.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
 };
 
 val_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
+	return val_arith_biop(ast_biop_op.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
 };
 
 val_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
+	return val_arith_biop(ast_biop_op.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
 };
 
 val_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
+	return val_arith_biop(ast_biop_op.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
 };
 
 val_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
+	return val_arith_biop(ast_biop_op.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
 };
 
 val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)

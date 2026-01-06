@@ -206,8 +206,10 @@ rule_token_oparen_expr_x_token_cparen2expr ::= func(nodes : ast mut?, nodes_coun
 {
 	// we have ( expr )
 	// literally just make it expr
+	// but set its biop precedence to be ultra-high so it never gets munched by anything else
 	(nodes # 1)->begin_cursor = ((nodes # 0)->begin_cursor);
 	(nodes # 1)->loc = ((nodes # 0)->loc);
+	(nodes # 1)->biop.precedence = ast_biop_ultimate_precedence;
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -446,14 +448,14 @@ rule_expr_x_token_x_expr_y2biop ::= func(nodes : ast mut?, nodes_count : u64 -> 
 
 	tok ::= token_node->utok.tok.tok;
 
-	op : ast_biop mut := zero;
+	op : ast_biop_op mut := zero;
 	// make sure the token is a valid biop
 	i : u64 mut;
-	for(i = 0, i < __countof(ast_biop), i = i + 1)
+	for(i = 0, i < __countof(ast_biop_op), i = i + 1)
 	{
 		if(deref(ast_biop_tokens # (i + 1)) == tok)
 		{
-			op = ((i + 1)@ast_biop);
+			op = ((i + 1)@ast_biop_op);
 		}
 	}
 	if(op == zero)
@@ -465,15 +467,49 @@ rule_expr_x_token_x_expr_y2biop ::= func(nodes : ast mut?, nodes_count : u64 -> 
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	biop_node ::= ast
+	biop_node ::= ast mut
 	{
 		.tag := ast_tag.expr;
 		.expr := ast_expr_tag.biop;
-		.biop := op;
+		.biop := ast_biop{.op := op; .precedence := deref(ast_biop_precedence # (op@s64));};
 		.children := zero;
 		.children_count := zero;
 		.children_cap := zero;
 	};
+	if(ast_is_expr(lhs_expr_node, ast_expr_tag.biop))
+	{
+		// lhs is a biop
+		// we might need to do tree rewriting here.
+		atk_precedence ::= biop_node.biop.precedence;
+		def_precedence ::= lhs_expr_node->biop.precedence;
+		if((atk_precedence > def_precedence) && (def_precedence != ast_biop_ultimate_precedence))
+		{
+			// yes do tree rewriting.
+			// (x + y) * z
+			// becomes:
+			// x + (y * z)
+			// so lhs biop.op stays the same aswell as its lhs
+			// but its rhs becomes our biop.
+			lhs_biop_lhs ::= deref ast_get_child(lhs_expr_node, 0);
+			lhs_biop_rhs ::= deref ast_get_child(lhs_expr_node, 1);
+
+			old_lhs ::= deref lhs_expr_node;
+			deref(lhs_expr_node) = lhs_biop_lhs;
+			old_rhs ::= deref rhs_expr_node;
+			deref(rhs_expr_node) = ast
+			{
+				.tag := ast_tag.expr;
+				.expr := ast_expr_tag.biop;
+				.biop := biop_node.biop;
+				.children := zero;
+				.children_count := zero;
+				.children_cap := zero;
+			};
+			ast_add_child(rhs_expr_node, deref ast_get_child(ref old_lhs, 1), global_arena);
+			ast_add_child(rhs_expr_node, old_rhs, global_arena);
+			biop_node.biop = old_lhs.biop;
+		}
+	}
 	ast_add_child(ref biop_node, deref lhs_expr_node, global_arena);
 	ast_add_child(ref biop_node, deref rhs_expr_node, global_arena);
 	return rule_result

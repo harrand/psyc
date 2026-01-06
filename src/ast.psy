@@ -192,7 +192,13 @@ ast_unop ::= enum
 };
 ast_unop_tokens : lex_token mut[5] mut := zero;
 
-ast_biop ::= enum
+ast_biop ::= struct
+{
+	op : ast_biop_op;
+	precedence : u64;
+};
+
+ast_biop_op ::= enum
 {
 	.assign := 1;
 	.compare_equal := 2;
@@ -216,6 +222,8 @@ ast_biop ::= enum
 	.at := 20;
 };
 ast_biop_tokens : lex_token mut[24] mut := zero;
+ast_biop_precedence : u64 mut[24] mut := zero;
+ast_biop_ultimate_precedence ::= 9999;
 
 ast_all_op_tokens : lex_token mut[29] mut := zero;
 ast_all_op_tokens_cursor : u64 mut := 0;
@@ -499,9 +507,9 @@ ast_is_expr ::= func(node : ast?, tag : ast_expr_tag -> bool)
 	return ast_is_any_expr(node) && (node->expr == tag);
 };
 
-ast_is_biop ::= func(node : ast?, op : ast_biop -> bool)
+ast_is_biop ::= func(node : ast?, op : ast_biop_op -> bool)
 {
-	return ast_is_expr(node, ast_expr_tag.biop) && (node->biop == op);
+	return ast_is_expr(node, ast_expr_tag.biop) && (node->biop.op == op);
 };
 
 ast_is_weakness_idiom ::= func(node : ast? -> bool)
@@ -777,7 +785,7 @@ ast_print_expr_part ::= func(n : ast -> v0)
 	if(n.expr == (ast_expr_tag.biop))
 	{
 		putzstr(".");
-		putzstr(__enumname(n.biop));
+		putzstr(__enumname(n.biop.op));
 	}
 };
 

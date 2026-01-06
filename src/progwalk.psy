@@ -22,11 +22,6 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 	{
 		child ::= ast_get_child(node, i);
 		progwalk_node(child, file_scope);
-		if(ast_is_stmt(child, ast_stmt_tag.decl))
-		{
-			// global variable
-			progwalk_global_variable_decl(child, file_scope);
-		}
 	}
 	return file_scope;
 };
@@ -62,6 +57,15 @@ progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	{
 		// its a region
 		progwalk_if(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.decl))
+	{
+		// functions handle their own local variables
+		// we're just checking for globals here
+		if(scope->type == (scope_type.file))
+		{
+			progwalk_global_variable_decl(node, scope);
+		}
 	}
 };
 
