@@ -210,7 +210,6 @@ grammar_setup_base_operator ::= func(tok : lex_token -> v0)
 	// now match the unop-expr with stash(literal-expr)
 	// to turn it into a biop
 
-
 	// any biop or unop operator symbol gets stashed if:
 	// unop: its the token itself
 	grammar_hashtable_insert(state1(
@@ -260,6 +259,17 @@ grammar_setup_base_operator_expr ::= func(tok : lex_token -> v0)
 		token(lex_token.oparen), token(tok)),
 		grammar_rule{.fn := rule_shift1;});
 
+		// same with field tokens
+		grammar_hashtable_insert(state1(
+			expr(exprtag2),
+		token(lex_token.dot), token(tok)),
+		grammar_rule{.fn := rule_shift1;});
+
+		grammar_hashtable_insert(state1(
+			expr(exprtag2),
+		token(lex_token.arrow), token(tok)),
+		grammar_rule{.fn := rule_shift1;});
+
 		// if there's not another expr stashed then this is an unop
 		grammar_hashtable_insert(state2(
 			token(tok),
@@ -292,6 +302,18 @@ grammar_setup_base_operator_expr ::= func(tok : lex_token -> v0)
 				token(tok),
 				expr(exprtag2),
 			token(lex_token.oparen), expr(exprtag1)),
+			grammar_rule{.fn := rule_stash;});
+
+			grammar_hashtable_insert(state2(
+				token(tok),
+				expr(exprtag2),
+			token(lex_token.dot), expr(exprtag1)),
+			grammar_rule{.fn := rule_stash;});
+
+			grammar_hashtable_insert(state2(
+				token(tok),
+				expr(exprtag2),
+			token(lex_token.arrow), expr(exprtag1)),
 			grammar_rule{.fn := rule_stash;});
 
 			grammar_hashtable_insert(state3(

@@ -1482,9 +1482,9 @@ val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers :
 	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
 	{
-		if(allow_pointers && ty_is_ptr(lhs.type) && ty_is_ptr(rhs.type))
+		if(allow_pointers && ((ty_is_enum(lhs.type) && ty_is_enum(rhs.type)) || (ty_is_ptr(lhs.type) && ty_is_ptr(rhs.type))))
 		{
-			// if both are pointers then just defer to lhs's type and hope they're comparable
+			// if both are pointers or enums then just defer to lhs's type and hope they're comparable
 			type = lhs.type;
 		}
 		else
@@ -2124,6 +2124,10 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 			return zero;
 		}
 		return cg_prim(v.type, v.compile_time.primitive, source);
+	}
+	if(ty_is_struct(v.type))
+	{
+		return cg_members(v, scope, source);
 	}
 
 	psyc_panic_begin(source->loc);
