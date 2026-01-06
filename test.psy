@@ -4,7 +4,7 @@
 	optimization(0);
 	debug_symbols(true);
 	assert(true);
-	//add_build_file("./src/libpsybase/src.psy");
+	add_build_file("./src/libpsybase/src.psy");
 };
 
 static_if(_win32)
@@ -55,6 +55,7 @@ print_uint : func(i : u64 weak -> v0)
 
 main : func(args : program_args? -> s32)
 {
+	test_arenas();
 	str ::= "hello world!";
 	my_str : u8 mut[13];
 	i : u64 mut;
@@ -63,10 +64,20 @@ main : func(args : program_args? -> s32)
 		[my_str # i] = [str # i];
 	}
 	print_zstr(my_str # 0);
-
-	testval : u64 mut := 0;
-	testval = testval + 1 * 22 + 333 * 4;
-	print_char(10);
-	print_uint(testval);
 	return 0;
+};
+
+test_arenas : func(-> v0)
+{
+	ar : arena mut := arena_create_virtual_reserve(1024 * 1024 * 1024, 1024 * 1024);
+	ptr ::= arena_alloc(ref ar, 1024 * 1024);
+	if(ptr == zero)
+	{
+		print_zstr("failed to alloc :(");
+	}
+	else
+	{
+		print_zstr("alloc'd! :)");
+	}
+	arena_destroy(ref ar);
 };

@@ -787,8 +787,9 @@ cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
 	return v;
 };
 
-cg_unop_minus ::= func(v : val, source : ast? -> val)
+cg_unop_minus ::= func(v : val mut, source : ast? -> val)
 {
+	v = cg_load_if_lvalue(v);
 	ret ::= val mut
 	{
 		.tag := valtag.typed_value;
@@ -974,6 +975,40 @@ cg_biop_bitwise_and ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
+cg_biop_logical_or ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	type ::= tyid.bool;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildOr(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+
+	return ret;
+};
+
+cg_biop_logical_and ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	type ::= tyid.bool;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildAnd(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+
+	return ret;
+};
+
 cg_biop_modulo ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
@@ -1012,7 +1047,7 @@ cg_biop_compare_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
 		.runtime := zero;
 	};
 	// guaranteed to be the same type
-	if(ty_is_integral(type) || ty_is_ptr(type))
+	if(ty_is_integral(type) || ty_is_ptr(type) || ty_is_enum(type))
 	{
 		ret.runtime.cg = LLVMBuildICmp(ir, LLVMIntEQ, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
 	}
@@ -1037,7 +1072,7 @@ cg_biop_compare_not_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
 		.runtime := zero;
 	};
 	// guaranteed to be the same type
-	if(ty_is_integral(type) || ty_is_ptr(type))
+	if(ty_is_integral(type) || ty_is_ptr(type) || ty_is_enum(type))
 	{
 		ret.runtime.cg = LLVMBuildICmp(ir, LLVMIntNE, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
 	}

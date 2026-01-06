@@ -1385,11 +1385,11 @@ val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexica
 	}
 	if(op == (ast_biop_op.logical_or))
 	{
-		psyc_nyi(source->loc);
+		return val_biop_logical_or(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop_op.logical_and))
 	{
-		psyc_nyi(source->loc);
+		return val_biop_logical_and(lhs, rhs, scope, resolution, source);
 	}
 	if(op == (ast_biop_op.xor))
 	{
@@ -1541,6 +1541,75 @@ val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers :
 	return cg(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
 };
 
+// a bit like val_arith_biop but always returns a boolean, not ty_arithmetic_of
+val_compare_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
+{
+	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
+	if(type == zero)
+	{
+		if(allow_pointers && ((ty_is_enum(lhs.type) && ty_is_enum(rhs.type)) || (ty_is_ptr(lhs.type) && ty_is_ptr(rhs.type))))
+		{
+			// if both are pointers or enums then just defer to lhs's type and hope they're comparable
+			type = lhs.type;
+		}
+		else
+		{
+			psyc_error_begin(source->loc);
+			putzstr("cannot perform the '");
+			putzstr(__enumname(op));
+			putzstr("' operator on a ");
+			putchar('"');
+			putty(lhs.type);
+			putchar('"');
+			putzstr(" and ");
+			putchar('"');
+			putty(rhs.type);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+	}
+	lhsconv ::= val_convert_to(lhs, type, scope, resolution, source);
+	rhsconv ::= val_convert_to(rhs, type, scope, resolution, source);
+	if(resolution == (val_resolution.type_only))
+	{
+		if((lhs.known == (valknown.compile_time)) && (rhs.known == (valknown.compile_time)))
+		{
+			return type_as_val(ty_set_qual(tyid.bool, tyqual.qual_static));
+		}
+		return type_as_val(tyid.bool);
+	}
+	need_runtime_conversion ::= (lhs.known != rhsconv.known) || (((lhs.known != (valknown.runtime)) || (rhs.known != (valknown.runtime))) && (resolution == (val_resolution.runtime_only)));
+	if(need_runtime_conversion)
+	{
+		// one of them is runtime or we are runtime_only
+		// do it runtime mode.
+		return val_compare_biop(op, val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), allow_pointers, scope, resolution, source, s, cg);
+	}
+	// guaranteed that their knowns are the same
+	if(lhs.known == (valknown.compile_time))
+	{
+		// compile time
+		return s(lhsconv, rhsconv, scope, source);
+	}
+	// runtime
+	if(resolution == (val_resolution.compile_time_only))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("this '");
+		putzstr(__enumname(op));
+		putzstr("' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// runtime
+	return cg(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
+};
+
 val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.add, lhs, rhs, false, scope, resolution, source, s_biop_add, cg_biop_add);
@@ -1569,6 +1638,92 @@ val_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resol
 val_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.bitwise_and, lhs, rhs, false, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
+};
+
+val_biop_logical_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	if(!(ty_is_bool(lhs.type) && ty_is_bool(rhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("both operands of a logical_or (||) operator must be booleans. you have provided a ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		putzstr(" and a ");
+		putchar('"');
+		putty(rhs.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		if((lhs.known == (valknown.compile_time)) && (rhs.known == (valknown.compile_time)))
+		{
+			return type_as_val(ty_set_qual(tyid.bool, tyqual.qual_static));
+		}
+		return type_as_val(tyid.bool);
+	}
+	need_runtime_conversion ::= (lhs.known != rhs.known) || (((lhs.known != (valknown.runtime)) || (rhs.known != (valknown.runtime))) && (resolution == (val_resolution.runtime_only)));
+	if(need_runtime_conversion)
+	{
+		// one of them is runtime or we are runtime_only
+		// do it runtime mode.
+		return val_biop_logical_or(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source);
+	}
+	// guaranteed that their knowns are the same
+	if(lhs.known == (valknown.compile_time))
+	{
+		// compile time
+		return s_biop_logical_or(lhs, rhs, scope, source);
+	}
+	// runtime
+	return cg_biop_logical_or(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
+};
+
+val_biop_logical_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	if(!(ty_is_bool(lhs.type) && ty_is_bool(rhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("both operands of a logical_and (&&) operator must be booleans. you have provided a ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		putzstr(" and a ");
+		putchar('"');
+		putty(rhs.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		if((lhs.known == (valknown.compile_time)) && (rhs.known == (valknown.compile_time)))
+		{
+			return type_as_val(ty_set_qual(tyid.bool, tyqual.qual_static));
+		}
+		return type_as_val(tyid.bool);
+	}
+	need_runtime_conversion ::= (lhs.known != rhs.known) || (((lhs.known != (valknown.runtime)) || (rhs.known != (valknown.runtime))) && (resolution == (val_resolution.runtime_only)));
+	if(need_runtime_conversion)
+	{
+		// one of them is runtime or we are runtime_only
+		// do it runtime mode.
+		return val_biop_logical_and(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), scope, resolution, source);
+	}
+	// guaranteed that their knowns are the same
+	if(lhs.known == (valknown.compile_time))
+	{
+		// compile time
+		return s_biop_logical_and(lhs, rhs, scope, source);
+	}
+	// runtime
+	return cg_biop_logical_and(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
 val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
@@ -1659,32 +1814,32 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 
 val_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
+	return val_compare_biop(ast_biop_op.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
 };
 
 val_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
+	return val_compare_biop(ast_biop_op.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
 };
 
 val_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
+	return val_compare_biop(ast_biop_op.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
 };
 
 val_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
+	return val_compare_biop(ast_biop_op.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
 };
 
 val_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
+	return val_compare_biop(ast_biop_op.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
 };
 
 val_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
-	return val_arith_biop(ast_biop_op.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
+	return val_compare_biop(ast_biop_op.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
 };
 
 val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
