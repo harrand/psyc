@@ -30,8 +30,9 @@ program ::= struct
 	scopes_cap : u64;
 
 	link_libraries : u8? mut?;
-	link_library_lens : u64 mut?;
-	link_library_size : u64;
+	link_libraries_lens : u64 mut?;
+	link_libraries_count : u64;
+	link_libraries_cap : u64;
 
 	source_files : source_file mut?;
 	source_files_count : u64;
@@ -211,6 +212,34 @@ program_find_source_file ::= func(path : u8? -> source_file?)
 		}
 	}
 	return zero;
+};
+
+program_add_link_library ::= func(path : u8?, path_len : u64 -> v0)
+{
+	if(prog.link_libraries == zero)
+	{
+		prog.link_libraries_cap = 8;
+		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries)));
+		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries_lens)));
+	}
+	while(prog.link_libraries_count >= (prog.link_libraries_cap))
+	{
+		oldcap ::= prog.link_libraries_cap;
+		oldpathdata ::= prog.link_libraries;
+		oldlendata ::= prog.link_libraries_lens;
+
+		prog.link_libraries_cap = (prog.link_libraries_cap * 2);
+		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries)));
+		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries_lens)));
+		memcopy(prog.link_libraries, oldpathdata, oldcap * __sizeof(deref(prog.link_libraries)));
+		memcopy(prog.link_libraries_lens, oldlendata, oldcap * __sizeof(deref(prog.link_libraries_lens)));
+
+		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.link_libraries)));
+		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.link_libraries_lens)));
+	}
+	deref(prog.link_libraries # (prog.link_libraries_count)) = path;
+	deref(prog.link_libraries_lens # (prog.link_libraries_count)) = path_len;
+	prog.link_libraries_count = (prog.link_libraries_count + 1);
 };
 
 program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
