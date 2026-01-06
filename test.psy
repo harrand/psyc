@@ -7,77 +7,8 @@
 	add_build_file("./src/libpsybase/src.psy");
 };
 
-static_if(_win32)
-{
-	GetStdHandle : func(handle : u32 -> u64) extern;
-	WriteFile : func(hFile : u64, lpBuffer : u8?, nNumberOfBytesToWrite : u32, chars_written : u32 mut? weak, lpOverlapped : v0? -> s32) extern;
-}
-
-print_sstr : func(str : u8?, len : u64 -> v0)
-{
-	static_if(_win32)
-	{
-		WriteFile(GetStdHandle(4294967285@u32), str, len@u32, zero, zero);
-	}
-	else
-	{
-		// write
-		syscall3(1, 1, str@u64, len);
-	}
-};
-
-print_zstr : func(zstr : u8? weak -> v0)
-{
-	count : u64 mut := 0;
-	s : u8? mut := zstr;
-	while([s] != 0)
-	{
-		count = count + 1;
-		s = s # 1;
-	}
-	print_sstr(zstr, count);
-};
-
-print_char : func(char : u8 -> v0)
-{
-	print_sstr(ref char, 1);
-};
-
-print_uint : func(i : u64 weak -> v0)
-{
-	if(i > 9)
-	{
-		print_uint(i / 10);
-	}
-	digit ::= i - ((i / 10) * 10);
-	print_char('0' + digit);
-};
-
 main : func(args : program_args? -> s32)
 {
-	test_arenas();
-	str ::= "hello world!";
-	my_str : u8 mut[13];
-	i : u64 mut;
-	for(i = 0; i < sizeof typeof my_str; i = i + 1)
-	{
-		[my_str # i] = [str # i];
-	}
-	print_zstr(my_str # 0);
+	puts("hello, world!");
 	return 0;
-};
-
-test_arenas : func(-> v0)
-{
-	ar : arena mut := arena_create_virtual_reserve(1024 * 1024 * 1024, 1024 * 1024);
-	ptr ::= arena_alloc(ref ar, 1024 * 1024);
-	if(ptr == zero)
-	{
-		print_zstr("failed to alloc :(");
-	}
-	else
-	{
-		print_zstr("alloc'd! :)");
-	}
-	arena_destroy(ref ar);
 };
