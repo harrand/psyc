@@ -1,7 +1,7 @@
 // all compile-time value modifications live here
 // basically this is constexpr land. almost all functions here will have a cg_xyz (runtime) equivalent in cg.psy
 
-s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
+s_convert_to : func(v : val mut, to : tyid, source : ast? -> val)
 {
 	// conversions always produce an rvalue
 	ret ::= val mut
@@ -211,7 +211,7 @@ s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 };
 
 // note the members array of val.compile_time.members is correctly sized but of an indeterminate value that you *must* overwrite
-s_empty_blkinit ::= func(type : tyid -> val)
+s_empty_blkinit : func(type : tyid -> val)
 {
 	// todo: support arrays for this too
 	memcount : u64 mut := 0;
@@ -248,13 +248,13 @@ s_empty_blkinit ::= func(type : tyid -> val)
 	};
 };
 
-s_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
+s_blkinit_add : func(v : val mut, memidx : u64, init : val -> val)
 {
 	deref(v.compile_time.members@val mut? # memidx) = init;
 	return v;
 };
 
-s_unop_minus ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+s_unop_minus : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	return val
 	{
@@ -285,7 +285,7 @@ s_unop_minus ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	};
 };
 
-s_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_assign : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// assume lhs is a varref and rhs has been converted to lhs.
 	var ::= scope_find_variable(scope, lhs.compile_time.varref_name, lhs.compile_time.varref_name_len);
@@ -293,7 +293,7 @@ s_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source 
 	return lhs;
 };
 
-s_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_add : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -304,7 +304,7 @@ s_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) + val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_sub : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -315,7 +315,7 @@ s_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) - val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_mul : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -326,7 +326,7 @@ s_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) * val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_div : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	// todo: check for compile-time divide by zero?
@@ -338,42 +338,42 @@ s_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) / val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitwise_or : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) | val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitwise_and : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) & val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_logical_or ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_logical_or : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(bool_as_val(val_must_get_boolean(lhs, scope, source) || val_must_get_boolean(lhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_logical_and ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_logical_and : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(bool_as_val(val_must_get_boolean(lhs, scope, source) && val_must_get_boolean(lhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_modulo : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) % val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -384,7 +384,7 @@ s_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, 
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) == val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_not_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -395,7 +395,7 @@ s_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mu
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) != val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_less_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -406,7 +406,7 @@ s_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope m
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) <= val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_less : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -417,7 +417,7 @@ s_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, s
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) < val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_greater_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -428,7 +428,7 @@ s_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scop
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) >= val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_greater : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -439,7 +439,7 @@ s_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope mut?
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) > val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
+s_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 {
 	// variable declared but in a fully compile-time setting.
 	if(var->node->children_count == 2)
@@ -449,7 +449,7 @@ s_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-s_builtin_assert ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_assert : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	cond ::= val_must_get_boolean(deref(params # 0), scope, source);
 	if(!cond)
@@ -464,7 +464,7 @@ s_builtin_assert ::= func(params : val?, scope : lexical_scope?, source : ast? -
 	return zero;
 };
 
-s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_source_file : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	path_strdata : u8 mut? mut;
 	path_strlen : u64 mut;
@@ -488,7 +488,7 @@ s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source
 	return zero;
 };
 
-s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_build_file : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	path_strdata : u8 mut? mut;
 	path_strlen : u64 mut;
@@ -512,7 +512,7 @@ s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source 
 	return zero;
 };
 
-s_builtin_executable ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_executable : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	name_strdata : u8 mut? mut;
 	name_strlen : u64 mut;
@@ -521,20 +521,20 @@ s_builtin_executable ::= func(params : val?, scope : lexical_scope?, source : as
 	return zero;
 };
 
-s_builtin_optimization ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_optimization : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	prog.optimization = (val_must_get_integer(deref(params # 0), scope, source)@program_optimization);
 	return zero;
 };
 
-s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_debug_symbols : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	prog.debug_symbols = val_must_get_boolean(deref(params # 0), scope, source);
 	return zero;
 };
 
 s_impl_curdir : u8? mut := zero;
-s_impl_add_source_file ::= func(path : u8? -> v0)
+s_impl_add_source_file : func(path : u8? -> v0)
 {
 	parented_path_len ::= zstrlen(s_impl_curdir) + 1 + zstrlen(path);
 	parented_path : u8 mut? := arena_alloc(string_arena, parented_path_len);
@@ -544,7 +544,7 @@ s_impl_add_source_file ::= func(path : u8? -> v0)
 	program_queue_source_file(parented_path, parented_path_len);
 };
 
-s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_source_directory : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	dir_strdata : u8 mut? mut;
 	dir_strlen : u64 mut;
@@ -555,7 +555,7 @@ s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, s
 	return zero;
 };
 
-s_builtin_add_link_library ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_link_library : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	lib_strdata : u8 mut? mut;
 	lib_strlen : u64 mut;

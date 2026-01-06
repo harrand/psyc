@@ -1,6 +1,6 @@
 // stores a bunch of types
 // most likely you will not use this directly - the global program variable 'prog' has its own tybox which is used for everything and wrappers exist e.g ty_wrap and ty_unwrap
-tybox ::= struct
+tybox : struct
 {
 	data : ty mut?;
 	data_count : u64;
@@ -8,7 +8,7 @@ tybox ::= struct
 };
 
 // create a new box. it will have the prims but nothing else.
-tybox_create ::= func(capacity : u64 -> tybox)
+tybox_create : func(capacity : u64 -> tybox)
 {
 	ret ::= zero@tybox mut;
 	// all tyboxes include primitives
@@ -21,7 +21,7 @@ tybox_create ::= func(capacity : u64 -> tybox)
 };
 
 // add a new type to the box and return its id. dont check for duplicates.
-tybox_do_add ::= func(box : tybox mut?, newty : ty -> tyid)
+tybox_do_add : func(box : tybox mut?, newty : ty -> tyid)
 {
 	while(box->data_count >= (box->data_cap))
 	{
@@ -38,7 +38,7 @@ tybox_do_add ::= func(box : tybox mut?, newty : ty -> tyid)
 };
 
 // like tybox_do_add, but if the type already exists return its id.
-tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
+tybox_add : func(box : tybox mut?, newty : ty -> tyid)
 {
 	already ::= tybox_find(box, newty.name, newty.name_len);
 	if(already != zero)
@@ -49,11 +49,11 @@ tybox_add ::= func(box : tybox mut?, newty : ty -> tyid)
 };
 
 // remember doesnt really work for qualifiers
-tybox_find ::= func(box : tybox?, name : u8?, name_len : u64 -> tyid)
+tybox_find : func(box : tybox?, name : u8?, name_len : u64 -> tyid)
 {
 	// linear search :/
 	i : u64 mut;
-	for(i = 0, i < (box->data_count), i = i + 1)
+	for(i = 0; i < (box->data_count); i = i + 1)
 	{
 		cur ::= box->data # i;
 		if(cur->name_len == name_len)
@@ -68,12 +68,12 @@ tybox_find ::= func(box : tybox?, name : u8?, name_len : u64 -> tyid)
 };
 
 // add an empty type to the box and return its id
-tybox_add_empty ::= func(box : tybox mut? -> tyid)
+tybox_add_empty : func(box : tybox mut? -> tyid)
 {
 	return tybox_do_add(box, zero);
 };
 
-tybox_add_ptr ::= func(box : tybox mut?, underlying : tyid -> tyid)
+tybox_add_ptr : func(box : tybox mut?, underlying : tyid -> tyid)
 {
 	u ::= tybox_at(box, underlying);
 	name : u8 mut? := arena_alloc(string_arena, u->name_len + quals_max_strlen + 1);
@@ -105,7 +105,7 @@ tybox_add_ptr ::= func(box : tybox mut?, underlying : tyid -> tyid)
 	});
 };
 
-tybox_add_array ::= func(box : tybox mut?, underlying : tyid, array_len : u64 -> tyid)
+tybox_add_array : func(box : tybox mut?, underlying : tyid, array_len : u64 -> tyid)
 {
 	u ::= tybox_at(box, underlying);
 	len_strlen ::= lenuint(array_len);
@@ -140,12 +140,12 @@ tybox_add_array ::= func(box : tybox mut?, underlying : tyid, array_len : u64 ->
 	});
 };
 
-tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, params_count : u64 -> tyid)
+tybox_add_function : func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, params_count : u64 -> tyid)
 {
 	i : u64 mut;
 	// need to calculate the name len... ugh...
 	maximum_name_len : u64 mut := zstrlen("func( -> )");
-	for(i = 0, i < params_count, i = i + 1)
+	for(i = 0; i < params_count; i = i + 1)
 	{
 		// include enough space for the actual name
 		// + qual_max_strlen
@@ -160,9 +160,9 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 	memcopy(name # name_offset, funcname_prefix, zstrlen(funcname_prefix));
 	name_offset = name_offset + zstrlen(funcname_prefix);
 	// ok do params
-	for(i = 0, i < params_count, i = i + 1)
+	for(i = 0; i < params_count; i = i + 1)
 	{
-		param_id ::= deref(param_ids # i);
+		param_id ::= [param_ids # i];
 		param ::= tybox_at(box, ty_clear_all_quals(param_id));
 		memcopy(name # name_offset, param->name, param->name_len);
 		name_offset = (name_offset + param->name_len);
@@ -229,15 +229,15 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 };
 
 // get the type within a box at the given id
-tybox_at ::= func(box : tybox mut?, id : tyid -> ty mut?)
+tybox_at : func(box : tybox mut?, id : tyid -> ty mut?)
 {
 	return box->data # (id@s64);
 };
 
-tybox_print_all ::= func(box : tybox? -> v0)
+tybox_print_all : func(box : tybox? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < (box->data_count), i = i + 1)
+	for(i = 0; i < (box->data_count); i = i + 1)
 	{
 		id ::= i@tyid;
 		t ::= ty_unwrap(id);
@@ -252,14 +252,14 @@ tybox_print_all ::= func(box : tybox? -> v0)
 };
 
 // implementation detail. given a fully empty box, populate the prims.
-impl_tybox_populate_prims ::= func(box : tybox mut? -> u64)
+impl_tybox_populate_prims : func(box : tybox mut? -> u64)
 {
 	prim_count ::= __countof(tyid);
 	i : u64 mut;
 	// badtype = zero
 	badtype_name ::= "<invalid type>";
-	deref(box->data # 0) = ty{.tag := zero; .name := badtype_name; .name_len := zstrlen(badtype_name);};
-	for(i = 1, i < (prim_count + 1), i = i + 1)
+	[box->data # 0] = ty{.tag := zero; .name := badtype_name; .name_len := zstrlen(badtype_name);};
+	for(i = 1; i < (prim_count + 1); i = i + 1)
 	{
 		prim ::= i@tyid;
 		name ::= __enumname(prim);

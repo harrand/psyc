@@ -4,7 +4,7 @@
 // in theory you'd think its as simple as progwalk_node + progwalk_children and then dispatch it all to the right node types
 // however this would mean alot of unnecessary work
 // so instead we just iterate over all the immediate children. globals/functions/structs etc are recorded.
-progwalk_file ::= func(node : ast? -> lexical_scope mut?)
+progwalk_file : func(node : ast? -> lexical_scope mut?)
 {
 	psyc_timed_begin(psyc_stage.semantic);
 	defer psyc_timed_end();
@@ -26,7 +26,7 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 	return file_scope;
 };
 
-progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_node : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.structure)))
 	{
@@ -69,7 +69,7 @@ progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	}
 };
 
-progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_structure : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	structdata ::= node->structure;
 	// todo: do something with ast_struct
@@ -119,7 +119,7 @@ progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offset : u64, end_offset : u64, func_scope : lexical_scope mut? -> v0)
+progwalk_search_function_descendents_for_locals : func(node : ast?, begin_offset : u64, end_offset : u64, func_scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
 	last ::= node->children_count - end_offset;
@@ -168,7 +168,7 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 		// if/else/while/fors need to be scanned too.
 		if(ast_is_stmt(child, ast_stmt_tag.if_block))
 		{
-			// progwalk_if first because if its a static if we want that dealt with now.
+			// progwalk_if first because if its a static_if we want that dealt with now.
 			progwalk_if(child, func_scope);
 			// ignore cond
 			progwalk_search_function_descendents_for_locals(child, 1, 0, func_scope);
@@ -191,7 +191,7 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 	}
 };
 
-progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_function : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	ast_fn ::= node->function;
 
@@ -272,7 +272,7 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_enumeration : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	enumdata ::= node->enumeration;
 	entcount ::= node->children_count;
@@ -318,7 +318,7 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_assembly : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	ast_asm ::= node->assembly;
 	// child 0 is the typename
@@ -341,7 +341,7 @@ progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_region : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	regiondata ::= node->region;
 	scope_add_region(scope, region
@@ -352,7 +352,7 @@ progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+progwalk_if : func(node : ast mut?, scope : lexical_scope mut? -> v0)
 {
 	// this exists for 2 reasons:
 	// 1. we need to check inside if blocks etc for hoisting reasons
@@ -414,7 +414,7 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 	}
 };
 
-progwalk_global_variable_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+progwalk_global_variable_decl : func(node : ast mut?, scope : lexical_scope mut? -> v0)
 {
 	scope_add_variable(scope, variable
 	{

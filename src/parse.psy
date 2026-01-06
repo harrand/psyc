@@ -1,5 +1,5 @@
 parse_state : parse_data mut := zero;
-parse_data ::= struct
+parse_data : struct
 {
 	src : u8?;
 	path : u8?;
@@ -15,7 +15,7 @@ parse_data ::= struct
 	root : ast mut;
 };
 
-token2ast ::= func(tok : token_data -> ast)
+token2ast : func(tok : token_data -> ast)
 {
 	l ::= tok.lexeme;
 	return ast
@@ -31,7 +31,7 @@ token2ast ::= func(tok : token_data -> ast)
 	};
 };
 
-parse_complete ::= func(-> bool)
+parse_complete : func(-> bool)
 {
 	// parsing is done if:
 	return
@@ -45,7 +45,7 @@ parse_complete ::= func(-> bool)
 		(parse_state.stash_cursor == 0);
 };
 
-parse_current_key ::= func(include_lookahead : bool, include_stash : bool -> grammar_entry)
+parse_current_key : func(include_lookahead : bool, include_stash : bool -> grammar_entry)
 {
 	key : grammar_entry mut := zero;
 
@@ -70,7 +70,7 @@ parse_current_key ::= func(include_lookahead : bool, include_stash : bool -> gra
 	return key;
 };
 
-parse_get_next_rule ::= func( -> grammar_rule)
+parse_get_next_rule : func( -> grammar_rule)
 {
 	rule : grammar_rule mut := zero;
 
@@ -95,7 +95,7 @@ parse_get_next_rule ::= func( -> grammar_rule)
 	return rule;
 };
 
-parse_would_be_valid_if_extra_semicol ::= func(-> bool)
+parse_would_be_valid_if_extra_semicol : func(-> bool)
 {
 	old_lookahead ::= parse_state.lookahead;
 	parse_state.lookahead = token2ast(token_data{.tok := lex_token.semicol;});
@@ -104,7 +104,7 @@ parse_would_be_valid_if_extra_semicol ::= func(-> bool)
 	return !would_be_invalid;
 };
 
-parse_print_state ::= func(-> v0)
+parse_print_state : func(-> v0)
 {
 	putchar(10);
 	psyc_colour_reset();
@@ -139,7 +139,7 @@ parse_print_state ::= func(-> v0)
 	}
 };
 
-parse_invalid_syntax_error ::= func(-> v0)
+parse_invalid_syntax_error : func(-> v0)
 {
 	front ::= parse_state.nodes # 0;
 	psyc_error_begin(front->loc);
@@ -157,7 +157,7 @@ parse_invalid_syntax_error ::= func(-> v0)
 	psyc_exit_failure();
 };
 
-parse_invoke_rule ::= func(rule : grammar_rule -> v0)
+parse_invoke_rule : func(rule : grammar_rule -> v0)
 {
 	result ::= rule.fn(parse_state.nodes # 0, parse_state.nodes_cursor);
 	if(result.tag == (rule.shift))
@@ -195,7 +195,7 @@ parse_invoke_rule ::= func(rule : grammar_rule -> v0)
 	}
 };
 
-parse ::= func(file : source_file, lex : lex_state? -> ast)
+parse : func(file : source_file, lex : lex_state? -> ast)
 {
 	psyc_timed_begin(psyc_stage.parse);
 	defer psyc_timed_end();
@@ -236,7 +236,7 @@ parse ::= func(file : source_file, lex : lex_state? -> ast)
 	return parse_state.root;
 };
 
-shift ::= func(data : shift_data -> v0)
+shift : func(data : shift_data -> v0)
 {
 	n ::= data.count;
 	// remember cursor points to lookahead so the end case is actually 'tokens_cursor == tokens_size + 1'
@@ -263,7 +263,7 @@ shift ::= func(data : shift_data -> v0)
 	}
 };
 
-reduce ::= func(data : reduce_data mut -> v0)
+reduce : func(data : reduce_data mut -> v0)
 {
 	num_new_nodes : u64 mut := 0;
 	if(data.new_node.tag != zero)
@@ -308,7 +308,7 @@ reduce ::= func(data : reduce_data mut -> v0)
 	}
 };
 
-stash ::= func(-> v0)
+stash : func(-> v0)
 {
 	if(parse_state.stash_cursor >= (__sizeof(parse_state.stash) / __sizeof(deref(parse_state.stash # 0))))
 	{
@@ -325,7 +325,7 @@ stash ::= func(-> v0)
 	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
-unstash ::= func(-> v0)
+unstash : func(-> v0)
 {
 	// get the thing at the top of the stash
 	if(parse_state.stash_cursor == 0)
@@ -342,7 +342,7 @@ unstash ::= func(-> v0)
 	deref(stashptr) = zero;
 };
 
-commit ::= func(-> v0)
+commit : func(-> v0)
 {
 	// get the first node
 	// if we have a stash, make it a child of stashtop
@@ -357,7 +357,7 @@ commit ::= func(-> v0)
 	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
-rule ::= enum
+rule : enum
 {
 	.shift := 1;
 	.reduce := 2;
@@ -366,12 +366,12 @@ rule ::= enum
 	.commit := 5;
 };
 
-shift_data ::= struct
+shift_data : struct
 {
 	count : u64;
 };
 
-reduce_data ::= struct
+reduce_data : struct
 {
 	delete_offset : u64;
 	delete_count : u64; // -1 means all
@@ -379,7 +379,7 @@ reduce_data ::= struct
 	new_node : ast;
 };
 
-reduce_delete_all_but_first ::= func(-> reduce_data)
+reduce_delete_all_but_first : func(-> reduce_data)
 {
 	return reduce_data
 	{
@@ -389,7 +389,7 @@ reduce_delete_all_but_first ::= func(-> reduce_data)
 	};
 };
 
-reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
+reduce_replace_all_with : func(new_node : ast -> reduce_data)
 {
 	return reduce_data
 	{
@@ -399,7 +399,7 @@ reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
 	};
 };
 
-rule_result ::= struct
+rule_result : struct
 {
 	tag : rule;
 	shift : shift_data;
