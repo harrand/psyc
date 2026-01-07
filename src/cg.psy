@@ -810,6 +810,38 @@ cg_unop_minus ::= func(v : val mut, source : ast? -> val)
 	return ret;
 };
 
+cg_unop_bitwise_invert ::= func(v : val mut, source : ast? -> val)
+{
+	v = cg_load_if_lvalue(v);
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := v.type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildNot(ir, v.runtime.cg, "");
+	return ret;
+};
+
+cg_unop_logical_invert ::= func(v : val mut, source : ast? -> val)
+{
+	v = cg_load_if_lvalue(v);
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.compile_time;
+		.hand := valhand.rvalue;
+		.type := v.type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildNot(ir, v.runtime.cg, "");
+	return ret;
+};
+
 cg_biop_assign ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
 	LLVMBuildStore(ir, cg_load_if_lvalue(rhs).runtime.cg, lhs.runtime.cg);

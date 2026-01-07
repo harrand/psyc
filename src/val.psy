@@ -1216,11 +1216,11 @@ val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : v
 	}
 	if(op == (ast_unop.bitwise_invert))
 	{
-		psyc_nyi(source->loc);
+		return val_unop_bitwise_invert(v, scope, resolution, source);
 	}
 	if(op == (ast_unop.logical_invert))
 	{
-		psyc_nyi(source->loc);
+		return val_unop_logical_invert(v, scope, resolution, source);
 	}
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of val_unop for val_unop.");
@@ -1308,6 +1308,74 @@ val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolu
 	}
 	// runtime
 	return cg_unop_minus(v, source);
+};
+
+val_unop_bitwise_invert ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	// should be an integral type
+	if((!ty_is_integral(v.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("unary 'bitwise invert' (~) operator requires an integral operand. you have provided a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(v.type);
+	}
+	retval : val mut := v;
+	if(v.known == (valknown.compile_time))
+	{
+		// compile time
+		retval = s_unop_bitwise_invert(v, scope, source);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(retval, scope, source);
+		}
+		return retval;
+	}
+	// runtime
+	return cg_unop_bitwise_invert(v, source);
+};
+
+val_unop_logical_invert ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+{
+	// should be a boolean type
+	if((!ty_is_bool(v.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("unary 'logical invert' (!) operator requires a boolean operand. you have provided a ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(v.type);
+	}
+	retval : val mut := v;
+	if(v.known == (valknown.compile_time))
+	{
+		// compile time
+		retval = s_unop_logical_invert(v, scope, source);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(retval, scope, source);
+		}
+		return retval;
+	}
+	// runtime
+	return cg_unop_logical_invert(v, source);
 };
 
 val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
