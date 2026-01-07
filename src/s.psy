@@ -3,6 +3,7 @@
 
 s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 {
+	i : u64 mut;
 	// conversions always produce an rvalue
 	ret ::= val mut
 	{
@@ -189,6 +190,20 @@ s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 			ret.compile_time = (v.compile_time);
 			return ret;
 		}
+	}
+	if(ty_is_arr(to))
+	{
+		memcount ::= ty_unwrap(to)->array_len;
+		// members pointer needs to be deep copied
+		ret.compile_time = (v.compile_time);
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
+		memcopy(ret.compile_time.members, v.compile_time.members, __sizeof(val) * (ret.compile_time.members_count));
+		for(i = 0, i < memcount, i = i + 1)
+		{
+			mem ::= ret.compile_time.members@val mut? # i;
+			deref(mem) = s_convert_to(deref(mem), ty_underlying(to), source);
+		}
+		return ret;
 	}
 	// structs dont convert to anything
 	// but if we got here its the same type

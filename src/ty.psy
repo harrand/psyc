@@ -385,10 +385,12 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 	from_is_mut ::= ty_has_qual(from, tyqual.qual_mut);
 	from_is_weak ::= ty_has_qual(from, tyqual.qual_weak);
 	from_is_static ::= ty_has_qual(from, tyqual.qual_static);
+	from_underlying ::= ty_underlying(from);
 
 	to_is_mut ::= ty_has_qual(to, tyqual.qual_mut);
 	to_is_weak ::= ty_has_qual(to, tyqual.qual_weak);
 	to_is_static ::= ty_has_qual(to, tyqual.qual_static);
+	to_underlying ::= ty_underlying(to);
 
 	either_is_weak ::= from_is_weak || to_is_weak;
 	if(ty_matches_ignore_quals(from, to))
@@ -540,6 +542,20 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 			{
 				return tyconv.yes;
 			}
+			// ok what if we want to convert u64 mut? to u64?
+			// that should be allowed
+			// but not the other way around
+			if(ty_matches_ignore_quals(from_underlying, to_underlying))
+			{
+				// underlyings are the same
+				// should it be okay to add mutness? i think so.
+				// not staticness though
+				if((!ty_has_qual(from_underlying, tyqual.qual_static)) && ty_has_qual(to_underlying, tyqual.qual_static))
+				{
+					return tyconv.no_cant_add_staticness;
+				}
+				return tyconv.yes;
+			}
 			return tyconv.no_but_yes_with_weak;
 		}
 		if(ty_is_fn(to))
@@ -601,6 +617,25 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 				return tyconv.yes;
 			}
 			return tyconv.no_but_yes_with_weak;
+		}
+	}
+	if(ty_is_arr(from))
+	{
+		if(ty_is_arr(to))
+		{
+			// arrays but not exactly the same
+			// basically same shit as with pointers here...
+			if(ty_matches_ignore_quals(from_underlying, to_underlying))
+			{
+				// underlyings are the same
+				// should it be okay to add mutness? i think so.
+				// not staticness though
+				if((!ty_has_qual(from_underlying, tyqual.qual_static)) && ty_has_qual(to_underlying, tyqual.qual_static))
+				{
+					return tyconv.no_cant_add_staticness;
+				}
+				return tyconv.yes;
+			}
 		}
 	}
 	return tyconv.no;
