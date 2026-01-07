@@ -583,3 +583,121 @@ s_builtin_add_link_library ::= func(params : val?, scope : lexical_scope?, sourc
 	program_add_link_library(lib_strdata, lib_strlen);
 	return zero;
 };
+
+s_builtin_embed ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	file_strdata : u8 mut? mut;
+	file_strlen : u64 mut;
+	val_must_get_string(deref(params # 0), scope, source, ref file_strdata, ref file_strlen);
+	file_path_zstr ::= sstr2zstr(file_strdata, file_strlen, string_arena);
+	if(!file_exists(file_path_zstr))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("embedded file ");
+		putchar('"');
+		putzstr(file_path_zstr);
+		putchar('"');
+		putzstr(" could not be found");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	filebuf_len ::= file_size_bytes(file_path_zstr);
+	filebuf : u8 mut? := arena_alloc(string_arena, filebuf_len);
+	file_read(file_path_zstr, filebuf, filebuf_len);
+	embed_srcloc ::= srcloc
+	{
+		.file := file_path_zstr;
+		.line := 1;
+		.column := 1;
+	};
+	embed_node ::= ast
+	{
+		.tag := ast_tag.stmt;
+		.stmt := ast_stmt_tag.expr;
+		.expr := ast_expr_tag.blkinit;
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref embed_node, ast
+	{
+		.tag := ast_tag.typename;
+		.typename := ast_typename
+		{
+			.tag := ast_typename_tag.finalised;
+			.quals := zero;
+			.descriptor := ast_typename_descriptor.base;
+			.basename := "embed_data";
+			.basename_len := 10;
+		};
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	}, global_arena);
+	desiginit_data ::= ast
+	{
+		.tag := ast_tag.desiginit;
+		.desiginit := ast_desiginit
+		{
+			.descriptor := ast_desiginit_descriptor.symbol;
+			.symbol := "data";
+			.symbol_len := 4;
+		};
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	init_data ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.string;
+			.chars := filebuf;
+			.chars_len := filebuf_len;
+		};
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref desiginit_data, init_data, global_arena);
+	ast_add_child(ref embed_node, desiginit_data, global_arena);
+	desiginit_len ::= ast
+	{
+		.tag := ast_tag.desiginit;
+		.desiginit := ast_desiginit
+		{
+			.descriptor := ast_desiginit_descriptor.symbol;
+			.symbol := "len";
+			.symbol_len := 3;
+		};
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	init_len ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := filebuf_len@_;
+		};
+		.loc := source->loc;
+		.children := zero;
+		.children_count := zero;
+		.children_cap := zero;
+	};
+	ast_add_child(ref desiginit_len, init_len, global_arena);
+	ast_add_child(ref embed_node, desiginit_len, global_arena);
+	return val_blkinit(ref embed_node, scope, val_resolution.compile_time_only);
+};
