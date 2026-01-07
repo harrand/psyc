@@ -533,9 +533,29 @@ s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source :
 	return zero;
 };
 
+s_path_has_extension ::= func(path_zstr : u8?, extension_zstr : u8? -> bool)
+{
+	extlen ::= zstrlen(extension_zstr);
+	pathlen ::= zstrlen(path_zstr);
+	if(extlen >= pathlen)
+	{
+		return false;
+	}
+	if(streql_n(path_zstr # (pathlen - extlen), extension_zstr, extlen))
+	{
+		return true;
+	}
+	return false;
+};
+
 s_impl_curdir : u8? mut := zero;
 s_impl_add_source_file ::= func(path : u8? -> v0)
 {
+	// make sure its a .psy file
+	if(!s_path_has_extension(path, ".psy"))
+	{
+		return;
+	}
 	parented_path_len ::= zstrlen(s_impl_curdir) + 1 + zstrlen(path);
 	parented_path : u8 mut? := arena_alloc(string_arena, parented_path_len);
 	memcopy(parented_path, s_impl_curdir, zstrlen(s_impl_curdir));
