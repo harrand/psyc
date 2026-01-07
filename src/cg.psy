@@ -589,7 +589,16 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 			.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, true), prim.boolean@s64, false@s32);};
 		};
 	}
-	psyc_nyi(source->loc);
+	psyc_panic_begin(source->loc);
+	putzstr("compiler bug: cg_prim has been called on the type ");
+	putchar('"');
+	putty(type);
+	putchar('"');
+	putzstr(" - to be fair some other things are supported by cg_prim apart from prims such as enums and pointers but what you passed in certainly isnt supported");
+	putchar(10);
+	ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
