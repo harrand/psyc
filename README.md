@@ -210,10 +210,10 @@ pointer : u64? := my_favourite_numbers # 0;
 //another_pointer : u64? := my_favourite_numbers; // error!
 
 // write to each value. this requires the element type to be mutable but not the array.
-(deref pointer) = 7; // equivalent to (deref (my_favourite_numbers # 0)) = 7;
-(deref (my_favourite_numbers # 1)) = 69;
-(deref (my_favourite_numbers # 2)) = 420;
-(deref (my_favourite_numbers # 0)) = zero;
+(deref pointer) = 7; // equivalent to (deref(my_favourite_numbers # 0)) = 7;
+(deref(my_favourite_numbers # 1)) = 69;
+(deref(my_favourite_numbers # 2)) = 420;
+(deref(my_favourite_numbers # 0)) = zero;
 // Array is now: 0, 69, 420
 
 // write directly to the array. this requires the array itself to be mutable.
