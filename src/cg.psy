@@ -1009,6 +1009,91 @@ cg_biop_logical_and ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
+cg_biop_xor ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("bitwise operations are not allowed on floating-point types");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	type ::= lhs.type;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildXor(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+
+	return ret;
+};
+
+cg_biop_bitshift_left ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("bitwise operations are not allowed on floating-point types");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	type ::= lhs.type;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	ret.runtime.cg = LLVMBuildShl(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+
+	return ret;
+};
+
+cg_biop_bitshift_right ::= func(lhs : val, rhs : val, source : ast? -> val)
+{
+	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("bitwise operations are not allowed on floating-point types");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	type ::= lhs.type;
+	ret ::= val mut
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := type;
+		.compile_time := zero;
+		.runtime := zero;
+	};
+	if(ty_is_signed_integral(ty_of_arithmetic(lhs.type, rhs.type)))
+	{
+		ret.runtime.cg = LLVMBuildAShr(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+	}
+	else
+	{
+		ret.runtime.cg = LLVMBuildLShr(ir, cg_load_if_lvalue(lhs).runtime.cg, cg_load_if_lvalue(rhs).runtime.cg, "");
+	}
+
+	return ret;
+};
+
 cg_biop_modulo ::= func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
