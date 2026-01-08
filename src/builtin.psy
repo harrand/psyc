@@ -1,7 +1,7 @@
 // builtins are blessed function-like things whose implementations live in the compiler
 // they can be invoked at either runtime or compile time or both, depending on the builtin
 
-builtin_entry ::= struct
+builtin_entry : struct
 {
 	name_zstr : u8?;
 	type : tyid;
@@ -13,26 +13,26 @@ builtins : builtin_entry mut? mut := zero;
 builtins_count : u64 mut := zero;
 builtins_cap : u64 mut := zero;
 
-add_builtin ::= func(b : builtin_entry -> v0)
+add_builtin : func(b : builtin_entry -> v0)
 {
 	if(builtins == zero)
 	{
 		builtins_cap = 8;
-		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
+		builtins = arena_alloc(global_arena, sizeof builtin_entry * builtins_cap);
 	}
 	while(builtins_count >= builtins_cap)
 	{
 		oldcap ::= builtins_cap;
 		olddata ::= builtins;
 		builtins_cap = (builtins_cap * 2);
-		builtins = arena_alloc(global_arena, __sizeof(builtin_entry) * builtins_cap);
-		memcopy(builtins, olddata, __sizeof(builtin_entry) * oldcap);
+		builtins = arena_alloc(global_arena, sizeof builtin_entry * builtins_cap);
+		memcopy(builtins, olddata, sizeof builtin_entry * oldcap);
 	}
-	deref(builtins # builtins_count) = b;
+	[builtins # builtins_count] = b;
 	builtins_count = (builtins_count + 1);
 };
 
-builtin_setup ::= func(-> v0)
+builtin_setup : func(-> v0)
 {
 	add_builtin(builtin_entry
 	{
@@ -108,10 +108,10 @@ builtin_setup ::= func(-> v0)
 	});
 };
 
-builtin_find ::= func(name : u8?, name_len : u64 -> builtin_entry?)
+builtin_find : func(name : u8?, name_len : u64 -> builtin_entry?)
 {
 	i : u64 mut;
-	for(i = 0, i < builtins_count, i = i + 1)
+	for(i = 0;  i < builtins_count;  i = i + 1)
 	{
 		cur ::= builtins # i;
 		if(zstrlen(cur->name_zstr) == name_len)
@@ -125,19 +125,21 @@ builtin_find ::= func(name : u8?, name_len : u64 -> builtin_entry?)
 	return zero;
 };
 
-builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+builtin_invoke : func(b : builtin_entry, params : val mut?, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	all_params_compile_time : bool mut := true;
 	params_count ::= ty_unwrap(b.type)->fn.params_count;
 	i : u64 mut;
-	for(i = 0, i < params_count, i = i + 1)
+	for(i = 0;  i < params_count;  i = i + 1)
 	{
-		if(deref(params # i).known != (valknown.compile_time))
+		if([params # i].known != (valknown.compile_time))
 		{
 			all_params_compile_time = false;
 		}
 	}
-	if((b.invoke_compile_time != zero) && all_params_compile_time && (resolution != (val_resolution.runtime_only)))
+	// todo: check if b.invoke_compile_time isnt zero first!!! super dangerous
+	//if((b.invoke_compile_time@u64 != zero) && all_params_compile_time && (resolution != (val_resolution.runtime_only)))
+	if(true && all_params_compile_time && (resolution != (val_resolution.runtime_only)))
 	{
 		// do a compile-time invocation
 		return b.invoke_compile_time(params, scope, source);
@@ -156,7 +158,9 @@ builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_sc
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	if(b.invoke_runtime == zero)
+	// todo: check if b.invoke_runtime is zero first!!! super dangerous
+	//if(b.invoke_runtime@u64 == zero)
+	if(true)
 	{
 		psyc_error_begin(source->loc);
 		putzstr("builtin ");
@@ -170,9 +174,9 @@ builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_sc
 		psyc_exit_failure();
 	}
 	// make them all dynamic params
-	for(i = 0, i < params_count, i = i + 1)
+	for(i = 0;  i < params_count;  i = i + 1)
 	{
-		deref(params # i) = val_dynamic(deref(params # i), scope, source);
+		[params # i] = val_dynamic([params # i], scope, source);
 	}
 	return b.invoke_runtime(params, scope, source);
 };

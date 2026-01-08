@@ -2,7 +2,7 @@
 // basically this is LLVM land. many functions here have a s_xyz (compile-time) equivalent in s.psy
 ir : u64 mut := zero;
 
-codegen ::= func(-> v0)
+codegen : func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
 	cg_begin();
@@ -15,16 +15,21 @@ codegen ::= func(-> v0)
 	psyc_timed_end();
 };
 
-cg_begin ::= func(-> v0)
+cg_begin : func(-> v0)
 {
 	prog.cg = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
 	prog.db = LLVMCreateDIBuilder(prog.cg);
 };
 
-cg_end ::= func(-> v0)
+cg_end : func(-> v0)
 {
-	// todo: _fltused
+	fltused_cgty ::= LLVMInt64Type();
+	fltused ::= LLVMAddGlobal(prog.cg, fltused_cgty, "_fltused");
+	LLVMSetLinkage(fltused, LLVMCommonLinkage);
+	LLVMSetExternallyInitialized(fltused, 0);
+	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
+
 	err : u8? mut;
 	if(LLVMVerifyModule(prog.cg, 2, ref err) != 0)
 	{
@@ -53,7 +58,7 @@ cg_end ::= func(-> v0)
 	}
 };
 
-cg_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
+cg_type : func(type : tyid, should_ref_function_type : bool -> u64)
 {
 	t ::= ty_clear_all_quals(type);
 	if(ty_is_prim(t))
@@ -110,12 +115,12 @@ cg_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 	if(ty_is_fn(t))
 	{
 		fntype ::= ty_unwrap(t);
-		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (fntype->fn.params_count));
+		paramdata : u64 mut? := arena_alloc(global_arena, sizeof u64 * (fntype->fn.params_count));
 		ret_cg ::= cg_type(fntype->fn.return_type, true);
 		i : u64 mut;
-		for(i = 0, i < (fntype->fn.params_count), i = i + 1)
+		for(i = 0;  i < (fntype->fn.params_count);  i = i + 1)
 		{
-			deref(paramdata # i) = cg_type(deref(fntype->fn.param_types # i), true);
+			[paramdata # i] = cg_type([fntype->fn.param_types # i], true);
 		}
 		llvm_fnty ::= LLVMFunctionType(ret_cg, paramdata, fntype->fn.params_count@u32, false@s32);
 		if(should_ref_function_type)
@@ -135,32 +140,32 @@ cg_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 	return zero;
 };
 
-cg_sizeof ::= func(type : tyid -> val)
+cg_sizeof : func(type : tyid -> val)
 {
 	return integer_as_val(LLVMABISizeOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
 };
 
-cg_alignof ::= func(type : tyid -> val)
+cg_alignof : func(type : tyid -> val)
 {
 	return integer_as_val(LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
 };
 
-cg_all_structs ::= func(-> v0)
+cg_all_structs : func(-> v0)
 {
 	box ::= ref(prog.types);
 	i : u64 mut;
 	id : tyid mut;
-	for(i = 0, i < (box->data_count), i = i + 1)
+	for(i = 0;  i < (box->data_count);  i = i + 1)
 	{
-		id = i@tyid;
+		id = (i@s64@tyid);
 		if(ty_is_struct(id))
 		{
 			cg_struct_sig(id);
 		}
 	}
-	for(i = 0, i < (box->data_count), i = i + 1)
+	for(i = 0;  i < (box->data_count);  i = i + 1)
 	{
-		id = i@tyid;
+		id = (i@s64@tyid);
 		if(ty_is_struct(id))
 		{
 			cg_struct_def(id);
@@ -168,7 +173,7 @@ cg_all_structs ::= func(-> v0)
 	}
 };
 
-cg_struct_sig ::= func(type : tyid -> v0)
+cg_struct_sig : func(type : tyid -> v0)
 {
 	t ::= ty_unwrap(type);
 	s ::= ref(t->strct);
@@ -177,70 +182,70 @@ cg_struct_sig ::= func(type : tyid -> v0)
 	s->cg = LLVMStructCreateNamed(LLVMGetGlobalContext(), sstr2zstr(t->name, t->name_len, string_arena));
 };
 
-cg_struct_def ::= func(type : tyid -> v0)
+cg_struct_def : func(type : tyid -> v0)
 {
 	t ::= ty_unwrap(type);
 	s ::= ref(t->strct);
 	i : u64 mut;
 
-	memarr : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
-	for(i = 0, i < (s->members_count), i = i + 1)
+	memarr : u64 mut? := arena_alloc(global_arena, sizeof u64 * (s->members_count));
+	for(i = 0;  i < (s->members_count);  i = i + 1)
 	{
-		deref(memarr # i) = cg_type(deref(s->members # i), true);
+		[memarr # i] = cg_type([s->members # i], true);
 	}
 	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
 };
 
-cg_global_variables ::= func(scope : lexical_scope mut? -> v0)
+cg_global_variables : func(scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < (scope->variables_count), i = i + 1)
+	for(i = 0;  i < (scope->variables_count);  i = i + 1)
 	{
 		cg_global_variable(scope->variables # i);
 	}
 };
 
-cg_all_asms ::= func(scope : lexical_scope mut? -> v0)
+cg_all_asms : func(scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < (scope->assemblys_count), i = i + 1)
+	for(i = 0;  i < (scope->assemblys_count);  i = i + 1)
 	{
 		cg_asm(scope->assemblys # i);
 	}
 };
 
-cg_all_functions ::= func(scope : lexical_scope mut? -> v0)
+cg_all_functions : func(scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < (scope->functions_count), i = i + 1)
+	for(i = 0;  i < (scope->functions_count);  i = i + 1)
 	{
 		cg_func_sig(scope->functions # i);
 	}
-	for(i = 0, i < (scope->functions_count), i = i + 1)
+	for(i = 0;  i < (scope->functions_count);  i = i + 1)
 	{
 		cg_func_def(scope->functions # i);
 	}
 };
 
-llvm_add_function_string_attribute ::= func(fn : function mut?, attrib_name_zstr : u8? -> v0)
+llvm_add_function_string_attribute : func(fn : function mut?, attrib_name_zstr : u8? -> v0)
 {
 	attr ::= LLVMCreateStringAttribute(LLVMGetGlobalContext(), attrib_name_zstr, zstrlen(attrib_name_zstr)@u32, "", 0);
 	LLVMAddAttributeAtIndex(fn->cg, LLVMAttributeFunctionIndex, attr);
 };
 
-cg_asm ::= func(assembly : assembly mut? -> v0)
+cg_asm : func(assembly : assembly mut? -> v0)
 {
 	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
 };
 
-cg_func_sig ::= func(fn : function mut? -> v0)
+cg_func_sig : func(fn : function mut? -> v0)
 {
 	is_extern ::= fn->node->function.is_extern;
 	name_zstr ::= sstr2zstr(fn->name, fn->name_len, string_arena);
 	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
 };
 
-cg_func_def ::= func(fn : function mut? -> v0)
+cg_func_def : func(fn : function mut? -> v0)
 {
 	if(fn->node->function.is_extern)
 	{
@@ -258,7 +263,7 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	// all local variables will be in this scope
 	// so lets do them now.
 	i : u64 mut;
-	for(i = 0, i < (funcscope->variables_count), i = i + 1)
+	for(i = 0;  i < (funcscope->variables_count);  i = i + 1)
 	{
 		func_var ::= funcscope->variables # i;
 		if(func_var->param_idx == -1)
@@ -271,7 +276,7 @@ cg_func_def ::= func(fn : function mut? -> v0)
 		}
 	}
 
-	for(i = 1, i < (fn->node->children_count), i = i + 1)
+	for(i = 1;  i < (fn->node->children_count);  i = i + 1)
 	{
 		cg_node(ast_get_child(fn->node, i), funcscope);
 	}
@@ -290,7 +295,7 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	LLVMClearInsertionPosition(ir);
 };
 
-cg_global_variable ::= func(var : variable mut? -> v0)
+cg_global_variable : func(var : variable mut? -> v0)
 {
 	decl ::= var->node->decl;
 	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
@@ -316,14 +321,14 @@ cg_global_variable ::= func(var : variable mut? -> v0)
 	LLVMSetInitializer(var->cg, init_val.runtime.cg);
 };
 
-cg_local_variable ::= func(var : variable mut? -> v0)
+cg_local_variable : func(var : variable mut? -> v0)
 {
 	// do an alloca
 	decl ::= var->node->decl;
 	var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
 };
 
-cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
+cg_function_param : func(fn : function mut?, var : variable mut? -> v0)
 {
 	// ok this ones special
 	param_cg ::= LLVMGetParam(fn->cg, var->param_idx@_);
@@ -335,7 +340,7 @@ cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
 	LLVMBuildStore(ir, param_cg, var->cg);
 };
 
-cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
+cg_convert_to : func(v : val, to : tyid, source : ast? -> val)
 {
 	// conversions always produce an rvalue
 	ret ::= val mut
@@ -402,7 +407,7 @@ cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 		if(ty_is_enum(to))
 		{
 			// trivial
-			ret.runtime = cg_convert_to(v, tyid.s64, source).runtime.cg;
+			ret.runtime = cg_convert_to(v, tyid.s64, source).runtime;
 			return ret;
 		}
 		if(ty_is_bool(to))
@@ -505,7 +510,7 @@ cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
 	return zero;
 };
 
-cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
+cg_prim : func(type : tyid, prim : ast_literal, source : ast? -> val)
 {
 	i : u64 mut;
 	// zero_values shouldnt exist at this point, if they do then the code is invalid
@@ -521,7 +526,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 				.hand := valhand.rvalue;
 				.type := type;
 				.compile_time := zero;
-				.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, true), deref(prim.chars), false@s32);};
+				.runtime := valruntime{.cg := LLVMConstInt(cg_type(type, true), [prim.chars], false@s32);};
 			};
 		}
 		return val
@@ -603,7 +608,7 @@ cg_prim ::= func(type : tyid, prim : ast_literal, source : ast? -> val)
 	return zero;
 };
 
-cg_members ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+cg_members : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	ret ::= val mut
 	{
@@ -620,16 +625,16 @@ cg_members ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	// if its not a struct its an array.
 	memcount ::= v.compile_time.members_count;
 	i : u64 mut;
-	for(i = 0, i < memcount, i = i + 1)
+	for(i = 0;  i < memcount;  i = i + 1)
 	{
-		memval ::= val_dynamic(deref(v.compile_time.members@val? # i), scope, source);
+		memval ::= val_dynamic([v.compile_time.members@val? # i], scope, source);
 		ret.runtime.cg = LLVMBuildInsertValue(ir, ret.runtime.cg, memval.runtime.cg, i@u32, "");
 	}
 	return ret;
 };
 
 // return a runtime val representation of a function
-cg_funcref ::= func(fn : function? -> val)
+cg_funcref : func(fn : function? -> val)
 {
 	return val
 	{
@@ -643,7 +648,7 @@ cg_funcref ::= func(fn : function? -> val)
 };
 
 // return a runtime val representation of a function
-cg_asmref ::= func(as : assembly? -> val)
+cg_asmref : func(as : assembly? -> val)
 {
 	return val
 	{
@@ -657,7 +662,7 @@ cg_asmref ::= func(as : assembly? -> val)
 };
 
 // return a runtime val representation of a variable
-cg_varref ::= func(v : variable? -> val)
+cg_varref : func(v : variable? -> val)
 {
 	return val
 	{
@@ -670,7 +675,7 @@ cg_varref ::= func(v : variable? -> val)
 	};
 };
 
-cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
+cg_node : func(node : ast?, scope : lexical_scope? -> val)
 {
 	if(ast_is_stmt(node, ast_stmt_tag.ret))
 	{
@@ -739,7 +744,7 @@ cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 	return val_node(node, scope, val_resolution.runtime_only);
 };
 
-cg_ref ::= func(v : val, source : ast? -> val)
+cg_ref : func(v : val, source : ast? -> val)
 {
 	// i have some value. its guaranteed to be an lvalue (i.e a direct variable)
 	// it just got val_dynamic'd
@@ -752,11 +757,11 @@ cg_ref ::= func(v : val, source : ast? -> val)
 	return ret;
 };
 
-cg_deref ::= func(v : val, source : ast? -> val)
+cg_deref : func(v : val, source : ast? -> val)
 {
 	// i need to deref something
 	// i definitely have a pointer.
-	// we maintain lvalue-ness (so deref(foo) = 5 works)
+	// we maintain lvalue-ness (so [foo] = 5 works)
 
 	// so we *dont* do a load here on the actual thing (but if the v itself is an lvalue the its a pointer variable and we do load that)
 	// we just pretend that its an lvalue
@@ -770,7 +775,7 @@ cg_deref ::= func(v : val, source : ast? -> val)
 	//ret.runtime = valruntime{.cg := LLVMBuildLoad2(ir, cg_type(ret.type), v.runtime.cg, "");};
 };
 
-cg_undef_as ::= func(type : tyid -> val)
+cg_undef_as : func(type : tyid -> val)
 {
 	return val
 	{
@@ -786,18 +791,18 @@ cg_undef_as ::= func(type : tyid -> val)
 	};
 };
 
-cg_empty_blkinit ::= func(type : tyid -> val)
+cg_empty_blkinit : func(type : tyid -> val)
 {
 	return cg_undef_as(type);
 };
 
-cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
+cg_blkinit_add : func(v : val mut, memidx : u64, init : val -> val)
 {
 	v.runtime.cg = LLVMBuildInsertValue(ir, v.runtime.cg, init.runtime.cg, memidx@u32, "");
 	return v;
 };
 
-cg_unop_minus ::= func(v : val mut, source : ast? -> val)
+cg_unop_minus : func(v : val mut, source : ast? -> val)
 {
 	v = cg_load_if_lvalue(v);
 	ret ::= val mut
@@ -820,7 +825,7 @@ cg_unop_minus ::= func(v : val mut, source : ast? -> val)
 	return ret;
 };
 
-cg_unop_bitwise_invert ::= func(v : val mut, source : ast? -> val)
+cg_unop_bitwise_invert : func(v : val mut, source : ast? -> val)
 {
 	v = cg_load_if_lvalue(v);
 	ret ::= val mut
@@ -836,7 +841,7 @@ cg_unop_bitwise_invert ::= func(v : val mut, source : ast? -> val)
 	return ret;
 };
 
-cg_unop_logical_invert ::= func(v : val mut, source : ast? -> val)
+cg_unop_logical_invert : func(v : val mut, source : ast? -> val)
 {
 	v = cg_load_if_lvalue(v);
 	ret ::= val mut
@@ -852,13 +857,13 @@ cg_unop_logical_invert ::= func(v : val mut, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_assign ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_assign : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	LLVMBuildStore(ir, cg_load_if_lvalue(rhs).runtime.cg, lhs.runtime.cg);
 	return lhs;
 };
 
-cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_add : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -883,7 +888,7 @@ cg_biop_add ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_sub ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_sub : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -908,7 +913,7 @@ cg_biop_sub ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_mul ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_mul : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -933,7 +938,7 @@ cg_biop_mul ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_div ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_div : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -965,7 +970,7 @@ cg_biop_div ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_bitwise_or ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_bitwise_or : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -991,7 +996,7 @@ cg_biop_bitwise_or ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_bitwise_and ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_bitwise_and : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -1017,7 +1022,7 @@ cg_biop_bitwise_and ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_logical_or ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_logical_or : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= tyid.bool;
 	ret ::= val mut
@@ -1034,7 +1039,7 @@ cg_biop_logical_or ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_logical_and ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_logical_and : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= tyid.bool;
 	ret ::= val mut
@@ -1051,7 +1056,7 @@ cg_biop_logical_and ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_xor ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_xor : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -1077,7 +1082,7 @@ cg_biop_xor ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_bitshift_left ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_bitshift_left : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -1103,7 +1108,7 @@ cg_biop_bitshift_left ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_bitshift_right ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_bitshift_right : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -1136,7 +1141,7 @@ cg_biop_bitshift_right ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_modulo ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_modulo : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1161,7 +1166,7 @@ cg_biop_modulo ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_compare_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_equal : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1186,7 +1191,7 @@ cg_biop_compare_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_compare_not_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_not_equal : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1211,7 +1216,7 @@ cg_biop_compare_not_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_compare_less_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_less_equal : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1243,7 +1248,7 @@ cg_biop_compare_less_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_compare_less ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_less : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1274,7 +1279,7 @@ cg_biop_compare_less ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_compare_greater_equal ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_greater_equal : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1306,7 +1311,7 @@ cg_biop_compare_greater_equal ::= func(lhs : val, rhs : val, source : ast? -> va
 	return ret;
 };
 
-cg_biop_compare_greater ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_compare_greater : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	type ::= lhs.type;
 	ret ::= val mut
@@ -1337,15 +1342,15 @@ cg_biop_compare_greater ::= func(lhs : val, rhs : val, source : ast? -> val)
 	return ret;
 };
 
-cg_biop_at ::= func(lhs : val, rhs : val, source : ast? -> val)
+cg_biop_at : func(lhs : val, rhs : val, source : ast? -> val)
 {
 	// basically going to involve a GEP
 	// i still dont really understand GEP so im basically copypasta-ing this code from the old impl
 	// handles arrays and pointers slightly differently. im not sure why, but it must be done or it doesnt work
 	index_list ::= u64[2]
 	{
-		LLVMConstInt(LLVMInt64Type(), 0, false@s32);
-		cg_load_if_lvalue(rhs).runtime.cg;
+		.0 := LLVMConstInt(LLVMInt64Type(), 0, false@s32);
+		.1 := cg_load_if_lvalue(rhs).runtime.cg;
 	};
 
 	lhsreal : val mut := lhs;
@@ -1368,11 +1373,11 @@ cg_biop_at ::= func(lhs : val, rhs : val, source : ast? -> val)
 		.hand := valhand.rvalue;
 		.type := ty_ptr(ty_underlying(lhs.type), zero);
 		.compile_time := zero;
-		.runtime := valruntime{.cg := LLVMBuildGEP2(ir, cgty, lhsreal.runtime.cg, index_list # index_list_offset, (__sizeof(index_list) / __sizeof(deref(index_list # 0))) - index_list_offset, "");};
+		.runtime := valruntime{.cg := LLVMBuildGEP2(ir, cgty, lhsreal.runtime.cg, index_list # index_list_offset, ((sizeof typeof(index_list) / sizeof typeof([index_list # 0])) - index_list_offset)@_, "");};
 	};
 };
 
-cg_load_if_lvalue ::= func(v : val -> val)
+cg_load_if_lvalue : func(v : val -> val)
 {
 	ret : val mut := v;
 	if(v.hand == (valhand.lvalue))
@@ -1383,11 +1388,11 @@ cg_load_if_lvalue ::= func(v : val -> val)
 	return ret;
 };
 
-cg_field ::= func(lhs : val, memidx : u64 -> val)
+cg_field : func(lhs : val, memidx : u64 -> val)
 {
 	// lhs is for sure a struct
 	// now remember if the lhs is an lvalue then the return value is also an lvalue
-	memty : tyid mut := deref(ty_unwrap(lhs.type)->strct.members # memidx);
+	memty : tyid mut := [ty_unwrap(lhs.type)->strct.members # memidx];
 	// weak doesnt transfer, but static + mut do
 	if(ty_has_qual(lhs.type, tyqual.qual_static))
 	{
@@ -1422,7 +1427,7 @@ cg_field ::= func(lhs : val, memidx : u64 -> val)
 	};
 };
 
-cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
+cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 {
 	if(var->node->children_count == 2)
 	{
@@ -1443,19 +1448,19 @@ cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_static_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+cg_static_if : func(node : ast mut?, scope : lexical_scope mut? -> val)
 {
 	// note form progwalk: if this is a static_if then we ignore the condition and just cg_node all the children
 	// progwalk handles the condition and clears out the children as necessary (also handles else so this code is really simple hooray!)
 	i : u64 mut;
-	for(i = 1, i < (node->children_count), i = i + 1)
+	for(i = 1;  i < (node->children_count);  i = i + 1)
 	{
 		cg_node(ast_get_child(node, i), scope);
 	}
 	return zero;
 };
 
-cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+cg_if : func(node : ast mut?, scope : lexical_scope mut? -> val)
 {
 	if_blk ::= node->ifblk;
 	if(if_blk.is_static)
@@ -1510,7 +1515,7 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	{
 		ifnode_last_child = (ifnode_last_child - 1);
 	}
-	for(i = 1, i < ifnode_last_child, i = i + 1)
+	for(i = 1;  i < ifnode_last_child;  i = i + 1)
 	{
 		child = ast_get_child(node, i);
 		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
@@ -1526,7 +1531,7 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	if(else_node != zero)
 	{
 		LLVMPositionBuilderAtEnd(ir, elsescope);
-		for(i = 0, i < (else_node->children_count), i = i + 1)
+		for(i = 0;  i < (else_node->children_count);  i = i + 1)
 		{
 			child = ast_get_child(else_node, i);
 			was_return = ast_is_stmt(child, ast_stmt_tag.ret);
@@ -1543,7 +1548,7 @@ cg_if ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+cg_while : func(node : ast mut?, scope : lexical_scope mut? -> val)
 {
 	// need the parent function...
 	parent_fn ::= scope_get_parent_function(scope);
@@ -1574,7 +1579,7 @@ cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	was_return : bool mut := false;
 	child : ast mut? mut := zero;
 
-	for(i = 1, i < (node->children_count), i = i + 1)
+	for(i = 1;  i < (node->children_count);  i = i + 1)
 	{
 		child = ast_get_child(node, i);
 		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
@@ -1591,7 +1596,7 @@ cg_while ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
+cg_for : func(node : ast mut?, scope : lexical_scope mut? -> val)
 {
 	// need the parent function...
 	parent_fn ::= scope_get_parent_function(scope);
@@ -1622,7 +1627,7 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	was_return : bool mut := false;
 	child : ast mut? mut := zero;
 
-	for(i = 3, i < (node->children_count), i = i + 1)
+	for(i = 3;  i < (node->children_count);  i = i + 1)
 	{
 		child = ast_get_child(node, i);
 		was_return = ast_is_stmt(child, ast_stmt_tag.ret);
@@ -1640,15 +1645,16 @@ cg_for ::= func(node : ast mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_call ::= func(callee : val mut, params : val?, scope : lexical_scope mut?, source : ast? -> val)
+cg_call : func(callee : val mut, params : val?, scope : lexical_scope mut?, source : ast? -> val)
 {
 	callee = cg_load_if_lvalue(callee);
 	i : u64 mut;
 	fty ::= ty_unwrap(callee.type)->fn;
-	param_cgs : u64 mut? := __stack_push(fty.params_count * __sizeof(u64));
-	for(i = 0, i < (fty.params_count), i = i + 1)
+	//param_cgs : u64 mut? := __stack_push(fty.params_count * sizeof u64);
+	param_cgs : u64 mut? := arena_alloc(global_arena, fty.params_count * sizeof u64);
+	for(i = 0;  i < (fty.params_count);  i = i + 1)
 	{
-		deref(param_cgs # i) = (val_dynamic(deref(params # i), scope, source).runtime.cg);
+		[param_cgs # i] = (val_dynamic([params # i], scope, source).runtime.cg);
 	}
 	return val
 	{

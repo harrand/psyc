@@ -1,15 +1,15 @@
-GetCommandLineW ::= func( -> u16? ):= extern;
-CommandLineToArgvW ::= func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? ):= extern;
-WideCharToMultiByte ::= func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 ):= extern;
-LocalAlloc ::= func(uFlags : u32, uBytes : u64 -> v0? weak) := extern;
-LocalFree ::= func(hMem : u64 -> u64 ):= extern;
-ExitProcess ::= func(uExitCode : u32 -> v0) := extern;
-WaitForMultipleObjects ::= func(nCount : u32, lpHandles : u64?, bWaitAll : s32, dwMilliseconds : u32 -> u32) := extern;
-CreateThread ::= func(lpThreadAttributes : v0?, dwStackSize : u64, lpStartAddress : v0? weak, lpParameter : v0? weak, dwCreationFlags : u32, lpThreadId : u32 mut? -> u64) := extern;
-ExitThread ::= func(dwExitCode : u32 -> v0) := extern;
-GetExitCodeThread ::= func(hThread : u64, lpExitCode : u32 mut? -> s32) := extern;
+GetCommandLineW : func( -> u16? )extern;
+CommandLineToArgvW : func(lpCmdLine : u16?, pNumArgs : s32 mut? -> u16?? )extern;
+WideCharToMultiByte : func(CodePage : u32, dwFlags : s32, lpWideCharStr : u16?, cchWideChar : s32, lpMultiByteStr : u8 mut?, cbMultiByte : s32, lpDefaultChar : u16?, lpUsedDefaultChar : s32 mut? -> s32 )extern;
+LocalAlloc : func(uFlags : u32, uBytes : u64 -> v0? weak) extern;
+LocalFree : func(hMem : u64 -> u64 )extern;
+ExitProcess : func(uExitCode : u32 -> v0) extern;
+WaitForMultipleObjects : func(nCount : u32, lpHandles : u64?, bWaitAll : s32, dwMilliseconds : u32 -> u32) extern;
+CreateThread : func(lpThreadAttributes : v0?, dwStackSize : u64, lpStartAddress : v0? weak, lpParameter : v0? weak, dwCreationFlags : u32, lpThreadId : u32 mut? -> u64) extern;
+ExitThread : func(dwExitCode : u32 -> v0) extern;
+GetExitCodeThread : func(hThread : u64, lpExitCode : u32 mut? -> s32) extern;
 
-impl_win32_get_args ::= func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
+impl_win32_get_args : func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
 {
 	cmd_line ::= GetCommandLineW();
 	wide_argc : s32 mut;
@@ -17,39 +17,39 @@ impl_win32_get_args ::= func(oargc : s32 mut?, oargv : u8?? mut? -> v0)
 
 	if(wide_argv == zero)
 	{
-		deref(oargc) = 0;
+		[oargc] = 0;
 	}
 
 	args_cap : u64 mut := wide_argc@_;
-	args : u8 mut? mut? mut := LocalAlloc(zero, __sizeof(u8?) * wide_argc);
+	args : u8 mut? mut? mut := LocalAlloc(zero, sizeof typeof(u8?) * wide_argc);
 	args_size : u64 mut := 0;
 
 	i : s32 mut;
-	for(i = 0, i < wide_argc, i = i + 1)
+	for(i = 0;  i < wide_argc;  i = i + 1)
 	{
-		size_needed ::= WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, zero, 0, zero, zero);
+		size_needed ::= WideCharToMultiByte(0, 0, [wide_argv # i], -1, zero, 0, zero, zero);
 		if(size_needed > 0)
 		{
-			deref(args # args_size) = LocalAlloc(zero, __sizeof(u8) * size_needed);
-			WideCharToMultiByte(0, 0, deref(wide_argv # i), -1, deref(args # args_size), size_needed, zero, zero);
+			[args # args_size] = LocalAlloc(zero, sizeof u8 * size_needed);
+			WideCharToMultiByte(0, 0, [wide_argv # i], -1, [args # args_size], size_needed, zero, zero);
 			args_size = args_size + 1;
 		}
 	}
 
 	LocalFree(wide_argv@u64);
 
-	deref(oargc) = wide_argc;
-	deref(oargv) = args@_;
+	[oargc] = wide_argc;
+	[oargv] = args@_;
 };
 
-_tmain ::= func(param : v0? weak -> u32)
+_tmain : func(param : v0? weak -> u32)
 {
 	ret ::= main(param)@_;
 	ExitThread(ret);
 	return ret;
 };
 
-_psymain ::= func(-> v0)
+_psymain : func(-> v0)
 {
 	local_argc : s32 mut;
 	local_argv : u8?? mut;
@@ -75,25 +75,25 @@ _psymain ::= func(-> v0)
 	// call main with multiple threads
 	// and do some basic sync
 	i : u32 mut;
-	threads : u64 mut? := LocalAlloc(zero, __sizeof(u64) * (thread_count - 1));
-	for(i = 0, i < (thread_count - 1), i = i + 1)
+	threads : u64 mut? := LocalAlloc(zero, sizeof u64 * (thread_count - 1));
+	for(i = 0;  i < (thread_count - 1);  i = i + 1)
 	{
-		data : program_args mut? := LocalAlloc(zero, __sizeof(program_args));
-		deref(data) = program_args
+		data : program_args mut? := LocalAlloc(zero, sizeof program_args);
+		[data] = program_args
 		{
 			.argc := local_argc;
 			.argv := local_argv;
 			.envp := zero;
 			.thread_id := i + 1;
 		};
-		deref(threads # i) = CreateThread(zero, zero, _tmain, data, zero, zero);
+		[threads # i] = CreateThread(zero, zero, _tmain, data, zero, zero);
 	}
 	main_ret : u64 mut weak := main(ref main_params);
 	WaitForMultipleObjects(thread_count - 1, threads, true@s32, -1@u32);
-	for(i = 0, i < (thread_count-1), i = i + 1)
+	for(i = 0;  i < (thread_count-1);  i = i + 1)
 	{
 		thread_code : u32 mut;
-		GetExitCodeThread(deref(threads # i), ref thread_code);
+		GetExitCodeThread([threads # i], ref thread_code);
 		if(thread_code != zero)
 		{
 			main_ret = thread_code;

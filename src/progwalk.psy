@@ -4,12 +4,11 @@
 // in theory you'd think its as simple as progwalk_node + progwalk_children and then dispatch it all to the right node types
 // however this would mean alot of unnecessary work
 // so instead we just iterate over all the immediate children. globals/functions/structs etc are recorded.
-progwalk_file ::= func(node : ast? -> lexical_scope mut?)
+progwalk_file : func(node : ast? -> lexical_scope mut?)
 {
 	psyc_timed_begin(psyc_stage.semantic);
-	defer psyc_timed_end();
 	file_scope ::= program_add_scope();
-	deref(file_scope) = lexical_scope
+	[file_scope] = lexical_scope
 	{
 		.type := scope_type.file;
 		.name := node->loc.file;
@@ -18,15 +17,16 @@ progwalk_file ::= func(node : ast? -> lexical_scope mut?)
 	};
 
 	i : u64 mut;
-	for(i = 0, i < (node->children_count), i = i + 1)
+	for(i = 0;  i < (node->children_count);  i = i + 1)
 	{
 		child ::= ast_get_child(node, i);
 		progwalk_node(child, file_scope);
 	}
+	psyc_timed_end();
 	return file_scope;
 };
 
-progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_node : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	if((node->tag == (ast_tag.stmt)) && (node->stmt == (ast_stmt_tag.structure)))
 	{
@@ -69,7 +69,7 @@ progwalk_node ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	}
 };
 
-progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_structure : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	structdata ::= node->structure;
 	// todo: do something with ast_struct
@@ -81,9 +81,9 @@ progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 		.name_len := structdata.name_len;
 		.strct := structty
 		{
-			.members := arena_alloc(global_arena, memcount * __sizeof(tyid));
-			.member_names := arena_alloc(global_arena, memcount * __sizeof(u8?));
-			.member_name_lens := arena_alloc(global_arena, memcount * __sizeof(u64));
+			.members := arena_alloc(global_arena, memcount * sizeof tyid);
+			.member_names := arena_alloc(global_arena, memcount * sizeof u8?);
+			.member_name_lens := arena_alloc(global_arena, memcount * sizeof u64);
 			.members_count := memcount;
 			.node := node;
 		};
@@ -119,11 +119,11 @@ progwalk_structure ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offset : u64, end_offset : u64, func_scope : lexical_scope mut? -> v0)
+progwalk_search_function_descendents_for_locals : func(node : ast?, begin_offset : u64, end_offset : u64, func_scope : lexical_scope mut? -> v0)
 {
 	i : u64 mut;
 	last ::= node->children_count - end_offset;
-	for(i = begin_offset, i < last, i = i + 1)
+	for(i = begin_offset;  i < last;  i = i + 1)
 	{
 		child ::= ast_get_child(node, i);
 		if(ast_is_stmt(child, ast_stmt_tag.decl))
@@ -168,7 +168,7 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 		// if/else/while/fors need to be scanned too.
 		if(ast_is_stmt(child, ast_stmt_tag.if_block))
 		{
-			// progwalk_if first because if its a static if we want that dealt with now.
+			// progwalk_if first because if its a static_if we want that dealt with now.
 			progwalk_if(child, func_scope);
 			// ignore cond
 			progwalk_search_function_descendents_for_locals(child, 1, 0, func_scope);
@@ -191,12 +191,12 @@ progwalk_search_function_descendents_for_locals ::= func(node : ast?, begin_offs
 	}
 };
 
-progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_function : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	ast_fn ::= node->function;
 
 	func_scope ::= program_add_scope();
-	deref(func_scope) = lexical_scope
+	[func_scope] = lexical_scope
 	{
 		.type := scope_type.function;
 		.name := ast_fn.name;
@@ -211,7 +211,7 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	param_count ::= typename_node->children_count - 1;
 	// each of these params are actually decls
 	i : u64 mut;
-	for(i = 0, i < param_count, i = i + 1)
+	for(i = 0;  i < param_count;  i = i + 1)
 	{
 		param_node ::= ast_get_child(typename_node, i);
 		// assume this is a decl
@@ -272,7 +272,7 @@ progwalk_function ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_enumeration : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	enumdata ::= node->enumeration;
 	entcount ::= node->children_count;
@@ -283,14 +283,14 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 		.name_len := enumdata.name_len;
 		.enm := enumty
 		{
-			.entries := arena_alloc(global_arena, __sizeof(u64) * entcount);
-			.entry_names := arena_alloc(global_arena, __sizeof(u8?) * entcount);
-			.entry_name_lens := arena_alloc(global_arena, __sizeof(u64) * entcount);
+			.entries := arena_alloc(global_arena, sizeof u64 * entcount);
+			.entry_names := arena_alloc(global_arena, sizeof u8? * entcount);
+			.entry_name_lens := arena_alloc(global_arena, sizeof u64 * entcount);
 			.entries_count := entcount;
 		};
 	};
 	i : u64 mut;
-	for(i = 0, i < entcount, i = i + 1)
+	for(i = 0;  i < entcount;  i = i + 1)
 	{
 		// ent is going to be a desiginit with a single child value
 		ent ::= ast_get_child(node, i);
@@ -305,9 +305,9 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		deref(retty.enm.entry_names # i) = (desig.symbol);
-		deref(retty.enm.entry_name_lens # i) = (desig.symbol_len);
-		deref(retty.enm.entries # i) = val_must_get_integer(ent_val, program_scope(), ent);
+		[retty.enm.entry_names # i] = (desig.symbol);
+		[retty.enm.entry_name_lens # i] = (desig.symbol_len);
+		[retty.enm.entries # i] = val_must_get_integer(ent_val, program_scope(), ent);
 	}
 	scope_add_enumeration(scope, enumeration
 	{
@@ -318,7 +318,7 @@ progwalk_enumeration ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_assembly : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	ast_asm ::= node->assembly;
 	// child 0 is the typename
@@ -341,7 +341,7 @@ progwalk_assembly ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+progwalk_region : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	regiondata ::= node->region;
 	scope_add_region(scope, region
@@ -352,7 +352,7 @@ progwalk_region ::= func(node : ast?, scope : lexical_scope mut? -> v0)
 	});
 };
 
-progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+progwalk_if : func(node : ast mut?, scope : lexical_scope mut? -> v0)
 {
 	// this exists for 2 reasons:
 	// 1. we need to check inside if blocks etc for hoisting reasons
@@ -395,9 +395,9 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 				// let the first child stay put as its the cond
 				node->children_count = 1;
 				// but the rest should be replaced with the children of the else node.
-				for(i = 0, i < (else_node->children_count), i = i + 1)
+				for(i = 0;  i < (else_node->children_count);  i = i + 1)
 				{
-					ast_add_child(node, deref(ast_get_child(else_node, i)), global_arena);
+					ast_add_child(node, [ast_get_child(else_node, i)], global_arena);
 				}
 			}
 		}
@@ -406,7 +406,7 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 		// 3
 		// we no longer care about the condition because of above, iterate over the non-condition children
 		// and then progwalk them
-		for(i = 1, i < (node->children_count), i = i + 1)
+		for(i = 1;  i < (node->children_count);  i = i + 1)
 		{
 			progwalk_node(ast_get_child(node, i), scope);
 		}
@@ -414,7 +414,7 @@ progwalk_if ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
 	}
 };
 
-progwalk_global_variable_decl ::= func(node : ast mut?, scope : lexical_scope mut? -> v0)
+progwalk_global_variable_decl : func(node : ast mut?, scope : lexical_scope mut? -> v0)
 {
 	scope_add_variable(scope, variable
 	{

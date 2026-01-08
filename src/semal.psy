@@ -1,4 +1,4 @@
-semal ::= func(-> v0)
+semal : func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.semantic);
 	semal_all_structs();
@@ -8,15 +8,15 @@ semal ::= func(-> v0)
 	psyc_timed_end();
 };
 
-semal_all_structs ::= func(-> v0)
+semal_all_structs : func(-> v0)
 {
 	// go through every single struct type
 	// populate the types.
 	box ::= ref(prog.types);
 	i : u64 mut;
-	for(i = 0, i < (box->data_count), i = i + 1)
+	for(i = 0;  i < (box->data_count);  i = i + 1)
 	{
-		id ::= i@tyid;
+		id ::= i@s64@tyid;
 		if(ty_is_struct(id))
 		{
 			semal_struct(id);
@@ -24,17 +24,17 @@ semal_all_structs ::= func(-> v0)
 	}
 };
 
-semal_struct ::= func(type : tyid -> v0)
+semal_struct : func(type : tyid -> v0)
 {
 	s ::= ty_unwrap(type);
 	node ::= s->strct.node;
 	i : u64 mut;
-	for(i = 0, i < (node->children_count), i = i + 1)
+	for(i = 0;  i < (node->children_count);  i = i + 1)
 	{
 		child ::= ast_get_child(node, i);
 		decl ::= child->decl;
-		deref(s->strct.member_names # i) = (decl.name);
-		deref(s->strct.member_name_lens # i) = (decl.name_len);
+		[s->strct.member_names # i] = (decl.name);
+		[s->strct.member_name_lens # i] = (decl.name_len);
 		// typename is first child of the decl
 		typename_node ::= ast_get_child(child, 0);
 		cur_ty ::= ty_typename_node(typename_node, program_scope());
@@ -69,38 +69,38 @@ semal_struct ::= func(type : tyid -> v0)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		deref(s->strct.members # i) = cur_ty;
+		[s->strct.members # i] = cur_ty;
 	}
 };
 
-semal_all_assemblys ::= func(-> v0)
+semal_all_assemblys : func(-> v0)
 {
 	i : u64 mut;
 	progscope ::= program_scope();
-	for(i = 0, i < (progscope->assemblys_count), i = i + 1)
+	for(i = 0;  i < (progscope->assemblys_count);  i = i + 1)
 	{
 		semal_assembly(progscope->assemblys # i);
 	}
 };
 
-semal_all_global_variables ::= func(-> v0)
+semal_all_global_variables : func(-> v0)
 {
 	i : u64 mut;
 	progscope ::= program_scope();
-	for(i = 0, i < (progscope->variables_count), i = i + 1)
+	for(i = 0;  i < (progscope->variables_count);  i = i + 1)
 	{
 		semal_variable(progscope->variables # i, progscope);
 	}
 };
 
-assembly_constraint_count_inputs ::= func(str : u8?, len : u64 -> u64)
+assembly_constraint_count_inputs : func(str : u8?, len : u64 -> u64)
 {
 	count : u64 mut := 0;
 	cursor : u64 mut := 0;
 	start : bool mut := true;
 	while(cursor < len)
 	{
-		char ::= deref(str # cursor);
+		char ::= [str # cursor];
 		if(!start)
 		{
 			if(char == ',')
@@ -122,51 +122,51 @@ assembly_constraint_count_inputs ::= func(str : u8?, len : u64 -> u64)
 	return count;
 };
 
-semal_assembly ::= func(as : assembly mut? -> v0)
+semal_assembly : func(as : assembly mut? -> v0)
 {
 	i : u64 mut;
 	input_count ::= assembly_constraint_count_inputs(as->constraints, as->constraints_len);
-	params : tyid mut? := arena_alloc(global_arena, input_count * __sizeof(tyid));
-	for(i = 0, i < input_count, i = i + 1)
+	params : tyid mut? := arena_alloc(global_arena, input_count * sizeof tyid);
+	for(i = 0;  i < input_count;  i = i + 1)
 	{
-		deref(params # i) = ty_set_qual(tyid.s64, tyqual.qual_weak);
+		[params # i] = ty_set_qual(tyid.s64, tyqual.qual_weak);
 	}
 	as->type = ty_fn(ty_set_qual(tyid.s64, tyqual.qual_weak), params, input_count, zero);
 };
 
-semal_all_functions ::= func(-> v0)
+semal_all_functions : func(-> v0)
 {
 	i : u64 mut;
 	progscope ::= program_scope();
-	for(i = 0, i < (progscope->functions_count), i = i + 1)
+	for(i = 0;  i < (progscope->functions_count);  i = i + 1)
 	{
 		semal_funcsig(progscope->functions # i);
 	}
-	for(i = 0, i < (progscope->functions_count), i = i + 1)
+	for(i = 0;  i < (progscope->functions_count);  i = i + 1)
 	{
 		semal_funcdef(progscope->functions # i);
 	}
 };
 
-semal_funcsig ::= func(fn : function mut? -> v0)
+semal_funcsig : func(fn : function mut? -> v0)
 {
 	// function typename is first child of node
 	function_typename_node ::= ast_get_child(fn->node, 0);
 	fn->type = ty_typename_node(function_typename_node, program_scope());
 };
 
-semal_funcdef ::= func(fn : function mut? -> v0)
+semal_funcdef : func(fn : function mut? -> v0)
 {
 	// also go through the scope and semal all the typenames
 	i : u64 mut;
 	funcscope ::= fn->scope@lexical_scope mut?;
-	for(i = 0, i < (funcscope->variables_count), i = i + 1)
+	for(i = 0;  i < (funcscope->variables_count);  i = i + 1)
 	{
 		semal_variable(funcscope->variables # i, funcscope);
 	}
 };
 
-semal_variable ::= func(var : variable mut?, scope : lexical_scope mut? -> v0)
+semal_variable : func(var : variable mut?, scope : lexical_scope mut? -> v0)
 {
 	decl ::= var->node->decl;
 	// set the typename of a variable

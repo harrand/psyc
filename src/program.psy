@@ -1,17 +1,17 @@
-program_type ::= enum
+program_type : enum
 {
 	.executable := 0;
 	.object := 1;
 	.library := 2;
 };
 
-program_output ::= struct
+program_output : struct
 {
 	name : u8?;
 	dir : u8?;
 };
 
-program_optimization ::= enum
+program_optimization : enum
 {
 	.o0 := 0;
 	.o1 := 1;
@@ -19,7 +19,7 @@ program_optimization ::= enum
 	.o3 := 3;
 };
 
-program ::= struct
+program : struct
 {
 	compile_args : psyc_compile_args;
 	output : program_output;
@@ -60,13 +60,13 @@ program ::= struct
 	db : u64;
 };
 
-source_file ::= struct
+source_file : struct
 {
 	src : u8?;
 	path : u8?;
 };
 
-variable ::= struct
+variable : struct
 {
 	node : ast mut?;
 	type : tyid;
@@ -81,14 +81,14 @@ variable ::= struct
 	db : u64;
 };
 
-structure ::= struct
+structure : struct
 {
 	node : ast mut?;
 	// remember, cg and db belong in the structty
 	type : tyid;
 };
 
-function ::= struct
+function : struct
 {
 	node : ast mut?;
 	type : tyid;
@@ -102,7 +102,7 @@ function ::= struct
 	db : u64;
 };
 
-enumeration ::= struct
+enumeration : struct
 {
 	node : ast mut?;
 	type : tyid;
@@ -112,7 +112,7 @@ enumeration ::= struct
 	db : u64;
 };
 
-assembly ::= struct
+assembly : struct
 {
 	node : ast mut?;
 	name : u8?;
@@ -130,27 +130,27 @@ assembly ::= struct
 	db : u64;
 };
 
-region ::= struct
+region : struct
 {
 	node : ast mut?;
 	name : u8?;
 	name_len : u64;
 };
 
-program_add_scope ::= func(-> lexical_scope mut?)
+program_add_scope : func(-> lexical_scope mut?)
 {
 	if(prog.scopes == zero)
 	{
 		prog.scopes_cap = 8;
-		prog.scopes = arena_alloc(global_arena, prog.scopes_cap * __sizeof(deref(prog.scopes)));
+		prog.scopes = arena_alloc(global_arena, prog.scopes_cap * sizeof typeof([prog.scopes]));
 	}
 	while(prog.scopes_count >= (prog.scopes_cap))
 	{
 		oldcap ::= prog.scopes_cap;
 		olddata ::= prog.scopes;
 		prog.scopes_cap = (prog.scopes_cap * 2);
-		prog.scopes = arena_alloc(global_arena, prog.scopes_cap * __sizeof(deref(prog.scopes)));
-		memcopy(prog.scopes, olddata, oldcap * __sizeof(deref(prog.scopes)));
+		prog.scopes = arena_alloc(global_arena, prog.scopes_cap * sizeof typeof([prog.scopes]));
+		memcopy(prog.scopes, olddata, oldcap * sizeof typeof([prog.scopes]));
 	}
 	i ::= prog.scopes_count;
 	prog.scopes_count = (prog.scopes_count + 1);
@@ -160,46 +160,46 @@ program_add_scope ::= func(-> lexical_scope mut?)
 	return ptr;
 };
 
-program_get_scope ::= func(id : u64 -> lexical_scope mut?)
+program_get_scope : func(id : u64 -> lexical_scope mut?)
 {
 	return prog.scopes # id;
 };
 
-program_scope ::= func(-> lexical_scope mut?)
+program_scope : func(-> lexical_scope mut?)
 {
 	return program_get_scope(0);
 };
 
-program_push_source_file ::= func(file : source_file -> v0)
+program_push_source_file : func(file : source_file -> v0)
 {
 	if(prog.source_files == zero)
 	{
 		prog.source_files_cap = 8;
-		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * __sizeof(deref(prog.source_files)));
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof typeof([prog.source_files]));
 	}
 	while(prog.source_files_count >= (prog.source_files_cap))
 	{
 		oldcap ::= prog.source_files_cap;
 		olddata ::= prog.source_files;
 		prog.source_files_cap = (prog.source_files_cap * 2);
-		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * __sizeof(deref(prog.source_files)));
-		memcopy(prog.source_files, olddata, oldcap * __sizeof(deref(prog.source_files)));
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof typeof([prog.source_files]));
+		memcopy(prog.source_files, olddata, oldcap * sizeof typeof([prog.source_files]));
 	}
 	i ::= prog.source_files_count;
 	prog.source_files_count = (prog.source_files_count + 1);
-	deref(prog.source_files # i) = file;
+	[prog.source_files # i] = file;
 };
 
-program_current_source_file ::= func(-> source_file)
+program_current_source_file : func(-> source_file)
 {
-	return deref(prog.source_files # (prog.source_files_count - 1));
+	return [prog.source_files # (prog.source_files_count - 1)];
 };
 
-program_find_source_file ::= func(path : u8? -> source_file?)
+program_find_source_file : func(path : u8? -> source_file?)
 {
 	len ::= zstrlen(path);
 	i : u64 mut;
-	for(i = 0, i < (prog.source_files_count), i = i + 1)
+	for(i = 0;  i < (prog.source_files_count);  i = i + 1)
 	{
 		cur ::= prog.source_files # i;
 		curlen ::= zstrlen(cur->path);
@@ -214,13 +214,13 @@ program_find_source_file ::= func(path : u8? -> source_file?)
 	return zero;
 };
 
-program_add_link_library ::= func(path : u8?, path_len : u64 -> v0)
+program_add_link_library : func(path : u8?, path_len : u64 -> v0)
 {
 	if(prog.link_libraries == zero)
 	{
 		prog.link_libraries_cap = 8;
-		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries)));
-		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries_lens)));
+		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * sizeof typeof([prog.link_libraries]));
+		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * sizeof typeof([prog.link_libraries_lens]));
 	}
 	while(prog.link_libraries_count >= (prog.link_libraries_cap))
 	{
@@ -229,26 +229,26 @@ program_add_link_library ::= func(path : u8?, path_len : u64 -> v0)
 		oldlendata ::= prog.link_libraries_lens;
 
 		prog.link_libraries_cap = (prog.link_libraries_cap * 2);
-		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries)));
-		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * __sizeof(deref(prog.link_libraries_lens)));
-		memcopy(prog.link_libraries, oldpathdata, oldcap * __sizeof(deref(prog.link_libraries)));
-		memcopy(prog.link_libraries_lens, oldlendata, oldcap * __sizeof(deref(prog.link_libraries_lens)));
+		prog.link_libraries = arena_alloc(global_arena, prog.link_libraries_cap * sizeof typeof([prog.link_libraries]));
+		prog.link_libraries_lens = arena_alloc(global_arena, prog.link_libraries_cap * sizeof typeof([prog.link_libraries_lens]));
+		memcopy(prog.link_libraries, oldpathdata, oldcap * sizeof typeof([prog.link_libraries]));
+		memcopy(prog.link_libraries_lens, oldlendata, oldcap * sizeof typeof([prog.link_libraries_lens]));
 
-		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.link_libraries)));
-		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.link_libraries_lens)));
+		arena_free(global_arena, oldpathdata, oldcap * sizeof typeof([prog.link_libraries]));
+		arena_free(global_arena, oldlendata, oldcap * sizeof typeof([prog.link_libraries_lens]));
 	}
-	deref(prog.link_libraries # (prog.link_libraries_count)) = path;
-	deref(prog.link_libraries_lens # (prog.link_libraries_count)) = path_len;
+	[prog.link_libraries # (prog.link_libraries_count)] = path;
+	[prog.link_libraries_lens # (prog.link_libraries_count)] = path_len;
 	prog.link_libraries_count = (prog.link_libraries_count + 1);
 };
 
-program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
+program_queue_source_file : func(path : u8?, path_len : u64 -> v0)
 {
 	if(prog.queued_source_paths == zero)
 	{
 		prog.queued_source_paths_cap = 8;
-		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_paths)));
-		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_path_lens)));
+		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * sizeof typeof([prog.queued_source_paths]));
+		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * sizeof typeof([prog.queued_source_path_lens]));
 	}
 	while(prog.queued_source_paths_count >= (prog.queued_source_paths_cap))
 	{
@@ -257,13 +257,13 @@ program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
 		oldlendata ::= prog.queued_source_path_lens;
 
 		prog.queued_source_paths_cap = (prog.queued_source_paths_cap * 2);
-		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_paths)));
-		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * __sizeof(deref(prog.queued_source_path_lens)));
-		memcopy(prog.queued_source_paths, oldpathdata, oldcap * __sizeof(deref(prog.queued_source_paths)));
-		memcopy(prog.queued_source_path_lens, oldlendata, oldcap * __sizeof(deref(prog.queued_source_path_lens)));
+		prog.queued_source_paths = arena_alloc(global_arena, prog.queued_source_paths_cap * sizeof typeof([prog.queued_source_paths]));
+		prog.queued_source_path_lens = arena_alloc(global_arena, prog.queued_source_paths_cap * sizeof typeof([prog.queued_source_path_lens]));
+		memcopy(prog.queued_source_paths, oldpathdata, oldcap * sizeof typeof([prog.queued_source_paths]));
+		memcopy(prog.queued_source_path_lens, oldlendata, oldcap * sizeof typeof([prog.queued_source_path_lens]));
 
-		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.queued_source_paths)));
-		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.queued_source_path_lens)));
+		arena_free(global_arena, oldpathdata, oldcap * sizeof typeof([prog.queued_source_paths]));
+		arena_free(global_arena, oldlendata, oldcap * sizeof typeof([prog.queued_source_path_lens]));
 	}
 	// let's have a nice absolute path so if our cwd changes its no biggie
 	cwd : u8? mut;
@@ -273,22 +273,22 @@ program_queue_source_file ::= func(path : u8?, path_len : u64 -> v0)
 	absolute_path : u8 mut? := arena_alloc(string_arena, absolute_path_len);
 	memcopy(absolute_path # 0, cwd, cwdlen);
 	// cwdlen - 1 because it includes the null terminator for some god-forsaken reason
-	deref(absolute_path # (cwdlen - 1)) = '/';
+	[absolute_path # (cwdlen - 1)] = '/';
 	memcopy(absolute_path # cwdlen, path, path_len);
 	
-	deref(prog.queued_source_paths # (prog.queued_source_paths_count)) = absolute_path;
-	deref(prog.queued_source_path_lens # (prog.queued_source_paths_count)) = absolute_path_len;
+	[prog.queued_source_paths # (prog.queued_source_paths_count)] = absolute_path;
+	[prog.queued_source_path_lens # (prog.queued_source_paths_count)] = absolute_path_len;
 	prog.queued_source_paths_count = (prog.queued_source_paths_count + 1);
 };
 
-program_queue_build_file ::= func(path : u8?, path_len : u64, config : u8? -> v0)
+program_queue_build_file : func(path : u8?, path_len : u64, config : u8? -> v0)
 {
 	if(prog.queued_build_paths == zero)
 	{
 		prog.queued_build_paths_cap = 8;
-		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_paths)));
-		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_lens)));
-		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_configs)));
+		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_paths]));
+		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_path_lens]));
+		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_path_configs]));
 	}
 	while(prog.queued_build_paths_count >= (prog.queued_build_paths_cap))
 	{
@@ -298,19 +298,19 @@ program_queue_build_file ::= func(path : u8?, path_len : u64, config : u8? -> v0
 		oldcfgdata ::= prog.queued_build_path_configs;
 
 		prog.queued_build_paths_cap = (prog.queued_build_paths_cap * 2);
-		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_paths)));
-		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_lens)));
-		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * __sizeof(deref(prog.queued_build_path_configs)));
-		memcopy(prog.queued_build_paths, oldpathdata, oldcap * __sizeof(deref(prog.queued_build_paths)));
-		memcopy(prog.queued_build_path_lens, oldlendata, oldcap * __sizeof(deref(prog.queued_build_path_lens)));
-		memcopy(prog.queued_build_path_configs, oldcfgdata, oldcap * __sizeof(deref(prog.queued_build_path_configs)));
+		prog.queued_build_paths = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_paths]));
+		prog.queued_build_path_lens = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_path_lens]));
+		prog.queued_build_path_configs = arena_alloc(global_arena, prog.queued_build_paths_cap * sizeof typeof([prog.queued_build_path_configs]));
+		memcopy(prog.queued_build_paths, oldpathdata, oldcap * sizeof typeof([prog.queued_build_paths]));
+		memcopy(prog.queued_build_path_lens, oldlendata, oldcap * sizeof typeof([prog.queued_build_path_lens]));
+		memcopy(prog.queued_build_path_configs, oldcfgdata, oldcap * sizeof typeof([prog.queued_build_path_configs]));
 
-		arena_free(global_arena, oldpathdata, oldcap * __sizeof(deref(prog.queued_build_paths)));
-		arena_free(global_arena, oldlendata, oldcap * __sizeof(deref(prog.queued_build_path_lens)));
-		arena_free(global_arena, oldcfgdata, oldcap * __sizeof(deref(prog.queued_build_path_configs)));
+		arena_free(global_arena, oldpathdata, oldcap * sizeof typeof([prog.queued_build_paths]));
+		arena_free(global_arena, oldlendata, oldcap * sizeof typeof([prog.queued_build_path_lens]));
+		arena_free(global_arena, oldcfgdata, oldcap * sizeof typeof([prog.queued_build_path_configs]));
 	}
-	deref(prog.queued_build_paths # (prog.queued_build_paths_count)) = path;
-	deref(prog.queued_build_path_lens # (prog.queued_build_paths_count)) = path_len;
-	deref(prog.queued_build_path_configs # (prog.queued_build_paths_count)) = config;
+	[prog.queued_build_paths # (prog.queued_build_paths_count)] = path;
+	[prog.queued_build_path_lens # (prog.queued_build_paths_count)] = path_len;
+	[prog.queued_build_path_configs # (prog.queued_build_paths_count)] = config;
 	prog.queued_build_paths_count = (prog.queued_build_paths_count + 1);
 };

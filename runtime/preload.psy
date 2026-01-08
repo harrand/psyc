@@ -1,17 +1,17 @@
-embed_data ::= struct
+embed_data : struct
 {
 	data : u8?;
 	size : u64;
 };
 
-srcloc ::= struct
+srcloc : struct
 {
 	file : u8?;
 	line : u64;
 	column : u64;
 };
 
-_atomic_ordering ::= enum
+_atomic_ordering : enum
 {
 	.monotonic := 2;
 	.acquire := 3;
@@ -20,7 +20,7 @@ _atomic_ordering ::= enum
 	.seqcst := 6;
 };
 
-_atomic_op ::= enum
+_atomic_op : enum
 {
 	.xchg := 0;
 	.add := 1;
@@ -35,7 +35,7 @@ _atomic_op ::= enum
 	.umin := 10;
 };
 
-program_args ::= struct
+program_args : struct
 {
 	argc : s32;
 	argv : u8??;
@@ -43,9 +43,9 @@ program_args ::= struct
 	thread_id : u32;
 };
 
-static if(_win32)
+static_if(_win32)
 {
-	SYSTEM_INFO ::= struct
+	SYSTEM_INFO : struct
 	{
 		dwOemId : u32;
 		dwPageSize : u32;
@@ -58,8 +58,8 @@ static if(_win32)
 		wProcessorLevel : u16;
 		wProcessorRevision : u16;
 	};
-	GetSystemInfo ::= func(lpSystemInfo : SYSTEM_INFO mut? -> v0) := extern;
-	Sleep ::= func(dwMilliSeconds : u32 -> v0) := extern;
+	GetSystemInfo : func(lpSystemInfo : SYSTEM_INFO mut? -> v0) extern;
+	Sleep : func(dwMilliSeconds : u32 -> v0) extern;
 }
 else
 {
@@ -84,14 +84,14 @@ else
 	_syscall6 ::= asm(num : u64 weak, arg0 : u64 weak, arg1 : u64 weak, arg2 : u64 weak, arg3 : u64 weak, arg4 : u64 weak, arg5 : u64 weak -> u64 weak) :=
 	'syscall' : '={rax},0,{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}';
 
-	impl_mask_count_bits ::= func(mask : u64?, nbytes : u64 -> u32)
+	impl_mask_count_bits : func(mask : u64?, nbytes : u64 -> u32)
 	{
 		count : u32 mut := 0;
-		nwords ::= nbytes / __sizeof(u64);
+		nwords ::= nbytes / sizeof u64;
 		i : u64 mut;
-		for(i = 0, i < nwords, i = i + 1)
+		for(i = 0;  i < nwords;  i = i + 1)
 		{
-			v : u64 mut := deref(mask # i);
+			v : u64 mut := [mask # i];
 			while(v > 0)
 			{
 				count = (count + ((v & 1)@_));
@@ -101,7 +101,7 @@ else
 		return count;
 	};
 
-	timespec ::= struct
+	timespec : struct
 	{
 		tv_sec : u64;
 		tv_nsec : u64;
@@ -109,9 +109,9 @@ else
 }
 
 // how many logical cores does the host machine have
-hardware_thread_count ::= func( -> u32)
+hardware_thread_count : func( -> u32)
 {
-	static if(_win32)
+	static_if(_win32)
 	{
 		info ::= zero@SYSTEM_INFO mut;
 		GetSystemInfo(ref info);
@@ -122,13 +122,13 @@ hardware_thread_count ::= func( -> u32)
 		sys_sched_getaffinity ::= 204;
 		mask : u64[16] := zero;
 		// assume never fails even though it can xD
-		_syscall3(sys_sched_getaffinity, 0, __sizeof(mask), mask # 0);
-		return impl_mask_count_bits(mask # 0, __sizeof(mask));
+		_syscall3(sys_sched_getaffinity, 0, sizeof mask, mask # 0);
+		return impl_mask_count_bits(mask # 0, sizeof mask);
 	}
 };
 
 // how many threads have been span off by the entrypoint?
-program_thread_count ::= func( -> u32)
+program_thread_count : func( -> u32)
 {
 	N ::= hardware_thread_count();
 
@@ -144,13 +144,13 @@ program_thread_count ::= func( -> u32)
 	return thread_count@_;
 };
 
-barrier ::= struct
+barrier : struct
 {
 	touch_count : u32;
 	generation : u32;
 };
 
-barrier_sync ::= func(_my_barrier : barrier mut?, count : u32 -> v0)
+barrier_sync : func(_my_barrier : barrier mut?, count : u32 -> v0)
 {
 	gen ::= _my_barrier->generation;
 	// atomically increment
@@ -170,9 +170,9 @@ barrier_sync ::= func(_my_barrier : barrier mut?, count : u32 -> v0)
 	__atomic_rmw(_atomic_op.add, ref(_my_barrier->generation), 1, _atomic_ordering.acqrel);
 };
 
-sleep ::= func(millis : u64 -> v0)
+sleep : func(millis : u64 -> v0)
 {
-	static if(_win32)
+	static_if(_win32)
 	{
 		Sleep(millis@_);
 	}
