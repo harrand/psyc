@@ -50,9 +50,40 @@ dbg_setup_codeview ::= func(-> v0)
 	LLVMAddModuleFlag(prog.cg, 0, codeview_str, zstrlen(codeview_str), val_metadata);
 };
 
+dbg_declare_struct ::= func(type : tyid -> v0)
+{
+	//t ::= ty_unwrap(type);
+	//s ::= ref(t->strct);
+	//db_mems : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
+	//dlayout ::= LLVMGetModuleDataLayout(prog.cg);
+	//i : u64 mut;
+	//for(i = 0, i < (s->members_count), i = i + 1)
+	//{
+	//	memty ::= deref(s->members # i);
+	//	cg ::= cg_type(memty);
+	//	di ::= db_type(memty);
+	//	offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
+	//	size ::= LLVMABISizeOfType(dlayout, cg);
+	//	align ::= LLVMABIAlignmentOfType(dlayout, cg);
+	//	deref(db_mems # i) = LLVMDIBuilderCreateMemberType(prog.db, );
+	//}
+	// problem: need source location information...
+};
+
 dbg_declare_function ::= func(fn : function mut? -> v0)
 {
+	if(!(prog.debug_symbols))
+	{
+		return;
+	}
 	// todo: set fn->db and fn->scope->db
+	funcscope ::= (fn->scope)@lexical_scope mut?;
+	filescope ::= scope_get_parent_filescope(funcscope);
+	
+	dity ::= db_type(fn->type);
+	fn->db = LLVMDIBuilderCreateFunction(prog.db, filescope->db, fn->name, fn->name_len, fn->name, fn->name_len, filescope->db, fn->node->loc.line@_, dity, false@s32, true@s32, fn->node->loc.column@_, 256, false@s32);
+	LLVMSetSubprogram(fn->cg, fn->db);
+	funcscope->db = (fn->db);
 };
 
 dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v0)
@@ -119,11 +150,70 @@ db_type ::= func(type : tyid -> u64)
 	integral_size ::= ty_integral_size(type);
 	integral_signed ::= ty_is_signed_integral(type);
 	floating_size ::= ty_floating_point_size(type);
-	size ::= val_must_get_integer(cg_sizeof(type), zero, zero);
+	size : u64 mut weak := val_must_get_integer(cg_sizeof(type), zero, zero);
 	align ::= val_must_get_integer(cg_alignof(type), zero, zero);
-	if(integral_size > 0)
-	{
 
+	dw_ate : s32 mut := 0;
+
+	if(ty_is_prim(type))
+	{
+		if(integral_size > 0)
+		{
+			if(integral_signed)
+			{
+				if(integral_size == 8)
+				{
+					dw_ate = DW_ATE_signed_char;
+				}
+				else
+				{
+					dw_ate = DW_ATE_signed;
+				}
+			}
+			else
+			{
+				if(integral_size == 8)
+				{
+					dw_ate = DW_ATE_unsigned_char;
+				}
+				else
+				{
+					dw_ate = DW_ATE_unsigned;
+				}
+			}
+		}
+		if(ty_is_bool(type))
+		{
+			dw_ate = DW_ATE_boolean;
+		}
+		if(ty_matches_ignore_quals(type, tyid.v0))
+		{
+			dw_ate = DW_ATE_unsigned;
+			size = 8;
+		}
+		return LLVMDIBuilderCreateBasicType(prog.db, namebuf, namelen, size, dw_ate, zero);
+	}
+	if(ty_is_ptr(type))
+	{
+		return LLVMDIBuilderCreatePointerType(prog.db, db_type(ty_underlying(type)), 64, zero, zero, zero, zero);
+	}
+	if(ty_is_fn(type))
+	{
+		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (u->fn.params_count + 1));
+		deref(paramdata # 0) = db_type(u->fn.return_type);
+		i : u64 mut;
+		for(i = 0, i < (u->fn.params_count), i = i + 1)
+		{
+			deref(paramdata # (1 + i)) = db_type(deref(u->fn.param_types # i));
+		}
+	}
+	if(ty_is_struct(type))
+	{
+		return u->strct.db;
+	}
+	if(ty_is_enum(type))
+	{
+		return u->enm.db;
 	}
 	return zero;
 };
