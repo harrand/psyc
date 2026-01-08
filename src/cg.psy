@@ -2,15 +2,20 @@
 // basically this is LLVM land. many functions here have a s_xyz (compile-time) equivalent in s.psy
 ir : u64 mut := zero;
 
+cg_setup ::= func(-> v0)
+{
+	cg_begin();
+};
+
 codegen ::= func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.codegen);
-	cg_begin();
 
 	cg_all_structs();
 	cg_global_variables(program_scope());
 	cg_all_asms(program_scope());
 	cg_all_functions(program_scope());
+	dbg_end();
 	cg_end();
 	psyc_timed_end();
 };
@@ -19,7 +24,6 @@ cg_begin ::= func(-> v0)
 {
 	prog.cg = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
-	prog.db = LLVMCreateDIBuilder(prog.cg);
 };
 
 cg_end ::= func(-> v0)
@@ -260,6 +264,8 @@ cg_func_def ::= func(fn : function mut? -> v0)
 	funcscope ::= fn->scope@lexical_scope mut?;
 	funcscope->cg = LLVMAppendBasicBlock(fn->cg, "entry");
 	LLVMPositionBuilderAtEnd(ir, funcscope->cg);
+
+	dbg_declare_function(fn);
 	// all local variables will be in this scope
 	// so lets do them now.
 	i : u64 mut;
@@ -268,7 +274,7 @@ cg_func_def ::= func(fn : function mut? -> v0)
 		func_var ::= funcscope->variables # i;
 		if(func_var->param_idx == -1)
 		{
-			cg_local_variable(func_var);
+			cg_local_variable(func_var, fn, false);
 		}
 		else
 		{
@@ -321,11 +327,15 @@ cg_global_variable ::= func(var : variable mut? -> v0)
 	LLVMSetInitializer(var->cg, init_val.runtime.cg);
 };
 
-cg_local_variable ::= func(var : variable mut? -> v0)
+cg_local_variable ::= func(var : variable mut?, fn : function mut?, is_function_param : bool -> v0)
 {
 	// do an alloca
 	decl ::= var->node->decl;
 	var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
+	if(is_function_param)
+	{
+		dbg_declare_function_param(var, fn);
+	}
 };
 
 cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
@@ -335,7 +345,7 @@ cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
 	// param_cg is the param register value
 	// we want to make our own backing alloca
 	// and immediately store that in there.
-	cg_local_variable(var);
+	cg_local_variable(var, fn, true);
 	// do the store
 	LLVMBuildStore(ir, param_cg, var->cg);
 };
@@ -1444,7 +1454,7 @@ cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 		}
 		LLVMBuildStore(ir, init.runtime.cg, var->cg);
 	}
-	// todo: debug declare the variable here.
+	dbg_declare_local_variable(var, scope_get_parent_function(scope));
 	return zero;
 };
 

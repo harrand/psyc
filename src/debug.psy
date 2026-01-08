@@ -1,9 +1,33 @@
-dbg_begin ::= func(-> v0)
+di_cu : u64 mut := zero;
+
+dbg_setup ::= func(-> v0)
 {
-	if(!(prog.debug_symbols))
+	prog.db = LLVMCreateDIBuilder(prog.cg);
+	dirname_len : u64 weak mut;
+	dirname : u8 mut? mut;
+	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
+
+	di_buildfile ::= LLVMDIBuilderCreateFile(prog.db, prog.compile_args.build_file, zstrlen(prog.compile_args.build_file), dirname, dirname_len - 1);
+	LLVM_DWARF_SRC_LANG_C ::= 1;
+	producer_str ::= "Psyc";
+	is_optimized ::= prog.optimization != (program_optimization.o0);
+	LLVMDWARFEmissionNone ::= 0;
+	LLVMDWARFEmissionFull ::= 1;
+	emission : s32 weak mut := LLVMDWARFEmissionNone;
+	if(prog.debug_symbols)
 	{
-		return;
+		emission = LLVMDWARFEmissionFull;
 	}
+	di_cu = LLVMDIBuilderCreateCompileUnit(prog.db, LLVM_DWARF_SRC_LANG_C, di_buildfile, producer_str, zstrlen(producer_str), is_optimized@s32, zero, zero, zero, zero, zero, emission, zero, true@s32, false@s32, zero, zero, zero, zero);
+	program_scope()->db = di_cu;
+};
+
+dbg_create_file ::= func(scope : lexical_scope mut? -> v0)
+{
+	dirname_len : u64 weak mut;
+	dirname : u8 mut? mut;
+	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
+	scope->db = LLVMDIBuilderCreateFile(prog.db, scope->name, scope->name_len, dirname, dirname_len - 1);	
 };
 
 dbg_end ::= func(-> v0)
@@ -24,4 +48,82 @@ dbg_setup_codeview ::= func(-> v0)
 	val_metadata ::= LLVMValueAsMetadata(LLVMConstInt(LLVMInt32Type(), 1, true@s32));
 	codeview_str ::= "CodeView";
 	LLVMAddModuleFlag(prog.cg, 0, codeview_str, zstrlen(codeview_str), val_metadata);
+};
+
+dbg_declare_function ::= func(fn : function mut? -> v0)
+{
+	// todo: set fn->db and fn->scope->db
+};
+
+dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v0)
+{
+	if(!(prog.debug_symbols))
+	{
+		return;
+	}
+	
+	loc ::= var->node->loc;
+
+	fnscope ::= (fn->scope)@lexical_scope mut?;
+	parent_file ::= scope_get_parent_filescope(fnscope);
+	divar ::= LLVMDIBuilderCreateAutoVariable(prog.db, fnscope->db, var->node->decl.name, var->node->decl.name_len, parent_file->db, loc.line@_, db_type(var->type), false@s32, zero, zero);
+	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.cg, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero), fnscope->cg);
+};
+
+dbg_declare_function_param ::= func(var : variable mut?, fn : function mut? -> v0)
+{
+	if(!(prog.debug_symbols))
+	{
+		return;
+	}
+};
+
+db_type ::= func(type : tyid -> u64)
+{
+	u ::= ty_unwrap(type);
+	// make the full name. argh.
+
+	namelen : u64 mut := u->name_len;
+	if(ty_has_qual(type, tyqual.qual_mut))
+	{
+		namelen = (namelen + zstrlen(qual_str_mut));
+	}
+	if(ty_has_qual(type, tyqual.qual_weak))
+	{
+		namelen = (namelen + zstrlen(qual_str_weak));
+	}
+	if(ty_has_qual(type, tyqual.qual_static))
+	{
+		namelen = (namelen + zstrlen(qual_str_static));
+	}
+	namebuf : u8 mut? := arena_alloc(string_arena, namelen);
+	memcopy(namebuf, u->name, u->name_len);
+	name_offset : u64 mut := u->name_len;
+	
+	if(ty_has_qual(type, tyqual.qual_mut))
+	{
+		memcopy(namebuf # name_offset, qual_str_mut, zstrlen(qual_str_mut));
+		name_offset = (name_offset + zstrlen(qual_str_mut));
+	}
+	if(ty_has_qual(type, tyqual.qual_weak))
+	{
+		memcopy(namebuf # name_offset, qual_str_weak, zstrlen(qual_str_weak));
+		name_offset = (name_offset + zstrlen(qual_str_weak));
+	}
+	if(ty_has_qual(type, tyqual.qual_static))
+	{
+		memcopy(namebuf # name_offset, qual_str_static, zstrlen(qual_str_static));
+		name_offset = (name_offset + zstrlen(qual_str_static));
+	}
+
+	integral_size ::= ty_integral_size(type);
+	integral_signed ::= ty_is_signed_integral(type);
+	floating_size ::= ty_floating_point_size(type);
+	size ::= val_must_get_integer(cg_sizeof(type), zero, zero);
+	align ::= val_must_get_integer(cg_alignof(type), zero, zero);
+	if(integral_size > 0)
+	{
+
+	}
+	return zero;
 };
