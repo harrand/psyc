@@ -19,11 +19,16 @@ s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 	from ::= v.type;
 	if(ty_is_char(from))
 	{
-		// we're converting from u8 to something else
-		// remember this is an integral type but chars are stored differently in static values
-		// so what we will do is just pretend we are an integer for now
-		v.compile_time.primitive.tag = (ast_literal_tag.integer);
-		v.compile_time.primitive.integer = (deref(v.compile_time.primitive.chars)@_);
+		// remember v can be char literal or an integer.
+		if(v.compile_time.primitive.tag == (ast_literal_tag.char))
+		{
+			// we're converting from u8 to something else
+			// remember this is an integral type but chars are stored differently in static values
+			// so what we will do is just pretend we are an integer for now
+			v.compile_time.primitive.tag = (ast_literal_tag.integer);
+			// todo: escape
+			v.compile_time.primitive.integer = (deref(v.compile_time.primitive.chars)@_);
+		}
 	}
 	if(ty_is_integral(from))
 	{

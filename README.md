@@ -160,14 +160,14 @@ main ::= func(-> s32)
 	my_pointer : s64 mut? := ref my_value;
 
 	// equivalent to: my_value = 0;
-	(deref my_pointer) = 0;
+	(deref(my_pointer)) = 0;
 	return 0;
 };
 ```
 Within a typename, pointer-ness is represented by the ampersand `?` symbol. It directly proceeds the base type representing the pointee.
 
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
-- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref my_ptr` in Psy is equivalent to `*my_ptr` in C.
+- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref(my_ptr)` in Psy is equivalent to `*my_ptr` in C.
 - Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
 - Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator which is identical to C pointer arithmetic in all other ways.
 ```
@@ -210,7 +210,7 @@ pointer : u64? := my_favourite_numbers # 0;
 //another_pointer : u64? := my_favourite_numbers; // error!
 
 // write to each value. this requires the element type to be mutable but not the array.
-(deref pointer) = 7; // equivalent to (deref(my_favourite_numbers # 0)) = 7;
+(deref(pointer)) = 7; // equivalent to (deref(my_favourite_numbers # 0)) = 7;
 (deref(my_favourite_numbers # 1)) = 69;
 (deref(my_favourite_numbers # 2)) = 420;
 (deref(my_favourite_numbers # 0)) = zero;

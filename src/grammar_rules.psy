@@ -228,7 +228,7 @@ rule_expr_x_token_oparen2callwip ::= func(nodes : ast mut?, nodes_count : u64 ->
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref callnode, deref expr_node, global_arena);
+	ast_add_child(ref callnode, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -280,7 +280,7 @@ rule_callwip_expr_x2expect_comma_or_cparen ::= func(nodes : ast mut?, nodes_coun
 	callwip_node ::= nodes # 0;
 	callwip_node->tag = (ast_tag.call_expect_comma_or_cparen);
 	expr_node ::= nodes # 1;
-	ast_add_child(callwip_node, deref expr_node, global_arena);
+	ast_add_child(callwip_node, deref(expr_node), global_arena);
 	callwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
@@ -338,7 +338,7 @@ rule_error_call_comma_followed_by_cparen ::= func(nodes : ast mut?, nodes_count 
 rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	// we have [ expr ]
-	// make it into a deref expr
+	// make it into a deref(expr)
 	expr_node ::= deref(nodes # 1);
 	deref_node ::= ast mut
 	{
@@ -385,7 +385,7 @@ rule_token_obrack_expr_token_cbrack2deref ::= func(nodes : ast mut?, nodes_count
 //		.children_count := zero;
 //		.children_cap := zero;
 //	};
-//	ast_add_child(ref unop_node, deref expr_node, global_arena);
+//	ast_add_child(ref unop_node, deref(expr_node), global_arena);
 //	return rule_result
 //	{
 //		.tag := rule.reduce;
@@ -430,7 +430,7 @@ rule_token_x_expr_x2unop ::= func(nodes : ast mut?, nodes_count : u64 -> rule_re
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref unop_node, deref expr_node, global_arena);
+	ast_add_child(ref unop_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -490,12 +490,12 @@ rule_expr_x_token_x_expr_y2biop ::= func(nodes : ast mut?, nodes_count : u64 -> 
 			// x + (y * z)
 			// so lhs biop.op stays the same aswell as its lhs
 			// but its rhs becomes our biop.
-			lhs_biop_lhs ::= deref ast_get_child(lhs_expr_node, 0);
-			lhs_biop_rhs ::= deref ast_get_child(lhs_expr_node, 1);
+			lhs_biop_lhs ::= deref(ast_get_child(lhs_expr_node, 0));
+			lhs_biop_rhs ::= deref(ast_get_child(lhs_expr_node, 1));
 
-			old_lhs ::= deref lhs_expr_node;
+			old_lhs ::= deref(lhs_expr_node);
 			deref(lhs_expr_node) = lhs_biop_lhs;
-			old_rhs ::= deref rhs_expr_node;
+			old_rhs ::= deref(rhs_expr_node);
 			deref(rhs_expr_node) = ast
 			{
 				.tag := ast_tag.expr;
@@ -505,13 +505,13 @@ rule_expr_x_token_x_expr_y2biop ::= func(nodes : ast mut?, nodes_count : u64 -> 
 				.children_count := zero;
 				.children_cap := zero;
 			};
-			ast_add_child(rhs_expr_node, deref ast_get_child(ref old_lhs, 1), global_arena);
+			ast_add_child(rhs_expr_node, deref(ast_get_child(ref old_lhs, 1)), global_arena);
 			ast_add_child(rhs_expr_node, old_rhs, global_arena);
 			biop_node.biop = old_lhs.biop;
 		}
 	}
-	ast_add_child(ref biop_node, deref lhs_expr_node, global_arena);
-	ast_add_child(ref biop_node, deref rhs_expr_node, global_arena);
+	ast_add_child(ref biop_node, deref(lhs_expr_node), global_arena);
+	ast_add_child(ref biop_node, deref(rhs_expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -663,7 +663,7 @@ rule_keyword_sizeof_typename2sizeof ::= func(nodes : ast mut?, nodes_count : u64
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref expr_node, deref tyname_node, global_arena);
+	ast_add_child(ref expr_node, deref(tyname_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -683,7 +683,7 @@ rule_keyword_alignof_typename2alignof ::= func(nodes : ast mut?, nodes_count : u
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref expr_node, deref tyname_node, global_arena);
+	ast_add_child(ref expr_node, deref(tyname_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -703,7 +703,7 @@ rule_keyword_countof_typename2countof ::= func(nodes : ast mut?, nodes_count : u
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref expr_node, deref tyname_node, global_arena);
+	ast_add_child(ref expr_node, deref(tyname_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -740,7 +740,7 @@ rule_typename_function_await_param_or_arrow_decl_finalised_token_arrow2function_
 	// add the param decl as a child and then set tag to function_await_return_type
 	typename_node ::= nodes # 0;
 	decl_node ::= nodes # 1;
-	ast_add_child(typename_node, deref decl_node, global_arena);
+	ast_add_child(typename_node, deref(decl_node), global_arena);
 	typename_node->typename.tag = (ast_typename_tag.function_await_return_type);
 	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
@@ -757,7 +757,7 @@ rule_typename_function_await_param_or_arrow_decl_finalised_token_comma2function_
 	// we obviously dont expect an arrow next but thats handled by an erroneous-case grammar_rule that has the arrow as a lookahead - in other words we dont deal with that error case in this rule.
 	typename_node ::= nodes # 0;
 	decl_node ::= nodes # 1;
-	ast_add_child(typename_node, deref decl_node, global_arena);
+	ast_add_child(typename_node, deref(decl_node), global_arena);
 	typename_node->typename.tag = (ast_typename_tag.function_await_param_or_arrow);
 	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
@@ -804,7 +804,7 @@ rule_typename_function_await_return_type_typename_token_cparen2wip ::= func(node
 	return_typename_node ::= nodes # 1;
 	typename_node->typename.tag = (ast_typename_tag.wip);
 	typename_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
-	ast_add_child(typename_node, deref return_typename_node, global_arena);
+	ast_add_child(typename_node, deref(return_typename_node), global_arena);
 	
 	return rule_result
 	{
@@ -844,7 +844,7 @@ rule_token_keyword_typeof_expr_x2typename ::= func(nodes : ast mut?, nodes_count
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref typename_node, deref expr_node, global_arena);
+	ast_add_child(ref typename_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1003,7 +1003,7 @@ rule_token_keyword_return_expr_x_token_semicol2stmt ::= func(nodes : ast mut?, n
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref ret_node, deref expr_node, global_arena);
+	ast_add_child(ref ret_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1129,7 +1129,7 @@ rule_decl_finalised_token_obrace2function_impl ::= func(nodes : ast mut?, nodes_
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref function_node, deref typename_node, global_arena);
+	ast_add_child(ref function_node, deref(typename_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1178,7 +1178,7 @@ rule_decl_finalised_token_keyword_extern2function_finalised ::= func(nodes : ast
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref function_node, deref typename_node, global_arena);
+	ast_add_child(ref function_node, deref(typename_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1198,7 +1198,7 @@ rule_typename_finalised_token_obrace2blkinitwip ::= func(nodes : ast mut?, nodes
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref blkinit_node, deref typename_node, global_arena);
+	ast_add_child(ref blkinit_node, deref(typename_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1287,7 +1287,7 @@ rule_desiginitwip_expr_x2desiginit ::= func(nodes : ast mut?, nodes_count : u64 
 	// turn it into a proper desiginit
 	desiginitwip_node ::= nodes # 0;
 	expr_node ::= nodes # 1;
-	ast_add_child(desiginitwip_node, deref expr_node, global_arena);
+	ast_add_child(desiginitwip_node, deref(expr_node), global_arena);
 	desiginitwip_node->tag = (ast_tag.desiginit);
 	desiginitwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
@@ -1308,7 +1308,7 @@ rule_expr_x_token_cast2castwip ::= func(nodes : ast mut?, nodes_count : u64 -> r
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref cast_node, deref expr_node, global_arena);
+	ast_add_child(ref cast_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1344,7 +1344,7 @@ rule_castwip_typename_finalised2cast ::= func(nodes : ast mut?, nodes_count : u6
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	ast_add_child(castwip_node, deref typename_node, global_arena);
+	ast_add_child(castwip_node, deref(typename_node), global_arena);
 	castwip_node->tag = (ast_tag.expr);
 	castwip_node->expr = (ast_expr_tag.cast);
 	castwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
@@ -1367,7 +1367,7 @@ rule_expr_x_token_dot2fieldwip ::= func(nodes : ast mut?, nodes_count : u64 -> r
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref field_node, deref expr_node, global_arena);
+	ast_add_child(ref field_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1384,7 +1384,7 @@ rule_fieldwip_expr_x2field ::= func(nodes : ast mut?, nodes_count : u64 -> rule_
 	// remember this expr is expected to be either a symbol expr or a callfunc
 	// in any case a symbol is easy to retrieve.
 	expr_node ::= nodes # 1;
-	ast_add_child(fieldwip_node, deref expr_node, global_arena);
+	ast_add_child(fieldwip_node, deref(expr_node), global_arena);
 
 	fieldwip_node->tag = (ast_tag.expr);
 	fieldwip_node->expr = (ast_expr_tag.field);
@@ -1409,7 +1409,7 @@ rule_expr_x_token_arrow2ptrfieldwip ::= func(nodes : ast mut?, nodes_count : u64
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref field_node, deref expr_node, global_arena);
+	ast_add_child(ref field_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1426,7 +1426,7 @@ rule_ptrfieldwip_expr_x2ptrfield ::= func(nodes : ast mut?, nodes_count : u64 ->
 	// remember this expr is expected to be either a symbol expr or a callfunc
 	// in any case a symbol is easy to retrieve.
 	expr_node ::= nodes # 1;
-	ast_add_child(ptrfieldwip_node, deref expr_node, global_arena);
+	ast_add_child(ptrfieldwip_node, deref(expr_node), global_arena);
 
 	ptrfieldwip_node->tag = (ast_tag.expr);
 	ptrfieldwip_node->expr = (ast_expr_tag.ptrfield);
@@ -1455,7 +1455,7 @@ rule_token_keyword_if_expr_x_token_obrace2ifwip ::= func(nodes : ast mut?, nodes
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref ifwip_node, deref expr_node, global_arena);
+	ast_add_child(ref ifwip_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1480,7 +1480,7 @@ rule_token_keyword_static_if_expr_x_token_obrace2ifwip ::= func(nodes : ast mut?
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref ifwip_node, deref expr_node, global_arena);
+	ast_add_child(ref ifwip_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1542,7 +1542,7 @@ rule_ifstmt_elsestmt2ifstmt ::= func(nodes : ast mut?, nodes_count : u64 -> rule
 	if_node ::= nodes # 0;
 	else_node ::= nodes # 1;
 	if_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
-	ast_add_child(if_node, deref else_node, global_arena);
+	ast_add_child(if_node, deref(else_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1578,7 +1578,7 @@ rule_token_keyword_while_expr_x_token_obrace2whilewip ::= func(nodes : ast mut?,
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref whilewip_node, deref expr_node, global_arena);
+	ast_add_child(ref whilewip_node, deref(expr_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1702,7 +1702,7 @@ rule_token_keyword_for_stmt_x2forwip1 ::= func(nodes : ast mut?, nodes_count : u
 		.children_count := zero;
 		.children_cap := zero;
 	};
-	ast_add_child(ref forwip1_node, deref stmt_node, global_arena);
+	ast_add_child(ref forwip1_node, deref(stmt_node), global_arena);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -1717,7 +1717,7 @@ rule_forwip1_stmt_x2forwip2 ::= func(nodes : ast mut?, nodes_count : u64 -> rule
 	forwip2_node ::= nodes # 0;
 	forwip2_node->tag = (ast_tag.forwip2);
 	stmt_node ::= nodes # 1;
-	ast_add_child(forwip2_node, deref stmt_node, global_arena);
+	ast_add_child(forwip2_node, deref(stmt_node), global_arena);
 	forwip2_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
@@ -1733,7 +1733,7 @@ rule_forwip2_stmt_x_token_obrace2forwip ::= func(nodes : ast mut?, nodes_count :
 	forwip_node ::= nodes # 0;
 	forwip_node->tag = (ast_tag.forwip);
 	stmt_node ::= nodes # 1;
-	ast_add_child(forwip_node, deref stmt_node, global_arena);
+	ast_add_child(forwip_node, deref(stmt_node), global_arena);
 	forwip_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 	return rule_result
 	{
@@ -1766,7 +1766,7 @@ rule_assembly_wip_typename_finalised_token_cparen_token_obrace2coding ::= func(n
 	asm_node->end_cursor = ((nodes # (nodes_count - 1))->end_cursor);
 
 	typename_node ::= nodes # 1;
-	ast_add_child(asm_node, deref typename_node, global_arena);
+	ast_add_child(asm_node, deref(typename_node), global_arena);
 
 	return rule_result
 	{
@@ -1785,7 +1785,7 @@ rule_assembly_coding_token_x2coding ::= func(nodes : ast mut?, nodes_count : u64
 	new_child ::= asm_node->children_count == 1;
 	if(new_child)
 	{
-		ast_add_child(asm_node, deref tok_node, global_arena);
+		ast_add_child(asm_node, deref(tok_node), global_arena);
 	}
 	child ::= ast_get_child(asm_node, 1);
 	if(!new_child)

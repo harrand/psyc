@@ -11,8 +11,41 @@
 	}
 };
 
+global_arena_val : arena mut := zero;
+global_arena : arena mut? mut := zero;
+
+// stores strings
+string_arena_val : arena mut := zero;
+string_arena : arena mut? mut := zero;
+
+setup_arenas : func( -> v0)
+{
+	global_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	global_arena = ref global_arena_val;
+	arena_auto_align(global_arena, 8);
+
+	string_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	string_arena = ref string_arena_val;
+	arena_auto_align(string_arena, 1);
+};
+
+memfill : func(dst : u8 mut? weak, byte : u8, len : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < len; i = i + 1)
+	{
+		[dst # i] = byte;
+	}
+};
+
 main : func(args : program_args? -> s32)
 {
+	setup_arenas();
+	ptr : u8 mut? := arena_alloc(global_arena, sizeof u64);
+	memfill(ptr, 0, sizeof u64);
+	uk : u8 mut;
+	uk = zero;
+
 	puts("hello, world!");
 	putchar(10);
 	source ::= embed("./test.psy");
