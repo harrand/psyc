@@ -106,6 +106,27 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 	}
 };
 
+dbg_declare_enum ::= func(type : tyid -> v0)
+{
+	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
+	t ::= ty_unwrap(type);
+	e ::= ref(t->enm);
+	defined_at ::= e->node;
+	file_scope ::= program_find_file_scope(defined_at->loc.file, zstrlen(defined_at->loc.file));
+
+	db_entries : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (e->entries_count));
+	i : u64 mut;
+	for(i = 0, i < (e->entries_count), i = i + 1)
+	{
+		entry_intval ::= deref(e->entries # i);
+		deref(db_entries # i) = LLVMDIBuilderCreateEnumerator(prog.db, deref(e->entry_names # i), deref(e->entry_name_lens # i), entry_intval@_, false@s32);
+	}
+	size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
+	align ::= LLVMABIAlignmentOfType(dlayout, cg_type(type, true));
+	
+	e->db = LLVMDIBuilderCreateEnumerationType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, size * 8, align * 8, db_entries, e->entries_count@_, db_type(tyid.s64));
+};
+
 dbg_declare_function ::= func(fn : function mut? -> v0)
 {
 	if(!(prog.debug_symbols))
@@ -257,6 +278,10 @@ db_type ::= func(type : tyid -> u64)
 	}
 	if(ty_is_enum(type))
 	{
+		if(u->enm.db == zero)
+		{
+			dbg_declare_enum(type);
+		}
 		return u->enm.db;
 	}
 	return zero;
