@@ -284,7 +284,14 @@ cg_func_def ::= func(fn : function mut? -> v0)
 
 	for(i = 1, i < (fn->node->children_count), i = i + 1)
 	{
-		cg_node(ast_get_child(fn->node, i), funcscope);
+		impl_child ::= ast_get_child(fn->node, i);
+		// if its a call then cg_call will already emit a dbg_action so let it do that there
+		// the reason is if we call N functions on a single line then we want dbg_action to be invoked N times, not N + 1
+		if(!ast_is_expr(impl_child, ast_expr_tag.call))
+		{
+			dbg_action(impl_child, funcscope);
+		}
+		cg_node(impl_child, funcscope);
 	}
 
 	last_child ::= ast_get_last_child_if_ret(fn->node);
