@@ -52,22 +52,58 @@ dbg_setup_codeview ::= func(-> v0)
 
 dbg_declare_struct ::= func(type : tyid -> v0)
 {
-	//t ::= ty_unwrap(type);
-	//s ::= ref(t->strct);
-	//db_mems : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
-	//dlayout ::= LLVMGetModuleDataLayout(prog.cg);
-	//i : u64 mut;
-	//for(i = 0, i < (s->members_count), i = i + 1)
-	//{
-	//	memty ::= deref(s->members # i);
-	//	cg ::= cg_type(memty);
-	//	di ::= db_type(memty);
-	//	offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
-	//	size ::= LLVMABISizeOfType(dlayout, cg);
-	//	align ::= LLVMABIAlignmentOfType(dlayout, cg);
-	//	deref(db_mems # i) = LLVMDIBuilderCreateMemberType(prog.db, );
-	//}
-	// problem: need source location information...
+	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
+	t ::= ty_unwrap(type);
+	s ::= ref(t->strct);
+	defined_at ::= s->node;
+	file_scope ::= program_find_file_scope(defined_at->loc.file, zstrlen(defined_at->loc.file));
+	// if one of the members is a pointer of pointee type the same struct
+	// then with normal logic we recurse forever
+	// if we detect one of the member pointees is ourselves we will populate recursive component and use that
+	recursive_component : u64 mut := 0;
+
+	db_mems : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
+	i : u64 mut;
+	for(i = 0, i < (s->members_count), i = i + 1)
+	{
+		memty ::= deref(s->members # i);
+		is_recursive_pointee : bool mut := false;
+		if(ty_is_ptr(memty))
+		{
+			if(ty_matches_ignore_quals(ty_underlying(memty), type))
+			{
+				is_recursive_pointee = true;
+			}
+		}
+		if(is_recursive_pointee)
+		{
+			// ah make a recursive version of ourselves
+			if(recursive_component == zero)
+			{
+				DW_TAG_structure_type ::= 0x13;
+				recursive_component = LLVMDIBuilderCreateReplaceableCompositeType(prog.db, DW_TAG_structure_type, t->name, t->name_len, file_scope->db, file_scope->db, defined_at->loc.line@_, zero, total_size * 8, total_align * 8, zero, t->name, t->name_len);
+			}
+			deref(db_mems # i) = recursive_component;
+		}
+		else
+		{
+			cg ::= cg_type(memty, true);
+			di ::= db_type(memty);
+			offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
+			size ::= LLVMABISizeOfType(dlayout, cg);
+			align ::= LLVMABIAlignmentOfType(dlayout, cg);
+			deref(db_mems # i) = LLVMDIBuilderCreateMemberType(prog.db, file_scope->db, deref(s->member_names # i), deref(s->member_name_lens # i), file_scope->db, defined_at->loc.line@_, size * 8, align * 8, offset * 8, zero, di);
+		}
+	}
+	total_size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
+	total_align ::= LLVMABIAlignmentOfType(dlayout, cg_type(type, true));
+	s->db = LLVMDIBuilderCreateStructType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, total_size * 8, total_align * 8, zero, zero, db_mems, s->members_count@_, zero, zero, t->name, t->name_len);
+	if(recursive_component != zero)
+	{
+		// do the replacement
+		//LLVMDIBuilderReplaceTemporary(prog.db, recursive_component, s->db);
+		LLVMMetadataReplaceAllUsesWith(recursive_component, s->db);
+	}
 };
 
 dbg_declare_function ::= func(fn : function mut? -> v0)
@@ -98,7 +134,7 @@ dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v
 	fnscope ::= (fn->scope)@lexical_scope mut?;
 	parent_file ::= scope_get_parent_filescope(fnscope);
 	divar ::= LLVMDIBuilderCreateAutoVariable(prog.db, fnscope->db, var->node->decl.name, var->node->decl.name_len, parent_file->db, loc.line@_, db_type(var->type), false@s32, zero, zero);
-	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.cg, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero), fnscope->cg);
+	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero), fnscope->cg);
 };
 
 dbg_declare_function_param ::= func(var : variable mut?, fn : function mut? -> v0)
@@ -147,6 +183,10 @@ db_type ::= func(type : tyid -> u64)
 		name_offset = (name_offset + zstrlen(qual_str_static));
 	}
 
+	if(ty_matches_ignore_quals(type, tyid.v0))
+	{
+		return LLVMDIBuilderCreateBasicType(prog.db, namebuf, namelen, 8, DW_ATE_unsigned, zero);
+	}
 	integral_size ::= ty_integral_size(type);
 	integral_signed ::= ty_is_signed_integral(type);
 	floating_size ::= ty_floating_point_size(type);
@@ -209,6 +249,10 @@ db_type ::= func(type : tyid -> u64)
 	}
 	if(ty_is_struct(type))
 	{
+		if(u->strct.db == zero)
+		{
+			dbg_declare_struct(type);
+		}
 		return u->strct.db;
 	}
 	if(ty_is_enum(type))
