@@ -244,6 +244,7 @@ cg_asm ::= func(assembly : assembly mut? -> v0)
 
 cg_func_sig ::= func(fn : function mut? -> v0)
 {
+	dbg_inaction();
 	is_extern ::= fn->node->function.is_extern;
 	name_zstr ::= sstr2zstr(fn->name, fn->name_len, string_arena);
 	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
@@ -278,19 +279,13 @@ cg_func_def ::= func(fn : function mut? -> v0)
 		}
 		else
 		{
-			cg_function_param(fn, func_var);
+			cg_function_param(fn, func_var, i);
 		}
 	}
 
 	for(i = 1, i < (fn->node->children_count), i = i + 1)
 	{
 		impl_child ::= ast_get_child(fn->node, i);
-		// if its a call then cg_call will already emit a dbg_action so let it do that there
-		// the reason is if we call N functions on a single line then we want dbg_action to be invoked N times, not N + 1
-		if(!ast_is_expr(impl_child, ast_expr_tag.call))
-		{
-			dbg_action(impl_child, funcscope);
-		}
 		cg_node(impl_child, funcscope);
 	}
 
@@ -339,13 +334,9 @@ cg_local_variable ::= func(var : variable mut?, fn : function mut?, is_function_
 	// do an alloca
 	decl ::= var->node->decl;
 	var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
-	if(is_function_param)
-	{
-		dbg_declare_function_param(var, fn);
-	}
 };
 
-cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
+cg_function_param ::= func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
 {
 	// ok this ones special
 	param_cg ::= LLVMGetParam(fn->cg, var->param_idx@_);
@@ -355,6 +346,7 @@ cg_function_param ::= func(fn : function mut?, var : variable mut? -> v0)
 	cg_local_variable(var, fn, true);
 	// do the store
 	LLVMBuildStore(ir, param_cg, var->cg);
+	dbg_declare_function_param(var, fn, idx);
 };
 
 cg_convert_to ::= func(v : val, to : tyid, source : ast? -> val)
@@ -694,6 +686,7 @@ cg_varref ::= func(v : variable? -> val)
 
 cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 {
+	dbg_action(node, scope);
 	if(ast_is_stmt(node, ast_stmt_tag.ret))
 	{
 		parent_fn ::= scope_get_parent_function(scope);
@@ -813,8 +806,9 @@ cg_empty_blkinit ::= func(type : tyid -> val)
 	return cg_undef_as(type);
 };
 
-cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
+cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val, scope : lexical_scope mut?, source : ast? -> val)
 {
+	dbg_action(source, scope);
 	v.runtime.cg = LLVMBuildInsertValue(ir, v.runtime.cg, init.runtime.cg, memidx@u32, "");
 	return v;
 };
