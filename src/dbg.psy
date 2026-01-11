@@ -88,7 +88,7 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 		else
 		{
 			cg ::= cg_type(memty, true);
-			di ::= db_type(memty);
+			di ::= db_type(memty, true);
 			offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
 			size ::= LLVMABISizeOfType(dlayout, cg);
 			align ::= LLVMABIAlignmentOfType(dlayout, cg);
@@ -124,7 +124,7 @@ dbg_declare_enum ::= func(type : tyid -> v0)
 	size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
 	align ::= LLVMABIAlignmentOfType(dlayout, cg_type(type, true));
 	
-	e->db = LLVMDIBuilderCreateEnumerationType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, size * 8, align * 8, db_entries, e->entries_count@_, db_type(tyid.s64));
+	e->db = LLVMDIBuilderCreateEnumerationType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, size * 8, align * 8, db_entries, e->entries_count@_, db_type(tyid.s64, true));
 };
 
 dbg_declare_function ::= func(fn : function mut? -> v0)
@@ -137,7 +137,7 @@ dbg_declare_function ::= func(fn : function mut? -> v0)
 	funcscope ::= (fn->scope)@lexical_scope mut?;
 	filescope ::= scope_get_parent_filescope(funcscope);
 	
-	dity ::= db_type(fn->type);
+	dity ::= db_type(fn->type, false);
 	fn->db = LLVMDIBuilderCreateFunction(prog.db, filescope->db, fn->name, fn->name_len, fn->name, fn->name_len, filescope->db, fn->node->loc.line@_, dity, false@s32, true@s32, fn->node->loc.column@_, 256, false@s32);
 	LLVMSetSubprogram(fn->cg, fn->db);
 	funcscope->db = (fn->db);
@@ -155,7 +155,7 @@ dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v
 
 	fnscope ::= (fn->scope)@lexical_scope mut?;
 	parent_file ::= scope_get_parent_filescope(fnscope);
-	divar ::= LLVMDIBuilderCreateAutoVariable(prog.db, fnscope->db, var->node->decl.name, var->node->decl.name_len, parent_file->db, loc.line@_, db_type(var->type), false@s32, zero, zero);
+	divar ::= LLVMDIBuilderCreateAutoVariable(prog.db, fnscope->db, var->node->decl.name, var->node->decl.name_len, parent_file->db, loc.line@_, db_type(var->type, true), false@s32, zero, zero);
 	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero), fnscope->cg);
 };
 
@@ -169,11 +169,11 @@ dbg_declare_function_param ::= func(var : variable mut?, fn : function mut?, idx
 	scope ::= fn->scope@lexical_scope mut?;
 	parent_file ::= scope_get_parent_filescope(scope);
 	loc ::= ast_get_child(fn->node, 1 + idx)->loc;
-	divar ::= LLVMDIBuilderCreateParameterVariable(prog.db, scope->db, var->node->decl.name, var->node->decl.name_len, idx@_, parent_file->db, loc.line@_, db_type(var->type), zero, zero);
+	divar ::= LLVMDIBuilderCreateParameterVariable(prog.db, scope->db, var->node->decl.name, var->node->decl.name_len, idx@_, parent_file->db, loc.line@_, db_type(var->type, true), zero, zero);
 	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
 };
 
-db_type ::= func(type : tyid -> u64)
+db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 {
 	u ::= ty_unwrap(type);
 	// make the full name. argh.
@@ -263,18 +263,23 @@ db_type ::= func(type : tyid -> u64)
 	}
 	if(ty_is_ptr(type))
 	{
-		return LLVMDIBuilderCreatePointerType(prog.db, db_type(ty_underlying(type)), 64, zero, zero, zero, zero);
+		return LLVMDIBuilderCreatePointerType(prog.db, db_type(ty_underlying(type), should_ref_function_type), 64, 64, zero, zero, zero);
 	}
 	if(ty_is_fn(type))
 	{
 		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (u->fn.params_count + 1));
-		deref(paramdata # 0) = db_type(u->fn.return_type);
+		deref(paramdata # 0) = db_type(u->fn.return_type, true);
 		i : u64 mut;
 		for(i = 0, i < (u->fn.params_count), i = i + 1)
 		{
-			deref(paramdata # (1 + i)) = db_type(deref(u->fn.param_types # i));
+			deref(paramdata # (1 + i)) = db_type(deref(u->fn.param_types # i), true);
 		}
-		return LLVMDIBuilderCreateSubroutineType(prog.db, program_scope()->db, paramdata, u->fn.params_count + 1, zero);
+		db_fnty ::= LLVMDIBuilderCreateSubroutineType(prog.db, program_scope()->db, paramdata, u->fn.params_count + 1, zero);
+		if(should_ref_function_type)
+		{
+		return LLVMDIBuilderCreatePointerType(prog.db, db_fnty, 64, 64, zero, zero, zero);
+		}
+		return db_fnty;
 	}
 	if(ty_is_struct(type))
 	{
