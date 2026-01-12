@@ -87,6 +87,11 @@ tyid ::= enum
 	.custom := 13;
 };
 
+tyid_auto ::= func(-> tyid)
+{
+	return -1@tyid;
+};
+
 // integer literals e.g '5' will have this exact type
 tyid_integral_literal ::= func(-> tyid)
 {
@@ -329,6 +334,11 @@ qual_str_static ::= " static";
 // print out the name of a type.
 putty ::= func(id : tyid -> v0)
 {
+	if(id == tyid_auto())
+	{
+		putzstr("auto");
+		return;
+	}
 	is_mut ::= ty_has_qual(id, tyqual.qual_mut);
 	is_weak ::= ty_has_qual(id, tyqual.qual_weak);
 	is_static ::= ty_has_qual(id, tyqual.qual_static);
@@ -385,6 +395,10 @@ tyconv ::= enum
 // describe how we convert 'from' -> 'to'
 ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 {
+	if((to == tyid_auto()) || (from == tyid_auto()))
+	{
+		return tyconv.yes;
+	}
 	from_is_mut ::= ty_has_qual(from, tyqual.qual_mut);
 	from_is_weak ::= ty_has_qual(from, tyqual.qual_weak);
 	from_is_static ::= ty_has_qual(from, tyqual.qual_static);

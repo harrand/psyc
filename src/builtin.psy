@@ -106,6 +106,14 @@ builtin_setup ::= func(-> v0)
 		.invoke_compile_time := s_builtin_embed;
 		.invoke_runtime := zero;
 	});
+
+	add_builtin(builtin_entry
+	{
+		.name_zstr := "enumname";
+		.type := ty_makefn1(tyid_auto(), tyid_string_literal());
+		.invoke_compile_time := s_builtin_enumname;
+		.invoke_runtime := cg_builtin_enumname;
+	});
 };
 
 builtin_find ::= func(name : u8?, name_len : u64 -> builtin_entry?)
@@ -132,7 +140,8 @@ builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_sc
 	i : u64 mut;
 	for(i = 0, i < params_count, i = i + 1)
 	{
-		if(deref(params # i).known != (valknown.compile_time))
+		curparam ::= deref(params # i);
+		if((!ty_has_qual(curparam.type, tyqual.qual_static)) || (curparam.known != (valknown.compile_time)))
 		{
 			all_params_compile_time = false;
 		}

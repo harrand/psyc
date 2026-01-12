@@ -802,3 +802,36 @@ s_builtin_embed ::= func(params : val?, scope : lexical_scope?, source : ast? ->
 	ast_add_child(ref embed_node, desiginit_len, global_arena);
 	return val_blkinit(ref embed_node, scope, val_resolution.compile_time_only);
 };
+
+s_builtin_enumname ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	param : val mut := deref(params # 0);
+	// naughty hack
+	param.type = ty_set_qual(param.type, tyqual.qual_static);
+	if(!ty_is_enum(param.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("the enumname builtin must be called with an enum type. you have provided a ");
+		putchar('"');
+		putty(param.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	e ::= ty_unwrap(param.type)->enm;
+	i : u64 mut;
+	enumval ::= val_must_get_integer(param, scope, source);
+	for(i = 0, i < (e.entries_count), i = i + 1)
+	{
+		curval ::= deref(e.entries # i);
+		if(curval == enumval)
+		{
+			// this is the one
+			return string_as_val(deref(e.entry_names # i), deref(e.entry_name_lens # i));
+		}
+	}
+	badenum_name ::= "badenum";
+	return string_as_val(badenum_name, zstrlen(badenum_name));
+};

@@ -1692,3 +1692,82 @@ cg_call ::= func(callee : val mut, params : val?, scope : lexical_scope mut?, so
 		};
 	};
 };
+
+cg_builtin_enumname ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	param : val mut := deref(params # 0);
+	if(!ty_is_enum(param.type))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("the enumname builtin must be called with an enum type. you have provided a ");
+		putchar('"');
+		putty(param.type);
+		putchar('"');
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	i : u64 mut;
+	e ::= ty_unwrap(param.type)->enm;
+
+	parent_fn ::= scope_get_parent_function(scope);
+	if(parent_fn == zero)
+	{
+		psyc_error_begin(source->loc);
+		putzstr("a runtime call to enumname cannot be done outside of a function implementation");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	alloca_str ::= LLVMBuildAlloca(ir, cg_type(tyid_string_literal(), true), "enumname_result");
+	// ok this ones gonna be rough
+	basic_blocks : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (e.entries_count - 1));
+	for(i = 0, i < (e.entries_count - 1), i = i + 1)
+	{
+		deref(basic_blocks # i) = LLVMAppendBasicBlock(parent_fn->cg, "enumname");
+	}
+	badenum_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum");
+	continue_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum_cont");
+
+	for(i = 0, i < (e.entries_count), i = i + 1)
+	{
+		entryval ::= LLVMConstInt(LLVMInt64Type(), deref(e.entries # i), false@s32);
+		condval ::= LLVMBuildICmp(ir, LLVMIntEQ, cg_load_if_lvalue(param).runtime.cg, entryval, "");
+		failure_block : u64 mut := badenum_blk;
+		if(i != (e.entries_count - 1))
+		{
+			// if we arent the last condition then the failure block is just the next one in the list
+			failure_block = deref(basic_blocks # i);
+		}
+	
+		success_block ::= LLVMAppendBasicBlock(parent_fn->cg, "enumname_success");
+		LLVMBuildCondBr(ir, condval, success_block, failure_block);
+		LLVMPositionBuilderAtEnd(ir, success_block);
+		LLVMBuildStore(ir, cg_prim(tyid_string_literal(), ast_literal{.tag := ast_literal_tag.string; .chars := deref(e.entry_names # i); .chars_len := deref(e.entry_name_lens # i);}, source).runtime.cg, alloca_str);
+		LLVMBuildBr(ir, continue_blk);
+		if(i != (e.entries_count - 1))
+		{
+			LLVMPositionBuilderAtEnd(ir, deref(basic_blocks # i));
+		}
+	}
+
+	LLVMPositionBuilderAtEnd(ir, failure_block);
+	badenum_name ::= "badenum";
+	LLVMBuildStore(ir, cg_prim(tyid_string_literal(), ast_literal{.tag := ast_literal_tag.string; .chars := badenum_name; .chars_len := zstrlen(badenum_name);}, source).runtime.cg, alloca_str);
+	LLVMBuildBr(ir, continue_blk);
+	
+	LLVMPositionBuilderAtEnd(ir, continue_blk);
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.lvalue;
+		.type := ty_ptr(tyid.u8, zero);
+		.compile_time := zero;
+		.runtime := valruntime{.cg := alloca_str;};
+	};
+};
