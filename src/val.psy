@@ -2185,12 +2185,7 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 		psyc_exit_failure();
 	}
 	
-	old_resolution ::= resolution;
 	is_builtin ::= callee_val.compile_time.builtinref_name != zero;
-	if(is_builtin && (resolution != (val_resolution.compile_time_only)))
-	{
-		resolution = (val_resolution.runtime_or_compile_time);
-	}
 	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
 	i : u64 mut;
 	for(i = 0, i < call_param_count, i = i + 1)
@@ -2208,7 +2203,7 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 	{
 		// ah this is a builtin
 		the_builtin ::= builtin_find(callee_val.compile_time.builtinref_name, callee_val.compile_time.builtinref_name_len);
-		if(old_resolution == (val_resolution.runtime_only))
+		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(builtin_invoke(deref(the_builtin), vals, scope, resolution, node), scope, node);
 		}
