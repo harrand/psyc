@@ -4,7 +4,8 @@
 builtin_entry ::= struct
 {
 	name_zstr : u8?;
-	type : tyid;
+	type_compile_time : tyid;
+	type_runtime : tyid;
 	invoke_compile_time : func(params : val?, scope : lexical_scope?, source : ast? -> val);
 	invoke_runtime : func(params : val?, scope : lexical_scope?, source : ast? -> val);
 };
@@ -37,7 +38,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "assert";
-		.type := ty_makefn1(tyid_bool_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_bool_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_assert;
 		.invoke_runtime := zero;
 	});
@@ -45,7 +46,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "add_source_file";
-		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_string_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_add_source_file;
 		.invoke_runtime := zero;
 	});
@@ -53,7 +54,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "add_build_file";
-		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_string_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_add_build_file;
 		.invoke_runtime := zero;
 	});
@@ -61,7 +62,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "executable";
-		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_string_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_executable;
 		.invoke_runtime := zero;
 	});
@@ -69,7 +70,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "optimization";
-		.type := ty_makefn1(tyid_integral_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_integral_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_optimization;
 		.invoke_runtime := zero;
 	});
@@ -77,7 +78,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "debug_symbols";
-		.type := ty_makefn1(tyid_bool_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_bool_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_debug_symbols;
 		.invoke_runtime := zero;
 	});
@@ -85,7 +86,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "add_source_directory";
-		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_string_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_add_source_directory;
 		.invoke_runtime := zero;
 	});
@@ -93,7 +94,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "add_link_library";
-		.type := ty_makefn1(tyid_string_literal(), tyid.v0);
+		.type_compile_time := ty_makefn1(tyid_string_literal(), tyid.v0);
 		.invoke_compile_time := s_builtin_add_link_library;
 		.invoke_runtime := zero;
 	});
@@ -102,7 +103,7 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "embed";
-		.type := ty_makefn1(tyid_string_literal(), ty_find_by_name(embed_return_typename, zstrlen(embed_return_typename)));
+		.type_compile_time := ty_makefn1(tyid_string_literal(), ty_find_by_name(embed_return_typename, zstrlen(embed_return_typename)));
 		.invoke_compile_time := s_builtin_embed;
 		.invoke_runtime := zero;
 	});
@@ -110,7 +111,8 @@ builtin_setup ::= func(-> v0)
 	add_builtin(builtin_entry
 	{
 		.name_zstr := "enumname";
-		.type := ty_makefn1(tyid_auto(), tyid_string_literal());
+		.type_compile_time := ty_makefn1(tyid_auto(), tyid_string_literal());
+		.type_runtime := ty_makefn1(tyid_auto(), ty_ptr(tyid.u8, zero));
 		.invoke_compile_time := s_builtin_enumname;
 		.invoke_runtime := cg_builtin_enumname;
 	});
@@ -135,12 +137,21 @@ builtin_find ::= func(name : u8?, name_len : u64 -> builtin_entry?)
 
 builtin_invoke ::= func(b : builtin_entry, params : val mut?, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
+	type : tyid mut;
+	if(resolution == (val_resolution.runtime_only))
+	{
+		type = (b.type_runtime);
+	}
+	else
+	{
+		type = (b.type_compile_time);
+	}
 	if(resolution == (val_resolution.type_only))
 	{
-		return type_as_val(ty_unwrap(b.type)->fn.return_type);
+		return type_as_val(ty_unwrap(type)->fn.return_type);
 	}
 	all_params_compile_time : bool mut := true;
-	params_count ::= ty_unwrap(b.type)->fn.params_count;
+	params_count ::= ty_unwrap(type)->fn.params_count;
 	i : u64 mut;
 	for(i = 0, i < params_count, i = i + 1)
 	{

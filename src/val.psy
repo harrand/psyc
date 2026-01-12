@@ -610,14 +610,23 @@ assembly_as_val ::= func(as : assembly?, source : ast? -> val)
 	};
 };
 
-builtin_as_val ::= func(b : builtin_entry? -> val)
+builtin_as_val ::= func(b : builtin_entry?, resolution : val_resolution -> val)
 {
+	type : tyid mut;
+	if(resolution == (val_resolution.runtime_only))
+	{
+		type = (b->type_runtime);
+	}
+	else
+	{
+		type = (b->type_compile_time);
+	}
 	return val
 	{
 		.tag := valtag.typed_value;
 		.known := valknown.compile_time;
 		.hand := valhand.rvalue;
-		.type := b->type;
+		.type := type;
 		.compile_time := valcompile_time
 		{
 			.is_zero := false;
@@ -1049,7 +1058,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	maybe_builtin ::= builtin_find(sym.data, sym.len);
 	if(maybe_builtin != zero)
 	{
-		return builtin_as_val(maybe_builtin);
+		return builtin_as_val(maybe_builtin, resolution);
 	}
 	maybe_enum ::= scope_find_enumeration(scope, sym.data, sym.len);
 	if(maybe_enum != zero)
