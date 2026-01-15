@@ -534,27 +534,39 @@ val_must_get_varref_initialiser ::= func(varref : val, scope : lexical_scope?, s
 
 variable_as_val ::= func(var : variable?, source : ast? -> val)
 {
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		return val
+		{
+			.tag := valtag.typed_value;
+			.known := valknown.compile_time;
+			.hand := valhand.lvalue;
+			.type := var->type;
+			.compile_time := valcompile_time
+			{
+				.is_zero := false;
+				.primitive := zero;
+				.members_count := zero;
+				.members := zero;
+				.funcref_name := zero;
+				.funcref_name_len := zero;
+				.builtinref_name := zero;
+				.builtinref_name_len := zero;
+				.varref_name := var->node->decl.name;
+				.varref_name_len := var->node->decl.name_len;
+				.valueref := zero;
+			};
+			.runtime := zero;
+		};
+	}
 	return val
 	{
 		.tag := valtag.typed_value;
-		.known := valknown.compile_time;
+		.known := valknown.runtime;
 		.hand := valhand.lvalue;
 		.type := var->type;
-		.compile_time := valcompile_time
-		{
-			.is_zero := false;
-			.primitive := zero;
-			.members_count := zero;
-			.members := zero;
-			.funcref_name := zero;
-			.funcref_name_len := zero;
-			.builtinref_name := zero;
-			.builtinref_name_len := zero;
-			.varref_name := var->node->decl.name;
-			.varref_name_len := var->node->decl.name_len;
-			.valueref := zero;
-		};
-		.runtime := zero;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := var->cg;};
 	};
 };
 
@@ -610,23 +622,15 @@ assembly_as_val ::= func(as : assembly?, source : ast? -> val)
 	};
 };
 
-builtin_as_val ::= func(b : builtin_entry?, resolution : val_resolution -> val)
+// doesnt contain type. 
+builtin_as_val ::= func(b : builtin_entry? -> val)
 {
-	type : tyid mut;
-	if(resolution == (val_resolution.runtime_only))
-	{
-		type = (b->type_runtime);
-	}
-	else
-	{
-		type = (b->type_compile_time);
-	}
 	return val
 	{
-		.tag := valtag.typed_value;
+		.tag := valtag.value_only;
 		.known := valknown.compile_time;
 		.hand := valhand.rvalue;
-		.type := type;
+		.type := zero;
 		.compile_time := valcompile_time
 		{
 			.is_zero := false;
@@ -852,23 +856,12 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		{
 			return type_as_val(tyid_integral_literal());
 		}
-		if(resolution == (val_resolution.compile_time_only))
-		{
-			// note: even though cg_sizeof actually produces a compile-time value it currently relies on cg_begin having been called
-			// which is not the case in a static context (currently in a build region)
-			// you should pretty easily be able to fix this by just calling cg_begin earlier.
-			psyc_panic_begin(node->loc);
-			putzstr("support for alignof expressions within static contexts are not yet implemented.");
-			putchar(10);
-			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
+		alignof_val ::= cg_alignof(ty_typename_node(ast_get_child(node, 0), scope));
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(cg_alignof(ty_typename_node(ast_get_child(node, 0), scope)), scope, node);
+			return val_dynamic(alignof_val, scope, node);
 		}
-		return cg_alignof(ty_typename_node(ast_get_child(node, 0), scope));
+		return alignof_val;
 	}
 	if(ast_is_expr(node, ast_expr_tag.countof_t))
 	{
@@ -925,7 +918,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		if(resolution == (val_resolution.compile_time_only))
+		if(resolution != (val_resolution.runtime_only) && ty_has_qual(var->type, tyqual.qual_static))
 		{
 			return s_decl(var, scope);
 		}
@@ -1058,7 +1051,7 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	maybe_builtin ::= builtin_find(sym.data, sym.len);
 	if(maybe_builtin != zero)
 	{
-		return builtin_as_val(maybe_builtin, resolution);
+		return builtin_as_val(maybe_builtin);
 	}
 	maybe_enum ::= scope_find_enumeration(scope, sym.data, sym.len);
 	if(maybe_enum != zero)
@@ -2151,10 +2144,74 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	return retval;
 };
 
-val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution mut -> val)
+val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+{
+	// so we basically ignore the resolution provided to us till we have the result
+	// if the resolution provided is runtime_only then we simply val_dynamic the result.
+
+	// get all the value params again but don't convert them immediately.
+	all_params_static : bool mut := true;
+	call_param_count ::= node->children_count - 1;
+	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
+	i : u64 mut;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		param_node ::= ast_get_child(node, i + 1);
+		param_val : val mut := val_node(param_node, scope, val_resolution.runtime_or_compile_time);
+		if(!ty_has_qual(param_val.type, tyqual.qual_static))
+		{
+			all_params_static = false;
+		}
+		deref(vals # i) = param_val;
+	}
+
+	compile_time : bool mut := false;
+	// get the runtime or compile-time version of the function.
+	type : tyid mut := ty_unstaticify(b.type);
+	// compile-time if we can
+	if(all_params_static && (b.invoke_compile_time != zero))
+	{
+		type = ty_staticify(type);
+		compile_time = true;
+	}
+
+	// now we can convert
+	fty ::= ty_unwrap(type)->fn;
+	for(i = 0, i < call_param_count, i = i + 1)
+	{
+		deref(vals # i) = val_convert_to(deref(vals # i), deref(fty.param_types # i), scope, resolution, node);
+	}
+
+	if(resolution == (val_resolution.type_only))
+	{
+		return type_as_val(fty.return_type);
+	}
+
+	if(compile_time)
+	{
+		ret : val mut := b.invoke_compile_time(vals, scope, node);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(ret, scope, node);
+		}
+		return ret;
+	}
+	return b.invoke_runtime(vals, scope, node);
+};
+
+val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	callee_node ::= ast_get_child(node, 0);
 	callee_val ::= val_node(callee_node, scope, resolution);
+
+	is_builtin ::= callee_val.compile_time.builtinref_name != zero;
+	if(is_builtin)
+	{
+		// ah this is a builtin
+		// these are handled a bit more specially.
+		the_builtin ::= builtin_find(callee_val.compile_time.builtinref_name, callee_val.compile_time.builtinref_name_len);
+		return val_call_builtin(deref the_builtin, node, scope, resolution);
+	}
 	// make sure the callee is callable
 	if(!ty_is_fn(callee_val.type))
 	{
@@ -2170,8 +2227,8 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 		return zero;
 	}
 
-	fty ::= ty_unwrap(callee_val.type)->fn;
 	call_param_count ::= node->children_count - 1;
+	fty ::= ty_unwrap(callee_val.type)->fn;
 	if(call_param_count != (fty.params_count))
 	{
 		psyc_error_begin(node->loc);
@@ -2185,7 +2242,6 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 		psyc_exit_failure();
 	}
 	
-	is_builtin ::= callee_val.compile_time.builtinref_name != zero;
 	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
 	i : u64 mut;
 	for(i = 0, i < call_param_count, i = i + 1)
@@ -2198,16 +2254,6 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 	if(resolution == (val_resolution.type_only))
 	{
 		return type_as_val(fty.return_type);
-	}
-	if(is_builtin)
-	{
-		// ah this is a builtin
-		the_builtin ::= builtin_find(callee_val.compile_time.builtinref_name, callee_val.compile_time.builtinref_name_len);
-		if(resolution == (val_resolution.runtime_only))
-		{
-			return val_dynamic(builtin_invoke(deref(the_builtin), vals, scope, resolution, node), scope, node);
-		}
-		return builtin_invoke(deref(the_builtin), vals, scope, resolution, node);
 	}
 	// todo: static callables?
 	return cg_call(val_dynamic(callee_val, scope, node), vals, scope, node);
@@ -2354,7 +2400,7 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	}
 	if(v.compile_time.varref_name != zero)
 	{
-		return cg_varref(scope_find_variable(scope, v.compile_time.varref_name, v.compile_time.varref_name_len));
+		return cg_varref(scope_find_variable(scope, v.compile_time.varref_name, v.compile_time.varref_name_len), scope, source);
 	}
 	if(v.compile_time.valueref != zero)
 	{

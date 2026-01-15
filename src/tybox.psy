@@ -150,9 +150,10 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 		// include enough space for the actual name
 		// + qual_max_strlen
 		// + a space and comma
-		maximum_name_len = (maximum_name_len + (tybox_at(box, ty_clear_all_quals(deref(param_ids # i)))->name_len) + quals_max_strlen + 2);
+		param_u ::= ty_unwrap(deref(param_ids # i));
+		maximum_name_len = (maximum_name_len + (param_u->name_len) + quals_max_strlen + 2);
 	}
-	maximum_name_len = (maximum_name_len + quals_max_strlen + 2 + tybox_at(box, ty_clear_all_quals(ret_id))->name_len);
+	maximum_name_len = (maximum_name_len + quals_max_strlen + 2 + ty_unwrap(ret_id)->name_len);
 	name : u8 mut? := arena_alloc(string_arena, maximum_name_len);
 
 	funcname_prefix ::= "func(";
@@ -163,7 +164,7 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 	for(i = 0, i < params_count, i = i + 1)
 	{
 		param_id ::= deref(param_ids # i);
-		param ::= tybox_at(box, ty_clear_all_quals(param_id));
+		param ::= ty_unwrap(param_id);
 		memcopy(name # name_offset, param->name, param->name_len);
 		name_offset = (name_offset + param->name_len);
 		if(ty_has_qual(param_id, tyqual.qual_mut))
@@ -193,7 +194,7 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 	memcopy(name # name_offset, pre_retty_suffix, zstrlen(pre_retty_suffix));
 	name_offset = (name_offset + zstrlen(pre_retty_suffix));
 	// now do the retty
-	retty ::= tybox_at(box, ty_clear_all_quals(ret_id));
+	retty ::= ty_unwrap(ret_id);
 	memcopy(name # name_offset, retty->name, retty->name_len);
 	name_offset = (name_offset + retty->name_len);
 	if(ty_has_qual(ret_id, tyqual.qual_mut))
@@ -228,9 +229,25 @@ tybox_add_function ::= func(box : tybox mut?, ret_id : tyid, param_ids : tyid?, 
 	});
 };
 
+auto_ty : ty mut := zero;
 // get the type within a box at the given id
 tybox_at ::= func(box : tybox mut?, id : tyid -> ty mut?)
 {
+	if(id == tyid_auto())
+	{
+		auto_ty = ty
+		{
+			.tag := zero;
+			.name := "auto";
+			.name_len := zstrlen("auto");
+			.base := zero;
+			.array_len := zero;
+			.strct := zero;
+			.enm := zero;
+			.fn := zero;
+		};
+		return ref auto_ty;
+	}
 	return box->data # (id@s64);
 };
 

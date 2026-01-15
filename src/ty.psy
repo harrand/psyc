@@ -301,6 +301,24 @@ ty_is_v0 ::= func(id : tyid -> bool)
 	return (idpure == (tyid.v0));
 };
 
+ty_get_qual ::= func(id : tyid -> tyqual)
+{
+	ret : tyqual mut := zero;
+	if(ty_has_qual(id, tyqual.qual_mut))
+	{
+		ret = (ret | (tyqual.qual_mut));
+	}
+	if(ty_has_qual(id, tyqual.qual_static))
+	{
+		ret = (ret | (tyqual.qual_static));
+	}
+	if(ty_has_qual(id, tyqual.qual_weak))
+	{
+		ret = (ret | (tyqual.qual_weak));
+	}
+	return ret;
+};
+
 // returns whether the type has the given qualifier(s)
 ty_has_qual ::= func(id : tyid, qual : tyqual -> bool)
 {
@@ -324,6 +342,84 @@ ty_clear_all_quals ::= func(id : tyid -> tyid)
 {
 	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
 	return (id@s64 & all_but_top_3_msb)@tyid;
+};
+
+// adds staticness recursively to a type
+// removes mutness but preserves weakness
+// i.e ty_staticify(u64 mut? weak) => u64 static? static weak
+ty_staticify ::= func(id : tyid -> tyid)
+{
+	if(id == tyid_auto())
+	{
+		return id;
+	}
+	q ::= ty_get_qual(id) | (tyqual.qual_static);
+	un ::= ty_unwrap(id);
+	if(ty_is_ptr(id))
+	{
+		// need to do the underlying bit too...
+		ptr_u ::= ty_staticify(ty_underlying(id));
+		return ty_ptr(ptr_u, q);
+	}
+	if(ty_is_arr(id))
+	{
+		arr_u ::= ty_staticify(ty_underlying(id));
+		return ty_arr(arr_u, un->array_len, q);
+	}
+	if(ty_is_fn(id))
+	{
+		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * __sizeof(tyid));
+		i : u64 mut;
+		for(i = 0, i < (un->fn.params_count), i = i + 1)
+		{
+			deref(params_cpy # i) = ty_staticify(deref(un->fn.param_types # i));
+		}
+		return_type ::= ty_staticify(un->fn.return_type);
+		// dont pass q as quals here as function types really shouldnt have static (or at least youre free to change your mind in the future if youre doing static functions and it makes sense now)
+		return ty_fn(return_type, params_cpy, un->fn.params_count, ty_get_qual(id));
+	}
+
+	// otherwise its prims structs and enums which is easy
+	return ty_set_qual(id, tyqual.qual_static);
+};
+
+// removes staticness recursively from a type.
+// preserves mutness and weakness
+// i.e ty_unstaticify(u64 static? static weak) => u64? weak
+ty_unstaticify ::= func(id : tyid -> tyid)
+{
+	if(id == tyid_auto())
+	{
+		return id;
+	}
+	q ::= (ty_get_qual(id)@s64 & ~(tyqual.qual_static@s64))@tyqual;
+	un ::= ty_unwrap(id);
+	if(ty_is_ptr(id))
+	{
+		// need to do the underlying bit too...
+		ptr_u ::= ty_unstaticify(ty_underlying(id));
+		return ty_ptr(ptr_u, q);
+	}
+	if(ty_is_arr(id))
+	{
+		arr_u ::= ty_unstaticify(ty_underlying(id));
+		return ty_arr(arr_u, un->array_len, q);
+	}
+	if(ty_is_fn(id))
+	{
+		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * __sizeof(tyid));
+		i : u64 mut;
+		for(i = 0, i < (un->fn.params_count), i = i + 1)
+		{
+			deref(params_cpy # i) = ty_unstaticify(deref(un->fn.param_types # i));
+		}
+		return_type ::= ty_unstaticify(un->fn.return_type);
+		// dont pass q as quals here as function types really shouldnt have static (or at least youre free to change your mind in the future if youre doing static functions and it makes sense now)
+		return ty_fn(return_type, params_cpy, un->fn.params_count, ty_get_qual(id));
+	}
+
+	// otherwise its prims structs and enums which is easy
+	return ty_clear_qual(id, tyqual.qual_static);
 };
 
 quals_max_strlen ::= 7 * 3;
@@ -379,6 +475,10 @@ ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
 // high-level function to retrieve the data corresponding to a type.
 ty_unwrap ::= func(id : tyid -> ty mut?)
 {
+	if(id == tyid_auto())
+	{
+		return tybox_at(ref(prog.types), id);
+	}
 	return tybox_at(ref(prog.types), ty_clear_all_quals(id));
 };
 

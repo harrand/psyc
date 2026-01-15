@@ -205,7 +205,15 @@ cg_global_variables ::= func(scope : lexical_scope mut? -> v0)
 	i : u64 mut;
 	for(i = 0, i < (scope->variables_count), i = i + 1)
 	{
-		cg_global_variable(scope->variables # i);
+		glob ::= scope->variables # i;
+		if(ty_has_qual(glob->type, tyqual.qual_static))
+		{
+			s_decl(glob, scope);
+		}
+		else
+		{
+			cg_global_variable(scope->variables # i);
+		}
 	}
 };
 
@@ -331,9 +339,16 @@ cg_global_variable ::= func(var : variable mut? -> v0)
 
 cg_local_variable ::= func(var : variable mut?, fn : function mut?, is_function_param : bool -> v0)
 {
-	// do an alloca
-	decl ::= var->node->decl;
-	var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		s_decl(var, fn->scope@lexical_scope mut?);
+	}
+	else
+	{
+		// do an alloca
+		decl ::= var->node->decl;
+		var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
+	}
 };
 
 cg_function_param ::= func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
@@ -683,8 +698,13 @@ cg_asmref ::= func(as : assembly? -> val)
 };
 
 // return a runtime val representation of a variable
-cg_varref ::= func(v : variable? -> val)
+cg_varref ::= func(v : variable?, scope : lexical_scope mut?, source : ast? -> val)
 {
+	if(ty_has_qual(v->type, tyqual.qual_static))
+	{
+		// great then this is easy
+		return val_dynamic(v->compile_time_storage, scope, source);
+	}
 	return val
 	{
 		.tag := valtag.typed_value;
@@ -763,7 +783,7 @@ cg_node ::= func(node : ast?, scope : lexical_scope? -> val)
 	{
 		return cg_for(node, scope);
 	}	
-	return val_node(node, scope, val_resolution.runtime_only);
+	return val_node(node, scope, val_resolution.runtime_or_compile_time);
 };
 
 cg_ref ::= func(v : val, source : ast? -> val)
@@ -821,7 +841,7 @@ cg_empty_blkinit ::= func(type : tyid -> val)
 cg_blkinit_add ::= func(v : val mut, memidx : u64, init : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	dbg_action(source, scope);
-	v.runtime.cg = LLVMBuildInsertValue(ir, v.runtime.cg, init.runtime.cg, memidx@u32, "");
+	v.runtime.cg = LLVMBuildInsertValue(ir, v.runtime.cg, cg_load_if_lvalue(init).runtime.cg, memidx@u32, "");
 	return v;
 };
 
@@ -1463,7 +1483,7 @@ cg_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 		}
 		else
 		{
-			init = cg_load_if_lvalue(cg_node(init_node, scope));
+			init = cg_load_if_lvalue(val_dynamic(cg_node(init_node, scope), scope, var->node));
 		}
 		LLVMBuildStore(ir, init.runtime.cg, var->cg);
 	}
@@ -1676,7 +1696,7 @@ cg_call ::= func(callee : val mut, params : val?, scope : lexical_scope mut?, so
 	param_cgs : u64 mut? := __stack_push(fty.params_count * __sizeof(u64));
 	for(i = 0, i < (fty.params_count), i = i + 1)
 	{
-		deref(param_cgs # i) = (val_dynamic(deref(params # i), scope, source).runtime.cg);
+		deref(param_cgs # i) = (cg_load_if_lvalue(val_dynamic(deref(params # i), scope, source)).runtime.cg);
 	}
 	return val
 	{
