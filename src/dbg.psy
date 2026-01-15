@@ -172,7 +172,34 @@ dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v
 
 dbg_declare_global_variable ::= func(var : variable mut? -> v0)
 {
-	// todo: global variable
+	defined_at ::= var->node;
+	scope : lexical_scope mut? mut := zero;
+	if(defined_at->loc.file != zero)
+	{
+		scope = program_find_file_scope(defined_at->loc.file, zstrlen(defined_at->loc.file));
+	}
+	else
+	{
+		// cant be traced to a source location. just gonna go ahead and ignore it then.
+		return;
+	}
+	decl ::= defined_at->decl;
+	loc ::= defined_at->loc;
+	expr ::= LLVMDIBuilderCreateExpression(prog.db, zero, zero);
+	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero);
+
+	divar ::= LLVMDIBuilderCreateGlobalVariableExpression(prog.db, scope->db, decl.name, decl.name_len, decl.name, decl.name_len, scope->db, loc.line@_, db_type(var->type, true), false@s32, expr, zero, zero);
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		// todo: need to find a basicblock to put this into
+		// because its uhhh global this doest really make any sense
+		// so for now static globals arent visible :(((
+		//LLVMDIBuilderInsertDbgValueAtEnd(prog.db, val_dynamic(var->compile_time_storage, scope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+	}
+	else
+	{
+		LLVMGlobalSetMetadata(var->cg, LLVMGetMDKindID("dbg", 3), divar);
+	}
 };
 
 dbg_declare_function_param ::= func(var : variable mut?, fn : function mut?, idx : u64 -> v0)
