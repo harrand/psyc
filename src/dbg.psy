@@ -156,7 +156,23 @@ dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v
 	fnscope ::= (fn->scope)@lexical_scope mut?;
 	parent_file ::= scope_get_parent_filescope(fnscope);
 	divar ::= LLVMDIBuilderCreateAutoVariable(prog.db, fnscope->db, var->node->decl.name, var->node->decl.name_len, parent_file->db, loc.line@_, db_type(var->type, true), false@s32, zero, zero);
-	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero), fnscope->cg);
+	expr ::= LLVMDIBuilderCreateExpression(prog.db, zero, zero);
+	dloc ::= LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, fnscope->db, zero);
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		// constexpr
+		LLVMDIBuilderInsertDbgValueAtEnd(prog.db, val_dynamic(var->compile_time_storage, fnscope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+	}
+	else
+	{
+		// actual variable
+		LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+	}
+};
+
+dbg_declare_global_variable ::= func(var : variable mut? -> v0)
+{
+	// todo: global variable
 };
 
 dbg_declare_function_param ::= func(var : variable mut?, fn : function mut?, idx : u64 -> v0)
