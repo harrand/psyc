@@ -832,23 +832,12 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 		{
 			return type_as_val(tyid_integral_literal());
 		}
-		if(resolution == (val_resolution.compile_time_only))
-		{
-			// note: even though cg_sizeof actually produces a compile-time value it currently relies on cg_begin having been called
-			// which is not the case in a static context (currently in a build region)
-			// you should pretty easily be able to fix this by just calling cg_begin earlier.
-			psyc_panic_begin(node->loc);
-			putzstr("support for sizeof expressions within static contexts are not yet implemented.");
-			putchar(10);
-			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
-			psyc_diag_end();
-			psyc_exit_failure();
-		}
+		sizeof_val ::= cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope));
 		if(resolution == (val_resolution.runtime_only))
 		{
-			return val_dynamic(cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope)), scope, node);
+			return val_dynamic(sizeof_val, scope, node);
 		}
-		return cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope));
+		return sizeof_val;
 	}
 	if(ast_is_expr(node, ast_expr_tag.alignof_t))
 	{
