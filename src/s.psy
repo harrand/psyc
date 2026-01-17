@@ -202,6 +202,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 	}
 	if(ty_is_arr(to))
 	{
+		// remember in the array case we can assume all of the elements are there.
 		memcount ::= ty_unwrap(to)->array_len;
 		// members pointer needs to be deep copied
 		ret.compile_time = (v.compile_time);
@@ -218,6 +219,27 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 	// but if we got here its the same type
 	if(ty_is_struct(to))
 	{
+		// ok in the struct case remember we have all the member_count allocated
+		// but any member that hasnt been touched by s_blkinit_add (i.e things missing from a compile-time blkinit)
+		// will be valtag.0 which we need to test
+		strct_memcount ::= ty_unwrap(to)->strct.members_count;
+		ret.compile_time = (v.compile_time);
+		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
+		memcopy(ret.compile_time.members, v.compile_time.members, __sizeof(val) * (ret.compile_time.members_count));
+		for(i = 0, i < memcount, i = i + 1)
+		{
+			mem2 ::= ret.compile_time.members@val mut? # i;
+			// this member has remained zero'd out.
+			// this is equivalent to our undef.
+			// we just leave ours zero'd out too
+			if(mem2->tag == zero)
+			{
+			}
+			else
+			{
+				deref(mem2) = s_convert_to(deref(mem2), ty_underlying(to), scope, source);
+			}
+		}
 		return ret;
 	}
 	psyc_panic_begin(source->loc);

@@ -665,8 +665,17 @@ cg_members ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	i : u64 mut;
 	for(i = 0, i < memcount, i = i + 1)
 	{
-		memval ::= val_dynamic(deref(v.compile_time.members@val? # i), scope, source);
-		ret.runtime.cg = LLVMBuildInsertValue(ir, ret.runtime.cg, memval.runtime.cg, i@u32, "");
+		memval : val mut := deref(v.compile_time.members@val? # i);
+		// remember, specifically in the case for struct blkinits we allow valtag.zero but only structs.
+		if(memval.tag == zero)
+		{
+			// but an empty blkinit is already undef so we just do nothing...
+		}
+		else
+		{
+			memval = val_dynamic(memval, scope, source);
+			ret.runtime.cg = LLVMBuildInsertValue(ir, ret.runtime.cg, memval.runtime.cg, i@u32, "");
+		}
 	}
 	return ret;
 };
