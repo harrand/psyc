@@ -1,8 +1,12 @@
 // all compile-time value modifications live here
 // basically this is constexpr land. almost all functions here will have a cg_xyz (runtime) equivalent in cg.psy
 
-s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
+s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source : ast? -> val)
 {
+	if(v.compile_time.varref_name != zero)
+	{
+		v = val_must_get_varref_initialiser(v, scope, source);
+	}
 	i : u64 mut;
 	// conversions always produce an rvalue
 	ret ::= val mut
@@ -206,7 +210,7 @@ s_convert_to ::= func(v : val mut, to : tyid, source : ast? -> val)
 		for(i = 0, i < memcount, i = i + 1)
 		{
 			mem ::= ret.compile_time.members@val mut? # i;
-			deref(mem) = s_convert_to(deref(mem), ty_underlying(to), source);
+			deref(mem) = s_convert_to(deref(mem), ty_underlying(to), scope, source);
 		}
 		return ret;
 	}
