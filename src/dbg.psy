@@ -320,7 +320,7 @@ db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 		db_fnty ::= LLVMDIBuilderCreateSubroutineType(prog.db, program_scope()->db, paramdata, u->fn.params_count + 1, zero);
 		if(should_ref_function_type)
 		{
-		return LLVMDIBuilderCreatePointerType(prog.db, db_fnty, 64, 64, zero, zero, zero);
+			return LLVMDIBuilderCreatePointerType(prog.db, db_fnty, 64, 64, zero, zero, zero);
 		}
 		return db_fnty;
 	}
@@ -331,6 +331,11 @@ db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 			dbg_declare_struct(type);
 		}
 		return u->strct.db;
+	}
+	if(ty_is_arr(type))
+	{
+		subrange ::= LLVMDIBuilderGetOrCreateSubrange(prog.db, 0, u->array_len);
+		return LLVMDIBuilderCreateArrayType(prog.db, size * 8, align * 8, db_type(ty_underlying(type), should_ref_function_type), ref subrange, 1);
 	}
 	if(ty_is_enum(type))
 	{
