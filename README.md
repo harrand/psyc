@@ -14,15 +14,13 @@ Psy is a systems programming language. It is intended to have the best of C:
 but without:
 - Implicit conversions (though you can explicitly opt-in).
 - Array-to-pointer-decay.
-- Textual Macros.
+- Macros.
 - Declaration order requirements.
 - Translation units.
-- Strict aliasing (type-punning is perfectly fine).
-- Incremental builds.
-- External build instructions. If I want to build my program I should just need to run the compiler on a single file.
-- Macros being textual replacements.
+- Strict aliasing & restrictive object representation rules (i.e type-punning is fully allowed).
+- External build instructions. All psy programs are built by running the compiler on a single .psy file. No exceptions.
 - Default variable mutability.
-- An implicitly-linked-against standard library. Write your own or explicitly link against one.
+- Extraneous implicit link dependencies.
 
 Take C, apply all of these opinionated changes, and you have Psy. I will now write vast swathes of text describing the language in more detail.
 
@@ -61,16 +59,75 @@ Take C, apply all of these opinionated changes, and you have Psy. I will now wri
 
 # 1) Programs <a name="programs"></a>
 
-There is no concept of a "translation unit", "module", or "header" in Psy. There are only source files.
-- If one .psy file declares something, it is visible to *all* other source files in the program without needing to include or pre-declare anything.
-- Order of declarations is unimportant. You can call a function, and not declare it until later - so long as the declaration is ultimately in the program somewhere.
-  	- This is also the case for structs, enums and macros.
-- A program has exactly one build file - that is, a .psy file that contains build instructions such as:
-	- Any libraries you link against. ABI compatibility is your responsibility.
-	- The name of your output file.
-	- The type of your output file. This can be either an executable, or a library or a single object file containing the entire program's source code.
-	- Optimisation level and whether debug symbols are enabled.
-	- For details, see [Build Regions](#region).
+There is no concept of a "translation unit", "module", or "header" in Psy. There are source files and build files. A source file is simply a text file with the file extension '.psy'.
+
+## Build Files <a name = "build_files"></a>
+
+A source file is a build file if it contains one or more [build regions](#region).
+
+## Building Programs
+Compiling a program will yield *one* of the following:
+- one compiled object file (.o/.obj)
+- one executable (.exe/.elf)
+- one static library (.a/.lib)
+
+To build program, you must invoke the compiler (i.e psyc) and pass it the relative path of a file. That file must be a build file, and must contain a build region pertaining to the *build region* you have passed.
+
+### Examples
+
+```psyc foo.psy```
+
+This specifies a build file named 'foo.psy'. This filename will be treated as a path relative to the current working directory, and must exist otherwise the compiler will emit an error.
+
+No build region has been specified, so the default build region (named `default` will be invoked). If foo.psy does not have a build region named `default` then the compiler will emit an error.
+
+```psyc foo.psy -b debug```
+
+Similar as before, but a build region named `debug` has been passed instead of relying on the default. If foo.psy does not have a build region named `debug` then the compiler will emit an error.
+
+# 2) Build Regions <a name="region"></a>
+Build regions are a special construct that don't really exist in other languages. Put simply, build regions are just like your build scripts in other languages, except:
+
+- They are in the same language as the rest of your program.
+- They are essentially a function that is invoked at compile-time.
+
+It's a bit jarring for people who are used to separating their build process from their actual program, so let's jump straight into an example:
+
+```
+== default ==
+{
+	set_executable("foo");
+	set_optimization(3);
+	prebuild_command("echo building foo...");
+	add_source_file("foo.psy");
+
+	static_if(_win32)
+	{
+		add_link_library("User32.lib");
+	}
+}
+```
+
+This is a build region named `default` within some a file called 'a.psy'. Because that file contains a build region, it is officially a [build file](#build_files).
+
+Build regions are always invoked at compile-time, either by:
+- Being passed to the compiler directly (e.g `psyc a.psy -b default`)
+- Being invoked by another build region.
+
+This means that, given:
+`psyc a.psy -b default`
+Then this region will be invoked at compile-time by the compiler.
+- Note that 'default' is a special name - if no region name is specified via the `-b` flag then 'default' will be used. In this case, `psyc a.psy` works the same.
+- The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .elf for linux). There is currently no way to modify the extension.
+- The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization. It must be a value between 0-3.
+- During the build, before the output file is generated, the command `echo building foo...` will be invoked in a shell and its output is fed through to stdout.
+- The file `foo.psy` will be compiled.
+- If the host process is running on Windows, then:
+	- The final executable `foo.exe` will link against `User32.lib`.
+
+Important Note: `add_source_file` will not invoke any build regions within the file that you added. To do that, you will want the `add_build_file` build instruction.
+
+Build regions can also invoke other build regions by calling them like a function (with no arguments).
 
 # 2) Functions <a name="functions"></a>
 
@@ -126,13 +183,13 @@ A type can have zero or more qualifiers. Qualifiers appear at the end of the typ
 | :--------------------- | :---------------: | :----------------------------------------------------------------------------- |
 | none                   | `const`           | Everything is immutable by default, like Rust but unlike C.                    |
 | `mut`                  |                   | The variable is mutable - its value can be changed after initialisation.       |
-| `weak`                 | none              | Types that are marked `weak` will be subject to *some implicit conversions*.   |
+| `weak`                 | none              | Types that are marked `weak` will be subject to *implicit conversions* so long as the conversion is possible.   |
 | `static`               | `constexpr` (C++) | The variable must be a compile-time constant, or a compile error will occur.   |
 
 Note that a type can have multiple qualifiers. Here are some examples of various types:
 - `u64` - immutable, no implicit conversions, not a compile-time constant.
 - `f32 mut` - mutable, no implicit conversions, not a compile-time constant.
-- `v0? weak static` - pointer type. implicit conversions allowed. compile-time constant. pointee is `v0` - immutable, no implicit conversions, not a compile-time constant.
+- `u8 mut? mut weak` - pointer type. implicit conversions allowed, mutable. the pointee is also mutable.
 
  ### Primitive Types <a name="type_prim"></a>
  There are a number of primitive types:
@@ -146,29 +203,28 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 | u32               |  uint32_t    | 32-bit unsigned integer.               |
 | u16               |  uint16_t    | 16-bit unsigned integer.               |
 | u8                |  uint8_t     | 8-bit unsigned integer.                |
-| bool              |  BOOL        | 8-bit `true`/`false` value.            |
+| bool              |  _Bool (C99)        | `true`/`false` value of implementation-defined size.            |
 | f64               |  double      | 64-bit floating-point number. IEEE-754 |
 | f32               |  float       | 32-bit floating-point number. IEEE-754 |
 | v0                |  void        | Represents no value. Zero size.        |
 
 ### Pointer Types <a name="type_ptr"></a>
-Pointers work almost similarly to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
+Pointers work similarly to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
 ```
 main : func(-> s32)
 {
 	my_value : s64 mut := 5;
 	my_pointer : s64 mut? := ref my_value;
 
-	// equivalent to: my_value = 0;
-	([my_pointer]) = 0;
+	// equivalent to '*my_pointer = 0' in C:
+	[my_pointer] = 0;
 	return 0;
 };
 ```
-Within a typename, pointer-ness is represented by the ampersand `?` symbol. It directly proceeds the base type representing the pointee.
+Within a typename, pointer-ness is represented by the question-mark `?` symbol. It directly proceeds the base type representing the pointee.
 
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
-- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `[my_ptr]` in Psy is equivalent to `*my_ptr` in C.
-- Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
+- Dereferencing has different syntax. Surrounding an expression with brackets i.e `[foo]` is a dereference of the lvalue foo. It is derived from intel syntax assembly.
 - Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator which is identical to C pointer arithmetic in all other ways.
 ```
 	ints_begin : s32? := get_pointer_to_64_ints();
@@ -177,8 +233,9 @@ Within a typename, pointer-ness is represented by the ampersand `?` symbol. It d
 	second_int ::= [ints_begin # 1];
 	// "ints_begin + 1" is an error because you cant add an integer to a pointer. if you want this you almost certainly mean "ints_begin # 1"
 ```
+Infact, there is no array-index-syntax at all. You can offset arrays aswell and it will yield a pointer to the n'th element in that array.
 
-Like C, you can also have function pointers:
+In C, you have function pointers, which are explicitly pointers. In Psy, you can have function references, which are not pointers:
 ```
 // normal function definition
 my_cool_function : func(-> v0)
@@ -189,38 +246,24 @@ my_cool_function : func(-> v0)
 // later on in main
 main : func() -> s32 weak
 {
-	// function pointer variable.
-	my_function_pointer : func(-> v0) := my_cool_function;
+	// function reference variable.
+	my_function_ref : func(-> v0) := my_cool_function;
 	// you can let the compiler determine the type for you:
-	the_same_function_pointer ::= my_cool_function;
-	my_function_pointer(); // calls my_cool_function.
+	the_same_function_ref ::= my_cool_function;
+	my_function_ref(); // calls my_cool_function.
 };
 ```
-Remember - declaration order doesn't matter. You could swap these two functions around and the result will be identical.
+Function reference conversion rules are simple. A function reference will implicitly convert to any other function type if it is marked as `weak`, aswell as `u64` (which will yield the address of the function).
 
 ### Array Types <a name="type_array"></a>
-I consider arrays in C to be highly error-prone, particularly around its implicit conversion to a pointer (decay). Here's how it works in Psy:
+Arrays contain one or more elements of the same type, contiguously.
+
+i.e `u64[3]` is an array of three `u64`s. Note that array lengths don't have to be integer literals, they can be derived from any statically-known value. For example:
+
 ```
-// mutable array of three mutable u64s. initial values are undefined.
-my_favourite_numbers : u64 mut[3] mut;
-// pointer to first number (note that this does *not* perform a load, unlike dereferencing in C. this is pointer arithmetic)
-pointer : u64? := my_favourite_numbers # 0;
-
-// note that array does not implicitly decay to pointer
-//another_pointer : u64? := my_favourite_numbers; // error!
-
-// write to each value. this requires the element type to be mutable but not the array.
-([pointer]) = 7; // equivalent to ([my_favourite_numbers # 0]) = 7;
-([my_favourite_numbers # 1]) = 69;
-([my_favourite_numbers # 2]) = 420;
-([my_favourite_numbers # 0]) = zero;
-// Array is now: 0, 69, 420
-
-// write directly to the array. this requires the array itself to be mutable.
-my_favourite_numbers = u64[3]{0; 1; 2;};
-// Array is now: 0, 1, 2
-my_favourite_numbers = zero;
-// Array is now: 0, 0, 0
+my_constant : u64 static := 60;
+arr : u8[my_constant]; // array of 60 u8s
+u8_bytes : u8[sizeof u64]; // array of 8 u8s
 ```
 
 ### Enum Types <a name="type_enum"></a>
@@ -237,7 +280,8 @@ window_flags : enum
 my_flag : window_flags := window_flags.opengl;
 value ::= my_flag@s64; // 1
 ```
-Enums can convert *only* to `s64` to mitigate loss of precision. Two convert to different integer types you will have to convert to `s64` initially i.e `window_flags.opengl@s64@u8`
+
+Note that enums are implemented via `s64` under-the-hood, i.e they are 64-bit. Because of this, enums can convert *only* to `s64`. To convert to different integer types you will have to convert to `s64` initially i.e `window_flags.opengl@s64@u8`.
 
 ### Struct Types <a name="type_struct"></a>
 Structs in Psy are virtually identical to that of C. Structs must be defined as new types, and then can be used as a type for variables. A syntax very similar to C/C++20 designated initialisers can be used to initialise a struct value.
@@ -251,7 +295,7 @@ my_struct : struct
 };
 ```
 - You cannot pre-declare structs, as there is no need to do so.
-- Recursive-structs are illegal. That is, `mystruct::data_member` can never be of type `mystruct`, including arrays and pointers.
+- Recursive-structs are illegal. That is, `mystruct::data_member` can never be of type `mystruct`. Pointers are allowed however (e.g a data member can be of type `mystruct?`), but not arrays.
 
 The syntax for creating a variable of a struct type is intuitive and similar to that of C:
 ```
@@ -259,20 +303,22 @@ myvar1 : my_struct mut;
 // note that setting data members after initialisation like this requires the variable to be mutable.
 myvar1.my_data_member = 5;
 
-// struct initialiser:
-myvar2 : my_struct := my_struct
+// block initialiser:
+myvar1 := my_struct
 {
 	.my_data_member := 5;
 };
 ```
 
-#### Struct Initialisers
-Struct initialisers are very similar to C++20 designated initializers. It is the best way to initialise multiple data members of a new struct value at once, as opposed to setting them manually.
-- Unlike C++20, you do not have to list the initialisers in-order.
-- It is valid to not initialise every single data member of the struct. However, the data members you don't set in the struct initialiser will be of indeterminate value. It is considered *erroneous behaviour* to read indeterminate values.
+# 4) Block Initialisers
+Block initialisers are the best way to initialise multiple data members of a new struct/array value at once, as opposed to setting them manually. It is valid to not initialise every single data member of the struct. However, the data members you don't set in the struct initialiser will be of indeterminate value.
+
+Block initialisers start with the name of the type you are initialising, and then zero or more [designated initialisers](desiginit) surrounded by braces.
+
+TODO: more info
 
 ### Type Conversions <a name="type_conv"></a>
-Without the `weak` qualifier, almost no implicit type conversions are available to you.
+Without the `weak` qualifier, no implicit type conversions are available to you.
 ```
 my_int : u64 := 5;
 my_int2 : s64 := my_int; // error.
@@ -281,7 +327,8 @@ If either type `A` or `B` are `weak`, then the following type conversion rules a
 #### Primitive Conversions <a name="type_conv_prim"></a>
 - If A and B are *numeric primitives*, conversion is allowed.
 - If A and B are `s64` and an *enum* respectively, then conversion is allowed (and vice-versa).
-- If A is a `bool` and B is a *numeric primitive*, conversion is allowed. The same is true in reverse.
+- If A and B are `u64` and a *pointer* or *function reference* respectively, then conversion is allowed (and vice-versa).
+- If A is a `bool` and B is a *numeric primitive*, conversion is allowed (and vice-versa)
 - If A is a `v0`, no form of type conversion is allowed.
 #### Struct Conversions <a name="type_conv_struct"></a>
 - Struct types do not convert to anything else.
@@ -289,9 +336,12 @@ If either type `A` or `B` are `weak`, then the following type conversion rules a
 - If A is an enum type and B is `s64`, then conversion is allowed.
 - Enums do not convert to anything else.
 #### Pointer Conversions <a name="type_conv_ptr"></a>
-- Pointer types can be freely converted to other pointer types, with the following restriction:
-	- You cannot apply mutability with a cast. `T?` cannot be converted to `T mut?`
- - While `*reinterpret_cast<T*>(some_pointer)` is almost always "undefined behaviour" in C, it is not so in Psy. There are no aliasing rules in place, so you are free to do this - memory is memory and there is no type-based alias analysis.
+- Pointer types can be freely converted to other pointer types. There is no strict aliasing and no semantic object lifetimes, so type-punning via pointer conversions is allowed.
+
+### Qualifier Conversions
+- You can add/remove `weak`ness in a conversion.
+- You can remove but not add `mut`ness in a conversion.
+- You can remove but not add `static`ness in a conversion.
 
 ### Type Casting <a name="type_cast"></a>
 You have now learned about the various possible type conversions. No form of conversion is done without the `weak` qualifier. This is so that these conversions don't happen unless you ask for them - an attempt to produce more predictable code. However, if you want to opt-into these conversions, then it should be easy.
@@ -452,36 +502,3 @@ Example:
 ```
 wglGetProcAddress : func(unnamedParam1 : u8? -> u64 weak) extern;
 ```
-
-# 7) Build Regions <a name="region"></a>
-Build regions are a special syntax within a .psy file that contain directives for the compiler regarding building the final program. Here is an example build region:
-
-```
-// a.psy
-== default ==
-{
-	set_executable("foo");
-	set_optimization(3);
-	prebuild_command("echo building foo...");
-	add_source_file("foo.psy");
-
-	static_if(_win32)
-	{
-		add_link_library("User32.lib");
-	}
-}
-```
-
-Note that this is not a function - its purely a compile-time set of instructions that the compiler will use to inform its behaviour. This region is named 'default'.
-
-This means that, given:
-`psyc a.psy -b default`
-Then this region will be interpreted by the compiler. Note that 'default' is a special name - if no region name is specified via the `-b` flag then 'default' will be used. In this case, `psyc a.psy` works the same. When ran, this region means that:
-- The output will be an executable named 'foo'. The file extension is chosen automatically by the compiler - a sane default depending on your platform (e.g .exe for windows, .elf for linux). There is currently no way to modify the extension.
-- The optimization level is 3, which is the equivalent of `-O3` for other compilers, i.e maximum optimization. It must be a value between 0-3.
-- During the build, before the output file is generated, the command `echo building foo...` will be invoked in a shell and its output is fed through to stdout.
-- The file `foo.psy` will be compiled.
-- If the host process is running on Windows, then:
-	- The final executable `foo.exe` will link against `User32.lib`.
-
-Important Note: `add_source_file` will not invoke any build regions within the file that you added. To do that, you will want the `add_build_file` build instruction.
