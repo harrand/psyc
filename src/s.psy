@@ -600,6 +600,40 @@ s_builtin_assert : func(params : val?, scope : lexical_scope?, source : ast? -> 
 	return zero;
 };
 
+s_builtin_error : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	err_strdata : u8 mut? mut;
+	err_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref err_strdata, ref err_strlen);
+	psyc_error_begin(source->loc);
+	putbytes(err_strdata, err_strlen);
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+s_builtin_warning : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	wrn_strdata : u8 mut? mut;
+	wrn_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref wrn_strdata, ref wrn_strlen);
+	psyc_warning_begin(source->loc);
+	putbytes(wrn_strdata, wrn_strlen);
+	psyc_diag_end();
+	return zero;
+};
+
+s_builtin_message : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	msg_strdata : u8 mut? mut;
+	msg_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref msg_strdata, ref msg_strlen);
+	psyc_message_begin(source->loc);
+	putbytes(msg_strdata, msg_strlen);
+	psyc_diag_end();
+	return zero;
+};
+
 s_builtin_add_source_file : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	path_strdata : u8 mut? mut;
