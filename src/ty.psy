@@ -1,4 +1,4 @@
-tyqual ::= enum
+tyqual : enum
 {
 	// msb set
 	.qual_static := 0x8000000000000000;
@@ -8,7 +8,7 @@ tyqual ::= enum
 	.qual_weak := 0x2000000000000000;
 };
 
-tytag ::= enum
+tytag : enum
 {
 	.prim := 1;
 	.ptr := 2;
@@ -18,7 +18,7 @@ tytag ::= enum
 	.fn := 6;
 };
 
-enumty ::= struct
+enumty : struct
 {
 	entries : u64 mut?;
 	entry_names : u8? mut?;
@@ -29,7 +29,7 @@ enumty ::= struct
 	db : u64;
 };
 
-structty ::= struct
+structty : struct
 {
 	members : tyid mut?;
 	member_names : u8? mut?;
@@ -40,14 +40,14 @@ structty ::= struct
 	db : u64;
 };
 
-fnty ::= struct
+fnty : struct
 {
 	return_type : tyid;
 	param_types : tyid mut?;
 	params_count : u64;
 };
 
-ty ::= struct
+ty : struct
 {
 	tag : tytag;
 	name : u8?;
@@ -70,7 +70,7 @@ ty ::= struct
 // would instead be a 'v0 mut weak static'. this means that *every* single type you
 // could think of has its own tyid. it also makes the type system pretty flat w.r.t
 // memory.
-tyid ::= enum
+tyid : enum
 {
 	.v0 := 1;
 	.s64 := 2;
@@ -87,103 +87,103 @@ tyid ::= enum
 	.custom := 13;
 };
 
-tyid_auto ::= func(-> tyid)
+tyid_auto : func(-> tyid)
 {
 	return -1@tyid;
 };
 
 // integer literals e.g '5' will have this exact type
-tyid_integral_literal ::= func(-> tyid)
+tyid_integral_literal : func(-> tyid)
 {
 	return ty_set_qual(tyid.s64, tyqual.qual_weak | tyqual.qual_static);
 };
 
 // float literals e.g '6.9' will have this exact type
-tyid_floating_point_literal ::= func(-> tyid)
+tyid_floating_point_literal : func(-> tyid)
 {
 	return ty_set_qual(tyid.f64, tyqual.qual_weak | tyqual.qual_static);
 };
 
 // char literals e.g ''f'' will have this exact type
-tyid_char_literal ::= func(-> tyid)
+tyid_char_literal : func(-> tyid)
 {
 	return ty_set_qual(tyid.u8, tyqual.qual_weak | tyqual.qual_static);
 };
 
 // string literals e.g "foo" will have this exact type
-tyid_string_literal ::= func(-> tyid)
+tyid_string_literal : func(-> tyid)
 {
 	return ty_ptr(ty_set_qual(tyid.u8, tyqual.qual_static), tyqual.qual_static);
 };
 
 // bool literals i.e true/false will have this exact type
-tyid_bool_literal ::= func(-> tyid)
+tyid_bool_literal : func(-> tyid)
 {
 	return ty_set_qual(tyid.bool, tyqual.qual_static);
 };
 
-ty_is_bad ::= func(id : tyid -> bool)
+ty_is_bad : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == zero;
 };
 
-ty_is_char ::= func(id : tyid -> bool)
+ty_is_char : func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
 	return
 		(idpure == (tyid.u8));
 };
 
-ty_is_string_literal ::= func(id : tyid -> bool)
+ty_is_string_literal : func(id : tyid -> bool)
 {
 	return id == tyid_string_literal();
 };
 
-ty_is_prim ::= func(id : tyid -> bool)
+ty_is_prim : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.prim);
 };
 
-ty_is_enum ::= func(id : tyid -> bool)
+ty_is_enum : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.enm);
 };
 
-ty_is_struct ::= func(id : tyid -> bool)
+ty_is_struct : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.strct);
 };
 
-ty_is_ptr ::= func(id : tyid -> bool)
+ty_is_ptr : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.ptr);
 };
 
-ty_is_arr ::= func(id : tyid -> bool)
+ty_is_arr : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.arr);
 };
 
-ty_is_fn ::= func(id : tyid -> bool)
+ty_is_fn : func(id : tyid -> bool)
 {
 	return ty_unwrap(id)->tag == (tytag.fn);
 };
 
-ty_underlying ::= func(id : tyid -> tyid)
+ty_underlying : func(id : tyid -> tyid)
 {
 	return ty_unwrap(id)->base;
 };
 
-ty_get_enum_entry_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
+ty_get_enum_entry_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
 {
 	i : u64 mut;
 	if(ty_is_enum(id))
 	{
 		enm ::= ty_unwrap(id)->enm;
-		for(i = 0, i < (enm.entries_count), i = i + 1)
+		for(i = 0; i < (enm.entries_count); i = i + 1)
 		{
-			entname ::= deref(enm.entry_names # i);
-			entname_len ::= deref(enm.entry_name_lens # i);
+			entname ::= [enm.entry_names # i];
+			entname_len ::= [enm.entry_name_lens # i];
 			if(entname_len == name_len)
 			{
 				if(streql_n(entname, name, name_len))
@@ -196,16 +196,16 @@ ty_get_enum_entry_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
 	return -1;
 };
 
-ty_get_struct_member_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
+ty_get_struct_member_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
 {
 	i : u64 mut;
 	if(ty_is_struct(id))
 	{
 		strct ::= ty_unwrap(id)->strct;
-		for(i = 0, i < (strct.members_count), i = i + 1)
+		for(i = 0; i < (strct.members_count); i = i + 1)
 		{
-			memname ::= deref(strct.member_names # i);
-			memlen ::= deref(strct.member_name_lens # i);
+			memname ::= [strct.member_names # i];
+			memlen ::= [strct.member_name_lens # i];
 			if(memlen == name_len)	
 			{
 				if(streql_n(memname, name, memlen))
@@ -219,7 +219,7 @@ ty_get_struct_member_id ::= func(id : tyid, name : u8?, name_len : u64 -> u64)
 };
 
 // integral size in bits. zero if not integral.
-ty_integral_size ::= func(id : tyid -> u64)
+ty_integral_size : func(id : tyid -> u64)
 {
 	idpure ::= ty_clear_all_quals(id);
 	if((idpure == (tyid.s64)) || (idpure == (tyid.u64)))
@@ -241,7 +241,7 @@ ty_integral_size ::= func(id : tyid -> u64)
 	return zero;
 };
 
-ty_is_signed_integral ::= func(id : tyid -> bool)
+ty_is_signed_integral : func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
 	return
@@ -251,7 +251,7 @@ ty_is_signed_integral ::= func(id : tyid -> bool)
 		(idpure == (tyid.s8));
 };
 
-ty_is_unsigned_integral ::= func(id : tyid -> bool)
+ty_is_unsigned_integral : func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
 	return
@@ -262,12 +262,12 @@ ty_is_unsigned_integral ::= func(id : tyid -> bool)
 };
 
 // is the given type any form of integer?
-ty_is_integral ::= func(id : tyid -> bool)
+ty_is_integral : func(id : tyid -> bool)
 {
 	return ty_integral_size(id) > 0;
 };
 
-ty_floating_point_size ::= func(id : tyid -> u64)
+ty_floating_point_size : func(id : tyid -> u64)
 {
 	idpure ::= ty_clear_all_quals(id);
 	if(idpure == (tyid.f64))
@@ -282,26 +282,26 @@ ty_floating_point_size ::= func(id : tyid -> u64)
 };
 
 // is the given type any form of floating point?
-ty_is_floating_point ::= func(id : tyid -> bool)
+ty_is_floating_point : func(id : tyid -> bool)
 {
 	return ty_floating_point_size(id) > 0;
 };
 
 // is the given type any form of bool?
-ty_is_bool ::= func(id : tyid -> bool)
+ty_is_bool : func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
 	return (idpure == (tyid.bool));
 };
 
 // is the given type a void type
-ty_is_v0 ::= func(id : tyid -> bool)
+ty_is_v0 : func(id : tyid -> bool)
 {
 	idpure ::= ty_clear_all_quals(id);
 	return (idpure == (tyid.v0));
 };
 
-ty_get_qual ::= func(id : tyid -> tyqual)
+ty_get_qual : func(id : tyid -> tyqual)
 {
 	ret : tyqual mut := zero;
 	if(ty_has_qual(id, tyqual.qual_mut))
@@ -320,25 +320,25 @@ ty_get_qual ::= func(id : tyid -> tyqual)
 };
 
 // returns whether the type has the given qualifier(s)
-ty_has_qual ::= func(id : tyid, qual : tyqual -> bool)
+ty_has_qual : func(id : tyid, qual : tyqual -> bool)
 {
 	return ((id@s64) & (qual@s64)) != 0;
 };
 
 // returns the input type but with the given qualifier(s)
-ty_set_qual ::= func(id : tyid, qual : tyqual -> tyid)
+ty_set_qual : func(id : tyid, qual : tyqual -> tyid)
 {
 	return ((id@s64) | (qual@s64))@tyid;
 };
 
 // returns the input type but without the given qualifier(s)
-ty_clear_qual ::= func(id : tyid, qual : tyqual -> tyid)
+ty_clear_qual : func(id : tyid, qual : tyqual -> tyid)
 {
     return ((id@s64) & ~(qual@s64))@tyid;
 };
 
 // returns the input type but without any qualifiers.
-ty_clear_all_quals ::= func(id : tyid -> tyid)
+ty_clear_all_quals : func(id : tyid -> tyid)
 {
 	all_but_top_3_msb ::= 0x1FFFFFFFFFFFFFFF;
 	return (id@s64 & all_but_top_3_msb)@tyid;
@@ -347,7 +347,7 @@ ty_clear_all_quals ::= func(id : tyid -> tyid)
 // adds staticness recursively to a type
 // removes mutness but preserves weakness
 // i.e ty_staticify(u64 mut? weak) => u64 static? static weak
-ty_staticify ::= func(id : tyid -> tyid)
+ty_staticify : func(id : tyid -> tyid)
 {
 	if(id == tyid_auto())
 	{
@@ -368,11 +368,11 @@ ty_staticify ::= func(id : tyid -> tyid)
 	}
 	if(ty_is_fn(id))
 	{
-		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * __sizeof(tyid));
+		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * sizeof typeof(tyid));
 		i : u64 mut;
-		for(i = 0, i < (un->fn.params_count), i = i + 1)
+		for(i = 0; i < (un->fn.params_count); i = i + 1)
 		{
-			deref(params_cpy # i) = ty_staticify(deref(un->fn.param_types # i));
+			[params_cpy # i] = ty_staticify([un->fn.param_types # i]);
 		}
 		return_type ::= ty_staticify(un->fn.return_type);
 		// dont pass q as quals here as function types really shouldnt have static (or at least youre free to change your mind in the future if youre doing static functions and it makes sense now)
@@ -386,7 +386,7 @@ ty_staticify ::= func(id : tyid -> tyid)
 // removes staticness recursively from a type.
 // preserves mutness and weakness
 // i.e ty_unstaticify(u64 static? static weak) => u64? weak
-ty_unstaticify ::= func(id : tyid -> tyid)
+ty_unstaticify : func(id : tyid -> tyid)
 {
 	if(id == tyid_auto())
 	{
@@ -407,11 +407,11 @@ ty_unstaticify ::= func(id : tyid -> tyid)
 	}
 	if(ty_is_fn(id))
 	{
-		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * __sizeof(tyid));
+		params_cpy : tyid mut? := arena_alloc(global_arena, un->fn.params_count * sizeof typeof(tyid));
 		i : u64 mut;
-		for(i = 0, i < (un->fn.params_count), i = i + 1)
+		for(i = 0; i < (un->fn.params_count); i = i + 1)
 		{
-			deref(params_cpy # i) = ty_unstaticify(deref(un->fn.param_types # i));
+			[params_cpy # i] = ty_unstaticify([un->fn.param_types # i]);
 		}
 		return_type ::= ty_unstaticify(un->fn.return_type);
 		// dont pass q as quals here as function types really shouldnt have static (or at least youre free to change your mind in the future if youre doing static functions and it makes sense now)
@@ -428,7 +428,7 @@ qual_str_weak ::= " weak";
 qual_str_static ::= " static";
 
 // print out the name of a type.
-putty ::= func(id : tyid -> v0)
+putty : func(id : tyid -> v0)
 {
 	if(id == tyid_auto())
 	{
@@ -455,25 +455,25 @@ putty ::= func(id : tyid -> v0)
 };
 
 // returns whether the lhs and rhs types are the same (ignoring qualifiers)
-ty_matches_ignore_quals ::= func(lhs : tyid, rhs : tyid -> bool)
+ty_matches_ignore_quals : func(lhs : tyid, rhs : tyid -> bool)
 {
 	return ty_clear_all_quals(lhs) == ty_clear_all_quals(rhs);
 };
 
-ty_find_by_name ::= func(name : u8?, name_len : u64 -> tyid)
+ty_find_by_name : func(name : u8?, name_len : u64 -> tyid)
 {
 	return tybox_find(ref(prog.types), name, name_len);
 };
 
 // high-level function to convert type data to a tyid (including quals).
 // assume that if this type data has not been seen before it will be dynamically added to a huge type table.
-ty_wrap ::= func(type : ty, quals : tyqual -> tyid)
+ty_wrap : func(type : ty, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add(ref(prog.types), type), quals);
 };
 
 // high-level function to retrieve the data corresponding to a type.
-ty_unwrap ::= func(id : tyid -> ty mut?)
+ty_unwrap : func(id : tyid -> ty mut?)
 {
 	if(id == tyid_auto())
 	{
@@ -483,7 +483,7 @@ ty_unwrap ::= func(id : tyid -> ty mut?)
 };
 
 // describes type conversions
-tyconv ::= enum
+tyconv : enum
 {
 	.yes := 1;
 	.yes_needs_convert := 2;
@@ -493,7 +493,7 @@ tyconv ::= enum
 };
 
 // describe how we convert 'from' -> 'to'
-ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
+ty_converts_to : func(from : tyid, to : tyid -> tyconv)
 {
 	if((to == tyid_auto()) || (from == tyid_auto()))
 	{
@@ -760,7 +760,7 @@ ty_converts_to ::= func(from : tyid, to : tyid -> tyconv)
 
 // make sure from can convert 'from' -> 'to'
 // fail with a good error message if the conversion cannot happen
-ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
+ty_ensure_convertible_to : func(from : tyid, to : tyid, source : ast? -> v0)
 {
 	conv ::= ty_converts_to(from, to);
 	if((conv == (tyconv.yes)) || (conv == (tyconv.yes_needs_convert)))
@@ -849,7 +849,7 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 	putty(to);
 	putchar('"');
 	putzstr(") yielded ");
-	putzstr(__enumname(conv));
+	putzstr(enumname(conv));
 	putzstr(" (");
 	putsint(conv@s64);
 	putzstr("). this is a compiler bug.");
@@ -860,30 +860,30 @@ ty_ensure_convertible_to ::= func(from : tyid, to : tyid, source : ast? -> v0)
 };
 
 // return a pointer to the given type, along with qualifiers
-ty_ptr ::= func(id : tyid, quals : tyqual -> tyid)
+ty_ptr : func(id : tyid, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_ptr(ref(prog.types), id), quals);
 };
 
-ty_arr ::= func(id : tyid, len : u64, quals : tyqual -> tyid)
+ty_arr : func(id : tyid, len : u64, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_array(ref(prog.types), id, len), quals);
 };
 
-ty_fn ::= func(ret_id : tyid, param_ids : tyid?, params_count : u64, quals : tyqual -> tyid)
+ty_fn : func(ret_id : tyid, param_ids : tyid?, params_count : u64, quals : tyqual -> tyid)
 {
 	return ty_set_qual(tybox_add_function(ref(prog.types), ret_id, param_ids, params_count), quals);
 };
 
 // quickly make a function type with 1 param
-ty_makefn1 ::= func(param1 : tyid, ret : tyid -> tyid)
+ty_makefn1 : func(param1 : tyid, ret : tyid -> tyid)
 {
-	params : tyid mut? := arena_alloc(global_arena, __sizeof(tyid) * 1);
-	deref(params # 0) = param1;
+	params : tyid mut? := arena_alloc(global_arena, sizeof typeof(tyid) * 1);
+	[params # 0] = param1;
 	return ty_fn(ret, params, 1, zero);
 };
 
-ty_typename_node ::= func(node : ast?, scope : lexical_scope? -> tyid)
+ty_typename_node : func(node : ast?, scope : lexical_scope? -> tyid)
 {
 	// very specifically only for nodes of ast_tag.typename;
 	typename ::= node->typename;
@@ -909,9 +909,9 @@ ty_typename_node ::= func(node : ast?, scope : lexical_scope? -> tyid)
 		retty_typename_node ::= ast_get_child(node, node->children_count - 1);
 		retty ::= ty_typename_node(retty_typename_node, scope);
 		params_count ::= node->children_count - 1;
-		fn_params : tyid mut? := arena_alloc(global_arena, __sizeof(tyid) * params_count);
+		fn_params : tyid mut? := arena_alloc(global_arena, sizeof typeof(tyid) * params_count);
 		i : u64 mut;
-		for(i = 0, i < params_count, i = i + 1)
+		for(i = 0; i < params_count; i = i + 1)
 		{
 			cur_param_node ::= ast_get_child(node, i);
 			// remember the param is a decl
@@ -929,7 +929,7 @@ ty_typename_node ::= func(node : ast?, scope : lexical_scope? -> tyid)
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
-			deref(fn_params # i) = cur_param_ty;
+			[fn_params # i] = cur_param_ty;
 		}
 		return ty_fn(retty, fn_params, params_count, typename.quals);
 	}
@@ -963,7 +963,7 @@ ty_typename_node ::= func(node : ast?, scope : lexical_scope? -> tyid)
 	return zero;
 };
 
-ty_discard_static_unless ::= func(type : tyid, cond : bool -> tyid)
+ty_discard_static_unless : func(type : tyid, cond : bool -> tyid)
 {
 	// if cond is true keep all quals
 	// if false keep all qualifiers except static
@@ -987,7 +987,7 @@ ty_discard_static_unless ::= func(type : tyid, cond : bool -> tyid)
 // return the type that both should be converted to
 // you can always assume the returned type matches one of the operands.
 // return zero if arithmetic operations are not defined for this type combination
-ty_of_arithmetic ::= func(lhs : tyid, rhs : tyid -> tyid)
+ty_of_arithmetic : func(lhs : tyid, rhs : tyid -> tyid)
 {
 	retty : tyid mut;
 	both_are_static ::= ty_has_qual(lhs, tyqual.qual_static) && ty_has_qual(rhs, tyqual.qual_static);

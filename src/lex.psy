@@ -1,4 +1,4 @@
-impl_is_whitespace ::= func(char : u8 -> bool)
+impl_is_whitespace : func(char : u8 -> bool)
 {
 	if(char == 0x20) // ' '
 	{
@@ -27,7 +27,7 @@ impl_is_whitespace ::= func(char : u8 -> bool)
 	return false;
 };
 
-impl_starts_symbol ::= func(char : u8 -> bool)
+impl_starts_symbol : func(char : u8 -> bool)
 {
 	if(char >= 'a')
 	{
@@ -50,7 +50,7 @@ impl_starts_symbol ::= func(char : u8 -> bool)
 	return false;
 };
 
-impl_could_continue_symbol ::= func(ch : u8 -> bool)
+impl_could_continue_symbol : func(ch : u8 -> bool)
 {
 	if(ch >= '0')
 	{
@@ -80,7 +80,7 @@ impl_could_continue_symbol ::= func(ch : u8 -> bool)
 	return false;
 };
 
-impl_is_punctuation ::= func(ch : u8 -> bool)
+impl_is_punctuation : func(ch : u8 -> bool)
 {
 	if(ch >= 'a')
 	{
@@ -110,7 +110,7 @@ impl_is_punctuation ::= func(ch : u8 -> bool)
 	return true;
 };
 
-lex_token ::= enum
+lex_token : enum
 {
 	.numeric_literal := 1;
 	.char_literal := 2;
@@ -179,13 +179,13 @@ lex_token ::= enum
 	.symbol := 65;
 };
 
-lex_slice ::= struct
+lex_slice : struct
 {
 	off : u64;
 	len : u64;
 };
 
-token_data ::= struct
+token_data : struct
 {
 	tok : lex_token;
 	lexeme : lex_slice;
@@ -193,7 +193,7 @@ token_data ::= struct
 	end : srcloc;
 };
 
-lex_entry_tag ::= enum
+lex_entry_tag : enum
 {
 	.none := 1;
 	// data is the token type you have just found.
@@ -202,7 +202,7 @@ lex_entry_tag ::= enum
 	.discard := 3;
 };
 
-lex_entry ::= struct
+lex_entry : struct
 {
 	tag : lex_entry_tag;
 	data : u64;
@@ -210,30 +210,30 @@ lex_entry ::= struct
 	next : v0?;
 };
 
-lex_table ::= struct
+lex_table : struct
 {
 	tbl : lex_entry mut[255];
 };
 
-main_table : lex_table mut;
-symbol_continuation_table : lex_table mut;
-string_literal_table : lex_table mut;
-char_literal_table : lex_table mut;
-decimal_table : lex_table mut;
-char0_pretable : lex_table mut;
-hex_table : lex_table mut;
-binary_table : lex_table mut;
-precomment_table : lex_table mut;
-comment_table : lex_table mut;
+main_table : lex_table mut := zero;
+symbol_continuation_table : lex_table mut := zero;
+string_literal_table : lex_table mut := zero;
+char_literal_table : lex_table mut := zero;
+decimal_table : lex_table mut := zero;
+char0_pretable : lex_table mut := zero;
+hex_table : lex_table mut := zero;
+binary_table : lex_table mut := zero;
+precomment_table : lex_table mut := zero;
+comment_table : lex_table mut := zero;
 
-main_table_setup ::= func(t : lex_table mut? -> v0)
+main_table_setup : func(t : lex_table mut? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
 		if(impl_starts_symbol(i@u8))
 		{
-			deref((t->tbl) # i) = lex_entry
+			[(t->tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.none;
 				.data := zero;
@@ -243,7 +243,7 @@ main_table_setup ::= func(t : lex_table mut? -> v0)
 		}
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((t->tbl) # i) = lex_entry
+			[(t->tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.discard;
 				.data := zero;
@@ -254,15 +254,15 @@ main_table_setup ::= func(t : lex_table mut? -> v0)
 	}
 };
 
-symbol_continuation_setup ::= func(t : lex_table mut? -> v0)
+symbol_continuation_setup : func(t : lex_table mut? -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
 		ent ::= (t->tbl) # i;
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((t->tbl) # i) = lex_entry
+			[(t->tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.symbol)@s64@u64;
@@ -272,7 +272,7 @@ symbol_continuation_setup ::= func(t : lex_table mut? -> v0)
 		}
 		if(impl_is_punctuation(i@u8))
 		{
-			deref((t->tbl) # i) = lex_entry
+			[(t->tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.symbol)@s64@u64;
@@ -282,7 +282,7 @@ symbol_continuation_setup ::= func(t : lex_table mut? -> v0)
 		}
 		if(impl_could_continue_symbol(i@u8))
 		{
-			deref((t->tbl) # i) = lex_entry
+			[(t->tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.none;
 				.data := zero;
@@ -293,9 +293,9 @@ symbol_continuation_setup ::= func(t : lex_table mut? -> v0)
 	}
 };
 
-string_table_setup ::= func( -> v0)
+string_table_setup : func( -> v0)
 {
-	deref((main_table.tbl) # 34) = lex_entry
+	[(main_table.tbl) # 34] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -304,9 +304,9 @@ string_table_setup ::= func( -> v0)
 	};
 
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
-		deref((string_literal_table.tbl) # i) = lex_entry
+		[(string_literal_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -314,7 +314,7 @@ string_table_setup ::= func( -> v0)
 			.next := (ref string_literal_table)@v0?;
 		};
 	}
-	deref((string_literal_table.tbl) # 34) = lex_entry
+	[(string_literal_table.tbl) # 34] = lex_entry
 	{
 		.tag := lex_entry_tag.success;
 		.data := (lex_token.string_literal)@s64@u64;
@@ -323,9 +323,9 @@ string_table_setup ::= func( -> v0)
 	};
 };
 
-char_table_setup ::= func( -> v0)
+char_table_setup : func( -> v0)
 {
-	deref((main_table.tbl) # 39) = lex_entry
+	[(main_table.tbl) # 39] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -334,9 +334,9 @@ char_table_setup ::= func( -> v0)
 	};
 
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
-		deref((char_literal_table.tbl) # i) = lex_entry
+		[(char_literal_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -344,7 +344,7 @@ char_table_setup ::= func( -> v0)
 			.next := (ref char_literal_table)@v0?;
 		};
 	}
-	deref((char_literal_table.tbl) # 39) = lex_entry
+	[(char_literal_table.tbl) # 39] = lex_entry
 	{
 		.tag := lex_entry_tag.success;
 		.data := (lex_token.char_literal)@s64@u64;
@@ -353,13 +353,13 @@ char_table_setup ::= func( -> v0)
 	};
 };
 
-comment_table_setup ::= func( -> v0)
+comment_table_setup : func( -> v0)
 {
 	// the '/' char in main table will yield operator_fslash
 	// we need to point that entry's next to the comment table
 	slash_entry ::= (main_table.tbl) # 47;
 	nexttbl ::= (slash_entry->next)@lex_table?;
-	deref((nexttbl->tbl) # 47) = lex_entry
+	[(nexttbl->tbl) # 47] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -368,9 +368,9 @@ comment_table_setup ::= func( -> v0)
 	};
 
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
-		deref((comment_table.tbl) # i) = lex_entry
+		[(comment_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -378,7 +378,7 @@ comment_table_setup ::= func( -> v0)
 			.next := (ref comment_table)@v0?;
 		};
 	}
-	deref((comment_table.tbl) # 10) = lex_entry
+	[(comment_table.tbl) # 10] = lex_entry
 	{
 		.tag := lex_entry_tag.discard;
 		.data := zero;
@@ -387,20 +387,20 @@ comment_table_setup ::= func( -> v0)
 	};
 };
 
-decimal_table_setup ::= func( -> v0)
+decimal_table_setup : func( -> v0)
 {
 	i : u64 mut;
 	// if we see a '0', then it could either be a normal decimal number
-	deref((main_table.tbl) # 48) = lex_entry
+	[(main_table.tbl) # 48] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
 		.metadata := zero;
 		.next := (ref char0_pretable)@v0?;
 	};
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
-		deref((char0_pretable.tbl) # i) = lex_entry
+		[(char0_pretable.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -409,7 +409,7 @@ decimal_table_setup ::= func( -> v0)
 		};
 		if(impl_is_punctuation(i@u8))
 		{
-			deref((char0_pretable.tbl) # i) = lex_entry
+			[(char0_pretable.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -419,7 +419,7 @@ decimal_table_setup ::= func( -> v0)
 		}
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((char0_pretable.tbl) # i) = lex_entry
+			[(char0_pretable.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -428,7 +428,7 @@ decimal_table_setup ::= func( -> v0)
 			};
 		}
 	}
-	deref((char0_pretable.tbl) # 46) = lex_entry
+	[(char0_pretable.tbl) # 46] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -436,7 +436,7 @@ decimal_table_setup ::= func( -> v0)
 		.next := (ref decimal_table)@v0?;
 	};
 	// or its directly followed by 'x' in which case we pivot the hex table
-	deref((char0_pretable.tbl) # 120) = lex_entry
+	[(char0_pretable.tbl) # 120] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -444,7 +444,7 @@ decimal_table_setup ::= func( -> v0)
 		.next := (ref hex_table)@v0?;
 	};
 	// same for 'b'
-	deref((char0_pretable.tbl) # 98) = lex_entry
+	[(char0_pretable.tbl) # 98] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -452,9 +452,9 @@ decimal_table_setup ::= func( -> v0)
 		.next := (ref binary_table)@v0?;
 	};
 
-	for(i = '1', i <= '9', i = i + 1)
+	for(i = '1'; i <= '9'; i = i + 1)
 	{
-		deref((main_table.tbl) # i) = lex_entry
+		[(main_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -463,11 +463,11 @@ decimal_table_setup ::= func( -> v0)
 		};
 	}
 
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((decimal_table.tbl) # i) = lex_entry
+			[(decimal_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -477,7 +477,7 @@ decimal_table_setup ::= func( -> v0)
 		}
 		if(impl_is_punctuation(i@u8))
 		{
-			deref((decimal_table.tbl) # i) = lex_entry
+			[(decimal_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -486,9 +486,9 @@ decimal_table_setup ::= func( -> v0)
 			};
 		}
 	}
-	for(i = '0', i <= '9', i = i + 1)
+	for(i = '0'; i <= '9'; i = i + 1)
 	{
-		deref((decimal_table.tbl) # i) = lex_entry
+		[(decimal_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -496,7 +496,7 @@ decimal_table_setup ::= func( -> v0)
 			.next := (ref decimal_table)@v0?;
 		};
 	}
-	deref((decimal_table.tbl) # 46) = lex_entry
+	[(decimal_table.tbl) # 46] = lex_entry
 	{
 		.tag := lex_entry_tag.none;
 		.data := zero;
@@ -505,14 +505,14 @@ decimal_table_setup ::= func( -> v0)
 	};
 };
 
-hex_table_setup ::= func( -> v0)
+hex_table_setup : func( -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((hex_table.tbl) # i) = lex_entry
+			[(hex_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -522,7 +522,7 @@ hex_table_setup ::= func( -> v0)
 		}
 		if(impl_is_punctuation(i@u8))
 		{
-			deref((hex_table.tbl) # i) = lex_entry
+			[(hex_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -531,9 +531,9 @@ hex_table_setup ::= func( -> v0)
 			};
 		}
 	}
-	for(i = 'a', i <= 'f', i = i + 1)
+	for(i = 'a'; i <= 'f'; i = i + 1)
 	{
-		deref((hex_table.tbl) # i) = lex_entry
+		[(hex_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -541,9 +541,9 @@ hex_table_setup ::= func( -> v0)
 			.next := (ref hex_table)@v0?;
 		};
 	}
-	for(i = 'A', i <= 'F', i = i + 1)
+	for(i = 'A'; i <= 'F'; i = i + 1)
 	{
-		deref((hex_table.tbl) # i) = lex_entry
+		[(hex_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -551,9 +551,9 @@ hex_table_setup ::= func( -> v0)
 			.next := (ref hex_table)@v0?;
 		};
 	}
-	for(i = '0', i <= '9', i = i + 1)
+	for(i = '0'; i <= '9'; i = i + 1)
 	{
-		deref((hex_table.tbl) # i) = lex_entry
+		[(hex_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -563,14 +563,14 @@ hex_table_setup ::= func( -> v0)
 	}
 };
 
-binary_table_setup ::= func( -> v0)
+binary_table_setup : func( -> v0)
 {
 	i : u64 mut;
-	for(i = 0, i < 255, i = i + 1)
+	for(i = 0; i < 255; i = i + 1)
 	{
 		if(impl_is_whitespace(i@u8))
 		{
-			deref((binary_table.tbl) # i) = lex_entry
+			[(binary_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -580,7 +580,7 @@ binary_table_setup ::= func( -> v0)
 		}
 		if(impl_is_punctuation(i@u8))
 		{
-			deref((binary_table.tbl) # i) = lex_entry
+			[(binary_table.tbl) # i] = lex_entry
 			{
 				.tag := lex_entry_tag.success;
 				.data := (lex_token.numeric_literal)@s64@u64;
@@ -589,9 +589,9 @@ binary_table_setup ::= func( -> v0)
 			};
 		}
 	}
-	for(i = '0', i <= '1', i = i + 1)
+	for(i = '0'; i <= '1'; i = i + 1)
 	{
-		deref((binary_table.tbl) # i) = lex_entry
+		[(binary_table.tbl) # i] = lex_entry
 		{
 			.tag := lex_entry_tag.none;
 			.data := zero;
@@ -601,14 +601,14 @@ binary_table_setup ::= func( -> v0)
 	}
 };
 
-lex_internal_state ::= struct
+lex_internal_state : struct
 {
 	begin_cursor : u64;
 	begin_loc : srcloc;
 	tbl : lex_table?;
 };
 
-lex_state ::= struct
+lex_state : struct
 {
 	path : u8?;
 	src : u8?;
@@ -623,23 +623,23 @@ lex_state ::= struct
 	internal : lex_internal_state;
 };
 
-td_print ::= func(s : lex_state?, tok : token_data -> v0)
+td_print : func(s : lex_state?, tok : token_data -> v0)
 {
 	slice ::= tok.lexeme;
-	putzstr(__enumname(tok.tok));
+	putzstr(enumname(tok.tok));
 	putchar(' ');
 	lexeme_data ::= (s->src) # (slice.off);
 	j : u64 mut;
-	for(j = 0, j < (slice.len), j = j + 1)
+	for(j = 0; j < (slice.len); j = j + 1)
 	{
-		putchar(deref(lexeme_data # j));
+		putchar([lexeme_data # j]);
 	}
 	putchar(' ');
 	print_srcloc(tok.begin);
 	putchar(10);
 };
 
-ls_current_loc ::= func(s : lex_state? -> srcloc)
+ls_current_loc : func(s : lex_state? -> srcloc)
 {
 	return srcloc
 	{
@@ -649,15 +649,15 @@ ls_current_loc ::= func(s : lex_state? -> srcloc)
 	};
 };
 
-lex_newtable ::= func( -> lex_table mut?)
+lex_newtable : func( -> lex_table mut?)
 {
-	ret : lex_table mut? := arena_alloc(global_arena, __sizeof(lex_table));
-	memfill(ret, 0, __sizeof(lex_table));
+	ret : lex_table mut? := arena_alloc(global_arena, sizeof lex_table);
+	memfill(ret, 0, sizeof lex_table);
 	symbol_continuation_setup(ret);
 	return ret;
 };
 
-lex_break_type ::= enum
+lex_break_type : enum
 {
 	.punctuation_or_whitespace := 1;
 	.not_equals_symbol := 2;
@@ -669,7 +669,7 @@ lex_break_type ::= enum
 	.everything := 128;
 };
 
-matches_break_type ::= func(break : lex_break_type, ch : u8 -> bool)
+matches_break_type : func(break : lex_break_type, ch : u8 -> bool)
 {
 	matches : bool mut := false;
 	if((break & (lex_break_type.punctuation_or_whitespace)) != zero)
@@ -732,7 +732,7 @@ matches_break_type ::= func(break : lex_break_type, ch : u8 -> bool)
 	return matches;
 };
 
-lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_type -> v0)
+lex_install : func(t : lex_token, front_identifier : u8?, break : lex_break_type -> v0)
 {
 	// for each char 'c' in the front identifier:
 	// take entry 'e' from index 'c' # the current table and look # its tag
@@ -756,9 +756,9 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 	c : u8 mut;
 	ent : lex_entry mut? mut;
 	newtbl : lex_table mut? mut;
-	for(i = 0, i < len, i = i + 1)
+	for(i = 0; i < len; i = i + 1)
 	{
-		c = deref(front_identifier # i);
+		c = [front_identifier # i];
 		ent = ((tbl->tbl) # c);
 		if((ent->tag) == (lex_entry_tag.success))
 		{
@@ -774,7 +774,7 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 			if((ent->next) == ((ref symbol_continuation_table)@v0?))
 			{
 				newtbl = lex_newtable();
-				deref(ent) = lex_entry
+				[ent] = lex_entry
 				{
 					.tag := lex_entry_tag.none;
 					.data := zero;
@@ -786,7 +786,7 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 		if((ent->tag) == (lex_entry_tag.discard))
 		{
 			newtbl = lex_newtable();
-			deref(ent) = lex_entry
+			[ent] = lex_entry
 			{
 				.tag := lex_entry_tag.none;
 				.data := zero;
@@ -797,7 +797,7 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 		if((ent->tag) == zero)
 		{
 			newtbl = lex_newtable();
-			deref(ent) = lex_entry
+			[ent] = lex_entry
 			{
 				.tag := lex_entry_tag.none;
 				.data := zero;
@@ -810,7 +810,7 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 
 	if(break == zero)
 	{
-		last ::= deref(front_identifier # len);
+		last ::= [front_identifier # len];
 		ent = ((tbl->tbl) # last);
 		if((ent->tag) == (lex_entry_tag.success))
 		{
@@ -818,15 +818,15 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 			{
 				psyc_error_begin(zero);
 				putzstr(".success entry for lex_token.");
-				putzstr(__enumname(t));
+				putzstr(enumname(t));
 				putzstr(" steps on the .success entry for lex_token.");
-				putzstr(__enumname((ent->data)@lex_token));
+				putzstr(enumname((ent->data)@s64@lex_token));
 				putzstr(" - do they have the exact same front identifier?");
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
 		}
-		deref(ent) = lex_entry
+		[ent] = lex_entry
 		{
 			.tag := lex_entry_tag.success;
 			.data := t@s64@u64;
@@ -843,20 +843,20 @@ lex_install ::= func(t : lex_token, front_identifier : u8?, break : lex_break_ty
 			.metadata := true;
 			.next := zero;
 		};
-		for(i = 0, i < 255, i = i + 1)
+		for(i = 0; i < 255; i = i + 1)
 		{
 			final ::= (tbl->tbl) # i;
 			fnext ::= final->next;
 			if(matches_break_type(break, i@u8))
 			{
-				(deref(final)) = winning_entry;
+				([final]) = winning_entry;
 				(final->next) = fnext;
 			}
 		}
 	}
 };
 
-lex_setup ::= func(-> v0)
+lex_setup : func(-> v0)
 {
 	psyc_timed_begin(psyc_stage.setup);
 
@@ -936,7 +936,7 @@ lex_setup ::= func(-> v0)
 	psyc_timed_end();
 };
 
-ls_verbose_print ::= func(s : lex_state? -> v0)
+ls_verbose_print : func(s : lex_state? -> v0)
 {
 	putzstr(s->path);
 	putchar(':');
@@ -945,20 +945,20 @@ ls_verbose_print ::= func(s : lex_state? -> v0)
 	putchar(10);
 	// just print out all token datas.
 	i : u64 mut;
-	for(i = 0, i < (s->tokens_size), i = i + 1)
+	for(i = 0; i < (s->tokens_size); i = i + 1)
 	{
-		tok ::= deref((s->tokens) # i);
+		tok ::= [(s->tokens) # i];
 		td_print(s, tok);
 	}
 	putchar('}');
 	putchar(10);
 };
 
-ls_push_token ::= func(state : lex_state mut?, token : token_data -> v0)
+ls_push_token : func(state : lex_state mut?, token : token_data -> v0)
 {
 	if((state->tokens) == zero)
 	{
-		psyc_panic(__curloc(), "lex_state did not initialise its token list correctly. it was zero.");
+		psyc_panic(zero, "lex_state did not initialise its token list correctly. it was zero.");
 	}
 	if((state->tokens_size) >= (state->tokens_cap))
 	{
@@ -966,17 +966,17 @@ ls_push_token ::= func(state : lex_state mut?, token : token_data -> v0)
 		old_tokens ::= state->tokens;
 
 		(state->tokens_cap) = (state->tokens_cap) * 2;
-		(state->tokens) = arena_alloc(global_arena, __sizeof(deref(state->tokens)) * (state->tokens_cap));
-		memcopy(state->tokens, old_tokens, __sizeof(deref(state->tokens)) * oldcap);
-		arena_free(global_arena, old_tokens, oldcap * __sizeof(deref(state->tokens)));
+		(state->tokens) = arena_alloc(global_arena, sizeof typeof([state->tokens]) * (state->tokens_cap));
+		memcopy(state->tokens, old_tokens, sizeof typeof([state->tokens]) * oldcap);
+		arena_free(global_arena, old_tokens, oldcap * sizeof typeof([state->tokens]));
 	}
-	deref((state->tokens) # (state->tokens_size)) = token;
+	[(state->tokens) # (state->tokens_size)] = token;
 	(state->tokens_size) = (state->tokens_size) + 1;
 };
 
-lex_advance ::= func(s : lex_state mut? -> v0)
+lex_advance : func(s : lex_state mut? -> v0)
 {
-	whitespace ::= deref((s->src) # (s->cursor)) == 10;
+	whitespace ::= [(s->src) # (s->cursor)] == 10;
 	if(whitespace)
 	{
 		(s->line) = (s->line) + 1;
@@ -989,10 +989,10 @@ lex_advance ::= func(s : lex_state mut? -> v0)
 	(s->cursor) = (s->cursor) + 1;
 };
 
-lex_get ::= func(s : lex_state mut? -> lex_entry mut?)
+lex_get : func(s : lex_state mut? -> lex_entry mut?)
 {
 	// get the next char
-	char ::= deref((s->src) # (s->cursor));
+	char ::= [(s->src) # (s->cursor)];
 
 	internal ::= ref(s->internal);
 	if((internal->tbl) == zero)
@@ -1006,12 +1006,12 @@ lex_get ::= func(s : lex_state mut? -> lex_entry mut?)
 	return (tbl->tbl) # char;
 };
 
-lex_discard ::= func(s : lex_state mut? -> v0)
+lex_discard : func(s : lex_state mut? -> v0)
 {
 	(s->internal) = zero;
 };
 
-lex_next ::= func(s : lex_state mut? -> v0)
+lex_next : func(s : lex_state mut? -> v0)
 {
 	entry ::= lex_get(s);
 	should_advance : bool mut;
@@ -1047,7 +1047,7 @@ lex_next ::= func(s : lex_state mut? -> v0)
 		}
 		tok ::= token_data mut
 		{
-			.tok := (entry->data)@lex_token;
+			.tok := (entry->data)@s64@lex_token;
 			.lexeme := lex_slice{.off := (internal->begin_cursor); .len := offset + (s->cursor) - (internal->begin_cursor);};
 			.begin := (internal->begin_loc);
 			.end := ls_current_loc(s);
@@ -1066,7 +1066,7 @@ lex_next ::= func(s : lex_state mut? -> v0)
 		if((tok.tok) == (lex_token.symbol))
 		{
 			off ::= (lex->off) + (lex->len);
-			if(impl_is_whitespace(deref((s->src) # (off - 1))))
+			if(impl_is_whitespace([(s->src) # (off - 1)]))
 			{
 				(lex->len) = ((lex->len) - 1);
 			}
@@ -1085,7 +1085,7 @@ lex_next ::= func(s : lex_state mut? -> v0)
 	}
 };
 
-lex ::= func(file : source_file -> lex_state)
+lex : func(file : source_file -> lex_state)
 {
 	psyc_timed_begin(psyc_stage.lex);
 
@@ -1095,7 +1095,7 @@ lex ::= func(file : source_file -> lex_state)
 	(ret.path) = (file.path);
 	(ret.src) = (file.src);
 	(ret.tokens_cap) = 1024;
-	(ret.tokens) = arena_alloc(global_arena, __sizeof(deref(ret.tokens)) * (ret.tokens_cap));
+	(ret.tokens) = arena_alloc(global_arena, sizeof typeof([ret.tokens]) * (ret.tokens_cap));
 	len ::= zstrlen(file.src);
 
 	while((ret.cursor) < len@_)

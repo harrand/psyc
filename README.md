@@ -85,7 +85,7 @@ A function marked as `extern` means that the implementation of the function is n
 ### Defining basic functions <a name="basic_functions"></a>
 The following code defines a function named `my_function_name`. It takes no parameters, and returns nothing (`v0` is the equivalent of `void` in C):
 ```
-my_function_name ::= func(-> v0)
+my_function_name : func(-> v0)
 {
 	// code goes here
 };
@@ -101,7 +101,7 @@ In a function that returns `v0`, there is no need to return at the end of the fu
 
 The following code defines a function named `double_value`. It takes a single parameter, doubles it, and returns the result.
 ```
-double_value ::= func(number : s32 -> s32)
+double_value : func(number : s32 -> s32)
 {
 	return number + number;
 };
@@ -154,40 +154,40 @@ Note that a type can have multiple qualifiers. Here are some examples of various
 ### Pointer Types <a name="type_ptr"></a>
 Pointers work almost similarly to C pointers, but the syntax is slightly different. The best way to explain pointers is by example:
 ```
-main ::= func(-> s32)
+main : func(-> s32)
 {
 	my_value : s64 mut := 5;
 	my_pointer : s64 mut? := ref my_value;
 
 	// equivalent to: my_value = 0;
-	(deref(my_pointer)) = 0;
+	([my_pointer]) = 0;
 	return 0;
 };
 ```
 Within a typename, pointer-ness is represented by the ampersand `?` symbol. It directly proceeds the base type representing the pointee.
 
 - The `ref` keyword is equivalent to the 'address-of' operator (&) in C. `ref x` in Psy is equivalent to `&x` in C.
-- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `deref(my_ptr)` in Psy is equivalent to `*my_ptr` in C.
+- Similarly, the `deref` keyword is equivalent to the 'dereference' operator (*) in C. `[my_ptr]` in Psy is equivalent to `*my_ptr` in C.
 - Both `ref` and `deref` operators are examples of *unary operators*. These are operators that only require a single operand. More on that later.
 - Pointer arithmetic does not overload integer arithmetic; there is a special offseting `#` operator which is identical to C pointer arithmetic in all other ways.
 ```
 	ints_begin : s32? := get_pointer_to_64_ints();
-	first_int ::= deref(ints_begin);
-	also_first_int ::= deref(ints_begin # 0);
-	second_int ::= deref(ints_begin # 1);
+	first_int ::= [ints_begin];
+	also_first_int ::= [ints_begin # 0];
+	second_int ::= [ints_begin # 1];
 	// "ints_begin + 1" is an error because you cant add an integer to a pointer. if you want this you almost certainly mean "ints_begin # 1"
 ```
 
 Like C, you can also have function pointers:
 ```
 // normal function definition
-my_cool_function ::= func(-> v0)
+my_cool_function : func(-> v0)
 {
 	// code...
 };
 
 // later on in main
-main ::= func() -> s32 weak
+main : func() -> s32 weak
 {
 	// function pointer variable.
 	my_function_pointer : func(-> v0) := my_cool_function;
@@ -210,10 +210,10 @@ pointer : u64? := my_favourite_numbers # 0;
 //another_pointer : u64? := my_favourite_numbers; // error!
 
 // write to each value. this requires the element type to be mutable but not the array.
-(deref(pointer)) = 7; // equivalent to (deref(my_favourite_numbers # 0)) = 7;
-(deref(my_favourite_numbers # 1)) = 69;
-(deref(my_favourite_numbers # 2)) = 420;
-(deref(my_favourite_numbers # 0)) = zero;
+([pointer]) = 7; // equivalent to ([my_favourite_numbers # 0]) = 7;
+([my_favourite_numbers # 1]) = 69;
+([my_favourite_numbers # 2]) = 420;
+([my_favourite_numbers # 0]) = zero;
 // Array is now: 0, 69, 420
 
 // write directly to the array. this requires the array itself to be mutable.
@@ -226,7 +226,7 @@ my_favourite_numbers = zero;
 ### Enum Types <a name="type_enum"></a>
 Enums in Psy are similar to `enum class` in C++11. The syntax is slightly different.
 ```
-window_flags ::= enum
+window_flags : enum
 {
 	.none := 0x0000;
 	.opengl := 0x0001;
@@ -244,7 +244,7 @@ Structs in Psy are virtually identical to that of C. Structs must be defined as 
 
 #### Declaring a new struct
 ```
-my_struct ::= struct
+my_struct : struct
 {
 	// data members go here.
 	my_data_member : s32;
@@ -406,12 +406,12 @@ decl_name : typename := init_expr;
 (3)
 decl_name ::= init_expr;
 (4)
-decl_name ::= funcdef_expr
+decl_name : funcdef_expr
 {
 	...
 };
 (5)
-decl_name ::= funcdef_expr := extern;
+decl_name : funcdef_expr extern;
 ```
 The behaviour of (1) is as follows:
 * Allocate memory on the stack, enough to store a value of type `typename`.
@@ -440,7 +440,7 @@ Both (4) and (5) are only used to declare *functions*.
 (4) Declares a function, and provides an implementation block for the function.
 Example:
 ```
-main ::= func(-> s32 weak)
+main : func(-> s32 weak)
 {
 	hello_world();
 	return 0;
@@ -450,7 +450,7 @@ main ::= func(-> s32 weak)
 (5) Declares a function, but indicates that the implementation of the function lives elsewhere. The linker is expected to locate this implementation after compilation. You should use this to declare functions from other libraries (.lib/.o) that you wish to link against and call in your program.
 Example:
 ```
-wglGetProcAddress ::= func(unnamedParam1 : u8? -> u64 weak) := extern;
+wglGetProcAddress : func(unnamedParam1 : u8? -> u64 weak) extern;
 ```
 
 # 7) Build Regions <a name="region"></a>
@@ -465,7 +465,7 @@ Build regions are a special syntax within a .psy file that contain directives fo
 	prebuild_command("echo building foo...");
 	add_source_file("foo.psy");
 
-	static if(_win32)
+	static_if(_win32)
 	{
 		add_link_library("User32.lib");
 	}

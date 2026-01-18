@@ -1,7 +1,7 @@
 // all compile-time value modifications live here
 // basically this is constexpr land. almost all functions here will have a cg_xyz (runtime) equivalent in cg.psy
 
-s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source : ast? -> val)
+s_convert_to : func(v : val mut, to : tyid, scope : lexical_scope mut?, source : ast? -> val)
 {
 	if(v.compile_time.varref_name != zero)
 	{
@@ -31,7 +31,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 			// so what we will do is just pretend we are an integer for now
 			v.compile_time.primitive.tag = (ast_literal_tag.integer);
 			// todo: escape
-			v.compile_time.primitive.integer = (deref(v.compile_time.primitive.chars)@_);
+			v.compile_time.primitive.integer = ([v.compile_time.primitive.chars]@_);
 		}
 	}
 	if(ty_is_integral(from))
@@ -40,7 +40,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 		{
 			// i2i (char)
 			ret.compile_time = valcompile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
-			deref(ret.compile_time.primitive.chars) = (v.compile_time.primitive.integer@_);
+			[ret.compile_time.primitive.chars] = (v.compile_time.primitive.integer@_);
 			return ret;
 		}
 		if(ty_is_integral(to))
@@ -91,7 +91,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 		{
 			// f2i (char)
 			ret.compile_time = valcompile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
-			deref(ret.compile_time.primitive.chars) = (v.compile_time.primitive.floating_point@s64@_);
+			[ret.compile_time.primitive.chars] = (v.compile_time.primitive.floating_point@s64@_);
 			return ret;
 		}
 		if(ty_is_integral(to))
@@ -115,11 +115,11 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 			ret.compile_time = valcompile_time{.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := arena_alloc(string_arena, 1); .chars_len := 1;};};
 			if(v.compile_time.primitive.boolean)
 			{
-				deref(ret.compile_time.primitive.chars) = 1;
+				[ret.compile_time.primitive.chars] = 1;
 			}
 			else
 			{
-				deref(ret.compile_time.primitive.chars) = 0;
+				[ret.compile_time.primitive.chars] = 0;
 			}
 			return ret;
 		}
@@ -206,12 +206,12 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 		memcount ::= ty_unwrap(to)->array_len;
 		// members pointer needs to be deep copied
 		ret.compile_time = (v.compile_time);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
-		memcopy(ret.compile_time.members, v.compile_time.members, __sizeof(val) * (ret.compile_time.members_count));
-		for(i = 0, i < memcount, i = i + 1)
+		ret.compile_time.members = arena_alloc(global_arena, sizeof val * (ret.compile_time.members_count));
+		memcopy(ret.compile_time.members, v.compile_time.members, sizeof val * (ret.compile_time.members_count));
+		for(i = 0; i < memcount; i = i + 1)
 		{
 			mem ::= ret.compile_time.members@val mut? # i;
-			deref(mem) = s_convert_to(deref(mem), ty_underlying(to), scope, source);
+			[mem] = s_convert_to([mem], ty_underlying(to), scope, source);
 		}
 		return ret;
 	}
@@ -224,11 +224,11 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 		// will be valtag.0 which we need to test
 		strct_memcount ::= ty_unwrap(to)->strct.members_count;
 		ret.compile_time = (v.compile_time);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
-		memcopy(ret.compile_time.members, v.compile_time.members, __sizeof(val) * (ret.compile_time.members_count));
-		for(i = 0, i < memcount, i = i + 1)
+		ret.compile_time.members = arena_alloc(global_arena, sizeof val * (ret.compile_time.members_count));
+		memcopy(ret.compile_time.members, v.compile_time.members, sizeof val * (ret.compile_time.members_count));
+		for(i = 0; i < strct_memcount; i = i + 1)
 		{
-			cur_memty ::= deref(ty_unwrap(to)->strct.members # i);
+			cur_memty ::= [ty_unwrap(to)->strct.members # i];
 			mem2 ::= ret.compile_time.members@val mut? # i;
 			// this member has remained zero'd out.
 			// this is equivalent to our undef.
@@ -238,7 +238,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 			}
 			else
 			{
-				deref(mem2) = s_convert_to(deref(mem2), cur_memty, scope, source);
+				[mem2] = s_convert_to([mem2], cur_memty, scope, source);
 			}
 		}
 		return ret;
@@ -258,7 +258,7 @@ s_convert_to ::= func(v : val mut, to : tyid, scope : lexical_scope mut?, source
 };
 
 // note the members array of val.compile_time.members is correctly sized but of an indeterminate value that you *must* overwrite
-s_empty_blkinit ::= func(type : tyid -> val)
+s_empty_blkinit : func(type : tyid -> val)
 {
 	// todo: support arrays for this too
 	memcount : u64 mut := 0;
@@ -282,7 +282,7 @@ s_empty_blkinit ::= func(type : tyid -> val)
 			.is_zero := false;
 			.primitive := zero;
 			.members_count := memcount;
-			.members := arena_alloc(global_arena, __sizeof(val) * memcount);
+			.members := arena_alloc(global_arena, sizeof val * memcount);
 			.funcref_name := zero;
 			.funcref_name_len := zero;
 			.builtinref_name := zero;
@@ -295,13 +295,13 @@ s_empty_blkinit ::= func(type : tyid -> val)
 	};
 };
 
-s_blkinit_add ::= func(v : val mut, memidx : u64, init : val -> val)
+s_blkinit_add : func(v : val mut, memidx : u64, init : val -> val)
 {
-	deref(v.compile_time.members@val mut? # memidx) = init;
+	[v.compile_time.members@val mut? # memidx] = init;
 	return v;
 };
 
-s_unop_minus ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+s_unop_minus : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	return val
 	{
@@ -332,7 +332,7 @@ s_unop_minus ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	};
 };
 
-s_unop_bitwise_invert ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+s_unop_bitwise_invert : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	return val
 	{
@@ -362,7 +362,7 @@ s_unop_bitwise_invert ::= func(v : val, scope : lexical_scope mut?, source : ast
 	};
 };
 
-s_unop_logical_invert ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+s_unop_logical_invert : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	return val
 	{
@@ -392,7 +392,7 @@ s_unop_logical_invert ::= func(v : val, scope : lexical_scope mut?, source : ast
 	};
 };
 
-s_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_assign : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// assume lhs is a varref and rhs has been converted to lhs.
 	var ::= scope_find_variable(scope, lhs.compile_time.varref_name, lhs.compile_time.varref_name_len);
@@ -400,7 +400,7 @@ s_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source 
 	return lhs;
 };
 
-s_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_add : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -411,7 +411,7 @@ s_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) + val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_sub : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -422,7 +422,7 @@ s_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) - val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_mul : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -433,7 +433,7 @@ s_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) * val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_div : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	// todo: check for compile-time divide by zero?
@@ -445,63 +445,63 @@ s_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : a
 	return val_convert_to(float_as_val(val_must_get_float(lhs, scope, source) / val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitwise_or : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) | val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitwise_and : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) & val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_logical_or ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_logical_or : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(bool_as_val(val_must_get_boolean(lhs, scope, source) || val_must_get_boolean(lhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_logical_and ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_logical_and : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(bool_as_val(val_must_get_boolean(lhs, scope, source) && val_must_get_boolean(lhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_xor ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_xor : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) ^ val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitshift_left ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitshift_left : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) << val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_bitshift_right ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_bitshift_right : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) >> val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_modulo : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
 	return val_convert_to(integer_as_val(val_must_get_integer(lhs, scope, source) % val_must_get_integer(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -512,7 +512,7 @@ s_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, 
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) == val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_not_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -523,7 +523,7 @@ s_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mu
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) != val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_less_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -534,7 +534,7 @@ s_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope m
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) <= val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_less : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -545,7 +545,7 @@ s_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, s
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) < val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_greater_equal : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -556,7 +556,7 @@ s_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scop
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) >= val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
+s_biop_compare_greater : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// lhs and rhs are guaranteed to be the same type
 	type ::= lhs.type;
@@ -567,7 +567,7 @@ s_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope mut?
 	return val_convert_to(bool_as_val(val_must_get_float(lhs, scope, source) > val_must_get_float(rhs, scope, source)), type, scope, val_resolution.compile_time_only, source);
 };
 
-s_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
+s_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 {
 	// variable declared but in a fully compile-time setting.
 	if(var->node->children_count == 2)
@@ -585,9 +585,9 @@ s_decl ::= func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-s_builtin_assert ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_assert : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	cond ::= val_must_get_boolean(deref(params # 0), scope, source);
+	cond ::= val_must_get_boolean([params # 0], scope, source);
 	if(!cond)
 	{
 		psyc_error_begin(source->loc);
@@ -600,11 +600,11 @@ s_builtin_assert ::= func(params : val?, scope : lexical_scope?, source : ast? -
 	return zero;
 };
 
-s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_source_file : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	path_strdata : u8 mut? mut;
 	path_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref path_strdata, ref path_strlen);
+	val_must_get_string([params # 0], scope, source, ref path_strdata, ref path_strlen);
 	path_zstr ::= sstr2zstr(path_strdata, path_strlen, string_arena);
 
 	if(!file_exists(path_zstr))
@@ -624,11 +624,11 @@ s_builtin_add_source_file ::= func(params : val?, scope : lexical_scope?, source
 	return zero;
 };
 
-s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_build_file : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	path_strdata : u8 mut? mut;
 	path_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref path_strdata, ref path_strlen);
+	val_must_get_string([params # 0], scope, source, ref path_strdata, ref path_strlen);
 	path_zstr ::= sstr2zstr(path_strdata, path_strlen, string_arena);
 
 	if(!file_exists(path_zstr))
@@ -648,28 +648,28 @@ s_builtin_add_build_file ::= func(params : val?, scope : lexical_scope?, source 
 	return zero;
 };
 
-s_builtin_executable ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_executable : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	name_strdata : u8 mut? mut;
 	name_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref name_strdata, ref name_strlen);
+	val_must_get_string([params # 0], scope, source, ref name_strdata, ref name_strlen);
 	prog.output.name = sstr2zstr(name_strdata, name_strlen, string_arena);
 	return zero;
 };
 
-s_builtin_optimization ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_optimization : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	prog.optimization = (val_must_get_integer(deref(params # 0), scope, source)@program_optimization);
+	prog.optimization = (val_must_get_integer([params # 0], scope, source)@program_optimization);
 	return zero;
 };
 
-s_builtin_debug_symbols ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_debug_symbols : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	prog.debug_symbols = val_must_get_boolean(deref(params # 0), scope, source);
+	prog.debug_symbols = val_must_get_boolean([params # 0], scope, source);
 	return zero;
 };
 
-s_path_has_extension ::= func(path_zstr : u8?, extension_zstr : u8? -> bool)
+s_path_has_extension : func(path_zstr : u8?, extension_zstr : u8? -> bool)
 {
 	extlen ::= zstrlen(extension_zstr);
 	pathlen ::= zstrlen(path_zstr);
@@ -685,7 +685,7 @@ s_path_has_extension ::= func(path_zstr : u8?, extension_zstr : u8? -> bool)
 };
 
 s_impl_curdir : u8? mut := zero;
-s_impl_add_source_file ::= func(path : u8? -> v0)
+s_impl_add_source_file : func(path : u8? -> v0)
 {
 	// make sure its a .psy file
 	if(!s_path_has_extension(path, ".psy"))
@@ -695,36 +695,36 @@ s_impl_add_source_file ::= func(path : u8? -> v0)
 	parented_path_len ::= zstrlen(s_impl_curdir) + 1 + zstrlen(path);
 	parented_path : u8 mut? := arena_alloc(string_arena, parented_path_len);
 	memcopy(parented_path, s_impl_curdir, zstrlen(s_impl_curdir));
-	deref(parented_path # zstrlen(s_impl_curdir)) = '/';
+	[parented_path # zstrlen(s_impl_curdir)] = '/';
 	memcopy(parented_path # (1 + zstrlen(s_impl_curdir)), path, zstrlen(path));
 	program_queue_source_file(parented_path, parented_path_len);
 };
 
-s_builtin_add_source_directory ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_source_directory : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	dir_strdata : u8 mut? mut;
 	dir_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref dir_strdata, ref dir_strlen);
+	val_must_get_string([params # 0], scope, source, ref dir_strdata, ref dir_strlen);
 	dir_zstr ::= sstr2zstr(dir_strdata, dir_strlen, string_arena);
 	s_impl_curdir = dir_zstr;
 	directory_iterate(dir_zstr, s_impl_add_source_file, string_arena);
 	return zero;
 };
 
-s_builtin_add_link_library ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_add_link_library : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	lib_strdata : u8 mut? mut;
 	lib_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref lib_strdata, ref lib_strlen);
+	val_must_get_string([params # 0], scope, source, ref lib_strdata, ref lib_strlen);
 	program_add_link_library(lib_strdata, lib_strlen);
 	return zero;
 };
 
-s_builtin_embed ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_embed : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	file_strdata : u8 mut? mut;
 	file_strlen : u64 mut;
-	val_must_get_string(deref(params # 0), scope, source, ref file_strdata, ref file_strlen);
+	val_must_get_string([params # 0], scope, source, ref file_strdata, ref file_strlen);
 	file_path_zstr ::= sstr2zstr(file_strdata, file_strlen, string_arena);
 	if(!file_exists(file_path_zstr))
 	{
@@ -838,9 +838,9 @@ s_builtin_embed ::= func(params : val?, scope : lexical_scope?, source : ast? ->
 	return val_blkinit(ref embed_node, scope, val_resolution.compile_time_only);
 };
 
-s_builtin_enumname ::= func(params : val?, scope : lexical_scope?, source : ast? -> val)
+s_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
-	param : val mut := deref(params # 0);
+	param : val mut := [params # 0];
 	// naughty hack
 	param.type = ty_set_qual(param.type, tyqual.qual_static);
 	if(!ty_is_enum(param.type))
@@ -858,13 +858,13 @@ s_builtin_enumname ::= func(params : val?, scope : lexical_scope?, source : ast?
 	e ::= ty_unwrap(param.type)->enm;
 	i : u64 mut;
 	enumval ::= val_must_get_integer(param, scope, source);
-	for(i = 0, i < (e.entries_count), i = i + 1)
+	for(i = 0; i < (e.entries_count); i = i + 1)
 	{
-		curval ::= deref(e.entries # i);
+		curval ::= [e.entries # i];
 		if(curval == enumval)
 		{
 			// this is the one
-			return string_as_val(deref(e.entry_names # i), deref(e.entry_name_lens # i));
+			return string_as_val([e.entry_names # i], [e.entry_name_lens # i]);
 		}
 	}
 	badenum_name ::= "badenum";

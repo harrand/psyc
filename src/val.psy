@@ -2,7 +2,7 @@
 // so the way we handle values in psyc is extremely complex
 // this is because we try to do everything at the same time (otherwise the rules of the language e.g in conversions have to be copied around in different forms)
 
-valtag ::= enum
+valtag : enum
 {
 	.invalid := 0;
 	.type_only := 1;
@@ -11,20 +11,20 @@ valtag ::= enum
 	.typed_value := 3;
 };
 
-valknown ::= enum
+valknown : enum
 {
 	.compile_time := 1;
 	.runtime := 2;
 };
 
 // all expressions are either an lvalue or an rvalue. never both, never neither
-valhand ::= enum
+valhand : enum
 {
 	.lvalue := 1;
 	.rvalue := 2;
 };
 
-valcompile_time ::= struct
+valcompile_time : struct
 {
 	// val_node will generate .is_zero = true on an ast_expr.zero_value
 	// but if the value ever undergoes any conversions this will be converted to a typed value
@@ -53,12 +53,12 @@ valcompile_time ::= struct
 	valueref : v0? weak;
 };
 
-valruntime ::= struct
+valruntime : struct
 {
 	cg : u64;
 };
 
-val ::= struct
+val : struct
 {
 	tag : valtag;
 	known : valknown;
@@ -70,7 +70,7 @@ val ::= struct
 
 // some functions return vals and take one of these
 // resolutions describe the nature of the evaluation of the val you want to take place
-val_resolution ::= enum
+val_resolution : enum
 {
 	// the val must be a type-only value and do not attempt to do any static computation/generate any runtime code.
 	.type_only := 0;
@@ -82,13 +82,13 @@ val_resolution ::= enum
 	.runtime_or_compile_time := 3;
 };
 
-val_is_valid ::= func(v : val -> bool)
+val_is_valid : func(v : val -> bool)
 {
 	return v.tag != (valtag.invalid);
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_integer ::= func(v : val, scope : lexical_scope?, source : ast? -> s64 weak)
+val_must_get_integer : func(v : val, scope : lexical_scope?, source : ast? -> s64 weak)
 {
 	// doing a ty_is_integral check here is *not* reasonable
 	// because enums for example also are integral literals under the hood, and its perfectly reasonable to request an enum value this way at compile time.
@@ -123,7 +123,7 @@ val_must_get_integer ::= func(v : val, scope : lexical_scope?, source : ast? -> 
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
-		putzstr(__enumname(v.tag));
+		putzstr(enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
 		putzstr(")");
@@ -152,7 +152,7 @@ val_must_get_integer ::= func(v : val, scope : lexical_scope?, source : ast? -> 
 };
 
 // this call is only valid on floats known at compile time.
-val_must_get_float ::= func(v : val, scope : lexical_scope?, source : ast? -> f64 weak)
+val_must_get_float : func(v : val, scope : lexical_scope?, source : ast? -> f64 weak)
 {
 	if(!ty_is_floating_point(v.type))
 	{
@@ -184,7 +184,7 @@ val_must_get_float ::= func(v : val, scope : lexical_scope?, source : ast? -> f6
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
-		putzstr(__enumname(v.tag));
+		putzstr(enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
 		putzstr(")");
@@ -213,7 +213,7 @@ val_must_get_float ::= func(v : val, scope : lexical_scope?, source : ast? -> f6
 };
 
 // this call is only valid on integers known at compile time.
-val_must_get_boolean ::= func(v : val, scope : lexical_scope?, source : ast? -> bool)
+val_must_get_boolean : func(v : val, scope : lexical_scope?, source : ast? -> bool)
 {
 	if(!ty_is_bool(v.type))
 	{
@@ -245,7 +245,7 @@ val_must_get_boolean ::= func(v : val, scope : lexical_scope?, source : ast? -> 
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
-		putzstr(__enumname(v.tag));
+		putzstr(enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
 		putzstr(")");
@@ -273,7 +273,7 @@ val_must_get_boolean ::= func(v : val, scope : lexical_scope?, source : ast? -> 
 	return v.compile_time.primitive.boolean;
 };
 
-val_must_get_string ::= func(v : val, scope : lexical_scope?, source : ast?, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)
+val_must_get_string : func(v : val, scope : lexical_scope?, source : ast?, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)
 {
 	if(!ty_is_string_literal(v.type))
 	{
@@ -305,7 +305,7 @@ val_must_get_string ::= func(v : val, scope : lexical_scope?, source : ast?, out
 	{
 		psyc_panic_begin(source->loc);
 		putzstr("expected value to statically known, but the value was unable to be determined at all (it was valtag.");
-		putzstr(__enumname(v.tag));
+		putzstr(enumname(v.tag));
 		putzstr(" (");
 		putsint(v.tag@s64);
 		putzstr(")");
@@ -331,11 +331,11 @@ val_must_get_string ::= func(v : val, scope : lexical_scope?, source : ast?, out
 		val_must_get_string(val_must_get_varref_initialiser(v, scope, source), scope, source, out_str, out_len);
 		return;
 	}
-	deref(out_str) = (v.compile_time.primitive.chars);
-	deref(out_len) = (v.compile_time.primitive.chars_len);
+	[out_str] = (v.compile_time.primitive.chars);
+	[out_len] = (v.compile_time.primitive.chars_len);
 };
 
-integer_as_val ::= func(n : s64 weak -> val)
+integer_as_val : func(n : s64 weak -> val)
 {
 	return val
 	{
@@ -361,7 +361,7 @@ integer_as_val ::= func(n : s64 weak -> val)
 	};
 };
 
-float_as_val ::= func(n : f64 weak -> val)
+float_as_val : func(n : f64 weak -> val)
 {
 	return val
 	{
@@ -387,7 +387,7 @@ float_as_val ::= func(n : f64 weak -> val)
 	};
 };
 
-string_as_val ::= func(chars : u8?, chars_len : u64 -> val)
+string_as_val : func(chars : u8?, chars_len : u64 -> val)
 {
 	return val
 	{
@@ -413,10 +413,10 @@ string_as_val ::= func(chars : u8?, chars_len : u64 -> val)
 	};
 };
 
-char_as_val ::= func(char : u8 -> val)
+char_as_val : func(char : u8 -> val)
 {
 	chardata : u8 mut? := arena_alloc(string_arena, 1);
-	deref(chardata # 0) = char;
+	[chardata # 0] = char;
 	return val
 	{
 		.tag := valtag.typed_value;
@@ -441,7 +441,7 @@ char_as_val ::= func(char : u8 -> val)
 	};
 };
 
-bool_as_val ::= func(b : bool -> val)
+bool_as_val : func(b : bool -> val)
 {
 	return val
 	{
@@ -467,7 +467,7 @@ bool_as_val ::= func(b : bool -> val)
 	};
 };
 
-literal_as_val ::= func(literal : ast_literal -> val)
+literal_as_val : func(literal : ast_literal -> val)
 {
 	if(literal.tag == (ast_literal_tag.integer))
 	{
@@ -479,7 +479,7 @@ literal_as_val ::= func(literal : ast_literal -> val)
 	}
 	if(literal.tag == (ast_literal_tag.char))
 	{
-		return char_as_val(deref(literal.chars # 0));
+		return char_as_val([literal.chars # 0]);
 	}
 	if(literal.tag == (ast_literal_tag.string))
 	{
@@ -493,7 +493,7 @@ literal_as_val ::= func(literal : ast_literal -> val)
 };
 
 // given a val that is a varref to some variable visible in 'scope', get the initialiser and assert that its statically known
-val_must_get_varref_initialiser ::= func(varref : val, scope : lexical_scope?, source : ast? -> val)
+val_must_get_varref_initialiser : func(varref : val, scope : lexical_scope?, source : ast? -> val)
 {
 	var ::= scope_find_variable(scope, varref.compile_time.varref_name, varref.compile_time.varref_name_len);
 	if(!ty_has_qual(var->type, tyqual.qual_static))
@@ -532,7 +532,7 @@ val_must_get_varref_initialiser ::= func(varref : val, scope : lexical_scope?, s
 	return var->compile_time_storage;
 };
 
-variable_as_val ::= func(var : variable?, source : ast? -> val)
+variable_as_val : func(var : variable?, source : ast? -> val)
 {
 	if(ty_has_qual(var->type, tyqual.qual_static))
 	{
@@ -570,7 +570,7 @@ variable_as_val ::= func(var : variable?, source : ast? -> val)
 	};
 };
 
-function_as_val ::= func(fn : function?, source : ast? -> val)
+function_as_val : func(fn : function?, source : ast? -> val)
 {
 	return val
 	{
@@ -596,7 +596,7 @@ function_as_val ::= func(fn : function?, source : ast? -> val)
 	};
 };
 
-assembly_as_val ::= func(as : assembly?, source : ast? -> val)
+assembly_as_val : func(as : assembly?, source : ast? -> val)
 {
 	return val
 	{
@@ -623,7 +623,7 @@ assembly_as_val ::= func(as : assembly?, source : ast? -> val)
 };
 
 // doesnt contain type. 
-builtin_as_val ::= func(b : builtin_entry? -> val)
+builtin_as_val : func(b : builtin_entry? -> val)
 {
 	return val
 	{
@@ -650,7 +650,7 @@ builtin_as_val ::= func(b : builtin_entry? -> val)
 };
 
 // get a statically-known reference to 'v'
-ref_as_val ::= func(v : val, source : ast? -> val)
+ref_as_val : func(v : val, source : ast? -> val)
 {
 	ret ::= val mut
 	{
@@ -670,15 +670,15 @@ ref_as_val ::= func(v : val, source : ast? -> val)
 			.builtinref_name_len := zero;
 			.varref_name := zero;
 			.varref_name_len := zero;
-			.valueref := arena_alloc(global_arena, __sizeof(val));
+			.valueref := arena_alloc(global_arena, sizeof val);
 		};
 		.runtime := zero;
 	};
-	deref(ret.compile_time.valueref@val mut?) = v;
+	[ret.compile_time.valueref@val mut?] = v;
 	return ret;
 };
 
-type_as_val ::= func(type : tyid -> val)
+type_as_val : func(type : tyid -> val)
 {
 	ret : val mut := zero;
 	ret.tag = (valtag.type_only);
@@ -687,7 +687,7 @@ type_as_val ::= func(type : tyid -> val)
 };
 
 // representation of just 'zero' as a val
-zero_val ::= func(-> val)
+zero_val : func(-> val)
 {
 	return val
 	{
@@ -713,13 +713,13 @@ zero_val ::= func(-> val)
 	};
 };
 
-val_is_zero_val ::= func(v : val -> bool)
+val_is_zero_val : func(v : val -> bool)
 {
 	return (v.tag == valtag.value_only) && (v.known == (valknown.compile_time)) && (v.compile_time.is_zero);
 };
 
 // representation of zero@to
-zero_as_val ::= func(to : tyid, source : ast? -> val)
+zero_as_val : func(to : tyid, source : ast? -> val)
 {
 	i : u64 mut;
 	ret ::= val mut
@@ -737,21 +737,21 @@ zero_as_val ::= func(to : tyid, source : ast? -> val)
 	{
 		// create all the members as zeros
 		ret.compile_time.members_count = (toty->strct.members_count);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
-		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
+		ret.compile_time.members = arena_alloc(global_arena, sizeof val * (ret.compile_time.members_count));
+		for(i = 0; i < (ret.compile_time.members_count); i = i + 1)
 		{
-			memty ::= deref(toty->strct.members # i);
-			deref(ret.compile_time.members@val mut? # i) = zero_as_val(memty, source);
+			memty ::= [toty->strct.members # i];
+			[ret.compile_time.members@val mut? # i] = zero_as_val(memty, source);
 		}
 	}
 	if(ty_is_arr(to))
 	{
 		// create all the elements as zeros
 		ret.compile_time.members_count = (toty->array_len);
-		ret.compile_time.members = arena_alloc(global_arena, __sizeof(val) * (ret.compile_time.members_count));
-		for(i = 0, i < (ret.compile_time.members_count), i = i + 1)
+		ret.compile_time.members = arena_alloc(global_arena, sizeof val * (ret.compile_time.members_count));
+		for(i = 0; i < (ret.compile_time.members_count); i = i + 1)
 		{
-			deref(ret.compile_time.members@val mut? # i) = zero_as_val(ty_underlying(to), source);
+			[ret.compile_time.members@val mut? # i] = zero_as_val(ty_underlying(to), source);
 		}
 	}
 	literal : ast_literal mut := zero;
@@ -802,7 +802,7 @@ zero_as_val ::= func(to : tyid, source : ast? -> val)
 	return ret;
 };
 
-val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
+val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
 {
 	retval : val mut;
 	// given any node, give me a value.
@@ -907,7 +907,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		if(resolution != (val_resolution.runtime_only) && ty_has_qual(var->type, tyqual.qual_static))
+		if((resolution != (val_resolution.runtime_only)) && ty_has_qual(var->type, tyqual.qual_static))
 		{
 			return s_decl(var, scope);
 		}
@@ -985,7 +985,7 @@ val_node ::= func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 };
 
 // get a value from a symbol reference.
-val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
+val_symbol : func(node : ast?, scope : lexical_scope?, resolution : val_resolution -> val)
 {
 	sym ::= node->symbol;
 	// could be:
@@ -1059,13 +1059,13 @@ val_symbol ::= func(node : ast?, scope : lexical_scope?, resolution : val_resolu
 	return zero;
 };
 
-val_ptr_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+val_ptr_field : func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	// todo: source should be the lhs node not the rhs one. any error message generated will be misleading.
 	return val_field(val_deref(lhs, resolution, scope, rhs_node), rhs_node, scope, resolution);
 };
 
-val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+val_field : func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	type ::= lhs.type;
 	// lhs must be a struct type
@@ -1124,7 +1124,7 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
-			entry_value_int ::= deref(ty_unwrap(type)->enm.entries # memidx);
+			entry_value_int ::= [ty_unwrap(type)->enm.entries # memidx];
 			retval = integer_as_val(entry_value_int);
 			retval.type = type;
 			if(resolution == (val_resolution.runtime_only))
@@ -1153,7 +1153,7 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		memty : tyid mut := deref(ty_unwrap(type)->strct.members # memidx);
+		memty : tyid mut := [ty_unwrap(type)->strct.members # memidx];
 		// let's do it at compile time!
 		// remember to maintain qualifiers
 		if(ty_has_qual(lhs.type, tyqual.qual_static))
@@ -1170,9 +1170,9 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 		}
 		
 		lhs_is_static_struct_literal ::= lhs.compile_time.members != zero;
-		if(lhs.known == (valknown.compile_time) && lhs_is_static_struct_literal && (resolution != (val_resolution.runtime_only)))
+		if((lhs.known == (valknown.compile_time)) && lhs_is_static_struct_literal && (resolution != (val_resolution.runtime_only)))
 		{
-			retval = deref(lhs.compile_time.members@val? # memidx);
+			retval = [lhs.compile_time.members@val? # memidx];
 			retval.type = memty;
 		}
 		// do it at runtime
@@ -1197,7 +1197,7 @@ val_field ::= func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resol
 	return zero;
 };
 
-val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_unop : func(op : ast_unop, v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(op == (ast_unop.reference))
 	{
@@ -1217,7 +1217,7 @@ val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : v
 	}
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of val_unop for val_unop.");
-	putzstr(__enumname(op));
+	putzstr(enumname(op));
 	putzstr(" (");
 	putsint(op@s64);
 	putzstr(")");
@@ -1229,7 +1229,7 @@ val_unop ::= func(op : ast_unop, v : val, scope : lexical_scope?, resolution : v
 	return zero;
 };
 
-val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_unop_ref : func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(resolution == (val_resolution.type_only))
 	{
@@ -1269,7 +1269,7 @@ val_unop_ref ::= func(v : val, scope : lexical_scope?, resolution : val_resoluti
 	return cg_ref(val_dynamic(v, scope, source), source);
 };
 
-val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_unop_minus : func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// should be a floating point or integral type
 	if((!ty_is_integral(v.type)) && (!ty_is_floating_point(v.type)))
@@ -1303,7 +1303,7 @@ val_unop_minus ::= func(v : val, scope : lexical_scope?, resolution : val_resolu
 	return cg_unop_minus(v, source);
 };
 
-val_unop_bitwise_invert ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_unop_bitwise_invert : func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// should be an integral type
 	if((!ty_is_integral(v.type)))
@@ -1337,7 +1337,7 @@ val_unop_bitwise_invert ::= func(v : val, scope : lexical_scope?, resolution : v
 	return cg_unop_bitwise_invert(v, source);
 };
 
-val_unop_logical_invert ::= func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_unop_logical_invert : func(v : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// should be a boolean type
 	if((!ty_is_bool(v.type)))
@@ -1371,7 +1371,7 @@ val_unop_logical_invert ::= func(v : val, scope : lexical_scope?, resolution : v
 	return cg_unop_logical_invert(v, source);
 };
 
-val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop : func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// in a biop, 'zero' is always handled the same way
 	if(val_is_zero_val(lhs) && val_is_zero_val(rhs))
@@ -1473,7 +1473,7 @@ val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexica
 	}
 	psyc_panic_begin(source->loc);
 	putzstr("control reached end of val_biop for val_biop.");
-	putzstr(__enumname(op));
+	putzstr(enumname(op));
 	putzstr(" (");
 	putsint(op@s64);
 	putzstr(")");
@@ -1485,7 +1485,7 @@ val_biop ::= func(op : ast_biop_op, lhs : val mut, rhs : val mut, scope : lexica
 	return zero;
 };
 
-val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_assign : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(lhs.hand != (valhand.lvalue))
 	{
@@ -1537,7 +1537,7 @@ val_biop_assign ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	return cg_biop_assign(val_dynamic(lhs, scope, source), val_dynamic(rhsconv, scope, source), source);
 };
 
-val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
+val_arith_biop : func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
 {
 	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
@@ -1551,7 +1551,7 @@ val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers :
 		{
 			psyc_error_begin(source->loc);
 			putzstr("cannot perform the '");
-			putzstr(__enumname(op));
+			putzstr(enumname(op));
 			putzstr("' operator on a ");
 			putchar('"');
 			putty(lhs.type);
@@ -1590,7 +1590,7 @@ val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers :
 	{
 		psyc_error_begin(source->loc);
 		putzstr("this '");
-		putzstr(__enumname(op));
+		putzstr(enumname(op));
 		putzstr("' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
@@ -1602,7 +1602,7 @@ val_arith_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers :
 };
 
 // a bit like val_arith_biop but always returns a boolean, not ty_arithmetic_of
-val_compare_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
+val_compare_biop : func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers : bool, scope : lexical_scope mut?, resolution : val_resolution, source : ast?, s : func(lhs : val, rhs : val, scope : lexical_scope mut?, source : ast? -> val), cg : func(lhs : val, rhs : val, source : ast? -> val) -> val)
 {
 	type : tyid mut := ty_of_arithmetic(lhs.type, rhs.type);
 	if(type == zero)
@@ -1616,7 +1616,7 @@ val_compare_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers
 		{
 			psyc_error_begin(source->loc);
 			putzstr("cannot perform the '");
-			putzstr(__enumname(op));
+			putzstr(enumname(op));
 			putzstr("' operator on a ");
 			putchar('"');
 			putty(lhs.type);
@@ -1659,7 +1659,7 @@ val_compare_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers
 	{
 		psyc_error_begin(source->loc);
 		putzstr("this '");
-		putzstr(__enumname(op));
+		putzstr(enumname(op));
 		putzstr("' binary operator is in a context that must be evaluated at compile-time, but both operands are not statically-known");
 		putchar(10);
 		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
@@ -1670,37 +1670,37 @@ val_compare_biop ::= func(op : ast_biop_op, lhs : val, rhs : val, allow_pointers
 	return cg(val_dynamic(lhsconv, scope, source), val_dynamic(rhsconv, scope, source), source);
 };
 
-val_biop_add ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_add : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.add, lhs, rhs, false, scope, resolution, source, s_biop_add, cg_biop_add);
 };
 
-val_biop_sub ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_sub : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.sub, lhs, rhs, false, scope, resolution, source, s_biop_sub, cg_biop_sub);
 };
 
-val_biop_mul ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_mul : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.mul, lhs, rhs, false, scope, resolution, source, s_biop_mul, cg_biop_mul);
 };
 
-val_biop_div ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_div : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.div, lhs, rhs, false, scope, resolution, source, s_biop_div, cg_biop_div);
 };
 
-val_biop_bitwise_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_bitwise_or : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.bitwise_or, lhs, rhs, true, scope, resolution, source, s_biop_bitwise_or, cg_biop_bitwise_or);
 };
 
-val_biop_bitwise_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_bitwise_and : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.bitwise_and, lhs, rhs, true, scope, resolution, source, s_biop_bitwise_and, cg_biop_bitwise_and);
 };
 
-val_biop_logical_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_logical_or : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(!(ty_is_bool(lhs.type) && ty_is_bool(rhs.type)))
 	{
@@ -1743,7 +1743,7 @@ val_biop_logical_or ::= func(lhs : val, rhs : val, scope : lexical_scope?, resol
 	return cg_biop_logical_or(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_biop_logical_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_logical_and : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(!(ty_is_bool(lhs.type) && ty_is_bool(rhs.type)))
 	{
@@ -1786,22 +1786,22 @@ val_biop_logical_and ::= func(lhs : val, rhs : val, scope : lexical_scope?, reso
 	return cg_biop_logical_and(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_biop_xor ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_xor : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.xor, lhs, rhs, false, scope, resolution, source, s_biop_xor, cg_biop_xor);
 };
 
-val_biop_bitshift_left ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_bitshift_left : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.bitshift_left, lhs, rhs, false, scope, resolution, source, s_biop_bitshift_left, cg_biop_bitshift_left);
 };
 
-val_biop_bitshift_right ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_bitshift_right : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_arith_biop(ast_biop_op.bitshift_right, lhs, rhs, false, scope, resolution, source, s_biop_bitshift_right, cg_biop_bitshift_right);
 };
 
-val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_modulo : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	if(ty_is_floating_point(ty_of_arithmetic(lhs.type, rhs.type)))
 	{
@@ -1815,7 +1815,7 @@ val_biop_modulo ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolutio
 	return val_arith_biop(ast_biop_op.modulo, lhs, rhs, false, scope, resolution, source, s_biop_modulo, cg_biop_modulo);
 };
 
-val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_at : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	// lhs must be either an array or pointer
 	if((!ty_is_ptr(lhs.type)) && (!ty_is_arr(lhs.type)))
@@ -1866,7 +1866,7 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 		if(ty_is_arr(lhs.type))
 		{
 			// cool just return the element.
-			return val_convert_to(deref(lhs.compile_time.members@val? # rhs_index), retty, scope, resolution, source);
+			return val_convert_to([lhs.compile_time.members@val? # rhs_index], retty, scope, resolution, source);
 		}
 		// todo: remove this panic when cg_sizeof is allowed to be done at compile time (requires cg_begin to be called ealier)
 		psyc_panic_begin(source->loc);
@@ -1887,37 +1887,37 @@ val_biop_at ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : 
 	return cg_biop_at(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);
 };
 
-val_biop_compare_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_equal : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_equal, cg_biop_compare_equal);
 };
 
-val_biop_compare_not_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_not_equal : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_not_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_not_equal, cg_biop_compare_not_equal);
 };
 
-val_biop_compare_less ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_less : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_less, lhs, rhs, true, scope, resolution, source, s_biop_compare_less, cg_biop_compare_less);
 };
 
-val_biop_compare_less_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_less_equal : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_less_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_less_equal, cg_biop_compare_less_equal);
 };
 
-val_biop_compare_greater ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_greater : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_greater, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater, cg_biop_compare_greater);
 };
 
-val_biop_compare_greater_equal ::= func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
+val_biop_compare_greater_equal : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : val_resolution, source : ast? -> val)
 {
 	return val_compare_biop(ast_biop_op.compare_greater_equal, lhs, rhs, true, scope, resolution, source, s_biop_compare_greater_equal, cg_biop_compare_greater_equal);
 };
 
-val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
+val_deref : func(v : val, resolution : val_resolution, scope : lexical_scope mut?, source : ast? -> val)
 {
 	if(!ty_is_ptr(v.type))
 	{
@@ -1936,14 +1936,14 @@ val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope m
 		return type_as_val(ty_underlying(v.type));
 	}
 	has_valueref ::= v.compile_time.valueref != zero;
-	if(v.known == (valknown.compile_time) && has_valueref)
+	if((v.known == (valknown.compile_time)) && has_valueref)
 	{
 		// compile time
 		// we COULD have a valueref
 		if(v.compile_time.valueref != zero)
 		{
 			// yep we have a direct match.
-			ret ::= deref(v.compile_time.valueref@val?);
+			ret ::= [v.compile_time.valueref@val?];
 			if(resolution == (val_resolution.runtime_only))
 			{
 				return val_dynamic(ret, scope, source);
@@ -1951,7 +1951,7 @@ val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope m
 			return ret;
 		}
 	}
-	if(resolution == (val_resolution.compile_time_only) && !has_valueref)
+	if((resolution == (val_resolution.compile_time_only)) && !has_valueref)
 	{
 		psyc_error_begin(source->loc);
 		putzstr("dereference operator exists in a context that must be evaluated at compile-time, but the dereference cannot be performed at compile-time unless it was created directly via 'ref something'");
@@ -1964,7 +1964,7 @@ val_deref ::= func(v : val, resolution : val_resolution, scope : lexical_scope m
 	return cg_deref(val_dynamic(v, scope, source), source);
 };
 
-val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+val_blkinit : func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	i : u64 mut;
 	// todo: array support
@@ -2003,7 +2003,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	// child 0 is the type
 	// child 1-N are the desiginits
 	init_count ::= node->children_count - 1;
-	for(i = 0, i < init_count, i = i + 1)
+	for(i = 0; i < init_count; i = i + 1)
 	{
 		child ::= ast_get_child(node, i + 1);
 		desig ::= child->desiginit;
@@ -2081,7 +2081,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 		// so if we're in a compile-time context and we see an initialiser value that is not compile time
 		// the whole thing needs to swap to being done at runtime.
 		// (but if we are type-only then we dont care about any of this anyway)
-		if(init_value.known != (valknown.compile_time) && (resolution != (val_resolution.type_only)))
+		if((init_value.known != (valknown.compile_time)) && (resolution != (val_resolution.type_only)))
 		{
 			if(resolution == (val_resolution.compile_time_only))
 			{
@@ -2097,7 +2097,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 		to : tyid mut;
 		if(ty_is_struct(inittype))
 		{
-			to = deref(ty_unwrap(inittype)->strct.members # memidx);
+			to = [ty_unwrap(inittype)->strct.members # memidx];
 		}
 		else
 		{
@@ -2133,7 +2133,7 @@ val_blkinit ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_r
 	return retval;
 };
 
-val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+val_call_builtin : func(b : builtin_entry, node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	// so we basically ignore the resolution provided to us till we have the result
 	// if the resolution provided is runtime_only then we simply val_dynamic the result.
@@ -2141,9 +2141,10 @@ val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope 
 	// get all the value params again but don't convert them immediately.
 	all_params_static : bool mut := true;
 	call_param_count ::= node->children_count - 1;
-	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
+	//vals : val mut? := __stack_push(sizeof val * call_param_count);
+	vals : val mut? := arena_alloc(global_arena, sizeof val * call_param_count);
 	i : u64 mut;
-	for(i = 0, i < call_param_count, i = i + 1)
+	for(i = 0; i < call_param_count; i = i + 1)
 	{
 		param_node ::= ast_get_child(node, i + 1);
 		param_val : val mut := val_node(param_node, scope, val_resolution.runtime_or_compile_time);
@@ -2151,7 +2152,7 @@ val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope 
 		{
 			all_params_static = false;
 		}
-		deref(vals # i) = param_val;
+		[vals # i] = param_val;
 	}
 
 	compile_time : bool mut := false;
@@ -2166,9 +2167,9 @@ val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope 
 
 	// now we can convert
 	fty ::= ty_unwrap(type)->fn;
-	for(i = 0, i < call_param_count, i = i + 1)
+	for(i = 0; i < call_param_count; i = i + 1)
 	{
-		deref(vals # i) = val_convert_to(deref(vals # i), deref(fty.param_types # i), scope, resolution, node);
+		[vals # i] = val_convert_to([vals # i], [fty.param_types # i], scope, resolution, node);
 	}
 
 	if(resolution == (val_resolution.type_only))
@@ -2188,7 +2189,7 @@ val_call_builtin ::= func(b : builtin_entry, node : ast?, scope : lexical_scope 
 	return b.invoke_runtime(vals, scope, node);
 };
 
-val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
+val_call : func(node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
 	callee_node ::= ast_get_child(node, 0);
 	callee_val ::= val_node(callee_node, scope, resolution);
@@ -2199,7 +2200,7 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 		// ah this is a builtin
 		// these are handled a bit more specially.
 		the_builtin ::= builtin_find(callee_val.compile_time.builtinref_name, callee_val.compile_time.builtinref_name_len);
-		return val_call_builtin(deref the_builtin, node, scope, resolution);
+		return val_call_builtin([the_builtin], node, scope, resolution);
 	}
 	// make sure the callee is callable
 	if(!ty_is_fn(callee_val.type))
@@ -2231,13 +2232,14 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 		psyc_exit_failure();
 	}
 	
-	vals : val mut? := __stack_push(__sizeof(val) * call_param_count);
+	//vals : val mut? := __stack_push(sizeof val * call_param_count);
+	vals : val mut? := arena_alloc(global_arena, sizeof val * call_param_count);
 	i : u64 mut;
-	for(i = 0, i < call_param_count, i = i + 1)
+	for(i = 0; i < call_param_count; i = i + 1)
 	{
 		param_node ::= ast_get_child(node, i + 1);
-		param_val ::= val_convert_to(val_node(param_node, scope, resolution), deref(fty.param_types # i), scope, resolution, param_node);
-		deref(vals # i) = param_val;
+		param_val ::= val_convert_to(val_node(param_node, scope, resolution), [fty.param_types # i], scope, resolution, param_node);
+		[vals # i] = param_val;
 	}
 
 	if(resolution == (val_resolution.type_only))
@@ -2248,7 +2250,7 @@ val_call ::= func(node : ast?, scope : lexical_scope mut?, resolution : val_reso
 	return cg_call(val_dynamic(callee_val, scope, node), vals, scope, node);
 };
 
-val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)
+val_convert_to : func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)
 {
 	if(resolution == (val_resolution.type_only))
 	{
@@ -2316,8 +2318,8 @@ val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resoluti
 	// so in that case a runtime requirement should be an error i.e "cannot perform this conversion at compile time"
 	// example: a function-type static value that is a function-reference under the hood
 	// e.g 'symbol expression 'foo' (where foo is a function)' but not '500@func(-> v0)'
-	v_is_static_function_reference ::= (ty_is_fn(v.type)) && (v.known == (valknown.compile_time) && (v.compile_time.funcref_name != zero));
-	if(v.known == (valknown.compile_time) && !v_is_static_function_reference)
+	v_is_static_function_reference ::= (ty_is_fn(v.type)) && ((v.known == (valknown.compile_time)) && (v.compile_time.funcref_name != zero));
+	if((v.known == (valknown.compile_time)) && !v_is_static_function_reference)
 	{
 		// compile time transformation
 		static_return ::= s_convert_to(v, to, scope, source);
@@ -2345,7 +2347,7 @@ val_convert_to ::= func(v : val, to : tyid, scope : lexical_scope mut?, resoluti
 	return cg_convert_to(val_dynamic(v, scope, source), to, source);
 };
 
-val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
+val_dynamic : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 {
 	// pass any val into here and the result is guaranteed to be a runtime-computed value
 	if(v.known == (valknown.runtime))
@@ -2393,7 +2395,7 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	}
 	if(v.compile_time.valueref != zero)
 	{
-		return cg_ref(val_dynamic(deref(v.compile_time.valueref@val?), scope, source), source);
+		return cg_ref(val_dynamic([v.compile_time.valueref@val?], scope, source), source);
 	}
 	if(v.compile_time.members != zero)
 	{
@@ -2438,7 +2440,7 @@ val_dynamic ::= func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 	return zero;
 };
 
-putval ::= func(v : val -> v0)
+putval : func(v : val -> v0)
 {
 	// val{
 	// .tag := ...
@@ -2448,7 +2450,7 @@ putval ::= func(v : val -> v0)
 	putchar(10);
 	putchar(9);
 	putzstr(".tag := valtag.");
-	putzstr(__enumname(v.tag));
+	putzstr(enumname(v.tag));
 	putzstr(" (");
 	putsint(v.tag@s64);
 	putzstr(")");
@@ -2456,7 +2458,7 @@ putval ::= func(v : val -> v0)
 	putchar(10);
 	putchar(9);
 	putzstr(".known := valknown.");
-	putzstr(__enumname(v.known));
+	putzstr(enumname(v.known));
 	putzstr(" (");
 	putsint(v.known@s64);
 	putzstr(")");
@@ -2464,7 +2466,7 @@ putval ::= func(v : val -> v0)
 	putchar(10);
 	putchar(9);
 	putzstr(".hand := valhand.");
-	putzstr(__enumname(v.hand));
+	putzstr(enumname(v.hand));
 	putzstr(" (");
 	putsint(v.hand@s64);
 	putzstr(")");
@@ -2533,7 +2535,7 @@ putval ::= func(v : val -> v0)
 		}
 	}
 	putzstr(" (");
-	putzstr(__enumname(v.compile_time.primitive.tag));
+	putzstr(enumname(v.compile_time.primitive.tag));
 	putzstr(" (");
 	putsint(v.compile_time.primitive.tag@s64);
 	putzstr("))");

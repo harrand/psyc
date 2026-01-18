@@ -1,5 +1,5 @@
 parse_state : parse_data mut := zero;
-parse_data ::= struct
+parse_data : struct
 {
 	src : u8?;
 	path : u8?;
@@ -15,7 +15,7 @@ parse_data ::= struct
 	root : ast mut;
 };
 
-token2ast ::= func(tok : token_data -> ast)
+token2ast : func(tok : token_data -> ast)
 {
 	l ::= tok.lexeme;
 	return ast
@@ -31,7 +31,7 @@ token2ast ::= func(tok : token_data -> ast)
 	};
 };
 
-parse_complete ::= func(-> bool)
+parse_complete : func(-> bool)
 {
 	// parsing is done if:
 	return
@@ -45,14 +45,14 @@ parse_complete ::= func(-> bool)
 		(parse_state.stash_cursor == 0);
 };
 
-parse_current_key ::= func(include_lookahead : bool, include_stash : bool -> grammar_entry)
+parse_current_key : func(include_lookahead : bool, include_stash : bool -> grammar_entry)
 {
 	key : grammar_entry mut := zero;
 
 	i : u64 mut;
-	for(i = 0, i < (parse_state.nodes_cursor), i = i + 1)
+	for(i = 0; i < (parse_state.nodes_cursor); i = i + 1)
 	{
-		deref(key.uids # i) = ast_uid(parse_state.nodes # i);
+		[key.uids # i] = ast_uid(parse_state.nodes # i);
 	}
 	if(include_lookahead)
 	{
@@ -63,14 +63,14 @@ parse_current_key ::= func(include_lookahead : bool, include_stash : bool -> gra
 		stashval : ast mut := zero;
 		if(parse_state.stash_cursor > 0)
 		{
-			stashval = deref(parse_state.stash # (parse_state.stash_cursor - 1));
+			stashval = [parse_state.stash # (parse_state.stash_cursor - 1)];
 		}
 		key.stash = ast_uid(ref(stashval));
 	}
 	return key;
 };
 
-parse_get_next_rule ::= func( -> grammar_rule)
+parse_get_next_rule : func( -> grammar_rule)
 {
 	rule : grammar_rule mut := zero;
 
@@ -95,7 +95,7 @@ parse_get_next_rule ::= func( -> grammar_rule)
 	return rule;
 };
 
-parse_would_be_valid_if_extra_semicol ::= func(-> bool)
+parse_would_be_valid_if_extra_semicol : func(-> bool)
 {
 	old_lookahead ::= parse_state.lookahead;
 	parse_state.lookahead = token2ast(token_data{.tok := lex_token.semicol;});
@@ -104,7 +104,7 @@ parse_would_be_valid_if_extra_semicol ::= func(-> bool)
 	return !would_be_invalid;
 };
 
-parse_print_state ::= func(-> v0)
+parse_print_state : func(-> v0)
 {
 	putchar(10);
 	psyc_colour_reset();
@@ -119,9 +119,9 @@ parse_print_state ::= func(-> v0)
 	putzstr("node stack:");
 	putchar(10);
 	i : u64 mut;
-	for(i = 0, i < (parse_state.nodes_cursor), i = i + 1)
+	for(i = 0; i < (parse_state.nodes_cursor); i = i + 1)
 	{
-		ast_verbose_print(deref(parse_state.nodes # i), 0);
+		ast_verbose_print([parse_state.nodes # i], 0);
 	}
 
 	if(parse_state.tokens_cursor <= (parse_state.tokens->tokens_size))
@@ -135,11 +135,11 @@ parse_print_state ::= func(-> v0)
 	{
 		putzstr("stashtop:");
 		putchar(10);
-		ast_verbose_print(deref(parse_state.stash # (parse_state.stash_cursor - 1)), 0);
+		ast_verbose_print([parse_state.stash # (parse_state.stash_cursor - 1)], 0);
 	}
 };
 
-parse_invalid_syntax_error ::= func(-> v0)
+parse_invalid_syntax_error : func(-> v0)
 {
 	front ::= parse_state.nodes # 0;
 	psyc_error_begin(front->loc);
@@ -157,9 +157,9 @@ parse_invalid_syntax_error ::= func(-> v0)
 	psyc_exit_failure();
 };
 
-parse_invoke_rule ::= func(rule : grammar_rule -> v0)
+parse_invoke_rule : func(myrule : grammar_rule -> v0)
 {
-	result ::= rule.fn(parse_state.nodes # 0, parse_state.nodes_cursor);
+	result ::= myrule.fn(parse_state.nodes # 0, parse_state.nodes_cursor);
 	if(result.tag == (rule.shift))
 	{
 		shift(result.shift);
@@ -195,7 +195,7 @@ parse_invoke_rule ::= func(rule : grammar_rule -> v0)
 	}
 };
 
-parse ::= func(file : source_file, lex : lex_state? -> ast)
+parse : func(file : source_file, lex : lex_state? -> ast)
 {
 	psyc_timed_begin(psyc_stage.parse);
 
@@ -214,7 +214,7 @@ parse ::= func(file : source_file, lex : lex_state? -> ast)
 	parse_state.path = (file.path);
 	parse_state.src = (file.src);
 	parse_state.tokens = lex;
-	parse_state.lookahead = token2ast(deref(lex->tokens # 0));
+	parse_state.lookahead = token2ast([lex->tokens # 0]);
 	parse_state.tokens_cursor = 1;
 	ast_reserve_children(ref(parse_state.root), 1024, global_arena);
 
@@ -236,7 +236,7 @@ parse ::= func(file : source_file, lex : lex_state? -> ast)
 	return parse_state.root;
 };
 
-shift ::= func(data : shift_data -> v0)
+shift : func(data : shift_data -> v0)
 {
 	n ::= data.count;
 	// remember cursor points to lookahead so the end case is actually 'tokens_cursor == tokens_size + 1'
@@ -246,24 +246,24 @@ shift ::= func(data : shift_data -> v0)
 	}
 
 	i : u64 mut;
-	if((parse_state.nodes_cursor + n) > (__sizeof(parse_state.nodes) / __sizeof(deref(parse_state.nodes # 0))))
+	if((parse_state.nodes_cursor + n) > (sizeof typeof(parse_state.nodes) / sizeof typeof([parse_state.nodes # 0])))
 	{
 		psyc_panic_begin(zero);
 		putzstr("shifted beyond parser node capacity. increase parse_data.nodes array size or shift less stuff.");
 		psyc_diag_end();
 		psyc_exit_failure();
 	}
-	for(i = 0, i < n, i = i + 1)
+	for(i = 0; i < n; i = i + 1)
 	{
 		// push current lookahead to the end of the list
-		deref(parse_state.nodes # (parse_state.nodes_cursor)) = (parse_state.lookahead);
+		[parse_state.nodes # (parse_state.nodes_cursor)] = (parse_state.lookahead);
 		parse_state.nodes_cursor = (parse_state.nodes_cursor + 1);
-		parse_state.lookahead = token2ast(deref(parse_state.tokens->tokens # (parse_state.tokens_cursor)));
+		parse_state.lookahead = token2ast([parse_state.tokens->tokens # (parse_state.tokens_cursor)]);
 		parse_state.tokens_cursor = (parse_state.tokens_cursor + 1);
 	}
 };
 
-reduce ::= func(data : reduce_data mut -> v0)
+reduce : func(data : reduce_data mut -> v0)
 {
 	num_new_nodes : u64 mut := 0;
 	if(data.new_node.tag != zero)
@@ -288,14 +288,14 @@ reduce ::= func(data : reduce_data mut -> v0)
 		posdiff ::= -nodes_diff;
 		ast_rotate_right(parse_state.nodes # 0, ref(parse_state.nodes_cursor), data.delete_offset, posdiff@u64);
 		// this will stomp over old data but thats okay
-		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), __sizeof(ast));
+		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), sizeof ast);
 	}
 	if(nodes_diff == 0)
 	{
 		// this is copying 1 node (if new_node.tag isnt zero)
 		if(num_new_nodes > 0)
 		{
-			memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), __sizeof(ast));
+			memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), sizeof ast);
 		}
 		// or no copying at all if there is no new node (in which case this memcopy does nothing)
 		
@@ -304,13 +304,13 @@ reduce ::= func(data : reduce_data mut -> v0)
 	{
 		// deleting more than we added
 		ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), data.delete_offset, nodes_diff@u64);
-		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), __sizeof(ast));
+		memcopy(parse_state.nodes # (data.delete_offset), ref(data.new_node), sizeof ast);
 	}
 };
 
-stash ::= func(-> v0)
+stash : func(-> v0)
 {
-	if(parse_state.stash_cursor >= (__sizeof(parse_state.stash) / __sizeof(deref(parse_state.stash # 0))))
+	if(parse_state.stash_cursor >= (sizeof typeof(parse_state.stash) / sizeof typeof([parse_state.stash # 0])))
 	{
 		psyc_panic_begin(zero);
 		putzstr("reached the absolute stash limit. submit a bug report or better yet jesus christ dont nest so much code!");
@@ -320,12 +320,12 @@ stash ::= func(-> v0)
 	stashptr ::= parse_state.stash # (parse_state.stash_cursor);
 	parse_state.stash_cursor = (parse_state.stash_cursor + 1);
 
-	deref(stashptr) = deref(parse_state.nodes # 0);
+	[stashptr] = [parse_state.nodes # 0];
 	// so im fairly certain the old impl was wrong - it was just copying the necessary node to the stash but not doing anything to the node array itself
 	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
-unstash ::= func(-> v0)
+unstash : func(-> v0)
 {
 	// get the thing at the top of the stash
 	if(parse_state.stash_cursor == 0)
@@ -338,11 +338,11 @@ unstash ::= func(-> v0)
 	parse_state.stash_cursor = (parse_state.stash_cursor - 1);
 	stashptr ::= parse_state.stash # (parse_state.stash_cursor);
 	ast_rotate_right(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
-	deref(parse_state.nodes # 0) = deref(stashptr);
-	deref(stashptr) = zero;
+	[parse_state.nodes # 0] = [stashptr];
+	[stashptr] = zero;
 };
 
-commit ::= func(-> v0)
+commit : func(-> v0)
 {
 	// get the first node
 	// if we have a stash, make it a child of stashtop
@@ -353,11 +353,11 @@ commit ::= func(-> v0)
 	{
 		parent = (parse_state.stash # (parse_state.stash_cursor - 1));
 	}
-	ast_add_child(parent, deref(parse_state.nodes # 0), global_arena);
+	ast_add_child(parent, [parse_state.nodes # 0], global_arena);
 	ast_rotate_left(parse_state.nodes # 0, ref(parse_state.nodes_cursor), 0, 1);
 };
 
-rule ::= enum
+rule : enum
 {
 	.shift := 1;
 	.reduce := 2;
@@ -366,12 +366,12 @@ rule ::= enum
 	.commit := 5;
 };
 
-shift_data ::= struct
+shift_data : struct
 {
 	count : u64;
 };
 
-reduce_data ::= struct
+reduce_data : struct
 {
 	delete_offset : u64;
 	delete_count : u64; // -1 means all
@@ -379,7 +379,7 @@ reduce_data ::= struct
 	new_node : ast;
 };
 
-reduce_delete_all_but_first ::= func(-> reduce_data)
+reduce_delete_all_but_first : func(-> reduce_data)
 {
 	return reduce_data
 	{
@@ -389,7 +389,7 @@ reduce_delete_all_but_first ::= func(-> reduce_data)
 	};
 };
 
-reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
+reduce_replace_all_with : func(new_node : ast -> reduce_data)
 {
 	return reduce_data
 	{
@@ -399,7 +399,7 @@ reduce_replace_all_with ::= func(new_node : ast -> reduce_data)
 	};
 };
 
-rule_result ::= struct
+rule_result : struct
 {
 	tag : rule;
 	shift : shift_data;

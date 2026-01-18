@@ -1,6 +1,6 @@
 di_cu : u64 mut := zero;
 
-dbg_setup ::= func(-> v0)
+dbg_setup : func(-> v0)
 {
 	prog.db = LLVMCreateDIBuilder(prog.cg);
 	dirname_len : u64 weak mut;
@@ -22,7 +22,7 @@ dbg_setup ::= func(-> v0)
 	program_scope()->db = di_cu;
 };
 
-dbg_create_file ::= func(scope : lexical_scope mut? -> v0)
+dbg_create_file : func(scope : lexical_scope mut? -> v0)
 {
 	dirname_len : u64 weak mut;
 	dirname : u8 mut? mut;
@@ -30,27 +30,27 @@ dbg_create_file ::= func(scope : lexical_scope mut? -> v0)
 	scope->db = LLVMDIBuilderCreateFile(prog.db, scope->name, scope->name_len, dirname, dirname_len - 1);	
 };
 
-dbg_end ::= func(-> v0)
+dbg_end : func(-> v0)
 {
 	if(!(prog.debug_symbols))
 	{
 		return;
 	}
-	static if(_win32)
+	static_if(_win32)
 	{
 		dbg_setup_codeview();
 	}
 	LLVMDIBuilderFinalize(prog.db);
 };
 
-dbg_setup_codeview ::= func(-> v0)
+dbg_setup_codeview : func(-> v0)
 {
 	val_metadata ::= LLVMValueAsMetadata(LLVMConstInt(LLVMInt32Type(), 1, true@s32));
 	codeview_str ::= "CodeView";
 	LLVMAddModuleFlag(prog.cg, 0, codeview_str, zstrlen(codeview_str), val_metadata);
 };
 
-dbg_declare_struct ::= func(type : tyid -> v0)
+dbg_declare_struct : func(type : tyid -> v0)
 {
 	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
 	t ::= ty_unwrap(type);
@@ -62,11 +62,11 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 	// if we detect one of the member pointees is ourselves we will populate recursive component and use that
 	recursive_component : u64 mut := 0;
 
-	db_mems : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (s->members_count));
+	db_mems : u64 mut? := arena_alloc(global_arena, sizeof u64 * (s->members_count));
 	i : u64 mut;
-	for(i = 0, i < (s->members_count), i = i + 1)
+	for(i = 0; i < (s->members_count); i = i + 1)
 	{
-		memty ::= deref(s->members # i);
+		memty ::= [s->members # i];
 		is_recursive_pointee : bool mut := false;
 		if(ty_is_ptr(memty))
 		{
@@ -83,7 +83,7 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 				DW_TAG_structure_type ::= 0x13;
 				recursive_component = LLVMDIBuilderCreateReplaceableCompositeType(prog.db, DW_TAG_structure_type, t->name, t->name_len, file_scope->db, file_scope->db, defined_at->loc.line@_, zero, total_size * 8, total_align * 8, zero, t->name, t->name_len);
 			}
-			deref(db_mems # i) = recursive_component;
+			[db_mems # i] = recursive_component;
 		}
 		else
 		{
@@ -92,7 +92,7 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 			offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
 			size ::= LLVMABISizeOfType(dlayout, cg);
 			align ::= LLVMABIAlignmentOfType(dlayout, cg);
-			deref(db_mems # i) = LLVMDIBuilderCreateMemberType(prog.db, file_scope->db, deref(s->member_names # i), deref(s->member_name_lens # i), file_scope->db, defined_at->loc.line@_, size * 8, align * 8, offset * 8, zero, di);
+			[db_mems # i] = LLVMDIBuilderCreateMemberType(prog.db, file_scope->db, [s->member_names # i], [s->member_name_lens # i], file_scope->db, defined_at->loc.line@_, size * 8, align * 8, offset * 8, zero, di);
 		}
 	}
 	total_size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
@@ -106,7 +106,7 @@ dbg_declare_struct ::= func(type : tyid -> v0)
 	}
 };
 
-dbg_declare_enum ::= func(type : tyid -> v0)
+dbg_declare_enum : func(type : tyid -> v0)
 {
 	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
 	t ::= ty_unwrap(type);
@@ -114,12 +114,12 @@ dbg_declare_enum ::= func(type : tyid -> v0)
 	defined_at ::= e->node;
 	file_scope ::= program_find_file_scope(defined_at->loc.file, zstrlen(defined_at->loc.file));
 
-	db_entries : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (e->entries_count));
+	db_entries : u64 mut? := arena_alloc(global_arena, sizeof u64 * (e->entries_count));
 	i : u64 mut;
-	for(i = 0, i < (e->entries_count), i = i + 1)
+	for(i = 0; i < (e->entries_count); i = i + 1)
 	{
-		entry_intval ::= deref(e->entries # i);
-		deref(db_entries # i) = LLVMDIBuilderCreateEnumerator(prog.db, deref(e->entry_names # i), deref(e->entry_name_lens # i), entry_intval@_, false@s32);
+		entry_intval ::= [e->entries # i];
+		[db_entries # i] = LLVMDIBuilderCreateEnumerator(prog.db, [e->entry_names # i], [e->entry_name_lens # i], entry_intval@_, false@s32);
 	}
 	size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
 	align ::= LLVMABIAlignmentOfType(dlayout, cg_type(type, true));
@@ -127,7 +127,7 @@ dbg_declare_enum ::= func(type : tyid -> v0)
 	e->db = LLVMDIBuilderCreateEnumerationType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, size * 8, align * 8, db_entries, e->entries_count@_, db_type(tyid.s64, true));
 };
 
-dbg_declare_function ::= func(fn : function mut? -> v0)
+dbg_declare_function : func(fn : function mut? -> v0)
 {
 	if(!(prog.debug_symbols))
 	{
@@ -144,7 +144,7 @@ dbg_declare_function ::= func(fn : function mut? -> v0)
 	dbg_action(fn->node, funcscope);
 };
 
-dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v0)
+dbg_declare_local_variable : func(var : variable mut?, fn : function mut? -> v0)
 {
 	if(!(prog.debug_symbols))
 	{
@@ -170,7 +170,7 @@ dbg_declare_local_variable ::= func(var : variable mut?, fn : function mut? -> v
 	}
 };
 
-dbg_declare_global_variable ::= func(var : variable mut? -> v0)
+dbg_declare_global_variable : func(var : variable mut? -> v0)
 {
 	defined_at ::= var->node;
 	scope : lexical_scope mut? mut := zero;
@@ -202,7 +202,7 @@ dbg_declare_global_variable ::= func(var : variable mut? -> v0)
 	}
 };
 
-dbg_declare_function_param ::= func(var : variable mut?, fn : function mut?, idx : u64 -> v0)
+dbg_declare_function_param : func(var : variable mut?, fn : function mut?, idx : u64 -> v0)
 {
 	if(!(prog.debug_symbols))
 	{
@@ -216,7 +216,7 @@ dbg_declare_function_param ::= func(var : variable mut?, fn : function mut?, idx
 	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
 };
 
-db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
+db_type : func(type : tyid, should_ref_function_type : bool -> u64)
 {
 	u ::= ty_unwrap(type);
 	// make the full name. argh.
@@ -310,12 +310,12 @@ db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 	}
 	if(ty_is_fn(type))
 	{
-		paramdata : u64 mut? := arena_alloc(global_arena, __sizeof(u64) * (u->fn.params_count + 1));
-		deref(paramdata # 0) = db_type(u->fn.return_type, true);
+		paramdata : u64 mut? := arena_alloc(global_arena, sizeof u64 * (u->fn.params_count + 1));
+		[paramdata # 0] = db_type(u->fn.return_type, true);
 		i : u64 mut;
-		for(i = 0, i < (u->fn.params_count), i = i + 1)
+		for(i = 0; i < (u->fn.params_count); i = i + 1)
 		{
-			deref(paramdata # (1 + i)) = db_type(deref(u->fn.param_types # i), true);
+			[paramdata # (1 + i)] = db_type([u->fn.param_types # i], true);
 		}
 		db_fnty ::= LLVMDIBuilderCreateSubroutineType(prog.db, program_scope()->db, paramdata, u->fn.params_count + 1, zero);
 		if(should_ref_function_type)
@@ -348,12 +348,12 @@ db_type ::= func(type : tyid, should_ref_function_type : bool -> u64)
 	return zero;
 };
 
-dbg_inaction ::= func(-> v0)
+dbg_inaction : func(-> v0)
 {
 	LLVMSetCurrentDebugLocation2(ir, zero);
 };
 
-dbg_action ::= func(node : ast?, scope : lexical_scope mut? -> v0)
+dbg_action : func(node : ast?, scope : lexical_scope mut? -> v0)
 {
 	if(!(prog.debug_symbols))
 	{

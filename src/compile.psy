@@ -1,5 +1,5 @@
 // if out_file_scope isnt zero, i will write out the new file scope i created for this file.
-add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope mut? mut? -> ast)
+add_source_file_inner : func(src : source_file, out_file_scope : lexical_scope mut? mut? -> ast)
 {
 	tokens ::= lex(src);
 	nodes ::= parse(src, ref tokens);
@@ -7,12 +7,12 @@ add_source_file_inner ::= func(src : source_file, out_file_scope : lexical_scope
 	file_scope ::= progwalk_file(ref nodes);
 	if(out_file_scope != zero)
 	{
-		deref(out_file_scope) = file_scope;
+		[out_file_scope] = file_scope;
 	}
 	return nodes;
 };
 
-add_source_data_to_compilation ::= func(path : u8?, src : u8? -> ast)
+add_source_data_to_compilation : func(path : u8?, src : u8? -> ast)
 {
 	file ::= source_file
 	{
@@ -24,13 +24,13 @@ add_source_data_to_compilation ::= func(path : u8?, src : u8? -> ast)
 	return ret;
 };
 
-add_source_file_to_compilation ::= func(path : u8? -> ast)
+add_source_file_to_compilation : func(path : u8? -> ast)
 {
 	src ::= fully_read_file(path);
 	return add_source_data_to_compilation(path, src.src);
 };
 
-add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u64 -> ast)
+add_build_file_to_compilation : func(path : u8?, config : u8?, config_len : u64 -> ast)
 {
 	src ::= fully_read_file(path);
 	program_push_source_file(src);
@@ -51,23 +51,23 @@ add_build_file_to_compilation ::= func(path : u8?, config : u8?, config_len : u6
 	return node;
 };
 
-add_entrypoint_to_compilation ::= func(-> v0)
+add_entrypoint_to_compilation : func(-> v0)
 {
 	// todo: entrypoint
-	static if(_win32)
+	static_if(_win32)
 	{
-		entrypoint_data ::= __embed("./runtime/entrypoint_win32_2.psy");
+		entrypoint_data ::= embed("./runtime/entrypoint_win32_2.psy");
 	}
 	else
 	{
-		entrypoint_data ::= __embed("./runtime/entrypoint_linux_2.psy");
+		entrypoint_data ::= embed("./runtime/entrypoint_linux_2.psy");
 	}
-	add_source_data_to_compilation("entrypoint.psy", sstr2zstr(entrypoint_data.data, entrypoint_data.size, global_arena));
+	add_source_data_to_compilation("entrypoint.psy", sstr2zstr(entrypoint_data.data, entrypoint_data.len, global_arena));
 };
 
 win32_node : ast mut := zero;
 linux_node : ast mut := zero;
-add_platform_to_compilation ::= func(-> v0)
+add_platform_to_compilation : func(-> v0)
 {
 	win32_node = ast
 	{
@@ -180,13 +180,13 @@ add_platform_to_compilation ::= func(-> v0)
 	s_decl(linux_var, program_scope());
 };
 
-add_preload_to_compilation ::= func(-> v0)
+add_preload_to_compilation : func(-> v0)
 {
-	preload_data ::= __embed("./runtime/preload2.psy");
-	add_source_data_to_compilation("preload.psy", sstr2zstr(preload_data.data, preload_data.size, global_arena));
+	preload_data ::= embed("./runtime/preload2.psy");
+	add_source_data_to_compilation("preload.psy", sstr2zstr(preload_data.data, preload_data.len, global_arena));
 };
 
-compile_program ::= func(-> v0)
+compile_program : func(-> v0)
 {
 	putzstr("Parsing...          ");
 	putchar(13);
@@ -206,9 +206,9 @@ compile_program ::= func(-> v0)
 
 	while(prog.queued_build_paths_count > 0)
 	{
-		cur_build_path ::= deref(prog.queued_build_paths # (prog.queued_build_paths_count - 1));
-		cur_build_len ::= deref(prog.queued_build_path_lens # (prog.queued_build_paths_count - 1));
-		cur_build_config ::= deref(prog.queued_build_path_configs # (prog.queued_build_paths_count - 1));
+		cur_build_path ::= [prog.queued_build_paths # (prog.queued_build_paths_count - 1)];
+		cur_build_len ::= [prog.queued_build_path_lens # (prog.queued_build_paths_count - 1)];
+		cur_build_config ::= [prog.queued_build_path_configs # (prog.queued_build_paths_count - 1)];
 		build_path_zstr ::= sstr2zstr(cur_build_path, cur_build_len, string_arena);
 
 		add_build_file_to_compilation(build_path_zstr, cur_build_config, zstrlen(cur_build_config));
@@ -218,8 +218,8 @@ compile_program ::= func(-> v0)
 
 	while(prog.queued_source_paths_count > 0)
 	{
-		cur_source_path ::= deref(prog.queued_source_paths # (prog.queued_source_paths_count - 1));
-		cur_source_len ::= deref(prog.queued_source_path_lens # (prog.queued_source_paths_count - 1));
+		cur_source_path ::= [prog.queued_source_paths # (prog.queued_source_paths_count - 1)];
+		cur_source_len ::= [prog.queued_source_path_lens # (prog.queued_source_paths_count - 1)];
 		src_path_zstr ::= sstr2zstr(cur_source_path, cur_source_len, string_arena);
 		add_source_file_to_compilation(src_path_zstr);
 		prog.queued_source_paths_count = (prog.queued_source_paths_count - 1);
@@ -248,12 +248,12 @@ compile_program ::= func(-> v0)
 	postbuild();
 };
 
-postbuild ::= func(-> v0)
+postbuild : func(-> v0)
 {
 };
 
 // read a file path. allocates for the whole file data. returns zero if file didnt exist.
-fully_read_file ::= func(path : u8? -> source_file)
+fully_read_file : func(path : u8? -> source_file)
 {
 	if(!file_exists(path))
 	{
@@ -284,7 +284,7 @@ fully_read_file ::= func(path : u8? -> source_file)
 	}
 	data : u8 mut? := arena_alloc(string_arena, len + 1);
 	file_read(path, data, len);
-	deref(data # len) = 0;
+	[data # len] = 0;
 	return source_file
 	{
 		.src := data;

@@ -1,11 +1,11 @@
-global_arena_val : arena mut;
-global_arena : arena mut? mut;
+global_arena_val : arena mut := zero;
+global_arena : arena mut? mut := zero;
 
 // stores strings
-string_arena_val : arena mut;
-string_arena : arena mut? mut;
+string_arena_val : arena mut := zero;
+string_arena : arena mut? mut := zero;
 
-setup_arenas ::= func( -> v0)
+setup_arenas : func( -> v0)
 {
 	global_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
 	global_arena = ref global_arena_val;
@@ -16,7 +16,7 @@ setup_arenas ::= func( -> v0)
 	arena_auto_align(string_arena, 1);
 };
 
-print_arena_summary ::= func(a : arena mut?, name : u8? -> v0)
+print_arena_summary : func(a : arena mut?, name : u8? -> v0)
 {
 	putzstr(name);
 	putzstr(" arena: ");
@@ -32,10 +32,10 @@ print_arena_summary ::= func(a : arena mut?, name : u8? -> v0)
 		putzstr("B)");
 	}
 	putchar(10);
-	deref(a) = zero;
+	[a] = zero;
 };
 
-destroy_arenas ::= func( -> v0)
+destroy_arenas : func( -> v0)
 {
 	print_arena_summary(global_arena, "global");
 	arena_destroy(global_arena);
@@ -44,12 +44,12 @@ destroy_arenas ::= func( -> v0)
 	arena_destroy(string_arena);
 };
 
-argc : s32 mut;
-argv : u8?? mut;
-envp : u8?? mut;
+argc : s32 mut := zero;
+argv : u8?? mut := zero;
+envp : u8?? mut := zero;
 prog : program mut := zero;
 
-main ::= func(pargs : program_args? -> s32)
+main : func(pargs : program_args? -> s32)
 {
 	argc = (pargs->argc);
 	argv = (pargs->argv);
@@ -72,7 +72,7 @@ main ::= func(pargs : program_args? -> s32)
 	//prog.on_add_source_file = add_source_file;
 	//prog.on_add_build_file = add_build_file;
 	args ::= ref(prog.compile_args);
-	deref(args) = psyc_parse_args(global_arena);
+	[args] = psyc_parse_args(global_arena);
 	prog.output.dir = (prog.compile_args.output_dir);
 
 	if(args->build_file == zero)
@@ -81,9 +81,9 @@ main ::= func(pargs : program_args? -> s32)
 		{
 			// probably just did psyc -v
 			// print the version and return silently
-			ver ::= __embed("./ver.txt");
+			ver ::= embed("./ver.txt");
 			putzstr("Psyc ");
-			putbytes(ver.data, ver.size);
+			putbytes(ver.data, ver.len);
 			putchar(10);
 			return 0;
 		}
@@ -114,31 +114,30 @@ main ::= func(pargs : program_args? -> s32)
 == debug ==
 {
 	_base();
-	set_optimization(0);
+	optimization(0);
 	debug_symbols(true);
-}
+};
 
 == release ==
 {
 	_base();
-	set_optimization(3);
+	optimization(3);
 	debug_symbols(false);
-}
+};
 
 == default ==
 {
-	warning("no build config specified, defaulting to 'debug'");
+	//warning("no build config specified, defaulting to 'debug'");
 	debug();
-}
+};
 
 == _base ==
 {
-	add_build_file("src/stdlib/stdlib.psy", "default");
+	add_build_file("src/stdlib/stdlib.psy");
 	add_source_directory("src");
 
-	set_executable("psyc_out");
-	set_thread_count(1);
-	static if(_win32)
+	executable("psyc_out");
+	static_if(_win32)
 	{
 		add_link_library("LLVM-C.lib");
 		add_link_library("lldCOFF.lib");
@@ -354,4 +353,4 @@ main ::= func(pargs : program_args? -> s32)
 		// llvm libs
 		add_link_library("$(llvm-config-16 --ldflags --libs --system-libs all) -lm -no-pie");
 	}
-}
+};

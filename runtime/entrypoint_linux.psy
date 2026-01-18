@@ -1,7 +1,7 @@
 
 _getstacktop ::= asm( -> u64 weak) := 'movq %rsp, $0' : '=r';
 
-_psy_linux_main ::= func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
+_psy_linux_main : func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
 {
 	main_params ::= program_args
 	{
@@ -35,14 +35,14 @@ _psy_linux_main ::= func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
 	_i_CLONE_SYSVSEM ::= 0x00040000;
 	cloneflags ::= _i_CLONE_VM | _i_CLONE_FS | _i_CLONE_FILES | _i_CLONE_SIGHAND | _i_CLONE_THREAD | _i_CLONE_SYSVSEM;
 
-	threads : u64 mut? := _syscall6(_i_sys_mmap, 0, __sizeof(u64) * (thread_count - 1), _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS, zero, zero);
+	threads : u64 mut? := _syscall6(_i_sys_mmap, 0, sizeof u64 * (thread_count - 1), _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS, zero, zero);
 	thread_stack_size ::= 4096 * 2000;
-	for(i = 0, i < (thread_count - 1), i = i + 1)
+	for(i = 0; i < (thread_count - 1); i = i + 1)
 	{
 		stack : u8? := _syscall6(_i_sys_mmap, 0, thread_stack_size, _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS | _i_MAP_STACK, zero, zero);
 		stacktop ::= stack # (thread_stack_size);
-		argsptr ::= (stack # (thread_stack_size - __sizeof(program_args)))@program_args mut?;
-		deref(argsptr) = program_args
+		argsptr ::= (stack # (thread_stack_size - sizeof typeof(program_args)))@program_args mut?;
+		[argsptr] = program_args
 		{
 			.argc := _i_argc;
 			.argv := _i_argv;
@@ -80,7 +80,7 @@ _psymain ::= asm(-> v0) :=
 	syscall
 ' : '~{rax},~{rdi},~{rsi},~{rdx},~{rcx},~{r11},~{memory}';
 
-_start ::= func( -> v0)
+_start : func( -> v0)
 {
 	iargc : s32 mut;
 	iargv : u8?? mut;

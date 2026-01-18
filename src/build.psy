@@ -1,5 +1,5 @@
 default_obj_extension ::= ".o";
-static if(_win32)
+static_if(_win32)
 {
 	default_exe_extension ::= ".exe";
 }
@@ -8,12 +8,12 @@ else
 	default_exe_extension ::= ".elf";
 }
 
-find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?, region_name_len : u64, source : ast? -> v0)
+find_and_invoke_build_region : func(scope : lexical_scope?, region_name : u8?, region_name_len : u64, source : ast? -> v0)
 {
 	the_region : region mut? mut := zero;
 
 	i : u64 mut;
-	for(i = 0, i < (scope->regions_count), i = i + 1)
+	for(i = 0; i < (scope->regions_count); i = i + 1)
 	{
 		cur_region ::= scope->regions # i;
 		if(cur_region->name_len == region_name_len)
@@ -48,21 +48,21 @@ find_and_invoke_build_region ::= func(scope : lexical_scope?, region_name : u8?,
 	invoke_build_region(the_region->node, scope);
 };
 
-invoke_node_children_as_build_instructions ::= func(node : ast?, begin : u64, end : u64, scope : lexical_scope? -> v0)
+invoke_node_children_as_build_instructions : func(node : ast?, begin : u64, end : u64, scope : lexical_scope? -> v0)
 {
 	i : u64 mut;
-	for(i = begin, i < end, i = i + 1)
+	for(i = begin; i < end; i = i + 1)
 	{
 		invoke_build_instruction(ast_get_child(node, i), scope);
 	}
 };
 
-invoke_build_region ::= func(node : ast?, scope : lexical_scope? -> v0)
+invoke_build_region : func(node : ast?, scope : lexical_scope? -> v0)
 {
 	invoke_node_children_as_build_instructions(node, 0, node->children_count, scope);
 };
 
-invoke_build_instruction ::= func(node : ast?, scope : lexical_scope? -> v0)
+invoke_build_instruction : func(node : ast?, scope : lexical_scope? -> v0)
 {
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
@@ -81,7 +81,7 @@ invoke_build_instruction ::= func(node : ast?, scope : lexical_scope? -> v0)
 		if(maybe_builtin != zero)
 		{
 			val_call(node, program_scope(), val_resolution.compile_time_only);
-			//builtin_invoke(deref(maybe_builtin), shit...);
+			//builtin_invoke([maybe_builtin], shit...);
 			//psyc_panic_begin(node->loc);
 			//putzstr("todo: builtin_invoke for build regions");
 			//psyc_diag_end();
