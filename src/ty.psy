@@ -460,6 +460,32 @@ ty_matches_ignore_quals : func(lhs : tyid, rhs : tyid -> bool)
 	return ty_clear_all_quals(lhs) == ty_clear_all_quals(rhs);
 };
 
+ty_contains_ignore_quals : func(lhs : tyid, rhs : tyid -> bool)
+{
+	if(ty_matches_ignore_quals(lhs, rhs))
+	{
+		return true;
+	}
+	if(ty_is_arr(lhs))
+	{
+		return ty_contains_ignore_quals(ty_underlying(lhs), rhs);
+	}
+	if(ty_is_struct(lhs))
+	{
+		i : u64 mut;
+		s ::= ty_unwrap(lhs)->strct;
+		for(i = 0; i < (s.members_count); i = i + 1)
+		{
+			memty ::= [s.members # i];
+			if(ty_contains_ignore_quals(memty, rhs))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
 ty_find_by_name : func(name : u8?, name_len : u64 -> tyid)
 {
 	return tybox_find(ref(prog.types), name, name_len);
