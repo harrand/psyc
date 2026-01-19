@@ -1803,3 +1803,15 @@ cg_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? 
 		.runtime := valruntime{.cg := alloca_str;};
 	};
 };
+
+debugtrap_fn : u64 mut := zero;
+cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	fn_type ::= LLVMFunctionType(LLVMVoidType(), zero, 0, false@s32);
+	if(debugtrap_fn == 0)
+	{
+		debugtrap_fn = LLVMAddFunction(prog.cg, "llvm.debugtrap", fn_type);
+	}
+	LLVMBuildCall2(ir, fn_type, debugtrap_fn, zero, 0, "");
+	return zero;
+};
