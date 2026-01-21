@@ -27,9 +27,10 @@ Take C, apply all of these opinionated changes, and you have Psy. I will now wri
 ## Table of Contents
 0. [Psy Programming Language](#intro)
 1. [Programs](#programs)
-2. [Functions](#functions)
+2. [Build Regions](#region)
+3. [Functions](#functions)
 	- [Defining basic functions](#basic_functions)
-3. [Types](#types)
+4. [Types](#types)
 	- [Type Qualifiers](#type_qualifiers)
 	- [Primitive Types](#type_prim)
 	- [Pointer Types](#type_ptr)
@@ -41,25 +42,23 @@ Take C, apply all of these opinionated changes, and you have Psy. I will now wri
 		- [Struct Conversions](#type_conv_struct)
 		- [Enum Conversions](#type_conv_enum)
    		- [Pointer Conversions](#type_conv_ptr)
+   		- [Qualifier Conversions](#type_conv_qual)
        	- [Type Casting](#type_cast)
-4. [Values](#values)
+5. [Values](#values)
    	- [Literal Values](#val_lit)
    	- [Named Values](#val_named)
-5. [Variables](#vars)
+	- [Zero Value](#val_zero)
+	- [Block Initialisers](#val_blkinit)
+6. [Variables](#vars)
    	- [Global Variables](#var_glob)
    	- [Local Variables](#var_loc)
-6. [Statements](#stmt)
-   	- [Declaration Statements](#stmt_decl)
-   	- [Expression Statements](#stmt_expr)
-   	- [Return Statements](#stmt_ret)
-   	- [Block Statements](#stmt_blk)
-   	- [Designator Statements](#stmt_decl)
-   	- [Metaregion Statements](#stmt_metaregion)
-6. [Build Regions](#region)
 
 # 1) Programs <a name="programs"></a>
 
-There is no concept of a "translation unit", "module", or "header" in Psy. There are source files and build files. A source file is simply a text file with the file extension '.psy'.
+There is no concept of a "translation unit", "module", or "header" in Psy. There are source files and build files.
+
+## Source Files <a name = "source_files"></a>
+A source file is simply a text file with the file extension '.psy'.
 
 ## Build Files <a name = "build_files"></a>
 
@@ -96,8 +95,8 @@ It's a bit jarring for people who are used to separating their build process fro
 ```
 == default ==
 {
-	set_executable("foo");
-	set_optimization(3);
+	executable("foo");
+	optimization(3);
 	prebuild_command("echo building foo...");
 	add_source_file("foo.psy");
 
@@ -129,9 +128,9 @@ Important Note: `add_source_file` will not invoke any build regions within the f
 
 Build regions can also invoke other build regions by calling them like a function (with no arguments).
 
-# 2) Functions <a name="functions"></a>
+# 3) Functions <a name="functions"></a>
 
-There's no novelty here. A function consists of:
+A function consists of:
 - A name.
 - Zero or more parameters (default parameter values are not supported), each with their own name and type.
 - A return type.
@@ -169,7 +168,7 @@ The following function doubles the value `5` and stores it in a new variable cal
 result ::= double_value(5);
 ```
 
-# 3) Types <a name="types"></a>
+# 4) Types <a name="types"></a>
 Psy is a statically-typed and strongly-typed language. This means that:
 - The type of all variables are known by the compiler at compile-time.
 - Typing rules are strict. Unlike languages such as C, implicit conversions are disabled by default - you must explicitly opt-into this.
@@ -216,7 +215,7 @@ main : func(-> s32)
 	my_value : s64 mut := 5;
 	my_pointer : s64 mut? := ref my_value;
 
-	// equivalent to '*my_pointer = 0' in C:
+	// equivalent to '*(my_pointer) = 0' in C:
 	[my_pointer] = 0;
 	return 0;
 };
@@ -304,18 +303,11 @@ myvar1 : my_struct mut;
 myvar1.my_data_member = 5;
 
 // block initialiser:
-myvar1 := my_struct
+myvar1 ::= my_struct
 {
 	.my_data_member := 5;
 };
 ```
-
-# 4) Block Initialisers
-Block initialisers are the best way to initialise multiple data members of a new struct/array value at once, as opposed to setting them manually. It is valid to not initialise every single data member of the struct. However, the data members you don't set in the struct initialiser will be of indeterminate value.
-
-Block initialisers start with the name of the type you are initialising, and then zero or more [designated initialisers](desiginit) surrounded by braces.
-
-TODO: more info
 
 ### Type Conversions <a name="type_conv"></a>
 Without the `weak` qualifier, no implicit type conversions are available to you.
@@ -337,8 +329,7 @@ If either type `A` or `B` are `weak`, then the following type conversion rules a
 - Enums do not convert to anything else.
 #### Pointer Conversions <a name="type_conv_ptr"></a>
 - Pointer types can be freely converted to other pointer types. There is no strict aliasing and no semantic object lifetimes, so type-punning via pointer conversions is allowed.
-
-### Qualifier Conversions
+### Qualifier Conversions <a name="type_conv_qual"></a>
 - You can add/remove `weak`ness in a conversion.
 - You can remove but not add `mut`ness in a conversion.
 - You can remove but not add `static`ness in a conversion.
@@ -377,8 +368,7 @@ my_int2 : s64 := my_int@_;
 // my_int remains a strongly-typed u64. the "apply weakness" idiom only affects the expression it is used in -- it doesnt magically change the type qualifier of the variable forevermore.
 ```
 
-
-# 4) Values <a name="values"></a>
+# 5) Values <a name="values"></a>
 Values represent a stored permutation of bits, representative of a given type. Unlike C, values of a given type have no such concept of a lifetime - only memory has a lifetime. For this reason, the notion of constructors and destructors do not exist in Psy. Values are used to initialise variables, re-assign mutable variables, and pass/return from functions.
 
 ## Literal Values <a name="val_lit"></a>
@@ -416,7 +406,7 @@ world_cpy : world static := new_world; // error: cannot convert world to world s
 ## Named Values <a name="val_named"></a>
 Named Values (otherwise known as lvalues in C) are values that have an identifiable location in memory. All variables are named values.
 
-## Zero Value
+## Zero Value <a name="val_zero"></a>
 The `zero` value is a special keyword that can be compared/assigned/initialised to any type. The zero value representation is comprised entirely of zeroes.
 
 You can use it to represent a "null pointer":
@@ -432,7 +422,12 @@ enum_value ::= zero@my_enum_type;
 
 I don't know why this isn't a default in all languages.
 
-# 5) Variables <a name="vars"></a>
+## Block Initialisers <a name="val_blkinit"></a>
+Block initialisers are the best way to initialise multiple data members of a new struct/array value at once, as opposed to setting them manually. It is valid to not initialise every single data member of the struct. However, the data members you don't set in the struct initialiser will be of indeterminate value.
+
+Block initialisers start with the name of the type you are initialising, and then zero or more [designated initialisers](desiginit) surrounded by braces.
+
+# 6) Variables <a name="vars"></a>
 Variables in Psy are very similar to other C-like languages. Variables are named values that are of a given type.
 
 ### Global Variables <a name="var_glob"></a>
