@@ -1815,3 +1815,18 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 	LLVMBuildCall2(ir, fn_type, debugtrap_fn, zero, 0, "");
 	return zero;
 };
+
+cg_builtin_alloca : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	paramval ::= [params # 0];
+	retty ::= ty_ptr(ty_set_qual(tyid.u8, tyqual.qual_mut), tyqual.qual_weak);
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.lvalue;
+		.type := retty;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := LLVMBuildArrayAlloca(ir, cg_type(retty, true), paramval.runtime.cg, "_psyc_builtin_alloca");};
+	};
+};
