@@ -49,6 +49,11 @@ program : struct
 	queued_build_paths_count : u64;
 	queued_build_paths_cap : u64;
 
+	queued_postbuild_commands : u8? mut?;
+	queued_postbuild_command_lens : u64 mut?;
+	queued_postbuild_commands_count : u64;
+	queued_postbuild_commands_cap : u64;
+
 	types : tybox;
 
 	debug_symbols : bool;
@@ -331,4 +336,32 @@ program_queue_build_file : func(path : u8?, path_len : u64, config : u8? -> v0)
 	[prog.queued_build_path_lens # (prog.queued_build_paths_count)] = path_len;
 	[prog.queued_build_path_configs # (prog.queued_build_paths_count)] = config;
 	prog.queued_build_paths_count = (prog.queued_build_paths_count + 1);
+};
+
+program_queue_postbuild_command : func(path : u8?, path_len : u64 -> v0)
+{
+	if(prog.queued_postbuild_commands == zero)
+	{
+		prog.queued_postbuild_commands_cap = 8;
+		prog.queued_postbuild_commands = arena_alloc(global_arena, prog.queued_postbuild_commands_cap * sizeof typeof([prog.queued_postbuild_commands]));
+		prog.queued_postbuild_command_lens = arena_alloc(global_arena, prog.queued_postbuild_commands_cap * sizeof typeof([prog.queued_postbuild_command_lens]));
+	}
+	while(prog.queued_postbuild_commands_count >= (prog.queued_postbuild_commands_cap))
+	{
+		oldcap ::= prog.queued_postbuild_commands_cap;
+		oldpathdata ::= prog.queued_postbuild_commands;
+		oldlendata ::= prog.queued_postbuild_command_lens;
+
+		prog.queued_postbuild_commands_cap = (prog.queued_postbuild_commands_cap * 2);
+		prog.queued_postbuild_commands = arena_alloc(global_arena, prog.queued_postbuild_commands_cap * sizeof typeof([prog.queued_postbuild_commands]));
+		prog.queued_postbuild_command_lens = arena_alloc(global_arena, prog.queued_postbuild_commands_cap * sizeof typeof([prog.queued_postbuild_command_lens]));
+		memcopy(prog.queued_postbuild_commands, oldpathdata, oldcap * sizeof typeof([prog.queued_postbuild_commands]));
+		memcopy(prog.queued_postbuild_command_lens, oldlendata, oldcap * sizeof typeof([prog.queued_postbuild_command_lens]));
+
+		arena_free(global_arena, oldpathdata, oldcap * sizeof typeof([prog.queued_postbuild_commands]));
+		arena_free(global_arena, oldlendata, oldcap * sizeof typeof([prog.queued_postbuild_command_lens]));
+	}
+	[prog.queued_postbuild_commands # (prog.queued_postbuild_commands_count)] = path;
+	[prog.queued_postbuild_command_lens # (prog.queued_postbuild_commands_count)] = path_len;
+	prog.queued_postbuild_commands_count = (prog.queued_postbuild_commands_count + 1);
 };

@@ -188,6 +188,10 @@ add_preload_to_compilation : func(-> v0)
 
 compile_program : func(-> v0)
 {
+	cwd : u8? mut;
+	cwdlen : u64 mut;
+	directory_get_cwd(ref cwd, ref cwdlen, global_arena);
+
 	putzstr("Parsing...          ");
 	putchar(13);
 	args ::= ref(prog.compile_args);
@@ -244,12 +248,23 @@ compile_program : func(-> v0)
 	putzstr("Link...             ");
 	putchar(13);
 	link();
+	directory_set_cwd(cwd, cwdlen, string_arena);
 
 	postbuild();
 };
 
 postbuild : func(-> v0)
 {
+	psyc_timed_begin(psyc_stage.build);
+	i : u64 mut;
+	for(i = 0; i < (prog.queued_postbuild_commands_count); i = i + 1)
+	{
+		cmd ::= [prog.queued_postbuild_commands # i];
+		len ::= [prog.queued_postbuild_command_lens # i];
+		sys_shell_command(cmd, len, envp, global_arena);
+	}
+	psyc_timed_end();
+
 };
 
 // read a file path. allocates for the whole file data. returns zero if file didnt exist.

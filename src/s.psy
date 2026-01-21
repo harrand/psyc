@@ -585,6 +585,28 @@ s_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
+s_builtin_prebuild_command : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	cmd_strdata : u8 mut? mut;
+	cmd_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref cmd_strdata, ref cmd_strlen);
+
+	sys_shell_command(cmd_strdata, cmd_strlen, envp, global_arena);
+
+	return zero;
+};
+
+s_builtin_postbuild_command : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	cmd_strdata : u8 mut? mut;
+	cmd_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref cmd_strdata, ref cmd_strlen);
+
+	program_queue_postbuild_command(cmd_strdata, cmd_strlen);
+
+	return zero;
+};
+
 s_builtin_assert : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	cond ::= val_must_get_boolean([params # 0], scope, source);
