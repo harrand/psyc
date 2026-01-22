@@ -2000,128 +2000,261 @@ val_blkinit : func(node : ast?, scope : lexical_scope mut?, resolution : val_res
 			retval = cg_empty_blkinit(inittype);
 		}
 	}
+	has_ellipse : bool mut := false;
+	ellipsis_val : val mut := zero;
+	init_count ::= node->children_count - 1;
+
+	inited_indices : u64 mut? := arena_alloc(global_arena, init_count * sizeof u64);
 	// child 0 is the type
 	// child 1-N are the desiginits
-	init_count ::= node->children_count - 1;
 	for(i = 0; i < init_count; i = i + 1)
 	{
 		child ::= ast_get_child(node, i + 1);
 		desig ::= child->desiginit;
 		init_value : val mut := val_node(ast_get_child(child, 0), scope, resolution);
-		memidx : u64 mut := 0;
-		if(ty_is_struct(inittype))
+		if(desig.descriptor == (ast_desiginit_descriptor.ellipsis))
 		{
-			if(desig.descriptor != (ast_desiginit_descriptor.symbol))
+			if(has_ellipse)
 			{
 				psyc_error_begin(child->loc);
-				putzstr("all initialisers for struct type ");
-				putchar('"');
-				putty(inittype);
-				putchar('"');
-				putzstr(" must be symbols (names), not integers");
-				putchar(10);
-				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+				putzstr("more than one ellipse within block initialiser");
 				psyc_diag_end();
 				psyc_exit_failure();
 			}
-			memidx = ty_get_struct_member_id(inittype, desig.symbol, desig.symbol_len);
-			if(memidx == -1)
-			{
-				psyc_error_begin(child->loc);
-				putzstr("type of block initialiser ");
-				putchar('"');
-				putty(inittype);
-				putchar('"');
-				putzstr(" had no such member named ");
-				putchar('"');
-				putbytes(desig.symbol, desig.symbol_len);
-				putchar('"');
-				putchar(10);
-				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
+			has_ellipse = true;
+			ellipsis_val = init_value;
 		}
 		else
 		{
-			if(desig.descriptor != (ast_desiginit_descriptor.integer))
+			memidx : u64 mut := 0;
+			if(ty_is_struct(inittype))
 			{
-				psyc_error_begin(child->loc);
-				putzstr("all initialisers for array type ");
-				putchar('"');
-				putty(inittype);
-				putchar('"');
-				putzstr(" must be integers, not symbols (names)");
-				putchar(10);
-				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-			memidx = (desig.integer@_);
-			if(memidx >= (ty_unwrap(inittype)->array_len))
-			{
-				psyc_error_begin(child->loc);
-				putzstr("initialiser index ");
-				putchar('"');
-				putuint(memidx);
-				putchar('"');
-				putzstr(" is out-of-range of array type ");
-				putchar('"');
-				putty(inittype);
-				putchar('"');
-				putchar(10);
-				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-		}
-		// also we have a thing to check
-		// an empty blkinit is obviously evaluable at compile time
-		// a non-empty blkinit is also evluable at compile time iff every initialiser is also evaluable at compile time
-		// so if we're in a compile-time context and we see an initialiser value that is not compile time
-		// the whole thing needs to swap to being done at runtime.
-		// (but if we are type-only then we dont care about any of this anyway)
-		if((init_value.known != (valknown.compile_time)) && (resolution != (val_resolution.type_only)))
-		{
-			if(resolution == (val_resolution.compile_time_only))
-			{
-				psyc_error_begin(child->loc);
-				putzstr("block initialiser is in a context such that it must be evaluated at compile-time, but the initialiser cannot be evaluted at compile-time");
-				putchar(10);
-				ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
-				psyc_diag_end();
-				psyc_exit_failure();
-			}
-			retval = val_dynamic(retval, scope, child);
-		}
-		to : tyid mut;
-		if(ty_is_struct(inittype))
-		{
-			to = [ty_unwrap(inittype)->strct.members # memidx];
-		}
-		else
-		{
-			to = ty_underlying(inittype);
-		}
-		if(val_is_zero_val(init_value))
-		{
-			init_value = zero_as_val(to, child);
-		}
-		else
-		{
-			init_value = val_convert_to(init_value, to, scope, resolution, child);
-		}
-
-		// add it to the blkinit
-		if(resolution != (val_resolution.type_only))
-		{
-			if(retval.known == (valknown.compile_time))
-			{
-				retval = s_blkinit_add(retval, memidx, init_value);
+				if(desig.descriptor != (ast_desiginit_descriptor.symbol))
+				{
+					psyc_error_begin(child->loc);
+					putzstr("all initialisers for struct type ");
+					putchar('"');
+					putty(inittype);
+					putchar('"');
+					putzstr(" must be symbols (names), not integers");
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				memidx = ty_get_struct_member_id(inittype, desig.symbol, desig.symbol_len);
+				if(memidx == -1)
+				{
+					psyc_error_begin(child->loc);
+					putzstr("type of block initialiser ");
+					putchar('"');
+					putty(inittype);
+					putchar('"');
+					putzstr(" had no such member named ");
+					putchar('"');
+					putbytes(desig.symbol, desig.symbol_len);
+					putchar('"');
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
 			}
 			else
 			{
-				retval = cg_blkinit_add(retval, memidx, val_dynamic(init_value, scope, child), scope, child);
+				if(desig.descriptor != (ast_desiginit_descriptor.integer))
+				{
+					psyc_error_begin(child->loc);
+					putzstr("all initialisers for array type ");
+					putchar('"');
+					putty(inittype);
+					putchar('"');
+					putzstr(" must be integers, not symbols (names)");
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				memidx = (desig.integer@_);
+				if(memidx >= (ty_unwrap(inittype)->array_len))
+				{
+					psyc_error_begin(child->loc);
+					putzstr("initialiser index ");
+					putchar('"');
+					putuint(memidx);
+					putchar('"');
+					putzstr(" is out-of-range of array type ");
+					putchar('"');
+					putty(inittype);
+					putchar('"');
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+			}
+			// also we have a thing to check
+			// an empty blkinit is obviously evaluable at compile time
+			// a non-empty blkinit is also evluable at compile time iff every initialiser is also evaluable at compile time
+			// so if we're in a compile-time context and we see an initialiser value that is not compile time
+			// the whole thing needs to swap to being done at runtime.
+			// (but if we are type-only then we dont care about any of this anyway)
+			if((init_value.known != (valknown.compile_time)) && (resolution != (val_resolution.type_only)))
+			{
+				if(resolution == (val_resolution.compile_time_only))
+				{
+					psyc_error_begin(child->loc);
+					putzstr("block initialiser is in a context such that it must be evaluated at compile-time, but the initialiser cannot be evaluted at compile-time");
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(child->loc.file)->src, child, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				retval = val_dynamic(retval, scope, child);
+			}
+			to : tyid mut;
+			if(ty_is_struct(inittype))
+			{
+				to = [ty_unwrap(inittype)->strct.members # memidx];
+			}
+			else
+			{
+				to = ty_underlying(inittype);
+			}
+			if(val_is_zero_val(init_value))
+			{
+				init_value = zero_as_val(to, child);
+			}
+			else
+			{
+				init_value = val_convert_to(init_value, to, scope, resolution, child);
+			}
+
+			[inited_indices # i] = memidx;
+			// add it to the blkinit
+			if(resolution != (val_resolution.type_only))
+			{
+				if(retval.known == (valknown.compile_time))
+				{
+					retval = s_blkinit_add(retval, memidx, init_value);
+				}
+				else
+				{
+					retval = cg_blkinit_add(retval, memidx, val_dynamic(init_value, scope, child), scope, child);
+				}
+			}
+		}
+	}
+
+	if(has_ellipse)
+	{
+		// then we go through all the bits that weren't touched
+		// we will take a quadratic code path here (boo)
+		memcount : u64 mut;
+		if(ty_is_struct(inittype))
+		{
+			memcount = ty_unwrap(inittype)->strct.members_count;
+		}
+		else
+		{
+			memcount = ty_unwrap(inittype)->array_len;
+		}
+		j : u64 mut;
+		for(i = 0; i < memcount; i = i + 1)
+		{
+			// have we inited this memidx already?
+			was_inited : bool mut := false;
+			for(j = 0; j < init_count; j = j + 1)
+			{
+				if([inited_indices # j] == i)
+				{
+					was_inited = true;
+				}
+			}
+
+			if(!was_inited)
+			{
+				// great!
+				// but this value could in theory force the whole thing to be runtime...
+				if((ellipsis_val.known != (valknown.compile_time)) && (resolution != (val_resolution.type_only)))
+				{
+					if(resolution == (val_resolution.compile_time_only))
+					{
+						psyc_error_begin(node->loc);
+						putzstr("block initialiser is in a context such that it must be evaluated at compile-time, but the ellipsis initialiser cannot be evaluted at compile-time");
+						putchar(10);
+						ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+						psyc_diag_end();
+						psyc_exit_failure();
+					}
+					retval = val_dynamic(retval, scope, node);
+				}
+				cur_ellipsis_val_conv : val mut;
+				if(ty_is_struct(inittype))
+				{
+					to = [ty_unwrap(inittype)->strct.members # i];
+				}
+				else
+				{
+					to = ty_underlying(inittype);
+				}
+				if(val_is_zero_val(ellipsis_val))
+				{
+					cur_ellipsis_val_conv = zero_as_val(to, node);
+				}
+				else
+				{
+					// ok look so if this conversion doesnt work then fine we get an error message 'cant convert this to type ...'
+					// but remember this ellipsis val could potentially be converted to tons of members
+					// particularly if its a struct
+					conv ::= ty_converts_to(ellipsis_val.type, to);
+					if((conv != (tyconv.yes)) && (conv != (tyconv.yes_needs_convert)))
+					{
+						// ok not convertible to
+						psyc_error_begin(node->loc);
+						putzstr("invalid ellipsis initialiser - value of type ");
+						putchar('"');
+						putty(ellipsis_val.type);
+						putchar('"');
+						putzstr(" is not convertible to ");
+						if(ty_is_struct(inittype))
+						{
+							// whats the name and type of this member?
+							putzstr("struct data member ");
+							putchar('"');
+							putbytes([ty_unwrap(inittype)->strct.member_names # i], [ty_unwrap(inittype)->strct.member_name_lens # i]);
+							putchar('"');
+							putzstr(" of type ");
+							putchar('"');
+							putty([ty_unwrap(inittype)->strct.members # i]);
+							putchar('"');
+						}
+						else
+						{
+							putzstr(" array element type ");
+							putchar('"');
+							putty(to);
+							putchar('"');
+						}
+						putchar(10);
+						ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+						psyc_diag_end();
+						psyc_exit_failure();
+					}
+					
+					cur_ellipsis_val_conv = val_convert_to(ellipsis_val, to, scope, resolution, node);
+				}
+				if(resolution != (val_resolution.type_only))
+				{
+					if(retval.known == (valknown.compile_time))
+					{
+						retval = s_blkinit_add(retval, i, cur_ellipsis_val_conv);
+					}
+					else
+					{
+						retval = cg_blkinit_add(retval, i, val_dynamic(cur_ellipsis_val_conv, scope, node), scope, node);
+					}
+				}
 			}
 		}
 	}
