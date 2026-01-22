@@ -161,12 +161,12 @@ dbg_declare_local_variable : func(var : variable mut?, fn : function mut? -> v0)
 	if(ty_has_qual(var->type, tyqual.qual_static))
 	{
 		// constexpr
-		LLVMDIBuilderInsertDbgValueAtEnd(prog.db, val_dynamic(var->compile_time_storage, fnscope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+		LLVMDIBuilderInsertDbgValueRecordAtEnd(prog.db, val_dynamic(var->compile_time_storage, fnscope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
 	}
 	else
 	{
 		// actual variable
-		LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+		LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
 	}
 };
 
@@ -194,7 +194,7 @@ dbg_declare_global_variable : func(var : variable mut? -> v0)
 		// todo: need to find a basicblock to put this into
 		// because its uhhh global this doest really make any sense
 		// so for now static globals arent visible :(((
-		//LLVMDIBuilderInsertDbgValueAtEnd(prog.db, val_dynamic(var->compile_time_storage, scope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+		//LLVMDIBuilderInsertDbgValueRecordAtEnd(prog.db, val_dynamic(var->compile_time_storage, scope, var->node).runtime.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
 	}
 	else
 	{
@@ -213,7 +213,7 @@ dbg_declare_function_param : func(var : variable mut?, fn : function mut?, idx :
 	parent_file ::= scope_get_parent_filescope(scope);
 	loc ::= ast_get_child(fn->node, 1 + idx)->loc;
 	divar ::= LLVMDIBuilderCreateParameterVariable(prog.db, scope->db, var->node->decl.name, var->node->decl.name_len, idx@_, parent_file->db, loc.line@_, db_type(var->type, true), zero, zero);
-	LLVMDIBuilderInsertDeclareAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
+	LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
 };
 
 db_type : func(type : tyid, should_ref_function_type : bool -> u64)
