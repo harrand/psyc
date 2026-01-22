@@ -1,0 +1,35 @@
+name: Fetch Latest Psyc
+description: Retrieve a 'psyc' executable from the latest release or pre-release
+
+runs:
+  using: "composite"
+  steps:
+    # Windows
+    - name: Install Psyc (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      env:
+        GH_TOKEN: ${{ env.GH_TOKEN }}
+      run: |
+		mkdir -p tools
+		gh release download latest \
+            --repo "$env:GITHUB_REPOSITORY" \
+            --pattern "psyc.exe" \
+            --dir tools
+		echo "$env:GITHUB_WORKSPACE/tools" >> $env:GITHUB_PATH
+		
+    # Linux
+    - name: Install Psyc (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GH_TOKEN }}
+      run: |
+		mkdir -p tools
+		gh release download latest \
+            --repo "$env:GITHUB_REPOSITORY" \
+            --pattern "psyc.elf" \
+            --dir tools
+		echo "$env:GITHUB_WORKSPACE/tools" >> $env:GITHUB_PATH
+        chmod +x $env:GITHUB_WORKSPACE/tools/psyc.elf
+
