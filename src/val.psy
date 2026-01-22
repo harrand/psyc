@@ -2274,13 +2274,17 @@ val_call_builtin : func(b : builtin_entry, node : ast?, scope : lexical_scope mu
 	// get all the value params again but don't convert them immediately.
 	all_params_static : bool mut := true;
 	call_param_count ::= node->children_count - 1;
-	//vals : val mut? := __stack_push(sizeof val * call_param_count);
-	vals : val mut? := arena_alloc(global_arena, sizeof val * call_param_count);
+	vals : val mut? := alloca(sizeof val * call_param_count);
 	i : u64 mut;
 	for(i = 0; i < call_param_count; i = i + 1)
 	{
 		param_node ::= ast_get_child(node, i + 1);
-		param_val : val mut := val_node(param_node, scope, val_resolution.runtime_or_compile_time);
+		param_res : val_resolution mut := val_resolution.runtime_or_compile_time;
+		if(resolution == (val_resolution.type_only))
+		{
+			param_res = val_resolution.type_only;
+		}
+		param_val : val mut := val_node(param_node, scope, param_res);
 		if(!ty_has_qual(param_val.type, tyqual.qual_static))
 		{
 			all_params_static = false;
@@ -2365,8 +2369,7 @@ val_call : func(node : ast?, scope : lexical_scope mut?, resolution : val_resolu
 		psyc_exit_failure();
 	}
 	
-	//vals : val mut? := __stack_push(sizeof val * call_param_count);
-	vals : val mut? := arena_alloc(global_arena, sizeof val * call_param_count);
+	vals : val mut? := alloca(sizeof val * call_param_count);
 	i : u64 mut;
 	for(i = 0; i < call_param_count; i = i + 1)
 	{

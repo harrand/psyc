@@ -1704,8 +1704,7 @@ cg_call : func(callee : val mut, params : val?, scope : lexical_scope mut?, sour
 	callee = cg_load_if_lvalue(callee);
 	i : u64 mut;
 	fty ::= ty_unwrap(callee.type)->fn;
-	//param_cgs : u64 mut? := __stack_push(fty.params_count * sizeof u64);
-	param_cgs : u64 mut? := arena_alloc(global_arena, fty.params_count * sizeof u64);
+	param_cgs : u64 mut? := alloca(fty.params_count * sizeof u64);
 	for(i = 0; i < (fty.params_count); i = i + 1)
 	{
 		[param_cgs # i] = (cg_load_if_lvalue(val_dynamic([params # i], scope, source)).runtime.cg);
@@ -1824,7 +1823,7 @@ cg_builtin_alloca : func(params : val?, scope : lexical_scope?, source : ast? ->
 	{
 		.tag := valtag.typed_value;
 		.known := valknown.runtime;
-		.hand := valhand.lvalue;
+		.hand := valhand.rvalue;
 		.type := retty;
 		.compile_time := zero;
 		.runtime := valruntime{.cg := LLVMBuildArrayAlloca(ir, cg_type(retty, true), paramval.runtime.cg, "_psyc_builtin_alloca");};
