@@ -218,7 +218,7 @@ program_current_source_file : func(-> source_file)
 	return [prog.source_files # (prog.source_files_count - 1)];
 };
 
-program_find_source_file : func(path : u8? -> source_file?)
+program_find_source_file_id : func(path : u8? -> u64)
 {
 	len ::= zstrlen(path);
 	i : u64 mut;
@@ -230,11 +230,21 @@ program_find_source_file : func(path : u8? -> source_file?)
 		{
 			if(streql_n(cur->path, path, len))
 			{
-				return cur;
+				return i;
 			}
 		}
 	}
-	return zero;
+	return ~0;
+};
+
+program_find_source_file : func(path : u8? -> source_file mut?)
+{
+	id ::= program_find_source_file_id(path);
+	if(id == ~0)
+	{
+		return zero;
+	}
+	return prog.source_files # id;
 };
 
 program_add_link_library : func(path : u8?, path_len : u64 -> v0)
