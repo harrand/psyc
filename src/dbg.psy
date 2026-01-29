@@ -57,53 +57,27 @@ dbg_declare_struct : func(type : tyid -> v0)
 	s ::= ref(t->strct);
 	defined_at ::= s->node;
 	file_scope ::= program_find_file_scope(defined_at->loc.file, zstrlen(defined_at->loc.file));
-	// if one of the members is a pointer of pointee type the same struct
-	// then with normal logic we recurse forever
-	// if we detect one of the member pointees is ourselves we will populate recursive component and use that
-	recursive_component : u64 mut := 0;
+
+	DW_TAG_structure_type ::= 0x13;
+	s->db = LLVMDIBuilderCreateReplaceableCompositeType(prog.db, DW_TAG_structure_type, t->name, t->name_len, file_scope->db, file_scope->db, defined_at->loc.line@_, zero, total_size * 8, total_align * 8, zero, t->name, t->name_len);
 
 	db_mems : u64 mut? := arena_alloc(global_arena, sizeof u64 * (s->members_count));
 	i : u64 mut;
 	for(i = 0; i < (s->members_count); i = i + 1)
 	{
 		memty ::= [s->members # i];
-		is_recursive_pointee : bool mut := false;
-		if(ty_is_ptr(memty))
-		{
-			if(ty_contains_ignore_quals(ty_underlying(memty), type))
-			{
-				is_recursive_pointee = true;
-			}
-		}
-		if(is_recursive_pointee)
-		{
-			// ah make a recursive version of ourselves
-			if(recursive_component == zero)
-			{
-				DW_TAG_structure_type ::= 0x13;
-				recursive_component = LLVMDIBuilderCreateReplaceableCompositeType(prog.db, DW_TAG_structure_type, t->name, t->name_len, file_scope->db, file_scope->db, defined_at->loc.line@_, zero, total_size * 8, total_align * 8, zero, t->name, t->name_len);
-			}
-			[db_mems # i] = recursive_component;
-		}
-		else
-		{
-			cg ::= cg_type(memty, true);
-			di ::= db_type(memty, true);
-			offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
-			size ::= LLVMABISizeOfType(dlayout, cg);
-			align ::= LLVMABIAlignmentOfType(dlayout, cg);
-			[db_mems # i] = LLVMDIBuilderCreateMemberType(prog.db, file_scope->db, [s->member_names # i], [s->member_name_lens # i], file_scope->db, defined_at->loc.line@_, size * 8, align * 8, offset * 8, zero, di);
-		}
+		cg ::= cg_type(memty, true);
+		di ::= db_type(memty, true);
+		offset ::= LLVMOffsetOfElement(dlayout, s->cg, i@_);
+		size ::= LLVMABISizeOfType(dlayout, cg);
+		align ::= LLVMABIAlignmentOfType(dlayout, cg);
+		[db_mems # i] = LLVMDIBuilderCreateMemberType(prog.db, file_scope->db, [s->member_names # i], [s->member_name_lens # i], file_scope->db, defined_at->loc.line@_, size * 8, align * 8, offset * 8, zero, di);
 	}
 	total_size ::= LLVMABISizeOfType(dlayout, cg_type(type, true));
 	total_align ::= LLVMABIAlignmentOfType(dlayout, cg_type(type, true));
-	s->db = LLVMDIBuilderCreateStructType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, total_size * 8, total_align * 8, zero, zero, db_mems, s->members_count@_, zero, zero, t->name, t->name_len);
-	if(recursive_component != zero)
-	{
-		// do the replacement
-		//LLVMDIBuilderReplaceTemporary(prog.db, recursive_component, s->db);
-		LLVMMetadataReplaceAllUsesWith(recursive_component, s->db);
-	}
+	final_db ::= LLVMDIBuilderCreateStructType(prog.db, file_scope->db, t->name, t->name_len, file_scope->db, defined_at->loc.line@_, total_size * 8, total_align * 8, zero, zero, db_mems, s->members_count@_, zero, zero, t->name, t->name_len);
+	LLVMMetadataReplaceAllUsesWith(s->db, final_db);
+	s->db = final_db;
 };
 
 dbg_declare_enum : func(type : tyid -> v0)
