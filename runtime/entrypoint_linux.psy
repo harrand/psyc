@@ -1,5 +1,7 @@
-
-_getstacktop ::= asm( -> u64 weak) := 'movq %rsp, $0' : '=r';
+getstacktop : asm("=r" -> u64 weak)
+{
+	movq %rsp, $0
+};
 
 _psy_linux_main : func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
 {
@@ -8,77 +10,24 @@ _psy_linux_main : func(_i_argc : s32, _i_argv : u8??, _i_envp : u8?? -> s32)
 		.argc := _i_argc;
 		.argv := _i_argv;
 		.envp := _i_envp;
-		.thread_id := 0;
 	};
-	thread_count ::= program_thread_count();
-	if(thread_count <= 1)
-	{
-		// dodgy thread count or we're singlethreaded. just run main now
-		return main(ref main_params)@_;
-	}
-	// call main with multiple threads
-	// and do some basic sync
-	i : u32 mut;
-	_i_sys_mmap ::= 9;
-	_i_sys_clone ::= 56;
-	_i_PROT_READ ::= 0x01;
-	_i_PROT_WRITE ::= 0x02;
-	_i_MAP_PRIVATE ::= 0x02;
-	_i_MAP_ANONYMOUS ::= 0x20;
-	_i_MAP_STACK ::= 0x20000;
-
-	_i_CLONE_VM ::= 0x00000100;
-	_i_CLONE_FS ::= 0x00000200;
-	_i_CLONE_FILES ::= 0x00000400;
-	_i_CLONE_SIGHAND ::= 0x00000800;
-	_i_CLONE_THREAD ::= 0x00010000;
-	_i_CLONE_SYSVSEM ::= 0x00040000;
-	cloneflags ::= _i_CLONE_VM | _i_CLONE_FS | _i_CLONE_FILES | _i_CLONE_SIGHAND | _i_CLONE_THREAD | _i_CLONE_SYSVSEM;
-
-	threads : u64 mut? := _syscall6(_i_sys_mmap, 0, sizeof u64 * (thread_count - 1), _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS, zero, zero);
-	thread_stack_size ::= 4096 * 2000;
-	for(i = 0; i < (thread_count - 1); i = i + 1)
-	{
-		stack : u8? := _syscall6(_i_sys_mmap, 0, thread_stack_size, _i_PROT_READ | _i_PROT_WRITE, _i_MAP_PRIVATE | _i_MAP_ANONYMOUS | _i_MAP_STACK, zero, zero);
-		stacktop ::= stack # (thread_stack_size);
-		argsptr ::= (stack # (thread_stack_size - sizeof typeof(program_args)))@program_args mut?;
-		[argsptr] = program_args
-		{
-			.argc := _i_argc;
-			.argv := _i_argv;
-			.envp := _i_envp;
-			.thread_id := i + 1;
-		};
-		cloneret ::= _syscall6(_i_sys_clone, cloneflags, argsptr, thread_stack_size, zero, zero, zero);
-		if(cloneret == 0)
-		{
-			// child
-			thread_args ::= _getstacktop()@program_args?;
-			_i_sys_exit ::= 60;
-			thread_exit_code ::= main(thread_args)@_;
-			_syscall1(_i_sys_exit, thread_exit_code);
-		}
-	}
-	main_ret : u64 mut weak := main(ref main_params);
-	// todo: wait
-	// note: no exit code handling of threads because on linux threads uh apparantly dont have one
-	return main_ret;
+	return main(ref main_params)@_;
 };
 
-_psymain ::= asm(-> v0) :=
-'
-	mov (%rsp), %rdi
-	lea 8(%rsp), %rsi
-	mov (%rsp), %rax
-	lea 1(%rax), %rax
-	shl $$3, %rax
-	add %rsi, %rax
-	mov %rax, %rdx
-	call _psy_linux_main
-	mov %eax, %edi
-	mov $$60, %rax
-	syscall
-' : '~{rax},~{rdi},~{rsi},~{rdx},~{rcx},~{r11},~{memory}';
+_psymain : asm("~{rax},~{rdi},~{rdx},~{rcx},~{r11},~{memory}" -> v0)
+{
+    mov rdi, [rsp]
+    lea rsi, [rsp + 8]
+    mov rax, [rsp]
+    lea rax, [rax + 1]
+    shl rax, 3
+    add rax, rsi
+    mov rdx, rax
+    call _psy_linux_main
+    mov edi, eax
+    mov rax, 60
+    syscall
+};
 
 _start : func( -> v0)
 {
