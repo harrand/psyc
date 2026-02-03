@@ -2360,7 +2360,9 @@ val_convert_to : func(v : val, to : tyid, scope : lexical_scope mut?, resolution
 	// example: a function-type static value that is a function-reference under the hood
 	// e.g 'symbol expression 'foo' (where foo is a function)' but not '500@func(-> v0)'
 	v_is_static_function_reference ::= (ty_is_fn(v.type)) && ((v.known == (valknown.compile_time)) && (v.compile_time.funcref_name != zero));
-	if((v.known == (valknown.compile_time)) && !v_is_static_function_reference)
+	v_is_string_literal ::= v.type == tyid_string_literal();
+	v_is_string_literal_convert_to_something_else ::= v_is_string_literal && !ty_matches_ignore_quals(v.type, to) && (resolution != (val_resolution.compile_time_only));
+	if((v.known == (valknown.compile_time)) && !v_is_static_function_reference && !v_is_string_literal_convert_to_something_else)
 	{
 		// compile time transformation
 		static_return ::= s_convert_to(v, to, scope, source);
