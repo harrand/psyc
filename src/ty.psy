@@ -917,9 +917,23 @@ ty_typename_node : func(node : ast?, scope : lexical_scope? -> tyid)
 {
 	// very specifically only for nodes of ast_tag.typename;
 	typename ::= node->typename;
+	retty : tyid mut;
 	if(typename.descriptor == (ast_typename_descriptor.base))
 	{
-		return ty_set_qual(ty_find_by_name(typename.basename, typename.basename_len), typename.quals);
+		retty = ty_find_by_name(typename.basename, typename.basename_len);
+		if(retty == zero)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("unknown typename ");
+			putchar('"');
+			putbytes(typename.basename, typename.basename_len);
+			putchar('"');
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		return ty_set_qual(retty, typename.quals);
 	}
 	if(typename.descriptor == (ast_typename_descriptor.array))
 	{
@@ -937,7 +951,7 @@ ty_typename_node : func(node : ast?, scope : lexical_scope? -> tyid)
 		// param nodes are 0-(n-1)
 		// ret node is n-1
 		retty_typename_node ::= ast_get_child(node, node->children_count - 1);
-		retty ::= ty_typename_node(retty_typename_node, scope);
+		retty = ty_typename_node(retty_typename_node, scope);
 		params_count ::= node->children_count - 1;
 		fn_params : tyid mut? := arena_alloc(global_arena, sizeof typeof(tyid) * params_count);
 		i : u64 mut;
