@@ -427,6 +427,50 @@ qual_str_mut ::= " mut";
 qual_str_weak ::= " weak";
 qual_str_static ::= " static";
 
+sputty : func(id : tyid, out_size : u64 mut?, buffer : u8 mut? -> v0)
+{
+	tydata ::= tybox_at(ref(prog.types), ty_clear_all_quals(id));
+	size : u64 mut := tydata->name_len;
+	if(ty_has_qual(id, tyqual.qual_mut))
+	{
+		size = size + zstrlen(qual_str_mut);
+	}
+	if(ty_has_qual(id, tyqual.qual_weak))
+	{
+		size = size + zstrlen(qual_str_weak);
+	}
+	if(ty_has_qual(id, tyqual.qual_static))
+	{
+		size = size + zstrlen(qual_str_static);
+	}
+	if(out_size != zero)
+	{
+		// if out_size is not nullptr write out the required buffer size
+		[out_size] = size;
+	}
+	if(buffer != zero)
+	{
+		// assume its large enough for the whole thing
+		offset : u64 mut := tydata->name_len;
+		memcopy(buffer # 0, tydata->name, offset);
+		if(ty_has_qual(id, tyqual.qual_mut))
+		{
+			memcopy(buffer # offset, qual_str_mut, zstrlen(qual_str_mut));
+			offset = offset + zstrlen(qual_str_mut);
+		}
+		if(ty_has_qual(id, tyqual.qual_weak))
+		{
+			memcopy(buffer # offset, qual_str_weak, zstrlen(qual_str_weak));
+			offset = offset + zstrlen(qual_str_weak);
+		}
+		if(ty_has_qual(id, tyqual.qual_static))
+		{
+			memcopy(buffer # offset, qual_str_static, zstrlen(qual_str_static));
+			offset = offset + zstrlen(qual_str_static);
+		}
+	}
+};
+
 // print out the name of a type.
 putty : func(id : tyid -> v0)
 {

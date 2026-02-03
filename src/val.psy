@@ -800,6 +800,25 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 		}
 		return countof_val;
 	}
+	if(ast_is_expr(node, ast_expr_tag.nameof_t))
+	{
+		nameof_type ::= ty_typename_node(ast_get_child(node, 0), scope);
+		if(resolution == (val_resolution.type_only))
+		{
+			return type_as_val(tyid_string_literal());
+		}
+		// get the name
+		nameof_buffer_count : u64 mut;
+		sputty(nameof_type, ref nameof_buffer_count, zero);
+		nameof_buffer : u8 mut? := arena_alloc(global_arena, nameof_buffer_count);
+		sputty(nameof_type, zero, nameof_buffer);
+		nameof_val ::= string_as_val(nameof_buffer, nameof_buffer_count);
+		if(resolution == (val_resolution.runtime_only))
+		{
+			return val_dynamic(nameof_val, scope, node);
+		}
+		return nameof_val;
+	}
 	if(ast_is_stmt(node, ast_stmt_tag.decl))
 	{
 		var ::= scope_find_variable(scope, node->decl.name, node->decl.name_len);
