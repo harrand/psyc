@@ -264,6 +264,8 @@ cg_func_def : func(fn : function mut? -> v0)
 	{
 		return;
 	}
+	// are we already in a function?
+	already_blk ::= LLVMGetInsertBlock(ir);
 	// todo: function implementation contents
 	llvm_add_function_string_attribute(fn, "no-stack-arg-probe");
 	llvm_add_function_string_attribute(fn, "no-builtin-memset");
@@ -308,7 +310,14 @@ cg_func_def : func(fn : function mut? -> v0)
 		}
 	}
 
-	LLVMClearInsertionPosition(ir);
+	if(already_blk == zero)
+	{
+		LLVMClearInsertionPosition(ir);
+	}
+	else
+	{
+		LLVMPositionBuilderAtEnd(ir, already_blk);
+	}
 };
 
 cg_global_variable : func(var : variable mut? -> v0)

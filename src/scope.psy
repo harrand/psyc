@@ -172,7 +172,7 @@ scope_find_function : func(scope : lexical_scope mut?, name : u8?, name_len : u6
 	return zero;
 };
 
-scope_add_function : func(scope : lexical_scope mut? mut, fn : function -> v0)
+scope_add_function : func(scope : lexical_scope mut? mut, fn : function -> function mut?)
 {
 	// naughty secret here:
 	// if the scope is a file scope
@@ -197,8 +197,10 @@ scope_add_function : func(scope : lexical_scope mut? mut, fn : function -> v0)
 		scope->functions = arena_alloc(global_arena, scope->functions_cap * sizeof typeof([scope->functions]));
 		memcopy(scope->functions, olddata, oldcap * sizeof typeof([scope->functions]));
 	}
-	[scope->functions # (scope->functions_count)] = fn;
+	ptr ::= scope->functions # (scope->functions_count);
+	[ptr] = fn;
 	scope->functions_count = (scope->functions_count + 1);
+	return ptr;
 };
 
 scope_find_enumeration : func(scope : lexical_scope mut?, name : u8?, name_len : u64 -> enumeration?)

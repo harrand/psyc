@@ -714,6 +714,33 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 	// if resolution == val_resolution.type_only, only return a type.
 	// if resolution == val_resolution.compile_time_only, error out if we need to generate runtime code
 	// if resolution == val.runtime_only, ensure the return value is val_dynamic'd
+	if(ast_is_stmt(node, ast_stmt_tag.function))
+	{
+		// add this locally to the scope
+		local_fnscope ::= program_add_scope(lexical_scope
+		{
+			.type := scope_type.function;
+			.name := node->function.name;
+			.name_len := node->function.name_len;
+			.parent_id := scope->id;
+			... := zero;
+		});
+		local_fn ::= scope_add_function(scope, function
+		{
+			.node := node;
+			.type := zero;
+			.scope := local_fnscope;
+			.name := node->function.name;
+			.name_len := node->function.name_len;
+			.cg := zero;
+			.db := zero;
+		});
+		semal_funcsig(local_fn);
+		semal_funcdef(local_fn);
+		cg_func_sig(local_fn);
+		cg_func_def(local_fn);
+		return function_as_val(local_fn, node);
+	}
 	if(ast_is_expr(node, ast_expr_tag.zero_value))
 	{
 		return zero_val();
