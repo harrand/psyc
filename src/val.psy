@@ -737,7 +737,13 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 		});
 		semal_funcsig(local_fn);
 		semal_funcdef(local_fn);
-		cg_func_sig(local_fn);
+		local_func_name_len ::= scope->name_len + 1 + node->function.name_len + 1;
+		local_func_name : u8 mut? := arena_alloc(global_arena, local_func_name_len);
+		memcopy(local_func_name # 0, scope->name, scope->name_len);
+		[local_func_name # scope->name_len] = '_';
+		memcopy(local_func_name # (scope->name_len + 1), node->function.name, node->function.name_len);
+		[local_func_name # (local_func_name_len - 1)] = zero;
+		cg_func_sig(local_fn, local_func_name);
 		cg_func_def(local_fn);
 		return function_as_val(local_fn, node);
 	}

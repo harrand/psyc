@@ -231,7 +231,7 @@ cg_all_functions : func(scope : lexical_scope mut? -> v0)
 	i : u64 mut;
 	for(i = 0; i < (scope->functions_count); i = i + 1)
 	{
-		cg_func_sig(scope->functions # i);
+		cg_func_sig(scope->functions # i, zero);
 	}
 	for(i = 0; i < (scope->functions_count); i = i + 1)
 	{
@@ -250,11 +250,15 @@ cg_asm : func(assembly : assembly mut? -> v0)
 	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
 };
 
-cg_func_sig : func(fn : function mut? -> v0)
+cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 {
 	dbg_inaction();
 	is_extern ::= fn->node->function.is_extern;
-	name_zstr ::= sstr2zstr(fn->name, fn->name_len, string_arena);
+	name_zstr : u8 mut? mut := link_name;
+	if(name_zstr == zero)
+	{
+		name_zstr = sstr2zstr(fn->name, fn->name_len, string_arena);
+	}
 	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
 };
 
