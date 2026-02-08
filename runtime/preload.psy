@@ -11,78 +11,9 @@ srcloc : struct
 	column : u64;
 };
 
-_atomic_ordering : enum
-{
-	.monotonic := 2;
-	.acquire := 3;
-	.release := 4;
-	.acqrel := 5;
-	.seqcst := 6;
-};
-
-_atomic_op : enum
-{
-	.xchg := 0;
-	.add := 1;
-	.sub := 2;
-	.and := 3;
-	.nand := 4;
-	.or := 5;
-	.xor := 6;
-	.smax := 7;
-	.smin := 8;
-	.umax := 9;
-	.umin := 10;
-};
-
 program_args : struct
 {
 	argc : s32;
 	argv : u8??;
 	envp : u8??;
 };
-
-static_if(_win32)
-{
-	SYSTEM_INFO : struct
-	{
-		dwOemId : u32;
-		dwPageSize : u32;
-		lpMinimumApplicationAddress : v0?;
-		lpMaximumApplicationAddress : v0?;
-		dwActiveProcessorMask : s64;
-		dwNumberOfProcessors : u32;
-		dwProcessorType : u32;
-		dwAllocationGranularity : u32;
-		wProcessorLevel : u16;
-		wProcessorRevision : u16;
-	};
-	GetSystemInfo : func(lpSystemInfo : SYSTEM_INFO mut? -> v0) extern;
-	Sleep : func(dwMilliSeconds : u32 -> v0) extern;
-}
-else
-{
-	impl_mask_count_bits : func(mask : u64?, nbytes : u64 -> u32)
-	{
-		count : u32 mut := 0;
-		nwords ::= nbytes / sizeof u64;
-		i : u64 mut;
-		for(i = 0; i < nwords; i = i + 1)
-		{
-			v : u64 mut := [mask # i];
-			while v > 0
-			{
-				count = (count + ((v & 1)@_));
-				v = (v >> 1);
-			}
-		}
-		return count;
-	};
-
-	timespec : struct
-	{
-		tv_sec : u64;
-		tv_nsec : u64;
-	};
-}
-
