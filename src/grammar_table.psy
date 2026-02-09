@@ -66,7 +66,7 @@ grammar_setup : func(a : arena mut? -> v0)
 // so long as the ast tags are treatedly properly and grammar omega law holds, chance of hash collision == 0
 grammar_hash : func(entry : grammar_entry -> u64)
 {
-	return
+	h : u64 mut := 
 		([entry.uids # 0] << 0 ) |
 		([entry.uids # 1] << 8 ) |
 		([entry.uids # 2] << 16) |
@@ -75,6 +75,14 @@ grammar_hash : func(entry : grammar_entry -> u64)
 		([entry.uids # 5] << 40) |
 		(entry.lookahead << 48) |
 		(entry.stash << 56);
+
+		// spread the bits around so linear probing is significantly less likely to hitch
+		h = h ^ (h >> 33);
+		h = h * 0xff51afd7ed558ccd;
+		h = h ^ (h >> 33);
+		h = h * 0xc4ceb9fe1a85ec53;
+		h = h ^ (h >> 33);
+		return h;
 };
 
 _grammar_hashtable_find_slot : func(key : grammar_entry -> u64)
@@ -82,10 +90,8 @@ _grammar_hashtable_find_slot : func(key : grammar_entry -> u64)
 	hash ::= grammar_hash(key);
 	// assuming grammar.elements_cap is a power of 2, we dont need the modulo in either case :)
 	idx : u64 mut := hash & (grammar.elements_cap - 1);
-	//idx : u64 mut := hash % (grammar.elements_cap);
 	while(((grammar.elements # idx)->occupied) && ((grammar.elements # idx)->hash != hash)) 
 	{
-		//idx = (idx + 1 % (grammar.elements_cap));
 		idx = ((idx + 1) & (grammar.elements_cap - 1));
 	}
 	return idx;
