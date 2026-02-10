@@ -550,6 +550,70 @@ s_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
+s_call : func(call_node : ast?, fn : function mut?, params : val mut? -> val)
+{
+	ret : val mut := zero;
+	// setup params. so fn->scope has a bunch of variable definitions
+	// their compile_time_storage etc is what we're interested in.
+	// so first we simply semal them all
+	// semal_funcdef already does this.
+	semal_funcdef(fn);
+
+	// now we iterate the function contents as build instructions
+	fn_impl_node ::= fn->node;
+	parent_retty ::= ty_unwrap(fn->type)->fn.return_type;
+	i : u64 mut;
+	for(i = 1; i < (fn_impl_node->children_count); i = i + 1)
+	{
+		inst ::= ast_get_child(fn_impl_node, i);
+		if(ast_is_stmt(inst, ast_stmt_tag.ret))
+		{
+			if(inst->children_count == 0)
+			{
+				if(!ty_is_v0(parent_retty))
+				{
+					psyc_error_begin(inst->loc);
+					putzstr("return statement within function ");
+					putchar('"');
+					putbytes(fn->node->function.name, fn->node->function.name_len);
+					putchar('"');
+					putzstr(" must return a value");
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(inst->loc.file)->src, inst, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+			}
+			else
+			{
+				if(ty_is_v0(parent_retty))
+				{
+					psyc_error_begin(inst->loc);
+					putzstr("return statement within function ");
+					putchar('"');
+					putbytes(fn->node->function.name, fn->node->function.name_len);
+					putchar('"');
+					putzstr(" must not return anything");
+					putchar(10);
+					ast_print_annotated_source(program_find_source_file(inst->loc.file)->src, inst, 1, underline_colour.red);
+					psyc_diag_end();
+					psyc_exit_failure();
+				}
+				ret = val_convert_to(val_node(ast_get_child(inst, 0), fn->scope, val_resolution.compile_time_only), parent_retty, fn->scope, val_resolution.compile_time_only, inst);
+			}
+		}
+		else
+		{
+			val_node(inst, fn->scope, val_resolution.compile_time_only);
+		}
+	}
+
+	// now the compile_time_storage of everything has potentially been rewritten.
+	// let's be good citizens and reset it back
+	semal_funcdef(fn);
+	return ret;
+};
+
 s_builtin_command : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	cmd_strdata : u8 mut? mut;
