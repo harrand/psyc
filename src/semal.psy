@@ -153,14 +153,17 @@ semal_funcsig : func(fn : function mut? -> v0)
 	// function typename is first child of node
 	function_typename_node ::= ast_get_child(fn->node, 0);
 	fn->type = ty_typename_node(function_typename_node, program_scope());
-	if(ty_unstaticify(fn->type) != (fn->type))
+	if(!ty_has_qual(fn->type, tyqual.qual_static))
 	{
-		psyc_error_begin(function_typename_node->loc);
-		putzstr("functions cannot have any static parameters");
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(function_typename_node->loc.file)->src, function_typename_node, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
+		if(ty_unstaticify(fn->type) != (fn->type))
+		{
+			psyc_error_begin(function_typename_node->loc);
+			putzstr("non-static functions cannot have any static parameters");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(function_typename_node->loc.file)->src, function_typename_node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 	}
 };
 

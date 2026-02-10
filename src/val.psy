@@ -2342,14 +2342,29 @@ val_call : func(node : ast?, scope : lexical_scope mut?, resolution : val_resolu
 	if(ty_has_qual(callee_val.type, tyqual.qual_static))
 	{
 		// static callable!
-		psyc_error_begin(callee_node->loc);
-		putzstr("call to static callable is not yet implemented");
-		putchar(10);
-		ast_print_annotated_source(program_find_source_file(callee_node->loc.file)->src, callee_node, 1, underline_colour.red);
-		psyc_diag_end();
-		psyc_exit_failure();
+		fn ::= scope_find_function(scope, callee_val.compile_time.funcref_name, callee_val.compile_time.funcref_name_len);
+		return val_do_static_call(node, fn, vals);
 	}
 	return cg_call(val_dynamic(callee_val, scope, node), vals, scope, node);
+};
+
+val_do_static_call : func(call_node : ast?, fn : function mut?, args : val mut? -> val)
+{
+	// setup params. so fn->scope has a bunch of variable definitions
+	// their compile_time_storage etc is what we're interested in.
+	// so first we simply semal them all
+	// semal_funcdef already does this.
+	semal_funcdef(fn);
+
+	// now we iterate the function contents as build instructions
+	fn_impl_node ::= fn->node;
+	invoke_node_children_as_build_instructions(fn_impl_node, 1, fn_impl_node->children_count, fn->scope);
+
+	// now the compile_time_storage of everything has potentially been rewritten.
+	// let's be good citizens and reset it back
+	semal_funcdef(fn);
+	// todo: somehow get the return value...
+	return zero;
 };
 
 val_convert_to : func(v : val, to : tyid, scope : lexical_scope mut?, resolution : val_resolution, source : ast? -> val)
