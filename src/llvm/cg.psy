@@ -252,6 +252,20 @@ cg_asm : func(assembly : assembly mut? -> v0)
 
 cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 {
+	if(ty_has_qual(fn->type, tyqual.qual_static))
+	{
+		psyc_warning_begin(fn->node->loc);
+		putzstr("function ");
+		putchar('"');
+		putbytes(fn->name, fn->name_len);
+		putchar('"');
+
+		putzstr(" is a static function, which is NYI, and so will be ignored");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(fn->node->loc.file)->src, fn->node, 1, underline_colour.yellow);
+		psyc_diag_end();
+		return;
+	}
 	dbg_inaction();
 	is_extern ::= fn->node->function.is_extern;
 	name_zstr : u8 mut? mut := link_name;
@@ -264,7 +278,7 @@ cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 
 cg_func_def : func(fn : function mut? -> v0)
 {
-	if(fn->node->function.is_extern)
+	if(fn->node->function.is_extern || ty_has_qual(fn->type, tyqual.qual_static))
 	{
 		return;
 	}
