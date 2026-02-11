@@ -1,0 +1,286 @@
+psyir_inst_tag : enum
+{
+	.stack := 1; // stack
+	.lab := 2; // label
+	.bra := 3; // branch
+	.mov := 4; // move
+	.call := 5; // call
+	.ret := 6; // return
+
+	.cmp_eq := 7; // ==
+	.cmp_ne := 8; // !=
+	.cmp_lt := 9; // <
+	.cmp_le := 10; // <=
+	.cmp_gt := 11; // >
+	.cmp_ge := 12; // >=
+	.or := 13; // |
+	.and := 14; // &
+	.xor := 15; // ^
+	.add := 16; // +
+	.sub := 17; // -
+	.mul := 18; // *
+	.div := 19; // /
+	.sex := 20; // sign extend (also HAHAHAHAHHA)
+	.zex := 21; // zero extend
+	.trunc := 22; // truncate
+	.syscall := 69420; // syscall
+};
+
+psyir_reg : enum
+{
+	// arguments go in their own special registers
+	// -1 is the first argument, -2 is the 2nd etc...
+	.flags := 0;
+	// general purpose registers go from 1->infinity
+};
+
+psyir_operand_tag : enum
+{
+	.imm := 1;
+	.r := 2;
+};
+
+psyir_operand : struct
+{
+	tag : psyir_operand_tag;
+	val : s64;
+};
+
+psyir_inst : struct
+{
+	tag : psyir_inst_tag;
+	operands : psyir_operand mut[4];
+};
+
+psyir_blk : struct
+{
+	inst : psyir_inst mut?;
+	inst_count : u64;
+	inst_cap : u64;
+};
+
+psyir_func : struct
+{
+	name : u8?;
+	name_len : u64;
+	blk : psyir_blk mut?;
+	blk_count : u64;
+	blk_cap : u64;
+
+	regcount : u64;
+};
+
+psyir_inst_dump : func(inst : psyir_inst -> v0)
+{
+	putzstr(enumname(inst.tag));
+	putzstr(" ");
+	i : u64 mut := 0;
+	keep_going : bool mut := [inst.operands # i].tag != zero;
+	while(keep_going)
+	{
+		op ::= [inst.operands # i];
+		if(op.tag == psyir_operand_tag.r)
+		{
+			putchar('r');
+		}
+		putsint(op.val);
+		if(i != (countof typeof(inst.operands)) - 1)
+		{
+			if([inst.operands # (i + 1)].tag == zero)
+			{
+				keep_going = false;
+			}
+			else
+			{
+				putzstr(", ");
+			}
+		}
+		else
+		{
+			keep_going = false;
+		}
+		i = i + 1;
+	}
+};
+
+psyir_blk_dump : func(blk : psyir_blk -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < blk.inst_count; i = i + 1)
+	{
+		//putchar(9);
+		putzstr("  ");
+		psyir_inst_dump([blk.inst # i]);
+		putchar(10);
+	}
+};
+
+psyir_func_dump : func(fn : psyir_func -> v0)
+{
+	putbytes(fn.name, fn.name_len);
+	putzstr(":");
+	putchar(10);
+
+	i : u64 mut;
+	for(i = 0; i < fn.blk_count; i = i + 1)
+	{
+		putzstr(" ");
+		putuint(i);
+		putzstr(": ");
+		putchar(10);
+		psyir_blk_dump([fn.blk # i]);
+	}
+};
+
+psyir_program : struct
+{
+	fn : psyir_func mut?;
+	fn_count : u64;
+	fn_cap : u64;	
+};
+
+psyir_position : struct
+{
+	func_cursor : u64;
+	blk_cursor : u64;
+};
+
+psyir_api : struct
+{
+	prog : psyir_program;
+	position : psyir_position;
+};
+
+psyir : psyir_api mut := zero;
+
+ir_create_function : func(name : u8?, name_len : u64 -> psyir_func mut?)
+{
+	if(psyir.prog.fn == zero)
+	{
+		psyir.prog.fn_cap = 1024;
+		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof psyir_func);
+	}
+	while(psyir.prog.fn_count >= psyir.prog.fn_cap)
+	{
+		old ::= psyir.prog.fn;
+		oldcap ::= psyir.prog.fn_cap;
+		psyir.prog.fn_cap = oldcap * 2;
+		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof psyir_func);
+		memcopy(psyir.prog.fn, old, oldcap * sizeof psyir_func);
+	}
+	ptr ::= psyir.prog.fn # (psyir.prog.fn_count);
+	[ptr] = psyir_func
+	{
+		.name := name;
+		.name_len := name_len;
+		... := zero;
+	};
+	psyir.position = psyir_position
+	{
+		.func_cursor := psyir.prog.fn_count;
+		.blk_cursor := zero;
+	};
+	psyir.prog.fn_count = (psyir.prog.fn_count + 1);
+	ir_add_block();
+	return ptr;
+};
+
+ir_current_function : func(-> psyir_func mut?)
+{
+	return psyir.prog.fn # (psyir.position.func_cursor);
+};
+
+ir_current_block : func(-> psyir_blk mut?)
+{
+	return ir_current_function()->blk # (psyir.position.blk_cursor);
+};
+
+ir_add_block : func(-> psyir_position)
+{
+	fn ::= ir_current_function();
+	if(fn->blk == zero)
+	{
+		fn->blk_cap = 8;
+		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof psyir_blk);
+	}
+	while(fn->blk_count >= fn->blk_cap)
+	{
+		old ::= fn->blk;
+		oldcap ::= fn->blk_cap;
+		fn->blk_cap = oldcap * 2;
+		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof psyir_blk);
+		memcopy(fn->blk, old, oldcap * sizeof psyir_blk);
+	}
+	ret ::= psyir_position
+	{
+		.func_cursor := psyir.position.func_cursor;
+		.blk_cursor := fn->blk_count;
+	};
+	[fn->blk # (fn->blk_count)] = zero;
+	fn->blk_count = (fn->blk_count + 1);
+	return ret;
+};
+
+ir_add_instruction : func(inst : psyir_inst -> v0)
+{
+	blk ::= ir_current_block();
+	if(blk->inst == zero)
+	{
+		blk->inst_cap = 64;
+		blk->inst = arena_alloc(global_arena, blk->inst_cap * sizeof psyir_inst);
+	}
+	while(blk->inst_count >= blk->inst_cap)
+	{
+		old ::= blk->inst;
+		oldcap ::= blk->inst_cap;
+		blk->inst_cap = (blk->inst_cap * 2);
+		blk->inst = arena_alloc(global_arena, blk->inst_cap * sizeof psyir_inst);
+		memcopy(blk->inst, old, oldcap * sizeof psyir_inst);
+	}
+	[blk->inst # (blk->inst_count)] = inst;
+	blk->inst_count = (blk->inst_count + 1);
+};
+
+ir_dump : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < psyir.prog.fn_count; i = i + 1)
+	{
+		psyir_func_dump([psyir.prog.fn # i]);
+		putchar(10);
+	}
+};
+
+ir_register : func(i : s64 -> psyir_operand)
+{
+	return psyir_operand
+	{
+		.tag := psyir_operand_tag.r;
+		.val := i;
+	};
+};
+
+ir_imm : func(i : s64 weak -> psyir_operand)
+{
+	return psyir_operand
+	{
+		.tag := psyir_operand_tag.imm;
+		.val := i;
+	};
+	
+};
+
+// instruction api
+ir_add : func(dst : psyir_operand, src : psyir_operand -> v0)
+{
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.add;
+		.operands := psyir_operand[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
