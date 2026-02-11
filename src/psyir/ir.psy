@@ -4,26 +4,28 @@ psyir_inst_tag : enum
 	.lab := 2; // label
 	.jmpif := 3; // jump if cond
 	.jmp := 4; // jump
-	.mov := 5; // move
-	.call := 6; // call
-	.ret := 7; // return
+	.load := 5; // load
+	.store := 6; // store
+	.call := 7; // call
+	.ret_void := 8; // return
+	.ret := 9; // return
 
-	.cmp_eq := 8; // ==
-	.cmp_ne := 9; // !=
-	.cmp_lt := 10; // <
-	.cmp_le := 11; // <=
-	.cmp_gt := 12; // >
-	.cmp_ge := 13; // >=
-	.or := 14; // |
-	.and := 15; // &
-	.xor := 16; // ^
-	.add := 17; // +
-	.sub := 18; // -
-	.mul := 19; // *
-	.div := 20; // /
-	.sex := 21; // sign extend (also HAHAHAHAHHA)
-	.zex := 22; // zero extend
-	.trunc := 23; // truncate
+	.cmp_eq := 10; // ==
+	.cmp_ne := 11; // !=
+	.cmp_lt := 12; // <
+	.cmp_le := 13; // <=
+	.cmp_gt := 14; // >
+	.cmp_ge := 15; // >=
+	.or := 16; // |
+	.and := 17; // &
+	.xor := 18; // ^
+	.add := 19; // +
+	.sub := 20; // -
+	.mul := 21; // *
+	.div := 22; // /
+	.sex := 23; // sign extend (also HAHAHAHAHHA)
+	.zex := 24; // zero extend
+	.trunc := 25; // truncate
 	.syscall := 69420; // syscall
 };
 
@@ -69,7 +71,7 @@ psyir_func : struct
 	blk_count : u64;
 	blk_cap : u64;
 
-	regcount : u64;
+	regcur : u64;
 };
 
 psyir_operand_dump : func(op : psyir_operand -> v0)
@@ -189,6 +191,7 @@ ir_create_function : func(name : u8?, name_len : u64 -> psyir_position)
 	{
 		.name := name;
 		.name_len := name_len;
+		.regcur := 1;	
 		... := zero;
 	};
 	psyir.position = psyir_position
@@ -282,6 +285,24 @@ ir_reg : func(i : s64 -> psyir_operand)
 	};
 };
 
+ir_input_reg : func(i : s64 -> psyir_operand)
+{
+	return psyir_operand
+	{
+		.tag := psyir_operand_tag.r;
+		.val := -i;
+	};
+};
+
+ir_output_reg : func(-> psyir_operand)
+{
+	return psyir_operand
+	{
+		.tag := psyir_operand_tag.r;
+		.val := 0;
+	};
+};
+
 ir_imm : func(i : s64 weak -> psyir_operand)
 {
 	return psyir_operand
@@ -312,8 +333,8 @@ ir_fn : func(i : s64 weak -> psyir_operand)
 ir_new_reg : func(-> psyir_operand)
 {
 	fn ::= ir_current_function();
-	num ::= fn->regcount;
-	fn->regcount = (fn->regcount + 1);
+	num ::= fn->regcur;
+	fn->regcur = (fn->regcur + 1);
 	return psyir_operand
 	{
 		.tag := psyir_operand_tag.r;
@@ -338,15 +359,31 @@ ir_stack : func(sz : psyir_operand -> psyir_operand)
 	return out;
 };
 
-ir_mov : func(dst : psyir_operand, src : psyir_operand -> v0)
+ir_load : func(k : psyir_operand -> psyir_operand)
+{
+	out ::= ir_new_reg();
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.load;
+		.operands := psyir_operand[4]
+		{
+			.0 := out;
+			.1 := k;
+			... := zero;
+		};
+	});
+	return out;
+};
+
+ir_store : func(k : psyir_operand, v : psyir_operand -> v0)
 {
 	ir_add_instruction(psyir_inst
 	{
-		.tag := psyir_inst_tag.mov;
+		.tag := psyir_inst_tag.store;
 		.operands := psyir_operand[4]
 		{
-			.0 := dst;
-			.1 := src;
+			.0 := k;
+			.1 := v;
 			... := zero;
 		};
 	});
@@ -360,9 +397,9 @@ ir_add : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 		.tag := psyir_inst_tag.add;
 		.operands := psyir_operand[4]
 		{
-			.0 := lhs;
-			.1 := rhs;
-			.2 := out;
+			.0 := out;
+			.1 := lhs;
+			.2 := rhs;
 			... := zero;
 		};
 	});
@@ -377,9 +414,9 @@ ir_sub : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 		.tag := psyir_inst_tag.sub;
 		.operands := psyir_operand[4]
 		{
-			.0 := lhs;
-			.1 := rhs;
-			.2 := out;
+			.0 := out;
+			.1 := lhs;
+			.2 := rhs;
 			... := zero;
 		};
 	});
@@ -399,15 +436,16 @@ ir_jmp : func(label : psyir_position -> v0)
 	});
 };
 
-ir_jmpif : func(label : psyir_position, cond : psyir_operand -> v0)
+ir_jmpif : func(cond : psyir_operand, blk_true : psyir_position, blk_false : psyir_position-> v0)
 {
 	ir_add_instruction(psyir_inst
 	{
 		.tag := psyir_inst_tag.jmpif;
 		.operands := psyir_operand[4]
 		{
-			.0 := ir_blk(label.blk_cursor);
-			.1 := cond;
+			.0 := cond;
+			.1 := ir_blk(blk_true.blk_cursor);
+			.2 := ir_blk(blk_false.blk_cursor);
 			... := zero;
 		};
 	});
@@ -421,6 +459,28 @@ ir_call : func(fn : psyir_position -> v0)
 		.operands := psyir_operand[4]
 		{
 			.0 := ir_fn(fn.func_cursor);
+			... := zero;
+		};
+	});
+};
+
+ir_ret_void : func(-> v0)
+{
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.ret_void;
+		.operands := zero;
+	});
+};
+
+ir_ret : func(v : psyir_operand -> v0)
+{
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.ret;
+		.operands := psyir_operand[4]
+		{
+			.0 := v;
 			... := zero;
 		};
 	});
