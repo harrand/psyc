@@ -1,7 +1,7 @@
 psyir_inst_tag : enum
 {
 	.stack := 1; // stack
-	.lab := 2; // label
+	.cp := 2; // copy
 	.jmpif := 3; // jump if cond
 	.jmp := 4; // jump
 	.load8 := 5; // load
@@ -13,7 +13,7 @@ psyir_inst_tag : enum
 	.store32 := 11; // store
 	.store64 := 12; // store
 	.call := 13; // call
-	.ret_void := 14; // return
+	.ret := 14; // return
 	.ret8 := 15; // return
 	.ret16 := 16; // return
 	.ret32 := 17; // return
@@ -342,15 +342,6 @@ ir_input_reg : func(i : s64 -> psyir_operand)
 	};
 };
 
-ir_output_reg : func(-> psyir_operand)
-{
-	return psyir_operand
-	{
-		.tag := psyir_operand_tag.r;
-		.val := 0;
-	};
-};
-
 ir_imm : func(i : s64 weak -> psyir_operand)
 {
 	return psyir_operand
@@ -405,6 +396,20 @@ ir_stack : func(sz : psyir_operand -> psyir_operand)
 		};
 	});
 	return out;
+};
+
+ir_cpy : func(dst : psyir_operand, src : psyir_operand -> v0)
+{
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.cp;
+		.operands := psyir_operand[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
 };
 
 ir_load8 : func(k : psyir_operand -> psyir_operand)
@@ -636,11 +641,11 @@ ir_call : func(fn : psyir_position -> v0)
 	});
 };
 
-ir_ret_void : func(-> v0)
+ir_ret : func(-> v0)
 {
 	ir_add_instruction(psyir_inst
 	{
-		.tag := psyir_inst_tag.ret_void;
+		.tag := psyir_inst_tag.ret;
 		.operands := zero;
 	});
 };
