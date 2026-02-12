@@ -1,7 +1,7 @@
 psyir_inst_tag : enum
 {
 	.stack := 1; // stack
-	.let := 2; // copy
+	.off := 2; // offset
 	.jmpif := 3; // jump if cond
 	.jmp := 4; // jump
 	.load := 5; // load
@@ -24,9 +24,15 @@ psyir_inst_tag : enum
 	.sub := 59; // -
 	.mul := 63; // *
 	.div := 67; // /
-	.sex := 71; // sign extend (also HAHAHAHAHHA)
-	.zex := 72; // zero extend
-	.trunc := 73; // truncate
+	.sex16 := 71; // sign extend up to 16 bits (also HAHAHAHAHHA)
+	.sex32 := 72; // sign extend up to 32 bits (also HAHAHAHAHHA)
+	.sex64 := 73; // sign extend up to 64 bits (also HAHAHAHAHHA)
+	.zex16 := 74; // zero extend up to 16 bits
+	.zex32 := 75; // zero extend up to 32 bits
+	.zex64 := 76; // zero extend up to 64 bits
+	.trunc8 := 77; // truncate down to 8 bits
+	.trunc16 := 78; // truncate down to 16 bits
+	.trunc32 := 79; // truncate down to 32 bits
 };
 
 psyir_reg_size : enum
@@ -354,6 +360,15 @@ ir_breg : func(i : s64 -> psyir_val)
 	};
 };
 
+ir_regsize : func(r : psyir_val -> psyir_reg_size)
+{
+	if(r.tag == psyir_val_tag.r)
+	{
+		return r.size;
+	}
+	return psyir_reg_size.q;
+};
+
 ir_imm : func(i : s64 weak -> psyir_val)
 {
 	return psyir_val
@@ -381,7 +396,7 @@ ir_fn : func(i : s64 weak -> psyir_val)
 	};
 };
 
-ir_new_qreg : func(-> psyir_val)
+ir_new_reg : func(size : psyir_reg_size -> psyir_val)
 {
 	fn ::= ir_current_function();
 	num ::= fn->regcur;
@@ -389,9 +404,14 @@ ir_new_qreg : func(-> psyir_val)
 	return psyir_val
 	{
 		.tag := psyir_val_tag.r;
-		.size := psyir_reg_size.q;
+		.size := size;
 		.val := num@_;
 	};
+};
+
+ir_new_qreg : func(-> psyir_val)
+{
+	return ir_new_reg(psyir_reg_size.q);
 };
 
 // instruction api
@@ -412,19 +432,22 @@ ir_stack : func(sz : psyir_val -> psyir_val)
 	return out;
 };
 
-ir_let : func(dst : psyir_val, src : psyir_val -> v0)
+ir_off : func(ptr : psyir_val, offset : psyir_val -> psyir_val)
 {
+	out ::= ir_new_qreg();
 	ir_add_instruction(psyir_inst
 	{
-		.tag := psyir_inst_tag.let;
+		.tag := psyir_inst_tag.off;
 		.operands := psyir_val[4]
 		{
-			.0 := dst;
-			.1 := src;
+			.0 := out;
+			.1 := ptr;
+			.2 := offset;
 			... := zero;
 		};
 		... := zero;
 	});
+	return out;
 };
 
 ir_load : func(k : psyir_val -> psyir_val)
@@ -459,12 +482,12 @@ ir_store : func(k : psyir_val, v : psyir_val -> v0)
 	});
 };
 
-ir_add : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
+ir_arith : func(type : psyir_inst_tag, lhs : psyir_val, rhs : psyir_val -> psyir_val)
 {
-	out ::= ir_new_qreg();
+	out ::= ir_new_reg(ir_regsize(lhs));
 	ir_add_instruction(psyir_inst
 	{
-		.tag := psyir_inst_tag.add;
+		.tag := type;
 		.operands := psyir_val[4]
 		{
 			.0 := out;
@@ -475,55 +498,38 @@ ir_add : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
 		... := zero;
 	});
 	return out;
+};
+
+ir_add : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
+{
+	return ir_arith(psyir_inst_tag.add, lhs, rhs);
 };
 
 ir_sub : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
 {
-	out ::= ir_new_qreg();
-	ir_add_instruction(psyir_inst
-	{
-		.tag := psyir_inst_tag.sub;
-		.operands := psyir_val[4]
-		{
-			.0 := out;
-			.1 := lhs;
-			.2 := rhs;
-			... := zero;
-		};
-		... := zero;
-	});
-	return out;
+	return ir_arith(psyir_inst_tag.sub, lhs, rhs);
 };
 
 ir_mul : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
 {
-	out ::= ir_new_qreg();
-	ir_add_instruction(psyir_inst
-	{
-		.tag := psyir_inst_tag.mul;
-		.operands := psyir_val[4]
-		{
-			.0 := out;
-			.1 := lhs;
-			.2 := rhs;
-			... := zero;
-		};
-		... := zero;
-	});
-	return out;
+	return ir_arith(psyir_inst_tag.mul, lhs, rhs);
 };
 
 ir_div : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
 {
-	out ::= ir_new_qreg();
+	return ir_arith(psyir_inst_tag.div, lhs, rhs);
+};
+
+ir_sized_unary : func(type : psyir_inst_tag, sz : psyir_reg_size, op : psyir_val -> psyir_val)
+{
+	out ::= ir_new_reg(sz);
 	ir_add_instruction(psyir_inst
 	{
-		.tag := psyir_inst_tag.div;
+		.tag := type;
 		.operands := psyir_val[4]
 		{
 			.0 := out;
-			.1 := lhs;
-			.2 := rhs;
+			.1 := op;
 			... := zero;
 		};
 		... := zero;
@@ -531,6 +537,50 @@ ir_div : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
 	return out;
 };
 
+ir_sex16 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.sex16, psyir_reg_size.w, op);
+};
+
+ir_sex32 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.sex32, psyir_reg_size.d, op);
+};
+
+ir_sex64 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.sex64, psyir_reg_size.q, op);
+};
+
+ir_zex16 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.zex16, psyir_reg_size.w, op);
+};
+
+ir_zex32 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.zex32, psyir_reg_size.d, op);
+};
+
+ir_zex64 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.zex64, psyir_reg_size.q, op);
+};
+
+ir_trunc8 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.trunc8, psyir_reg_size.b, op);
+};
+
+ir_trunc16 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.trunc16, psyir_reg_size.w, op);
+};
+
+ir_trunc32 : func(op : psyir_val -> psyir_val)
+{
+	return ir_sized_unary(psyir_inst_tag.trunc32, psyir_reg_size.d, op);
+};
 ir_jmp : func(label : psyir_position -> v0)
 {
 	ir_add_instruction(psyir_inst
