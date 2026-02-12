@@ -7,8 +7,9 @@ psyir_inst_tag : enum
 	.load := 5; // load
 	.store := 9; // store
 	.call := 13; // call
-	.retnone := 14; // return
-	.ret := 15; // return
+	.rcall := 14; // call
+	.retnone := 15; // return
+	.ret := 16; // return
 
 	.cmp_eq := 19; // ==
 	.cmp_ne := 23; // !=
@@ -62,6 +63,8 @@ psyir_inst : struct
 {
 	tag : psyir_inst_tag;
 	operands : psyir_operand mut[4];
+	extra_operands_count : u64;
+	extra_operands : psyir_operand mut?;
 };
 
 psyir_blk : struct
@@ -383,6 +386,7 @@ ir_stack : func(sz : psyir_operand -> psyir_operand)
 			.1 := sz;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -398,6 +402,7 @@ ir_let : func(dst : psyir_operand, src : psyir_operand -> v0)
 			.1 := src;
 			... := zero;
 		};
+		... := zero;
 	});
 };
 
@@ -413,6 +418,7 @@ ir_load : func(k : psyir_operand -> psyir_operand)
 			.1 := k;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -428,6 +434,7 @@ ir_store : func(k : psyir_operand, v : psyir_operand -> v0)
 			.1 := v;
 			... := zero;
 		};
+		... := zero;
 	});
 };
 
@@ -444,6 +451,7 @@ ir_add : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 			.2 := rhs;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -461,6 +469,7 @@ ir_sub : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 			.2 := rhs;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -478,6 +487,7 @@ ir_mul : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 			.2 := rhs;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -495,6 +505,7 @@ ir_div : func(lhs : psyir_operand, rhs : psyir_operand -> psyir_operand)
 			.2 := rhs;
 			... := zero;
 		};
+		... := zero;
 	});
 	return out;
 };
@@ -509,6 +520,7 @@ ir_jmp : func(label : psyir_position -> v0)
 			.0 := ir_blk(label.blk_cursor);
 			... := zero;
 		};
+		... := zero;
 	});
 };
 
@@ -524,10 +536,11 @@ ir_jmpif : func(cond : psyir_operand, blk_true : psyir_position, blk_false : psy
 			.2 := ir_blk(blk_false.blk_cursor);
 			... := zero;
 		};
+		... := zero;
 	});
 };
 
-ir_call : func(fn : psyir_position -> v0)
+ir_call0 : func(fn : psyir_position -> v0)
 {
 	ir_add_instruction(psyir_inst
 	{
@@ -537,7 +550,25 @@ ir_call : func(fn : psyir_position -> v0)
 			.0 := ir_fn(fn.func_cursor);
 			... := zero;
 		};
+		... := zero;
 	});
+};
+
+ir_rcall0 : func(fn : psyir_position -> psyir_operand)
+{
+	out ::= ir_new_qreg();
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.rcall;
+		.operands := psyir_operand[4]
+		{
+			.0 := ir_fn(fn.func_cursor);
+			.1 := out;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
 };
 
 ir_retnone : func(-> v0)
@@ -546,6 +577,7 @@ ir_retnone : func(-> v0)
 	{
 		.tag := psyir_inst_tag.retnone;
 		.operands := zero;
+		... := zero;
 	});
 };
 
@@ -559,5 +591,6 @@ ir_ret : func(v : psyir_operand -> v0)
 			.0 := v;
 			... := zero;
 		};
+		... := zero;
 	});
 };
