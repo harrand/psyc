@@ -56,23 +56,20 @@ main : func(pargs : program_args? -> s32)
 	envp = (pargs->envp);
 	setup_arenas();
 
-	params ::= psyir_val[5]
+	params ::= psyir_val[3]
 	{
 		.0 := ir_imm(0);
 		.1 := ir_imm(1);
 		.2 := ir_imm(2);
-		.3 := ir_imm(3);
-		.4 := ir_imm(4);
 	};
 
-	add3 ::= ir_create_function("add3", 4);
-	ir_call(add3, params # 0, countof typeof params);
-	ir_ret(ir_imm(69));
+	add3 ::= ir_create_function("add3", 4, 3);
+	ir_ret(ir_add(ir_add(ir_qreg(0), ir_qreg(1)), ir_qreg(2)));
 
-	answer ::= ir_create_function("answer", 6);
-	ir_ret(ir_rcall3(add3, ir_imm(1), ir_imm(2), ir_imm(3)));
+	answer ::= ir_create_function("answer", 6, 0);
+	ir_ret(ir_rcall(add3, params # 0, countof typeof params));
 
-	testfn ::= ir_create_function("test", 4);
+	testfn ::= ir_create_function("test", 4, 0);
 
 	four_u64s ::= ir_stack(ir_imm(8 * 4));
 	ir_store(four_u64s, ir_imm(1));
@@ -81,9 +78,9 @@ main : func(pargs : program_args? -> s32)
 	ir_store(ir_add(four_u64s, ir_imm(8 * 3)), ir_imm(4));
 	ir_retnone();
 
-	ir_create_function("main", 4);
-	ir_call0(testfn);
-	ans ::= ir_rcall0(answer);
+	ir_create_function("main", 4, 0);
+	ir_call(testfn, zero, zero);
+	ans ::= ir_rcall(answer, zero, zero);
 	ir_ret(ans);
 
 	ir_dump();
