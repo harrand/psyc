@@ -49,6 +49,7 @@ psyir_val_tag : enum
 	.r := 2;
 	.blk := 3;
 	.fn := 4;
+	.globref := 5;
 };
 
 psyir_val : struct
@@ -167,6 +168,21 @@ psyir_blk_dump : func(blk : psyir_blk -> v0)
 	}
 };
 
+psyir_glob_dump : func(glob : psyir_glob -> v0)
+{
+	putzstr("global ");
+	putchar('"');
+	putbytes(glob.name, glob.name_len);
+	putchar('"');
+	putzstr(" data(");
+	putuint(glob.data_len);
+	putzstr("): ");
+	putchar('"');
+	putbytes(glob.data, glob.data_len);
+	putchar('"');
+	putchar(10);
+};
+
 psyir_func_dump : func(fn : psyir_func -> v0)
 {
 	putzstr("(");
@@ -194,11 +210,23 @@ psyir_func_dump : func(fn : psyir_func -> v0)
 	}
 };
 
+psyir_glob : struct
+{
+	name : u8?;
+	name_len : u64;
+	data : u8?;
+	data_len : u64;
+};
+
 psyir_program : struct
 {
 	fn : psyir_func mut?;
 	fn_count : u64;
 	fn_cap : u64;	
+
+	globals : psyir_glob mut?;
+	globals_count : u64;
+	globals_cap : u64;
 };
 
 psyir_position : struct
@@ -284,6 +312,27 @@ ir_create_block : func(-> psyir_position)
 	return ret;
 };
 
+ir_add_global : func(g : psyir_glob -> psyir_val)
+{
+	if(psyir.prog.globals == zero)
+	{
+		psyir.prog.globals_cap = 64;
+		psyir.prog.globals = arena_alloc(global_arena, psyir.prog.globals_cap * sizeof psyir_glob);
+	}
+	while(psyir.prog.globals_count >= psyir.prog.globals_cap)
+	{
+		oldcap ::= psyir.prog.globals_cap;
+		old ::= psyir.prog.globals;
+		psyir.prog.globals_cap = (psyir.prog.globals_cap * 2);
+		psyir.prog.globals = arena_alloc(global_arena, psyir.prog.globals_cap * sizeof psyir_glob);
+		memcopy(psyir.prog.globals, old, oldcap * sizeof psyir_glob);
+	}
+	idx ::= psyir.prog.globals_count;
+	[psyir.prog.globals # idx] = g;
+	psyir.prog.globals_count = (psyir.prog.globals_count + 1);
+	return ir_globref(idx);
+};
+
 ir_add_instruction : func(inst : psyir_inst -> v0)
 {
 	blk ::= ir_current_block();
@@ -312,12 +361,25 @@ ir_reposition : func(pos : psyir_position -> v0)
 ir_dump : func(-> v0)
 {
 	i : u64 mut;
+	for(i = 0; i < psyir.prog.globals_count; i = i + 1)
+	{
+		psyir_glob_dump([psyir.prog.globals # i]);
+	}
 	for(i = 0; i < psyir.prog.fn_count; i = i + 1)
 	{
 		psyir_val_dump(ir_fn(i));
 		psyir_func_dump([psyir.prog.fn # i]);
 		putchar(10);
 	}
+};
+
+ir_globref : func(i : u64 -> psyir_val)
+{
+	return psyir_val
+	{
+		.tag := psyir_val_tag.globref;
+		.val := i@_;
+	};
 };
 
 ir_qreg : func(i : s64 -> psyir_val)
