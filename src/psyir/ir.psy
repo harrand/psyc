@@ -109,6 +109,12 @@ psyir_val_dump : func(op : psyir_val -> v0)
 	}
 	else
 	{
+		if(op.tag == (psyir_val_tag.globref))
+		{
+			putzstr(".");
+			glob ::= [psyir.prog.globals # op.val];
+			putbytes(glob.name, glob.name_len);
+		}
 		putsint(op.val);
 	}
 };
@@ -170,11 +176,18 @@ psyir_blk_dump : func(blk : psyir_blk -> v0)
 
 psyir_glob_dump : func(glob : psyir_glob -> v0)
 {
-	putzstr("global ");
-	putchar('"');
+	putzstr(".");
 	putbytes(glob.name, glob.name_len);
-	putchar('"');
-	putzstr(" data(");
+	putzstr(" ");
+	if(glob.mutable)
+	{
+		putzstr("mutable");
+	}
+	else
+	{
+		putzstr("const");
+	}
+	putzstr("(");
 	putuint(glob.data_len);
 	putzstr("): ");
 	putchar('"');
@@ -216,6 +229,7 @@ psyir_glob : struct
 	name_len : u64;
 	data : u8?;
 	data_len : u64;
+	mutable : bool;
 };
 
 psyir_program : struct
