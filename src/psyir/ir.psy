@@ -37,10 +37,12 @@ psyir_inst_tag : enum
 
 psyir_reg_size : enum
 {
-	.q := 8;
-	.d := 4;
-	.w := 2;
-	.b := 1;
+	.q := 1; // 64 bit (qword)
+	.d := 2; // 32 bit (dword)
+	.w := 3; // 16 bit (word)
+	.b := 4; // 8 bit (byte)
+	.x := 5; // 32 bit fp (float)
+	.y := 6; // 64 bit fp (double)
 };
 
 psyir_val_tag : enum
@@ -82,7 +84,9 @@ psyir_func : struct
 	blk_count : u64;
 	blk_cap : u64;
 
+	params : psyir_reg_size mut?;
 	params_count : u64;
+	params_cap : u64;
 	regcur : u64;
 };
 
@@ -209,7 +213,7 @@ psyir_func_dump : func(fn : psyir_func -> v0)
 	j : u64 mut;
 	for(j = 0; j < fn.params_count; j = j + 1)
 	{
-		psyir_val_dump(ir_qreg(j@_));
+		psyir_val_dump(psyir_val{.tag := psyir_val_tag.r; .size := [fn.params # j]; .val := j@_;});
 		if(j != (fn.params_count - 1))
 		{
 			putzstr(", ");
@@ -264,7 +268,7 @@ psyir_api : struct
 
 psyir : psyir_api mut := zero;
 
-ir_create_function : func(name : u8?, name_len : u64, params_count : u64 -> psyir_position)
+ir_create_function : func(name : u8?, name_len : u64 -> psyir_position)
 {
 	if(psyir.prog.fn == zero)
 	{
@@ -283,8 +287,6 @@ ir_create_function : func(name : u8?, name_len : u64, params_count : u64 -> psyi
 	{
 		.name := name;
 		.name_len := name_len;
-		.params_count := params_count;
-		.regcur := params_count;	
 		... := zero;
 	};
 	psyir.position = psyir_position
@@ -294,6 +296,65 @@ ir_create_function : func(name : u8?, name_len : u64, params_count : u64 -> psyi
 	};
 	psyir.prog.fn_count = (psyir.prog.fn_count + 1);
 	return ir_create_block();
+};
+
+ir_param : func(sz : psyir_reg_size -> psyir_val)
+{
+	fn ::= ir_current_function();
+	parsz ::= sizeof typeof([fn->params # 0]);
+	if(fn->params == zero)
+	{
+		fn->params_cap = 8;
+		fn->params = arena_alloc(global_arena, fn->params_cap * parsz);
+	}
+	while(fn->params_count >= fn->params_cap)
+	{
+		oldcap ::= fn->params_cap;
+		old ::= fn->params;
+		fn->params_cap = (fn->params_cap * 2);
+		fn->params = arena_alloc(global_arena, fn->params_cap * parsz);
+		memcopy(fn->params, old, oldcap * parsz);
+	}
+	idx ::= fn->params_count;
+	[fn->params # idx] = sz;
+	fn->regcur = (fn->regcur + 1);
+	fn->params_count = (fn->params_count + 1);
+	return psyir_val
+	{
+		.tag := psyir_val_tag.r;
+		.size := sz;
+		.val := idx@_;
+	};
+};
+
+ir_qparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.q);
+};
+
+ir_dparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.d);
+};
+
+ir_wparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.w);
+};
+
+ir_bparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.b);
+};
+
+ir_xparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.x);
+};
+
+ir_yparam : func(-> psyir_val)
+{
+	return ir_param(psyir_reg_size.y);
 };
 
 ir_current_function : func(-> psyir_func mut?)
@@ -439,6 +500,26 @@ ir_breg : func(i : s64 -> psyir_val)
 	{
 		.tag := psyir_val_tag.r;
 		.size := psyir_reg_size.w;
+		.val := i;
+	};
+};
+
+ir_xreg : func(i : s64 -> psyir_val)
+{
+	return psyir_val
+	{
+		.tag := psyir_val_tag.r;
+		.size := psyir_reg_size.x;
+		.val := i;
+	};
+};
+
+ir_yreg : func(i : s64 -> psyir_val)
+{
+	return psyir_val
+	{
+		.tag := psyir_val_tag.r;
+		.size := psyir_reg_size.y;
 		.val := i;
 	};
 };
