@@ -69,19 +69,19 @@ ir : struct
 	extra_operands : ir_val mut?;
 };
 
-psyir_blk : struct
+ir_blk : struct
 {
 	inst : ir mut?;
 	inst_count : u64;
 	inst_cap : u64;
 };
 
-psyir_func : struct
+ir_func : struct
 {
 	name : u8?;
 	name_len : u64;
 	ret : irsz;
-	blk : psyir_blk mut?;
+	blk : ir_blk mut?;
 	blk_count : u64;
 	blk_cap : u64;
 
@@ -167,7 +167,7 @@ ir_dump : func(inst : ir -> v0)
 	}
 };
 
-psyir_blk_dump : func(blk : psyir_blk -> v0)
+ir_blk_dump : func(blk : ir_blk -> v0)
 {
 	i : u64 mut;
 	for(i = 0; i < blk.inst_count; i = i + 1)
@@ -208,7 +208,7 @@ psyir_glob_dump : func(glob : psyir_glob -> v0)
 	putchar(10);
 };
 
-psyir_func_dump : func(fn : psyir_func -> v0)
+ir_func_dump : func(fn : ir_func -> v0)
 {
 	putzstr("(");
 	j : u64 mut;
@@ -240,7 +240,7 @@ psyir_func_dump : func(fn : psyir_func -> v0)
 		ir_val_dump(ir_blk(i));
 		putzstr(": ");
 		putchar(10);
-		psyir_blk_dump([fn.blk # i]);
+		ir_blk_dump([fn.blk # i]);
 	}
 };
 
@@ -255,7 +255,7 @@ psyir_glob : struct
 
 psyir_program : struct
 {
-	fn : psyir_func mut?;
+	fn : ir_func mut?;
 	fn_count : u64;
 	fn_cap : u64;	
 
@@ -283,17 +283,17 @@ ir_add_func_generic : func(name : u8?, name_len : u64, ret : irsz -> psyir_posit
 	if(psyir.prog.fn == zero)
 	{
 		psyir.prog.fn_cap = 1024;
-		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof psyir_func);
+		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof ir_func);
 	}
 	while(psyir.prog.fn_count >= psyir.prog.fn_cap)
 	{
 		old ::= psyir.prog.fn;
 		oldcap ::= psyir.prog.fn_cap;
 		psyir.prog.fn_cap = oldcap * 2;
-		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof psyir_func);
-		memcopy(psyir.prog.fn, old, oldcap * sizeof psyir_func);
+		psyir.prog.fn = arena_alloc(global_arena, psyir.prog.fn_cap * sizeof ir_func);
+		memcopy(psyir.prog.fn, old, oldcap * sizeof ir_func);
 	}
-	[psyir.prog.fn # (psyir.prog.fn_count)] = psyir_func
+	[psyir.prog.fn # (psyir.prog.fn_count)] = ir_func
 	{
 		.name := name;
 		.name_len := name_len;
@@ -403,12 +403,12 @@ ir_yparam : func(-> ir_val)
 	return ir_param(irsz.y);
 };
 
-ir_current_function : func(-> psyir_func mut?)
+ir_current_function : func(-> ir_func mut?)
 {
 	return psyir.prog.fn # (psyir.position.func_cursor);
 };
 
-ir_current_block : func(-> psyir_blk mut?)
+ir_current_block : func(-> ir_blk mut?)
 {
 	return ir_current_function()->blk # (psyir.position.blk_cursor);
 };
@@ -419,15 +419,15 @@ ir_create_block : func(-> psyir_position)
 	if(fn->blk == zero)
 	{
 		fn->blk_cap = 8;
-		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof psyir_blk);
+		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof ir_blk);
 	}
 	while(fn->blk_count >= fn->blk_cap)
 	{
 		old ::= fn->blk;
 		oldcap ::= fn->blk_cap;
 		fn->blk_cap = oldcap * 2;
-		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof psyir_blk);
-		memcopy(fn->blk, old, oldcap * sizeof psyir_blk);
+		fn->blk = arena_alloc(global_arena, fn->blk_cap * sizeof ir_blk);
+		memcopy(fn->blk, old, oldcap * sizeof ir_blk);
 	}
 	ret ::= psyir_position
 	{
@@ -496,7 +496,7 @@ ir_program_dump : func(-> v0)
 	for(i = 0; i < psyir.prog.fn_count; i = i + 1)
 	{
 		ir_val_dump(ir_fn(i));
-		psyir_func_dump([psyir.prog.fn # i]);
+		ir_func_dump([psyir.prog.fn # i]);
 		putchar(10);
 	}
 };

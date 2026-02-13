@@ -93,17 +93,18 @@ x64_reg : enum
 	.xmm15 := 91;
 };
 
-x64_operand_tag : enum
+x64_val_tag : enum
 {
 	.imm := 1; // immediate value (i.e numeric literal)
 	.reg := 2; // register
-	.regval := 3; // value stored in a register
-	.memval := 4; // value stored in address
+	.vreg := 3; // virtual register (a lowering intermediate that doesnt exist in finalised x64)
+	.regval := 4; // value stored in a register
+	.memval := 5; // value stored in address
 };
 
-x64_operand : struct
+x64_val : struct
 {
-	tag : x64_operand_tag;
+	tag : x64_val_tag;
 	reg : x64_reg;
 	addr : u64;
 };
@@ -139,26 +140,19 @@ x64_inst_tag : enum
 	.movss := 24;
 };
 
-x64_reg_is_xmm : func(reg : x64_reg -> bool)
-{
-	i ::= reg@s64;
-	min ::= x64_reg.xmm0@s64;
-	max ::= x64_reg.xmm15@s64;
-	return (min <= i) && (i <= max);
-};
-
 x64_inst : struct
 {
 	tag : x64_inst_tag;
-	operands : x64_operand mut[4];
+	operands : x64_val mut[4];
 };
 
 x64_func : struct
 {
-	ret_register : x64_operand;
+	ret_register : x64_val;
 	inst : x64_inst mut?;
 	inst_count : u64;
 	inst_cap : u64;
+	virtual_registers : bool;
 };
 
 x64_callconv : enum
@@ -166,29 +160,109 @@ x64_callconv : enum
 	.sysv := 1;
 };
 
-x64_mov : func(dst : x64_reg, src : x64_reg -> x64_inst)
+x64_virtual_reg : func(psy_reg : ir_val -> x64_val)
 {
-	if(x64_reg_is_xmm(dst))
+	// a virtual register is not a real x64 register
+	// but a intermediate conversion between psyir and x64
+	// basically a representation of the psyir register in a format that fits in a x64 instruction
+	reg : x64_reg mut := zero;
+	if(psy_reg.size == irsz.q)
 	{
-		return x64_inst
+		reg = x64_reg.rax;
+	}
+	if(psy_reg.size == irsz.d)
+	{
+		reg = x64_reg.eax;
+	}
+	if(psy_reg.size == irsz.w)
+	{
+		reg = x64_reg.ax;
+	}
+	if(psy_reg.size == irsz.b)
+	{
+		reg = x64_reg.al;
+	}
+	if(psy_reg.size == irsz.x)
+	{
+		reg = x64_reg.xmm4;
+	}
+	if(psy_reg.size == irsz.y)
+	{
+		reg = x64_reg.xmm8;
+	}
+	return x64_val
+	{
+		.tag := x64_val_tag.vreg;
+		.reg := reg;
+		.addr := psy_reg.val@_;
+	};
+};
+
+x64_regval : func(reg : x64_reg -> x64_val)
+{
+	return x64_val
+	{
+		.tag := x64_val_tag.reg;
+		.reg := reg;
+	};
+};
+
+x64_imm : func(imm : s64 weak -> x64_val)
+{
+	return x64_val
+	{
+		.tag := x64_val_tag.imm;
+		.addr := imm;
+	};
+};
+
+x64_ir_val : func(v : ir_val -> x64_val)
+{
+	if(v.tag == ir_valtag.imm)
+	{
+		return x64_imm(v.val);
+	}
+	if(v.tag == ir_valtag.r)
+	{
+		return x64_virtual_reg(v);
+	}
+	return zero;
+};
+
+x64_ir_stack : func(stack : ir -> x64_inst[2])
+{
+	// ir looks like this:
+	// stack q0, 8
+
+	// x64 looks like this:
+	// sub rsp, 8
+	// mov q0, rsp
+	return x64_inst[2]
+	{
+		.0 := x64_inst
 		{
-			.tag := x64_inst_tag.movss;
-			.operands := x64_operand[4]
+			.tag := x64_inst_tag.sub;
+			.operands := x64_val[4]
 			{
-				.0 := x64_operand{.tag := x64_operand_tag.reg; .reg := dst;};
-				.1 := x64_operand{.tag := x64_operand_tag.reg; .reg := src;};
+				.0 := x64_regval(x64_reg.rsp);
+				.1 := x64_ir_val([stack.operands # 1]);
 				... := zero;
 			};
 		};
-	}
-	return x64_inst
-	{
-		.tag := x64_inst_tag.mov;
-		.operands := x64_operand[4]
+		.1 := x64_inst
 		{
-			.0 := x64_operand{.tag := x64_operand_tag.reg; .reg := dst;};
-			.1 := x64_operand{.tag := x64_operand_tag.reg; .reg := src;};
-			... := zero;
+			.tag := x64_inst_tag.mov;
+			.operands := x64_val[4]
+			{
+				.0 := x64_virtual_reg([stack.operands # 0]);
+				.1 := x64_regval(x64_reg.rsp);
+				... := zero;
+			};
 		};
 	};
+};
+
+x64_func_ir : func(fn : ir_func, conv : x64_callconv -> x64_func)
+{
+	return zero;
 };
