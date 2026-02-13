@@ -63,44 +63,40 @@ main : func(pargs : program_args? -> s32)
 		.2 := ir_imm(2);
 	};
 
-	bigchungus ::= "big chungus!!!";
-	myglob ::= ir_add_global(psyir_glob
-	{
-		.name := "myglob";
-		.name_len := 6;
-		.data := zero;
-		.data_len := zstrlen(bigchungus);
-		.mutable := true;
-	});
+	factorial ::= ir_add_qfunc("factorial", 9);
+	factorial_n ::= ir_qparam();
 
-	add3f ::= ir_add_xfunc("add3f", 5);
-	add3fpar0 ::= ir_xparam();
-	add3fpar1 ::= ir_xparam();
-	add3fpar2 ::= ir_xparam();
-	ir_ret(ir_add(ir_add(add3fpar0, add3fpar1), add3fpar2));
+	base_case ::= ir_create_block();
+	ir_ret(ir_imm(1));
+	ir_reposition(factorial);
 
-	add3 ::= ir_add_qfunc("add3", 4);
-	add3par0 ::= ir_qparam();
-	add3par1 ::= ir_qparam();
-	add3par2 ::= ir_qparam();
-	ir_ret(ir_add(ir_add(add3par0, add3par1), add3par2));
+	recursive_case ::= ir_create_block();
+	dec ::= ir_sub(factorial_n, ir_imm(1));
+	ir_ret(ir_mul(factorial_n, ir_rcall(factorial, ref dec, 1)));
 
-	answer ::= ir_add_qfunc("answer", 6);
-	ir_ret(ir_rcall(add3, params # 0, countof typeof params));
+	ir_reposition(factorial);
+	is_base_case ::= ir_cmp_eq(factorial_n, ir_imm(0));
+	ir_jmpif(is_base_case, base_case, recursive_case);
 
-	testfn ::= ir_add_func("test", 4);
+	entry ::= ir_add_dfunc("main", 4);
+	counter ::= ir_stack(ir_imm(8));
+	ir_store(counter, ir_imm(0));
 
-	four_u64s ::= ir_stack(ir_imm(8 * 4));
-	ir_store(four_u64s, ir_imm(1));
-	ir_store(ir_off(four_u64s, ir_imm(8 * 1)), ir_imm(2));
-	ir_store(ir_off(four_u64s, ir_imm(8 * 2)), ir_imm(3));
-	ir_store(ir_off(four_u64s, ir_imm(8 * 3)), ir_imm(4));
-	ir_retnone();
+	loop_begin ::= ir_create_block();
+	cload ::= ir_load(counter);
+	ir_call(factorial, ref cload, 1);
+	inc ::= ir_add(cload, ir_imm(1));
+	ir_store(counter, inc);
+	cond ::= ir_cmp_eq(ir_load(counter), ir_imm(5));
 
-	ir_add_dfunc("main", 4);
-	ir_call(testfn, zero, zero);
-	ans ::= ir_rcall(answer, zero, zero);
-	ir_ret(ir_trunc32(ans));
+	outer ::= ir_create_block();
+	ir_ret(ir_imm(0));
+
+	ir_reposition(loop_begin);
+	ir_jmpif(cond, outer, loop_begin);
+
+	ir_reposition(entry);
+	ir_jmp(loop_begin);
 
 	ir_dump();
 

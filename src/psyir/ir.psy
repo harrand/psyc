@@ -624,6 +624,11 @@ ir_new_qreg : func(-> psyir_val)
 	return ir_new_reg(psyir_reg_size.q);
 };
 
+ir_new_breg : func(-> psyir_val)
+{
+	return ir_new_reg(psyir_reg_size.b);
+};
+
 // instruction api
 ir_stack : func(sz : psyir_val -> psyir_val)
 {
@@ -791,6 +796,25 @@ ir_trunc32 : func(op : psyir_val -> psyir_val)
 {
 	return ir_sized_unary(psyir_inst_tag.trunc32, psyir_reg_size.d, op);
 };
+
+ir_cmp_eq : func(lhs : psyir_val, rhs : psyir_val -> psyir_val)
+{
+	out ::= ir_new_breg();
+	ir_add_instruction(psyir_inst
+	{
+		.tag := psyir_inst_tag.cmp_eq;
+		.operands := psyir_val[4]
+		{
+			.0 := out;
+			.1 := lhs;
+			.2 := rhs;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
 ir_jmp : func(label : psyir_position -> v0)
 {
 	ir_add_instruction(psyir_inst
