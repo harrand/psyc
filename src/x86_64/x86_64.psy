@@ -75,6 +75,22 @@ x64_reg : enum
 			.r15w := 73;
 				.r15b_hi_doesnt_exist := 74;
 				.r15b := 75;
+	.xmm0 := 76;
+	.xmm1 := 77;
+	.xmm2 := 78;
+	.xmm3 := 79;
+	.xmm4 := 80;
+	.xmm5 := 81;
+	.xmm6 := 82;
+	.xmm7 := 83;
+	.xmm8 := 84;
+	.xmm9 := 85;
+	.xmm10 := 86;
+	.xmm11 := 87;
+	.xmm12 := 88;
+	.xmm13 := 89;
+	.xmm14 := 90;
+	.xmm15 := 91;
 };
 
 x64_operand_tag : enum
@@ -120,14 +136,77 @@ x64_inst_tag : enum
 	.sar := 22;
 	.shr := 23;
 	
+	.movss := 24;
+};
+
+x64_reg_is_xmm : func(reg : x64_reg -> bool)
+{
+	i ::= reg@s64;
+	min ::= x64_reg.xmm0@s64;
+	max ::= x64_reg.xmm15@s64;
+	return (min <= i) && (i <= max);
 };
 
 x64_inst : struct
 {
 	tag : x64_inst_tag;
-	operand : x64_operand mut[4];
+	operands : x64_operand mut[4];
 };
 
-x64_object : struct
+x64_func : struct
 {
+	ret_register : x64_operand;
+	inst : x64_inst mut?;
+	inst_count : u64;
+	inst_cap : u64;
+};
+
+x64_callconv : enum
+{
+	.sysv := 1;
+};
+
+x64_mov : func(dst : x64_reg, src : x64_reg -> x64_inst)
+{
+	if(x64_reg_is_xmm(dst))
+	{
+		return x64_inst
+		{
+			.tag := x64_inst_tag.movss;
+			.operands := x64_operand[4]
+			{
+				.0 := x64_operand{.tag := x64_operand_tag.reg; .reg := dst;};
+				.1 := x64_operand{.tag := x64_operand_tag.reg; .reg := src;};
+				... := zero;
+			};
+		};
+	}
+	return x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_operand[4]
+		{
+			.0 := x64_operand{.tag := x64_operand_tag.reg; .reg := dst;};
+			.1 := x64_operand{.tag := x64_operand_tag.reg; .reg := src;};
+			... := zero;
+		};
+	};
+};
+
+psyir_compile_function_x64 : func(irfn : psyir_func, conv : x64_callconv -> x64_func)
+{
+	// first figure out which register our return value goes in (if any)
+	ret : x64_func mut := zero;
+	if((irfn.ret == (psyir_reg_size.x)) || (irfn.ret == (psyir_reg_size.y)))
+	{
+		ret.ret_register = x64_operand{.tag := x64_operand_tag.reg; .reg := x64_reg.xmm0;};
+	}
+	else
+	{
+		if(irfn.ret != zero)
+		{
+			ret.ret_register = x64_operand{.tag := x64_operand_tag.reg; .reg := x64_reg.rax;};
+		}
+	}
+	return zero;
 };
