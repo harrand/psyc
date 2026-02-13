@@ -80,6 +80,7 @@ psyir_func : struct
 {
 	name : u8?;
 	name_len : u64;
+	ret : psyir_reg_size;
 	blk : psyir_blk mut?;
 	blk_count : u64;
 	blk_cap : u64;
@@ -219,6 +220,15 @@ psyir_func_dump : func(fn : psyir_func -> v0)
 			putzstr(", ");
 		}
 	}
+	putzstr(" -> ");
+	if(fn.ret == zero)
+	{
+		putzstr("none");
+	}
+	else
+	{
+		putzstr(enumname(fn.ret));
+	}
 	putzstr(")");
 	putzstr(":");
 	putchar(10);
@@ -268,7 +278,7 @@ psyir_api : struct
 
 psyir : psyir_api mut := zero;
 
-ir_create_function : func(name : u8?, name_len : u64 -> psyir_position)
+ir_add_func_generic : func(name : u8?, name_len : u64, ret : psyir_reg_size -> psyir_position)
 {
 	if(psyir.prog.fn == zero)
 	{
@@ -287,6 +297,7 @@ ir_create_function : func(name : u8?, name_len : u64 -> psyir_position)
 	{
 		.name := name;
 		.name_len := name_len;
+		.ret := ret;
 		... := zero;
 	};
 	psyir.position = psyir_position
@@ -296,6 +307,41 @@ ir_create_function : func(name : u8?, name_len : u64 -> psyir_position)
 	};
 	psyir.prog.fn_count = (psyir.prog.fn_count + 1);
 	return ir_create_block();
+};
+
+ir_add_func : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, zero);
+};
+
+ir_add_qfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.q);
+};
+
+ir_add_dfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.d);
+};
+
+ir_add_wfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.w);
+};
+
+ir_add_bfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.b);
+};
+
+ir_add_xfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.x);
+};
+
+ir_add_yfunc : func(name : u8?, name_len : u64 -> psyir_position)
+{
+	return ir_add_func_generic(name, name_len, psyir_reg_size.y);
 };
 
 ir_param : func(sz : psyir_reg_size -> psyir_val)
@@ -813,7 +859,8 @@ ir_call : func(fn : psyir_position, params : psyir_val?, params_count : u64 -> v
 
 ir_rcall : func(fn : psyir_position, params : psyir_val?, params_count : u64 -> psyir_val)
 {
-	out ::= ir_new_qreg();
+	callfn ::= [psyir.prog.fn # (fn.func_cursor)];
+	out ::= ir_new_reg(callfn.ret);
 	// -2 because fn is also an operand aswell as the output register
 	base_operands_count ::= (countof typeof(psyir_inst{}.operands)) - 2;
 	extras : psyir_val mut? mut := zero;
