@@ -262,6 +262,34 @@ x64_ir_stack : func(stack : ir -> x64_inst[2])
 	};
 };
 
+x64_ir_off : func(off : ir -> x64_inst[2])
+{
+	// probably ought to be a lea with a memory operand but an add+mov is simple enough for now
+	return x64_inst[2]
+	{
+		.0 := x64_inst
+		{
+			.tag := x64_inst_tag.add;
+			.operands := x64_val[4]
+			{
+				.0 := x64_ir_val([off.operands # 1]);
+				.1 := x64_ir_val([off.operands # 2]);
+				... := zero;
+			};
+		};
+		.1 := x64_inst
+		{
+			.tag := x64_inst_tag.mov;
+			.operands := x64_val[4]
+			{
+				.0 := x64_ir_val([off.operands # 0]);
+				.1 := x64_ir_val([off.operands # 1]);
+				... := zero;
+			};
+		};
+	};
+};
+
 x64_func_ir : func(fn : ir_func, conv : x64_callconv -> x64_func)
 {
 	return zero;
