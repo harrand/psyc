@@ -99,7 +99,8 @@ x64_val_tag : enum
 	.reg := 2; // register
 	.vreg := 3; // virtual register (a lowering intermediate that doesnt exist in finalised x64)
 	.regval := 4; // value stored in a register
-	.memval := 5; // value stored in address
+	.vregval := 5; // value stored in virtual register
+	.memval := 6; // value stored in address
 };
 
 x64_val : struct
@@ -160,40 +161,54 @@ x64_callconv : enum
 	.sysv := 1;
 };
 
+x64_virtual_memory_operand : func(psy_reg : ir_val, byte_offset : u64 -> x64_val)
+{
+	return x64_val
+	{
+		.tag := x64_val_tag.vregval;
+		.reg := x64_virtual_reg_type(psy_reg.size);
+		.addr := byte_offset;
+	};
+};
+
+x64_virtual_reg_type : func(sz : irsz -> x64_reg)
+{
+	if(sz == irsz.q)
+	{
+		return x64_reg.rax;
+	}
+	if(sz == irsz.d)
+	{
+		return x64_reg.eax;
+	}
+	if(sz == irsz.w)
+	{
+		return x64_reg.ax;
+	}
+	if(sz == irsz.b)
+	{
+		return x64_reg.al;
+	}
+	if(sz == irsz.x)
+	{
+		return x64_reg.xmm4;
+	}
+	if(sz == irsz.y)
+	{
+		return x64_reg.xmm8;
+	}
+	return zero;
+};
+
 x64_virtual_reg : func(psy_reg : ir_val -> x64_val)
 {
 	// a virtual register is not a real x64 register
 	// but a intermediate conversion between psyir and x64
 	// basically a representation of the psyir register in a format that fits in a x64 instruction
-	reg : x64_reg mut := zero;
-	if(psy_reg.size == irsz.q)
-	{
-		reg = x64_reg.rax;
-	}
-	if(psy_reg.size == irsz.d)
-	{
-		reg = x64_reg.eax;
-	}
-	if(psy_reg.size == irsz.w)
-	{
-		reg = x64_reg.ax;
-	}
-	if(psy_reg.size == irsz.b)
-	{
-		reg = x64_reg.al;
-	}
-	if(psy_reg.size == irsz.x)
-	{
-		reg = x64_reg.xmm4;
-	}
-	if(psy_reg.size == irsz.y)
-	{
-		reg = x64_reg.xmm8;
-	}
 	return x64_val
 	{
 		.tag := x64_val_tag.vreg;
-		.reg := reg;
+		.reg := x64_virtual_reg_type(psy_reg.size);
 		.addr := psy_reg.val@_;
 	};
 };
@@ -286,6 +301,20 @@ x64_ir_off : func(off : ir -> x64_inst[2])
 				.1 := x64_ir_val([off.operands # 1]);
 				... := zero;
 			};
+		};
+	};
+};
+
+x64_ir_load : func(load : ir -> x64_inst)
+{
+	return x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := x64_virtual_reg([load.operands # 0]);
+			.1 := x64_virtual_memory_operand([load.operands # 1], 0);
+			... := zero;
 		};
 	};
 };
