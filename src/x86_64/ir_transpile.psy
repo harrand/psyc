@@ -1,0 +1,159 @@
+
+x64_virtual_memory_operand : func(psy_reg : ir_val, byte_offset : u64 -> x64_val)
+{
+	return x64_val
+	{
+		.tag := x64_val_tag.vregval;
+		.reg := x64_virtual_reg_type(psy_reg.size);
+		.addr := byte_offset;
+	};
+};
+
+x64_virtual_reg_type : func(sz : irsz -> x64_reg)
+{
+	if(sz == irsz.q)
+	{
+		return x64_reg.rax;
+	}
+	if(sz == irsz.d)
+	{
+		return x64_reg.eax;
+	}
+	if(sz == irsz.w)
+	{
+		return x64_reg.ax;
+	}
+	if(sz == irsz.b)
+	{
+		return x64_reg.al;
+	}
+	if(sz == irsz.x)
+	{
+		return x64_reg.xmm4;
+	}
+	if(sz == irsz.y)
+	{
+		return x64_reg.xmm8;
+	}
+	return zero;
+};
+
+x64_virtual_reg : func(psy_reg : ir_val -> x64_val)
+{
+	// a virtual register is not a real x64 register
+	// but a intermediate conversion between psyir and x64
+	// basically a representation of the psyir register in a format that fits in a x64 instruction
+	return x64_val
+	{
+		.tag := x64_val_tag.vreg;
+		.reg := x64_virtual_reg_type(psy_reg.size);
+		.addr := psy_reg.val@_;
+	};
+};
+
+x64_ir_val : func(v : ir_val -> x64_val)
+{
+	if(v.tag == ir_valtag.imm)
+	{
+		return x64_imm(v.val);
+	}
+	if(v.tag == ir_valtag.r)
+	{
+		return x64_virtual_reg(v);
+	}
+	return zero;
+};
+
+x64_ir_stack : func(stack : ir -> x64_inst[2])
+{
+	// ir looks like this:
+	// stack q0, 8
+
+	// x64 looks like this:
+	// sub rsp, 8
+	// mov q0, rsp
+	return x64_inst[2]
+	{
+		.0 := x64_inst
+		{
+			.tag := x64_inst_tag.sub;
+			.operands := x64_val[4]
+			{
+				.0 := x64_regval(x64_reg.rsp);
+				.1 := x64_ir_val([stack.operands # 1]);
+				... := zero;
+			};
+		};
+		.1 := x64_inst
+		{
+			.tag := x64_inst_tag.mov;
+			.operands := x64_val[4]
+			{
+				.0 := x64_virtual_reg([stack.operands # 0]);
+				.1 := x64_regval(x64_reg.rsp);
+				... := zero;
+			};
+		};
+	};
+};
+
+x64_ir_off : func(off : ir -> x64_inst[2])
+{
+	// probably ought to be a lea with a memory operand but an add+mov is simple enough for now
+	return x64_inst[2]
+	{
+		.0 := x64_inst
+		{
+			.tag := x64_inst_tag.add;
+			.operands := x64_val[4]
+			{
+				.0 := x64_virtual_reg([off.operands # 1]);
+				.1 := x64_ir_val([off.operands # 2]);
+				... := zero;
+			};
+		};
+		.1 := x64_inst
+		{
+			.tag := x64_inst_tag.mov;
+			.operands := x64_val[4]
+			{
+				.0 := x64_virtual_reg([off.operands # 0]);
+				.1 := x64_ir_val([off.operands # 1]);
+				... := zero;
+			};
+		};
+	};
+};
+
+x64_ir_load : func(load : ir -> x64_inst)
+{
+	return x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := x64_virtual_reg([load.operands # 0]);
+			.1 := x64_virtual_memory_operand([load.operands # 1], 0);
+			... := zero;
+		};
+	};
+};
+
+x64_ir_store : func(store : ir -> x64_inst)
+{
+	return x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := x64_virtual_memory_operand([store.operands # 0], 0);
+			.1 := x64_virtual_reg([store.operands # 1]);
+			... := zero;
+		};
+	};
+};
+
+x64_func_ir : func(fn : ir_func, conv : x64_callconv -> x64_func)
+{
+	return zero;
+};
