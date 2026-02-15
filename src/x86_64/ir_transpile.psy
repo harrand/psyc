@@ -500,10 +500,19 @@ x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
 
 	i : u64 mut;
 	j : u64 mut;
+
+	// so we dont care about blocks
+	blk_mappings : u64 mut? := arena_alloc(global_arena, irfn.blk_count * sizeof u64);
+	// blk_mappings maps each block index to an instruction index
+	// so i can patch jumps to blocks to jump to instruction indices instead
+	// so we no longer think about blocks.
+
+	instruction_id : u64 mut := 0;
 	// iterate over all blocks
 	for(i = 0; i < irfn.blk_count; i = i + 1)
 	{
 		curblk ::= [irfn.blk # i];
+		[blk_mappings # i] = instruction_id;
 		for(j = 0; j < curblk.inst_count; j = j + 1)
 		{
 			inst ::= [curblk.inst # j];
@@ -521,7 +530,17 @@ x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
 			}
 			if(inst.tag == irtag.jmp)
 			{
-				x64_ir_jmp(inst);
+				// hold up. what if we're the last instruction in the block and this is a jump to the next one (due to blocks requiring terminators)?
+				// well then we dont need to generate anything
+				jumps_to_next_blk ::= [inst.operands # 0].val@_ == (i + 1); 
+				we_are_terminating_this_blk ::= j == (curblk.inst_count - 1);
+				if(jumps_to_next_blk && we_are_terminating_this_blk)
+				{
+				}
+				else
+				{
+					x64_ir_jmp(inst);
+				}
 			}
 			if(inst.tag == irtag.load)
 			{
@@ -543,6 +562,21 @@ x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
 			{
 				x64_ir_add(inst);
 			}
+			instruction_id = instruction_id + 1;
+		}
+	}
+
+	// go iterate back through all instructions
+	for(i = 0; i < fn->inst_count; i = i + 1)
+	{
+		cur ::= fn->inst # i;
+		if(x64_is_some_kind_of_jump([cur]))
+		{
+			[cur->operands # 0] = x64_val
+			{
+				.tag := x64_val_tag.memaddr;
+				.addr := 1000 + [blk_mappings # ([cur->operands # 0].addr)];
+			};
 		}
 	}
 	return zero;
