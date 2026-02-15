@@ -183,7 +183,8 @@ x64_ir_call : func(call : ir, conv : x64_callconv -> v0)
 	//fn ::= [psyir.prog.fn # (fnval.val)];
 	// ir offset is 1 because the first operand is the function (so first param is at 1)
 	// x64 offset is 0 because the movs go in first
-	cursor ::= x64_resolve_function_params_abi(ret # 0, call, 1, 0, conv);
+	stack_to_restore : u64 mut := 0;
+	cursor ::= x64_resolve_function_params_abi(ret # 0, call, 1, 0, conv, ref stack_to_restore);
 	// now finally write to the call
 	[ret # cursor] = x64_inst
 	{
@@ -199,6 +200,17 @@ x64_ir_call : func(call : ir, conv : x64_callconv -> v0)
 	{
 		x64_add_instruction([ret # i]);
 	}
+
+	// make an add instruction to restore the stack space used
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.add;
+		.operands := x64_val[4]
+		{
+			.0 := x64_register(x64_reg.rsp);
+			.1 := x64_imm(stack_to_restore);
+		};
+	});
 };
 
 // x64_max_param_regs + 1 (mov for all params, and a call instruction)
@@ -212,7 +224,8 @@ x64_ir_rcall : func(rcall : ir, conv : x64_callconv -> x64_val)
 	//fn ::= [psyir.prog.fn # (fnval.val)];
 	// ir offset is 1 because the first operand is the function (so first param is at 1)
 	// x64 offset is 0 because the movs go in first
-	cursor : u64 mut := x64_resolve_function_params_abi(ret # 0, rcall, 2, 0, conv);
+	stack_to_restore : u64 mut := 0;
+	cursor : u64 mut := x64_resolve_function_params_abi(ret # 0, rcall, 2, 0, conv, ref stack_to_restore);
 	// now finally write to the call
 	[ret # cursor] = x64_inst
 	{
@@ -256,21 +269,32 @@ x64_ir_rcall : func(rcall : ir, conv : x64_callconv -> x64_val)
 	{
 		x64_add_instruction([ret # i]);
 	}
+
+	// make an add instruction to restore the stack space used
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.add;
+		.operands := x64_val[4]
+		{
+			.0 := x64_register(x64_reg.rsp);
+			.1 := x64_imm(stack_to_restore);
+		};
+	});
 	return ret_value;
 };
 
-x64_resolve_function_params_abi : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, conv : x64_callconv -> u64)
+x64_resolve_function_params_abi : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, conv : x64_callconv, stack_to_restore : u64 mut? -> u64)
 {
 	// we have a call and it has some number of params
 	// out_params # 0 will be the call address but the rest are for us to fill in
 	// out_params # 1 for example should be a mov from the virtual register represented by call.operands # call_offset to the *concrete register* of this particular index as per the callconv
 	if(conv == x64_callconv.sysv)
 	{
-		return x64_resolve_function_params_sysv(out_params, call, call_offset_ir, call_offset_x64);
+		return x64_resolve_function_params_sysv(out_params, call, call_offset_ir, call_offset_x64, stack_to_restore);
 	}
 	if(conv == x64_callconv.win64)
 	{
-		return x64_resolve_function_params_win64(out_params, call, call_offset_ir, call_offset_x64);
+		return x64_resolve_function_params_win64(out_params, call, call_offset_ir, call_offset_x64, stack_to_restore);
 	}
 	// panic
 	psyc_panic_begin(zero);
@@ -286,7 +310,7 @@ x64_resolve_function_params_abi : func(out_params : x64_inst mut?, call : ir, ca
 	return zero;
 };
 
-x64_resolve_function_params_sysv : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64 -> u64)
+x64_resolve_function_params_sysv : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, stack_to_restore : u64 mut? -> u64)
 {
 	psyc_panic_begin(zero);
 	putzstr("calling convention sysv is not yet implemented");
@@ -296,7 +320,7 @@ x64_resolve_function_params_sysv : func(out_params : x64_inst mut?, call : ir, c
 	return zero;
 };
 
-x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64 -> u64)
+x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, stack_to_restore : u64 mut? -> u64)
 {
 	// ok so this is fairly simple
 	// on x64 the params are:
@@ -389,6 +413,7 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 			out_cursor = out_cursor + 1;
 		}
 	}
+	[stack_to_restore] = stack_space_required;
 	return out_cursor;
 };
 
@@ -492,6 +517,66 @@ x64_ir_div : func(div : ir -> v0)
 	x64_ir_arith(div, x64_inst_tag.div);
 };
 
+x64_ir_cmp_eq : func(cmp_eq : ir -> v0)
+{
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.cmp;
+		.operands := x64_val[4]
+		{
+			.0 := x64_ir_val([cmp_eq.operands # 1]);
+			.1 := x64_ir_val([cmp_eq.operands # 2]);
+			... := zero;
+		};
+	});
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.sete;
+		.operands := x64_val[4]
+		{
+			.0 := x64_virtual_reg([cmp_eq.operands # 0]);
+			... := zero;
+		};
+	});
+};
+
+x64_ir_ret : func(ret : ir -> v0)
+{
+	// if its fp we mov to xmm0
+	// otherwise rax
+	out ::= [ret.operands # 0];
+	x64_out : x64_val mut := x64_register(x64_reg.rax);
+	if(out.tag == ir_valtag.r)
+	{
+		if((out.size == irsz.x) || (out.size == irsz.y))
+		{
+			x64_out = x64_register(x64_reg.xmm0);
+		}
+	}
+
+	// ok we just move our operand to rax/xmm0.
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := x64_out;
+			.1 := x64_ir_val(out);
+			... := zero;
+		};
+	});
+	x64_ir_retnone(zero);
+};
+
+x64_ir_retnone : func(retnone : ir -> v0)
+{
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.ret;
+		.operands := zero;
+	});
+};
+
 x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
 {
 	irfn ::= [psyir.prog.fn # funcpos.func_cursor];
@@ -562,10 +647,35 @@ x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
 			{
 				x64_ir_add(inst);
 			}
+			if(inst.tag == irtag.sub)
+			{
+				x64_ir_sub(inst);
+			}
+			if(inst.tag == irtag.mul)
+			{
+				x64_ir_mul(inst);
+			}
+			if(inst.tag == irtag.div)
+			{
+				x64_ir_div(inst);
+			}
+			if(inst.tag == irtag.cmp_eq)
+			{
+				x64_ir_cmp_eq(inst);
+			}
+			if(inst.tag == irtag.ret)
+			{
+				x64_ir_ret(inst);
+			}
+			if(inst.tag == irtag.retnone)
+			{
+				x64_ir_retnone(inst);
+			}
 			instruction_id = instruction_id + 1;
 		}
 	}
 
+	// patch up jumps to basic blocks using the blk_mappings we just populated.
 	// go iterate back through all instructions
 	for(i = 0; i < fn->inst_count; i = i + 1)
 	{
