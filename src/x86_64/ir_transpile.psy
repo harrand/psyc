@@ -85,7 +85,7 @@ x64_ir_val : func(v : ir_val -> x64_val)
 	return zero;
 };
 
-x64_ir_stack : func(stack : ir -> x64_inst[2])
+x64_ir_stack : func(stack : ir -> v0)
 {
 	// ir looks like this:
 	// stack q0, 8
@@ -93,62 +93,56 @@ x64_ir_stack : func(stack : ir -> x64_inst[2])
 	// x64 looks like this:
 	// sub rsp, 8
 	// mov q0, rsp
-	return x64_inst[2]
+	x64_add_instruction(x64_inst
 	{
-		.0 := x64_inst
+		.tag := x64_inst_tag.sub;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.sub;
-			.operands := x64_val[4]
-			{
-				.0 := x64_register(x64_reg.rsp);
-				.1 := x64_ir_val([stack.operands # 1]);
-				... := zero;
-			};
+			.0 := x64_register(x64_reg.rsp);
+			.1 := x64_ir_val([stack.operands # 1]);
+			... := zero;
 		};
-		.1 := x64_inst
+	});
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.mov;
-			.operands := x64_val[4]
-			{
-				.0 := x64_virtual_reg([stack.operands # 0]);
-				.1 := x64_register(x64_reg.rsp);
-				... := zero;
-			};
+			.0 := x64_virtual_reg([stack.operands # 0]);
+			.1 := x64_register(x64_reg.rsp);
+			... := zero;
 		};
-	};
+	});
 };
 
-x64_ir_off : func(off : ir -> x64_inst[2])
+x64_ir_off : func(off : ir -> v0)
 {
 	// probably ought to be a lea with a memory operand but an add+mov is simple enough for now
-	return x64_inst[2]
+	x64_add_instruction(x64_inst
 	{
-		.0 := x64_inst
+		.tag := x64_inst_tag.add;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.add;
-			.operands := x64_val[4]
-			{
-				.0 := x64_virtual_reg([off.operands # 1]);
-				.1 := x64_ir_val([off.operands # 2]);
-				... := zero;
-			};
+			.0 := x64_virtual_reg([off.operands # 1]);
+			.1 := x64_ir_val([off.operands # 2]);
+			... := zero;
 		};
-		.1 := x64_inst
+	});
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.mov;
-			.operands := x64_val[4]
-			{
-				.0 := x64_virtual_reg([off.operands # 0]);
-				.1 := x64_ir_val([off.operands # 1]);
-				... := zero;
-			};
+			.0 := x64_virtual_reg([off.operands # 0]);
+			.1 := x64_ir_val([off.operands # 1]);
+			... := zero;
 		};
-	};
+	});
 };
 
-x64_ir_load : func(load : ir -> x64_inst)
+x64_ir_load : func(load : ir -> v0)
 {
-	return x64_inst
+	x64_add_instruction(x64_inst
 	{
 		.tag := x64_inst_tag.mov;
 		.operands := x64_val[4]
@@ -157,21 +151,21 @@ x64_ir_load : func(load : ir -> x64_inst)
 			.1 := x64_virtual_memory_operand([load.operands # 1], 0);
 			... := zero;
 		};
-	};
+	});
 };
 
-x64_ir_store : func(store : ir -> x64_inst)
+x64_ir_store : func(store : ir -> v0)
 {
-	return x64_inst
+	x64_add_instruction(x64_inst
 	{
 		.tag := x64_inst_tag.mov;
 		.operands := x64_val[4]
 		{
 			.0 := x64_virtual_memory_operand([store.operands # 0], 0);
-			.1 := x64_virtual_reg([store.operands # 1]);
+			.1 := x64_ir_val([store.operands # 1]);
 			... := zero;
 		};
-	};
+	});
 };
 
 // sysv: 14 (rdi, rsi, rdx, rcx, r8, r9, xmm0-7)
@@ -179,7 +173,7 @@ x64_ir_store : func(store : ir -> x64_inst)
 x64_max_param_regs ::= 14;
 
 // x64_max_param_regs + 1 (mov for all params, and a call instruction)
-x64_ir_call : func(call : ir, conv : x64_callconv -> x64_inst[15])
+x64_ir_call : func(call : ir, conv : x64_callconv -> v0)
 {
 	ret : x64_inst mut[15] := zero;
 	// + 1 for the call after the moves
@@ -197,13 +191,18 @@ x64_ir_call : func(call : ir, conv : x64_callconv -> x64_inst[15])
 		.operands := x64_val mut[4]
 		{
 			.0 := x64_virtual_function([call.operands # 0]);
+			... := zero;
 		};
 	};
-	return ret;
+	i : u64 mut;
+	for(i = 0; i <= cursor; i = i + 1)
+	{
+		x64_add_instruction([ret # i]);
+	}
 };
 
 // x64_max_param_regs + 1 (mov for all params, and a call instruction)
-x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? -> x64_inst[15])
+x64_ir_rcall : func(rcall : ir, conv : x64_callconv -> x64_val)
 {
 	ret : x64_inst mut[15] := zero;
 	// + 1 for the call after the moves
@@ -213,7 +212,7 @@ x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? ->
 	//fn ::= [psyir.prog.fn # (fnval.val)];
 	// ir offset is 1 because the first operand is the function (so first param is at 1)
 	// x64 offset is 0 because the movs go in first
-	cursor ::= x64_resolve_function_params_abi(ret # 0, rcall, 2, 0, conv);
+	cursor : u64 mut := x64_resolve_function_params_abi(ret # 0, rcall, 2, 0, conv);
 	// now finally write to the call
 	[ret # cursor] = x64_inst
 	{
@@ -221,24 +220,43 @@ x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? ->
 		.operands := x64_val mut[4]
 		{
 			.0 := x64_virtual_function([rcall.operands # 1]);
+			... := zero;
 		};
 	};
+	cursor = cursor + 1;
 	// now we figure out which register the return value should be in.
 	// fortunately the only 2 callconvs we support do largely the same thing
 	// if the function returns floating point, its xmm0
 	// otherwise, its rax
-	fn ::= [psyir.prog.fn # [rcall.operands # 0].val];
+	fn ::= [psyir.prog.fn # [rcall.operands # 1].val];
+	out_operand ::= x64_virtual_reg([rcall.operands # 0]);
 	// check fn.ret as an irsz
+	ret_value : x64_val mut := zero;
 	if((fn.ret == (irsz.x)) || (fn.ret == (irsz.y)))
 	{
 		// its floating point!
-		[ret_value] = x64_register(x64_reg.xmm0);
+		ret_value = x64_register(x64_reg.xmm0);
 	}
 	else
 	{
-		[ret_value] = x64_register(x64_reg.rax);
+		ret_value = x64_register(x64_reg.rax);
 	}
-	return ret;
+	[ret # cursor] = x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := out_operand;
+			.1 := ret_value;
+			... := zero;
+		};
+	};
+	i : u64 mut;
+	for(i = 0; i <= cursor; i = i + 1)
+	{
+		x64_add_instruction([ret # i]);
+	}
+	return ret_value;
 };
 
 x64_resolve_function_params_abi : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, conv : x64_callconv -> u64)
@@ -339,6 +357,7 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 					};
 					// input ir value
 					.1 := x64_ir_val(cur_ir);
+					... := zero;
 				};
 			};
 			out_cursor = out_cursor + 1;
@@ -356,6 +375,7 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 			{
 				.0 := x64_register(x64_reg.rsp);
 				.1 := x64_imm(stack_space_required);
+				... := zero;
 			};
 		};
 		out_cursor = out_cursor + 1;
@@ -372,9 +392,9 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 	return out_cursor;
 };
 
-x64_ir_jmp : func(jmp : ir -> x64_inst)
+x64_ir_jmp : func(jmp : ir -> v0)
 {
-	return x64_inst
+	x64_add_instruction(x64_inst
 	{
 		.tag := x64_inst_tag.jmp;
 		.operands := x64_val[4]
@@ -382,10 +402,10 @@ x64_ir_jmp : func(jmp : ir -> x64_inst)
 			.0 := x64_virtual_instptr([jmp.operands # 0].val@_);
 			... := zero;
 		};
-	};
+	});
 };
 
-x64_ir_jmpif : func(jmpif : ir -> x64_inst[2])
+x64_ir_jmpif : func(jmpif : ir -> v0)
 {
 	// important note: this function assumes that the else block code must go directly after these instructions. this is a minor optimisation
 
@@ -395,32 +415,128 @@ x64_ir_jmpif : func(jmpif : ir -> x64_inst[2])
 	cond ::= x64_ir_val([jmpif.operands # 0]);
 	then_blk ::= [jmpif.operands # 1];
 	else_blk ::= [jmpif.operands # 2];
-	return x64_inst[2]
+	x64_add_instruction(x64_inst
 	{
-		.0 := x64_inst
+		.tag := x64_inst_tag.test;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.test;
-			.operands := x64_val[4]
-			{
-				.0 := cond;
-				.1 := cond;
-				... := zero;
-			};
+			.0 := cond;
+			.1 := cond;
+			... := zero;
 		};
-		.1 := x64_inst
+	});
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.jnz;
+		.operands := x64_val[4]
 		{
-			.tag := x64_inst_tag.jnz;
-			.operands := x64_val[4]
-			{
-				.0 := x64_virtual_instptr(then_blk.val@_);
-				... := zero;
-			};
+			.0 := x64_virtual_instptr(then_blk.val@_);
+			... := zero;
 		};
-	};
+	});
 };
 
-x64_func_ir : func(fn : ir_func, conv : x64_callconv -> x64_func)
+x64_ir_arith : func(arith : ir, op : x64_inst_tag -> v0)
 {
-	// an ir_func is made up of blocks
+	// mov old reg value into new reg
+	// and then arith on that new reg (because x64 arith mutates the operand)
+	new_reg ::= x64_virtual_reg([arith.operands # 0]);
+	lhs ::= x64_ir_val([arith.operands # 1]);
+	rhs ::= x64_ir_val([arith.operands # 2]);
+	x64_add_instruction(x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := new_reg;
+			.1 := lhs;
+			... := zero;
+		};
+	});
+	x64_add_instruction(x64_inst
+	{
+		.tag := op;
+		.operands := x64_val[4]
+		{
+			.0 := new_reg;
+			.1 := rhs;
+			... := zero;
+		};
+	});
+};
+
+x64_ir_add : func(add : ir -> v0)
+{
+	x64_ir_arith(add, x64_inst_tag.add);
+};
+
+x64_ir_sub : func(sub : ir -> v0)
+{
+	x64_ir_arith(sub, x64_inst_tag.sub);
+};
+
+x64_ir_mul : func(mul : ir -> v0)
+{
+	x64_ir_arith(mul, x64_inst_tag.mul);
+};
+
+x64_ir_div : func(div : ir -> v0)
+{
+	x64_ir_arith(div, x64_inst_tag.div);
+};
+
+x64_add_ir_func : func(funcpos : psyir_position, conv : x64_callconv -> u64)
+{
+	irfn ::= [psyir.prog.fn # funcpos.func_cursor];
+	fnid ::= x64_add_func();
+	fn ::= x86_64.prog.fn # fnid;
+
+	i : u64 mut;
+	j : u64 mut;
+	// iterate over all blocks
+	for(i = 0; i < irfn.blk_count; i = i + 1)
+	{
+		curblk ::= [irfn.blk # i];
+		for(j = 0; j < curblk.inst_count; j = j + 1)
+		{
+			inst ::= [curblk.inst # j];
+			if(inst.tag == irtag.stack)
+			{
+				x64_ir_stack(inst);
+			}
+			if(inst.tag == irtag.off)
+			{
+				x64_ir_off(inst);
+			}
+			if(inst.tag == irtag.jmpif)
+			{
+				x64_ir_jmpif(inst);
+			}
+			if(inst.tag == irtag.jmp)
+			{
+				x64_ir_jmp(inst);
+			}
+			if(inst.tag == irtag.load)
+			{
+				x64_ir_load(inst);
+			}
+			if(inst.tag == irtag.store)
+			{
+				x64_ir_store(inst);
+			}
+			if(inst.tag == irtag.call)
+			{
+				x64_ir_call(inst, conv);
+			}
+			if(inst.tag == irtag.rcall)
+			{
+				x64_ir_rcall(inst, conv);
+			}
+			if(inst.tag == irtag.add)
+			{
+				x64_ir_add(inst);
+			}
+		}
+	}
 	return zero;
 };

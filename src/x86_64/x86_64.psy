@@ -194,6 +194,8 @@ x64_program : struct
 	fn : x64_func mut?;
 	fn_count : u64;
 	fn_cap : u64;
+
+	fn_cursor : u64;
 };
 
 x64_register : func(reg : x64_reg -> x64_val)
@@ -229,32 +231,18 @@ x64_copy_8bytes_to_stack : func(rsp_offset : u64, src : x64_val -> x64_inst)
 				.addr := rsp_offset;
 			};
 			.1 := src;
+			... := zero;
 		};
 	};
 };
 
-x86_64 : x64_program mut := zero;
-
-x64_add_func : func(fn : x64_func -> u64)
+x64_api : struct
 {
-	if(x86_64.fn == zero)
-	{
-		x86_64.fn_cap = 1024;
-		x86_64.fn = arena_alloc(global_arena, x86_64.fn_cap * sizeof x64_func);
-	}
-	while(x86_64.fn_count >= x86_64.fn_cap)
-	{
-		old ::= x86_64.fn;
-		oldcap ::= x86_64.fn_cap;
-		x86_64.fn_cap = oldcap * 2;
-		x86_64.fn = arena_alloc(global_arena, x86_64.fn_cap * sizeof x64_func);
-		memcopy(x86_64.fn, old, oldcap * sizeof x64_func);
-	}
-	idx ::= x86_64.fn_count;
-	[x86_64.fn # idx] = fn;
-	x86_64.fn_count = (x86_64.fn_count + 1);
-	return idx;
+	prog : x64_program mut;
+	fn_cursor : u64;
 };
+
+x86_64 : x64_api mut := zero;
 
 x64_val_dump : func(v : x64_val -> v0)
 {
@@ -270,6 +258,7 @@ x64_val_dump : func(v : x64_val -> v0)
 	{
 		psyc_colour_blue();
 		putzstr(enumname(v.reg));
+		putuint(v.addr);
 		psyc_colour_reset();
 	}
 	if(v.tag == x64_val_tag.memreg)
@@ -285,6 +274,7 @@ x64_val_dump : func(v : x64_val -> v0)
 		putzstr("[");
 		psyc_colour_blue();
 		putzstr(enumname(v.reg));
+		putuint(v.addr);
 		psyc_colour_reset();
 		putzstr(" + ");
 		putuint(v.addr);
@@ -345,7 +335,6 @@ x64_dump : func(inst : x64_inst -> v0)
 			putzstr(", ");
 		}
 	}
-	putchar(10);
 };
 
 x64_func_dump : func(fn : x64_func -> v0)
@@ -359,16 +348,65 @@ x64_func_dump : func(fn : x64_func -> v0)
 		x64_dump([fn.inst # i]);
 		putchar(10);
 	}
+	putchar(10);
 };
 
 x64_program_dump : func( -> v0)
 {
 	i : u64 mut;
-	for(i = 0; i < x86_64.fn_count; i = i + 1)
+	for(i = 0; i < x86_64.prog.fn_count; i = i + 1)
 	{
 		putzstr("func_");
 		putuint(i);
-		x64_func_dump([x86_64.fn # i]);
+		x64_func_dump([x86_64.prog.fn # i]);
 		putchar(10);
 	}
+};
+
+x64_add_func : func( -> u64)
+{
+	if(x86_64.prog.fn == zero)
+	{
+		x86_64.prog.fn_cap = 1024;
+		x86_64.prog.fn = arena_alloc(global_arena, x86_64.prog.fn_cap * sizeof x64_func);
+	}
+	while(x86_64.prog.fn_count >= x86_64.prog.fn_cap)
+	{
+		old ::= x86_64.prog.fn;
+		oldcap ::= x86_64.prog.fn_cap;
+		x86_64.prog.fn_cap = oldcap * 2;
+		x86_64.prog.fn = arena_alloc(global_arena, x86_64.prog.fn_cap * sizeof x64_func);
+		memcopy(x86_64.prog.fn, old, oldcap * sizeof x64_func);
+	}
+	idx ::= x86_64.prog.fn_count;
+	[x86_64.prog.fn # idx] = zero@x64_func;
+	x86_64.prog.fn_count = (x86_64.prog.fn_count + 1);
+	x86_64.fn_cursor = idx;
+	return idx;
+};
+
+x64_reposition : func(func_idx : u64 -> v0)
+{
+	x86_64.fn_cursor = func_idx;
+};
+
+// api
+x64_add_instruction : func(inst : x64_inst -> v0)
+{
+	fn ::= x86_64.prog.fn # (x86_64.fn_cursor);
+	if(fn->inst == zero)
+	{
+		fn->inst_cap = 1024;
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64_func);
+	}
+	while(fn->inst_count >= fn->inst_cap)
+	{
+		old ::= fn->inst;
+		oldcap ::= fn->inst_cap;
+		fn->inst_cap = oldcap * 2;
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64_func);
+		memcopy(fn->inst, old, oldcap * sizeof x64_func);
+	}
+	[fn->inst # (fn->inst_count)] = inst;
+	fn->inst_count = (fn->inst_count + 1);
 };

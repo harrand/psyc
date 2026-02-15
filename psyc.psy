@@ -56,7 +56,7 @@ main : func(pargs : program_args? -> s32)
 	envp = (pargs->envp);
 	setup_arenas();
 
-	params ::= ir_val[6]
+	params ::= ir_val mut[6]
 	{
 		.0 := ir_imm(0);
 		.1 := ir_imm(1);
@@ -97,6 +97,7 @@ main : func(pargs : program_args? -> s32)
 	loop_begin ::= ir_create_block();
 	cload ::= ir_load(counter);
 	call_result ::= ir_rcall(factorial, ref cload, 1);
+	[params # 0] = call_result;
 	ir_call(add6, params # 0, countof typeof params);
 	inc ::= ir_add(cload, ir_imm(1));
 	ir_store(counter, inc);
@@ -115,31 +116,11 @@ main : func(pargs : program_args? -> s32)
 	putchar(10);
 	ir_program_dump();
 
+	xfn ::= x64_add_ir_func(entry, x64_callconv.win64);
+
 	putzstr("x64:");
 	putchar(10);
-	x64_retval : x64_val mut;
-	x64_instructions_test ::= x64_ir_rcall(call_inst, x64_callconv.win64, ref x64_retval);
-	i : u64 mut;
-	for(i = 0; i < countof typeof x64_instructions_test; i = i + 1)
-	{
-		x64_dump([x64_instructions_test # i]);
-	}
-	putchar(10);
-	putchar(10);
-	putzstr("hello");
-	putzstr("output register from rcall: ");
-	x64_val_dump(x64_retval);
-	putchar(10);
-	putzstr("ir_jmp(loop_begin yields:");
-	putchar(10);
-
-
-	x64_jumpif_test ::= x64_ir_jmpif(jmpexample);
-	for(i = 0; i < countof typeof x64_jumpif_test; i = i + 1)
-	{
-		x64_dump([x64_jumpif_test # i]);
-	}
-	//x64_program_dump();
+	x64_program_dump();
 
 	lex_setup();
 	grammar_setup(global_arena);
