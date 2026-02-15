@@ -102,6 +102,7 @@ x64_val_tag : enum
 	.vregval := 5; // value stored in virtual register
 	.memval := 6; // value stored in address
 	.vfn := 7; // virtual function (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
+	.instptr := 8; // instruction pointer (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
 };
 
 x64_val : struct
@@ -164,6 +165,13 @@ x64_callconv : enum
 	.win64 := 2;
 };
 
+x64_program : struct
+{
+	fn : x64_func mut?;
+	fn_count : u64;
+	fn_cap : u64;
+};
+
 x64_regval : func(reg : x64_reg -> x64_val)
 {
 	return x64_val
@@ -180,4 +188,132 @@ x64_imm : func(imm : s64 weak -> x64_val)
 		.tag := x64_val_tag.imm;
 		.addr := imm;
 	};
+};
+
+x86_64 : x64_program mut := zero;
+
+x64_add_func : func(fn : x64_func -> u64)
+{
+	if(x86_64.fn == zero)
+	{
+		x86_64.fn_cap = 1024;
+		x86_64.fn = arena_alloc(global_arena, x86_64.fn_cap * sizeof x64_func);
+	}
+	while(x86_64.fn_count >= x86_64.fn_cap)
+	{
+		old ::= x86_64.fn;
+		oldcap ::= x86_64.fn_cap;
+		x86_64.fn_cap = oldcap * 2;
+		x86_64.fn = arena_alloc(global_arena, x86_64.fn_cap * sizeof x64_func);
+		memcopy(x86_64.fn, old, oldcap * sizeof x64_func);
+	}
+	idx ::= x86_64.fn_count;
+	[x86_64.fn # idx] = fn;
+	x86_64.fn_count = (x86_64.fn_count + 1);
+	return idx;
+};
+
+x64_val_dump : func(v : x64_val -> v0)
+{
+	if(v.tag == x64_val_tag.imm)
+	{
+		putsint(v.addr);
+	}
+	if(v.tag == x64_val_tag.reg)
+	{
+		putzstr(enumname(v.reg));
+	}
+	if(v.tag == x64_val_tag.vreg)
+	{
+		psyc_colour_blue();
+		putzstr(enumname(v.reg));
+		psyc_colour_reset();
+	}
+	if(v.tag == x64_val_tag.regval)
+	{
+		putzstr("[");
+		putzstr(enumname(v.reg));
+		putzstr(" + ");
+		putuint(v.addr);
+		putzstr("]");
+	}
+	if(v.tag == x64_val_tag.vregval)
+	{
+		putzstr("[");
+		psyc_colour_blue();
+		putzstr(enumname(v.reg));
+		psyc_colour_reset();
+		putzstr(" + ");
+		putuint(v.addr);
+		putzstr("]");
+	}
+	if(v.tag == x64_val_tag.memval)
+	{
+		putzstr("[");
+		putuint(v.addr);
+		putzstr("]");
+	}
+	if(v.tag == x64_val_tag.vfn)
+	{
+		psyc_colour_blue();
+		irfn ::= [psyir.prog.fn # (v.addr)];
+		putbytes(irfn.name, irfn.name_len);
+		psyc_colour_reset();
+	}
+	if(v.tag == x64_val_tag.instptr)
+	{
+		psyc_colour_blue();
+		putzstr("inst");
+		putuint(v.addr);
+		psyc_colour_reset();
+	}
+};
+
+x64_operand_count : func(inst : x64_inst -> u64)
+{
+	i : u64 mut;
+	for(i = 0; i < countof typeof(inst.operands); i = i + 1)
+	{
+		if([inst.operands # i].tag == zero)
+		{
+			return i;
+		}
+	}
+	return i;
+};
+
+x64_dump : func(inst : x64_inst -> v0)
+{
+	if(inst.tag == zero)
+	{
+		putzstr("<null instruction>");
+		putchar(10);
+		return;
+	}
+	putzstr(enumname(inst.tag));	
+	putzstr(" ");
+	i : u64 mut;
+	count ::= x64_operand_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		x64_val_dump([inst.operands # i]);
+		if(i != (count - 1))
+		{
+			putzstr(", ");
+		}
+	}
+	putchar(10);
+};
+
+x64_func_dump : func(fn : x64_func -> v0)
+{
+};
+
+x64_program_dump : func( -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < x86_64.fn_count; i = i + 1)
+	{
+		x64_func_dump([x86_64.fn # i]);
+	}
 };
