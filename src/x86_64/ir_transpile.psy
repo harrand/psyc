@@ -12,7 +12,7 @@ x64_virtual_memory_operand : func(psy_reg : ir_val, byte_offset : u64 -> x64_val
 {
 	return x64_val
 	{
-		.tag := x64_val_tag.vregval;
+		.tag := x64_val_tag.vmemreg;
 		.reg := x64_virtual_reg_type(psy_reg.size);
 		.addr := byte_offset;
 	};
@@ -90,7 +90,7 @@ x64_ir_stack : func(stack : ir -> x64_inst[2])
 			.tag := x64_inst_tag.sub;
 			.operands := x64_val[4]
 			{
-				.0 := x64_regval(x64_reg.rsp);
+				.0 := x64_register(x64_reg.rsp);
 				.1 := x64_ir_val([stack.operands # 1]);
 				... := zero;
 			};
@@ -101,7 +101,7 @@ x64_ir_stack : func(stack : ir -> x64_inst[2])
 			.operands := x64_val[4]
 			{
 				.0 := x64_virtual_reg([stack.operands # 0]);
-				.1 := x64_regval(x64_reg.rsp);
+				.1 := x64_register(x64_reg.rsp);
 				... := zero;
 			};
 		};
@@ -206,11 +206,11 @@ x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? ->
 	if((fn.ret == (irsz.x)) || (fn.ret == (irsz.y)))
 	{
 		// its floating point!
-		[ret_value] = x64_regval(x64_reg.xmm0);
+		[ret_value] = x64_register(x64_reg.xmm0);
 	}
 	else
 	{
-		[ret_value] = x64_regval(x64_reg.rax);
+		[ret_value] = x64_register(x64_reg.rax);
 	}
 	return ret;
 };
@@ -280,6 +280,9 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 	in_cursor : u64 mut := call_offset_ir;
 	out_cursor : u64 mut := call_offset_x64;
 
+	windows_x64_required_shadow ::= 32;
+	stack_space_required : u64 mut := windows_x64_required_shadow;
+
 	param_counter : u64 mut := 0;
 	for(in_cursor = call_offset_ir; in_cursor < count; in_cursor = in_cursor + 1)
 	{
@@ -287,31 +290,58 @@ x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, 
 		is_fp ::= (cur_ir.tag == ir_valtag.r) && ((cur_ir.size == irsz.x) || (cur_ir.size == irsz.y));
 		if(param_counter >= win64_regs_limit)
 		{
-			// panic! we dont know how to pass this on the stack!
+			stack_space_required = stack_space_required + 8;
 		}
-		out_reg : x64_reg mut := [regs_not_fp # param_counter];
-		if(is_fp)
+		else
 		{
-			out_reg = [regs_fp # param_counter];
+			out_reg : x64_reg mut := [regs_not_fp # param_counter];
+			if(is_fp)
+			{
+				out_reg = [regs_fp # param_counter];
+			}
+			// write the result into out_params # cursor;
+			[out_params # out_cursor] = x64_inst
+			{
+				.tag := x64_inst_tag.mov;
+				.operands := x64_val[4]
+				{
+					// output concrete register
+					.0 := x64_val
+					{
+						.tag := x64_val_tag.reg;
+						.reg := out_reg;
+					};
+					// input ir value
+					.1 := x64_ir_val(cur_ir);
+				};
+			};
+			out_cursor = out_cursor + 1;
 		}
-		// write the result into out_params # cursor;
+		param_counter = param_counter + 1;
+	}
+	// now we allocate stack shadow space (32 bytes as required by win64 calling convention)
+	// however it could be even more (multiple of 8 bytes though) if we had to pass some params on the stack
+	if(stack_space_required > 0)
+	{
 		[out_params # out_cursor] = x64_inst
 		{
-			.tag := x64_inst_tag.mov;
+			.tag := x64_inst_tag.sub;
 			.operands := x64_val[4]
 			{
-				// output concrete register
-				.0 := x64_val
-				{
-					.tag := x64_val_tag.reg;
-					.reg := out_reg;
-				};
-				// input ir value
-				.1 := x64_ir_val(cur_ir);
+				.0 := x64_register(x64_reg.rsp);
+				.1 := x64_imm(stack_space_required);
 			};
 		};
-		param_counter = param_counter + 1;
 		out_cursor = out_cursor + 1;
+
+		// how many things do we need to copy onto the stack now
+		stack_copy_count ::= param_counter - win64_regs_limit;
+		i : u64 mut;
+		for(i = win64_regs_limit; i < param_counter; i = i + 1)
+		{
+			[out_params # out_cursor] = x64_copy_8bytes_to_stack(windows_x64_required_shadow + (i - win64_regs_limit) * 8, x64_ir_val(ir_get_operand(call, call_offset_ir + i)));
+			out_cursor = out_cursor + 1;
+		}
 	}
 	return out_cursor;
 };

@@ -98,9 +98,9 @@ x64_val_tag : enum
 	.imm := 1; // immediate value (i.e numeric literal)
 	.reg := 2; // register
 	.vreg := 3; // virtual register (a lowering intermediate that doesnt exist in finalised x64. this gets resolved during register allocation)
-	.regval := 4; // value stored in a register
-	.vregval := 5; // value stored in virtual register
-	.memval := 6; // value stored in address
+	.memreg := 4; // memory location computed from a register (plus an offset which can be 0) i.e [rax + 32]
+	.vmemreg := 5; // memory location computed from a virtual register (plus an offset which can be 0) i.e [rax + 32]
+	.memaddr := 6; // absolute memory address
 	.vfn := 7; // virtual function (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
 	.instptr := 8; // instruction pointer (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
 };
@@ -108,7 +108,16 @@ x64_val_tag : enum
 x64_val : struct
 {
 	tag : x64_val_tag;
+	// ignored unless tag is reg, vreg, memreg, vmemreg
 	reg : x64_reg;
+	// the meaning of this depends on the tag
+	// imm => the actual numeric literal
+	// memreg => the offset, in bytes
+	// vmemreg => the offset, in bytes
+	// memaddr => the absolute value of the address
+	// vfn => depends on what is being lowered to x64.
+	//		for psyir, the index of the psyir function being referred to (i.e psyir_program.fn[addr])
+	// instptr => the index of the already-encoded instruction in this function (i.e x64_func.inst[addr])
 	addr : u64;
 };
 
@@ -172,7 +181,7 @@ x64_program : struct
 	fn_cap : u64;
 };
 
-x64_regval : func(reg : x64_reg -> x64_val)
+x64_register : func(reg : x64_reg -> x64_val)
 {
 	return x64_val
 	{
@@ -187,6 +196,25 @@ x64_imm : func(imm : s64 weak -> x64_val)
 	{
 		.tag := x64_val_tag.imm;
 		.addr := imm;
+	};
+};
+
+x64_copy_8bytes_to_stack : func(rsp_offset : u64, src : x64_val -> x64_inst)
+{
+	// mov qword[rsp], src
+	return x64_inst
+	{
+		.tag := x64_inst_tag.mov;
+		.operands := x64_val[4]
+		{
+			.0 := x64_val
+			{
+				.tag := x64_val_tag.memreg;
+				.reg := x64_reg.rsp;
+				.addr := rsp_offset;
+			};
+			.1 := src;
+		};
 	};
 };
 
@@ -229,7 +257,7 @@ x64_val_dump : func(v : x64_val -> v0)
 		putzstr(enumname(v.reg));
 		psyc_colour_reset();
 	}
-	if(v.tag == x64_val_tag.regval)
+	if(v.tag == x64_val_tag.memreg)
 	{
 		putzstr("[");
 		putzstr(enumname(v.reg));
@@ -237,7 +265,7 @@ x64_val_dump : func(v : x64_val -> v0)
 		putuint(v.addr);
 		putzstr("]");
 	}
-	if(v.tag == x64_val_tag.vregval)
+	if(v.tag == x64_val_tag.vmemreg)
 	{
 		putzstr("[");
 		psyc_colour_blue();
@@ -247,7 +275,7 @@ x64_val_dump : func(v : x64_val -> v0)
 		putuint(v.addr);
 		putzstr("]");
 	}
-	if(v.tag == x64_val_tag.memval)
+	if(v.tag == x64_val_tag.memaddr)
 	{
 		putzstr("[");
 		putuint(v.addr);
@@ -286,7 +314,7 @@ x64_dump : func(inst : x64_inst -> v0)
 {
 	if(inst.tag == zero)
 	{
-		putzstr("<null instruction>");
+		putzstr("nop");
 		putchar(10);
 		return;
 	}
