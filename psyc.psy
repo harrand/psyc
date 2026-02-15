@@ -82,7 +82,9 @@ main : func(pargs : program_args? -> s32)
 
 	recursive_case ::= ir_create_block();
 	dec ::= ir_sub(factorial_n, ir_imm(1));
-	ir_ret(ir_mul(factorial_n, ir_rcall(factorial, ref dec, 1)));
+	tmpcall ::= ir_rcall(factorial, ref dec, 1);
+	call_inst ::= ir_last_instruction();
+	ir_ret(ir_mul(factorial_n, tmpcall));
 
 	ir_reposition(factorial);
 	is_base_case ::= ir_cmp_eq(factorial_n, ir_imm(0));
@@ -95,7 +97,7 @@ main : func(pargs : program_args? -> s32)
 	loop_begin ::= ir_create_block();
 	cload ::= ir_load(counter);
 	call_result ::= ir_rcall(factorial, ref cload, 1);
-	call_inst ::= ir_call(add6, params # 0, countof typeof params);
+	ir_call(add6, params # 0, countof typeof params);
 	inc ::= ir_add(cload, ir_imm(1));
 	ir_store(counter, inc);
 	cond ::= ir_cmp_eq(ir_load(counter), ir_imm(5));
@@ -115,12 +117,19 @@ main : func(pargs : program_args? -> s32)
 
 	putzstr("x64:");
 	putchar(10);
-	x64_instructions_test ::= x64_ir_call(call_inst, x64_callconv.win64);
+	x64_retval : x64_val mut;
+	x64_instructions_test ::= x64_ir_rcall(call_inst, x64_callconv.win64, ref x64_retval);
 	i : u64 mut;
 	for(i = 0; i < countof typeof x64_instructions_test; i = i + 1)
 	{
 		x64_dump([x64_instructions_test # i]);
 	}
+	putchar(10);
+	putchar(10);
+	putzstr("hello");
+	putzstr("output register from rcall: ");
+	x64_val_dump(x64_retval);
+	putchar(10);
 	//x64_program_dump();
 
 	lex_setup();

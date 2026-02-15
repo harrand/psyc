@@ -195,8 +195,24 @@ x64_ir_call : func(call : ir, conv : x64_callconv -> x64_inst[15])
 // x64_max_param_regs + 1 (mov for all params, and a call instruction)
 x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? -> x64_inst[15])
 {
-	// pretend the rcall is a call. same thing just that we handle rax/xmm0 etc after-the-fact depending on callconv
-	ret ::= x64_ir_call(rcall, conv);
+	ret : x64_inst mut[15] := zero;
+	// + 1 for the call after the moves
+	// emit all the moves we need (into the concrete destination registers we know we need)
+	// in as many moves as it takes
+	// assume fnval.tag == ir_valtag.fn
+	//fn ::= [psyir.prog.fn # (fnval.val)];
+	// ir offset is 1 because the first operand is the function (so first param is at 1)
+	// x64 offset is 0 because the movs go in first
+	cursor ::= x64_resolve_function_params_abi(ret # 0, rcall, 2, 0, conv);
+	// now finally write to the call
+	[ret # cursor] = x64_inst
+	{
+		.tag := x64_inst_tag.call;
+		.operands := x64_val mut[4]
+		{
+			.0 := x64_virtual_function([rcall.operands # 1]);
+		};
+	};
 	// now we figure out which register the return value should be in.
 	// fortunately the only 2 callconvs we support do largely the same thing
 	// if the function returns floating point, its xmm0
