@@ -117,7 +117,8 @@ x64_val : struct
 	// memaddr => the absolute value of the address
 	// vfn => depends on what is being lowered to x64.
 	//		for psyir, the index of the psyir function being referred to (i.e psyir_program.fn[addr])
-	// instptr => the index of the already-encoded instruction in this function (i.e x64_func.inst[addr])
+	// instptr => depends on what is being lowered to x64.
+	//		for psyir, the top 32 bits represent the index of the instruction within the target block, and the bottom 32 bits represent the index of the target block (where 0 is the function entry block). note that in psyir you can only jump to blocks so in reality the top  32 bits are always 0. tl;dr the index of the block (block 0 is the entry block of the current function)
 	addr : u64;
 };
 
@@ -151,6 +152,19 @@ x64_inst_tag : enum
 	
 	.call := 24;
 	.movss := 25;
+	.jmp := 26; // jump unconditional
+	.jz := 27; // jump if zero/equal
+	.jnz := 28; // jump if not zero/equal
+	.jl := 29; // jump if signed less (less)
+	.jle := 30; // jump if signed less or equal
+	.jg := 31; // jump if signed greater (greater)
+	.jge := 32; // jump if signed greater or equal
+	.jb := 33; // jump if signed less (below)
+	.jbe := 34; // jump if signed less or equal
+	.ja := 35; // jump if signed greater (above)
+	.jae := 36; // jump if signed greater or equal
+	.js := 37; // jump if sign bit set (i.e negativity)
+	.jo := 38; // jump if overflow bit set (wrap-around is based so we ignore this)
 };
 
 x64_inst : struct
