@@ -1,3 +1,12 @@
+x64_virtual_function : func(psy_fn : ir_val -> x64_val)
+{
+	// if .vfn, .addr is just the index of the function in psyir.program
+	return x64_val
+	{
+		.tag := x64_val_tag.vfn;
+		.addr := psy_fn.val@_;
+	};
+};
 
 x64_virtual_memory_operand : func(psy_reg : ir_val, byte_offset : u64 -> x64_val)
 {
@@ -151,6 +160,158 @@ x64_ir_store : func(store : ir -> x64_inst)
 			... := zero;
 		};
 	};
+};
+
+// sysv: 14 (rdi, rsi, rdx, rcx, r8, r9, xmm0-7)
+// win64: 4 (rcx/xmm0, rdx/xmm1, r8/xmm2, r9/xmm3)
+x64_max_param_regs ::= 14;
+
+// x64_max_param_regs + 1 (mov for all params, and a call instruction)
+x64_ir_call : func(call : ir, conv : x64_callconv -> x64_inst[15])
+{
+	ret : x64_inst mut[15] := zero;
+	// + 1 for the call after the moves
+	// emit all the moves we need (into the concrete destination registers we know we need)
+	// in as many moves as it takes
+	// assume fnval.tag == ir_valtag.fn
+	//fn ::= [psyir.prog.fn # (fnval.val)];
+	// ir offset is 1 because the first operand is the function (so first param is at 1)
+	// x64 offset is 0 because the movs go in first
+	cursor ::= x64_resolve_function_params_abi(ret # 0, call, 1, 0, conv);
+	// now finally write to the call
+	[ret # cursor] = x64_inst
+	{
+		.tag := x64_inst_tag.call;
+		.operands := x64_val mut[4]
+		{
+			.0 := x64_virtual_function([call.operands # 0]);
+		};
+	};
+	return ret;
+};
+
+// x64_max_param_regs + 1 (mov for all params, and a call instruction)
+x64_ir_rcall : func(rcall : ir, conv : x64_callconv, ret_value : x64_val mut? -> x64_inst[15])
+{
+	// pretend the rcall is a call. same thing just that we handle rax/xmm0 etc after-the-fact depending on callconv
+	ret ::= x64_ir_call(rcall, conv);
+	// now we figure out which register the return value should be in.
+	// fortunately the only 2 callconvs we support do largely the same thing
+	// if the function returns floating point, its xmm0
+	// otherwise, its rax
+	fn ::= [psyir.prog.fn # [rcall.operands # 0].val];
+	// check fn.ret as an irsz
+	if((fn.ret == (irsz.x)) || (fn.ret == (irsz.y)))
+	{
+		// its floating point!
+		[ret_value] = x64_regval(x64_reg.xmm0);
+	}
+	else
+	{
+		[ret_value] = x64_regval(x64_reg.rax);
+	}
+	return ret;
+};
+
+x64_resolve_function_params_abi : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64, conv : x64_callconv -> u64)
+{
+	// we have a call and it has some number of params
+	// out_params # 0 will be the call address but the rest are for us to fill in
+	// out_params # 1 for example should be a mov from the virtual register represented by call.operands # call_offset to the *concrete register* of this particular index as per the callconv
+	if(conv == x64_callconv.sysv)
+	{
+		return x64_resolve_function_params_sysv(out_params, call, call_offset_ir, call_offset_x64);
+	}
+	if(conv == x64_callconv.win64)
+	{
+		return x64_resolve_function_params_win64(out_params, call, call_offset_ir, call_offset_x64);
+	}
+	// panic
+	psyc_panic_begin(zero);
+	putzstr("when lowering psyir to x86_64, got an unknwon calling convention ");
+	putchar('"');
+	putzstr(enumname(conv));
+	putchar('"');
+	putzstr(" (");
+	putsint(conv@s64);
+	putzstr(")");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};
+
+x64_resolve_function_params_sysv : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64 -> u64)
+{
+	psyc_panic_begin(zero);
+	putzstr("calling convention sysv is not yet implemented");
+	psyc_diag_end();
+	psyc_exit_failure();
+	// this is gonna be hard
+	return zero;
+};
+
+x64_resolve_function_params_win64 : func(out_params : x64_inst mut?, call : ir, call_offset_ir : u64, call_offset_x64 : u64 -> u64)
+{
+	// ok so this is fairly simple
+	// on x64 the params are:
+	// rcx/xmm0, rdx/xmm1, r8/xmm2, r9/xmm3
+	// choose xmmN if current operand is floating point
+	// otherwise its the gpr
+	win64_regs_limit ::= 4;
+	// would love to make the sizes of these arrays win64_regs_limit (compiler bug)
+	regs_not_fp ::= x64_reg[4]
+	{
+		.0 := x64_reg.rcx;
+		.1 := x64_reg.rdx;
+		.2 := x64_reg.r8;
+		.3 := x64_reg.r9;
+	};
+	regs_fp ::= x64_reg[4]
+	{
+		.0 := x64_reg.xmm0;
+		.1 := x64_reg.xmm1;
+		.2 := x64_reg.xmm2;
+		.3 := x64_reg.xmm3;
+	};
+
+	count ::= ir_operand_count(call);
+	in_cursor : u64 mut := call_offset_ir;
+	out_cursor : u64 mut := call_offset_x64;
+
+	param_counter : u64 mut := 0;
+	for(in_cursor = call_offset_ir; in_cursor < count; in_cursor = in_cursor + 1)
+	{
+		cur_ir ::= ir_get_operand(call, in_cursor);
+		is_fp ::= (cur_ir.tag == ir_valtag.r) && ((cur_ir.size == irsz.x) || (cur_ir.size == irsz.y));
+		if(param_counter >= win64_regs_limit)
+		{
+			// panic! we dont know how to pass this on the stack!
+		}
+		out_reg : x64_reg mut := [regs_not_fp # param_counter];
+		if(is_fp)
+		{
+			out_reg = [regs_fp # param_counter];
+		}
+		// write the result into out_params # cursor;
+		[out_params # out_cursor] = x64_inst
+		{
+			.tag := x64_inst_tag.mov;
+			.operands := x64_val[4]
+			{
+				// output concrete register
+				.0 := x64_val
+				{
+					.tag := x64_val_tag.reg;
+					.reg := out_reg;
+				};
+				// input virtual register
+				.1 := x64_virtual_reg(cur_ir);
+			};
+		};
+		param_counter = param_counter + 1;
+		out_cursor = out_cursor + 1;
+	}
+	return out_cursor;
 };
 
 x64_func_ir : func(fn : ir_func, conv : x64_callconv -> x64_func)
