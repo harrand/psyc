@@ -114,3 +114,56 @@ x64v_is_custom : func(v : x64v -> bool)
 {
 	return ((v.tag@s64) >= (x64v_tag.custom0@s64));
 };
+
+x64v_size : func(v : x64v -> u64)
+{
+	if(v.tag == x64v_tag.imm)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.reg)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.addr)
+	{
+		return 64;
+	}
+	if(v.tag == x64v_tag.ripreladdr)
+	{
+		return v.v2;
+	}
+	return zero;
+};
+
+x64v_is_reg : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.reg;
+};
+
+x64v_is_imm : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.imm;
+};
+
+x64v_is_mem : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.memreg;
+};
+
+x64_require_same_size : func(v1 : x64v, v2 : x64v -> v0)
+{
+	s1 ::= x64v_size(v1);
+	s2 ::= x64v_size(v2);
+	if(s1 != s2)
+	{
+		psyc_panic_begin(zero);
+		putzstr("two x64 values must be the same size");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+};
