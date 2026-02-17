@@ -1,0 +1,150 @@
+x64api_t : struct
+{
+	prog : x64p mut;
+	func_cursor : u64;
+};
+
+x64api : x64api_t mut := zero;
+
+x64_add_func : func(abi : x64abi -> u64)
+{
+	if(x64api.prog.funcs == zero)
+	{
+		x64api.prog.funcs_cap = 8;
+		x64api.prog.funcs = arena_alloc(global_arena, x64api.prog.funcs_cap * sizeof x64f);
+	}
+	while(x64api.prog.funcs_count >= x64api.prog.funcs_cap)
+	{
+		oldcap ::= x64api.prog.funcs_cap;
+		old ::= x64api.prog.funcs;
+		x64api.prog.funcs_cap = (x64api.prog.funcs_cap * 2);
+		x64api.prog.funcs = arena_alloc(global_arena, x64api.prog.funcs_cap * sizeof x64f);
+		memcopy(x64api.prog.funcs, old, oldcap * sizeof x64f);
+	}
+	idx ::= x64api.prog.funcs_count;
+	x64api.prog.funcs_count = (x64api.prog.funcs_count + 1);
+	[x64api.prog.funcs # idx] = x64f
+	{
+		.abi := abi;
+		... := zero;
+	};
+	return idx;
+};
+
+x64_add_instruction : func(inst : x64i -> u64)
+{
+	fn ::= x64api.prog.funcs # (x64api.func_cursor);
+	if(fn->inst == zero)
+	{
+		fn->inst_cap = 8;
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64i);
+	}
+	while(fn->inst_count >= fn->inst_cap)
+	{
+		oldcap ::= fn->inst_cap;
+		old ::= fn->inst;
+		fn->inst_cap = (fn->inst_cap * 2);
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64i);
+		memcopy(fn->inst, old, oldcap * sizeof x64i);
+	}
+	idx ::= fn->inst_count;
+	fn->inst_count = (fn->inst_count + 1);
+	[fn->inst # idx] = inst;
+	return idx;
+};
+
+x64_dump_to : func(ctx : dump_ctx mut? -> u64)
+{
+	return ctx_putx64p(ctx, x64api.prog);
+};
+
+// instructions api
+x64_nop : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.nop;
+		.operands := zero;
+	});
+};
+
+x64_mov : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.mov;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_push : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.push;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+x64_pop : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.pop;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+x64_cbw : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cbw;
+		.operands := zero;
+	});
+};
+
+x64_cwde : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cwde;
+		.operands := zero;
+	});
+};
+
+x64_cdqe : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cdqe;
+		.operands := zero;
+	});
+};
+
+// increment r/m 8/16/32/64 by 1
+x64_inc : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.inc;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};

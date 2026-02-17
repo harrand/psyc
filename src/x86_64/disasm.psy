@@ -273,6 +273,27 @@ ctx_putx64i : func(ctx : dump_ctx mut?, inst : x64i -> u64)
 	return ret;
 };
 
+ctx_putx64p : func(ctx : dump_ctx mut?, p : x64p -> u64)
+{
+	ret : u64 mut := 0;
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		fn ::= p.funcs # i;
+		for(j = 0; j < fn->inst_count; j = j + 1)
+		{
+			ret = (ret + ctx_putx64i(ctx, [fn->inst # j]));
+			if(j == 0)
+			{
+				ret = (ret + ctx_putzstr(ctx, "           ; fn") + ctx_putuint(ctx, i) + ctx_putzstr(ctx, ", abi: ") + ctx_putzstr(ctx, enumname(fn->abi)));
+			}
+			ret = (ret + ctx_putchar(ctx, 10));
+		}
+	}
+	return ret;
+};
+
 log2 : func(n : u64 mut -> u64)
 {
 	result : u64 mut := 0;
