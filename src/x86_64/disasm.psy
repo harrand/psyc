@@ -1,0 +1,266 @@
+dump_ctx : struct
+{
+	buf : u8 mut?;
+	len : u64;
+	cur : u64;
+	on_oom : func(c : dump_ctx mut? -> v0);
+};
+
+ctx_putbytes : func(ctx : dump_ctx mut?, buf : u8?, len : u64 -> u64)
+{
+	if(ctx->cur + len >= ctx->len)
+	{
+		ctx->on_oom(ctx);
+	}
+	memcopy(ctx->buf # (ctx->cur), buf, len);
+	ctx->cur = (ctx->cur + len);
+	return len;
+};
+
+ctx_putchar : func(ctx : dump_ctx mut?, ch : u8 weak -> u64)
+{
+	return ctx_putbytes(ctx, ref ch, 1);
+};
+
+ctx_putzstr : func(ctx : dump_ctx mut?, zstr : u8? -> u64)
+{
+	return ctx_putbytes(ctx, zstr, zstrlen(zstr));
+};
+
+ctx_putuint : func(ctx : dump_ctx mut?, u : u64 weak -> u64)
+{
+	off : u64 mut := 0;
+	if(u > 9)
+	{
+		off = ctx_putuint(ctx, u / 10);
+	}
+	digit ::= u - ((u / 10) * 10);
+	ctx_putchar(ctx, '0' + digit);
+	return 1 + off;
+};
+
+ctx_putsint : func(ctx : dump_ctx mut?, s : s64 weak -> u64)
+{
+	if(s < 0)
+	{
+		return ctx_putchar(ctx, '-') + ctx_putuint(ctx, -s);
+	}
+	return ctx_putuint(ctx, s);
+};
+
+tbl_regnames ::= u8 static? static[113]
+{
+	.0 := "";
+	.1 := "al";
+		.2 := "ax";
+			.3 := "eax";
+				.4 := "rax";
+					.5 := "xmm0";
+						.6 := "ymm0";
+							.7 := "zmm0";
+	.8 := "cl";
+		.9 := "cx";
+			.10 := "ecx";
+				.11 := "rcx";
+					.12 := "xmm1";
+						.13 := "ymm1";
+							.14 := "zmm1";
+	.15 := "dl";
+		.16 := "dx";
+			.17 := "edx";
+				.18 := "rdx";
+					.19 := "xmm2";
+						.20 := "ymm2";
+							.21 := "zmm2";
+	.22 := "bl";
+		.23 := "bx";
+			.24 := "ebx";
+				.25 := "rbx";
+					.26 := "xmm3";
+						.27 := "ymm3";
+							.28 := "zmm3";
+	.29 := "spl";
+		.30 := "sp";
+			.31 := "esp";
+				.32 := "rsp";
+					.33 := "xmm4";
+						.34 := "ymm4";
+							.35 := "zmm4";
+	.36 := "bpl";
+		.37 := "bp";
+			.38 := "ebp";
+				.39 := "rbp";
+					.40 := "xmm5";
+						.41 := "ymm5";
+							.42 := "zmm5";
+	.43 := "sil";
+		.44 := "si";
+			.45 := "esi";
+				.46 := "rsi";
+					.47 := "xmm6";
+						.48 := "ymm6";
+							.49 := "zmm6";
+	.50 := "dil";
+		.51 := "di";
+			.52 := "edi";
+				.53 := "rdi";
+					.54 := "xmm7";
+						.55 := "ymm7";
+							.56 := "zmm7";
+	.57 := "r8l";
+		.58 := "r8w";
+			.59 := "r8d";
+				.60 := "r8";
+					.61 := "xmm8";
+						.62 := "ymm8";
+							.63 := "zmm8";
+	.64 := "r9l";
+		.65 := "r9w";
+			.66 := "r9d";
+				.67 := "r9";
+					.68 := "xmm9";
+						.69 := "ymm9";
+							.70 := "zmm9";
+	.71 := "r10l";
+		.72 := "r10w";
+			.73 := "r10d";
+				.74 := "r10";
+					.75 := "xmm10";
+						.76 := "ymm10";
+							.77 := "zmm10";
+	.78 := "r11l";
+		.79 := "r11w";
+			.80 := "r11d";
+				.81 := "r11";
+					.82 := "xmm11";
+						.83 := "ymm11";
+							.84 := "zmm11";
+	.85 := "r12l";
+		.86 := "r12w";
+			.87 := "r12d";
+				.88 := "r12";
+					.89 := "xmm12";
+						.90 := "ymm12";
+							.91 := "zmm12";
+	.92 := "r13l";
+		.93 := "r13w";
+			.94 := "r13d";
+				.95 := "r13";
+					.96 := "xmm13";
+						.97 := "ymm13";
+							.98 := "zmm13";
+	.99 := "r14l";
+		.100 := "r14w";
+			.101 := "r14d";
+				.102 := "r14";
+					.103 := "xmm14";
+						.104 := "ymm14";
+							.105 := "zmm14";
+	.106 := "r15l";
+		.107 := "r15w";
+			.108 := "r15d";
+				.109 := "r15";
+					.110 := "xmm15";
+						.111 := "ymm15";
+							.112 := "zmm15";
+};
+
+tbl_memptrnames ::= u8 static? static[7]
+{
+	.0 := "BYTE PTR";
+	.1 := "WORD PTR";
+	.2 := "DWORD PTR";
+	.3 := "QWORD PTR";
+	.4 := "OWORD PTR";
+	.5 := "YWORD PTR";
+	.6 := "ZWORD PTR";
+};
+
+ctx_putreg : func(ctx : dump_ctx mut?, r : x64_reg, sz : u64 -> u64)
+{
+	regidx ::= r@s64@u64;
+	offset ::= log2(sz) - 3; // -3 because 2^3 = 8 and our index starts from 1
+	return ctx_putzstr(ctx, [tbl_regnames # (1 + (regidx * 7) + offset)]);
+};
+
+ctx_putimm : func(ctx : dump_ctx mut?, sz : u64, imm : u64 -> u64)
+{
+	return ctx_putzstr(ctx, "imm") + ctx_putuint(ctx, sz) + ctx_putzstr(ctx, " ") + ctx_putuint(ctx, imm);
+};
+
+ctx_putx64v : func(ctx : dump_ctx mut?, v : x64v -> u64)
+{
+	if(v.tag == x64v_tag.imm)
+	{
+		return ctx_putimm(ctx, v.v1, v.v2);
+	}
+	if(v.tag == x64v_tag.reg)
+	{
+		return ctx_putreg(ctx, v.r1, v.v1);
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		mem_size_log2 ::= log2(v.v1) - 3;
+		memreg_out : u64 mut :=  ctx_putzstr(ctx, [tbl_memptrnames # mem_size_log2]) +
+			ctx_putzstr(ctx, " [");
+		if(v.v2 != 0)
+		{
+			memreg_out = memreg_out + ctx_putreg(ctx, v.r1, v.v2);
+		}
+		if(v.v3 != 0)
+		{
+			memreg_out = (memreg_out + ctx_putzstr(ctx, " + ") + ctx_putreg(ctx, v.r2, v.v3));
+		}
+		if(v.v4 != 1)
+		{
+			memreg_out = (memreg_out + ctx_putzstr(ctx, " * ") + ctx_putuint(ctx, v.v4));
+		}
+		if(v.v6 != 0)
+		{
+			memreg_out = (memreg_out + ctx_putzstr(ctx, " + ") + ctx_putimm(ctx, v.v5, v.v6));
+		}
+		memreg_out = (memreg_out + ctx_putzstr(ctx, "]"));
+		return memreg_out;
+	}
+	if(v.tag == x64v_tag.addr)
+	{
+		return ctx_putzstr(ctx, "addr ") + ctx_putuint(ctx, v.v1);
+	}
+	return zero;
+};
+
+log2 : func(n : u64 mut -> u64)
+{
+	result : u64 mut := 0;
+	if(n >= (1 << 32))
+	{
+		n = (n >> 32);
+		result = result + 32;
+	}
+	if(n >= (1 << 16))
+	{
+		n = (n >> 16);
+		result = result + 16;
+	}
+	if(n >= (1 << 8))
+	{
+		n = (n >> 8);
+		result = result + 8;
+	}
+	if(n >= (1 << 4))
+	{
+		n = (n >> 4);
+		result = result + 4;
+	}
+	if(n >= (1 << 2))
+	{
+		n = (n >> 2);
+		result = result + 2;
+	}
+	if(n >= (1 << 1))
+	{
+		result = result + 1;
+	}
+	return result;
+};
+
