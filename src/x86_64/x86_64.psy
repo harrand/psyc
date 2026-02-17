@@ -1,433 +1,60 @@
 x64_reg : enum
 {
-	.rax := 1;
-		.eax := 2;
-			.ax := 3;
-				.ah := 4;
-				.al := 5;
-	.rbx := 6;
-		.ebx := 7;
-			.bx := 8;
-				.bh := 9;
-				.bl := 10;
-	.rcx := 11;
-		.ecx := 12;
-			.cx := 13;
-				.ch := 14;
-				.cl := 15;
-	.rdx := 16;
-		.edx := 17;
-			.dx := 18;
-				.dh := 19;
-				.dl := 20;
-	.rsi := 21;
-		.esi := 22;
-			.si := 23;
-				.sih_doesnt_exist := 24;
-				.sil := 25;
-	.rbp := 26;
-		.ebp := 27;
-			.bp := 28;
-				.bph_doesnt_exist := 29;
-				.bpl := 30;
-	.rsp := 31;
-		.esp := 32;
-			.sp := 33;
-				.sph_doesnt_exist := 34;
-				.spl := 35;
-	.r8 := 36;
-		.r8d := 37;
-			.r8w := 38;
-				.r8b_hi_doesnt_exist := 39;
-				.r8b := 40;
-	.r9 := 41;
-		.r9d := 42;
-			.r9w := 43;
-				.r9b_hi_doesnt_exist := 44;
-				.r9b := 45;
-	.r10 := 46;
-		.r10d := 47;
-			.r10w := 48;
-				.r10b_hi_doesnt_exist := 49;
-				.r10b := 50;
-	.r11 := 51;
-		.r11d := 52;
-			.r11w := 53;
-				.r11b_hi_doesnt_exist := 54;
-				.r11b := 55;
-	.r12 := 56;
-		.r12d := 57;
-			.r12w := 58;
-				.r12b_hi_doesnt_exist := 59;
-				.r12b := 60;
-	.r13 := 61;
-		.r13d := 62;
-			.r13w := 63;
-				.r13b_hi_doesnt_exist := 64;
-				.r13b := 65;
-	.r14 := 66;
-		.r14d := 67;
-			.r14w := 68;
-				.r14b_hi_doesnt_exist := 69;
-				.r14b := 70;
-	.r15 := 71;
-		.r15d := 72;
-			.r15w := 73;
-				.r15b_hi_doesnt_exist := 74;
-				.r15b := 75;
-	.xmm0 := 76;
-	.xmm1 := 77;
-	.xmm2 := 78;
-	.xmm3 := 79;
-	.xmm4 := 80;
-	.xmm5 := 81;
-	.xmm6 := 82;
-	.xmm7 := 83;
-	.xmm8 := 84;
-	.xmm9 := 85;
-	.xmm10 := 86;
-	.xmm11 := 87;
-	.xmm12 := 88;
-	.xmm13 := 89;
-	.xmm14 := 90;
-	.xmm15 := 91;
+	.rax := 0;
+	.rcx := 1;
+	.rdx := 2;
+	.rbx := 3;
+	.rsp := 4;
+	.rbp := 5;
+	.rsi := 6;
+	.rdi := 7;
+	.r8 := 8;
+	.r9 := 9;
+	.r10 := 10;
+	.r11 := 11;
+	.r12 := 12;
+	.r13 := 13;
+	.r14 := 14;
+	.r15 := 15;
 };
 
-x64_val_tag : enum
+x64v_tag : enum
 {
-	.imm := 1; // immediate value (i.e numeric literal)
-	.reg := 2; // register
-	.vreg := 3; // virtual register (a lowering intermediate that doesnt exist in finalised x64. this gets resolved during register allocation)
-	.memreg := 4; // memory location computed from a register (plus an offset which can be 0) i.e [rax + 32]
-	.vmemreg := 5; // memory location computed from a virtual register (plus an offset which can be 0) i.e [rax + 32]
-	.memaddr := 6; // absolute memory address
-	.vfn := 7; // virtual function (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
-	.instptr := 8; // instruction pointer (a lowering intermediate that doesnt exist in finalised x64. this gets resolved at link time)
+	// immediate value
+	//	v1: size 8/16/32/64
+	//	v2: the actual immediate value
+	.imm := 0;
+	// register
+	//	r1: which register to use (cannot be null)
+	//	v1: size 8/16/32/64/128/256/512 (e.g x64v_tag.rax, v1 = 32 means eax, v1 = 128 means xmm0)
+	.reg := 1;
+	// memory operand of the form 'v1 PTR [r1v2 + r2v3 * immv4 + v5immv6]'
+	//	r1: base register (ignored if v2 is 0)
+	//	r2: index register (ignored if v3 is 0)
+	//	v1: memory operand size 8/16/32/64/128/256/512 (e.g 8 is BYTE PTR, 64 is QWORD PTR, 256 is YWORD PTR)
+	//	v2: base register size 0/8/16/32/64 (see .reg|v1 above, 0 means no base register)
+	//	v3: index register size 0/8/16/32/64 (0 means no index register)
+	//	v4: scale 1/2/4/8 (*must* be one of these)
+	//	v5: size of the displacement immediate 8/32 only (ignored if v6 is 0)
+	//	v6: value of displacement (0 means no displacement)
+	.memreg := 2;
+	// absolute memory address
+	//	v1: the address
+	.addr := 3;
+	//	v1: a displacement from the rip register
+	//	v2: size of the displacement immediate 8/32 only
+	.ripreladdr := 4;
 };
 
-x64_val : struct
+x64v : struct
 {
-	tag : x64_val_tag;
-	// ignored unless tag is reg, vreg, memreg, vmemreg
-	reg : x64_reg;
-	// the meaning of this depends on the tag
-	// imm => the actual numeric literal
-	// memreg => the offset, in bytes
-	// vmemreg => the offset, in bytes
-	// memaddr => the absolute value of the address
-	// vfn => depends on what is being lowered to x64.
-	//		for psyir, the index of the psyir function being referred to (i.e psyir_program.fn[addr])
-	// instptr => depends on what is being lowered to x64.
-	//		for psyir, the top 32 bits represent the index of the instruction within the target block, and the bottom 32 bits represent the index of the target block (where 0 is the function entry block). note that in psyir you can only jump to blocks so in reality the top  32 bits are always 0. tl;dr the index of the block (block 0 is the entry block of the current function)
-	addr : u64;
-};
-
-x64_inst_tag : enum
-{
-	.mov := 1;
-	.push := 2;
-	.pop := 3;
-	.cwtl := 4;
-	.cltq := 5;
-	.cqto := 6;
-	.inc := 7;
-	.dec := 8;
-	.neg := 9;
-	.not := 10;
-
-	.leaq := 11;
-	.add := 12;
-	.sub := 13;
-	.mul := 14;
-	.imul := 15;
-	.div := 16;
-	.idiv := 17;
-	.xor := 18;
-	.or := 19;
-	.and := 20;
-
-	.shl := 21;
-	.sar := 22;
-	.shr := 23;
-	
-	.call := 24;
-	.movss := 25;
-	.jmp := 26; // jump unconditional
-	.jz := 27; // jump if zero/equal
-	.jnz := 28; // jump if not zero/equal
-	.jl := 29; // jump if signed less (less)
-	.jle := 30; // jump if signed less or equal
-	.jg := 31; // jump if signed greater (greater)
-	.jge := 32; // jump if signed greater or equal
-	.jb := 33; // jump if signed less (below)
-	.jbe := 34; // jump if signed less or equal
-	.ja := 35; // jump if signed greater (above)
-	.jae := 36; // jump if signed greater or equal
-	.js := 37; // jump if sign bit set (i.e negativity)
-	.jo := 38; // jump if overflow bit set (wrap-around is based so we ignore this)
-	.test := 39;
-	.cmp := 40;
-	.sete := 41;
-	.ret := 42;
-};
-
-x64_inst : struct
-{
-	tag : x64_inst_tag;
-	operands : x64_val mut[4];
-};
-
-x64_is_some_kind_of_jump : func(inst : x64_inst -> bool)
-{
-	return
-		(inst.tag == x64_inst_tag.jmp) ||
-		(inst.tag == x64_inst_tag.jz) ||
-		(inst.tag == x64_inst_tag.jnz) ||
-		(inst.tag == x64_inst_tag.jl) ||
-		(inst.tag == x64_inst_tag.jle) ||
-		(inst.tag == x64_inst_tag.jg) ||
-		(inst.tag == x64_inst_tag.jge) ||
-		(inst.tag == x64_inst_tag.jb) ||
-		(inst.tag == x64_inst_tag.jbe) ||
-		(inst.tag == x64_inst_tag.ja) ||
-		(inst.tag == x64_inst_tag.jae) ||
-		(inst.tag == x64_inst_tag.js) ||
-		(inst.tag == x64_inst_tag.jo);
-};
-
-x64_func : struct
-{
-	ret_register : x64_val;
-	inst : x64_inst mut?;
-	inst_count : u64;
-	inst_cap : u64;
-	virtual_registers : bool;
-};
-
-x64_callconv : enum
-{
-	.sysv := 1;
-	.win64 := 2;
-};
-
-x64_program : struct
-{
-	fn : x64_func mut?;
-	fn_count : u64;
-	fn_cap : u64;
-
-	fn_cursor : u64;
-};
-
-x64_register : func(reg : x64_reg -> x64_val)
-{
-	return x64_val
-	{
-		.tag := x64_val_tag.reg;
-		.reg := reg;
-	};
-};
-
-x64_imm : func(imm : s64 weak -> x64_val)
-{
-	return x64_val
-	{
-		.tag := x64_val_tag.imm;
-		.addr := imm;
-	};
-};
-
-x64_copy_8bytes_to_stack : func(rsp_offset : u64, src : x64_val -> x64_inst)
-{
-	// mov qword[rsp], src
-	return x64_inst
-	{
-		.tag := x64_inst_tag.mov;
-		.operands := x64_val[4]
-		{
-			.0 := x64_val
-			{
-				.tag := x64_val_tag.memreg;
-				.reg := x64_reg.rsp;
-				.addr := rsp_offset;
-			};
-			.1 := src;
-			... := zero;
-		};
-	};
-};
-
-x64_api : struct
-{
-	prog : x64_program mut;
-	fn_cursor : u64;
-};
-
-x86_64 : x64_api mut := zero;
-
-x64_val_dump : func(v : x64_val -> v0)
-{
-	if(v.tag == x64_val_tag.imm)
-	{
-		putsint(v.addr);
-	}
-	if(v.tag == x64_val_tag.reg)
-	{
-		putzstr(enumname(v.reg));
-	}
-	if(v.tag == x64_val_tag.vreg)
-	{
-		psyc_colour_blue();
-		putzstr(enumname(v.reg));
-		putuint(v.addr);
-		psyc_colour_reset();
-	}
-	if(v.tag == x64_val_tag.memreg)
-	{
-		putzstr("[");
-		putzstr(enumname(v.reg));
-		putzstr(" + ");
-		putuint(v.addr);
-		putzstr("]");
-	}
-	if(v.tag == x64_val_tag.vmemreg)
-	{
-		putzstr("[");
-		psyc_colour_blue();
-		putzstr(enumname(v.reg));
-		putuint(v.addr);
-		psyc_colour_reset();
-		putzstr(" + ");
-		putuint(v.addr);
-		putzstr("]");
-	}
-	if(v.tag == x64_val_tag.memaddr)
-	{
-		putuint(v.addr);
-	}
-	if(v.tag == x64_val_tag.vfn)
-	{
-		psyc_colour_blue();
-		irfn ::= [psyir.prog.fn # (v.addr)];
-		putbytes(irfn.name, irfn.name_len);
-		psyc_colour_reset();
-	}
-	if(v.tag == x64_val_tag.instptr)
-	{
-		psyc_colour_blue();
-		putzstr("_");
-		putsint(v.addr);
-		psyc_colour_reset();
-	}
-};
-
-x64_operand_count : func(inst : x64_inst -> u64)
-{
-	i : u64 mut;
-	for(i = 0; i < countof typeof(inst.operands); i = i + 1)
-	{
-		if([inst.operands # i].tag == zero)
-		{
-			return i;
-		}
-	}
-	return i;
-};
-
-x64_dump : func(inst : x64_inst -> v0)
-{
-	if(inst.tag == zero)
-	{
-		putzstr("nop");
-		putchar(10);
-		return;
-	}
-	putzstr(enumname(inst.tag));	
-	putzstr(" ");
-	i : u64 mut;
-	count ::= x64_operand_count(inst);
-	for(i = 0; i < count; i = i + 1)
-	{
-		x64_val_dump([inst.operands # i]);
-		if(i != (count - 1))
-		{
-			putzstr(", ");
-		}
-	}
-};
-
-x64_func_dump : func(fn : x64_func -> v0)
-{
-	putzstr(":");
-	putchar(10);
-	i : u64 mut;
-	for(i = 0; i < fn.inst_count; i = i + 1)
-	{
-		putzstr("  ");
-		putuint(1000 + i);
-		putzstr("|    ");
-		x64_dump([fn.inst # i]);
-		putchar(10);
-	}
-	putchar(10);
-};
-
-x64_program_dump : func( -> v0)
-{
-	i : u64 mut;
-	for(i = 0; i < x86_64.prog.fn_count; i = i + 1)
-	{
-		putzstr("func_");
-		putuint(i);
-		x64_func_dump([x86_64.prog.fn # i]);
-		putchar(10);
-	}
-};
-
-x64_add_func : func( -> u64)
-{
-	if(x86_64.prog.fn == zero)
-	{
-		x86_64.prog.fn_cap = 1024;
-		x86_64.prog.fn = arena_alloc(global_arena, x86_64.prog.fn_cap * sizeof x64_func);
-	}
-	while(x86_64.prog.fn_count >= x86_64.prog.fn_cap)
-	{
-		old ::= x86_64.prog.fn;
-		oldcap ::= x86_64.prog.fn_cap;
-		x86_64.prog.fn_cap = oldcap * 2;
-		x86_64.prog.fn = arena_alloc(global_arena, x86_64.prog.fn_cap * sizeof x64_func);
-		memcopy(x86_64.prog.fn, old, oldcap * sizeof x64_func);
-	}
-	idx ::= x86_64.prog.fn_count;
-	[x86_64.prog.fn # idx] = zero@x64_func;
-	x86_64.prog.fn_count = (x86_64.prog.fn_count + 1);
-	x86_64.fn_cursor = idx;
-	return idx;
-};
-
-x64_reposition : func(func_idx : u64 -> v0)
-{
-	x86_64.fn_cursor = func_idx;
-};
-
-// api
-x64_add_instruction : func(inst : x64_inst -> v0)
-{
-	fn ::= x86_64.prog.fn # (x86_64.fn_cursor);
-	if(fn->inst == zero)
-	{
-		fn->inst_cap = 1024;
-		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64_func);
-	}
-	while(fn->inst_count >= fn->inst_cap)
-	{
-		old ::= fn->inst;
-		oldcap ::= fn->inst_cap;
-		fn->inst_cap = oldcap * 2;
-		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64_func);
-		memcopy(fn->inst, old, oldcap * sizeof x64_func);
-	}
-	[fn->inst # (fn->inst_count)] = inst;
-	fn->inst_count = (fn->inst_count + 1);
+	tag : x64v_tag;
+	r1 : x64_reg;
+	r2 : x64_reg;
+	v1 : u64;
+	v2 : u64;
+	v3 : u64;
+	v4 : u64;
+	v5 : u64;
+	v6 : u64;
 };
