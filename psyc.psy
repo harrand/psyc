@@ -58,13 +58,6 @@ main : func(pargs : program_args? -> s32)
 
 	putchar(10);
 	putchar(10);
-	mybuf : u8 mut[1024];
-	myctx ::= dump_ctx mut
-	{
-		.buf := mybuf # 0;
-		.len := 1024;
-		... := zero;
-	};
 	x64main ::= x64_add_func(x64abi.win);
 	x64_nop();
 	x64_nop();
@@ -76,8 +69,15 @@ main : func(pargs : program_args? -> s32)
 	x64_lea(x64v_reg(x64_reg.rcx, 64), x64v_memreg(64, x64_reg.rax, 64, zero, zero, 2, zero, zero));
 	x64_movaps(x64v_reg(x64_reg.rax, 128), x64v_memreg(128, x64_reg.rcx, 64, x64_reg.rsi, 32, 8, zero, zero));
 
-	x64_dump_to(ref myctx);
-	putbytes(mybuf # 0, myctx.cur);
+
+	stream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.ar := global_arena;
+		... := zero;
+	};
+	x64_dump_to(ref stream);
+	putbytes(stream.buf # 0, stream.cursor);
 	putchar(10);
 	putchar(10);
 

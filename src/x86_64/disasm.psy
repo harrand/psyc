@@ -176,64 +176,72 @@ tbl_memptrnames ::= u8 static? static[7]
 	.6 := "ZWORD PTR";
 };
 
-tbl_customval_handler_funcs ::= func(ctx : dump_ctx mut?, v : x64v -> u64) mut[4]
+tbl_customval_handler_funcs ::= func(w : bwriter mut?, v : x64v -> u64) mut[4]
 {
 	... := zero;
 };
 
-ctx_putreg : func(ctx : dump_ctx mut?, r : x64_reg, sz : u64 -> u64)
+bwrite_x64reg : func(w : bwriter mut?, r : x64_reg, sz : u64 -> v0)
 {
 	regidx ::= r@s64@u64;
 	offset ::= log2(sz) - 3; // -3 because 2^3 = 8 and our index starts from 1
-	return ctx_putzstr(ctx, [tbl_regnames # (1 + (regidx * 7) + offset)]);
+	bwrite_zstr(w, [tbl_regnames # (1 + (regidx * 7) + offset)]);
 };
 
-ctx_putimm : func(ctx : dump_ctx mut?, sz : u64, imm : u64 -> u64)
+bwrite_x64imm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
 {
-	return ctx_putzstr(ctx, "imm") + ctx_putuint(ctx, sz) + ctx_putzstr(ctx, " ") + ctx_putuint(ctx, imm);
+	bwrite_zstr(w, "imm");
+	bwrite_uint(w, sz);
+	bwrite_zstr(w, " ");
+	bwrite_uint(w, imm);
 };
 
-ctx_putx64v : func(ctx : dump_ctx mut?, v : x64v -> u64)
+bwrite_x64v : func(w : bwriter mut?, v : x64v -> v0)
 {
 	if(v.tag == x64v_tag.imm)
 	{
-		return ctx_putimm(ctx, v.v1, v.v2);
+		bwrite_x64imm(w, v.v1, v.v2);
 	}
 	if(v.tag == x64v_tag.reg)
 	{
-		return ctx_putreg(ctx, v.r1, v.v1);
+		bwrite_x64reg(w, v.r1, v.v1);
 	}
 	if(v.tag == x64v_tag.memreg)
 	{
 		mem_size_log2 ::= log2(v.v1) - 3;
-		memreg_out : u64 mut :=  ctx_putzstr(ctx, [tbl_memptrnames # mem_size_log2]) +
-			ctx_putzstr(ctx, " [");
+		bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
+		bwrite_zstr(w, " [");
 		if(v.v2 != 0)
 		{
-			memreg_out = memreg_out + ctx_putreg(ctx, v.r1, v.v2);
+			bwrite_x64reg(w, v.r1, v.v2);
 		}
 		if(v.v3 != 0)
 		{
-			memreg_out = (memreg_out + ctx_putzstr(ctx, " + ") + ctx_putreg(ctx, v.r2, v.v3));
+			bwrite_zstr(w, " + ");
+			bwrite_x64reg(w, v.r2, v.v3);
 		}
 		if(v.v4 != 1)
 		{
-			memreg_out = (memreg_out + ctx_putzstr(ctx, " * ") + ctx_putuint(ctx, v.v4));
+			bwrite_zstr(w, " * ");
+			bwrite_uint(w, v.v4);
 		}
 		if(v.v6 != 0)
 		{
-			memreg_out = (memreg_out + ctx_putzstr(ctx, " + ") + ctx_putimm(ctx, v.v5, v.v6));
+			bwrite_zstr(w, " + ");
+			bwrite_x64imm(w, v.v5, v.v6);
 		}
-		memreg_out = (memreg_out + ctx_putzstr(ctx, "]"));
-		return memreg_out;
+		bwrite_zstr(w, "]");
 	}
 	if(v.tag == x64v_tag.addr)
 	{
-		return ctx_putuint(ctx, v.v1);
+		bwrite_uint(w, v.v1);
 	}
 	if(v.tag == x64v_tag.ripreladdr)
 	{
-		return ctx_putzstr(ctx, "rip + ") + ctx_putzstr(ctx, "rel") + ctx_putuint(ctx, v.v2) + ctx_putzstr(ctx, " ") + ctx_putuint(ctx, v.v1);
+		bwrite_zstr(w, "rip + rel");
+		bwrite_uint(w, v.v2);
+		bwrite_zstr(w, " ");
+		bwrite_uint(w, v.v1);
 	}
 	if(x64v_is_custom(v))
 	{
@@ -251,31 +259,29 @@ ctx_putx64v : func(ctx : dump_ctx mut?, v : x64v -> u64)
 			psyc_diag_end();
 			psyc_exit_failure();
 		}
-		handlerfn(ctx, v);
+		handlerfn(w, v);
 	}
-	return zero;
 };
 
-ctx_putx64i : func(ctx : dump_ctx mut?, inst : x64i -> u64)
+bwrite_x64i : func(w : bwriter mut?, inst : x64i -> v0)
 {
-	ret : u64 mut := ctx_putzstr(ctx, enumname(inst.tag)) + ctx_putzstr(ctx, " ");
+	bwrite_zstr(w, enumname(inst.tag));
+	bwrite_zstr(w, " ");
 	i : u64 mut;
 	count ::= x64i_operand_count(inst);
 	for(i = 0; i < count; i = i + 1)
 	{
 		op ::= [inst.operands # i];
-		ret = ret + ctx_putx64v(ctx, op);
+		bwrite_x64v(w, op);
 		if(i < (count - 1))
 		{
-			ret = ret + ctx_putzstr(ctx, ", ");
+			bwrite_zstr(w, ", ");
 		}
 	}
-	return ret;
 };
 
-ctx_putx64p : func(ctx : dump_ctx mut?, p : x64p -> u64)
+bwrite_x64p : func(w : bwriter mut?, p : x64p -> v0)
 {
-	ret : u64 mut := 0;
 	i : u64 mut;
 	j : u64 mut;
 	for(i = 0; i < p.funcs_count; i = i + 1)
@@ -283,15 +289,17 @@ ctx_putx64p : func(ctx : dump_ctx mut?, p : x64p -> u64)
 		fn ::= p.funcs # i;
 		for(j = 0; j < fn->inst_count; j = j + 1)
 		{
-			ret = (ret + ctx_putx64i(ctx, [fn->inst # j]));
+			bwrite_x64i(w, [fn->inst # j]);
 			if(j == 0)
 			{
-				ret = (ret + ctx_putzstr(ctx, "           ; fn") + ctx_putuint(ctx, i) + ctx_putzstr(ctx, ", abi: ") + ctx_putzstr(ctx, enumname(fn->abi)));
+				bwrite_zstr(w, "           ; fn");
+				bwrite_uint(w, i);
+				bwrite_zstr(w, ", abi: ");
+				bwrite_zstr(w, enumname(fn->abi));
 			}
-			ret = (ret + ctx_putchar(ctx, 10));
+			bwrite8(w, 10);
 		}
 	}
-	return ret;
 };
 
 log2 : func(n : u64 mut -> u64)
