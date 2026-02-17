@@ -176,6 +176,11 @@ tbl_memptrnames ::= u8 static? static[7]
 	.6 := "ZWORD PTR";
 };
 
+tbl_customval_handler_funcs ::= func(ctx : dump_ctx mut?, v : x64v -> u64) mut[4]
+{
+	... := zero;
+};
+
 ctx_putreg : func(ctx : dump_ctx mut?, r : x64_reg, sz : u64 -> u64)
 {
 	regidx ::= r@s64@u64;
@@ -229,6 +234,24 @@ ctx_putx64v : func(ctx : dump_ctx mut?, v : x64v -> u64)
 	if(v.tag == x64v_tag.ripreladdr)
 	{
 		return ctx_putzstr(ctx, "rip + ") + ctx_putzstr(ctx, "rel") + ctx_putuint(ctx, v.v2) + ctx_putzstr(ctx, " ") + ctx_putuint(ctx, v.v1);
+	}
+	if((v.tag@s64) >= (x64v_tag.custom0@s64))
+	{
+		// use a custom handler
+		idx ::= (v.tag@s64) - (x64v_tag.custom0@s64);
+		handlerfn ::= [tbl_customval_handler_funcs # idx];
+		if(handlerfn == zero)
+		{
+			psyc_panic_begin(zero);
+			putzstr("no custom handler installed for x64v_tag.");
+			putzstr(enumname(v.tag));
+			putzstr("(");
+			putsint(v.tag@s64);
+			putzstr(")");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		handlerfn(ctx, v);
 	}
 	return zero;
 };
