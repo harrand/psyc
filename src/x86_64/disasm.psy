@@ -1,53 +1,3 @@
-dump_ctx : struct
-{
-	buf : u8 mut?;
-	len : u64;
-	cur : u64;
-	on_oom : func(c : dump_ctx mut? -> v0);
-};
-
-ctx_putbytes : func(ctx : dump_ctx mut?, buf : u8?, len : u64 -> u64)
-{
-	if(ctx->cur + len >= ctx->len)
-	{
-		ctx->on_oom(ctx);
-	}
-	memcopy(ctx->buf # (ctx->cur), buf, len);
-	ctx->cur = (ctx->cur + len);
-	return len;
-};
-
-ctx_putchar : func(ctx : dump_ctx mut?, ch : u8 weak -> u64)
-{
-	return ctx_putbytes(ctx, ref ch, 1);
-};
-
-ctx_putzstr : func(ctx : dump_ctx mut?, zstr : u8? -> u64)
-{
-	return ctx_putbytes(ctx, zstr, zstrlen(zstr));
-};
-
-ctx_putuint : func(ctx : dump_ctx mut?, u : u64 weak -> u64)
-{
-	off : u64 mut := 0;
-	if(u > 9)
-	{
-		off = ctx_putuint(ctx, u / 10);
-	}
-	digit ::= u - ((u / 10) * 10);
-	ctx_putchar(ctx, '0' + digit);
-	return 1 + off;
-};
-
-ctx_putsint : func(ctx : dump_ctx mut?, s : s64 weak -> u64)
-{
-	if(s < 0)
-	{
-		return ctx_putchar(ctx, '-') + ctx_putuint(ctx, -s);
-	}
-	return ctx_putuint(ctx, s);
-};
-
 tbl_regnames ::= u8 static? static[113]
 {
 	.0 := "";
@@ -181,14 +131,14 @@ tbl_customval_handler_funcs ::= func(w : bwriter mut?, v : x64v -> u64) mut[4]
 	... := zero;
 };
 
-bwrite_x64reg : func(w : bwriter mut?, r : x64_reg, sz : u64 -> v0)
+bwrite_x64reg_disasm : func(w : bwriter mut?, r : x64_reg, sz : u64 -> v0)
 {
 	regidx ::= r@s64@u64;
 	offset ::= log2(sz) - 3; // -3 because 2^3 = 8 and our index starts from 1
 	bwrite_zstr(w, [tbl_regnames # (1 + (regidx * 7) + offset)]);
 };
 
-bwrite_x64imm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
+bwrite_x64imm_disasm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
 {
 	bwrite_zstr(w, "imm");
 	bwrite_uint(w, sz);
@@ -196,15 +146,15 @@ bwrite_x64imm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
 	bwrite_uint(w, imm);
 };
 
-bwrite_x64v : func(w : bwriter mut?, v : x64v -> v0)
+bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 {
 	if(v.tag == x64v_tag.imm)
 	{
-		bwrite_x64imm(w, v.v1, v.v2);
+		bwrite_x64imm_disasm(w, v.v1, v.v2);
 	}
 	if(v.tag == x64v_tag.reg)
 	{
-		bwrite_x64reg(w, v.r1, v.v1);
+		bwrite_x64reg_disasm(w, v.r1, v.v1);
 	}
 	if(v.tag == x64v_tag.memreg)
 	{
@@ -213,12 +163,12 @@ bwrite_x64v : func(w : bwriter mut?, v : x64v -> v0)
 		bwrite_zstr(w, " [");
 		if(v.v2 != 0)
 		{
-			bwrite_x64reg(w, v.r1, v.v2);
+			bwrite_x64reg_disasm(w, v.r1, v.v2);
 		}
 		if(v.v3 != 0)
 		{
 			bwrite_zstr(w, " + ");
-			bwrite_x64reg(w, v.r2, v.v3);
+			bwrite_x64reg_disasm(w, v.r2, v.v3);
 		}
 		if(v.v4 != 1)
 		{
@@ -228,7 +178,7 @@ bwrite_x64v : func(w : bwriter mut?, v : x64v -> v0)
 		if(v.v6 != 0)
 		{
 			bwrite_zstr(w, " + ");
-			bwrite_x64imm(w, v.v5, v.v6);
+			bwrite_x64imm_disasm(w, v.v5, v.v6);
 		}
 		bwrite_zstr(w, "]");
 	}
@@ -263,7 +213,7 @@ bwrite_x64v : func(w : bwriter mut?, v : x64v -> v0)
 	}
 };
 
-bwrite_x64i : func(w : bwriter mut?, inst : x64i -> v0)
+bwrite_x64i_disasm : func(w : bwriter mut?, inst : x64i -> v0)
 {
 	bwrite_zstr(w, enumname(inst.tag));
 	bwrite_zstr(w, " ");
@@ -272,7 +222,7 @@ bwrite_x64i : func(w : bwriter mut?, inst : x64i -> v0)
 	for(i = 0; i < count; i = i + 1)
 	{
 		op ::= [inst.operands # i];
-		bwrite_x64v(w, op);
+		bwrite_x64v_disasm(w, op);
 		if(i < (count - 1))
 		{
 			bwrite_zstr(w, ", ");
@@ -280,7 +230,7 @@ bwrite_x64i : func(w : bwriter mut?, inst : x64i -> v0)
 	}
 };
 
-bwrite_x64p : func(w : bwriter mut?, p : x64p -> v0)
+bwrite_x64p_disasm : func(w : bwriter mut?, p : x64p -> v0)
 {
 	i : u64 mut;
 	j : u64 mut;
@@ -289,7 +239,7 @@ bwrite_x64p : func(w : bwriter mut?, p : x64p -> v0)
 		fn ::= p.funcs # i;
 		for(j = 0; j < fn->inst_count; j = j + 1)
 		{
-			bwrite_x64i(w, [fn->inst # j]);
+			bwrite_x64i_disasm(w, [fn->inst # j]);
 			if(j == 0)
 			{
 				bwrite_zstr(w, "           ; fn");
