@@ -44,6 +44,11 @@ x64v_tag : enum
 	//	v1: a displacement from the rip register
 	//	v2: size of the displacement immediate 8/32 only
 	.ripreladdr := 4;
+
+	.custom0 := 8;
+	.custom1 := 9;
+	.custom2 := 10;
+	.custom3 := 11;
 };
 
 x64v : struct
@@ -58,4 +63,34 @@ x64v : struct
 	v5 : u64;
 	v6 : u64;
 	v7 : u64;
+};
+
+x64v_reg : func(reg : x64_reg, sz : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.reg; .r1 := reg; .v1 := sz;};
+};
+
+x64v_memreg : func(memsize : u64, base_reg : x64_reg, base_regsize : u64, index_reg : x64_reg, index_regsize : u64, scale : u64, displacement : u64, displacement_size : u64 -> x64v)
+{
+	return x64v
+	{
+		.tag := x64v_tag.memreg;
+		.r1 := base_reg;
+		.r2 := index_reg;
+		.v1 := memsize;
+		.v2 := base_regsize;
+		.v3 := index_regsize;
+		.v4 := scale;
+		.v5 := displacement_size;
+		.v6 := displacement;
+	};
+};
+
+x64v_addr : func(addr : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.addr; .v1 := addr;};
+};
+x64v_ripreladdr : func(ripreladdr : u64, ripreladdr_size : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.ripreladdr; .v1 := ripreladdr; .v2 := ripreladdr_size;};
 };
