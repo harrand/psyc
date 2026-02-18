@@ -1,26 +1,94 @@
+panic_assert_failure : func(msg : u8? -> v0)
+{
+	psyc_panic_begin(zero);
+	putzstr(msg);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+x64_mod : enum
+{
+	.disp0  := 0b00;
+	.disp8  := 0b01;
+	.disp32 := 0b10;
+	.reg	:= 0b11;
+};
+
+x64_legacy_prefix : enum
+{
+	// group 1
+	.lock := 0xf0;
+	.repnz := 0xf2;
+	.repz := 0xf3;
+	// group 2
+	.cs_seg_override := 0x2e;
+	.ss_seg_override := 0x36;
+	.ds_seg_override := 0x3e;
+	.es_seg_override := 0x26;
+	.fs_seg_override := 0x64;
+	.gs_seg_override := 0x65;
+	.branch_not_taken := 0x2e;
+	// group 3
+	.operand_size_override := 0x66;
+	// group 4
+	.address_size_override := 0x67;
+};
+
+x64_rex_prefix : enum
+{
+	.rex   := 0b01000000;
+	.rex_w := 0b01001000;// 0: operand size determined by CS.D; 1: 64-bit operand size
+	.rex_r := 0b01000100;// extension of ModR/M reg
+	.rex_x := 0b01000010;// extension of SIB index
+	.rex_b := 0b01000001;// extension of ModR/M rm, SIB base, or Opcode reg
+	.all_but_w := 0b01000111;// REX RXB, no W
+	.all := 0b01001111;// REX WRXB, all high
+};
+
+x64i_ext : enum
+{
+	.reg      := 1; // /r
+	.opcode   := 2; // /0
+	.plus_reg := 3; // + rb
+};
+
+x64v_enc : enum
+{
+	.r := 1;
+	.rm := 2;
+};
+
+x64i_enc : struct
+{
+	legacy_prefixes : x64_legacy_prefix[4];
+	rex_prefix : x64_rex_prefix;
+	opcode : u16;
+	ext : x64i_ext;
+	operand_types : x64v_enc[4];
+};
+
 bwrite_x64i_nop_encode : func(w : bwriter mut?, nop : x64i -> v0)
 {
 	// ignore operands
 	bwrite8(w, 0x90);
 };
 
-bwrite_x64i_mov_encode : func(w : bwriter mut?, mov : x64i -> v0)
-{
-	src ::= [mov.operands # 0];	
-	dst ::= [mov.operands # 1];
-	// must be the same size
-	sz ::= x64v_size(src);
-	x64_require_same_size(src, dst);
-};
-
 bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 {
-	if(inst.tag == x64i_tag.nop)
+	// get the x64i_enc somehow (normally from an encoding tbl)
+	enc ::= zero@x64i_enc;
+	// todo: add REX.W prefix only if necessary
+	if(enc.rex_prefix != zero)
 	{
-		bwrite_x64i_nop_encode(w, inst);
+		bwrite8(w, enc.rex_prefix@s64);
 	}
-	if(inst.tag == x64i_tag.mov)
-	{
-		bwrite_x64i_mov_encode(w, inst);
-	}
+	// todo: opcode could be 1 or 2 bytes. just pretending its 1 byte fo rnow
+	bwrite8(w, enc.opcode);
+	// todo: proper mod support
+	// todo: mask register index
+	modbits ::= x64_mod.reg@s64@u8;
+	modrm : u8 mut := modbits << 6 |
+		(([inst.operands # 0].r1)@s64@u8 << 3) |
+		(([inst.operands # 1].r1)@s64@u8);
+	bwrite8(w, modrm);
 };
