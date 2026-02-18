@@ -48,14 +48,20 @@ x64_rex_prefix : enum
 x64i_ext : enum
 {
 	.reg      := 1; // /r
-	.opcode   := 2; // /0
 	.plus_reg := 3; // + rb
+	.opcode_plus_n   := 2; // /0
+	// 3 => /1
+	// 4 => /2
+	// etc...
 };
+
+x64i_ext_opcode_plus_0 ::= 2;
 
 x64v_enc : enum
 {
 	.r := 1;
 	.rm := 2;
+	.imm := 3;
 };
 
 x64i_enc : struct
@@ -63,7 +69,7 @@ x64i_enc : struct
 	legacy_prefixes : x64_legacy_prefix[4];
 	rex_prefix : x64_rex_prefix;
 	opcode : u16;
-	ext : x64i_ext;
+	ext : x64i_ext weak;
 	operand_types : x64v_enc[4];
 };
 
@@ -73,22 +79,191 @@ bwrite_x64i_nop_encode : func(w : bwriter mut?, nop : x64i -> v0)
 	bwrite8(w, 0x90);
 };
 
+x64i_encode_mov : func(mov : x64i -> x64i_enc)
+{
+	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
+};
+
+x64_invalid_modrm : u8 static := 0xff;
+
+x64i_encode_modrm : func(enc : x64i_enc mut?, operands : x64v[2] -> u8)
+{
+	if(enc->ext == x64i_ext.plus_reg)
+	{
+		// its +rb etc and not /0-7 or /r
+		// therefore no ModR/M byte is necessary
+		return x64_invalid_modrm;
+	}
+	mod : u8 mut := 0;
+	reg : u8 mut := 0;
+	rm : u8 mut := 0;
+
+	op1 ::= [operands # 0];
+	op2 ::= [operands # 1];
+
+	// ok lets do the mod bits first
+	// check if there's no memory displacement at all
+	if(!(x64v_is_mem(op1) || x64v_is_mem(op2)))
+	{
+		mod = 0b11;
+	}
+	else
+	{
+		displacement_size : u64 mut := 0;
+		if(x64v_is_mem(op1))
+		{
+			displacement_size = op1.v5;
+		}
+		if(x64v_is_mem(op2))
+		{
+			displacement_size = op2.v5;
+		}
+		// remember, displacement_size could be 0 (in which case mod should be 0b00 and its already zero)
+		if(displacement_size == 8)
+		{
+			mod = 0b01;
+		}
+		if(displacement_size == 32)
+		{
+			mod = 0b10;
+		}
+	}
+
+	// reg time
+	// firstly check the ext of the enc
+	if(enc->ext@s64 >= x64i_ext_opcode_plus_0) // /0-/07
+	{
+		// this becomes our reg
+		reg = (enc->ext@s64@u8);
+		rm_is_op1 = true;
+	}
+	if(enc->ext == x64i_ext.reg) // /r
+	{
+		// one of the operands MUST definitely a register
+		// but in theory both of them can be (r/m and r)
+		// we need to choose the one that *definitely* is so we check end
+		// ok we need to know what the reg is.
+		regidx : u8 mut := 0;
+		if(x64v_is_reg(op1))
+		{
+			regidx = op1.r1@s64@u8;
+			rm_is_op1 = false;
+		}
+		else
+		{
+			// op2 must be the reg then
+			regidx = op2.r1@s64@u8;
+			rm_is_op1 = true;
+		}
+		// ok reg is just this basically
+		// however if the register is an extended register e.g r8-r15
+		// then this wont fit in 3 bits and we need a fourth.
+		if(regidx >= 8)
+		{
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_r);
+		}
+		reg = regidx & 0b0111;
+	}
+
+	// rm time
+	rm_operand : x64v mut := op2;
+	if(rm_is_op1)
+	{
+		rm_operand = op1;
+	}
+	if(x64v_is_reg(rm_operand))
+	{
+		rm = (rm_operand.r1@s64@u8);
+		if(rm >= 8)
+		{
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+		}
+		rm = (rm & 0b111);
+	}
+	else
+	{
+		// its mem
+		// get the base register
+		rm = (rm_operand.r1@s64@u8);
+		if(rm >= 8)
+		{
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+		}
+		rm = (rm & 0b111);
+		if(rm_operand.v2 == 0)
+		{
+			// no base register, we just wrote garbage into rm
+			if(mod == 0b00)
+			{
+				rm = 0b101;
+			}
+			// uh maybe we need a SIB? not sure sorry.
+			panic_assert_failure("scary ModR/M edge case i dont know how to deal with it sorryyyyy");
+		}
+	}
+
+	return (mod << 6) | (reg << 3) | rm;
+};
+
+x64i_encode : func(inst : x64i -> x64i_enc)
+{
+	ret : x64i_enc mut;
+	if(inst.tag == x64i_tag.mov)
+	{
+		ret = x64i_encode_mov(inst);
+	}
+	// todo: generate the modr/m here if necessary
+
+	// check if any operands are extended registers/spl/dil/sil/bpl (requires base rex at least)
+	i : u64 mut;
+	needs_rex : bool mut := false;
+	for(i = 0; i < x64i_operand_count(inst); i = i + 1)
+	{
+		op ::= [inst.operands # i];
+		if(x64v_contains_extended_register(op) || x64v_contains_spl_dil_sil_bpl(op))
+		{
+			needs_rex = true;
+		}
+	}
+	// add rex prefix if we absolutely need one (crucially: dont add it unless we need it, because its an extra byte to every instruction)
+	if((ret.rex_prefix == zero) && needs_rex)
+	{
+		ret.rex_prefix = x64_rex_prefix.rex;
+	}
+	// note: rex_w is already checked because its baked into the encoding tables indexed by x64i_encoding_table_base_offset_2op et al
+	// todo: check if there is an extended register in modr/m.reg => requires rex_r
+	// todo: check if there is an extended register in modr/m.r/m => requires rex_b
+	// todo: check if there is an extended register in SIB.index => requires rex_x
+	// todo: check if there is an extended register in opcode+rd => requires rex_b
+	return ret;
+};
+
 bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 {
 	// get the x64i_enc somehow (normally from an encoding tbl)
-	enc ::= zero@x64i_enc;
-	// todo: add REX.W prefix only if necessary
+	enc ::= x64i_encode(inst);
+	// rex-w is handled for us by x64i_encode, but the others arent.
+	// todo: handle rex non-w bits
 	if(enc.rex_prefix != zero)
 	{
 		bwrite8(w, enc.rex_prefix@s64);
 	}
-	// todo: opcode could be 1 or 2 bytes. just pretending its 1 byte fo rnow
-	bwrite8(w, enc.opcode);
-	// todo: proper mod support
-	// todo: mask register index
-	modbits ::= x64_mod.reg@s64@u8;
-	modrm : u8 mut := modbits << 6 |
-		(([inst.operands # 0].r1)@s64@u8 << 3) |
-		(([inst.operands # 1].r1)@s64@u8);
-	bwrite8(w, modrm);
+
+	// opcodes are 1-2 bytes
+	// if its 1 byte then only print 1!!!
+	if(enc.opcode <= 0xff)
+	{
+		bwrite8(w, enc.opcode);
+	}
+	else
+	{
+		bwrite16(w, enc.opcode);
+	}
+	modrm ::= x64i_encode_modrm(ref enc, x64v[2]{.0 := [inst.operands # 0]; .1 := [inst.operands # 1];});
+	if(modrm != x64_invalid_modrm)
+	{
+		bwrite8(w, modrm);
+	}
+	// todo: sib if it exists...
+	// todo: immediates...
 };

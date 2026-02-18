@@ -1,4 +1,33 @@
-encoding_tbl_mov ::= x64i_enc[8]
+// the following functions dont care which table we're in, we're just getting the offset into the table depending on what the operands are
+x64i_encoding_table_base_offset_2op : func(inst : x64i -> u64)
+{
+	// two operands
+	// assume both are the same size
+	dst ::= [inst.operands # 0];
+	src ::= [inst.operands # 1];
+	sz ::= x64v_size(dst);
+	x64_require_same_size(dst, src);
+
+	// r8 => 0
+	// ...
+	// r64 => 3
+	idx : u64 mut := log2(sz) - 3;
+
+	// if we are rm/r, add 0
+	// if we are r/rm, add 4
+	// if we are rm/imm, add 8
+	if(x64v_is_reg(dst) && x64v_is_mem(src))
+	{
+		idx = idx + 4;
+	}
+	if(x64v_is_imm(src))
+	{
+		idx = idx + 8;
+	}
+	return idx;
+};
+
+encoding_tbl_mov ::= x64i_enc[12]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -104,6 +133,58 @@ encoding_tbl_mov ::= x64i_enc[8]
 		{
 			.0 := x64v_enc.r;
 			.1 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.8 := x64i_enc // MOV r/m8,imm8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xc6;
+		.ext := x64i_ext_opcode_plus_0 + 0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
+			... := zero;
+		};
+	};
+	.9 := x64i_enc // MOV r/m16,imm16
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xc7;
+		.ext := x64i_ext_opcode_plus_0 + 0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
+			... := zero;
+		};
+	};
+	.10 := x64i_enc // MOV r/m32,imm32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xc7;
+		.ext := x64i_ext_opcode_plus_0 + 0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
+			... := zero;
+		};
+	};
+	.11 := x64i_enc // MOV r/m64,imm64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xc7;
+		.ext := x64i_ext_opcode_plus_0 + 0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 	};
