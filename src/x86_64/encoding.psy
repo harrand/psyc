@@ -66,11 +66,25 @@ x64v_enc : enum
 
 x64i_enc : struct
 {
-	legacy_prefixes : x64_legacy_prefix[4];
+	legacy_prefixes : x64_legacy_prefix mut[4];
 	rex_prefix : x64_rex_prefix;
 	opcode : u16;
 	ext : x64i_ext weak;
 	operand_types : x64v_enc[4];
+};
+
+x64i_enc_legacy_prefix_count : func(enc : x64i_enc -> u64)
+{
+	i : u64 mut;
+	for(i = 0; i < countof typeof(enc.legacy_prefixes); i = i + 1)
+	{
+		cur ::= [enc.legacy_prefixes # i];
+		if(cur == zero)
+		{
+			return i;
+		}
+	}
+	return i;
 };
 
 bwrite_x64i_nop_encode : func(w : bwriter mut?, nop : x64i -> v0)
@@ -86,7 +100,7 @@ x64i_encode_mov : func(mov : x64i -> x64i_enc)
 
 x64_invalid_modrm : u8 static := 0xff;
 
-x64i_encode_modrm : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u8)
+x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
 {
 	mod_bits : u8 mut := 0;
 	reg_bits : u8 mut := 0;
@@ -186,15 +200,69 @@ x64i_encode_modrm : func(enc : x64i_enc mut?, operands : x64v?, operands_count :
 
 	if((enc->ext == x64i_ext.reg) && (imm_idx != -1))
 	{
-		return x64_invalid_modrm;
+		return (x64_invalid_modrm << 8)@u16;
 	}
 
-	return (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+	modrm_byte : u8 := (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+
+	scale_bits : u8 mut := 0;
+	index_bits : u8 mut := 0;
+	base_bits : u8 mut := 0;
+	if(mod_bits != 0b11)
+	{
+		if(rm_idx == -1)
+		{
+			panic_assert_failure("need sib byte (mod != 0b11) but there is no rm???");
+		}
+		// scale_bits == scale, which can only be 1/2/4/8
+		scale_bits = log2(rm.v2)@u8;
+
+		index_bits = rm.r2@s64@u8;
+		if(index_bits > 7)
+		{
+			index_bits = index_bits & 0b111;
+			// set rex.x
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_x);
+		}
+
+		base_bits = rm.r1@s64@u8;
+		if(base_bits > 7)
+		{
+			base_bits = base_bits & 0b111;
+			// set rex.x
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+		}
+
+		base_size ::= rm.v2;
+		index_size ::= rm.v3;
+		if(base_size == 32)
+		{
+			// 32 bit addressing mode. need to add the legacy prefix
+			prefix ::= enc->legacy_prefixes # (x64i_enc_legacy_prefix_count([enc]) + 1);
+			[prefix] = [prefix] | x64_legacy_prefix.address_size_override;
+			// index size must also be exactly 32 bit (unless its zero in which case we have no index)
+			if((index_size != 0) && (index_size != 32))
+			{
+				panic_assert_failure("detected SIB memory operand where the base register is 32 bit but the index register is less than 32 bits. this is illegal and cannot be encoded.");
+			}
+		}
+		if(base_size < 32)
+		{
+			panic_assert_failure("detected SIB memory operand where base register is less than 32 bit. 16-bit or 8-bit addressing is not allowed in long mode.");
+		}
+		// base_size must be 64 then. in which case index size can be 64 bit aswell as 32 bit (it will get zext'd)
+		if((index_size != 0) && (index_size < 32))
+		{
+			panic_assert_failure("detected SIB memory operand where the index register is less than 32 bits. this is illegal and cannot be encoded.");
+		}
+	}
+	sib_byte : u8 := (scale_bits << 6) | (index_bits << 3) | (base_bits);
+	return (modrm_byte@u16 << 8) | (sib_byte@u16);
 };
 
 x64i_encode : func(inst : x64i -> x64i_enc)
 {
-	ret : x64i_enc mut;
+	ret : x64i_enc mut := zero;
 	if(inst.tag == x64i_tag.mov)
 	{
 		ret = x64i_encode_mov(inst);
@@ -229,8 +297,19 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 {
 	// get the x64i_enc somehow (normally from an encoding tbl)
 	enc ::= x64i_encode(inst);
-	// rex-w is handled for us by x64i_encode, but the others arent.
-	// todo: handle rex non-w bits
+	count ::= x64i_operand_count(inst);
+	modrm_sib ::= x64i_encode_modrm_sib(ref enc, inst.operands # 0, x64i_operand_count(inst));
+	modrm ::= modrm_sib >> 8;
+
+	i : u64 mut;
+	for(i = 0; i < countof typeof(enc.legacy_prefixes); i = i + 1)
+	{
+		curprefix ::= [enc.legacy_prefixes # i];
+		if(curprefix != zero)
+		{
+			bwrite8(w, curprefix@s64@u8);
+		}
+	}
 	if(enc.rex_prefix != zero)
 	{
 		bwrite8(w, enc.rex_prefix@s64);
@@ -247,14 +326,57 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 		bwrite16(w, enc.opcode);
 	}
 
-	modrm ::= x64i_encode_modrm(ref enc, inst.operands # 0, x64i_operand_count(inst));
+
 	if(modrm != x64_invalid_modrm)
 	{
 		bwrite8(w, modrm);
 		if((((modrm >> 6) & 0b11) != 0b11) && ((modrm & 0b111) == 0b100))
 		{
-			// todo: need a SIB byte!!!
+			// we need a sib byte. write it out.
+			sib ::= modrm_sib & 0xff;
+			bwrite8(w, sib);
 		}
 	}
-	// todo: immediates...
+	for(i = 0; i < count; i = i + 1)
+	{
+		op ::= [inst.operands # i];
+		if(x64v_is_imm(op))
+		{
+			if(op.v1 == 64)
+			{
+				bwrite64(w, op.v2);
+			}
+			if(op.v1 == 32)
+			{
+				bwrite32(w, op.v2);
+			}
+			if(op.v1 == 16)
+			{
+				bwrite16(w, op.v2);
+			}
+			if(op.v1 == 8)
+			{
+				bwrite8(w, op.v2);
+			}
+		}
+		if(x64v_is_mem(op))
+		{
+			if(op.v5 == 64)
+			{
+				bwrite64(w, op.v6);
+			}
+			if(op.v5 == 32)
+			{
+				bwrite32(w, op.v6);
+			}
+			if(op.v5 == 16)
+			{
+				bwrite16(w, op.v6);
+			}
+			if(op.v5 == 8)
+			{
+				bwrite8(w, op.v6);
+			}
+		}
+	}
 };
