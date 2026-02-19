@@ -98,6 +98,16 @@ x64i_encode_mov : func(mov : x64i -> x64i_enc)
 	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
 };
 
+x64i_encode_add : func(add : x64i -> x64i_enc)
+{
+	op2 ::= [add.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to ADD cannot be an imm64");
+	}
+	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -266,6 +276,10 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.mov)
 	{
 		ret = x64i_encode_mov(inst);
+	}
+	if(inst.tag == x64i_tag.add)
+	{
+		ret = x64i_encode_add(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
