@@ -1,4 +1,17 @@
 // the following functions dont care which table we're in, we're just getting the offset into the table depending on what the operands are
+x64i_encoding_table_base_offset_1op : func(inst : x64i -> u64)
+{
+	// one operand r/m
+	op ::= [inst.operands # 0];
+	sz ::= x64v_size(op);
+
+	// r8 => 0
+	// ...
+	// r64 => 3
+	idx : u64 mut := log2(sz) - 3;
+	return idx;
+};
+
 x64i_encoding_table_base_offset_2op : func(inst : x64i -> u64)
 {
 	// two operands
@@ -426,4 +439,114 @@ encoding_cdqe ::= x64i_enc // cdqe
 	.opcode := 0x98;
 	.ext := zero;
 	.operand_types := zero;
+};
+
+encoding_tbl_inc ::= x64i_enc[4]
+{
+	// REX.W and operand override 0x66 is already included when necessary
+	// however for non-64-bit operands no REX bits are provided at all
+	// if you're encoding any of these and either operands are r8-15, you *must* add REX and any of the non-W bits you need.
+	.0 := x64i_enc // INC r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xFE;
+		.ext := x64i_ext_opcode_plus_0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.1 := x64i_enc // INC r/m16
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.2 := x64i_enc // INC r/m32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.3 := x64i_enc // INC r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+};
+
+encoding_tbl_dec ::= x64i_enc[4]
+{
+	// REX.W and operand override 0x66 is already included when necessary
+	// however for non-64-bit operands no REX bits are provided at all
+	// if you're encoding any of these and either operands are r8-15, you *must* add REX and any of the non-W bits you need.
+	.0 := x64i_enc // DEC r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xFE;
+		.ext := x64i_ext_opcode_plus_0 + 1;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.1 := x64i_enc // DEC r/m16
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0 + 1;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.2 := x64i_enc // DEC r/m32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0 + 1;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
+	.3 := x64i_enc // DEC r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xFF;
+		.ext := x64i_ext_opcode_plus_0 + 1;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+	};
 };
