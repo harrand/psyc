@@ -113,6 +113,26 @@ x64i_encode_add : func(add : x64i -> x64i_enc)
 	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
 };
 
+x64i_encode_push : func(push : x64i -> x64i_enc)
+{
+	op ::= [push.operands # 0];
+	if(!x64v_is_reg(op) || (op.v1 != 64))
+	{
+		panic_assert_failure("you can only push a 64-bit register");
+	}
+	return encoding_push;
+};
+
+x64i_encode_pop : func(pop : x64i -> x64i_enc)
+{
+	op ::= [pop.operands # 0];
+	if(!x64v_is_reg(op) || (op.v1 != 64))
+	{
+		panic_assert_failure("you can only pop a 64-bit register");
+	}
+	return encoding_pop;
+};
+
 x64i_encode_ret : func(mov : x64i -> x64i_enc)
 {
 	return encoding_ret;
@@ -188,7 +208,8 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 	{
 		r = [operands # r_idx];
 
-		if((imm_idx == -1) && (rm_idx == -1) && (operands_count == 2))
+		//if((imm_idx == -1) && (rm_idx == -1) && (operands_count == 2))
+		if((imm_idx == -1) && (rm_idx == -1))
 		{
 			// both are registers
 			mod_bits = 0b11;
@@ -198,7 +219,23 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 		{
 			// extend ModR/M reg
 			reg_bits = (reg_bits & 0b111);
-			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_r);
+			if(enc->ext == x64i_ext.plus_reg)
+			{
+				// if +r then this is added to the opcode, and thus the opcode needs anotehr bit (so rew.b)
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+			}
+			else
+			{
+				// ok just give it to the reg field
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_r);
+			}
+		}
+		if(enc->ext == x64i_ext.plus_reg)
+		{
+			// note that we did just add rex_b if the register is extended
+			// but if we are +r then we actually dont need a modrm at all
+			enc->opcode = (enc->opcode + reg_bits@u16);
+			return (x64_invalid_modrm << 8)@u16;
 		}
 	}
 
@@ -302,6 +339,14 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.ret)
 	{
 		ret = x64i_encode_ret(inst);
+	}
+	if(inst.tag == x64i_tag.push)
+	{
+		ret = x64i_encode_push(inst);
+	}
+	if(inst.tag == x64i_tag.pop)
+	{
+		ret = x64i_encode_pop(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
