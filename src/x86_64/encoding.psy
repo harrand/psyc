@@ -88,10 +88,113 @@ x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u8)
 {
-	mod : u8 mut := 0;
-	reg : u8 mut := 0;
-	rm : u8 mut := 0;
-	return (mod << 6) | (reg << 3) | rm;
+	mod_bits : u8 mut := 0;
+	reg_bits : u8 mut := 0;
+	rm_bits : u8 mut := 0;
+
+	rm_idx : u64 mut := -1;
+	r_idx : u64 mut := -1;
+	imm_idx : u64 mut := -1;
+
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		type ::= [enc->operand_types # i];
+		if(type == x64v_enc.rm)
+		{
+			rm_idx = i;
+		}
+		if(type == x64v_enc.r)
+		{
+			r_idx = i;
+		}
+		if(type == x64v_enc.imm)
+		{
+			imm_idx = i;
+		}
+	}
+
+	rm : x64v mut := zero;
+	r : x64v mut := zero;
+
+	if(rm_idx != -1)
+	{
+		rm = [operands # rm_idx];
+
+		// mod cannot be 0b11
+		if(rm.v6 == 0)
+		{
+			// there is no displacement
+			mod_bits = 0b00;
+		}
+		else
+		{
+			if(rm.v5 == 8)
+			{
+				mod_bits = 0b01;
+			}
+			if(rm.v5 == 32)
+			{
+				mod_bits = 0b10;
+			}
+		}
+		rm_bits = rm.r1@s64@u8;
+		if(rm_bits > 0b111)
+		{
+			// extend ModR/M rm
+			rm_bits = (rm_bits & 0b111);
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+		}
+	}
+	if(r_idx != -1)
+	{
+		r = [operands # r_idx];
+
+		if((imm_idx == -1) && (rm_idx == -1) && (operands_count == 2))
+		{
+			// both are registers
+			mod_bits = 0b11;
+		}
+		reg_bits = r.r1@s64@u8;
+		if(reg_bits > 0b111)
+		{
+			// extend ModR/M reg
+			reg_bits = (reg_bits & 0b111);
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_r);
+		}
+	}
+
+	if(enc->ext@s64 >= x64i_ext_opcode_plus_0)
+	{
+		// /N
+		reg_bits = (enc->ext@s64 - x64i_ext_opcode_plus_0)@u8;
+	}
+
+	// if there's an index register, or scale != 1, r/m must be 0b100
+	if((rm_idx != -1) && ((rm.v3 != 0) || (rm.v4 != 1)))
+	{
+		if(x64v_is_mem(rm))
+		{
+			rm_bits = 0b100;
+		}
+		else
+		{
+			// rm is definitely a register
+			// if the other thing wasnt a register then we dont have mod = 0b11
+			// if its an immediate then we do still want 0b11
+			if(imm_idx != -1)
+			{
+				mod_bits = 0b11;
+			}
+		}
+	}
+
+	if((enc->ext == x64i_ext.reg) && (imm_idx != -1))
+	{
+		return x64_invalid_modrm;
+	}
+
+	return (mod_bits << 6) | (reg_bits << 3) | rm_bits;
 };
 
 x64i_encode : func(inst : x64i -> x64i_enc)
@@ -153,7 +256,10 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 	if(modrm != x64_invalid_modrm)
 	{
 		bwrite8(w, modrm);
+		if((modrm.mod != 0b11) && (modrm.rm == 0b100))
+		{
+			// todo: need a SIB byte!!!
+		}
 	}
-	// todo: sib if it exists...
 	// todo: immediates...
 };
