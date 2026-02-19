@@ -93,6 +93,11 @@ bwrite_x64i_nop_encode : func(w : bwriter mut?, nop : x64i -> v0)
 	bwrite8(w, 0x90);
 };
 
+x64i_encode_nop : func(mov : x64i -> x64i_enc)
+{
+	return encoding_nop;
+};
+
 x64i_encode_mov : func(mov : x64i -> x64i_enc)
 {
 	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
@@ -108,10 +113,19 @@ x64i_encode_add : func(add : x64i -> x64i_enc)
 	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
 };
 
+x64i_encode_ret : func(mov : x64i -> x64i_enc)
+{
+	return encoding_ret;
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
 {
+	if(operands_count == zero)
+	{
+		return (x64_invalid_modrm << 8)@u16;
+	}
 	mod_bits : u8 mut := 0;
 	reg_bits : u8 mut := 0;
 	rm_bits : u8 mut := 0;
@@ -273,6 +287,10 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 x64i_encode : func(inst : x64i -> x64i_enc)
 {
 	ret : x64i_enc mut := zero;
+	if(inst.tag == x64i_tag.nop)
+	{
+		ret = x64i_encode_nop(inst);
+	}
 	if(inst.tag == x64i_tag.mov)
 	{
 		ret = x64i_encode_mov(inst);
@@ -280,6 +298,10 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.add)
 	{
 		ret = x64i_encode_add(inst);
+	}
+	if(inst.tag == x64i_tag.ret)
+	{
+		ret = x64i_encode_ret(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
@@ -392,5 +414,14 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> v0)
 				bwrite8(w, op.v6);
 			}
 		}
+	}
+};
+
+bwrite_x64f_encode : func(w : bwriter mut?, fn : x64f -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < fn.inst_count; i = i + 1)
+	{
+		bwrite_x64i_encode(w, [fn.inst # i]);
 	}
 };
