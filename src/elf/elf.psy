@@ -1,6 +1,6 @@
-elf_magic : u32 static := 0x7f454c46;
+elf_magic : u32 static := 0x464c457f;
 elf_ident_type_little_endian : u8 static := 1;
-elf_ident_endian_big : u8 static := 1;
+elf_ident_type_big_endian : u8 static := 1;
 elf_ident_32_bit : u8 static := 1;
 elf_ident_64_bit : u8 static := 2;
 
@@ -14,28 +14,8 @@ elf_instruction_set_x64 : u16 static := 0x3e;
 elf_instruction_set_arm32 : u16 static := 0x28;
 elf_instruction_set_arm64 : u16 static := 0xb7;
 
-elf_hdr : struct
-{
-	ident_magic : u32;
-	ident_type : u8;
-	ident_machine : u8;
-	ident_ver : u8;
-	ident_os_abi : u8;
-	ident_padding : u8[8];
-	type : u16;
-	instruction_set : u16;
-	version : u16;
-	entry_offset : u64;
-	proghdr_offset : u64;
-	sechdr_offset : u64;
-	flags : u32;
-	elf_hdr_size : u16;
-	proghdr_entry_size : u16;
-	proghdr_entry_count : u16;
-	sechdr_entry_size : u16;
-	sechdr_entry_count : u16;
-	sechdr_string_table_idx : u16;
-};
+elf_osabi_sysv : u8 static := 0;
+//elf_osabi_linux : u8 static := 3;
 
 elf_proghdr_type_null : u32 static := 0; // ignore this entry
 elf_proghdr_type_load : u32 static := 1; // clear p_memsz bytes at p_vaddr to 0, then copy p_filesz bytes from p_offset to p_vaddr
@@ -57,4 +37,56 @@ elf_proghdr : struct
 	p_filesz : u64;
 	p_memsz : u64; // >= p_filesz
 	p_align : u64;
+};
+
+write_basic_elf : func(path : u8?, code : u8?, code_len : u64 -> v0)
+{
+	file_writer ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+	w ::= ref file_writer;
+	ident_data_encoding : u8 mut := 0;
+	if(native_endianness() == endianness.little)
+	{
+		ident_data_encoding = elf_ident_type_little_endian;
+	}
+	else
+	{
+		ident_data_encoding = elf_ident_type_big_endian;
+	}
+	bwrite32(w, elf_magic); // magic x74ELF
+	bwrite8(w, elf_ident_64_bit); // file class
+	bwrite8(w, ident_data_encoding); // data encoding
+	bwrite8(w, 1); // file version
+	bwrite8(w, elf_osabi_sysv); // os abi
+	bwrite8(w, 0); // abi version
+
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+	bwrite8(w, 0);
+
+	bwrite16(w, elf_type_executable); // type
+	bwrite16(w, elf_instruction_set_x64); // machine/instruction set
+	bwrite32(w, 1); // version (current = 1)
+	bwrite64(w, 0x696969); // entry point virtual address
+	bwrite64(w, zero); // program header offset in bytes
+	bwrite64(w, zero); // section header offset in bytes
+	bwrite32(w, 0); // flags
+	bwrite16(w, 64); // size of elf header (64)
+	bwrite16(w, zero); // program header table entry size in bytes
+	bwrite16(w, zero); // number of program header table entries
+	bwrite16(w, zero); // section header table entry size in bytes
+	bwrite16(w, zero); // number of section header table entries
+	bwrite16(w, zero); // section header table index associated with the section name string table
+
+	file_write(path, file_writer.buf # 0, file_writer.cursor);
 };
