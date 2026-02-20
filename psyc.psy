@@ -59,28 +59,6 @@ main : func(pargs : program_args? -> s32)
 	putchar(10);
 	putchar(10);
 	x64main ::= x64_add_func(x64abi.win);
-	x64_nop();
-	x64_nop();
-	x64_nop();
-	//x64_mov(x64v_reg(x64_reg.rax, 64), x64v_reg(x64_reg.rcx, 64));
-	//x64_mov(x64v_reg(x64_reg.rax, 32), x64v_imm(420, 32));
-	x64_mov(x64v_memreg(32, x64_reg.rbx, 32, zero, zero, 1, 69420, 32), x64v_imm(420, 32));
-	x64_add(x64v_memreg(32, x64_reg.rbx, 32, zero, zero, 1, 69420, 32), x64v_imm(420, 32));
-	x64_ret();
-	x64_push(x64v_reg(x64_reg.r9, 64));
-	x64_pop(x64v_reg(x64_reg.r9, 64));
-	x64_cbw();
-	x64_cbw();
-	x64_cwde();
-	x64_cdqe();
-	x64_inc(x64v_memreg(32, x64_reg.rax, 32, zero, zero, 1, zero, zero));
-	x64_inc(x64v_reg(x64_reg.rbx, 64));
-	x64_dec(x64v_reg(x64_reg.r15, 64));
-	//x64_lea(x64v_reg(x64_reg.rcx, 64), x64v_memreg(64, x64_reg.rax, 64, zero, zero, 2, zero, zero));
-	//x64_movaps(x64v_reg(x64_reg.rax, 128), x64v_memreg(128, x64_reg.rcx, 64, x64_reg.rsi, 32, 8, zero, zero));
-	
-
-
 	stream ::= bwriter mut
 	{
 		.endian := native_endianness();
@@ -89,17 +67,16 @@ main : func(pargs : program_args? -> s32)
 		.cursor := zero;
 		.ar := global_arena;
 	};
-	//x64_dump_disasm_to(ref stream);
-	putchar(10);
-	putchar(10);
-
-	//bwrite_x64i_encode(ref stream, [[x64api.prog.funcs # 0].inst # 3]);
-	//bwrite_x64i_encode(ref stream, [[x64api.prog.funcs # 0].inst # 4]);
+	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
+	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(69, 32));
 	bwrite_x64f_encode(ref stream, [x64api.prog.funcs # 0]);
+	// call syscall
+	bwrite8(ref stream, 0x0f);
+	bwrite8(ref stream, 0x05);
 	putbytes(stream.buf # 0, stream.cursor);
-	file_write("./test_x64.bin", stream.buf # 0, stream.cursor);
 
 	write_basic_elf("./test.elf", stream.buf # 0, stream.cursor);
+	file_write("./test_x64.bin", stream.buf # 0, stream.cursor);
 
 	lex_setup();
 	grammar_setup(global_arena);

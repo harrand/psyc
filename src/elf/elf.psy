@@ -59,6 +59,8 @@ write_basic_elf : func(path : u8?, code : u8?, code_len : u64 -> v0)
 	{
 		ident_data_encoding = elf_ident_type_big_endian;
 	}
+
+	// elf header
 	bwrite32(w, elf_magic); // magic x74ELF
 	bwrite8(w, elf_ident_64_bit); // file class
 	bwrite8(w, ident_data_encoding); // data encoding
@@ -77,16 +79,43 @@ write_basic_elf : func(path : u8?, code : u8?, code_len : u64 -> v0)
 	bwrite16(w, elf_type_executable); // type
 	bwrite16(w, elf_instruction_set_x64); // machine/instruction set
 	bwrite32(w, 1); // version (current = 1)
-	bwrite64(w, 0x696969); // entry point virtual address
-	bwrite64(w, zero); // program header offset in bytes
+	bwrite64(w, begin_addr); // entry point virtual address
+	bwrite64(w, 64); // program header offset in bytes
 	bwrite64(w, zero); // section header offset in bytes
 	bwrite32(w, 0); // flags
 	bwrite16(w, 64); // size of elf header (64)
-	bwrite16(w, zero); // program header table entry size in bytes
-	bwrite16(w, zero); // number of program header table entries
+	proghdr_count ::= 1;
+	proghdr_size ::= 56;
+	bwrite16(w, proghdr_count * proghdr_size); // program header table entry size in bytes
+	bwrite16(w, proghdr_count); // number of program header table entries
 	bwrite16(w, zero); // section header table entry size in bytes
 	bwrite16(w, zero); // number of section header table entries
 	bwrite16(w, zero); // section header table index associated with the section name string table
 
+	code_segment_begin ::= 64 + proghdr_count * proghdr_size;
+	begin_addr ::= 0x400000 + code_segment_begin;
+	PF_X ::= 0x1;
+	PF_W ::= 0x2;
+	PF_R ::= 0x4;
+
+	// program_header go straight after elf header
+	PT_LOAD ::= 1;
+	bwrite32(w, PT_LOAD); // p_type
+	bwrite32(w, PF_X | PF_R); // p_flags
+	bwrite64(w, code_segment_begin); // p_offset
+	bwrite64(w, begin_addr); // p_vaddr
+	bwrite64(w, begin_addr); // p_paddr
+	bwrite64(w, code_len); // p_filesz
+	bwrite64(w, code_len); // p_memsz
+	bwrite64(w, 0x8); // p_align
+
+	// code
+	if(code_segment_begin != w->cursor)
+	{
+		panic_assert_failure("fugg");
+	}
+	bwrite_bytes(w, code, code_len);
+
+	// write to file
 	file_write(path, file_writer.buf # 0, file_writer.cursor);
 };
