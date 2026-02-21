@@ -104,16 +104,6 @@ x64i_encode_mov : func(mov : x64i -> x64i_enc)
 	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
 };
 
-x64i_encode_add : func(add : x64i -> x64i_enc)
-{
-	op2 ::= [add.operands # 1];
-	if(x64v_is_imm(op2) && (op2.v1 == 64))
-	{
-		panic_assert_failure("immediate operand to ADD cannot be an imm64");
-	}
-	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
-};
-
 x64i_encode_ret : func(mov : x64i -> x64i_enc)
 {
 	return encoding_ret;
@@ -192,6 +182,27 @@ x64i_encode_lea : func(lea : x64i -> x64i_enc)
 	}
 	return [encoding_tbl_lea # x64i_encoding_table_base_offset_lea(lea)];
 };
+
+x64i_encode_add : func(add : x64i -> x64i_enc)
+{
+	op2 ::= [add.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to ADD cannot be an imm64");
+	}
+	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
+};
+
+x64i_encode_sub : func(sub : x64i -> x64i_enc)
+{
+	op2 ::= [sub.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to sub cannot be an imm64");
+	}
+	return [encoding_tbl_sub # x64i_encoding_table_base_offset_2op(sub)];
+};
+
 
 x64_invalid_modrm : u8 static := 0xff;
 
@@ -387,10 +398,6 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	{
 		ret = x64i_encode_mov(inst);
 	}
-	if(inst.tag == x64i_tag.add)
-	{
-		ret = x64i_encode_add(inst);
-	}
 	if(inst.tag == x64i_tag.ret)
 	{
 		ret = x64i_encode_ret(inst);
@@ -434,6 +441,14 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.lea)
 	{
 		ret = x64i_encode_lea(inst);
+	}
+	if(inst.tag == x64i_tag.add)
+	{
+		ret = x64i_encode_add(inst);
+	}
+	if(inst.tag == x64i_tag.sub)
+	{
+		ret = x64i_encode_sub(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
