@@ -61,7 +61,8 @@ x64v_enc : enum
 {
 	.r := 1;
 	.rm := 2;
-	.imm := 3;
+	.m := 3;
+	.imm := 4;
 };
 
 x64i_enc : struct
@@ -173,6 +174,25 @@ x64i_encode_not : func(dec : x64i -> x64i_enc)
 	return [encoding_tbl_not # x64i_encoding_table_base_offset_1op(dec)];
 };
 
+x64i_encode_lea : func(lea : x64i -> x64i_enc)
+{
+	op1 ::= [lea.operands # 0];
+	if(!x64v_is_reg(op1))
+	{
+		panic_assert_failure("first operand to lea *must* be a register");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		panic_assert_failure("first operand to lea cannot be an 8-bit register. only 16/32/64");
+	}
+	op2 ::= [lea.operands # 1];
+	if(!x64v_is_mem(op2))
+	{
+		panic_assert_failure("second operand to lea *must* be a memory operand");
+	}
+	return [encoding_tbl_lea # x64i_encoding_table_base_offset_lea(lea)];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -193,7 +213,7 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 	for(i = 0; i < operands_count; i = i + 1)
 	{
 		type ::= [enc->operand_types # i];
-		if(type == x64v_enc.rm)
+		if((type == x64v_enc.rm) || (type == x64v_enc.m))
 		{
 			rm_idx = i;
 		}
@@ -410,6 +430,10 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.not)
 	{
 		ret = x64i_encode_not(inst);
+	}
+	if(inst.tag == x64i_tag.lea)
+	{
+		ret = x64i_encode_lea(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
