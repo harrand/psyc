@@ -3,6 +3,7 @@ elf_ident_type_little_endian : u8 static := 1;
 elf_ident_type_big_endian : u8 static := 1;
 elf_ident_32_bit : u8 static := 1;
 elf_ident_64_bit : u8 static := 2;
+elf_hdr_size ::= 64;
 
 elf_type_relocatable : u16 static := 1;
 elf_type_executable : u16 static := 2;
@@ -39,8 +40,12 @@ elf_proghdr : struct
 	p_align : u64;
 };
 
-write_basic_elf : func(path : u8?, code : u8?, code_len : u64 -> v0)
+write_basic_elf : func(path : u8?, code : u8?, code_len : u64, entrypoint_offset : u64 -> v0)
 {
+	// how much r+w global data space is needed
+	data_len ::= 0;
+	// how much zero'd out r+w global data space is needed
+	bss_len ::= 0;
 	file_writer ::= bwriter mut
 	{
 		.endian := native_endianness();
@@ -75,38 +80,60 @@ write_basic_elf : func(path : u8?, code : u8?, code_len : u64 -> v0)
 	bwrite8(w, 0);
 	bwrite8(w, 0);
 	bwrite8(w, 0);
+	proghdr_count ::= 2;
+	proghdr_size ::= 56;
+	// offset till the first byte of the code
+	code_segment_begin ::= elf_hdr_size + proghdr_count * proghdr_size;
+	// offset till the first byte of data+bss
+	page_size ::= 0x1000;
+	data_segment_begin ::= code_segment_begin + code_len;
+	code_begin_addr ::= 0x400000 + code_segment_begin;
+	data_begin_addr ::= (code_begin_addr + code_len + (page_size - 1)) & ~(page_size - 1);
 
 	bwrite16(w, elf_type_executable); // type
 	bwrite16(w, elf_instruction_set_x64); // machine/instruction set
 	bwrite32(w, 1); // version (current = 1)
-	bwrite64(w, begin_addr); // entry point virtual address
+	bwrite64(w, code_begin_addr); // entry point virtual address
 	bwrite64(w, 64); // program header offset in bytes
 	bwrite64(w, zero); // section header offset in bytes
 	bwrite32(w, 0); // flags
-	bwrite16(w, 64); // size of elf header (64)
-	proghdr_count ::= 1;
-	proghdr_size ::= 56;
-	bwrite16(w, proghdr_count * proghdr_size); // program header table entry size in bytes
+	bwrite16(w, elf_hdr_size); // size of elf header (64)
+	bwrite16(w, proghdr_size); // program header table entry size in bytes
 	bwrite16(w, proghdr_count); // number of program header table entries
 	bwrite16(w, zero); // section header table entry size in bytes
 	bwrite16(w, zero); // number of section header table entries
 	bwrite16(w, zero); // section header table index associated with the section name string table
 
-	code_segment_begin ::= 64 + proghdr_count * proghdr_size;
-	begin_addr ::= 0x400000 + code_segment_begin;
 	PF_X ::= 0x1;
 	PF_W ::= 0x2;
 	PF_R ::= 0x4;
 
 	// program_header go straight after elf header
+	PT_NULL ::= 0;
 	PT_LOAD ::= 1;
+	PT_DYNAMIC ::= 2;
+	PT_INTERP ::= 3;
+	PT_NOTE ::= 4;
+	PT_SHLIB ::= 5;
+	PT_PHDR ::= 6;
+	PT_TLS ::= 7;
+	// code lives here
 	bwrite32(w, PT_LOAD); // p_type
 	bwrite32(w, PF_X | PF_R); // p_flags
 	bwrite64(w, code_segment_begin); // p_offset
-	bwrite64(w, begin_addr); // p_vaddr
-	bwrite64(w, begin_addr); // p_paddr
+	bwrite64(w, code_begin_addr); // p_vaddr
+	bwrite64(w, code_begin_addr); // p_paddr
 	bwrite64(w, code_len); // p_filesz
 	bwrite64(w, code_len); // p_memsz
+	bwrite64(w, 0x8); // p_align
+	// r+w data lives here (mutable global variables)
+	bwrite32(w, PT_LOAD); // p_type
+	bwrite32(w, PF_W | PF_R); // p_flags
+	bwrite64(w, data_segment_begin); // p_offset
+	bwrite64(w, data_begin_addr); // p_vaddr
+	bwrite64(w, data_begin_addr); // p_paddr
+	bwrite64(w, data_len); // p_filesz
+	bwrite64(w, data_len + bss_len); // p_memsz
 	bwrite64(w, 0x8); // p_align
 
 	// code
