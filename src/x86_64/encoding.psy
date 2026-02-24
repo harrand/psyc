@@ -240,6 +240,36 @@ x64i_encode_idiv : func(idiv : x64i -> x64i_enc)
 	return [encoding_tbl_idiv # x64i_encoding_table_base_offset_1op(idiv)];
 };
 
+x64i_encode_xor : func(xor : x64i -> x64i_enc)
+{
+	op2 ::= [xor.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to xor cannot be an imm64");
+	}
+	return [encoding_tbl_xor # x64i_encoding_table_base_offset_2op(xor)];
+};
+
+x64i_encode_or : func(or : x64i -> x64i_enc)
+{
+	op2 ::= [or.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to or cannot be an imm64");
+	}
+	return [encoding_tbl_or # x64i_encoding_table_base_offset_2op(or)];
+};
+
+x64i_encode_and : func(and : x64i -> x64i_enc)
+{
+	op2 ::= [and.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to and cannot be an imm64");
+	}
+	return [encoding_tbl_and # x64i_encoding_table_base_offset_2op(and)];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -501,6 +531,18 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.idiv)
 	{
 		ret = x64i_encode_idiv(inst);
+	}
+	if(inst.tag == x64i_tag.xor)
+	{
+		ret = x64i_encode_xor(inst);
+	}
+	if(inst.tag == x64i_tag.or)
+	{
+		ret = x64i_encode_or(inst);
+	}
+	if(inst.tag == x64i_tag.and)
+	{
+		ret = x64i_encode_and(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
