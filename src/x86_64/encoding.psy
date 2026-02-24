@@ -270,6 +270,36 @@ x64i_encode_and : func(and : x64i -> x64i_enc)
 	return [encoding_tbl_and # x64i_encoding_table_base_offset_2op(and)];
 };
 
+x64i_encode_shl : func(shl : x64i -> x64i_enc)
+{
+	op2 ::= [shl.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to shl must be 8-bit");
+	}
+	return [encoding_tbl_shl # x64i_encoding_table_base_offset_1op(shl)];
+};
+
+x64i_encode_sar : func(sar : x64i -> x64i_enc)
+{
+	op2 ::= [sar.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to sar must be 8-bit");
+	}
+	return [encoding_tbl_sar # x64i_encoding_table_base_offset_1op(sar)];
+};
+
+x64i_encode_shr : func(shr : x64i -> x64i_enc)
+{
+	op2 ::= [shr.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to shr must be 8-bit");
+	}
+	return [encoding_tbl_shr # x64i_encoding_table_base_offset_1op(shr)];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -543,6 +573,18 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.and)
 	{
 		ret = x64i_encode_and(inst);
+	}
+	if(inst.tag == x64i_tag.shl)
+	{
+		ret = x64i_encode_shl(inst);
+	}
+	if(inst.tag == x64i_tag.sar)
+	{
+		ret = x64i_encode_sar(inst);
+	}
+	if(inst.tag == x64i_tag.shr)
+	{
+		ret = x64i_encode_shr(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
