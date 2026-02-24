@@ -2434,3 +2434,40 @@ encoding_tbl_shr ::= x64i_enc[4]
 		};
 	};
 };
+
+encoding_tbl_call ::= x64i_enc[2]
+{
+	// REX.W and operand override 0x66 is already included when necessary
+	// however for non-64-bit operands no REX bits are provided at all
+	// if you're encoding any of these and either operands are r8-15, you *must* add REX and any of the non-W bits you need.
+	.0 := x64i_enc // CALL rel32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xcde8;
+		.ext := zero;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.imm;
+			... := zero;
+		};
+		.clobbers := zero;
+	};
+	.1 := x64i_enc // CALL r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xff;
+		.ext := x64i_ext_opcode_plus_0 + 2;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			... := zero;
+		};
+	};
+};

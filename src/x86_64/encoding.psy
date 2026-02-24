@@ -300,6 +300,19 @@ x64i_encode_shr : func(shr : x64i -> x64i_enc)
 	return [encoding_tbl_shr # x64i_encoding_table_base_offset_1op(shr)];
 };
 
+x64i_encode_call : func(call : x64i -> x64i_enc)
+{
+	if(x64v_is_riprel([call.operands # 0]))
+	{
+		return [encoding_tbl_call # 0];
+	}
+	if(x64v_size([call.operands # 0]) != 64)
+	{
+		panic_assert_failure("r/m operand to call must be 64-bit");
+	}
+	return [encoding_tbl_call # 1];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -585,6 +598,10 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.shr)
 	{
 		ret = x64i_encode_shr(inst);
+	}
+	if(inst.tag == x64i_tag.call)
+	{
+		ret = x64i_encode_call(inst);
 	}
 	// todo: generate the modr/m here if necessary
 
