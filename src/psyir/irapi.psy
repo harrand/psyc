@@ -6,7 +6,7 @@ irapi_t : struct
 
 irapi : irapi_t mut := zero;
 
-ir_add_func : func(conv : irf_callconv -> irpos)
+ir_add_func : func(name : u8?, name_len : u64, conv : irf_callconv -> irpos)
 {
 	if(irapi.prog.funcs == zero)
 	{
@@ -25,6 +25,8 @@ ir_add_func : func(conv : irf_callconv -> irpos)
 	irapi.prog.funcs_count = (irapi.prog.funcs_count + 1);
 	[irapi.prog.funcs # idx] = irf
 	{
+		.name := name;
+		.name_len := name_len;
 		.conv := conv;
 		... := zero;
 	};
@@ -33,7 +35,8 @@ ir_add_func : func(conv : irf_callconv -> irpos)
 		.func_cursor := idx;
 		.blk_cursor := 0;
 	};
-	return irapi.pos;
+	// make an entry block
+	return ir_add_blk();
 };
 
 ir_current_fn : func(-> irf mut?)
