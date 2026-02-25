@@ -1,0 +1,36 @@
+iri_tag : enum
+{
+	.stack := 1;
+};
+
+iri : struct
+{
+	tag : iri_tag;
+	operands : irv mut[4];
+	extra_operands : irv mut?;
+	extra_operands_count : u64;
+};
+
+iri_operands_count : func(i : iri -> u64)
+{
+	j : u64 mut;
+	count ::= countof typeof(i.operands);
+	for(j = 0; j < count; j = j + 1)
+	{
+		if([i.operands # j].tag == zero)
+		{
+			return j + (i.extra_operands_count);
+		}
+	}
+	return j + (i.extra_operands_count);
+};
+
+iri_get_operand : func(i : iri, idx : u64 -> irv)
+{
+	count ::= countof typeof(i.operands);
+	if(idx < count)
+	{
+		return [i.operands # idx];
+	}
+	return [i.extra_operands # (idx - count)];
+};

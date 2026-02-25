@@ -1,0 +1,92 @@
+irapi_t : struct
+{
+	prog : irp mut;
+	pos : irpos;
+};
+
+irapi : irapi_t mut := zero;
+
+ir_add_func : func(conv : irf_callconv -> irpos)
+{
+	if(irapi.prog.funcs == zero)
+	{
+		irapi.prog.funcs_cap = 8;
+		irapi.prog.funcs = arena_alloc(global_arena, irapi.prog.funcs_cap * sizeof irf);
+	}
+	while(irapi.prog.funcs_count >= irapi.prog.funcs_cap)
+	{
+		oldcap ::= irapi.prog.funcs_cap;
+		old ::= irapi.prog.funcs;
+		irapi.prog.funcs_cap = (irapi.prog.funcs_cap * 2);
+		irapi.prog.funcs = arena_alloc(global_arena, irapi.prog.funcs_cap * sizeof irf);
+		memcopy(irapi.prog.funcs, old, oldcap * sizeof irf);
+	}
+	idx ::= irapi.prog.funcs_count;
+	irapi.prog.funcs_count = (irapi.prog.funcs_count + 1);
+	[irapi.prog.funcs # idx] = irf
+	{
+		.conv := conv;
+		... := zero;
+	};
+	irapi.pos = irpos
+	{
+		.func_cursor := idx;
+		.blk_cursor := 0;
+	};
+	return irapi.pos;
+};
+
+ir_current_fn : func(-> irf mut?)
+{
+	return irapi.prog.funcs # (irapi.pos.func_cursor);
+};
+
+ir_add_blk : func(-> irpos)
+{
+	fn ::= ir_current_fn();
+	if(fn->blks == zero)
+	{
+		fn->blks_cap = 8;
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof irb);
+	}
+	while(fn->blks_count >= fn->blks_cap)
+	{
+		oldcap ::= fn->blks_cap;
+		old ::= fn->blks;
+		fn->blks_cap = (fn->blks_cap * 2);
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof irb);
+		memcopy(fn->blks, old, oldcap * sizeof irf);
+	}
+	idx ::= fn->blks_count;
+	fn->blks_count = (fn->blks_count + 1);
+	[fn->blks # idx] = zero;
+	irapi.pos.blk_cursor = idx;
+	return irapi.pos;
+};
+
+ir_current_blk : func(-> irb mut?)
+{
+	return ir_current_fn()->blks # (irapi.pos.blk_cursor);
+};
+
+ir_add_instruction : func(inst : iri -> u64)
+{
+	blk ::= ir_current_blk();
+	if(blk->inst == zero)
+	{
+		blk->inst_cap = 8;
+		blk->inst = arena_alloc(global_arena, blk->inst_cap * sizeof iri);
+	}
+	while(blk->inst_count >= blk->inst_cap)
+	{
+		oldcap ::= blk->inst_cap;
+		old ::= blk->inst;
+		blk->inst_cap = (blk->inst_cap * 2);
+		blk->inst = arena_alloc(global_arena, blk->inst_cap * sizeof iri);
+		memcopy(blk->inst, old, oldcap * sizeof x64i);
+	}
+	idx ::= blk->inst_count;
+	blk->inst_count = (blk->inst_count + 1);
+	[blk->inst # idx] = inst;
+	return idx;
+};
