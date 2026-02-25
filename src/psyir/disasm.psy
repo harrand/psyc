@@ -1,0 +1,88 @@
+bwrite_irv_disasm : func(w : bwriter mut?, v : irv -> v0)
+{
+	if(v.tag == irv_tag.imm)
+	{
+		bwrite_zstr(w, "imm");
+		bwrite_uint(w, v.v2);
+		bwrite_zstr(w, " ");
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == irv_tag.reg)
+	{
+		bwrite_zstr(w, enumname(v.r1));
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == irv_tag.memreg)
+	{
+		bwrite_zstr(w, "[");
+		if(v.r1 != zero)
+		{
+			bwrite_zstr(w, enumname(v.r1));
+			bwrite_uint(w, v.v1);
+		}
+		else
+		{
+			bwrite_uint(w, 0);
+		}
+		if(v.r2 != zero)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_zstr(w, enumname(v.r2));
+			bwrite_uint(w, v.v2);
+			if(v.v3 != 1)
+			{
+				bwrite_zstr(w, " * ");
+				bwrite_uint(w, v.v3);
+			}
+		}
+		bwrite_zstr(w, "]");
+	}
+};
+
+bwrite_iri_disasm : func(w : bwriter mut?, i : iri -> v0)
+{
+	bwrite_zstr(w, enumname(i.tag));
+	j : u64 mut;
+	count ::= iri_operands_count(i);
+	if(count > 0)
+	{
+		bwrite_zstr(w, " ");
+	}
+	for(j = 0; j < count; j = j + 1)
+	{
+		op ::= iri_get_operand(i, j);
+		bwrite_irv_disasm(w, op);
+		if(j < (count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+};
+
+bwrite_irp_disasm : func(w : bwriter mut?, p : irp -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		fn ::= p.funcs # i;
+		bwrite_bytes(w, fn->name, fn->name_len);
+		bwrite_zstr(w, "() {");
+		bwrite8(w, 10);
+		for(j = 0; j < fn->blks_count; j = j + 1)
+		{
+			blk ::= fn->blks # i;
+			bwrite64(w, j);
+			bwrite8(w, ':');
+			bwrite8(w, 10);
+			for(k = 0; k < blk->inst_count; k = k + 1)
+			{
+				bwrite8(w, 9);
+				bwrite_iri_disasm(w, [blk->inst # k]);
+				bwrite8(w, 10);
+			}
+		}
+		bwrite_zstr(w, "}");
+	}
+};
