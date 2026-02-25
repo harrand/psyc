@@ -576,6 +576,51 @@ x64i_encode_setz : func(setz : x64i -> x64i_enc)
 	return encoding_setz;
 };
 
+x64i_encode_movaps : func(movaps : x64i -> x64i_enc)
+{
+	op1 ::= [movaps.operands # 0];
+	op2 ::= [movaps.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movaps operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movaps # 0];
+	}
+	return [encoding_tbl_movaps # 1];
+};
+
+x64i_encode_movapd : func(movapd : x64i -> x64i_enc)
+{
+	op1 ::= [movapd.operands # 0];
+	op2 ::= [movapd.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movapd operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movapd # 0];
+	}
+	return [encoding_tbl_movapd # 1];
+};
+
+x64i_encode_movdqa : func(movdqa : x64i -> x64i_enc)
+{
+	op1 ::= [movdqa.operands # 0];
+	op2 ::= [movdqa.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movdqa operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movdqa # 0];
+	}
+	return [encoding_tbl_movdqa # 1];
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -934,6 +979,18 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.setz)
 	{
 		ret = x64i_encode_setz(inst);
+	}
+	if(inst.tag == x64i_tag.movaps)
+	{
+		ret = x64i_encode_movaps(inst);
+	}
+	if(inst.tag == x64i_tag.movapd)
+	{
+		ret = x64i_encode_movapd(inst);
+	}
+	if(inst.tag == x64i_tag.movdqa)
+	{
+		ret = x64i_encode_movdqa(inst);
 	}
 	if(ret.ext == x64i_ext.invalid_sentinel)
 	{
