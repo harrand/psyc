@@ -118,11 +118,6 @@ x64i_encode_mov : func(mov : x64i -> x64i_enc)
 	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
 };
 
-x64i_encode_ret : func(mov : x64i -> x64i_enc)
-{
-	return encoding_ret;
-};
-
 x64i_encode_push : func(push : x64i -> x64i_enc)
 {
 	op ::= [push.operands # 0];
@@ -566,6 +561,21 @@ x64i_encode_test : func(test : x64i -> x64i_enc)
 	return [encoding_tbl_test # x64i_encoding_table_base_offset_1op(test)];
 };
 
+x64i_encode_cmp : func(cmp : x64i -> x64i_enc)
+{
+	return [encoding_tbl_cmp # x64i_encoding_table_base_offset_2op(cmp)];
+};
+
+x64i_encode_ret : func(ret : x64i -> x64i_enc)
+{
+	return encoding_ret;
+};
+
+x64i_encode_setz : func(setz : x64i -> x64i_enc)
+{
+	return encoding_setz;
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -765,10 +775,6 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	{
 		ret = x64i_encode_mov(inst);
 	}
-	if(inst.tag == x64i_tag.ret)
-	{
-		ret = x64i_encode_ret(inst);
-	}
 	if(inst.tag == x64i_tag.push)
 	{
 		ret = x64i_encode_push(inst);
@@ -916,6 +922,18 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.test)
 	{
 		ret = x64i_encode_test(inst);
+	}
+	if(inst.tag == x64i_tag.cmp)
+	{
+		ret = x64i_encode_cmp(inst);
+	}
+	if(inst.tag == x64i_tag.ret)
+	{
+		ret = x64i_encode_ret(inst);
+	}
+	if(inst.tag == x64i_tag.setz)
+	{
+		ret = x64i_encode_setz(inst);
 	}
 	if(ret.ext == x64i_ext.invalid_sentinel)
 	{
