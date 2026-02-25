@@ -1,0 +1,78 @@
+ir_reg : enum
+{
+	.b := 1; // 8 (int8)
+	.w := 2; // 16 (int16)
+	.d := 3; // 32 (int32)
+	.q := 4; // 64 (int64)
+	.x := 5; // 128 (int128)
+	.y := 6; // 256 (int256)
+	.z := 7; // 512 (int512)
+	.f := 8; // 32f (float)
+	.ff := 9; // 64f (double)
+};
+
+irv_tag : enum
+{
+	// immediate value
+	// v1 = the actual immediate value
+	// v2 = size 8/16/32/64
+	.imm := 1;
+	// register
+	// r1: register type
+	// v1: virtual register id
+	.reg := 2;
+	// memory operand
+	// r1: base register (can be zero)
+	// r2: index register (can be zero)
+	// v1: base register virtual id
+	// v2: index register virutal id
+	// v3: scale
+	.memreg := 3;
+};
+
+irv : struct
+{
+	tag : irv_tag;
+	r1 : ir_reg;
+	r2 : ir_reg;
+	v1 : u64;
+	v2 : u64;
+	v3 : u64;
+	v4 : u64;
+	v5 : u64;
+	v6 : u64;
+	v7 : u64;
+};
+
+irv_imm : func(imm : u64, size : u64 -> irv)
+{
+	return irv
+	{
+		.tag := irv_tag.imm;
+		.v1 := imm;
+		.v2 := size;
+	};
+};
+
+irv_reg : func(reg : ir_reg, id : u64 -> irv)
+{
+	return irv
+	{
+		.tag := irv_tag.reg;
+		.r1 := reg;
+		.v1 := id;
+	};
+};
+
+irv_memreg : func(base : ir_reg, base_id : u64, index : ir_reg, index_id : u64, scale : u64 -> irv)
+{
+	return irv
+	{
+		.tag := irv_tag.memreg;
+		.r1 := base;
+		.r2 := index;
+		.v1 := base_id;
+		.v2 := index_id;
+		.v3 := scale;
+	};
+};
