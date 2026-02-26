@@ -1,0 +1,58 @@
+dl_typeinfo : struct
+{
+	size : u64;
+	align : u64;
+};
+
+dl_primty_infos ::= dl_typeinfo[countof tyid]
+{
+	.0 := zero; // v0
+	.1 := dl_typeinfo{.size := 8; .align := 8;}; // s64
+	.2 := dl_typeinfo{.size := 4; .align := 4;}; // s32
+	.3 := dl_typeinfo{.size := 2; .align := 2;}; // s16
+	.4 := dl_typeinfo{.size := 1; .align := 1;}; // s8
+	.5 := dl_typeinfo{.size := 8; .align := 8;}; // u64
+	.6 := dl_typeinfo{.size := 4; .align := 4;}; // u32
+	.7 := dl_typeinfo{.size := 2; .align := 2;}; // u16
+	.8 := dl_typeinfo{.size := 1; .align := 1;}; // u8
+	.9 := dl_typeinfo{.size := 1; .align := 1;}; // bool
+	.10 := dl_typeinfo{.size := 8; .align := 8;}; // f64
+	.11 := dl_typeinfo{.size := 4; .align := 4;}; // f32
+};
+
+dl_type : func(t : tyid  -> dl_typeinfo)
+{
+	if(ty_is_prim(t))
+	{
+		return [dl_primty_infos # (t@s64 - 1)];
+	}
+	if(ty_is_arr(t))
+	{
+		arrdl : dl_typeinfo mut := dl_type(ty_underlying(t));
+		arrdl.size = (arrdl.size * ty_unwrap(t)->array_len);
+		return arrdl;
+	}
+	if(ty_is_ptr(t) || ty_is_fn(t) || ty_is_enum(t))
+	{
+		return dl_typeinfo{.size := 8; .align := 8;};
+	}
+	// only structs remain...
+	size : u64 mut := 0;
+	align : u64 mut := 1;
+	i : u64 mut := 0;
+	s ::= ty_unwrap(t)->strct;
+	for(i = 0; i < s.members_count; i = i + 1)
+	{
+		meminfo ::= dl_type([s.members # i]);
+		if(meminfo.align > align)
+		{
+			align = meminfo.align;
+		}
+		// are we aligned?
+		padding ::= (-size) & (meminfo.align - 1);
+		size = (size + padding + meminfo.size);
+	}
+	tail_padding_amt ::= (-size) & (align - 1);
+	size = (size + tail_padding_amt);
+	return dl_typeinfo{.size := size; .align := align;};
+};
