@@ -101,12 +101,15 @@ ir_dump_disasm_to : func(w : bwriter mut? -> v0)
 
 ir_new_reg : func(type : ir_reg -> irv)
 {
-	return irv_reg(type, ir_current_fn()->regcur);
+	fn ::= ir_current_fn();
+	ret ::= irv_reg(type, fn->regcur);
+	fn->regcur = (fn->regcur + 1);
+	return ret;
 };
 
 // instructions api
 
-ir_stack : func(alloc_size : u64 -> irv)
+ir_stack : func(alloc_size_bytes : u64 -> irv)
 {
 	out ::= ir_new_reg(ir_reg.q);
 	ir_add_instruction(iri
@@ -115,7 +118,7 @@ ir_stack : func(alloc_size : u64 -> irv)
 		.operands := irv[4]
 		{
 			.0 := out;
-			.1 := irv_imm(alloc_size, 64);
+			.1 := irv_imm(alloc_size_bytes, 64);
 			... := zero;
 		};
 		... := zero;
