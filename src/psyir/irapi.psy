@@ -67,6 +67,16 @@ ir_add_blk : func(-> irpos)
 	return irapi.pos;
 };
 
+ir_getpos : func(-> irpos)
+{
+	return irapi.pos;
+};
+
+ir_setpos : func(pos : irpos -> v0)
+{
+	irapi.pos = pos;
+};
+
 ir_current_blk : func(-> irb mut?)
 {
 	return ir_current_fn()->blks # (irapi.pos.blk_cursor);
@@ -174,4 +184,57 @@ ir_off : func(v : irv, off : u64 -> irv)
 		... := zero;
 	});
 	return out;
+};
+
+ir_jmp : func(l : irv -> v0)
+{
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.jmp;
+		.operands := irv[4]
+		{
+			.0 := l;
+			... := zero;
+		};
+		... := zero;
+	});
+};
+
+ir_jmpif : func(cond : irv, yes : irpos, no : irpos -> v0)
+{
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.jmpif;
+		.operands := irv[4]
+		{
+			.0 := cond;
+			.1 := irv_blkref(yes);
+			.2 := irv_blkref(no);
+			... := zero;
+		};
+		... := zero;
+	});
+};
+
+ir_ret : func(v : irv -> v0)
+{
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.ret;
+		.operands := irv[4]
+		{
+			.0 := v;
+			... := zero;
+		};
+		... := zero;
+	});
+};
+
+ir_retnone : func(-> v0)
+{
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.retnone;
+		... := zero;
+	});
 };
