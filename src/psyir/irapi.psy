@@ -39,6 +39,28 @@ ir_add_func : func(name : u8?, name_len : u64, conv : irf_callconv -> irpos)
 	return ir_add_blk();
 };
 
+ir_add_param : func(param_type : ir_reg -> irv)
+{
+	fn ::= ir_current_fn();
+	if(fn->params == zero)
+	{
+		fn->params_cap = 8;
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof irv);
+	}
+	while(fn->params_count >= fn->params_cap)
+	{
+		oldcap ::= fn->params_cap;
+		old ::= fn->params;
+		fn->params_cap = (fn->params_cap * 2);
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof irv);
+		memcopy(fn->params, old, oldcap * sizeof irf);
+	}
+	ptr ::= fn->params # (fn->params_count);
+	[ptr] = ir_new_reg(param_type);
+	fn->params_count = (fn->params_count + 1);
+	return [ptr];
+};
+
 ir_current_fn : func(-> irf mut?)
 {
 	return irapi.prog.funcs # (irapi.pos.func_cursor);

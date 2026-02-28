@@ -39,31 +39,45 @@ bwrite_iri_disasm : func(w : bwriter mut?, i : iri -> v0)
 	}
 };
 
+bwrite_irf_disasm : func(w : bwriter mut?, f : irf -> v0)
+{
+	j : u64 mut;
+	k : u64 mut;
+	bwrite_bytes(w, f.name, f.name_len);
+	bwrite_zstr(w, "(");
+	for(j = 0; j < f.params_count; j = j + 1)
+	{
+		bwrite_irv_disasm(w, [f.params # j]);
+		if(j < (f.params_count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+	bwrite_zstr(w, ") {");
+	bwrite8(w, 10);
+	for(j = 0; j < f.blks_count; j = j + 1)
+	{
+		blk ::= f.blks # j;
+		bwrite_zstr(w, "$");
+		bwrite_uint(w, j);
+		bwrite8(w, ':');
+		bwrite8(w, 10);
+		for(k = 0; k < blk->inst_count; k = k + 1)
+		{
+			bwrite_zstr(w, "  ");
+			bwrite_iri_disasm(w, [blk->inst # k]);
+			bwrite8(w, 10);
+		}
+	}
+	bwrite_zstr(w, "}");
+};
+
 bwrite_irp_disasm : func(w : bwriter mut?, p : irp -> v0)
 {
 	i : u64 mut;
-	j : u64 mut;
-	k : u64 mut;
 	for(i = 0; i < p.funcs_count; i = i + 1)
 	{
 		fn ::= p.funcs # i;
-		bwrite_bytes(w, fn->name, fn->name_len);
-		bwrite_zstr(w, "() {");
-		bwrite8(w, 10);
-		for(j = 0; j < fn->blks_count; j = j + 1)
-		{
-			blk ::= fn->blks # j;
-			bwrite_zstr(w, "$");
-			bwrite_uint(w, j);
-			bwrite8(w, ':');
-			bwrite8(w, 10);
-			for(k = 0; k < blk->inst_count; k = k + 1)
-			{
-				bwrite_zstr(w, "  ");
-				bwrite_iri_disasm(w, [blk->inst # k]);
-				bwrite8(w, 10);
-			}
-		}
-		bwrite_zstr(w, "}");
+		bwrite_irf_disasm(w, [fn]);
 	}
 };
