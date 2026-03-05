@@ -1,5 +1,9 @@
 bwrite_irv_disasm : func(w : bwriter mut?, v : irv -> v0)
 {
+	if(v.tag == zero)
+	{
+		bwrite_zstr(w, "<null>");
+	}
 	if(v.tag == irv_tag.imm)
 	{
 		bwrite_zstr(w, enumname(v.r1));
@@ -19,7 +23,7 @@ bwrite_irv_disasm : func(w : bwriter mut?, v : irv -> v0)
 	}
 	if(v.tag == irv_tag.fnref)
 	{
-		fn ::= ir_get_function_by_id(v.v1);
+		fn ::= ir_get_fn_by_id(v.v1);
 		bwrite_bytes(w, fn->name, fn->name_len);
 	}
 };
@@ -58,6 +62,15 @@ bwrite_irf_disasm : func(w : bwriter mut?, f : irf -> v0)
 			bwrite_zstr(w, ", ");
 		}
 	}
+	bwrite_zstr(w, " -> ");
+	if(f.ret != zero)
+	{
+		bwrite_zstr(w, enumname(f.ret));
+	}
+	else
+	{
+		bwrite_zstr(w, "v0");
+	}
 	bwrite_zstr(w, ") {");
 	bwrite8(w, 10);
 	for(j = 0; j < f.blks_count; j = j + 1)
@@ -75,6 +88,8 @@ bwrite_irf_disasm : func(w : bwriter mut?, f : irf -> v0)
 		}
 	}
 	bwrite_zstr(w, "}");
+	bwrite8(w, 10);
+	bwrite8(w, 10);
 };
 
 bwrite_irp_disasm : func(w : bwriter mut?, p : irp -> v0)

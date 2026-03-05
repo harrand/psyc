@@ -6,7 +6,7 @@ irapi_t : struct
 
 irapi : irapi_t mut := zero;
 
-ir_add_func : func(name : u8?, name_len : u64, conv : irf_callconv -> irpos)
+ir_add_func : func(name : u8?, name_len : u64, ret : ir_reg, conv : irf_callconv -> irpos)
 {
 	if(irapi.prog.funcs == zero)
 	{
@@ -28,6 +28,7 @@ ir_add_func : func(name : u8?, name_len : u64, conv : irf_callconv -> irpos)
 		.name := name;
 		.name_len := name_len;
 		.conv := conv;
+		.ret := ret;
 		... := zero;
 	};
 	irapi.pos = irpos
@@ -39,15 +40,21 @@ ir_add_func : func(name : u8?, name_len : u64, conv : irf_callconv -> irpos)
 	return ir_add_blk();
 };
 
-ir_get_function : func(pos : irpos _> irf?)
+ir_get_fn : func(pos : irpos -> irf?)
 {
-	return ir_get_function_by_id(pos.fn_cursor);
+	return ir_get_fn_by_id(pos.func_cursor);
 };
 
-ir_get_function_by_id : func(id : u64 -> irf?)
+ir_get_fn_by_id : func(id : u64 -> irf?)
 {
 	return irapi.prog.funcs # id;
 };
+
+ir_current_fn : func(-> irf mut?)
+{
+	return ir_get_fn(irapi.pos);
+};
+
 
 ir_add_param : func(param_type : ir_reg -> irv)
 {
@@ -69,11 +76,6 @@ ir_add_param : func(param_type : ir_reg -> irv)
 	[ptr] = ir_new_reg(param_type);
 	fn->params_count = (fn->params_count + 1);
 	return [ptr];
-};
-
-ir_current_fn : func(-> irf mut?)
-{
-	return irapi.prog.funcs # (irapi.pos.func_cursor);
 };
 
 ir_add_blk : func(-> irpos)
@@ -385,11 +387,50 @@ ir_sshr : func(lhs : irv, rhs : irv -> irv)
 	return _ir_arith2(iri_tag.sshr, lhs, rhs);
 };
 
-ir_call : func(callee : irpos, params : irv, params_count : u64 -> irv)
+ir_call : func(callee : irpos, params : irv?, params_count : u64 -> irv)
 {
-	//fn ::= ir_get_function(callee);
-	// todo: figure out what a function returns
-	return zero;
+	fn ::= ir_get_fn(callee);
+	if(params_count != fn->params_count)
+	{
+		psyc_panic_begin(zero);
+		putzstr("ir function ");
+		putchar('"');
+		putbytes(fn->name, fn->name_len);
+		putchar('"');
+		putzstr(" expects ");
+		putuint(fn->params_count);
+		putzstr(" but was given ");
+		putuint(params_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	out : irv mut := zero;
+	if(fn->ret != zero)
+	{
+		out = ir_new_reg(fn->ret);
+	}
+
+	inst ::= iri mut
+	{
+		.tag := iri_tag.call;
+		.operands := irv[4]
+		{
+			.0 := out;
+			.1 := irv_fnref(callee);
+			... := zero;
+		};
+		... := zero;
+	};
+
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		iri_add_operand(ref inst, [params # i]);
+	}
+
+	ir_add_instruction(inst);
+	return out;
 };
 
 ir_cmp : func(lhs : irv, rhs : irv -> irv)
