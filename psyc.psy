@@ -73,9 +73,26 @@ main : func(pargs : program_args? -> s32)
 	irmain ::= ir_add_func("main", 4, ir_reg.d, irf_callconv.win64);
 	irargc ::= ir_add_param(ir_reg.d);
 	irargv ::= ir_add_param(ir_reg.q);
+
+	istack ::= ir_stack(8);
+	cstack ::= ir_stack(8);
+	ir_store(istack, irv_imm(0, ir_reg.q));
+	ir_store(cstack, irv_imm(0, ir_reg.q));
+	iter_blk ::= ir_add_blk();
+
+	fin_blk ::= ir_add_blk();
+	ir_setpos(iter_blk);
+
+	iload ::= ir_load(istack, ir_reg.q);
+	i_is_even ::= ir_rcall(entry, ref iload, 1);
+	ir_store(cstack, ir_add(ir_load(cstack, ir_reg.q), ir_zex(i_is_even, ir_reg.q)));
+
+	ir_store(istack, ir_add(iload, irv_imm(1, ir_reg.q)));
+	ir_jmpif(ir_cmp_eq(ir_load(istack, ir_reg.q), irv_imm(64, ir_reg.q)), fin_blk, iter_blk);
+
+	ir_setpos(fin_blk);
 	
-	evenret ::= ir_rcall(entry, ref irargc, 1);
-	ir_ret(ir_zex(evenret, ir_reg.d));
+	ir_ret(irv_imm(0, ir_reg.d));
 
 	teststream ::= bwriter mut
 	{
@@ -92,7 +109,6 @@ main : func(pargs : program_args? -> s32)
 	putchar(10);
 	putchar(10);
 
-	x64main ::= x64_add_func(x64abi.win);
 	stream ::= bwriter mut
 	{
 		.endian := native_endianness();
@@ -101,20 +117,22 @@ main : func(pargs : program_args? -> s32)
 		.cursor := zero;
 		.ar := global_arena;
 	};
-	x64_nop();
-	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(32, 32));
+	//x64_nop();
+	//x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(32, 32));
 	//x64_lea(x64v_reg(x64_reg.rsi, 64), x64v_memreg(64, x64_reg.rax, 64, zero, zero, 1, zero, zero));
-	x64_and(x64v_reg(x64_reg.rbp, 64), x64v_reg(x64_reg.rbp, 64));
-	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(120, 32));
-	x64_sar(x64v_reg(x64_reg.rax, 64), x64v_imm(1, 8));
+	//x64_and(x64v_reg(x64_reg.rbp, 64), x64v_reg(x64_reg.rbp, 64));
+	//x64_sar(x64v_reg(x64_reg.rax, 64), x64v_imm(1, 8));
 	//x64_jmp(x64v_riprel(69420, 32));
 	//x64_mul(x64v_reg(x64_reg.rcx, 64));
 	//x64_imul(x64v_reg(x64_reg.rax, 64), x64v_reg(x64_reg.rcx, 64));
 	//x64_jae(x64v_riprel(420, 32));
 	//x64_setz(x64v_reg(x64_reg.rbp, 8));
-	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(69, 32));
+	ir_lower_x64();
+	x64main ::= x64_add_func(x64abi.win);
+	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
+	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(0, 32));
 	//x64_movdqu(x64v_reg(x64_reg.rax, 128), x64v_memreg(128, x64_reg.rax, 128, zero, zero, 1, 64, 32));
-	bwrite_x64f_encode(ref stream, [x64api.prog.funcs # 0]);
+	bwrite_x64p_encode(ref stream, x64api.prog);
 	// call syscall
 	bwrite8(ref stream, 0x0f);
 	bwrite8(ref stream, 0x05);
