@@ -471,9 +471,34 @@ ir_rcall : func(callee : irpos, params : irv?, params_count : u64 -> irv)
 	return out;
 };
 
-ir_cmp : func(lhs : irv, rhs : irv -> irv)
+ir_cmp_eq : func(lhs : irv, rhs : irv -> irv)
 {
-	return _ir_arith2(iri_tag.cmp, lhs, rhs);
+	return _ir_arith2(iri_tag.cmp_eq, lhs, rhs);
+};
+
+ir_cmp_neq : func(lhs : irv, rhs : irv -> irv)
+{
+	return _ir_arith2(iri_tag.cmp_neq, lhs, rhs);
+};
+
+ir_cmp_less : func(lhs : irv, rhs : irv -> irv)
+{
+	return _ir_arith2(iri_tag.cmp_less, lhs, rhs);
+};
+
+ir_cmp_less_equal : func(lhs : irv, rhs : irv -> irv)
+{
+	return _ir_arith2(iri_tag.cmp_less_equal, lhs, rhs);
+};
+
+ir_cmp_greater : func(lhs : irv, rhs : irv -> irv)
+{
+	return _ir_arith2(iri_tag.cmp_greater, lhs, rhs);
+};
+
+ir_cmp_greater_equal : func(lhs : irv, rhs : irv -> irv)
+{
+	return _ir_arith2(iri_tag.cmp_greater_equal, lhs, rhs);
 };
 
 ir_sex : func(v : irv, to : ir_reg -> irv)
@@ -520,6 +545,52 @@ ir_trunc : func(v : irv, to : ir_reg -> irv)
 			.1 := v;
 			... := zero;
 		};
+	});
+	return out;
+};
+
+ir_trap : func(-> v0)
+{
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.trap;
+		... := zero;
+	});
+};
+
+// composite instructions (common functionality that are easily expressed using other instructions but are not themselves instructions)
+ir_bitwise_not : func(op : irv -> irv)
+{
+	out ::= ir_new_reg(irv_size(op));
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.xor;
+		.operands := irv[4]
+		{
+			.0 := out;
+			.1 := op;
+			.2 := irv_imm(-1, irv_size(op));
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
+ir_logical_not : func(op : irv -> irv)
+{
+	out ::= ir_new_reg(irv_size(op));
+	ir_add_instruction(iri
+	{
+		.tag := iri_tag.cmp_eq;
+		.operands := irv[4]
+		{
+			.0 := out;
+			.1 := op;
+			.2 := irv_imm(0, irv_size(op));
+			... := zero;
+		};
+		... := zero;
 	});
 	return out;
 };
