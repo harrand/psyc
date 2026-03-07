@@ -387,7 +387,45 @@ ir_sshr : func(lhs : irv, rhs : irv -> irv)
 	return _ir_arith2(iri_tag.sshr, lhs, rhs);
 };
 
-ir_call : func(callee : irpos, params : irv?, params_count : u64 -> irv)
+ir_call : func(callee : irpos, params : irv?, params_count : u64 -> v0)
+{
+	fn ::= ir_get_fn(callee);
+	if(params_count != fn->params_count)
+	{
+		psyc_panic_begin(zero);
+		putzstr("ir function ");
+		putchar('"');
+		putbytes(fn->name, fn->name_len);
+		putchar('"');
+		putzstr(" expects ");
+		putuint(fn->params_count);
+		putzstr(" but was given ");
+		putuint(params_count);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+
+	inst ::= iri mut
+	{
+		.tag := iri_tag.call;
+		.operands := irv[4]
+		{
+			.0 := irv_fnref(callee);
+			... := zero;
+		};
+		... := zero;
+	};
+
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		iri_add_operand(ref inst, [params # i]);
+	}
+
+	ir_add_instruction(inst);
+};
+
+ir_rcall : func(callee : irpos, params : irv?, params_count : u64 -> irv)
 {
 	fn ::= ir_get_fn(callee);
 	if(params_count != fn->params_count)
@@ -413,7 +451,7 @@ ir_call : func(callee : irpos, params : irv?, params_count : u64 -> irv)
 
 	inst ::= iri mut
 	{
-		.tag := iri_tag.call;
+		.tag := iri_tag.rcall;
 		.operands := irv[4]
 		{
 			.0 := out;
