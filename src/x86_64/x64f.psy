@@ -12,3 +12,63 @@ x64abi : enum
 	.sysv := 1;
 	.win := 2;
 };
+
+// potentially mutate an x64f, replacing *all* ripreli (instruction) operands with riprel (byte) operands
+x64f_patch_ripreli : func(f : x64f mut? -> v0)
+{
+	buf : u8[1024];
+	tmpwriter ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := buf # 0;
+		.len := sizeof typeof(buf);
+		... := zero;
+	};
+	size_of_instruction : u64 mut? := arena_alloc(global_arena, f->inst_count * sizeof u64);
+	i : u64 mut;
+	for(i = 0; i < f->inst_count; i = i + 1)
+	{
+		[size_of_instruction # i] = bwrite_x64i_encode(ref tmpwriter, [f->inst # i]);
+		tmpwriter.cursor = 0;
+	}
+	j : u64 mut;
+	k : s64 mut;
+	for(i = 0; i < f->inst_count; i = i + 1)
+	{
+		curinst ::= f->inst # i;
+		count ::= x64i_operand_count([curinst]);
+		for(j = 0; j < count; j = j + 1)
+		{
+			curop ::= curinst->operands # j;
+			if(curop->tag == x64v_tag.ripreli)
+			{
+				riprel_inst ::= curop->v1@s64;
+				// convert this into bytes
+				direction : s64 mut := riprel_inst;
+				if(direction == 0)
+				{
+					// do nothing. riprel 0???
+				}
+				else
+				{
+					if(direction > 0)
+					{
+						direction = 1;
+					}
+					else
+					{
+						direction = -1;
+					}
+				}
+				byte_diff : u64 mut := 0;
+				for(k = 0; k != riprel_inst; k = k + direction)
+				{
+					byte_diff = byte_diff + [size_of_instruction # (i@s64 + k)];
+				}
+				byte_diff = byte_diff + [size_of_instruction # (i@s64 + riprel_inst)];
+				curop->v1 = (byte_diff@s64 * direction)@u64;
+				curop->tag = x64v_tag.riprel;
+			}
+		}
+	}
+};
