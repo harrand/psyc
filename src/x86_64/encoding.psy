@@ -1189,12 +1189,68 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> u64)
 
 bwrite_x64f_encode : func(w : bwriter mut?, fn : x64f -> u64)
 {
+	// this is a bit complex because individual instructions in here could have rip-relative jumps
+	// so we actually encode twice
 	before_cursor ::= w->cursor;
 	i : u64 mut;
+
+	size_of_instruction : u64 mut? := arena_alloc(global_arena, fn.inst_count * sizeof u64);
+
+	for(i = 0; i < fn.inst_count; i = i + 1)
+	{
+		[size_of_instruction # i] = bwrite_x64i_encode(w, [fn.inst # i]);
+	}
+	// reset cursor to where we were before
+	w->cursor = before_cursor;
+
+	// go through again, replace all riprel addresses with the actual byte relative addresses
+	j : u64 mut;
+	k : s64 mut;
+	for(i = 0; i < fn.inst_count; i = i + 1)
+	{
+		curinst ::= fn.inst # i;
+		count ::= x64i_operand_count([curinst]);
+		for(j = 0; j < count; j = j + 1)
+		{
+			curop ::= curinst->operands # j;
+			if(curop->tag == x64v_tag.ripreli)
+			{
+				riprel_inst ::= curop->v1@s64;
+				// convert this into bytes
+				direction : s64 mut := riprel_inst;
+				if(direction == 0)
+				{
+					// do nothing. riprel 0???
+				}
+				else
+				{
+					if(direction > 0)
+					{
+						direction = 1;
+					}
+					else
+					{
+						direction = -1;
+					}
+				}
+				byte_diff : u64 mut := 0;
+				for(k = 0; k != riprel_inst; k = k + direction)
+				{
+					byte_diff = byte_diff + [size_of_instruction # (i@s64 + k)];
+				}
+				byte_diff = byte_diff + [size_of_instruction # (i@s64 + riprel_inst)];
+				curop->v1 = (byte_diff@s64 * direction)@u64;
+				curop->tag = x64v_tag.riprel;
+			}
+		}
+	}
+
+	// finally re-encode.
 	for(i = 0; i < fn.inst_count; i = i + 1)
 	{
 		bwrite_x64i_encode(w, [fn.inst # i]);
 	}
+
 	return w->cursor - before_cursor;
 };
 
