@@ -41,6 +41,27 @@ x64_current_instruction_id : func(-> u64)
 	return x64_current_fn()->inst_count;
 };
 
+x64_add_glob : func(g : x64g -> u64)
+{
+	if(x64api.prog.globs == zero)
+	{
+		x64api.prog.globs_cap = 8;
+		x64api.prog.globs = arena_alloc(global_arena, x64api.prog.globs_cap * sizeof x64g);
+	}
+	while(x64api.prog.globs_count >= x64api.prog.globs_cap)
+	{
+		oldcap ::= x64api.prog.globs_cap;
+		old ::= x64api.prog.globs;
+		x64api.prog.globs_cap = (x64api.prog.globs_cap * 2);
+		x64api.prog.globs = arena_alloc(global_arena, x64api.prog.globs_cap * sizeof x64g);
+		memcopy(x64api.prog.globs, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.globs_count;
+	x64api.prog.globs_count = (x64api.prog.globs_count + 1);
+	[x64api.prog.globs # idx] = g;
+	return idx;
+};
+
 x64_add_instruction : func(inst : x64i -> u64)
 {
 	fn ::= x64api.prog.funcs # (x64api.func_cursor);
