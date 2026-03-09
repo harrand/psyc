@@ -47,13 +47,19 @@ x64v_tag : enum
 	//	v1: a displacement from the rip register (in bytes, encoding native)
 	//	v2: size of the displacement immediate 8/32 only
 	.riprel := 6;
+	//	v1: the index of the rodata to refer to
+	.rodataref := 7;
+	//	v1: the index of the data to refer to
+	.dataref := 8;
+	//	v1: the index of the bss to refer to
+	.bssref := 9;
 
 	// the following tags are customs. you should use them as intermediate values
 	// these must all be lowered to an actual x64 eventually.
-	.custom0 := 8;
-	.custom1 := 9;
-	.custom2 := 10;
-	.custom3 := 11;
+	.custom0 := 16;
+	.custom1 := 17;
+	.custom2 := 18;
+	.custom3 := 19;
 };
 
 x64v : struct
@@ -118,9 +124,24 @@ x64v_addr : func(addr : u64 -> x64v)
 	return x64v{.tag := x64v_tag.addr; .v1 := addr; ... := zero;};
 };
 
-x64v_riprel : func(riprel_instruction_id : u64, riprel_instruction_id_size : u64 -> x64v)
+x64v_ripreli : func(riprel_instruction_id : u64, riprel_instruction_id_size : u64 -> x64v)
 {
 	return x64v{.tag := x64v_tag.ripreli; .v1 := riprel_instruction_id - x64_current_instruction_id(); .v2 := riprel_instruction_id_size; ... := zero;};
+};
+
+x64v_rodata : func(id : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.rodataref; .v1 := id;};
+};
+
+x64v_data : func(id : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.dataref; .v1 := id;};
+};
+
+x64v_bss : func(id : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.bssref; .v1 := id;};
 };
 
 x64v_is_custom : func(v : x64v -> bool)
@@ -169,7 +190,7 @@ x64v_is_imm : func(v : x64v -> bool)
 
 x64v_is_riprel : func(v : x64v -> bool)
 {
-	return (v.tag == x64v_tag.ripreli) || (v.tag == x64v_tag.riprel);
+	return (v.tag == x64v_tag.ripreli) || (v.tag == x64v_tag.riprel) || (v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref);
 };
 
 x64v_is_mem : func(v : x64v -> bool)

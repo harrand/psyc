@@ -41,24 +41,66 @@ x64_current_instruction_id : func(-> u64)
 	return x64_current_fn()->inst_count;
 };
 
-x64_add_glob : func(g : x64g -> u64)
+x64_add_rodata : func(g : x64g -> u64)
 {
-	if(x64api.prog.globs == zero)
+	if(x64api.prog.rodata == zero)
 	{
-		x64api.prog.globs_cap = 8;
-		x64api.prog.globs = arena_alloc(global_arena, x64api.prog.globs_cap * sizeof x64g);
+		x64api.prog.rodata_cap = 8;
+		x64api.prog.rodata = arena_alloc(global_arena, x64api.prog.rodata_cap * sizeof x64g);
 	}
-	while(x64api.prog.globs_count >= x64api.prog.globs_cap)
+	while(x64api.prog.rodata_count >= x64api.prog.rodata_cap)
 	{
-		oldcap ::= x64api.prog.globs_cap;
-		old ::= x64api.prog.globs;
-		x64api.prog.globs_cap = (x64api.prog.globs_cap * 2);
-		x64api.prog.globs = arena_alloc(global_arena, x64api.prog.globs_cap * sizeof x64g);
-		memcopy(x64api.prog.globs, old, oldcap * sizeof x64g);
+		oldcap ::= x64api.prog.rodata_cap;
+		old ::= x64api.prog.rodata;
+		x64api.prog.rodata_cap = (x64api.prog.rodata_cap * 2);
+		x64api.prog.rodata = arena_alloc(global_arena, x64api.prog.rodata_cap * sizeof x64g);
+		memcopy(x64api.prog.rodata, old, oldcap * sizeof x64g);
 	}
-	idx ::= x64api.prog.globs_count;
-	x64api.prog.globs_count = (x64api.prog.globs_count + 1);
-	[x64api.prog.globs # idx] = g;
+	idx ::= x64api.prog.rodata_count;
+	x64api.prog.rodata_count = (x64api.prog.rodata_count + 1);
+	[x64api.prog.rodata # idx] = g;
+	return idx;
+};
+
+x64_add_data : func(g : x64g -> u64)
+{
+	if(x64api.prog.data == zero)
+	{
+		x64api.prog.data_cap = 8;
+		x64api.prog.data = arena_alloc(global_arena, x64api.prog.data_cap * sizeof x64g);
+	}
+	while(x64api.prog.data_count >= x64api.prog.data_cap)
+	{
+		oldcap ::= x64api.prog.data_cap;
+		old ::= x64api.prog.data;
+		x64api.prog.data_cap = (x64api.prog.data_cap * 2);
+		x64api.prog.data = arena_alloc(global_arena, x64api.prog.data_cap * sizeof x64g);
+		memcopy(x64api.prog.data, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.data_count;
+	x64api.prog.data_count = (x64api.prog.data_count + 1);
+	[x64api.prog.data # idx] = g;
+	return idx;
+};
+
+x64_add_bss : func(g : x64g -> u64)
+{
+	if(x64api.prog.bss == zero)
+	{
+		x64api.prog.bss_cap = 8;
+		x64api.prog.bss = arena_alloc(global_arena, x64api.prog.bss_cap * sizeof x64g);
+	}
+	while(x64api.prog.bss_count >= x64api.prog.bss_cap)
+	{
+		oldcap ::= x64api.prog.bss_cap;
+		old ::= x64api.prog.bss;
+		x64api.prog.bss_cap = (x64api.prog.bss_cap * 2);
+		x64api.prog.bss = arena_alloc(global_arena, x64api.prog.bss_cap * sizeof x64g);
+		memcopy(x64api.prog.bss, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.bss_count;
+	x64api.prog.bss_count = (x64api.prog.bss_count + 1);
+	[x64api.prog.bss # idx] = g;
 	return idx;
 };
 
