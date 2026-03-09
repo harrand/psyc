@@ -19,3 +19,78 @@ x64p : struct
 	bss_count : u64;
 	bss_cap : u64;
 };
+
+rodata_displacement_to_addrstart ::= 9000;
+data_displacement_to_addrstart ::= 8000;
+bss_displacement_to_addrstart ::= 7000;
+
+x64p_patch_data : func(p : x64p mut? -> v0)
+{
+	buf : u8[1024];
+	tmpwriter ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := buf # 0;
+		.len := sizeof typeof(buf);
+		... := zero;
+	};
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+
+	l : u64 mut;
+	byte_counter : u64 mut := 0;
+	startrel : u64 mut;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		f ::= p->funcs # i;
+		for(j = 0; j < f->inst_count; j = j + 1)
+		{
+			curinst ::= f->inst # j;
+			count ::= x64i_operand_count([curinst]);
+			for(k = 0; k < count; k = k + 1)
+			{
+				curop ::= curinst->operands # k;
+				if(curop->tag == x64v_tag.rodataref)
+				{
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->rodata # l].size);
+					}
+					curop->tag = x64v_tag.riprel;
+					// byte_counter is number of bytes from start of global segment
+					curop->v1 = ((byte_counter@s64) - rodata_displacement_to_addrstart)@u64;
+				}
+				if(curop->tag == x64v_tag.dataref)
+				{
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->data # l].size);
+					}
+					curop->tag = x64v_tag.riprel;
+					// byte_counter is number of bytes from start of global segment
+					curop->v1 = ((byte_counter@s64) - data_displacement_to_addrstart)@u64;
+				}
+				if(curop->tag == x64v_tag.bssref)
+				{
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->bss # l].size);
+					}
+					curop->tag = x64v_tag.riprel;
+					// byte_counter is number of bytes from start of global segment
+					curop->v1 = ((byte_counter@s64) - bss_displacement_to_addrstart)@u64;
+				}
+			}
+			// note: potentially this needs to happen first in the loop instead of last. havent thought it through.
+			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
+			tmpwriter.cursor = 0;
+		}
+	}
+};
