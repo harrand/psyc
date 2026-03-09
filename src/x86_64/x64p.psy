@@ -47,6 +47,11 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 		for(j = 0; j < f->inst_count; j = j + 1)
 		{
 			curinst ::= f->inst # j;
+
+			// note: potentially this needs to happen first in the loop instead of last. havent thought it through.
+			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
+			tmpwriter.cursor = 0;
+
 			count ::= x64i_operand_count([curinst]);
 			for(k = 0; k < count; k = k + 1)
 			{
@@ -59,9 +64,15 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					{
 						byte_counter = byte_counter + ([p->rodata # l].size);
 					}
-					curop->tag = x64v_tag.riprel;
-					// byte_counter is number of bytes from start of global segment
-					curop->v1 = ((byte_counter@s64) - rodata_displacement_to_addrstart)@u64;
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (rodata_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
 				}
 				if(curop->tag == x64v_tag.dataref)
 				{
@@ -71,9 +82,15 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					{
 						byte_counter = byte_counter + ([p->data # l].size);
 					}
-					curop->tag = x64v_tag.riprel;
-					// byte_counter is number of bytes from start of global segment
-					curop->v1 = ((byte_counter@s64) - data_displacement_to_addrstart)@u64;
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (data_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
 				}
 				if(curop->tag == x64v_tag.bssref)
 				{
@@ -83,14 +100,17 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					{
 						byte_counter = byte_counter + ([p->bss # l].size);
 					}
-					curop->tag = x64v_tag.riprel;
-					// byte_counter is number of bytes from start of global segment
-					curop->v1 = ((byte_counter@s64) - bss_displacement_to_addrstart)@u64;
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (bss_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
 				}
 			}
-			// note: potentially this needs to happen first in the loop instead of last. havent thought it through.
-			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
-			tmpwriter.cursor = 0;
 		}
 	}
 };

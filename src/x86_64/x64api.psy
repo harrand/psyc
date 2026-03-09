@@ -41,7 +41,7 @@ x64_current_instruction_id : func(-> u64)
 	return x64_current_fn()->inst_count;
 };
 
-x64_add_rodata : func(g : x64g -> x64v)
+x64_add_rodata : func(g : x64g -> u64)
 {
 	if(x64api.prog.rodata == zero)
 	{
@@ -59,10 +59,10 @@ x64_add_rodata : func(g : x64g -> x64v)
 	idx ::= x64api.prog.rodata_count;
 	x64api.prog.rodata_count = (x64api.prog.rodata_count + 1);
 	[x64api.prog.rodata # idx] = g;
-	return x64v_rodata(idx);
+	return idx;
 };
 
-x64_add_data : func(g : x64g -> x64v)
+x64_add_data : func(g : x64g -> u64)
 {
 	if(x64api.prog.data == zero)
 	{
@@ -80,10 +80,10 @@ x64_add_data : func(g : x64g -> x64v)
 	idx ::= x64api.prog.data_count;
 	x64api.prog.data_count = (x64api.prog.data_count + 1);
 	[x64api.prog.data # idx] = g;
-	return x64v_data(idx);
+	return idx;
 };
 
-x64_add_bss : func(g : x64g -> x64v)
+x64_add_bss : func(g : x64g -> u64)
 {
 	if(x64api.prog.bss == zero)
 	{
@@ -101,7 +101,7 @@ x64_add_bss : func(g : x64g -> x64v)
 	idx ::= x64api.prog.bss_count;
 	x64api.prog.bss_count = (x64api.prog.bss_count + 1);
 	[x64api.prog.bss # idx] = g;
-	return x64v_bss(idx);
+	return idx;
 };
 
 x64_add_instruction : func(inst : x64i -> u64)
@@ -146,6 +146,10 @@ x64_mov : func(dst : x64v, src : x64v -> v0)
 	if(x64v_is_imm(src) && (x64v_size(src) == 64))
 	{
 		panic_assert_failure("mov does not support 64-bit immediates");
+	}
+	if(!x64v_is_imm(src) && (x64v_size(src) != x64v_size(dst)))
+	{
+		panic_assert_failure("dst and src of mov instruction were not of the same size. this is not allowed unless the src is an imm32 and the dst is 64-bit");
 	}
 	x64_add_instruction(x64i
 	{

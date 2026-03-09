@@ -724,12 +724,21 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 				mod_bits = 0b10;
 			}
 		}
-		rm_bits = rm.r1@s64@u8;
-		if(rm_bits > 0b111)
+		if(rm.r1 == x64_reg.rip)
 		{
-			// extend ModR/M rm
-			rm_bits = (rm_bits & 0b111);
-			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+			// rip-relative
+			rm_bits = 0b101;
+			mod_bits = 0b00;
+		}
+		else
+		{
+			rm_bits = rm.r1@s64@u8;
+			if(rm_bits > 0b111)
+			{
+				// extend ModR/M rm
+				rm_bits = (rm_bits & 0b111);
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+			}
 		}
 	}
 	if(r_idx != -1)

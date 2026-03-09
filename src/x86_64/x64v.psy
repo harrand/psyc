@@ -16,6 +16,8 @@ x64_reg : enum
 	.r13 := 13;
 	.r14 := 14;
 	.r15 := 15;
+
+	.rip := 69;
 };
 
 x64v_tag : enum
@@ -48,10 +50,16 @@ x64v_tag : enum
 	//	v2: size of the displacement immediate 8/32 only
 	.riprel := 6;
 	//	v1: the index of the rodata to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
 	.rodataref := 7;
 	//	v1: the index of the data to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
 	.dataref := 8;
 	//	v1: the index of the bss to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
 	.bssref := 9;
 
 	// the following tags are customs. you should use them as intermediate values
@@ -129,19 +137,19 @@ x64v_ripreli : func(riprel_instruction_id : u64, riprel_instruction_id_size : u6
 	return x64v{.tag := x64v_tag.ripreli; .v1 := riprel_instruction_id - x64_current_instruction_id(); .v2 := riprel_instruction_id_size; ... := zero;};
 };
 
-x64v_rodata : func(id : u64 -> x64v)
+x64v_rodata : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.rodataref; .v1 := id;};
+	return x64v{.tag := x64v_tag.rodataref; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
-x64v_data : func(id : u64 -> x64v)
+x64v_data : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.dataref; .v1 := id;};
+	return x64v{.tag := x64v_tag.dataref; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
-x64v_bss : func(id : u64 -> x64v)
+x64v_bss : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.bssref; .v1 := id;};
+	return x64v{.tag := x64v_tag.bssref; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
 x64v_is_custom : func(v : x64v -> bool)
@@ -174,6 +182,10 @@ x64v_size : func(v : x64v -> u64)
 	if(v.tag == x64v_tag.ripreli)
 	{
 		return v.v2;
+	}
+	if((v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref))
+	{
+		return v.v3;
 	}
 	return zero;
 };
