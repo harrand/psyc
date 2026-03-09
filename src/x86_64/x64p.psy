@@ -40,7 +40,7 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 
 	l : u64 mut;
 	byte_counter : u64 mut := 0;
-	startrel : u64 mut;
+	startrel : u64 mut := 0;
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
 		f ::= p->funcs # i;
@@ -58,6 +58,7 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 				curop ::= curinst->operands # k;
 				if(curop->tag == x64v_tag.rodataref)
 				{
+					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
@@ -72,10 +73,11 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (rodata_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
+					curop->v6 = ((byte_counter@s64) - (rodata_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 				if(curop->tag == x64v_tag.dataref)
 				{
+					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
@@ -90,10 +92,11 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (data_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
+					curop->v6 = ((byte_counter@s64) - (data_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 				if(curop->tag == x64v_tag.bssref)
 				{
+					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
@@ -108,7 +111,7 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (bss_displacement_to_addrstart@s64 + startrel@s64 + 4))@u64;
+					curop->v6 = ((byte_counter@s64) - (bss_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 			}
 		}
