@@ -40,14 +40,19 @@ elf_proghdr : struct
 	p_align : u64;
 };
 
+alignment_padding_req : func(input :  u64, align : u64 -> u64)
+{
+	return (-input) & (align - 1);
+};
+
 align_up : func(input : u64, align : u64 -> u64)
 {
-	padding ::= (-input) & (align - 1);
-	return input + padding;
+	return input + alignment_padding_req(input, align);
 };
 
 encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 {
+	page_size ::= 0x1000;
 	stream ::= bwriter mut
 	{
 		.endian := native_endianness();
@@ -96,15 +101,14 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 	proghdr_count ::= 3;
 	proghdr_size ::= 56; // always 56 bytes each
 	// byte offset from start of elf to code segment
-	page_size ::= 0x1000;
-	rodata_segment_begin ::= elf_hdr_size + (proghdr_count * proghdr_size);
-	data_and_bss_segment_begin ::= rodata_segment_begin + rodata_len;
-	code_segment_begin ::= data_and_bss_segment_begin + data_len;
+	rodata_segment_begin ::= align_up(elf_hdr_size + (proghdr_count * proghdr_size), page_size);
+	data_and_bss_segment_begin ::= align_up(rodata_segment_begin + rodata_len, page_size);
+	code_segment_begin ::= align_up(data_and_bss_segment_begin + data_len, page_size);
 	// entry point virtual address
 	base_vaddr ::= 0x400000;
-	rodata_begin_addr ::= base_vaddr + rodata_segment_begin;
-	data_and_bss_begin_addr ::= base_vaddr + data_and_bss_segment_begin;
-	code_begin_addr ::= base_vaddr + code_segment_begin;
+	rodata_begin_addr ::= align_up(base_vaddr + rodata_segment_begin, page_size);
+	data_and_bss_begin_addr ::= align_up(base_vaddr + data_and_bss_segment_begin, page_size);
+	code_begin_addr ::= align_up(base_vaddr + code_segment_begin, page_size);
 	// rest of elf header
 	bwrite16(w, elf_type_executable); // type
 	bwrite16(w, elf_instruction_set_x64); // machine/instruction set
@@ -141,7 +145,7 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 	bwrite64(w, rodata_begin_addr); // p_paddr
 	bwrite64(w, rodata_len); // p_filesz
 	bwrite64(w, rodata_len); // p_memsz
-	bwrite64(w, 0x8); // p_align
+	bwrite64(w, page_size); // p_align
 	// then data+bss
 	bwrite32(w, PT_LOAD); // p_type
 	bwrite32(w, PF_W | PF_R); // p_flags
@@ -150,7 +154,7 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 	bwrite64(w, data_and_bss_begin_addr); // p_paddr
 	bwrite64(w, data_len); // p_filesz
 	bwrite64(w, data_len + bss_len); // p_memsz
-	bwrite64(w, 0x8); // p_align
+	bwrite64(w, page_size); // p_align
 	// code
 	bwrite32(w, PT_LOAD); // p_type
 	bwrite32(w, PF_X | PF_R); // p_flags
@@ -161,19 +165,32 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 	// we dont know code size yet so we write to it later. we will write over both of these by just writin gthe code size (u64) twice.
 	bwrite64(w, 0); // p_filesz
 	bwrite64(w, 0); // p_memsz
-	bwrite64(w, 0x8); // p_align
+	bwrite64(w, page_size); // p_align
 
 	// ok we should now be at rodata_segment_begin
+	// align to page
+	while(alignment_padding_req(w->cursor, page_size) != 0)
+	{
+		bwrite8(w, 0);
+	}
 	if(rodata_segment_begin != w->cursor)
 	{
 		panic_assert_failure("rodata_segment_begin seems to be off");
 	}
 	bwrite_x64p_rodata(w, x64api.prog);
+	while(alignment_padding_req(w->cursor, page_size) != 0)
+	{
+		bwrite8(w, 0);
+	}
 	if(data_and_bss_segment_begin != w->cursor)
 	{
 		panic_assert_failure("data_segment_begin seems to be off");
 	}
 	bwrite_x64p_data(w, x64api.prog);
+	while(alignment_padding_req(w->cursor, page_size) != 0)
+	{
+		bwrite8(w, 0);
+	}
 	if(code_segment_begin != w->cursor)
 	{
 		panic_assert_failure("code_segment_begin seems to be off");
