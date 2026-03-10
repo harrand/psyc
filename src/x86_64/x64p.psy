@@ -20,11 +20,14 @@ x64p : struct
 	bss_cap : u64;
 };
 
-rodata_displacement_to_addrstart ::= 9000;
-data_displacement_to_addrstart ::= 8000;
-bss_displacement_to_addrstart ::= 7000;
+x64p_encoding_metadata : struct
+{
+	rodata_displacement_to_addrstart : u64;
+	data_displacement_to_addrstart : u64;
+	bss_displacement_to_addrstart : u64;
+};
 
-x64p_patch_data : func(p : x64p mut? -> v0)
+x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
 {
 	buf : u8[1024];
 	tmpwriter ::= bwriter mut
@@ -73,7 +76,7 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (rodata_displacement_to_addrstart@s64 + startrel@s64))@u64;
+					curop->v6 = ((byte_counter@s64) - (meta.rodata_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 				if(curop->tag == x64v_tag.dataref)
 				{
@@ -92,7 +95,7 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (data_displacement_to_addrstart@s64 + startrel@s64))@u64;
+					curop->v6 = ((byte_counter@s64) - (meta.data_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 				if(curop->tag == x64v_tag.bssref)
 				{
@@ -111,9 +114,92 @@ x64p_patch_data : func(p : x64p mut? -> v0)
 					curop->v3 = zero;
 					curop->v4 = 1;
 					curop->v5 = 32;
-					curop->v6 = ((byte_counter@s64) - (bss_displacement_to_addrstart@s64 + startrel@s64))@u64;
+					curop->v6 = ((byte_counter@s64) - (meta.bss_displacement_to_addrstart@s64 + startrel@s64))@u64;
 				}
 			}
 		}
 	}
+};
+
+x64p_rodata_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.rodata_count; i = i + 1)
+	{
+		counter = counter + [p.rodata # i].size;
+	}
+	return counter;
+};
+
+bwrite_x64p_rodata : func(w : bwriter mut?, p : x64p -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.rodata_count; i = i + 1)
+	{
+		cur ::= [p.rodata # i];
+
+		remainder : u64 mut := cur.size - cur.init_data_size;
+		if(cur.init_data == zero)
+		{
+			remainder = cur.size;
+		}
+		else
+		{
+			bwrite_bytes(w, cur.init_data, cur.init_data_size);
+		}
+		// write remainder zeroes
+		for(j = 0; j < remainder; j = j + 1)
+		{
+			bwrite8(w, zero);
+		}
+	}
+};
+
+bwrite_x64p_data : func(w : bwriter mut?, p : x64p -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.data_count; i = i + 1)
+	{
+		cur ::= [p.data # i];
+
+		remainder : u64 mut := cur.size - cur.init_data_size;
+		if(cur.init_data == zero)
+		{
+			remainder = cur.size;
+		}
+		else
+		{
+			bwrite_bytes(w, cur.init_data, cur.init_data_size);
+		}
+		// write remainder zeroes
+		for(j = 0; j < remainder; j = j + 1)
+		{
+			bwrite8(w, zero);
+		}
+	}
+};
+
+x64p_data_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.data_count; i = i + 1)
+	{
+		counter = counter + [p.data # i].size;
+	}
+	return counter;
+};
+
+x64p_bss_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.bss_count; i = i + 1)
+	{
+		counter = counter + [p.bss # i].size;
+	}
+	return counter;
 };

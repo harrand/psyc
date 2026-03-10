@@ -109,14 +109,6 @@ main : func(pargs : program_args? -> s32)
 	putchar(10);
 	putchar(10);
 
-	stream ::= bwriter mut
-	{
-		.endian := native_endianness();
-		.buf := zero;
-		.len := zero;
-		.cursor := zero;
-		.ar := global_arena;
-	};
 	//x64_nop();
 	//x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(32, 32));
 	//x64_lea(x64v_reg(x64_reg.rsi, 64), x64v_memreg(64, x64_reg.rax, 64, zero, zero, 1, zero, zero));
@@ -133,13 +125,13 @@ main : func(pargs : program_args? -> s32)
 	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
 	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(0, 32));
 	bss0 ::= x64_add_bss(x64g{.size := 8; ... := zero;});
-	x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
-	x64_nop();
-	x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
-	x64_nop();
-	x64_nop();
-	x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
-	x64_call(x64v_ripreli(x64cur, 32));
+	//x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
+	//x64_nop();
+	//x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
+	//x64_nop();
+	//x64_nop();
+	//x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
+	//x64_call(x64v_ripreli(x64cur, 32));
 
 	putzstr("x64: ");
 	teststream.cursor = 0;
@@ -149,13 +141,25 @@ main : func(pargs : program_args? -> s32)
 	putchar(10);
 	putchar(10);
 
-	bwrite_x64p_encode(ref stream, x64api.prog);
 	// call syscall
-	bwrite8(ref stream, 0x0f);
-	bwrite8(ref stream, 0x05);
-	putbytes(stream.buf # 0, stream.cursor);
+	//bwrite8(ref stream, 0x0f);
+	//bwrite8(ref stream, 0x05);
+	//putbytes(stream.buf # 0, stream.cursor);
+	x64_add_bss(x64g{.size := 8; ... := zero;});
+	x64_add_rodata(x64g{.size := 8; ... := zero;});
+	x64_add_data(x64g{.size := 8; ... := zero;});
 
-	write_basic_elf("./test.elf", stream.buf # 0, stream.cursor, 0);
+	stream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+	bwrite_x64p_encode(ref stream, x64api.prog, zero);
+	encode_basic_elf("./test.elf", x64api.prog, 0);
+	//write_basic_elf("./test.elf", stream.buf # 0, stream.cursor, 0);
 	file_ensure_executable("./test.elf");
 	file_write("./test_x64.bin", stream.buf # 0, stream.cursor);
 
