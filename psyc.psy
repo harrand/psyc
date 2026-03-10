@@ -126,11 +126,23 @@ main : func(pargs : program_args? -> s32)
 	tmp : u64 := 60;
 	x64_add_bss(x64g{.size := 8; ... := zero;});
 	tmpg ::= x64_add_rodata(x64g{.size := 8; .init_data := ref tmp; .init_data_size := 8;});
+	strlitg ::= x64_add_rodata(x64g{.size := 11; .init_data := "hello there"; .init_data_size := 11;});
 	x64_add_data(x64g{.size := 8; ... := zero;});
 
+	// write(2, strlit, sizeof(strlit))
+	//pos ::= x64_current_instruction_id();
+	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(1, 32));
+	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(1, 32));
+	x64_lea(x64v_reg(x64_reg.rsi, 64), x64v_rodata(strlitg, 0, 64));
+	x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_imm(11, 32));
+	x64_syscall();
+	//x64_jmp(x64v_ripreli(pos, 32));
+
+	// exit(0)
 	//x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
 	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_rodata(tmpg, 0, 64));
 	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(0, 32));
+	x64_syscall();
 	//bss0 ::= x64_add_bss(x64g{.size := 8; ... := zero;});
 	//x64_mov(x64v_reg(x64_reg.rdx, 64), x64v_bss(bss0, 0, 64));
 	//x64_nop();

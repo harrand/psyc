@@ -185,7 +185,7 @@ x64i_encode_lea : func(lea : x64i -> x64i_enc)
 		panic_assert_failure("first operand to lea cannot be an 8-bit register. only 16/32/64");
 	}
 	op2 ::= [lea.operands # 1];
-	if(!x64v_is_mem(op2))
+	if(!(x64v_is_mem(op2) || x64v_is_riprel(op2)))
 	{
 		panic_assert_failure("second operand to lea *must* be a memory operand");
 	}
@@ -666,6 +666,11 @@ x64i_encode_movdqu : func(movdqu : x64i -> x64i_enc)
 	return [encoding_tbl_movdqu # 1];
 };
 
+x64i_encode_syscall : func(syscall : x64i -> x64i_enc)
+{
+	return encoding_syscall;
+};
+
 x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
@@ -1058,6 +1063,10 @@ x64i_encode : func(inst : x64i -> x64i_enc)
 	if(inst.tag == x64i_tag.movdqu)
 	{
 		ret = x64i_encode_movdqu(inst);
+	}
+	if(inst.tag == x64i_tag.syscall)
+	{
+		ret = x64i_encode_syscall(inst);
 	}
 	if(ret.ext == x64i_ext.invalid_sentinel)
 	{
