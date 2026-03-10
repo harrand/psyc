@@ -40,6 +40,32 @@ x64i_encoding_table_base_offset_2op : func(inst : x64i -> u64)
 	return idx;
 };
 
+// movsx/movzx are special ses
+x64i_encoding_table_base_offset_movx : func(inst : x64i -> u64)
+{
+	o0 ::= [inst.operands # 0];
+	sz0 ::= x64v_size(o0);
+	o1 ::= [inst.operands # 1];
+	sz1 ::= x64v_size(o1);
+	base_idx : u64 mut := 0;
+	if(sz1 == 8)
+	{
+		base_idx = 0;
+	}
+	if(sz1 == 16)
+	{
+		base_idx = 3;
+	}
+	if(sz1 == 32)
+	{
+		base_idx = 5;
+	}
+	// sz0 * 2^N == sz1
+	// 2^N = sz1/sz0
+	// N = log2(sz1 / sz0)
+	return base_idx + log2(sz1 / sz0);
+};
+
 // lea is a special case
 x64i_encoding_table_base_offset_lea : func(inst : x64i -> u64)
 {
@@ -288,6 +314,230 @@ encoding_tbl_mov ::= x64i_enc[12]
 			... := zero;
 		};
 	};
+};
+
+encoding_tbl_movsx ::= x64i_enc[6]
+{
+	// REX.W and operand override 0x66 is already included when necessary
+	// however for non-64-bit operands no REX bits are provided at all
+	// if you're encoding any of these and either operands are r8-15, you *must* add REX and any of the non-W bits you need.
+	.0 := x64i_enc // MOVSX r16, r/m8
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xbe0f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.1 := x64i_enc // MOVSX r32, r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xbe0f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.2 := x64i_enc // MOVSX r64, r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xbe0f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.3 := x64i_enc // MOVSX r32, r/m16
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xbf0f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.4 := x64i_enc // MOVSX r64, r/m16
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xbf0f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.5 := x64i_enc // MOVSX r64, r/m32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0x63;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+};
+
+encoding_tbl_movzx ::= x64i_enc[6]
+{
+	// REX.W and operand override 0x66 is already included when necessary
+	// however for non-64-bit operands no REX bits are provided at all
+	// if you're encoding any of these and either operands are r8-15, you *must* add REX and any of the non-W bits you need.
+	.0 := x64i_enc // MOVZX r16, r/m8
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xb60f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.1 := x64i_enc // MOVZX r32, r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xb60f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.2 := x64i_enc // MOVZX r64, r/m8
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xb60f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.3 := x64i_enc // MOVZX r32, r/m16
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xb70f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.4 := x64i_enc // MOVZX r64, r/m16
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xb70f;
+		.ext := x64i_ext.reg;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
+			.1 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	// MOVZX r64, r/m32 => MOV r32, r/m32 its the same thing
 };
 
 encoding_push ::= x64i_enc // push r64
@@ -3518,6 +3768,16 @@ encoding_syscall ::= x64i_enc // syscall
 	.legacy_prefixes := zero;
 	.rex_prefix := zero;
 	.opcode := 0x050f;
+	.ext := zero;
+	.operand_types := zero;
+	.clobbers := zero;
+};
+
+encoding_int3 ::= x64i_enc // INT3
+{
+	.legacy_prefixes := zero;
+	.rex_prefix := zero;
+	.opcode := 0xcc;
 	.ext := zero;
 	.operand_types := zero;
 	.clobbers := zero;
