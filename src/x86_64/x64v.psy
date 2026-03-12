@@ -165,6 +165,11 @@ x64v_is_custom : func(v : x64v -> bool)
 	return ((v.tag@s64) >= (x64v_tag.custom0@s64));
 };
 
+tbl_customval_size_funcs ::= func(v : x64v -> u64) mut[4] mut
+{
+	... := zero;
+};
+
 x64v_size : func(v : x64v -> u64)
 {
 	if(v.tag == x64v_tag.imm)
@@ -190,6 +195,11 @@ x64v_size : func(v : x64v -> u64)
 	if((v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref))
 	{
 		return v.v3;
+	}
+	if(x64v_is_custom(v))
+	{
+		customid ::= v.tag@s64 - (x64v_tag.custom0@s64);
+		return [tbl_customval_size_funcs # customid](v);
 	}
 	return zero;
 };

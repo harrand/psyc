@@ -2,6 +2,7 @@
 ir_lower_x64_all : func(-> v0)
 {
 	[tbl_customval_handler_funcs # 0] = bwrite_x64v_virtual_reg;
+	[tbl_customval_size_funcs # 0] = x64v_size_virtual_reg;
 
 	i : u64 mut;
 
@@ -54,8 +55,8 @@ x64v_virtual_reg : func(v : irv -> x64v)
 	return x64v
 	{
 		.tag := x64v_tag.custom0;
-		.r1 := v.r1@s64@_;
-		.v1 := v.v1;
+		.r1 := v.v1@s64@_;
+		.v1 := irv_size_bits(v);
 	};
 };
 
@@ -80,6 +81,7 @@ ir_lower_x64_stack : func(stack : iri -> v0)
 	stackbytes ::= irv2x64v(iri_get_operand(stack, 1));
 	// always promote to 32-bit immediate. MOV imm64 doesnt exist anyway. todo: error out if x64v_imm_value is too large for a 32 bit immediate?
 	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(x64v_imm_value(stackbytes), 32));
+	x64_mov(out, x64v_reg(x64_reg.rsp, 64));
 };
 
 ir_lower_x64_conv : func(irconv : irf_callconv -> x64abi)
@@ -94,8 +96,42 @@ ir_lower_x64_conv : func(irconv : irf_callconv -> x64abi)
 bwrite_x64v_virtual_reg : func(w : bwriter mut?, v : x64v -> u64)
 {
 	before ::= w->cursor;
-	bwrite_irv_disasm(w, irv{.tag := irv_tag.reg; .r1 := v.r1@s64@_; .v1 := v.v1;});
+	sz ::= x64v_size_virtual_reg(v);
+	if(sz == 8)
+	{
+		bwrite_zstr(w, "b");
+	}
+	if(sz == 16)
+	{
+		bwrite_zstr(w, "w");
+	}
+	if(sz == 32)
+	{
+		bwrite_zstr(w, "d");
+	}
+	if(sz == 64)
+	{
+		bwrite_zstr(w, "q");
+	}
+	if(sz == 128)
+	{
+		bwrite_zstr(w, "x");
+	}
+	if(sz == 256)
+	{
+		bwrite_zstr(w, "y");
+	}
+	if(sz == 512)
+	{
+		bwrite_zstr(w, "z");
+	}
+	bwrite_uint(w, v.r1@s64);
 	return w->cursor - before;
+};
+
+x64v_size_virtual_reg : func(v : x64v -> u64)
+{
+	return v.v1;
 };
 
 bwrite_x64v_custom2 : func(w : bwriter mut?, v : x64v -> u64)
