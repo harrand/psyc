@@ -121,6 +121,51 @@ x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
 	}
 };
 
+x64p_patch_fnrefs : func(p : x64p mut?, func_byte_cursor : u64 mut? -> v0)
+{
+	buf : u8[1024];
+	tmpwriter ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := buf # 0;
+		.len := sizeof typeof(buf);
+		... := zero;
+	};
+
+	i : u64 mut;
+	j : u64 mut;	
+	k : u64 mut;
+	startrel : u64 mut := 0;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		f ::= p->funcs # i;
+		for(j = 0; j < f->inst_count; j = j + 1)
+		{
+			curinst ::= f->inst # j;
+
+			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
+			tmpwriter.cursor = 0;
+
+			count ::= x64i_operand_count([curinst]);
+			for(k = 0; k < count; k = k + 1)
+			{
+				curop ::= curinst->operands # k;
+				if(curop->tag == x64v_tag.fnref)
+				{
+					byte_dst_from_start ::= [func_byte_cursor # curop->v1];
+					[curop] = x64v
+					{
+						.tag := x64v_tag.riprel;
+						.v1 := ((byte_dst_from_start@s64) - (startrel@s64))@u64;
+						.v2 := 32;
+					};
+				}
+			}
+		}
+	}
+
+};
+
 x64p_rodata_len : func(p : x64p -> u64)
 {
 	counter : u64 mut := 0;

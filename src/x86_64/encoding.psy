@@ -1272,13 +1272,20 @@ bwrite_x64p_encode : func(w : bwriter mut?, p : x64p, meta : x64p_encoding_metad
 {
 	x64p_patch_data(ref p, meta);
 	before_cursor ::= w->cursor;
-	byte_cursor : u64 mut := before_cursor;
 	i : u64 mut;
+	func_byte_cursor : u64 mut? := arena_alloc(global_arena, p.funcs_count * sizeof u64);
 	for(i = 0; i < p.funcs_count; i = i + 1)
 	{
+		[func_byte_cursor # i] = w->cursor - before_cursor;
 		bwrite_x64f_encode(w, [p.funcs # i]);
-	
-		byte_cursor = w->cursor;
+	}
+	x64p_patch_fnrefs(ref p, func_byte_cursor);
+	// write again
+	w->cursor = before_cursor;
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		[func_byte_cursor # i] = w->cursor - before_cursor;
+		bwrite_x64f_encode(w, [p.funcs # i]);
 	}
 	return w->cursor - before_cursor;
 };
