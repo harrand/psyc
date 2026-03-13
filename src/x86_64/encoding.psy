@@ -115,6 +115,12 @@ x64i_encode_nop : func(mov : x64i -> x64i_enc)
 
 x64i_encode_mov : func(mov : x64i -> x64i_enc)
 {
+	op1 ::= [mov.operands # 1];
+	if((x64v_size(op1) == 64) && (op1.tag == x64v_tag.imm))
+	{
+		// imm64 must mean op0 is r64 otherwise ill-formed
+		return [encoding_tbl_mov # 12];
+	}
 	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
 };
 
@@ -343,7 +349,11 @@ x64i_encode_jmp : func(jmp : x64i -> x64i_enc)
 	op1 ::= [jmp.operands # 0];
 	if(!x64v_is_riprel(op1))
 	{
-		panic_assert_failure("jmp operand must be riprel 8/32 only");
+		if((x64v_size(op1) != 64) || !(x64v_is_mem(op1) || x64v_is_reg(op1)))
+		{
+			panic_assert_failure("jmp operand must be riprel 8/32, or r/m64");
+		}
+		return [encoding_tbl_jmp # 2];
 	}
 	if(x64v_size(op1) == 8)
 	{

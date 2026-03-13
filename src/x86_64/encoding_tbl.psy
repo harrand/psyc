@@ -81,7 +81,7 @@ x64i_encoding_table_base_offset_lea : func(inst : x64i -> u64)
 
 x64i_ext_opcode_plus_0 ::= 2;
 
-encoding_tbl_mov ::= x64i_enc[12]
+encoding_tbl_mov ::= x64i_enc[13]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -304,6 +304,25 @@ encoding_tbl_mov ::= x64i_enc[12]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.op1;
+			... := zero;
+		};
+	};
+	.12 := x64i_enc // MOV r64,imm64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xc6;
+		.ext := zero;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.r;
 			.1 := x64v_enc.imm;
 			... := zero;
 		};
@@ -2722,7 +2741,7 @@ encoding_tbl_call ::= x64i_enc[2]
 	};
 };
 
-encoding_tbl_jmp ::= x64i_enc[2]
+encoding_tbl_jmp ::= x64i_enc[3]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -2753,6 +2772,19 @@ encoding_tbl_jmp ::= x64i_enc[2]
 		};
 		.clobbers := zero;
 	};
+	.2 := x64i_enc // JMP r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xff;
+		.ext := x64i_ext_opcode_plus_0 + 4;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			... := zero;
+		};
+		.clobbers := zero;
+	};	
 };
 
 encoding_tbl_jz ::= x64i_enc[2]
