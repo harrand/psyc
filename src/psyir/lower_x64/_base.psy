@@ -1,3 +1,27 @@
+ir_lower_x64i : func(inst : iri -> v0)
+{
+	if(inst.tag == iri_tag.stack)
+	{
+		ir_lower_x64_stack(inst);
+	}
+	if(inst.tag == iri_tag.store)
+	{
+		ir_lower_x64_store(inst);
+	}
+	if(inst.tag == iri_tag.load)
+	{
+		ir_lower_x64_load(inst);
+	}
+	if(inst.tag == iri_tag.retnone)
+	{
+		ir_lower_x64_retnone(inst);
+	}
+	if(inst.tag == iri_tag.ret)
+	{
+		ir_lower_x64_ret(inst);
+	}
+};
+
 // given global irapi, lower it to global x64api
 ir_lower_x64_all : func(-> v0)
 {
@@ -42,30 +66,6 @@ ir_lower_x64b : func(b : irb -> v0)
 	}
 };
 
-ir_lower_x64i : func(inst : iri -> v0)
-{
-	if(inst.tag == iri_tag.stack)
-	{
-		ir_lower_x64_stack(inst);
-	}
-	if(inst.tag == iri_tag.store)
-	{
-		ir_lower_x64_store(inst);
-	}
-	if(inst.tag == iri_tag.load)
-	{
-		ir_lower_x64_load(inst);
-	}
-	if(inst.tag == iri_tag.retnone)
-	{
-		ir_lower_x64_retnone(inst);
-	}
-	if(inst.tag == iri_tag.ret)
-	{
-		ir_lower_x64_ret(inst);
-	}
-};
-
 x64v_virtual_reg : func(v : irv -> x64v)
 {
 	return x64v
@@ -92,71 +92,6 @@ irv2x64v : func(v : irv -> x64v)
 		return x64v_virtual_reg(v);
 	}
 	return zero;
-};
-
-ir_lower_x64_stack : func(stack : iri -> v0)
-{
-	// operand must be an imm
-	out ::= irv2x64v(iri_get_operand(stack, 0));
-	stackbytes ::= irv2x64v(iri_get_operand(stack, 1));
-	// always promote to 32-bit immediate. MOV imm64 doesnt exist anyway. todo: error out if x64v_imm_value is too large for a 32 bit immediate?
-	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(x64v_imm_value(stackbytes), 32));
-	x64_mov(out, x64v_reg(x64_reg.rsp, 64));
-};
-
-ir_lower_x64_store : func(store : iri -> v0)
-{
-	dst ::= irv2x64v(iri_get_operand(store, 0));
-	src ::= irv2x64v(iri_get_operand(store, 1));
-	x64_mov(dst, src);
-};
-
-ir_lower_x64_load : func(load : iri -> v0)
-{
-	// operand must be an imm
-	out ::= irv2x64v(iri_get_operand(load, 0));
-	v ::= irv2x64v(iri_get_operand(load, 1));
-	x64_mov(out, v);
-};
-
-ir_lower_x64_retnone : func(retnone : iri -> v0)
-{
-	x64_ret();
-};
-
-ir_lower_x64_ret : func(ret : iri -> v0)
-{
-	out : irv mut := iri_get_operand(ret, 0);
-	outsz ::= irv_size(out);
-	outbits ::= irv_size_bits(out);
-
-	xout : x64v mut := irv2x64v(out);
-
-	if(outbits <= 16)
-	{
-		// ok we need a movzx
-		// unless its an imm0 in which case we xor
-		x64_movzx(x64v_reg(x64_reg.rax, 32), xout);
-	}
-	else
-	{
-		x64_mov(x64v_reg(x64_reg.rax, outbits), xout);
-	}
-	// remember for floating point registers xout isnt an xmmN register but a sensibly-sized one
-	xout = x64v_reg(x64_reg.rax, outbits);
-	if(outsz == ir_reg.f) // float32
-	{
-		// need to move 32 bits from GPR into xmm0
-		// movd xmm0, out
-		x64_movd(x64v_reg(x64_reg.rax, 128), xout);
-	}
-	if(outsz == ir_reg.ff) // float64
-	{
-		// need to move 64 bits from GPR into xmm0
-		// movq xmm0, out
-		x64_movq(x64v_reg(x64_reg.rax, 128), xout);
-	}
-	x64_ret();
 };
 
 ir_lower_x64_conv : func(irconv : irf_callconv -> x64abi)
