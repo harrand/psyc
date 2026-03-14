@@ -46,6 +46,7 @@ ir_lower_x64_all : func(-> v0)
 // replay all instructions
 ir_lower_x64f : func(f : irf -> v0)
 {
+	ir_lower_x64f_prolog();
 	blkc ::= f.blks_count;
 	blk_inst_ids : u64 mut? := arena_alloc(global_arena, blkc * sizeof u64);
 	i : u64 mut;
@@ -55,6 +56,32 @@ ir_lower_x64f : func(f : irf -> v0)
 		[blk_inst_ids # i] = x64_current_instruction_id();
 		ir_lower_x64b(curblk);
 	}
+	ir_lower_x64f_epilog();
+};
+
+ir_lower_x64f_prolog : func(-> v0)
+{
+	x64_push(x64v_reg(x64_reg.rbp, 64));
+	x64_mov(x64v_reg(x64_reg.rbp, 64), x64v_reg(x64_reg.rsp, 64));
+
+	cur ::= ir_current_fn();
+	i : u64 mut;
+	// initial stack space of 16 bytes (potentially abi requirement)
+	stkcursor : u64 mut := 16;
+	for(i = 0; i < cur->params_count; i = i + 1)
+	{
+		param ::= [cur->params # i];
+		parsz ::= irv_size_bits(param);
+		x64_mov(x64v_memreg(parsz, x64_reg.rbp, 64, zero, zero, 1, stkcursor + parsz, 32), x64v_reg(x64_reg.rdi, parsz));
+		stkcursor = stkcursor + (parsz / 8);
+	}
+};
+
+ir_lower_x64f_epilog : func(-> v0)
+{
+	cur ::= x64_getfn();
+	x64_pop(x64v_reg(x64_reg.rbp, 64));
+	x64_ret();
 };
 
 ir_lower_x64b : func(b : irb -> v0)
@@ -64,16 +91,6 @@ ir_lower_x64b : func(b : irb -> v0)
 	{
 		ir_lower_x64i([b.inst # i]);
 	}
-};
-
-x64v_virtual_reg : func(v : irv -> x64v)
-{
-	return x64v
-	{
-		.tag := x64v_tag.custom0;
-		.r1 := v.v1@s64@_;
-		.v1 := irv_size_bits(v);
-	};
 };
 
 irv2x64v : func(v : irv -> x64v)
@@ -101,47 +118,6 @@ ir_lower_x64_conv : func(irconv : irf_callconv -> x64abi)
 		return x64abi.sysv;
 	}
 	return x64abi.win;
-};
-
-bwrite_x64v_virtual_reg : func(w : bwriter mut?, v : x64v -> u64)
-{
-	before ::= w->cursor;
-	sz ::= x64v_size_virtual_reg(v);
-	if(sz == 8)
-	{
-		bwrite_zstr(w, "b");
-	}
-	if(sz == 16)
-	{
-		bwrite_zstr(w, "w");
-	}
-	if(sz == 32)
-	{
-		bwrite_zstr(w, "d");
-	}
-	if(sz == 64)
-	{
-		bwrite_zstr(w, "q");
-	}
-	if(sz == 128)
-	{
-		bwrite_zstr(w, "x");
-	}
-	if(sz == 256)
-	{
-		bwrite_zstr(w, "y");
-	}
-	if(sz == 512)
-	{
-		bwrite_zstr(w, "z");
-	}
-	bwrite_uint(w, v.r1@s64);
-	return w->cursor - before;
-};
-
-x64v_size_virtual_reg : func(v : x64v -> u64)
-{
-	return v.v1;
 };
 
 bwrite_x64v_custom2 : func(w : bwriter mut?, v : x64v -> u64)
