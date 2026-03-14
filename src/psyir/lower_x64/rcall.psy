@@ -1,0 +1,41 @@
+ir_lower_x64_rcall : func(rcall : iri -> v0)
+{
+	ir_lower_x64_call_base(rcall, 1, 2);
+	callee ::= ir_get_fn_by_id(iri_get_operand(rcall, 1).v1);
+	abi ::= ir_lower_x64_conv(callee->conv);
+
+	return_reg : x64v mut := abi.integral_return_reg;
+	retty ::= callee->ret;
+	is_floating_point ::= (retty == ir_reg.f) || (retty == ir_reg.ff);
+	if(is_floating_point)
+	{
+		// floating point return
+		return_reg = abi.floating_point_return_reg;
+	}
+
+	dst ::= irv2x64v(iri_get_operand(rcall, 0));
+	// so heres the thing
+	// its possible that return_reg is not the same size as dst
+	// in which case we should just trunc.
+	// if we're not floating point then its easily we can just use ax instead of rax etc
+	if(!is_floating_point)
+	{
+		if(x64v_size(return_reg) < x64v_size(dst))
+		{
+			// assume return_reg is a stack pointer to it.
+			x64_mov(dst, x64v_memreg(x64v_size(dst), return_reg.r1, return_reg.v1, zero, zero, 1, zero, zero));
+		}
+		else
+		{
+			// trunc
+			return_reg.v1 = x64v_size(dst);
+			x64_mov(dst, return_reg);
+		}
+	}
+	else
+	{
+		// well we have xmm0 or something and it needs to go in a register
+		// we cant downgrade that into rax...
+		// probs need movss/movsd. todo: fix
+	}
+};
