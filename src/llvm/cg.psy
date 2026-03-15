@@ -2,6 +2,11 @@
 // basically this is LLVM land. many functions here have a s_xyz (compile-time) equivalent in s.psy
 ir : u64 mut := zero;
 
+valruntime : struct
+{
+	cg : u64;
+};
+
 cg_setup : func(-> v0)
 {
 	cg_begin();
@@ -22,22 +27,22 @@ codegen : func(-> v0)
 
 cg_begin : func(-> v0)
 {
-	prog.cg = LLVMModuleCreateWithName("Psy Program");
+	prog.cg.cg = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
 };
 
 cg_end : func(-> v0)
 {
 	fltused_cgty ::= LLVMInt64Type();
-	fltused ::= LLVMAddGlobal(prog.cg, fltused_cgty, "_fltused");
+	fltused ::= LLVMAddGlobal(prog.cg.cg, fltused_cgty, "_fltused");
 	LLVMSetLinkage(fltused, LLVMCommonLinkage);
 	LLVMSetExternallyInitialized(fltused, 0);
 	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
 	err : u8? mut;
-	if(LLVMVerifyModule(prog.cg, 2, ref err) != 0)
+	if(LLVMVerifyModule(prog.cg.cg, 2, ref err) != 0)
 	{
-		str ::= LLVMPrintModuleToString(prog.cg);
+		str ::= LLVMPrintModuleToString(prog.cg.cg);
 		putzstr("Codegen: ");
 		putchar(10);
 		putzstr(str);
@@ -57,7 +62,7 @@ cg_end : func(-> v0)
 	{
 		putzstr("LLVM IR:");
 		putchar(10);
-		putzstr(LLVMPrintModuleToString(prog.cg));
+		putzstr(LLVMPrintModuleToString(prog.cg.cg));
 		putchar(10);
 	}
 };
@@ -146,12 +151,12 @@ cg_type : func(type : tyid, should_ref_function_type : bool -> u64)
 
 cg_sizeof : func(type : tyid -> val)
 {
-	return integer_as_val(LLVMABISizeOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
+	return integer_as_val(LLVMABISizeOfType(LLVMGetModuleDataLayout(prog.cg.cg), cg_type(type, true)));
 };
 
 cg_alignof : func(type : tyid -> val)
 {
-	return integer_as_val(LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(prog.cg), cg_type(type, true)));
+	return integer_as_val(LLVMABIAlignmentOfType(LLVMGetModuleDataLayout(prog.cg.cg), cg_type(type, true)));
 };
 
 cg_all_structs : func(-> v0)
@@ -242,12 +247,12 @@ cg_all_functions : func(scope : lexical_scope mut? -> v0)
 llvm_add_function_string_attribute : func(fn : function mut?, attrib_name_zstr : u8? -> v0)
 {
 	attr ::= LLVMCreateStringAttribute(LLVMGetGlobalContext(), attrib_name_zstr, zstrlen(attrib_name_zstr)@u32, "", 0);
-	LLVMAddAttributeAtIndex(fn->cg, LLVMAttributeFunctionIndex, attr);
+	LLVMAddAttributeAtIndex(fn->cg.cg, LLVMAttributeFunctionIndex, attr);
 };
 
 cg_asm : func(assembly : assembly mut? -> v0)
 {
-	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
+	assembly->cg = valruntime{.cg := LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);};
 };
 
 cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
@@ -273,7 +278,7 @@ cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 	{
 		name_zstr = sstr2zstr(fn->name, fn->name_len, string_arena);
 	}
-	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
+	fn->cg.cg = LLVMAddFunction(prog.cg.cg, name_zstr, cg_type(fn->type, false));
 };
 
 cg_func_def : func(fn : function mut? -> v0)
@@ -291,7 +296,7 @@ cg_func_def : func(fn : function mut? -> v0)
 
 	// ok we have a scope
 	funcscope ::= fn->scope@lexical_scope mut?;
-	funcscope->cg = LLVMAppendBasicBlock(fn->cg, "entry");
+	funcscope->cg = LLVMAppendBasicBlock(fn->cg.cg, "entry");
 	LLVMPositionBuilderAtEnd(ir, funcscope->cg);
 
 	dbg_declare_function(fn);
@@ -343,12 +348,12 @@ cg_global_variable : func(var : variable mut? -> v0)
 	decl ::= var->node->decl;
 	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
 	type ::= var->type;
-	var->cg = LLVMAddGlobal(prog.cg, cg_type(type, true), name_zstr);
+	var->cg = valruntime{.cg := LLVMAddGlobal(prog.cg.cg, cg_type(type, true), name_zstr);};
 
 	is_const ::= ty_has_qual(type, tyqual.qual_static) || !ty_has_qual(type, tyqual.qual_mut);
-	LLVMSetGlobalConstant(var->cg, is_const@s32);
-	LLVMSetLinkage(var->cg, LLVMPrivateLinkage);
-	LLVMSetExternallyInitialized(var->cg, false@s32);
+	LLVMSetGlobalConstant(var->cg.cg, is_const@s32);
+	LLVMSetLinkage(var->cg.cg, LLVMPrivateLinkage);
+	LLVMSetExternallyInitialized(var->cg.cg, false@s32);
 
 	if(var->node->children_count <= 1)
 	{
@@ -361,7 +366,7 @@ cg_global_variable : func(var : variable mut? -> v0)
 	}
 	init_node ::= ast_get_child(var->node, 1);
 	init_val ::= val_dynamic(val_convert_to(cg_node(init_node, program_scope()), type, program_scope(), val_resolution.runtime_only, init_node), program_scope(), var->node);
-	LLVMSetInitializer(var->cg, init_val.runtime.cg);
+	LLVMSetInitializer(var->cg.cg, init_val.runtime.cg);
 
 	dbg_declare_global_variable(var);
 };
@@ -376,20 +381,20 @@ cg_local_variable : func(var : variable mut?, fn : function mut?, is_function_pa
 	{
 		// do an alloca
 		decl ::= var->node->decl;
-		var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
+		var->cg = valruntime{.cg := LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));};
 	}
 };
 
 cg_function_param : func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
 {
 	// ok this ones special
-	param_cg ::= LLVMGetParam(fn->cg, var->param_idx@_);
+	param_cg ::= LLVMGetParam(fn->cg.cg, var->param_idx@_);
 	// param_cg is the param register value
 	// we want to make our own backing alloca
 	// and immediately store that in there.
 	cg_local_variable(var, fn, true);
 	// do the store
-	LLVMBuildStore(ir, param_cg, var->cg);
+	LLVMBuildStore(ir, param_cg, var->cg.cg);
 	dbg_declare_function_param(var, fn, idx);
 };
 
@@ -610,7 +615,7 @@ cg_prim : func(type : tyid, prim : ast_literal, source : ast? -> val)
 		if(prim.tag == (ast_literal_tag.string))	
 		{
 			strval ::= LLVMConstString(prim.chars, prim.chars_len@u32, false@s32);		
-			strglob ::= LLVMAddGlobal(prog.cg, LLVMTypeOf(strval), "");
+			strglob ::= LLVMAddGlobal(prog.cg.cg, LLVMTypeOf(strval), "");
 			LLVMSetLinkage(strglob, LLVMPrivateLinkage);
 			LLVMSetExternallyInitialized(strglob, 0);
 			LLVMSetGlobalConstant(strglob, true@s32);
@@ -717,7 +722,7 @@ cg_funcref : func(fn : function? -> val)
 		.hand := valhand.rvalue;
 		.type := fn->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := fn->cg;};
+		.runtime := valruntime{.cg := fn->cg.cg;};
 	};
 };
 
@@ -731,7 +736,7 @@ cg_asmref : func(as : assembly? -> val)
 		.hand := valhand.rvalue;
 		.type := as->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := as->cg;};
+		.runtime := valruntime{.cg := as->cg.cg;};
 	};
 };
 
@@ -750,7 +755,7 @@ cg_varref : func(v : variable?, scope : lexical_scope mut?, source : ast? -> val
 		.hand := valhand.lvalue;
 		.type := v->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := v->cg;};
+		.runtime := valruntime{.cg := v->cg.cg;};
 	};
 };
 
@@ -1523,7 +1528,7 @@ cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 		{
 			init = cg_convert_to(cg_load_if_lvalue(val_dynamic(cg_node(init_node, scope), scope, var->node)), var->type, init_node);
 		}
-		LLVMBuildStore(ir, init.runtime.cg, var->cg);
+		LLVMBuildStore(ir, init.runtime.cg, var->cg.cg);
 	}
 	dbg_declare_local_variable(var, scope_get_parent_function(scope));
 	return zero;
@@ -1567,14 +1572,14 @@ cg_if : func(node : ast mut?, scope : lexical_scope mut? -> val)
 
 	else_node ::= ast_get_last_child_if_else(node);
 
-	ifscope ::= LLVMAppendBasicBlock(parent_fn->cg, "if");
+	ifscope ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "if");
 	elsescope : u64 mut := zero;
 
 	if(else_node != zero)
 	{
-		elsescope = LLVMAppendBasicBlock(parent_fn->cg, "else");
+		elsescope = LLVMAppendBasicBlock(parent_fn->cg.cg, "else");
 	}
-	ifcont ::= LLVMAppendBasicBlock(parent_fn->cg, "ifcont");
+	ifcont ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "ifcont");
 	if(else_node == zero)
 	{
 		elsescope = ifcont;
@@ -1647,8 +1652,8 @@ cg_while : func(node : ast mut?, scope : lexical_scope mut? -> val)
 	cond_node ::= ast_get_child(node, 0);
 	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 
-	whilescope ::= LLVMAppendBasicBlock(parent_fn->cg, "while");
-	whilecont ::= LLVMAppendBasicBlock(parent_fn->cg, "whilecont");
+	whilescope ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "while");
+	whilecont ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "whilecont");
 	i : u64 mut;
 
 	// make the branch
@@ -1696,8 +1701,8 @@ cg_for : func(node : ast mut?, scope : lexical_scope mut? -> val)
 	iter_node ::= ast_get_child(node, 2);
 	// first just do the init
 	cg_node(init_node, scope);
-	forscope ::= LLVMAppendBasicBlock(parent_fn->cg, "for");
-	forcont ::= LLVMAppendBasicBlock(parent_fn->cg, "forcont");
+	forscope ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "for");
+	forcont ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "forcont");
 	i : u64 mut;
 
 	initial_cond_val ::= cg_node(cond_node, scope);
@@ -1786,10 +1791,10 @@ cg_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? 
 	basic_blocks : u64 mut? := arena_alloc(global_arena, sizeof u64 * (e.entries_count - 1));
 	for(i = 0; i < (e.entries_count - 1); i = i + 1)
 	{
-		[basic_blocks # i] = LLVMAppendBasicBlock(parent_fn->cg, "enumname");
+		[basic_blocks # i] = LLVMAppendBasicBlock(parent_fn->cg.cg, "enumname");
 	}
-	badenum_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum");
-	continue_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum_cont");
+	badenum_blk ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "badenum");
+	continue_blk ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "badenum_cont");
 
 	for(i = 0; i < (e.entries_count); i = i + 1)
 	{
@@ -1802,7 +1807,7 @@ cg_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? 
 			failure_block = [basic_blocks # i];
 		}
 	
-		success_block ::= LLVMAppendBasicBlock(parent_fn->cg, "enumname_success");
+		success_block ::= LLVMAppendBasicBlock(parent_fn->cg.cg, "enumname_success");
 		LLVMBuildCondBr(ir, condval, success_block, failure_block);
 		LLVMPositionBuilderAtEnd(ir, success_block);
 		LLVMBuildStore(ir, cg_prim(tyid_string_literal(), ast_literal{.tag := ast_literal_tag.string; .chars := [e.entry_names # i]; .chars_len := [e.entry_name_lens # i];}, source).runtime.cg, alloca_str);
@@ -1836,7 +1841,7 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 	fn_type ::= LLVMFunctionType(LLVMVoidType(), zero, 0, false@s32);
 	if(debugtrap_fn == 0)
 	{
-		debugtrap_fn = LLVMAddFunction(prog.cg, "llvm.debugtrap", fn_type);
+		debugtrap_fn = LLVMAddFunction(prog.cg.cg, "llvm.debugtrap", fn_type);
 	}
 	LLVMBuildCall2(ir, fn_type, debugtrap_fn, zero, 0, "");
 	return zero;

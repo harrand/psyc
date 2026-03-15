@@ -38,7 +38,7 @@ assemble : func( -> v0)
 	LLVMRelocPIC ::= 2;
 	target_machine ::= LLVMCreateTargetMachine(target, triple, "generic", "", optval, LLVMRelocPIC, 0);
 
-	LLVMSetTarget(prog.cg, triple);
+	LLVMSetTarget(prog.cg.cg, triple);
 
 	// optimisation passes
 	options ::= LLVMCreatePassBuilderOptions();
@@ -49,7 +49,7 @@ assemble : func( -> v0)
 	[opt_levels # 2] = "default<O2>";
 	[opt_levels # 3] = "default<O3>";
 
-	if(LLVMRunPasses(prog.cg, [opt_levels # optval], target_machine, options) != 0)
+	if(LLVMRunPasses(prog.cg.cg, [opt_levels # optval], target_machine, options) != 0)
 	{
 		psyc_error_begin(zero);
 		putzstr("Unknown error running LLVM passes");
@@ -68,7 +68,7 @@ assemble : func( -> v0)
 	[path # path_len] = 0;
 
 	errmsg : u8? mut;
-	if(LLVMTargetMachineEmitToFile(target_machine, prog.cg, path, 1, ref errmsg) != 0)
+	if(LLVMTargetMachineEmitToFile(target_machine, prog.cg.cg, path, 1, ref errmsg) != 0)
 	{
 		psyc_error_begin(zero);
 		putzstr("Error while generating assembly: ");

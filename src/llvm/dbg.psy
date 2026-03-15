@@ -2,7 +2,7 @@ di_cu : u64 mut := zero;
 
 dbg_setup : func(-> v0)
 {
-	prog.db = LLVMCreateDIBuilder(prog.cg);
+	prog.db = LLVMCreateDIBuilder(prog.cg.cg);
 	dirname_len : u64 mut;
 	dirname : u8 mut? mut;
 	directory_get_cwd(ref dirname, ref dirname_len, global_arena);
@@ -47,12 +47,12 @@ dbg_setup_codeview : func(-> v0)
 {
 	val_metadata ::= LLVMValueAsMetadata(LLVMConstInt(LLVMInt32Type(), 1, true@s32));
 	codeview_str ::= "CodeView";
-	LLVMAddModuleFlag(prog.cg, 0, codeview_str, zstrlen(codeview_str), val_metadata);
+	LLVMAddModuleFlag(prog.cg.cg, 0, codeview_str, zstrlen(codeview_str), val_metadata);
 };
 
 dbg_declare_struct : func(type : tyid -> v0)
 {
-	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
+	dlayout ::= LLVMGetModuleDataLayout(prog.cg.cg);
 	t ::= ty_unwrap(type);
 	s ::= ref(t->strct);
 	defined_at ::= s->node;
@@ -82,7 +82,7 @@ dbg_declare_struct : func(type : tyid -> v0)
 
 dbg_declare_enum : func(type : tyid -> v0)
 {
-	dlayout ::= LLVMGetModuleDataLayout(prog.cg);
+	dlayout ::= LLVMGetModuleDataLayout(prog.cg.cg);
 	t ::= ty_unwrap(type);
 	e ::= ref(t->enm);
 	defined_at ::= e->node;
@@ -113,7 +113,7 @@ dbg_declare_function : func(fn : function mut? -> v0)
 	
 	dity ::= db_type(fn->type, false);
 	fn->db = LLVMDIBuilderCreateFunction(prog.db, filescope->db, fn->name, fn->name_len, fn->name, fn->name_len, filescope->db, fn->node->loc.line@_, dity, false@s32, true@s32, fn->node->loc.column@_, 256, false@s32);
-	LLVMSetSubprogram(fn->cg, fn->db);
+	LLVMSetSubprogram(fn->cg.cg, fn->db);
 	funcscope->db = (fn->db);
 	dbg_action(fn->node, funcscope);
 };
@@ -140,7 +140,7 @@ dbg_declare_local_variable : func(var : variable mut?, fn : function mut? -> v0)
 	else
 	{
 		// actual variable
-		LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
+		LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg.cg, divar, expr, dloc, LLVMGetInsertBlock(ir));
 	}
 };
 
@@ -172,7 +172,7 @@ dbg_declare_global_variable : func(var : variable mut? -> v0)
 	}
 	else
 	{
-		LLVMGlobalSetMetadata(var->cg, LLVMGetMDKindID("dbg", 3), divar);
+		LLVMGlobalSetMetadata(var->cg.cg, LLVMGetMDKindID("dbg", 3), divar);
 	}
 };
 
@@ -187,7 +187,7 @@ dbg_declare_function_param : func(var : variable mut?, fn : function mut?, idx :
 	parent_file ::= scope_get_parent_filescope(scope);
 	loc ::= ast_get_child(fn->node, 1 + idx)->loc;
 	divar ::= LLVMDIBuilderCreateParameterVariable(prog.db, scope->db, var->node->decl.name, var->node->decl.name_len, idx@_, parent_file->db, loc.line@_, db_type(var->type, true), zero, zero);
-	LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
+	LLVMDIBuilderInsertDeclareRecordAtEnd(prog.db, var->cg.cg, divar, LLVMDIBuilderCreateExpression(prog.db, zero, zero), LLVMDIBuilderCreateDebugLocation(LLVMGetGlobalContext(), loc.line@_, loc.column@_, scope->db, zero), scope->cg);
 };
 
 db_type : func(type : tyid, should_ref_function_type : bool -> u64)
