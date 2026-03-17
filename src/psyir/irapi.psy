@@ -55,6 +55,26 @@ ir_current_fn : func(-> irf mut?)
 	return ir_get_fn(irapi.pos);
 };
 
+ir_add_glob : func(v : irg -> u64)
+{
+	if(irapi.prog.globs == zero)
+	{
+		irapi.prog.globs_cap = 8;
+		irapi.prog.globs = arena_alloc(global_arena, irapi.prog.globs_cap * sizeof irg);
+	}
+	while(irapi.prog.globs_count >= irapi.prog.globs_cap)
+	{
+		oldcap ::= irapi.prog.globs_cap;
+		old ::= irapi.prog.globs;
+		irapi.prog.globs_cap = (irapi.prog.globs_cap * 2);
+		irapi.prog.globs = arena_alloc(global_arena, irapi.prog.globs_cap * sizeof irg);
+		memcopy(irapi.prog.globs, old, oldcap * sizeof irg);
+	}
+	idx ::= irapi.prog.globs_count;
+	irapi.prog.globs_count = (irapi.prog.globs_count + 1);
+	[irapi.prog.globs # idx] = v;
+	return idx;
+};
 
 ir_add_param : func(param_type : ir_reg -> irv)
 {
