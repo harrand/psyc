@@ -162,3 +162,141 @@ datalayout_offsetof_struct : func(dl : datalayout?, type : tyid, idx : u64 -> u6
 	trailing_padding ::= (-cursor) & (final_align - 1);
 	return cursor + trailing_padding;
 };
+
+// v must be a compile-time value
+// serialises the binary representation of the val to a buffer.
+// len must be >= datalayout_sizeof_ty(v.type)
+datalayout_serialise : func(dl : datalayout?, v : val, buf : u8 mut? mut?, len : u64 mut?, scope : lexical_scope mut?, source : ast mut? -> v0)
+{
+	writer_val ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+	w ::= ref writer_val;
+	sz ::= datalayout_sizeof_ty(dl, v.type);
+	i : u64 mut;
+	j : u64 mut;
+	if(v.compile_time.is_zero)
+	{
+		// zeroinitialiser. special case
+		for(i = 0; i < sz; i = i + 1)
+		{
+			bwrite8(w, 0);
+		}
+	}
+	else
+	{
+		if(v.compile_time.funcref_name != zero)
+		{
+			maybe_fn ::= scope_find_function(scope, v.compile_time.funcref_name, v.compile_time.funcref_name_len);
+			if(maybe_fn != zero)
+			{
+				psyc_panic_begin(source->loc);
+				putzstr("attempt to serialise compile-time reference to a function, which is currently not implemented (coz it requires knowing the virtual address at compile-time. i.e object writer bits...)");
+				psyc_diag_end();
+				psyc_exit_failure();
+				//bwrite64(w, maybe_fn->cg.runtime.v1);
+			}
+			// todo: check if asmref
+		}
+		if(v.compile_time.varref_name != zero)
+		{
+			maybe_var ::= scope_find_variable(scope, v.compile_time.varref_name, v.compile_time.varref_name_len);
+			if(maybe_var->compile_time_storage.known != (valknown.compile_time))
+			{
+				psyc_panic_begin(source->loc);
+				putzstr("attempt to retrieve initialiser of variable ");
+				putchar('"');
+				putbytes(v.compile_time.varref_name, v.compile_time.varref_name_len);
+				putchar('"');
+				putzstr(" as the value referring to it has the 'static' qualifier, and while this variable also is of static-type ");
+				putchar('"');
+				putty(maybe_var->type);
+				putchar('"');
+				putzstr(" its initialiser was not statically-known.");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+			}
+			datalayout_serialise(dl, maybe_var->compile_time_storage, buf, len, scope, source);
+		}
+		// this is the only pointer i can really serialise...
+		if(ty_is_string_literal(v.type))
+		{
+			bwrite_bytes(w, v.compile_time.primitive.chars, v.compile_time.primitive.chars_len);
+			bwrite8(w, 0);
+		}
+		else
+		{
+			if(ty_is_ptr(v.type))
+			{
+				psyc_panic_begin(source->loc);
+				putzstr("dont know how to serialise compile-time pointer...");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.s64) || ty_matches_ignore_quals(v.type, tyid.u64) || ty_is_enum(v.type))
+		{
+			bwrite64(w, v.compile_time.primitive.integer);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.s32) || ty_matches_ignore_quals(v.type, tyid.u32))
+		{
+			bwrite32(w, v.compile_time.primitive.integer@s32);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.s16) || ty_matches_ignore_quals(v.type, tyid.u16))
+		{
+			bwrite16(w, v.compile_time.primitive.integer@s16);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.s8) || ty_matches_ignore_quals(v.type, tyid.u8))
+		{
+			bwrite8(w, v.compile_time.primitive.integer@s8);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.bool))
+		{
+			bwrite8(w, v.compile_time.primitive.boolean);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.f64))
+		{
+			bwritef64(w, v.compile_time.primitive.floating_point);
+		}
+		if(ty_matches_ignore_quals(v.type, tyid.f32))
+		{
+			bwritef32(w, v.compile_time.primitive.floating_point@f32);
+		}
+
+		// this one we gotta be careful of.
+		if(ty_is_struct(v.type))
+		{
+			membuf : u8 mut? mut;
+			memlen : u64 mut;
+			for(i = 0; i < v.compile_time.members_count; i = i + 1)
+			{
+				mem ::= [v.compile_time.members # i];
+				datalayout_serialise(dl, mem, ref membuf, ref memlen, scope, source);
+				// copy to our buffer.
+				for(j = 0; j < memlen; j = j + 1)
+				{
+					bwrite8(w, [membuf # j]);
+				}
+				// now align.
+				padding ::= (-w->len) & datalayout_alignof_ty(dl, mem.type);
+				for(j = 0; j < padding; j = j + 1)
+				{
+					bwrite8(w, 0);
+				}
+			}
+			// finally do trail padding
+			trailing_padding ::= (-w->len) & datalayout_alignof_ty(dl, v.type);
+			for(j = 0; j < trailing_padding; j = j + 1)
+			{
+				bwrite8(w, 0);
+			}
+		}
+	}
+	[buf] = w->buf;
+	[len] = w->len;
+};
