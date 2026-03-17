@@ -40,12 +40,96 @@ codegen : func(-> v0)
 {
 };
 
+reg_for_ty : func(type : tyid -> ir_reg)
+{
+	retsz_bits ::= datalayout_sizeof_ty(psyir_dl, type) * 8;
+	retreg : ir_reg mut;
+	if(ty_is_floating_point(type))
+	{
+		if(retsz_bits <= 32)
+		{
+			retreg = ir_reg.f;
+		}
+		else
+		{
+			retreg = ir_reg.ff;
+		}
+	}
+	else
+	{
+		retreg = ir_reg.b;
+		if(retsz_bits > 8)
+		{
+			retreg = ir_reg.w;
+		}
+		if(retsz_bits > 16)
+		{
+			retreg = ir_reg.d;
+		}
+		if(retsz_bits > 32)
+		{
+			retreg = ir_reg.q;
+		}
+		if(retsz_bits > 64)
+		{
+			retreg = ir_reg.x;
+		}
+		if(retsz_bits > 128)
+		{
+			retreg = ir_reg.y;
+		}
+		if(retsz_bits > 256)
+		{
+			retreg = ir_reg.z;
+		}
+	}
+	return retreg;
+};
+
 cg_func_sig : func(fn : function mut?, name : u8? -> v0)
 {
+	fn_retty ::= ty_unwrap(fn->type)->fn.return_type;
+	retreg : ir_reg mut := reg_for_ty(fn_retty);
+
+	default_callconv ::= irf_callconv.sysv;
+	fn->cg = valruntime{.cg := irv_fnref(ir_add_func(name, zstrlen(name), retreg, default_callconv));};
 };
 
 cg_func_def : func(fn : function mut? -> v0)
 {
+	ir_setpos(irpos{.func_cursor := fn->cg.cg.v1; .blk_cursor := 0;});
+	funcscope ::= fn->scope@lexical_scope mut?;
+	dbg_declare_function(fn);
+	i : u64 mut;
+	for(i = 0; i < (funcscope->variables_count); i = i + 1)
+	{
+		func_var ::= funcscope->variables # i;
+		if(func_var->param_idx == -1)
+		{
+			cg_local_variable(func_var, fn);
+		}
+		else
+		{
+			cg_function_param(fn, func_var, i);
+		}
+	}
+
+	for(i = 1; i < (fn->node->children_count); i = i + 1)
+	{
+		impl_child ::= ast_get_child(fn->node, i);
+		cg_node(impl_child, funcscope);
+	}
+
+	last_child ::= ast_get_last_child_if_ret(fn->node);
+	if(last_child == zero)
+	{
+		// if we return void then just add a retvoid here
+		// otherwise, error out because we must end with a return.
+		if(ty_is_v0(ty_unwrap(fn->type)->fn.return_type))
+		{
+			ir_retnone();
+		}
+	}
 };
 
 cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
@@ -240,6 +324,109 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 };
 
 cg_builtin_alloca : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	return zero;
+};
+
+cg_local_variable : func(var : variable mut?, fn : function mut? -> v0)
+{
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		s_decl(var, fn->scope@lexical_scope mut?);
+	}
+	else
+	{
+		// do an alloca
+		decl ::= var->node->decl;
+		var->cg = valruntime{.cg := ir_stack(datalayout_sizeof_ty(psyir_dl, var->type));};
+	}
+};
+
+cg_function_param : func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
+{
+};
+
+cg_node : func(node : ast?, scope : lexical_scope? -> val)
+{
+	dbg_action(node, scope);
+	if(ast_is_stmt(node, ast_stmt_tag.ret))
+	{
+		parent_fn ::= scope_get_parent_function(scope);
+		if(parent_fn == zero)
+		{
+			psyc_error_begin(node->loc);
+			putzstr("return statements are not allowed within the global scope");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		parent_retty ::= ty_unwrap(parent_fn->type)->fn.return_type;
+		// return stmt.
+		if(node->children_count == 0)
+		{
+			if(!ty_is_v0(parent_retty))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("return statement within function ");
+				putchar('"');
+				putbytes(parent_fn->node->function.name, parent_fn->node->function.name_len);
+				putchar('"');
+				putzstr(" must return a value");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			ir_retnone();
+			return zero;
+		}
+		else
+		{
+			if(ty_is_v0(parent_retty))
+			{
+				psyc_error_begin(node->loc);
+				putzstr("return statement within function ");
+				putchar('"');
+				putbytes(parent_fn->node->function.name, parent_fn->node->function.name_len);
+				putchar('"');
+				putzstr(" must not return anything");
+				putchar(10);
+				ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
+			retval ::= val_convert_to(cg_node(ast_get_child(node, 0), scope), parent_retty, scope, val_resolution.runtime_only, node);
+			ir_ret(retval.runtime.cg);
+			return retval;
+		}
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.if_block))
+	{
+		return cg_if(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.while_block))
+	{
+		return cg_while(node, scope);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.for_block))
+	{
+		return cg_for(node, scope);
+	}	
+	return val_node(node, scope, val_resolution.runtime_or_compile_time);
+};
+
+cg_if : func(node : ast?, scope : lexical_scope mut? -> val)
+{
+	return zero;
+};
+
+cg_while : func(node : ast?, scope : lexical_scope mut? -> val)
+{
+	return zero;
+};
+
+cg_for : func(node : ast?, scope : lexical_scope mut? -> val)
 {
 	return zero;
 };
