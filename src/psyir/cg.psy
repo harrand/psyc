@@ -38,6 +38,42 @@ cg_alignof : func(type : tyid -> val)
 
 codegen : func(-> v0)
 {
+	psyc_timed_begin(psyc_stage.codegen);
+
+	cg_global_variables(program_scope());
+	//cg_all_asms(program_scope());
+	cg_all_functions(program_scope());
+	psyc_timed_end();
+};
+
+cg_global_variables : func(scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < (scope->variables_count); i = i + 1)
+	{
+		glob ::= scope->variables # i;
+		if(ty_has_qual(glob->type, tyqual.qual_static))
+		{
+			s_decl(glob, scope);
+		}
+		else
+		{
+			cg_global_variable(scope->variables # i);
+		}
+	}
+};
+
+cg_all_functions : func(scope : lexical_scope mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < (scope->functions_count); i = i + 1)
+	{
+		cg_func_sig(scope->functions # i, zero);
+	}
+	for(i = 0; i < (scope->functions_count); i = i + 1)
+	{
+		cg_func_def(scope->functions # i);
+	}
 };
 
 reg_for_ty : func(type : tyid -> ir_reg)
@@ -88,11 +124,23 @@ reg_for_ty : func(type : tyid -> ir_reg)
 
 cg_func_sig : func(fn : function mut?, name : u8? -> v0)
 {
+	lnk_name : u8? mut := name;
+	lnk_name_len : u64 mut;
+	if(lnk_name == zero)
+	{
+		lnk_name = fn->name;
+		lnk_name_len = fn->name_len;
+	}
+	else
+	{
+		lnk_name_len = zstrlen(lnk_name);
+	}
+	
 	fn_retty ::= ty_unwrap(fn->type)->fn.return_type;
 	retreg : ir_reg mut := reg_for_ty(fn_retty);
 
 	default_callconv ::= irf_callconv.sysv;
-	fn->cg = valruntime{.cg := irv_fnref(ir_add_func(name, zstrlen(name), retreg, default_callconv));};
+	fn->cg = valruntime{.cg := irv_fnref(ir_add_func(lnk_name, lnk_name_len, retreg, default_callconv));};
 };
 
 cg_func_def : func(fn : function mut? -> v0)
@@ -326,6 +374,10 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 cg_builtin_alloca : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	return zero;
+};
+
+cg_global_variable : func(var : variable mut? -> v0)
+{
 };
 
 cg_local_variable : func(var : variable mut?, fn : function mut? -> v0)
