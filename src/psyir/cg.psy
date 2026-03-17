@@ -136,16 +136,22 @@ cg_func_sig : func(fn : function mut?, name : u8? -> v0)
 		lnk_name_len = zstrlen(lnk_name);
 	}
 	
-	fn_retty ::= ty_unwrap(fn->type)->fn.return_type;
+	fnt ::= ty_unwrap(fn->type)->fn;
+	fn_retty ::= fnt.return_type;
 	retreg : ir_reg mut := reg_for_ty(fn_retty);
 
 	default_callconv ::= irf_callconv.sysv;
 	fn->cg = valruntime{.cg := irv_fnref(ir_add_func(lnk_name, lnk_name_len, retreg, default_callconv));};
+	i : u64 mut;
+	for(i = 0; i < fnt.params_count; i = i + 1)
+	{
+		ir_add_param(reg_for_ty([fnt.param_types # i]));
+	}
 };
 
 cg_func_def : func(fn : function mut? -> v0)
 {
-	ir_setpos(irpos{.func_cursor := fn->cg.cg.v1; .blk_cursor := 0;});
+	ir_setpos(irpos_from_fnref(fn->cg.cg));
 	funcscope ::= fn->scope@lexical_scope mut?;
 	dbg_declare_function(fn);
 	i : u64 mut;
@@ -328,7 +334,32 @@ cg_blkinit_add : func(v : val mut, memidx : u64, init : val, scope : lexical_sco
 
 cg_call : func(callee : val mut, params : val?, scope : lexical_scope mut?, source : ast? -> val)
 {
-	return zero;
+	callee = cg_load_if_lvalue(callee);
+	i : u64 mut;
+	fty ::= ty_unwrap(callee.type)->fn;
+	param_cgs : irv mut? := alloca(fty.params_count * sizeof irv);
+	for(i = 0; i < (fty.params_count); i = i + 1)
+	{
+		[param_cgs # i] = (cg_load_if_lvalue(val_dynamic([params # i], scope, source)).runtime.cg);
+	}
+	if(ty_is_bad(fty.return_type))
+	{
+		ir_call(irpos_from_fnref(callee.runtime.cg), param_cgs, fty.params_count);
+		return zero;
+	}
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := fty.return_type;
+		.compile_time := zero;
+		.runtime := valruntime
+		{
+			// this cg_type might want false for ref_function_types
+			.cg := ir_rcall(irpos_from_fnref(callee.runtime.cg), param_cgs, fty.params_count);
+		};
+	};
 };
 
 cg_convert_to : func(v : val, to : tyid, source : ast? -> val)
@@ -338,7 +369,15 @@ cg_convert_to : func(v : val, to : tyid, source : ast? -> val)
 
 cg_funcref : func(fn : function? -> val)
 {
-	return zero;
+	return val
+	{
+		.tag := valtag.typed_value;
+		.known := valknown.runtime;
+		.hand := valhand.rvalue;
+		.type := fn->type;
+		.compile_time := zero;
+		.runtime := valruntime{.cg := fn->cg.cg;};
+	};
 };
 
 cg_asmref : func(as : assembly? -> val)
@@ -396,6 +435,17 @@ cg_local_variable : func(var : variable mut?, fn : function mut? -> v0)
 
 cg_function_param : func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
 {
+};
+
+cg_load_if_lvalue : func(v : val -> val)
+{
+	ret : val mut := v;
+	if(v.hand == (valhand.lvalue))
+	{
+		ret.runtime.cg = ir_load(ret.runtime.cg, reg_for_ty(ret.type));
+		ret.hand = (valhand.rvalue);
+	}
+	return ret;
 };
 
 cg_node : func(node : ast?, scope : lexical_scope? -> val)
