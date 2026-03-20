@@ -24,11 +24,22 @@ x64abi : struct
 	r14 : x64abi_reginfo;
 	r15 : x64abi_reginfo;
 	call_stack_align : u64;
+	// if the cutoff is reached (aka return value is larger than reference-cutoff), then a 
+	// pointer-size must be stackallocated by the caller and treated as an additional first argument
+	param_pass_by_reference_cutoff : u64;
 	integral_params : x64v mut[8];
+	integral_params_count : u64;
 	floating_point_params : x64v mut[8];
+	floating_point_params_count : u64;
+	// in the case of a mix of floating point and integral params, if this is true, then the Nth
+	// occurrence of a floating point parameter will assume the Nth floating point register.
+	// otherwise, it will use the Xth floating point register, where X is the total number of
+	// params so far
 	param_types_independent : bool;
-	integral_return_reg : x64v;
-	floating_point_return_reg : x64v;
+	integral_return_regs : x64v mut[4];
+	integral_return_regs_count : u64;
+	floating_point_return_regs : x64v mut[4];
+	floating_point_return_regs_count : u64;
 };
 
 x64abi_sysv64 : func(-> x64abi)
@@ -54,6 +65,7 @@ x64abi_sysv64 : func(-> x64abi)
 		.r14 := x64abi_reginfo{.volatile := false;};
 		.r15 := x64abi_reginfo{.volatile := false;};
 		.call_stack_align := 16;
+		.param_pass_by_reference_cutoff := 16;
 		.integral_params := x64v[8]
 		{
 			.0 := x64v_reg(x64_reg.rdi, 64); // rdi
@@ -62,8 +74,8 @@ x64abi_sysv64 : func(-> x64abi)
 			.3 := x64v_reg(x64_reg.rcx, 64); // rcx
 			.4 := x64v_reg(x64_reg.r8, 64); // r8
 			.5 := x64v_reg(x64_reg.r9, 64); // r9
-			... := zero;
 		};
+		.integral_params_count := 6;
 		.floating_point_params := x64v[8]
 		{
 			.0 := x64v_reg(x64_reg.rax, 128); // xmm0
@@ -74,11 +86,20 @@ x64abi_sysv64 : func(-> x64abi)
 			.5 := x64v_reg(x64_reg.rbp, 128); // xmm5
 			.6 := x64v_reg(x64_reg.rsi, 128); // xmm6
 			.7 := x64v_reg(x64_reg.rdi, 128); // xmm7
-			... := zero;
 		};
+		.floating_point_params_count := 8;
 		.param_types_independent := true;
-		.integral_return_reg := x64v_reg(x64_reg.rax, 64); // rax
-		.floating_point_return_reg := x64v_reg(x64_reg.rax, 128); // xmm0
+		.integral_return_regs := x64v[4]
+		{
+			.0 := x64v_reg(x64_reg.rax, 64); // rax
+			.1 := x64v_reg(x64_reg.rdx, 64); // rdx
+		};
+		.integral_return_regs_count := 2;
+		.floating_point_return_regs := x64v[4]
+		{
+			.0 := x64v_reg(x64_reg.rax, 128); // xmm0
+		};
+		.floating_point_return_regs_count := 1;
 	};
 };
 
@@ -111,8 +132,8 @@ x64abi_win64 : func(-> x64abi)
 			.1 := x64v_reg(x64_reg.rdx, 64); // rdx
 			.2 := x64v_reg(x64_reg.r8, 64); // r8
 			.3 := x64v_reg(x64_reg.r8, 64); // r9
-			... := zero;
 		};
+		.integral_params_count := 4;
 		.floating_point_params := x64v[8]
 		{
 			.0 := x64v_reg(x64_reg.rax, 128); // xmm0
@@ -123,10 +144,18 @@ x64abi_win64 : func(-> x64abi)
 			.5 := x64v_reg(x64_reg.rbp, 128); // xmm5
 			.6 := x64v_reg(x64_reg.rsi, 128); // xmm6
 			.7 := x64v_reg(x64_reg.rdi, 128); // xmm7
-			... := zero;
 		};
+		.floating_point_params_count := 8;
 		.param_types_independent := false;
-		.integral_return_reg := x64v_reg(x64_reg.rax, 64); // rax
-		.floating_point_return_reg := x64v_reg(x64_reg.rax, 128); // xmm0
+		.integral_return_regs := x64v[4]
+		{
+			.0 := x64v_reg(x64_reg.rax, 64); // rax
+		};
+		.integral_return_regs_count := 1;
+		.floating_point_return_regs := x64v[4]
+		{
+			.0 := x64v_reg(x64_reg.rax, 128); // xmm0
+		};
+		.floating_point_return_regs_count := 1;
 	};
 };
