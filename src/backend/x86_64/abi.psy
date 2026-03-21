@@ -1,12 +1,25 @@
 // what does the abi say to do if the return value of a function is too large to fit in the return register?
-x64_return_spill : enum
+x64_abi_return_spill : enum
 {
 	// caller allocates space for return value, passes pointer to it as a hidden first parameter
 	.first_param_hidden_pointer := 1;
 };
 
+x64_abi_chunk_type : enum
+{
+	.nonfp := 1;
+	.fp := 2;
+	.mem := 3;
+};
+
 x64_abi_t : struct
 {
+	// all params are split into chunks of this size (in bytes).
+	// 0 == params map to chunks 1:1 without any change of size.
+	// N == params are split into at least 1 chunk of size N
+	chunk_size : u8;
+	// if chunk_size != 0, what is the maximum number of chunks a single param can be split into? if a param is larger than (chunk_size * chunk_split_max), it will spill to stack
+	chunk_split_max : u8;
 	// how many non-floating-point params are passed in registers. must be <= countof typeof(param_regs)
 	param_regs_count : u8;
 	// how manyfloating-point params are passed in registers. must be <= countof typeof(param_regs)
@@ -34,28 +47,37 @@ x64_abi_t : struct
 	preallocated_stackframe_size : u8;
 	// at the point of a call instruction, what is the required alignment of the stack pointer, in bytes (1 means it will never be padded)
 	stack_alignment_at_call : u8;
-	// if a non-fp param doesnt fit in a single argument register, can we split it and treat it as multiple params?
-	// 1 == yes, split large params across upto 'split_large_params_max' param registers
-	// 0 == no, if it doesnt fit then its passed indirectly on the stack
-	split_large_params : u8;
-	// if split_large_params == 1, how many registers can i split the param across before spilling to stack?
-	split_large_params_max : u8;
-	// if a fp param doesnt fit in a single argument register, can we split it and treat it as multiple params?
-	fp_split_large_params : s8;
-	// if fp_split_large_params == 1, how many registers can i split the param across before spilling to stack?
-	fp_split_large_params_max : u8;
 	// what happens if the return of the function doesnt fit in the return register?
-	return_spill : x64_return_spill;
+	return_spill : x64_abi_return_spill;
 	// non-fp parameters to functions passed in these registers. elements beyond 'param_regs_count' are ignored
-	param_regs : x64v mut[4];
+	param_regs : x64v mut[8];
 	// fp parameters to functions passed in these registers. elements beyond 'fp_param_regs_count' are ignored
-	fp_param_regs : x64v mut[4];
+	fp_param_regs : x64v mut[8];
 };
 
 x64_abi : func(iface : abi -> x64_abi_t)
 {
 	if(iface == abi.sysv)
 	{
+		return x64_abi_t
+		{
+			.chunk_size := 8;
+			.chunk_split_max := 2;
+			.param_regs_count := 6;
+			.fp_param_regs_count := 8;
+			.shared_param_cursor := 1;
+			.stack_direction := -1;
+			.stack_spill_order := -1;
+			.preallocated_stackframe_size := 0;
+			.stack_alignment_at_call := 16;
+			.return_spill := x64_abi_return_spill.first_param_hidden_pointer;
+			.param_regs := x64v[8]
+			{
+			};
+			.fp_param_regs := x64v[8]
+			{
+			};
+		};
 	}
 	if(iface == abi.win64)
 	{
