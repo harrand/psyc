@@ -22,15 +22,19 @@ x64_abi_t : struct
 	chunk_split_max : u8;
 	// how many non-floating-point params are passed in registers. must be <= countof typeof(param_regs)
 	param_regs_count : u8;
-	// how manyfloating-point params are passed in registers. must be <= countof typeof(param_regs)
+	// how many floating-point params are passed in registers. must be <= countof typeof(param_regs)
 	fp_param_regs_count : u8;
+	// how many non-floating-point registers are used for return values. must be <= countof typeof(return_regs)
+	return_regs_count : u8;
+	// how many floating-point registers are used for return values. must be <= countof typeof(fp_return_regs)
+	fp_return_regs_count : u8;
 	// should the Nth parameter in a function always use the Nth param register, or should it depend on the preceding parameters and whether they were fp or non-fp.
 	// example: func(int, int, float, int)
 	// param_regs = [r1, r2, r3]
 	// fp_param_regs = [q1, q2, q3]
 	// then:
-	// 1 == func(r1, r2, q1, r3)
-	// -1 == func(r1, r2, q3, <stack>)
+	// 0 == func(r1, r2, q1, r3)
+	// 1 == func(r1, r2, q3, <stack>)
 	shared_param_cursor : u8;
 	// 1 == stack grows upwards. -1 == stack grows downwards
 	stack_direction : s8;
@@ -53,6 +57,10 @@ x64_abi_t : struct
 	param_regs : x64v mut[8];
 	// fp parameters to functions passed in these registers. elements beyond 'fp_param_regs_count' are ignored
 	fp_param_regs : x64v mut[8];
+	// non-fp return value registers. return_regs[0] store the top bits, return_regs[return_regs_count-1] store the bottom bits
+	return_regs : x64v mut[2];
+	// fp return value registers. fp_return_regs[0] store the top bits, fp_return_regs[fp_return_regs_count-1] store the bottom bits
+	fp_return_regs : x64v mut[2];
 };
 
 x64_abi : func(iface : abi -> x64_abi_t)
@@ -65,7 +73,9 @@ x64_abi : func(iface : abi -> x64_abi_t)
 			.chunk_split_max := 2;
 			.param_regs_count := 6;
 			.fp_param_regs_count := 8;
-			.shared_param_cursor := 1;
+			.return_regs_count := 2;
+			.fp_return_regs_count := 1;
+			.shared_param_cursor := 0;
 			.stack_direction := -1;
 			.stack_spill_order := -1;
 			.preallocated_stackframe_size := 0;
@@ -73,14 +83,74 @@ x64_abi : func(iface : abi -> x64_abi_t)
 			.return_spill := x64_abi_return_spill.first_param_hidden_pointer;
 			.param_regs := x64v[8]
 			{
+				.0 := x64_reg_rdi();
+				.1 := x64_reg_rsi();
+				.2 := x64_reg_rdx();
+				.3 := x64_reg_rcx();
+				.4 := x64_reg_r8();
+				.5 := x64_reg_r9();
 			};
 			.fp_param_regs := x64v[8]
 			{
+				.0 := x64_reg_xmm0();
+				.1 := x64_reg_xmm1();
+				.2 := x64_reg_xmm2();
+				.3 := x64_reg_xmm3();
+				.4 := x64_reg_xmm4();
+				.5 := x64_reg_xmm5();
+				.6 := x64_reg_xmm6();
+				.7 := x64_reg_xmm7();
+			};
+			.return_regs := x64v[2]
+			{
+				.0 := x64_reg_rdx();
+				.1 := x64_reg_rax();
+			};
+			.fp_return_regs := x64v[2]
+			{
+				.0 := x64_reg_xmm0();
 			};
 		};
 	}
 	if(iface == abi.win64)
 	{
+		return x64_abi_t
+		{
+			.chunk_size := 0;
+			.chunk_split_max := 0;
+			.param_regs_count := 4;
+			.fp_param_regs_count := 4;
+			.return_regs_count := 1;
+			.fp_return_regs_count := 1;
+			.shared_param_cursor := 0;
+			.stack_direction := -1;
+			.stack_spill_order := 1;
+			.preallocated_stackframe_size := 32;
+			.stack_alignment_at_call := 16;
+			.return_spill := x64_abi_return_spill.first_param_hidden_pointer;
+			.param_regs := x64v[8]
+			{
+				.0 := x64_reg_rcx();
+				.1 := x64_reg_rdx();
+				.2 := x64_reg_r8();
+				.3 := x64_reg_r9();
+			};
+			.fp_param_regs := x64v[8]
+			{
+				.0 := x64_reg_xmm0();
+				.1 := x64_reg_xmm1();
+				.2 := x64_reg_xmm2();
+				.3 := x64_reg_xmm3();
+			};
+			.return_regs := x64v[2]
+			{
+				.0 := x64_reg_rax();
+			};
+			.fp_return_regs := x64v[2]
+			{
+				.0 := x64_reg_xmm0();
+			};
+		};
 	}
 	psyc_panic_begin(zero);
 	putzstr("x64_abi not supported for abi.");
