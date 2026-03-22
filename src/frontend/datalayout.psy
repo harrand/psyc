@@ -318,8 +318,8 @@ datalayout_chunk : struct
 
 datalayout_chunking_rules : struct
 {
-	allow_merges : bool;
 	chunk_size_max : u64;
+	allow_merges : bool;
 };
 
 // say you have a buffer with a bunch of values in it of differing types
@@ -343,28 +343,97 @@ datalayout_split_into_chunks : func(dl : datalayout?, tys : tyid mut?, tys_offse
 		return 0;
 	}
 	cur_chunk : datalayout_chunk mut? mut := out_chunks;
-	[cur_chunk] = zero;
 	cur_chunk_idx : u64 mut := 0;
 	i : u64 mut;
+	j : u64 mut;
 
 	natural_cumulative_off : u64 mut := 0;
+	struct_cumulative_off : u64 mut := 0;
 	for(i = 0; i < tys_count; i = i + 1)
 	{
 		curty ::= [tys # i];
 		curty_sz ::= datalayout_sizeof_ty(dl, curty);
 		curty_off ::= [tys_offsets # i];
 		type_of_more : datalayout_chunk_type mut := datalayout_chunk_type.nonfp;
-		if(ty_is_floating_point(curty))
-		{
-			type_of_more = datalayout_chunk_type.fp;
-		}
+
 		padding_required ::= curty_off - natural_cumulative_off;
 		natural_cumulative_off = curty_off;
-		dst ::= datalayout_chunk_append_more(cur_chunk, type_of_more, curty_sz, padding_required,  i, rules);
-		cur_chunk = cur_chunk # dst;
-		cur_chunk_idx = cur_chunk_idx + dst;
+		if(ty_is_struct(curty))
+		{
+			// struct, recurse into all its members (but including any padding bytes between members)
+			
+			u ::= ty_unwrap(curty);
+			struct_offsets : u64 mut? mut := arena_alloc(global_arena, u->strct.members_count * sizeof u64);
+			struct_cumulative_off = 0;
+			if(u->strct.members_count > 0)
+			{
+				// edge case: if we're halfway through a block and the first member of the struct is of the wrong type, we will immediately skip to to the next one (but, because its included in structdst via the recursive call to datalayout_split_into_chunks a few lines down from now) and overwrite its source indices
+				// to avoid this problem, we check if the first type matches now and skip ahead.
+				first_member_type : datalayout_chunk_type mut := datalayout_chunk_type.nonfp;
+				if(ty_is_floating_point([u->strct.members # 0]))
+				{
+					first_member_type = datalayout_chunk_type.fp;
+				}
+				if((cur_chunk->type != zero) && (first_member_type != cur_chunk->type))
+				{
+					// yep doesnt match. skip ahead.
+					cur_chunk = cur_chunk # 1;
+					cur_chunk_idx = cur_chunk_idx + 1;
+				}
+			}
+			for(j = 0; j < u->strct.members_count; j = j + 1)
+			{
+				[struct_offsets # j] = datalayout_offsetof_struct(dl, curty, j) + padding_required;
+			}
+			inner_struct_rules : datalayout_chunking_rules mut := rules;
+			inner_struct_rules.allow_merges = true;
+			structdst ::= datalayout_split_into_chunks(dl, u->strct.members, struct_offsets, u->strct.members_count, inner_struct_rules, cur_chunk);
+			for(j = 0; j < structdst; j = j + 1)
+			{
+				// find out how many bytes into the struct we are.
+				// and rewrite the source indices to treat this struct as a single thing
+				(cur_chunk # j)->src_idx_begin_byte_offset = [struct_offsets # ((cur_chunk # j))->src_idx_begin] + (cur_chunk # j)->src_idx_begin_byte_offset;
+				(cur_chunk # j)->src_idx_begin = i;
+				(cur_chunk # j)->src_idx_end = i;
+			}
+			cur_chunk = cur_chunk # structdst;
+			cur_chunk_idx = cur_chunk_idx + structdst;
+		}
+		else
+		{
+			// non struct
+			if(ty_is_floating_point(curty))
+			{
+				type_of_more = datalayout_chunk_type.fp;
+			}
+			dst ::= datalayout_chunk_append_more(cur_chunk, type_of_more, curty_sz, padding_required,  i, rules);
+			cur_chunk = cur_chunk # dst;
+			cur_chunk_idx = cur_chunk_idx + dst;
+		}
 
 		natural_cumulative_off = natural_cumulative_off + curty_sz;
+	}
+
+	// chunk sizes must always be a "round number"
+	cumulative_bit : u64 mut := cur_chunk->src_idx_begin_byte_offset;
+	while(!is_log2_of(cur_chunk->sz, rules.chunk_size_max))
+	{
+		type_of_more = cur_chunk->type;
+		round_bit ::= highest_log2_of(cur_chunk->sz);
+		cumulative_bit = cumulative_bit + round_bit;
+		nonround_bit ::= cur_chunk->sz - round_bit;
+		cur_chunk->sz = round_bit;
+
+		cur_chunk = cur_chunk # 1;
+		[cur_chunk] = datalayout_chunk
+		{
+			.type := type_of_more;
+			.src_idx_begin := i - 1;
+			.src_idx_end := i - 1;
+			.src_idx_begin_byte_offset := cumulative_bit;
+			.sz := nonround_bit;
+		};
+		cur_chunk_idx = cur_chunk_idx + 1;
 	}
 	return cur_chunk_idx + 1;
 };
@@ -385,7 +454,7 @@ datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_m
 		types_are_compatible = true;
 		chunk->type = type_of_more;
 	}
-	if(!types_are_compatible || (!rules.allow_merges && (src_idx_of_more != 0)))
+	if(!types_are_compatible || (!rules.allow_merges && (chunk->sz != 0)))
 	{
 		// types dont match, so we absolutely need a new chunk.
 		chunk = chunk # 1;
@@ -399,6 +468,11 @@ datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_m
 		};
 		new_chunk_counter = new_chunk_counter + 1;
 	}
+	// this chunk is empty, and we're about to be first to fill it. so it starts on us
+	if(chunk->sz == 0)
+	{
+		chunk->src_idx_begin = src_idx_of_more;
+	}
 	chunk->src_idx_end = src_idx_of_more;
 
 	// would it physically fit in the current chunk:
@@ -407,7 +481,7 @@ datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_m
 	chunk->sz = before_sz + total_new_size;
 	after_sz : u64 mut := chunk->sz;
 	// chunk with the new data is too big
-	while(chunk->sz >= rules.chunk_size_max)
+	while(chunk->sz > rules.chunk_size_max)
 	{
 		// set the current chunk as fully filled
 		// we have overflow_sz bytes left to fill
@@ -415,6 +489,7 @@ datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_m
 		chunk->sz = rules.chunk_size_max;
 		chunk->src_idx_end = src_idx_of_more;
 
+		new_chunk_counter = new_chunk_counter + 1;
 		chunk = chunk # 1;
 		[chunk] = datalayout_chunk
 		{
@@ -424,27 +499,6 @@ datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_m
 			.src_idx_begin_byte_offset := (new_chunk_counter * rules.chunk_size_max);
 			.sz := overflow_sz;
 		};
-		new_chunk_counter = new_chunk_counter + 1;
 	}
-	// chunk sizes must always be a "round number"
-	//cumulative_bit : u64 mut := chunk->src_idx_begin_byte_offset;
-	//while(!is_log2_of(chunk->sz, rules.chunk_size_max))
-	//{
-	//	round_bit ::= highest_log2_of(chunk->sz);
-	//	cumulative_bit = cumulative_bit + round_bit;
-	//	nonround_bit ::= chunk->sz - round_bit;
-	//	chunk->sz = round_bit;
-
-	//	chunk = chunk # 1;
-	//	[chunk] = datalayout_chunk
-	//	{
-	//		.type := type_of_more;
-	//		.src_idx_begin := src_idx_of_more;
-	//		.src_idx_end := src_idx_of_more;
-	//		.src_idx_begin_byte_offset := cumulative_bit;
-	//		.sz := nonround_bit;
-	//	};
-	//	new_chunk_counter = new_chunk_counter + 1;
-	//}
 	return new_chunk_counter;
 };
