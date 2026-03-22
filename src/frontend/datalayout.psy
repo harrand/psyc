@@ -6,6 +6,12 @@ datalayout : struct
 	ptr_align : u64;
 };
 
+datalayout_chunk_type : enum
+{
+	.nonfp := 1;
+	.fp := 2;
+};
+
 datalayout_psy64 : func(-> datalayout)
 {
 	return datalayout
@@ -299,4 +305,146 @@ datalayout_serialise : func(dl : datalayout?, v : val, buf : u8 mut? mut?, len :
 	}
 	[buf] = w->buf;
 	[len] = w->len;
+};
+
+datalayout_chunk : struct
+{
+	type : datalayout_chunk_type;
+	src_idx_begin : u64;
+	src_idx_end : u64;
+	src_idx_begin_byte_offset : u64;
+	sz : u64;
+};
+
+datalayout_chunking_rules : struct
+{
+	allow_merges : bool;
+	chunk_size_max : u64;
+};
+
+// say you have a buffer with a bunch of values in it of differing types
+// could be a struct, or an array, could simply be a bunch of separate parameters
+// split the list of values into an array of chunks of known size and type (i.e fitting sensibly into psyir registers)
+// tys -> the list of types
+// tys_offsets -> the number of bytes into the buffer that the type starts (not necessarily tightly packed)
+// tys_count -> number of values in 'tys'
+// rules -> arbitrary layout rules.
+//		allow_merges -> if they can fit, multiple values are stuffed into the same chunk (including padding bytes)
+//		chunk_size_max -> the maximum chunk size. chunks can be any size, but must be a power-of-2 and must be less-than-or-equal-to chunk_size_max. chunk_size_max itself must also be a power-of-2.
+// out_chunks -> an output buffer that the chunks are written out to. must be large enough to fit all the chunks. it is safe to pass zero, causing no chunks to be written but the required number of chunks is still returned
+// return -> total number of chunks
+datalayout_split_into_chunks : func(dl : datalayout?, tys : tyid mut?, tys_offsets : u64?, tys_count : u64, rules : datalayout_chunking_rules, out_chunks : datalayout_chunk mut? -> u64)
+{
+	// iterate over all types
+	// try to fit everything in the current chunk
+	// if the current type does not match the chunk type, or doesn't fit, or merging isnt allowed, then get a new chunk, increase the cursor and work on that instead.
+	if(tys_count == 0)
+	{
+		return 0;
+	}
+	cur_chunk : datalayout_chunk mut? mut := out_chunks;
+	[cur_chunk] = zero;
+	cur_chunk_idx : u64 mut := 0;
+	i : u64 mut;
+
+	natural_cumulative_off : u64 mut := 0;
+	for(i = 0; i < tys_count; i = i + 1)
+	{
+		curty ::= [tys # i];
+		curty_sz ::= datalayout_sizeof_ty(dl, curty);
+		curty_off ::= [tys_offsets # i];
+		type_of_more : datalayout_chunk_type mut := datalayout_chunk_type.nonfp;
+		if(ty_is_floating_point(curty))
+		{
+			type_of_more = datalayout_chunk_type.fp;
+		}
+		padding_required ::= curty_off - natural_cumulative_off;
+		natural_cumulative_off = curty_off;
+		dst ::= datalayout_chunk_append_more(cur_chunk, type_of_more, curty_sz, padding_required,  i, rules);
+		cur_chunk = cur_chunk # dst;
+		cur_chunk_idx = cur_chunk_idx + dst;
+
+		natural_cumulative_off = natural_cumulative_off + curty_sz;
+	}
+	return cur_chunk_idx + 1;
+};
+
+// attempt to add more data to the current chunk
+// chunk -> pointer to a valid chunk. is expected to be an array for me to write more values into if necessary
+// type_of_more -> type of the new data (if it doesnt match the chunk, i will write it into a new chunk instead)
+// size_of_more -> number of bytes comprising the new data
+// padding_before_more -> number of padding bytes that i must respect occurring before the new data
+datalayout_chunk_append_more : func(chunk : datalayout_chunk mut? mut, type_of_more : datalayout_chunk_type, size_of_more : u64, padding_before_more : u64, src_idx_of_more : u64, rules : datalayout_chunking_rules -> u64)
+{
+	new_chunk_counter : u64 mut := 0;
+	// ok firstly check if the types are compatible
+	types_are_compatible : bool mut := chunk->type == type_of_more;
+	if(chunk->type == zero)
+	{
+		// chunk is unspecialised, so yes.
+		types_are_compatible = true;
+		chunk->type = type_of_more;
+	}
+	if(!types_are_compatible || (!rules.allow_merges && (src_idx_of_more != 0)))
+	{
+		// types dont match, so we absolutely need a new chunk.
+		chunk = chunk # 1;
+		[chunk] = datalayout_chunk
+		{
+			.type := type_of_more;
+			.src_idx_begin := src_idx_of_more;
+			.src_idx_end := src_idx_of_more;
+			.src_idx_begin_byte_offset := 0;
+			.sz := 0;
+		};
+		new_chunk_counter = new_chunk_counter + 1;
+	}
+	chunk->src_idx_end = src_idx_of_more;
+
+	// would it physically fit in the current chunk:
+	before_sz : u64 mut := chunk->sz;
+	total_new_size ::= size_of_more + padding_before_more;
+	chunk->sz = before_sz + total_new_size;
+	after_sz : u64 mut := chunk->sz;
+	// chunk with the new data is too big
+	while(chunk->sz >= rules.chunk_size_max)
+	{
+		// set the current chunk as fully filled
+		// we have overflow_sz bytes left to fill
+		overflow_sz ::= chunk->sz - rules.chunk_size_max;
+		chunk->sz = rules.chunk_size_max;
+		chunk->src_idx_end = src_idx_of_more;
+
+		chunk = chunk # 1;
+		[chunk] = datalayout_chunk
+		{
+			.type := type_of_more;
+			.src_idx_begin := src_idx_of_more;
+			.src_idx_end := src_idx_of_more;
+			.src_idx_begin_byte_offset := (new_chunk_counter * rules.chunk_size_max);
+			.sz := overflow_sz;
+		};
+		new_chunk_counter = new_chunk_counter + 1;
+	}
+	// chunk sizes must always be a "round number"
+	//cumulative_bit : u64 mut := chunk->src_idx_begin_byte_offset;
+	//while(!is_log2_of(chunk->sz, rules.chunk_size_max))
+	//{
+	//	round_bit ::= highest_log2_of(chunk->sz);
+	//	cumulative_bit = cumulative_bit + round_bit;
+	//	nonround_bit ::= chunk->sz - round_bit;
+	//	chunk->sz = round_bit;
+
+	//	chunk = chunk # 1;
+	//	[chunk] = datalayout_chunk
+	//	{
+	//		.type := type_of_more;
+	//		.src_idx_begin := src_idx_of_more;
+	//		.src_idx_end := src_idx_of_more;
+	//		.src_idx_begin_byte_offset := cumulative_bit;
+	//		.sz := nonround_bit;
+	//	};
+	//	new_chunk_counter = new_chunk_counter + 1;
+	//}
+	return new_chunk_counter;
 };

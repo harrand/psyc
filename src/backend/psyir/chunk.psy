@@ -60,21 +60,26 @@ psyir_chunk_tys : func(rules : psyir_chunking_rules, tys : tyid mut?, tys_count 
 	[chnk] = zero;
 	i : u64 mut;	
 	j : u64 mut;
+	k : u64 mut;
 	for(i = 0; i < tys_count; i = i + 1)
 	{
 		curty ::= [tys # i];
 		curty_sz ::= datalayout_sizeof_ty(psyir_dl, curty);
 		if(ty_is_struct(curty))
 		{
+			u ::= ty_unwrap(curty);
+
 			strctrule : psyir_chunking_rules mut := rules;
 			strctrule.allow_merges = true;
-			u ::= ty_unwrap(curty);
 			newchunks ::= psyir_chunk_tys(strctrule, u->strct.members, u->strct.members_count, chnk);
 			// overwrite all the new chunk src_idx however to point to this struct.
+			
 			for(j = 0; j < newchunks; j = j + 1)
 			{
-				[chnk # j].src_idx_begin = i;
-				[chnk # j].src_idx_end = i;
+				ptr ::= chnk # (j + chnkoff);
+				ptr->src_byte_offset = ptr->src_byte_offset + datalayout_offsetof_struct(psyir_dl, curty, ptr->src_idx_begin);
+				ptr->src_idx_begin = i;
+				ptr->src_idx_end = i;
 			}
 			chnkoff = chnkoff + newchunks;
 			chnk = chnk # newchunks;

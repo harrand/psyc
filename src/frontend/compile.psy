@@ -208,15 +208,72 @@ compile_program : func(-> v0)
 		add_entrypoint_to_compilation();
 	}
 
+	teststruct_mems ::= tyid[5]
+	{
+		.0 := tyid.u16;
+		.1 := tyid.u8;
+		.2 := tyid.u32;
+		.3 := tyid.u8;
+		.4 := tyid.u64;
+	};
+	teststruct_mems_names ::= u8 mut?[5]
+	{
+		.0 := "u16";
+		.1 := "u8";
+		.2 := "u32";
+		.3 := "u8";
+		.4 := "u64";
+	};
+	teststruct_mems_names_lens ::= u64 mut[5]
+	{
+		.0 := 3;
+		.1 := 2;
+		.2 := 3;
+		.3 := 2;
+		.4 := 3;
+	};
+	teststruct ::= ty_wrap(ty
+	{
+		.tag := tytag.strct;
+		.strct := structty
+		{
+			.members := teststruct_mems # 0;
+			.member_names := (teststruct_mems_names # 0)@_;
+			.member_name_lens := teststruct_mems_names_lens # 0;
+			.members_count := countof typeof(teststruct_mems);
+			... := zero;
+		};
+	}, zero);
 	testtys ::= tyid[4]
 	{
 		.0 := tyid.u64;
 		.1 := tyid.f32;
-		.2 := tyid.s32;
+		.2 := teststruct;
 		.3 := ty_arr(tyid.u8, 103, zero);
 	};
-	testchunks : psyir_chunk mut[64];
-	count ::= psyir_chunk_tys(psyir_chunking_rules{.allow_merges := true; .chunk_size_max := 64;}, testtys # 0, countof typeof(testtys), testchunks # 0);
+	testchunks ::= datalayout_chunk mut[64]
+	{
+		.0 := datalayout_chunk
+		{
+			.type := zero;
+			.src_idx_begin := 18446744073709551615;
+			.src_idx_end := 18446744073709551615;
+			.src_idx_begin_byte_offset := 0;
+			.sz := 0;
+		};
+		... := zero;
+	};
+	tmpoffs ::= u64[5]
+	{
+		.0 := 0;
+		.1 := 2;
+		.2 := 3;
+		.3 := 7;
+		.4 := 8;
+	};
+	count ::= datalayout_split_into_chunks(psyir_dl, teststruct_mems # 0, tmpoffs # 0, 5, datalayout_chunking_rules{.allow_merges := true; .chunk_size_max := 64;}, testchunks # 0);
+	//testchunks : psyir_chunk mut[64];
+	//count ::= psyir_chunk_tys(psyir_chunking_rules{.allow_merges := true; .chunk_size_max := 64;}, testtys # 0, countof typeof(testtys), testchunks # 0);
 	putzstr("chunks: ");
 	putuint(count);
 	putchar(10);
