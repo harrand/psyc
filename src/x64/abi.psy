@@ -1,0 +1,166 @@
+// what does the abi say to do if the return value of a function is too large to fit in the return register?
+x64_abi_return_spill : enum
+{
+	// caller allocates space for return value, passes pointer to it as a hidden first parameter
+	.first_param_hidden_pointer := 1;
+};
+
+x64_abi_chunk_type : enum
+{
+	.nonfp := 1;
+	.fp := 2;
+	.mem := 3;
+};
+
+x64_abi_chunk : struct
+{
+	type : x64_abi_chunk_type;
+};
+
+x64_abi_t : struct
+{
+	// all params are split into chunks of this size (in bytes).
+	// 0 == params map to chunks 1:1 without any change of size.
+	// N == params are split into at least 1 chunk of size N
+	chunk_size : u8;
+	// if chunk_size != 0, what is the maximum number of chunks a single param can be split into? if a param is larger than (chunk_size * chunk_split_max), it will spill to stack
+	chunk_split_max : u8;
+	// how many non-floating-point params are passed in registers. must be <= countof typeof(param_regs)
+	param_regs_count : u8;
+	// how many floating-point params are passed in registers. must be <= countof typeof(param_regs)
+	fp_param_regs_count : u8;
+	// how many non-floating-point registers are used for return values. must be <= countof typeof(return_regs)
+	return_regs_count : u8;
+	// how many floating-point registers are used for return values. must be <= countof typeof(fp_return_regs)
+	fp_return_regs_count : u8;
+	// should the Nth parameter in a function always use the Nth param register, or should it depend on the preceding parameters and whether they were fp or non-fp.
+	// example: func(int, int, float, int)
+	// param_regs = [r1, r2, r3]
+	// fp_param_regs = [q1, q2, q3]
+	// then:
+	// 0 == func(r1, r2, q1, r3)
+	// 1 == func(r1, r2, q3, <stack>)
+	shared_param_cursor : u8;
+	// 1 == stack grows upwards. -1 == stack grows downwards
+	stack_direction : s8;
+	// in the case some parameters dont fit in registers, they are passed on the stack in
+	// 1 == order
+	// -1 == reverse-order
+	// e.g if there only 2 param registers [r1, r2], then
+	// func(int1, int2, int3, int4, int5) is passed as
+	// 1 == func(r1, r2, stack_offset0, stack_offset1, stack_offset2)
+	// -1 = func(r1, r2, stack_offset2, stack_offset1, stack_offset0)
+	// (note that stack offset follows the order specified in stack_direction)
+	stack_spill_order : s8;
+	// size of the always-allocated stack frame size, in bytes (can be 0)
+	preallocated_stackframe_size : u8;
+	// at the point of a call instruction, what is the required alignment of the stack pointer, in bytes (1 means it will never be padded)
+	stack_alignment_at_call : u8;
+	// what happens if the return of the function doesnt fit in the return register?
+	return_spill : x64_abi_return_spill;
+	// non-fp parameters to functions passed in these registers. elements beyond 'param_regs_count' are ignored
+	param_regs : x64v mut[8];
+	// fp parameters to functions passed in these registers. elements beyond 'fp_param_regs_count' are ignored
+	fp_param_regs : x64v mut[8];
+	// non-fp return value registers. return_regs[0] store the top bits, return_regs[return_regs_count-1] store the bottom bits
+	return_regs : x64v mut[2];
+	// fp return value registers. fp_return_regs[0] store the top bits, fp_return_regs[fp_return_regs_count-1] store the bottom bits
+	fp_return_regs : x64v mut[2];
+};
+
+x64_abi : func(iface : abi -> x64_abi_t)
+{
+	if(iface == abi.sysv)
+	{
+		return x64_abi_t
+		{
+			.chunk_size := 8;
+			.chunk_split_max := 2;
+			.param_regs_count := 6;
+			.fp_param_regs_count := 8;
+			.return_regs_count := 2;
+			.fp_return_regs_count := 1;
+			.shared_param_cursor := 0;
+			.stack_direction := -1;
+			.stack_spill_order := -1;
+			.preallocated_stackframe_size := 0;
+			.stack_alignment_at_call := 16;
+			.return_spill := x64_abi_return_spill.first_param_hidden_pointer;
+			.param_regs := x64v[8]
+			{
+				.0 := x64_reg_rdi();
+				.1 := x64_reg_rsi();
+				.2 := x64_reg_rdx();
+				.3 := x64_reg_rcx();
+				.4 := x64_reg_r8();
+				.5 := x64_reg_r9();
+			};
+			.fp_param_regs := x64v[8]
+			{
+				.0 := x64_reg_xmm0();
+				.1 := x64_reg_xmm1();
+				.2 := x64_reg_xmm2();
+				.3 := x64_reg_xmm3();
+				.4 := x64_reg_xmm4();
+				.5 := x64_reg_xmm5();
+				.6 := x64_reg_xmm6();
+				.7 := x64_reg_xmm7();
+			};
+			.return_regs := x64v[2]
+			{
+				.0 := x64_reg_rdx();
+				.1 := x64_reg_rax();
+			};
+			.fp_return_regs := x64v[2]
+			{
+				.0 := x64_reg_xmm0();
+			};
+		};
+	}
+	if(iface == abi.win64)
+	{
+		return x64_abi_t
+		{
+			.chunk_size := 0;
+			.chunk_split_max := 0;
+			.param_regs_count := 4;
+			.fp_param_regs_count := 4;
+			.return_regs_count := 1;
+			.fp_return_regs_count := 1;
+			.shared_param_cursor := 0;
+			.stack_direction := -1;
+			.stack_spill_order := 1;
+			.preallocated_stackframe_size := 32;
+			.stack_alignment_at_call := 16;
+			.return_spill := x64_abi_return_spill.first_param_hidden_pointer;
+			.param_regs := x64v[8]
+			{
+				.0 := x64_reg_rcx();
+				.1 := x64_reg_rdx();
+				.2 := x64_reg_r8();
+				.3 := x64_reg_r9();
+			};
+			.fp_param_regs := x64v[8]
+			{
+				.0 := x64_reg_xmm0();
+				.1 := x64_reg_xmm1();
+				.2 := x64_reg_xmm2();
+				.3 := x64_reg_xmm3();
+			};
+			.return_regs := x64v[2]
+			{
+				.0 := x64_reg_rax();
+			};
+			.fp_return_regs := x64v[2]
+			{
+				.0 := x64_reg_xmm0();
+			};
+		};
+	}
+	psyc_panic_begin(zero);
+	putzstr("x64_abi not supported for abi.");
+	putzstr(enumname(iface));
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
+};

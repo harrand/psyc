@@ -1,0 +1,297 @@
+x64_reg : enum
+{
+	.rax := 0;
+	.rcx := 1;
+	.rdx := 2;
+	.rbx := 3;
+	.rsp := 4;
+	.rbp := 5;
+	.rsi := 6;
+	.rdi := 7;
+	.r8 := 8;
+	.r9 := 9;
+	.r10 := 10;
+	.r11 := 11;
+	.r12 := 12;
+	.r13 := 13;
+	.r14 := 14;
+	.r15 := 15;
+
+	.rip := 69;
+};
+
+x64v_tag : enum
+{
+	// immediate value
+	//	v1: size 8/16/32/64
+	//	v2: the actual immediate value
+	.imm := 1;
+	// register
+	//	r1: which register to use (cannot be null)
+	//	v1: size 8/16/32/64/128/256/512 (e.g x64v_tag.rax, v1 = 32 means eax, v1 = 128 means xmm0)
+	.reg := 2;
+	// memory operand of the form 'v1 PTR [r1v2 + r2v3 * immv4 + v5immv6]'
+	//	r1: base register (ignored if v2 is 0)
+	//	r2: index register (ignored if v3 is 0)
+	//	v1: memory operand size 8/16/32/64/128/256/512 (e.g 8 is BYTE PTR, 64 is QWORD PTR, 256 is YWORD PTR)
+	//	v2: base register size 0/8/16/32/64 (see .reg|v1 above, 0 means no base register)
+	//	v3: index register size 0/8/16/32/64 (0 means no index register)
+	//	v4: scale 1/2/4/8 (*must* be one of these)
+	//	v5: size of the displacement immediate 8/32 only (ignored if v6 is 0)
+	//	v6: value of displacement (0 means no displacement)
+	.memreg := 3;
+	// absolute memory address (64 bit only)
+	//	v1: the address
+	.addr := 4;
+	//	v1: a displacement from the rip register (in instructions, converted to riprel_bytes at encoding time)
+	//	v2: size of the displacement immediate 8/32 only
+	.ripreli := 5;
+	//	v1: a displacement from the rip register (in bytes, encoding native)
+	//	v2: size of the displacement immediate 8/32 only
+	.riprel := 6;
+	//	v1: the index of the rodata to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
+	.rodataref := 7;
+	//	v1: the index of the data to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
+	.dataref := 8;
+	//	v1: the index of the bss to refer to
+	//	v2: offset into the element, in bytes
+	//	v3: size of the reference, 8/16/32/64/128/256/512
+	.bssref := 9;
+	// reference to a function. gets patched into a ripreli and then a riprel at encoding time
+	//	v1: the index of the function to refer to
+	.fnref := 10;
+
+	// the following tags are customs. you should use them as intermediate values
+	// these must all be lowered to an actual x64 eventually.
+	.custom0 := 16;
+	.custom1 := 17;
+	.custom2 := 18;
+	.custom3 := 19;
+};
+
+x64v : struct
+{
+	tag : x64v_tag;
+	r1 : x64_reg;
+	r2 : x64_reg;
+	v1 : u64;
+	v2 : u64;
+	v3 : u64;
+	v4 : u64;
+	v5 : u64;
+	v6 : u64;
+	v7 : u64;
+};
+
+// api to create x64 values
+
+x64v_imm : func(imm : u64, immsz : u64 -> x64v)
+{
+	return x64v
+	{
+		.tag := x64v_tag.imm;
+		.v1 := immsz;
+		.v2 := imm;
+		... := zero;
+	};
+};
+
+x64v_reg : func(reg : x64_reg, sz : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.reg; .r1 := reg; .v1 := sz; ... := zero;};
+};
+
+x64v_memreg : func(memsize : u64, base_reg : x64_reg, base_regsize : u64, index_reg : x64_reg, index_regsize : u64, scale : u64, displacement : u64, displacement_size : u64 -> x64v)
+{
+	if(scale == 0)
+	{
+		panic_assert_failure("scale 0 passed to x64v_memreg");
+	}
+	if((displacement_size != 0) && (displacement_size != 8) && (displacement_size != 32))
+	{
+		panic_assert_failure("invalid displacement_size passed to x64v_memreg");
+	}
+	return x64v
+	{
+		.tag := x64v_tag.memreg;
+		.r1 := base_reg;
+		.r2 := index_reg;
+		.v1 := memsize;
+		.v2 := base_regsize;
+		.v3 := index_regsize;
+		.v4 := scale;
+		.v5 := displacement_size;
+		.v6 := displacement;
+		... := zero;
+	};
+};
+
+x64v_addr : func(addr : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.addr; .v1 := addr; ... := zero;};
+};
+
+x64v_ripreli : func(riprel_instruction_id : u64, riprel_instruction_id_size : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.ripreli; .v1 := riprel_instruction_id - x64_current_instruction_id(); .v2 := riprel_instruction_id_size; ... := zero;};
+};
+
+x64v_rodata : func(id : u64, off : u64, sz : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.rodataref; .v1 := id; .v2 := off; .v3 := sz;};
+};
+
+x64v_data : func(id : u64, off : u64, sz : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.dataref; .v1 := id; .v2 := off; .v3 := sz;};
+};
+
+x64v_bss : func(id : u64, off : u64, sz : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.bssref; .v1 := id; .v2 := off; .v3 := sz;};
+};
+
+x64v_fn : func(id : u64 -> x64v)
+{
+	return x64v{.tag := x64v_tag.fnref; .v1 := id; .v2 := 32;};
+};
+
+x64v_is_custom : func(v : x64v -> bool)
+{
+	return ((v.tag@s64) >= (x64v_tag.custom0@s64));
+};
+
+tbl_customval_size_funcs ::= func(v : x64v -> u64) mut[4] mut
+{
+	... := zero;
+};
+
+x64v_size : func(v : x64v -> u64)
+{
+	if(v.tag == x64v_tag.imm)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.reg)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		return v.v1;
+	}
+	if(v.tag == x64v_tag.addr)
+	{
+		return 64;
+	}
+	if((v.tag == x64v_tag.riprel) || (v.tag == x64v_tag.ripreli) || (v.tag == x64v_tag.fnref))
+	{
+		return v.v2;
+	}
+	if((v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref))
+	{
+		return v.v3;
+	}
+	if(x64v_is_custom(v))
+	{
+		customid ::= v.tag@s64 - (x64v_tag.custom0@s64);
+		return [tbl_customval_size_funcs # customid](v);
+	}
+	return zero;
+};
+
+x64v_is_reg : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.reg;
+};
+
+x64v_is_imm : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.imm;
+};
+
+x64v_is_riprel : func(v : x64v -> bool)
+{
+	return (v.tag == x64v_tag.ripreli) || (v.tag == x64v_tag.riprel) || (v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref) || (v.tag == x64v_tag.fnref);
+};
+
+x64v_is_mem : func(v : x64v -> bool)
+{
+	return v.tag == x64v_tag.memreg;
+};
+
+x64_require_same_size : func(v1 : x64v, v2 : x64v -> v0)
+{
+	s1 ::= x64v_size(v1);
+	s2 ::= x64v_size(v2);
+	if(s1 != s2)
+	{
+		psyc_panic_begin(zero);
+		putzstr("two x64 values must be the same size");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+};
+
+x64v_contains_register_of_any_size : func(v : x64v, reg : x64_reg -> bool)
+{
+	if(v.tag == x64v_tag.reg)
+	{
+		return v.r1 == reg;
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		return (v.r1 == reg) || (v.r2 == reg);
+	}
+	return false;
+};
+
+x64v_contains_register : func(v : x64v, reg : x64_reg, sz : u64 -> bool)
+{
+	if(v.tag == x64v_tag.reg)
+	{
+		return (v.r1 == reg) && (v.v1 == sz);
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		return ((v.r1 == reg) && (v.v2 == sz)) || ((v.r2 == reg) && (v.v3 == sz));
+	}
+	return false;
+};
+
+x64v_contains_extended_register : func(v : x64v -> bool)
+{
+	return
+		x64v_contains_register_of_any_size(v, x64_reg.r8 )
+     || x64v_contains_register_of_any_size(v, x64_reg.r9 )
+     || x64v_contains_register_of_any_size(v, x64_reg.r10)
+     || x64v_contains_register_of_any_size(v, x64_reg.r11)
+     || x64v_contains_register_of_any_size(v, x64_reg.r12)
+     || x64v_contains_register_of_any_size(v, x64_reg.r13)
+     || x64v_contains_register_of_any_size(v, x64_reg.r14)
+     || x64v_contains_register_of_any_size(v, x64_reg.r15);
+};
+
+x64v_contains_spl_dil_sil_bpl : func(v : x64v -> bool)
+{
+	return x64v_contains_register(v, x64_reg.rsp, 8)
+        || x64v_contains_register(v, x64_reg.rbp, 8)
+        || x64v_contains_register(v, x64_reg.rsi, 8)
+        || x64v_contains_register(v, x64_reg.rdi, 8);
+
+};
+
+// getters (so i dont go mad trying to remember all the mappings)
+x64v_imm_size : func(v : x64v -> u64)
+{
+	return v.v1;
+};
+
+x64v_imm_value : func(v : x64v -> u64)
+{
+	return v.v2;
+};

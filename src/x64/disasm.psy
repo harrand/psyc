@@ -1,0 +1,314 @@
+tbl_regnames ::= u8 static? static[113]
+{
+	.0 := "";
+	.1 := "al";
+		.2 := "ax";
+			.3 := "eax";
+				.4 := "rax";
+					.5 := "xmm0";
+						.6 := "ymm0";
+							.7 := "zmm0";
+	.8 := "cl";
+		.9 := "cx";
+			.10 := "ecx";
+				.11 := "rcx";
+					.12 := "xmm1";
+						.13 := "ymm1";
+							.14 := "zmm1";
+	.15 := "dl";
+		.16 := "dx";
+			.17 := "edx";
+				.18 := "rdx";
+					.19 := "xmm2";
+						.20 := "ymm2";
+							.21 := "zmm2";
+	.22 := "bl";
+		.23 := "bx";
+			.24 := "ebx";
+				.25 := "rbx";
+					.26 := "xmm3";
+						.27 := "ymm3";
+							.28 := "zmm3";
+	.29 := "spl";
+		.30 := "sp";
+			.31 := "esp";
+				.32 := "rsp";
+					.33 := "xmm4";
+						.34 := "ymm4";
+							.35 := "zmm4";
+	.36 := "bpl";
+		.37 := "bp";
+			.38 := "ebp";
+				.39 := "rbp";
+					.40 := "xmm5";
+						.41 := "ymm5";
+							.42 := "zmm5";
+	.43 := "sil";
+		.44 := "si";
+			.45 := "esi";
+				.46 := "rsi";
+					.47 := "xmm6";
+						.48 := "ymm6";
+							.49 := "zmm6";
+	.50 := "dil";
+		.51 := "di";
+			.52 := "edi";
+				.53 := "rdi";
+					.54 := "xmm7";
+						.55 := "ymm7";
+							.56 := "zmm7";
+	.57 := "r8l";
+		.58 := "r8w";
+			.59 := "r8d";
+				.60 := "r8";
+					.61 := "xmm8";
+						.62 := "ymm8";
+							.63 := "zmm8";
+	.64 := "r9l";
+		.65 := "r9w";
+			.66 := "r9d";
+				.67 := "r9";
+					.68 := "xmm9";
+						.69 := "ymm9";
+							.70 := "zmm9";
+	.71 := "r10l";
+		.72 := "r10w";
+			.73 := "r10d";
+				.74 := "r10";
+					.75 := "xmm10";
+						.76 := "ymm10";
+							.77 := "zmm10";
+	.78 := "r11l";
+		.79 := "r11w";
+			.80 := "r11d";
+				.81 := "r11";
+					.82 := "xmm11";
+						.83 := "ymm11";
+							.84 := "zmm11";
+	.85 := "r12l";
+		.86 := "r12w";
+			.87 := "r12d";
+				.88 := "r12";
+					.89 := "xmm12";
+						.90 := "ymm12";
+							.91 := "zmm12";
+	.92 := "r13l";
+		.93 := "r13w";
+			.94 := "r13d";
+				.95 := "r13";
+					.96 := "xmm13";
+						.97 := "ymm13";
+							.98 := "zmm13";
+	.99 := "r14l";
+		.100 := "r14w";
+			.101 := "r14d";
+				.102 := "r14";
+					.103 := "xmm14";
+						.104 := "ymm14";
+							.105 := "zmm14";
+	.106 := "r15l";
+		.107 := "r15w";
+			.108 := "r15d";
+				.109 := "r15";
+					.110 := "xmm15";
+						.111 := "ymm15";
+							.112 := "zmm15";
+};
+
+tbl_memptrnames ::= u8 static? static[7]
+{
+	.0 := "BYTE PTR";
+	.1 := "WORD PTR";
+	.2 := "DWORD PTR";
+	.3 := "QWORD PTR";
+	.4 := "OWORD PTR";
+	.5 := "YWORD PTR";
+	.6 := "ZWORD PTR";
+};
+
+tbl_customval_handler_funcs ::= func(w : bwriter mut?, v : x64v -> u64) mut[4] mut
+{
+	... := zero;
+};
+
+bwrite_x64reg_disasm : func(w : bwriter mut?, r : x64_reg, sz : u64 -> v0)
+{
+	regidx ::= r@s64@u64;
+	offset ::= log2(sz) - 3; // -3 because 2^3 = 8 and our index starts from 1
+	bwrite_zstr(w, [tbl_regnames # (1 + (regidx * 7) + offset)]);
+};
+
+bwrite_x64imm_disasm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
+{
+	bwrite_zstr(w, "imm");
+	bwrite_uint(w, sz);
+	bwrite_zstr(w, " ");
+	bwrite_uint(w, imm);
+};
+
+bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
+{
+	if(v.tag == x64v_tag.imm)
+	{
+		bwrite_x64imm_disasm(w, v.v1, v.v2);
+	}
+	if(v.tag == x64v_tag.reg)
+	{
+		bwrite_x64reg_disasm(w, v.r1, v.v1);
+	}
+	if(v.tag == x64v_tag.memreg)
+	{
+		mem_size_log2 ::= log2(v.v1) - 3;
+		bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
+		bwrite_zstr(w, " [");
+		if(v.v2 != 0)
+		{
+			bwrite_x64reg_disasm(w, v.r1, v.v2);
+		}
+		if(v.v3 != 0)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_x64reg_disasm(w, v.r2, v.v3);
+		}
+		if(v.v4 != 1)
+		{
+			bwrite_zstr(w, " * ");
+			bwrite_uint(w, v.v4);
+		}
+		if(v.v6 != 0)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_x64imm_disasm(w, v.v5, v.v6);
+		}
+		bwrite_zstr(w, "]");
+	}
+	if(v.tag == x64v_tag.addr)
+	{
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == x64v_tag.ripreli)
+	{
+		bwrite_zstr(w, "ripreli");
+		bwrite_uint(w, v.v2);
+		bwrite_zstr(w, " ");
+		bwrite_sint(w, v.v1@s64);
+	}
+	if(v.tag == x64v_tag.riprel)
+	{
+		bwrite_zstr(w, "riprel");
+		bwrite_uint(w, v.v2);
+		bwrite_zstr(w, " ");
+		bwrite_sint(w, v.v1@s64);
+	}
+	if(v.tag == x64v_tag.rodataref)
+	{
+		bwrite_zstr(w, "%rodata");
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == x64v_tag.dataref)
+	{
+		bwrite_zstr(w, "%data");
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == x64v_tag.bssref)
+	{
+		bwrite_zstr(w, "%bss");
+		bwrite_uint(w, v.v1);
+	}
+	if(v.tag == x64v_tag.fnref)
+	{
+		bwrite_zstr(w, "fn");
+		bwrite_uint(w, v.v1);
+	}
+	if(x64v_is_custom(v))
+	{
+		// use a custom handler
+		idx ::= (v.tag@s64) - (x64v_tag.custom0@s64);
+		handlerfn ::= [tbl_customval_handler_funcs # idx];
+		if(handlerfn == zero)
+		{
+			psyc_panic_begin(zero);
+			putzstr("no custom handler installed for x64v_tag.");
+			putzstr(enumname(v.tag));
+			putzstr("(");
+			putsint(v.tag@s64);
+			putzstr(")");
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
+		handlerfn(w, v);
+	}
+};
+
+bwrite_x64i_disasm : func(w : bwriter mut?, inst : x64i -> v0)
+{
+	bwrite_zstr(w, enumname(inst.tag));
+	bwrite_zstr(w, " ");
+	i : u64 mut;
+	count ::= x64i_operand_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		op ::= [inst.operands # i];
+		bwrite_x64v_disasm(w, op);
+		if(i < (count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+};
+
+bwrite_x64p_disasm : func(w : bwriter mut?, p : x64p -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		fn ::= p.funcs # i;
+		for(j = 0; j < fn->inst_count; j = j + 1)
+		{
+			bwrite_x64i_disasm(w, [fn->inst # j]);
+			if(j == 0)
+			{
+				bwrite_zstr(w, "           ; fn");
+				bwrite_uint(w, i);
+			}
+			bwrite8(w, 10);
+		}
+	}
+};
+
+log2 : func(n : u64 mut -> u64)
+{
+	result : u64 mut := 0;
+	if(n >= (1 << 32))
+	{
+		n = (n >> 32);
+		result = result + 32;
+	}
+	if(n >= (1 << 16))
+	{
+		n = (n >> 16);
+		result = result + 16;
+	}
+	if(n >= (1 << 8))
+	{
+		n = (n >> 8);
+		result = result + 8;
+	}
+	if(n >= (1 << 4))
+	{
+		n = (n >> 4);
+		result = result + 4;
+	}
+	if(n >= (1 << 2))
+	{
+		n = (n >> 2);
+		result = result + 2;
+	}
+	if(n >= (1 << 1))
+	{
+		result = result + 1;
+	}
+	return result;
+};
+

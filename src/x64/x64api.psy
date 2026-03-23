@@ -1,0 +1,1524 @@
+x64api_t : struct
+{
+	prog : x64p mut;
+	func_cursor : u64;
+};
+
+x64api : x64api_t mut := zero;
+
+x64_add_func : func(-> x64v)
+{
+	if(x64api.prog.funcs == zero)
+	{
+		x64api.prog.funcs_cap = 8;
+		x64api.prog.funcs = arena_alloc(global_arena, x64api.prog.funcs_cap * sizeof x64f);
+	}
+	while(x64api.prog.funcs_count >= x64api.prog.funcs_cap)
+	{
+		oldcap ::= x64api.prog.funcs_cap;
+		old ::= x64api.prog.funcs;
+		x64api.prog.funcs_cap = (x64api.prog.funcs_cap * 2);
+		x64api.prog.funcs = arena_alloc(global_arena, x64api.prog.funcs_cap * sizeof x64f);
+		memcopy(x64api.prog.funcs, old, oldcap * sizeof x64f);
+	}
+	idx ::= x64api.prog.funcs_count;
+	x64api.prog.funcs_count = (x64api.prog.funcs_count + 1);
+	[x64api.prog.funcs # idx] = x64f
+	{
+		... := zero;
+	};
+	return x64v_fn(idx);
+};
+
+x64_current_fn : func(-> x64f mut?)
+{
+	return x64api.prog.funcs # x64api.func_cursor;
+};
+
+x64_current_instruction_id : func(-> u64)
+{
+	return x64_current_fn()->inst_count;
+};
+
+x64_add_rodata : func(g : x64g -> u64)
+{
+	if(x64api.prog.rodata == zero)
+	{
+		x64api.prog.rodata_cap = 8;
+		x64api.prog.rodata = arena_alloc(global_arena, x64api.prog.rodata_cap * sizeof x64g);
+	}
+	while(x64api.prog.rodata_count >= x64api.prog.rodata_cap)
+	{
+		oldcap ::= x64api.prog.rodata_cap;
+		old ::= x64api.prog.rodata;
+		x64api.prog.rodata_cap = (x64api.prog.rodata_cap * 2);
+		x64api.prog.rodata = arena_alloc(global_arena, x64api.prog.rodata_cap * sizeof x64g);
+		memcopy(x64api.prog.rodata, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.rodata_count;
+	x64api.prog.rodata_count = (x64api.prog.rodata_count + 1);
+	[x64api.prog.rodata # idx] = g;
+	return idx;
+};
+
+x64_add_data : func(g : x64g -> u64)
+{
+	if(x64api.prog.data == zero)
+	{
+		x64api.prog.data_cap = 8;
+		x64api.prog.data = arena_alloc(global_arena, x64api.prog.data_cap * sizeof x64g);
+	}
+	while(x64api.prog.data_count >= x64api.prog.data_cap)
+	{
+		oldcap ::= x64api.prog.data_cap;
+		old ::= x64api.prog.data;
+		x64api.prog.data_cap = (x64api.prog.data_cap * 2);
+		x64api.prog.data = arena_alloc(global_arena, x64api.prog.data_cap * sizeof x64g);
+		memcopy(x64api.prog.data, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.data_count;
+	x64api.prog.data_count = (x64api.prog.data_count + 1);
+	[x64api.prog.data # idx] = g;
+	return idx;
+};
+
+x64_add_bss : func(g : x64g -> u64)
+{
+	if(x64api.prog.bss == zero)
+	{
+		x64api.prog.bss_cap = 8;
+		x64api.prog.bss = arena_alloc(global_arena, x64api.prog.bss_cap * sizeof x64g);
+	}
+	while(x64api.prog.bss_count >= x64api.prog.bss_cap)
+	{
+		oldcap ::= x64api.prog.bss_cap;
+		old ::= x64api.prog.bss;
+		x64api.prog.bss_cap = (x64api.prog.bss_cap * 2);
+		x64api.prog.bss = arena_alloc(global_arena, x64api.prog.bss_cap * sizeof x64g);
+		memcopy(x64api.prog.bss, old, oldcap * sizeof x64g);
+	}
+	idx ::= x64api.prog.bss_count;
+	x64api.prog.bss_count = (x64api.prog.bss_count + 1);
+	[x64api.prog.bss # idx] = g;
+	return idx;
+};
+
+x64_getfn : func(-> u64)
+{
+	return x64api.func_cursor;
+};
+
+x64_setfn : func(pos : u64 -> v0)
+{
+	x64api.func_cursor = pos;
+};
+
+x64_add_instruction : func(inst : x64i -> u64)
+{
+	fn ::= x64api.prog.funcs # (x64api.func_cursor);
+	if(fn->inst == zero)
+	{
+		fn->inst_cap = 8;
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64i);
+	}
+	while(fn->inst_count >= fn->inst_cap)
+	{
+		oldcap ::= fn->inst_cap;
+		old ::= fn->inst;
+		fn->inst_cap = (fn->inst_cap * 2);
+		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64i);
+		memcopy(fn->inst, old, oldcap * sizeof x64i);
+	}
+	idx ::= fn->inst_count;
+	fn->inst_count = (fn->inst_count + 1);
+	[fn->inst # idx] = inst;
+	return idx;
+};
+
+x64_dump_disasm_to : func(w : bwriter mut? -> v0)
+{
+	bwrite_x64p_disasm(w, x64api.prog);
+};
+
+x64_dump_to_stdout : func(-> v0)
+{
+	tmp ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+	x64_dump_disasm_to(ref tmp);
+	putbytes(tmp.buf, tmp.len);
+};
+
+// instructions api
+x64_nop : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.nop;
+		.operands := zero;
+	});
+};
+
+x64_mov : func(dst : x64v, src : x64v -> v0)
+{
+	if(x64v_is_imm(src) && (x64v_size(src) == 64))
+	{
+		if(!x64v_is_reg(dst) || (x64v_size(dst) != 64))
+		{
+			panic_assert_failure("mov: 64-bit immediates are only supported if the destination is an r64");
+		}
+	}
+	if(!x64v_is_imm(src) && (x64v_size(src) != x64v_size(dst)))
+	{
+		panic_assert_failure("dst and src of mov instruction were not of the same size. this is not allowed unless the src is an imm32 and the dst is 64-bit");
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.mov;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_movsx : func(dst : x64v, src : x64v -> v0)
+{
+	if(x64v_size(dst) <= x64v_size(src))
+	{
+		panic_assert_failure("dst of movsx must be greater than the src");
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movsx;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_movzx : func(dst : x64v, src : x64v -> v0)
+{
+	if(x64v_size(dst) <= x64v_size(src))
+	{
+		panic_assert_failure("dst of movsx must be greater than the src");
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movzx;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_movd : func(dst : x64v, src : x64v -> v0)
+{
+	// r/m32 or xmm in any order
+	total ::= x64v_size(dst) + x64v_size(src);
+	if(total != (32 + 128))
+	{
+		panic_assert_failure("total operand size of movd should be 32 + 128");
+	}
+	// todo: check r/m32 and r128
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movd;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_movq : func(dst : x64v, src : x64v -> v0)
+{
+	// r/m64 or xmm in any order
+	total ::= x64v_size(dst) + x64v_size(src);
+	if(total != (64 + 128))
+	{
+		panic_assert_failure("total operand size of movd should be 64 + 128");
+	}
+	// todo: check r/m64 and r128
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movq;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_push : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.push;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+x64_pop : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.pop;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+x64_cbw : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cbw;
+		.operands := zero;
+	});
+};
+
+x64_cwde : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cwde;
+		.operands := zero;
+	});
+};
+
+x64_cdqe : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cdqe;
+		.operands := zero;
+	});
+};
+
+// increment r/m 8/16/32/64 by 1
+x64_inc : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.inc;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+// decrement r/m 8/16/32/64 by 1
+x64_dec : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.dec;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+// twos complement negate  r/m 8/16/32/64
+x64_neg : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.neg;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+// reverse each bit of  r/m 8/16/32/64
+x64_not : func(op : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.not;
+		.operands := x64v[4]
+		{
+			.0 := op;
+			... := zero;
+		};
+	});
+};
+
+// store effective address for m in r 16/32/64
+x64_lea : func(r : x64v, m : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.lea;
+		.operands := x64v[4]
+		{
+			.0 := r;
+			.1 := m;
+			... := zero;
+		};
+	});
+};
+
+// add imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_add : func(dst : x64v, src : x64v -> v0)
+{
+	if(x64v_is_imm(src) && (x64v_size(src) == 64))
+	{
+		panic_assert_failure("add does not support 64-bit immediates");
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.add;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// sub imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_sub : func(dst : x64v, src : x64v -> v0)
+{
+	if(x64v_is_imm(src) && (x64v_size(src) == 64))
+	{
+		panic_assert_failure("sub does not support 64-bit immediates");
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.sub;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// unsigned mul imm/r/m 8/16/32/64 (src) to ax/dx:ax/edx:eax/rdx:rax (dst)
+x64_mul : func(src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.mul;
+		.operands := x64v[4]
+		{
+			.0 := src;
+			... := zero;
+		};
+	});
+};
+
+// signed mul imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_imul : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.imul;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// unsigned div r/m 8/16/32/64 (src) to al,ah/ax,dx/eax,edx/rax,rdx (dst_quotient, dst_remainder)
+x64_div : func(src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.div;
+		.operands := x64v[4]
+		{
+			.0 := src;
+			... := zero;
+		};
+	});
+};
+
+// signed div r/m 8/16/32/64 (src) to al,ah/ax,dx/eax,edx/rax,rdx (dst_quotient, dst_remainder)
+x64_idiv : func(src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.idiv;
+		.operands := x64v[4]
+		{
+			.0 := src;
+			... := zero;
+		};
+	});
+};
+
+
+// xor imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_xor : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.xor;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// or imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_or : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.or;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// and imm/r/m 8/16/32/64 (src) to r/m 8/16/32/64 (dst) and store the result in dst
+x64_and : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.and;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// multiply r/m 8/16/32/64 (dst) by 2, imm8 times (src)
+x64_shl : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.shl;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// multiply r/m 8/16/32/64 (dst) by 2, imm8 times (src)
+// note: this is 100% completely identical to shl
+x64_sal : func(dst : x64v, src : x64v -> v0)
+{
+	x64_shl(dst, src);
+};
+
+// unsigned divide r/m 8/16/32/64 (dst) by 2, imm8 times (src)
+x64_shr : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.shr;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// signed divide r/m 8/16/32/64 (dst) by 2, imm8 times (src)
+x64_sar : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.sar;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// call a r/m64 or ripreladdr procedure
+x64_call : func(callee : x64v -> v0)
+{
+	if(x64v_is_riprel(callee))
+	{
+		if(x64v_size(callee) != 32)
+		{
+			panic_assert_failure("call riprel only supports rel32");
+		}
+	}
+	else
+	{
+		if(x64v_size(callee) != 64)
+		{
+			panic_assert_failure("call r/m only supports r/m64");
+		}
+	}
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.call;
+		.operands := x64v[4]
+		{
+			.0 := callee;
+			... := zero;
+		};
+	});
+};
+
+// unconditionally jump to a ripreladdr or r/m64 location
+x64_jmp : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jmp;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if zero/equal) to a addr/ripreladdr location
+x64_jz : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jz;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if not zero/equal) to a addr/ripreladdr location
+x64_jnz : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jnz;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if signed less) to a addr/ripreladdr location
+x64_jl : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jl;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if signed less or equal) to a addr/ripreladdr location
+x64_jle : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jle;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if signed greater) to a addr/ripreladdr location
+x64_jg : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jg;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if signed greater or equal) to a addr/ripreladdr location
+x64_jge : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jge;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if unsigned less) to a addr/ripreladdr location
+x64_jb : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jb;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if unsigned less or equal) to a addr/ripreladdr location
+x64_jbe : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jbe;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if unsigned greater) to a addr/ripreladdr location
+x64_ja : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.ja;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if unsigned greater or equal) to a addr/ripreladdr location
+x64_jae : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jae;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if sign bit is set i.e negative) to a addr/ripreladdr location
+x64_js : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.js;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// jump (if overflow bit is set) to a addr/ripreladdr location
+x64_jo : func(loc : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.jo;
+		.operands := x64v[4]
+		{
+			.0 := loc;
+			... := zero;
+		};
+	});
+};
+
+// logical compare. compute the bitwise AND of lhs r/m 8/16/32/64 and rhs r/imm 8/16/32/64. set SF, ZF, PF according to the result but do not affect the operands
+x64_test : func(lhs : x64v, rhs : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.test;
+		.operands := x64v[4]
+		{
+			.0 := lhs;
+			.1 := rhs;
+			... := zero;
+		};
+	});
+};
+
+// compute a subtraction of lhs r/m 8/16/32/64 and rhs r/m/imm 8/16/32/64 and set the status flags as if a SUB had occurred, but do not affect the operands.
+x64_cmp : func(lhs : x64v, rhs : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.cmp;
+		.operands := x64v[4]
+		{
+			.0 := lhs;
+			.1 := rhs;
+			... := zero;
+		};
+	});
+};
+
+x64_ret : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.ret;
+		.operands := zero;
+	});
+};
+
+// set r/m 8 if equal (ZF == 1)
+x64_setz : func(b : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.setz;
+		.operands := x64v[4]
+		{
+			.0 := b;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of floats from r/m 128 src to r/m 128 dst
+// memory operands *must* be 16 byte aligned. use movups for a slower version that has no such requirement.
+x64_movaps : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movaps;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of doubles from r/m 128 src to r/m 128 dst
+// memory operands *must* be 16 byte aligned. use movupd for a slower version that has no such requirement.
+x64_movapd : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movapd;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of integers from r/m 128 src to r/m 128 dst
+// memory operands *must* be 16 byte aligned. use movdqu for a slower version that has no such requirement.
+x64_movdqa : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movdqa;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of floats from r/m 128 src to r/m 128 dst
+// there is no alignment requirement. movaps is faster but has a 16 byte alignment requirement for memory operands
+x64_movups : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movups;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of doubles from r/m 128 src to r/m 128 dst
+// there is no alignment requirement. movapd is faster but has a 16 byte alignment requirement for memory operands
+x64_movupd : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movupd;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+// mov 128-bits worth of integers from r/m 128 src to r/m 128 dst
+// there is no alignment requirement. movdqa is faster but has a 16 byte alignment requirement for memory operands
+x64_movdqu : func(dst : x64v, src : x64v -> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.movdqu;
+		.operands := x64v[4]
+		{
+			.0 := dst;
+			.1 := src;
+			... := zero;
+		};
+	});
+};
+
+x64_syscall : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.syscall;
+		... := zero;
+	});
+};
+
+x64_int3 : func(-> v0)
+{
+	x64_add_instruction(x64i
+	{
+		.tag := x64i_tag.int3;
+		... := zero;
+	});
+};
+
+// register shorthands
+
+x64_reg_rax : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 64);
+};
+
+x64_reg_eax : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 32);
+};
+
+x64_reg_ax : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 16);
+};
+
+x64_reg_al : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 8);
+};
+
+x64_reg_xmm0 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 128);
+};
+
+x64_reg_ymm0 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 256);
+};
+
+x64_reg_zmm0 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rax, 512);
+};
+
+x64_reg_rcx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 64);
+};
+
+x64_reg_ecx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 32);
+};
+
+x64_reg_cx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 16);
+};
+
+x64_reg_cl : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 8);
+};
+
+x64_reg_xmm1 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 128);
+};
+
+x64_reg_ymm1 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 256);
+};
+
+x64_reg_zmm1 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rcx, 512);
+};
+
+x64_reg_rdx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 64);
+};
+
+x64_reg_edx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 32);
+};
+
+x64_reg_dx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 16);
+};
+
+x64_reg_dl : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 8);
+};
+
+x64_reg_xmm2 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 128);
+};
+
+x64_reg_ymm2 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 256);
+};
+
+x64_reg_zmm2 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdx, 512);
+};
+
+x64_reg_rbx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 64);
+};
+
+x64_reg_ebx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 32);
+};
+
+x64_reg_bx : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 16);
+};
+
+x64_reg_bl : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 8);
+};
+
+x64_reg_xmm3 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 128);
+};
+
+x64_reg_ymm3 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 256);
+};
+
+x64_reg_zmm3 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbx, 512);
+};
+
+x64_reg_rsp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 64);
+};
+
+x64_reg_esp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 32);
+};
+
+x64_reg_sp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 16);
+};
+
+x64_reg_spl : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 8);
+};
+
+x64_reg_xmm4 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 128);
+};
+
+x64_reg_ymm4 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 256);
+};
+
+x64_reg_zmm4 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsp, 512);
+};
+
+x64_reg_rbp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 64);
+};
+
+x64_reg_ebp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 32);
+};
+
+x64_reg_bp : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 16);
+};
+
+x64_reg_bpl : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 8);
+};
+
+x64_reg_xmm5 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 128);
+};
+
+x64_reg_ymm5 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 256);
+};
+
+x64_reg_zmm5 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rbp, 512);
+};
+
+x64_reg_rsi : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 64);
+};
+
+x64_reg_esi : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 32);
+};
+
+x64_reg_si : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 16);
+};
+
+x64_reg_sil : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 8);
+};
+
+x64_reg_xmm6 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 128);
+};
+
+x64_reg_ymm6 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 256);
+};
+
+x64_reg_zmm6 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rsi, 512);
+};
+
+x64_reg_rdi : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 64);
+};
+
+x64_reg_edi : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 32);
+};
+
+x64_reg_di : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 16);
+};
+
+x64_reg_dil : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 8);
+};
+
+x64_reg_xmm7 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 128);
+};
+
+x64_reg_ymm7 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 256);
+};
+
+x64_reg_zmm7 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.rdi, 512);
+};
+
+x64_reg_r8 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 64);
+};
+
+x64_reg_r8d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 32);
+};
+
+x64_reg_r8w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 16);
+};
+
+x64_reg_r8l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 8);
+};
+
+x64_reg_xmm8 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 128);
+};
+
+x64_reg_ymm8 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 256);
+};
+
+x64_reg_zmm8 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r8, 512);
+};
+
+x64_reg_r9 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 64);
+};
+
+x64_reg_r9d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 32);
+};
+
+x64_reg_r9w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 16);
+};
+
+x64_reg_r9l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 8);
+};
+
+x64_reg_xmm9 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 128);
+};
+
+x64_reg_ymm9 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 256);
+};
+
+x64_reg_zmm9 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r9, 512);
+};
+
+x64_reg_r10 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 64);
+};
+
+x64_reg_r10d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 32);
+};
+
+x64_reg_r10w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 16);
+};
+
+x64_reg_r10l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 8);
+};
+
+x64_reg_xmm10 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 128);
+};
+
+x64_reg_ymm10 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 256);
+};
+
+x64_reg_zmm10 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r10, 512);
+};
+
+x64_reg_r11 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 64);
+};
+
+x64_reg_r11d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 32);
+};
+
+x64_reg_r11w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 16);
+};
+
+x64_reg_r11l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 8);
+};
+
+x64_reg_xmm11 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 128);
+};
+
+x64_reg_ymm11 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 256);
+};
+
+x64_reg_zmm11 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r11, 512);
+};
+
+x64_reg_r12 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 64);
+};
+
+x64_reg_r12d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 32);
+};
+
+x64_reg_r12w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 16);
+};
+
+x64_reg_r12l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 8);
+};
+
+x64_reg_xmm12 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 128);
+};
+
+x64_reg_ymm12 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 256);
+};
+
+x64_reg_zmm12 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r12, 512);
+};
+
+x64_reg_r13 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 64);
+};
+
+x64_reg_r13d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 32);
+};
+
+x64_reg_r13w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 16);
+};
+
+x64_reg_r13l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 8);
+};
+
+x64_reg_xmm13 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 128);
+};
+
+x64_reg_ymm13 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 256);
+};
+
+x64_reg_zmm13 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r13, 512);
+};
+
+x64_reg_r14 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 64);
+};
+
+x64_reg_r14d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 32);
+};
+
+x64_reg_r14w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 16);
+};
+
+x64_reg_r14l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 8);
+};
+
+x64_reg_xmm14 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 128);
+};
+
+x64_reg_ymm14 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 256);
+};
+
+x64_reg_zmm14 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r14, 512);
+};
+
+x64_reg_r15 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 64);
+};
+
+x64_reg_r15d : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 32);
+};
+
+x64_reg_r15w : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 16);
+};
+
+x64_reg_r15l : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 8);
+};
+
+x64_reg_xmm15 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 128);
+};
+
+x64_reg_ymm15 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 256);
+};
+
+x64_reg_zmm15 : func(-> x64v)
+{
+	return x64v_reg(x64_reg.r15, 512);
+};

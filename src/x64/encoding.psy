@@ -1,0 +1,1345 @@
+panic_assert_failure : func(msg : u8? -> v0)
+{
+	psyc_panic_begin(zero);
+	putzstr(msg);
+	psyc_diag_end();
+	psyc_exit_failure();
+};
+
+x64_mod : enum
+{
+	.disp0  := 0b00;
+	.disp8  := 0b01;
+	.disp32 := 0b10;
+	.reg	:= 0b11;
+};
+
+x64_legacy_prefix : enum
+{
+	// group 1
+	.lock := 0xf0;
+	.repnz := 0xf2;
+	.repz := 0xf3;
+	// group 2
+	.cs_seg_override := 0x2e;
+	.ss_seg_override := 0x36;
+	.ds_seg_override := 0x3e;
+	.es_seg_override := 0x26;
+	.fs_seg_override := 0x64;
+	.gs_seg_override := 0x65;
+	.branch_not_taken := 0x2e;
+	// group 3
+	.operand_size_override := 0x66;
+	// group 4
+	.address_size_override := 0x67;
+};
+
+x64_rex_prefix : enum
+{
+	.rex   := 0b01000000;
+	.rex_w := 0b01001000;// 0: operand size determined by CS.D; 1: 64-bit operand size
+	.rex_r := 0b01000100;// extension of ModR/M reg
+	.rex_x := 0b01000010;// extension of SIB index
+	.rex_b := 0b01000001;// extension of ModR/M rm, SIB base, or Opcode reg
+	.all_but_w := 0b01000111;// REX RXB, no W
+	.all := 0b01001111;// REX WRXB, all high
+};
+
+x64i_ext : enum
+{
+	.reg      := 1; // /r
+	.plus_reg := 3; // + rb
+	.opcode_plus_n   := 2; // /0
+	// 3 => /1
+	// 4 => /2
+	// etc...
+	.invalid_sentinel := 69420;
+};
+
+x64i_ext_opcode_plus_0 ::= 2;
+
+x64v_enc : enum
+{
+	.r := 1;
+	.rm := 2;
+	.m := 3;
+	.imm := 4;
+};
+
+x64_clobber : enum
+{
+	.op0 := 1;
+	.op1 := 2;
+	.op3 := 3;
+	.op4 := 4;
+	.rax := 5;
+	.eax := 6;
+	.ax := 7;
+	.al := 8;
+	.rdx := 9;
+	.edx := 10;
+	.dx := 11;
+	.dl := 12;
+	.rsp := 13;
+	.mem := 14;
+};
+
+x64i_enc : struct
+{
+	legacy_prefixes : x64_legacy_prefix mut[4];
+	rex_prefix : x64_rex_prefix;
+	opcode : u16;
+	ext : x64i_ext weak;
+	operand_types : x64v_enc[4];
+	clobbers : x64_clobber[4];
+};
+
+x64i_enc_legacy_prefix_count : func(enc : x64i_enc -> u64)
+{
+	i : u64 mut;
+	for(i = 0; i < countof typeof(enc.legacy_prefixes); i = i + 1)
+	{
+		cur ::= [enc.legacy_prefixes # i];
+		if(cur == zero)
+		{
+			return i;
+		}
+	}
+	return i;
+};
+
+x64i_encode_nop : func(mov : x64i -> x64i_enc)
+{
+	return encoding_nop;
+};
+
+x64i_encode_mov : func(mov : x64i -> x64i_enc)
+{
+	op1 ::= [mov.operands # 1];
+	if((x64v_size(op1) == 64) && (op1.tag == x64v_tag.imm))
+	{
+		// imm64 must mean op0 is r64 otherwise ill-formed
+		return [encoding_tbl_mov # 12];
+	}
+	return [encoding_tbl_mov # x64i_encoding_table_base_offset_2op(mov)];
+};
+
+x64i_encode_movsx : func(movsx : x64i -> x64i_enc)
+{
+	return [encoding_tbl_movsx # x64i_encoding_table_base_offset_movx(movsx)];
+};
+
+x64i_encode_movzx : func(movzx : x64i -> x64i_enc)
+{
+	op1 ::= [movzx.operands # 1];
+	if(x64v_size(op1) == 32)
+	{
+		// movzx r64, r/m32 doesnt exist
+		// but its equivalent to mov r32, r/m32
+		op0_32bit : x64v mut := [movzx.operands # 0];
+		op0_32bit.v1 = 32;
+		return x64i_encode_mov(x64i
+		{
+			.tag := x64i_tag.mov;
+			.operands := x64v[4]
+			{
+				.0 := op0_32bit;
+				.1 := op1;
+				... := zero;
+			};
+			... := zero;
+		});
+	}
+	return [encoding_tbl_movzx # x64i_encoding_table_base_offset_movx(movzx)];
+};
+
+x64i_encode_movd : func(movd : x64i -> x64i_enc)
+{
+	op0 ::= [movd.operands # 1];
+	if(x64v_size(op0) == 128)
+	{
+		// xmm, r/m32 == id 0
+		return [encoding_tbl_movd # 0];
+	}
+	return [encoding_tbl_movd # 1];
+};
+
+x64i_encode_movq : func(movq : x64i -> x64i_enc)
+{
+	op0 ::= [movq.operands # 1];
+	if(x64v_size(op0) == 128)
+	{
+		// xmm, r/m64 == id 0
+		return [encoding_tbl_movq # 0];
+	}
+	return [encoding_tbl_movq # 1];
+};
+
+x64i_encode_movss : func(movss : x64i -> x64i_enc)
+{
+	op1 ::= [movss.operands # 1];
+	if(x64v_size(op1) == 128)
+	{
+		// xmm, xmm/m32 == id 0
+		return [encoding_tbl_movss # 0];
+	}
+	return [encoding_tbl_movss # 1];
+};
+
+x64i_encode_movsd : func(movsd : x64i -> x64i_enc)
+{
+	op1 ::= [movsd.operands # 1];
+	if(x64v_size(op1) == 128)
+	{
+		// xmm, xmm/m64 == id 0
+		return [encoding_tbl_movsd # 0];
+	}
+	return [encoding_tbl_movsd # 1];
+};
+
+x64i_encode_push : func(push : x64i -> x64i_enc)
+{
+	op ::= [push.operands # 0];
+	if(!x64v_is_reg(op) || (op.v1 != 64))
+	{
+		panic_assert_failure("you can only push a 64-bit register");
+	}
+	return encoding_push;
+};
+
+x64i_encode_pop : func(pop : x64i -> x64i_enc)
+{
+	op ::= [pop.operands # 0];
+	if(!x64v_is_reg(op) || (op.v1 != 64))
+	{
+		panic_assert_failure("you can only pop a 64-bit register");
+	}
+	return encoding_pop;
+};
+
+x64i_encode_cbw : func(mov : x64i -> x64i_enc)
+{
+	return encoding_cbw;
+};
+
+x64i_encode_cwde : func(mov : x64i -> x64i_enc)
+{
+	return encoding_cwde;
+};
+
+x64i_encode_cdqe : func(mov : x64i -> x64i_enc)
+{
+	return encoding_cdqe;
+};
+
+x64i_encode_inc : func(inc : x64i -> x64i_enc)
+{
+	return [encoding_tbl_inc # x64i_encoding_table_base_offset_1op(inc)];
+};
+
+x64i_encode_dec : func(dec : x64i -> x64i_enc)
+{
+	return [encoding_tbl_dec # x64i_encoding_table_base_offset_1op(dec)];
+};
+
+x64i_encode_neg : func(dec : x64i -> x64i_enc)
+{
+	return [encoding_tbl_neg # x64i_encoding_table_base_offset_1op(dec)];
+};
+
+x64i_encode_not : func(dec : x64i -> x64i_enc)
+{
+	return [encoding_tbl_not # x64i_encoding_table_base_offset_1op(dec)];
+};
+
+x64i_encode_lea : func(lea : x64i -> x64i_enc)
+{
+	op1 ::= [lea.operands # 0];
+	if(!x64v_is_reg(op1))
+	{
+		panic_assert_failure("first operand to lea *must* be a register");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		panic_assert_failure("first operand to lea cannot be an 8-bit register. only 16/32/64");
+	}
+	op2 ::= [lea.operands # 1];
+	if(!(x64v_is_mem(op2) || x64v_is_riprel(op2)))
+	{
+		panic_assert_failure("second operand to lea *must* be a memory operand");
+	}
+	return [encoding_tbl_lea # x64i_encoding_table_base_offset_lea(lea)];
+};
+
+x64i_encode_add : func(add : x64i -> x64i_enc)
+{
+	op2 ::= [add.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to ADD cannot be an imm64");
+	}
+	return [encoding_tbl_add # x64i_encoding_table_base_offset_2op(add)];
+};
+
+x64i_encode_sub : func(sub : x64i -> x64i_enc)
+{
+	op2 ::= [sub.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to sub cannot be an imm64");
+	}
+	return [encoding_tbl_sub # x64i_encoding_table_base_offset_2op(sub)];
+};
+
+x64i_encode_mul : func(mul : x64i -> x64i_enc)
+{
+	return [encoding_tbl_mul # x64i_encoding_table_base_offset_1op(mul)];
+};
+
+x64i_encode_imul : func(imul : x64i -> x64i_enc)
+{
+	if(x64v_size([imul.operands # 0]) == 8)
+	{
+		panic_assert_failure("there is no 8-bit imul");
+	}
+	return [encoding_tbl_imul # x64i_encoding_table_base_offset_1op(imul)];
+};
+
+x64i_encode_div : func(div : x64i -> x64i_enc)
+{
+	return [encoding_tbl_div # x64i_encoding_table_base_offset_1op(div)];
+};
+
+x64i_encode_idiv : func(idiv : x64i -> x64i_enc)
+{
+	return [encoding_tbl_idiv # x64i_encoding_table_base_offset_1op(idiv)];
+};
+
+x64i_encode_xor : func(xor : x64i -> x64i_enc)
+{
+	op2 ::= [xor.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to xor cannot be an imm64");
+	}
+	return [encoding_tbl_xor # x64i_encoding_table_base_offset_2op(xor)];
+};
+
+x64i_encode_or : func(or : x64i -> x64i_enc)
+{
+	op2 ::= [or.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to or cannot be an imm64");
+	}
+	return [encoding_tbl_or # x64i_encoding_table_base_offset_2op(or)];
+};
+
+x64i_encode_and : func(and : x64i -> x64i_enc)
+{
+	op2 ::= [and.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 == 64))
+	{
+		panic_assert_failure("immediate operand to and cannot be an imm64");
+	}
+	return [encoding_tbl_and # x64i_encoding_table_base_offset_2op(and)];
+};
+
+x64i_encode_shl : func(shl : x64i -> x64i_enc)
+{
+	op2 ::= [shl.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to shl must be 8-bit");
+	}
+	return [encoding_tbl_shl # x64i_encoding_table_base_offset_1op(shl)];
+};
+
+x64i_encode_sar : func(sar : x64i -> x64i_enc)
+{
+	op2 ::= [sar.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to sar must be 8-bit");
+	}
+	return [encoding_tbl_sar # x64i_encoding_table_base_offset_1op(sar)];
+};
+
+x64i_encode_shr : func(shr : x64i -> x64i_enc)
+{
+	op2 ::= [shr.operands # 1];
+	if(x64v_is_imm(op2) && (op2.v1 != 8))
+	{
+		panic_assert_failure("immediate operand to shr must be 8-bit");
+	}
+	return [encoding_tbl_shr # x64i_encoding_table_base_offset_1op(shr)];
+};
+
+x64i_encode_call : func(call : x64i -> x64i_enc)
+{
+	if(x64v_is_riprel([call.operands # 0]))
+	{
+		return [encoding_tbl_call # 0];
+	}
+	if(x64v_size([call.operands # 0]) != 64)
+	{
+		panic_assert_failure("r/m operand to call must be 64-bit");
+	}
+	return [encoding_tbl_call # 1];
+};
+
+x64i_encode_jmp : func(jmp : x64i -> x64i_enc)
+{
+	op1 ::= [jmp.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		if((x64v_size(op1) != 64) || !(x64v_is_mem(op1) || x64v_is_reg(op1)))
+		{
+			panic_assert_failure("jmp operand must be riprel 8/32, or r/m64");
+		}
+		return [encoding_tbl_jmp # 2];
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jmp # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jmp # 1];
+	}
+	panic_assert_failure("jmp operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jz : func(jz : x64i -> x64i_enc)
+{
+	op1 ::= [jz.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jz operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jz # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jz # 1];
+	}
+	panic_assert_failure("jz operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jnz : func(jnz : x64i -> x64i_enc)
+{
+	op1 ::= [jnz.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jnz operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jnz # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jnz # 1];
+	}
+	panic_assert_failure("jnz operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jl : func(jl : x64i -> x64i_enc)
+{
+	op1 ::= [jl.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jl operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jl # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jl # 1];
+	}
+	panic_assert_failure("jl operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jle : func(jle : x64i -> x64i_enc)
+{
+	op1 ::= [jle.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jle operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jle # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jle # 1];
+	}
+	panic_assert_failure("jle operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jg : func(jg : x64i -> x64i_enc)
+{
+	op1 ::= [jg.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jg operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jg # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jg # 1];
+	}
+	panic_assert_failure("jg operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jge : func(jge : x64i -> x64i_enc)
+{
+	op1 ::= [jge.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jge operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jge # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jge # 1];
+	}
+	panic_assert_failure("jge operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jb : func(jb : x64i -> x64i_enc)
+{
+	op1 ::= [jb.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jb operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jb # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jb # 1];
+	}
+	panic_assert_failure("jb operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jbe : func(jbe : x64i -> x64i_enc)
+{
+	op1 ::= [jbe.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jbe operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jbe # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jbe # 1];
+	}
+	panic_assert_failure("jbe operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_ja : func(ja : x64i -> x64i_enc)
+{
+	op1 ::= [ja.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("ja operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_ja # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_ja # 1];
+	}
+	panic_assert_failure("ja operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jae : func(jae : x64i -> x64i_enc)
+{
+	op1 ::= [jae.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jae operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jae # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jae # 1];
+	}
+	panic_assert_failure("jae operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_js : func(js : x64i -> x64i_enc)
+{
+	op1 ::= [js.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("js operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_js # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_js # 1];
+	}
+	panic_assert_failure("js operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_jo : func(jo : x64i -> x64i_enc)
+{
+	op1 ::= [jo.operands # 0];
+	if(!x64v_is_riprel(op1))
+	{
+		panic_assert_failure("jo operand must be riprel 8/32 only");
+	}
+	if(x64v_size(op1) == 8)
+	{
+		return [encoding_tbl_jo # 0];
+	}
+	if(x64v_size(op1) == 32)
+	{
+		return [encoding_tbl_jo # 1];
+	}
+	panic_assert_failure("jo operand must be riprel 8/32 only");
+	return zero;
+};
+
+x64i_encode_test : func(test : x64i -> x64i_enc)
+{
+	return [encoding_tbl_test # x64i_encoding_table_base_offset_1op(test)];
+};
+
+x64i_encode_cmp : func(cmp : x64i -> x64i_enc)
+{
+	return [encoding_tbl_cmp # x64i_encoding_table_base_offset_2op(cmp)];
+};
+
+x64i_encode_ret : func(ret : x64i -> x64i_enc)
+{
+	return encoding_ret;
+};
+
+x64i_encode_setz : func(setz : x64i -> x64i_enc)
+{
+	return encoding_setz;
+};
+
+x64i_encode_movaps : func(movaps : x64i -> x64i_enc)
+{
+	op1 ::= [movaps.operands # 0];
+	op2 ::= [movaps.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movaps operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movaps # 0];
+	}
+	return [encoding_tbl_movaps # 1];
+};
+
+x64i_encode_movapd : func(movapd : x64i -> x64i_enc)
+{
+	op1 ::= [movapd.operands # 0];
+	op2 ::= [movapd.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movapd operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movapd # 0];
+	}
+	return [encoding_tbl_movapd # 1];
+};
+
+x64i_encode_movdqa : func(movdqa : x64i -> x64i_enc)
+{
+	op1 ::= [movdqa.operands # 0];
+	op2 ::= [movdqa.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movdqa operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movdqa # 0];
+	}
+	return [encoding_tbl_movdqa # 1];
+};
+
+x64i_encode_movups : func(movups : x64i -> x64i_enc)
+{
+	op1 ::= [movups.operands # 0];
+	op2 ::= [movups.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movups operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movups # 0];
+	}
+	return [encoding_tbl_movups # 1];
+};
+
+x64i_encode_movupd : func(movupd : x64i -> x64i_enc)
+{
+	op1 ::= [movupd.operands # 0];
+	op2 ::= [movupd.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movupd operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movupd # 0];
+	}
+	return [encoding_tbl_movupd # 1];
+};
+
+x64i_encode_movdqu : func(movdqu : x64i -> x64i_enc)
+{
+	op1 ::= [movdqu.operands # 0];
+	op2 ::= [movdqu.operands # 1];
+	if((x64v_size(op1) != 128) || (x64v_size(op2) != 128))
+	{
+		panic_assert_failure("movdqu operands must be 128-bit");
+	}
+	if(x64v_is_reg(op1))
+	{
+		return [encoding_tbl_movdqu # 0];
+	}
+	return [encoding_tbl_movdqu # 1];
+};
+
+x64i_encode_syscall : func(syscall : x64i -> x64i_enc)
+{
+	return encoding_syscall;
+};
+
+x64i_encode_int3 : func(int3 : x64i -> x64i_enc)
+{
+	return encoding_int3;
+};
+
+x64_invalid_modrm : u8 static := 0xff;
+
+x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
+{
+	if(operands_count == zero)
+	{
+		return (x64_invalid_modrm << 8)@u16;
+	}
+	mod_bits : u8 mut := 0;
+	reg_bits : u8 mut := 0;
+	rm_bits : u8 mut := 0;
+
+	rm_idx : u64 mut := -1;
+	r_idx : u64 mut := -1;
+	imm_idx : u64 mut := -1;
+
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		type ::= [enc->operand_types # i];
+		if((type == x64v_enc.rm) || (type == x64v_enc.m))
+		{
+			rm_idx = i;
+		}
+		if(type == x64v_enc.r)
+		{
+			r_idx = i;
+		}
+		if(type == x64v_enc.imm)
+		{
+			imm_idx = i;
+		}
+	}
+
+	rm : x64v mut := zero;
+	r : x64v mut := zero;
+
+	if(rm_idx != -1)
+	{
+		rm = [operands # rm_idx];
+
+		// mod cannot be 0b11
+		if(rm.v6 == 0)
+		{
+			// there is no displacement
+			mod_bits = 0b00;
+		}
+		else
+		{
+			if(rm.v5 == 8)
+			{
+				mod_bits = 0b01;
+			}
+			if(rm.v5 == 32)
+			{
+				mod_bits = 0b10;
+			}
+		}
+		if(rm.r1 == x64_reg.rip)
+		{
+			// rip-relative
+			rm_bits = 0b101;
+			mod_bits = 0b00;
+		}
+		else
+		{
+			rm_bits = rm.r1@s64@u8;
+			if(rm_bits > 0b111)
+			{
+				// extend ModR/M rm
+				rm_bits = (rm_bits & 0b111);
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+			}
+		}
+	}
+	if(r_idx != -1)
+	{
+		r = [operands # r_idx];
+
+		//if((imm_idx == -1) && (rm_idx == -1) && (operands_count == 2))
+		if((imm_idx == -1) && (rm_idx == -1))
+		{
+			// both are registers
+			mod_bits = 0b11;
+		}
+		reg_bits = r.r1@s64@u8;
+		if(reg_bits > 0b111)
+		{
+			// extend ModR/M reg
+			reg_bits = (reg_bits & 0b111);
+			if(enc->ext == x64i_ext.plus_reg)
+			{
+				// if +r then this is added to the opcode, and thus the opcode needs anotehr bit (so rew.b)
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+			}
+			else
+			{
+				// ok just give it to the reg field
+				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_r);
+			}
+		}
+		if(enc->ext == x64i_ext.plus_reg)
+		{
+			// note that we did just add rex_b if the register is extended
+			// but if we are +r then we actually dont need a modrm at all
+			enc->opcode = (enc->opcode + reg_bits@u16);
+			return (x64_invalid_modrm << 8)@u16;
+		}
+	}
+
+	if(enc->ext@s64 >= x64i_ext_opcode_plus_0)
+	{
+		// /N
+		reg_bits = (enc->ext@s64 - x64i_ext_opcode_plus_0)@u8;
+	}
+
+	// if there's an index register, or scale != 1, r/m must be 0b100
+	if((rm_idx != -1) && ((rm.v3 != 0) || (rm.v4 != 1)))
+	{
+		if(x64v_is_mem(rm))
+		{
+			rm_bits = 0b100;
+		}
+		else
+		{
+			// rm is definitely a register
+			mod_bits = 0b11;
+		}
+	}
+
+	if((enc->ext == x64i_ext.reg) && (imm_idx != -1))
+	{
+		return (x64_invalid_modrm << 8)@u16;
+	}
+
+	modrm_byte : u8 := (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+
+	scale_bits : u8 mut := 0;
+	index_bits : u8 mut := 0;
+	base_bits : u8 mut := 0;
+	if(mod_bits != 0b11)
+	{
+		if(rm_idx == -1)
+		{
+			if(r_idx == -1)
+			{
+				// ok this instruction straigh tup doesnt need one
+				return (x64_invalid_modrm << 8)@u16;
+			}
+			panic_assert_failure("need sib byte (mod != 0b11) but there is no rm???");
+		}
+		// scale_bits == scale, which can only be 1/2/4/8
+		scale_bits = log2(rm.v2)@u8;
+
+		index_bits = rm.r2@s64@u8;
+		if(index_bits > 7)
+		{
+			index_bits = index_bits & 0b111;
+			// set rex.x
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_x);
+		}
+
+		base_bits = rm.r1@s64@u8;
+		if(base_bits > 7)
+		{
+			base_bits = base_bits & 0b111;
+			// set rex.x
+			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
+		}
+
+		base_size ::= rm.v2;
+		index_size ::= rm.v3;
+		if(base_size == 32)
+		{
+			// 32 bit addressing mode. need to add the legacy prefix
+			prefix ::= enc->legacy_prefixes # (x64i_enc_legacy_prefix_count([enc]) + 1);
+			[prefix] = [prefix] | x64_legacy_prefix.address_size_override;
+			// index size must also be exactly 32 bit (unless its zero in which case we have no index)
+			if((index_size != 0) && (index_size != 32))
+			{
+				panic_assert_failure("detected SIB memory operand where the base register is 32 bit but the index register is less than 32 bits. this is illegal and cannot be encoded.");
+			}
+		}
+		if(base_size < 32)
+		{
+			panic_assert_failure("detected SIB memory operand where base register is less than 32 bit. 16-bit or 8-bit addressing is not allowed in long mode.");
+		}
+		// base_size must be 64 then. in which case index size can be 64 bit aswell as 32 bit (it will get zext'd)
+		if((index_size != 0) && (index_size < 32))
+		{
+			panic_assert_failure("detected SIB memory operand where the index register is less than 32 bits. this is illegal and cannot be encoded.");
+		}
+	}
+	sib_byte : u8 := (scale_bits << 6) | (index_bits << 3) | (base_bits);
+	return (modrm_byte@u16 << 8) | (sib_byte@u16);
+};
+
+x64i_encode : func(inst : x64i -> x64i_enc)
+{
+	ret : x64i_enc mut := x64i_enc{.ext := x64i_ext.invalid_sentinel; ... := zero;};
+	if(inst.tag == x64i_tag.nop)
+	{
+		ret = x64i_encode_nop(inst);
+	}
+	if(inst.tag == x64i_tag.mov)
+	{
+		ret = x64i_encode_mov(inst);
+	}
+	if(inst.tag == x64i_tag.movsx)
+	{
+		ret = x64i_encode_movsx(inst);
+	}
+	if(inst.tag == x64i_tag.movzx)
+	{
+		ret = x64i_encode_movzx(inst);
+	}
+	if(inst.tag == x64i_tag.push)
+	{
+		ret = x64i_encode_push(inst);
+	}
+	if(inst.tag == x64i_tag.pop)
+	{
+		ret = x64i_encode_pop(inst);
+	}
+	if(inst.tag == x64i_tag.cbw)
+	{
+		ret = x64i_encode_cbw(inst);
+	}
+	if(inst.tag == x64i_tag.cwde)
+	{
+		ret = x64i_encode_cwde(inst);
+	}
+	if(inst.tag == x64i_tag.cdqe)
+	{
+		ret = x64i_encode_cdqe(inst);
+	}
+	if(inst.tag == x64i_tag.inc)
+	{
+		ret = x64i_encode_inc(inst);
+	}
+	if(inst.tag == x64i_tag.dec)
+	{
+		ret = x64i_encode_dec(inst);
+	}
+	if(inst.tag == x64i_tag.neg)
+	{
+		ret = x64i_encode_neg(inst);
+	}
+	if(inst.tag == x64i_tag.not)
+	{
+		ret = x64i_encode_not(inst);
+	}
+	if(inst.tag == x64i_tag.lea)
+	{
+		ret = x64i_encode_lea(inst);
+	}
+	if(inst.tag == x64i_tag.add)
+	{
+		ret = x64i_encode_add(inst);
+	}
+	if(inst.tag == x64i_tag.sub)
+	{
+		ret = x64i_encode_sub(inst);
+	}
+	if(inst.tag == x64i_tag.mul)
+	{
+		ret = x64i_encode_mul(inst);
+	}
+	if(inst.tag == x64i_tag.imul)
+	{
+		ret = x64i_encode_imul(inst);
+	}
+	if(inst.tag == x64i_tag.div)
+	{
+		ret = x64i_encode_div(inst);
+	}
+	if(inst.tag == x64i_tag.idiv)
+	{
+		ret = x64i_encode_idiv(inst);
+	}
+	if(inst.tag == x64i_tag.xor)
+	{
+		ret = x64i_encode_xor(inst);
+	}
+	if(inst.tag == x64i_tag.or)
+	{
+		ret = x64i_encode_or(inst);
+	}
+	if(inst.tag == x64i_tag.and)
+	{
+		ret = x64i_encode_and(inst);
+	}
+	if(inst.tag == x64i_tag.shl)
+	{
+		ret = x64i_encode_shl(inst);
+	}
+	if(inst.tag == x64i_tag.sar)
+	{
+		ret = x64i_encode_sar(inst);
+	}
+	if(inst.tag == x64i_tag.shr)
+	{
+		ret = x64i_encode_shr(inst);
+	}
+	if(inst.tag == x64i_tag.call)
+	{
+		ret = x64i_encode_call(inst);
+	}
+	if(inst.tag == x64i_tag.jmp)
+	{
+		ret = x64i_encode_jmp(inst);
+	}
+	if(inst.tag == x64i_tag.jz)
+	{
+		ret = x64i_encode_jz(inst);
+	}
+	if(inst.tag == x64i_tag.jnz)
+	{
+		ret = x64i_encode_jnz(inst);
+	}
+	if(inst.tag == x64i_tag.jl)
+	{
+		ret = x64i_encode_jl(inst);
+	}
+	if(inst.tag == x64i_tag.jle)
+	{
+		ret = x64i_encode_jle(inst);
+	}
+	if(inst.tag == x64i_tag.jg)
+	{
+		ret = x64i_encode_jg(inst);
+	}
+	if(inst.tag == x64i_tag.jge)
+	{
+		ret = x64i_encode_jge(inst);
+	}
+	if(inst.tag == x64i_tag.jb)
+	{
+		ret = x64i_encode_jb(inst);
+	}
+	if(inst.tag == x64i_tag.jbe)
+	{
+		ret = x64i_encode_jbe(inst);
+	}
+	if(inst.tag == x64i_tag.ja)
+	{
+		ret = x64i_encode_ja(inst);
+	}
+	if(inst.tag == x64i_tag.jae)
+	{
+		ret = x64i_encode_jae(inst);
+	}
+	if(inst.tag == x64i_tag.js)
+	{
+		ret = x64i_encode_js(inst);
+	}
+	if(inst.tag == x64i_tag.jo)
+	{
+		ret = x64i_encode_jo(inst);
+	}
+	if(inst.tag == x64i_tag.test)
+	{
+		ret = x64i_encode_test(inst);
+	}
+	if(inst.tag == x64i_tag.cmp)
+	{
+		ret = x64i_encode_cmp(inst);
+	}
+	if(inst.tag == x64i_tag.ret)
+	{
+		ret = x64i_encode_ret(inst);
+	}
+	if(inst.tag == x64i_tag.setz)
+	{
+		ret = x64i_encode_setz(inst);
+	}
+	// sse
+	if(inst.tag == x64i_tag.movaps)
+	{
+		ret = x64i_encode_movaps(inst);
+	}
+	if(inst.tag == x64i_tag.movapd)
+	{
+		ret = x64i_encode_movapd(inst);
+	}
+	if(inst.tag == x64i_tag.movdqa)
+	{
+		ret = x64i_encode_movdqa(inst);
+	}
+	if(inst.tag == x64i_tag.movups)
+	{
+		ret = x64i_encode_movups(inst);
+	}
+	if(inst.tag == x64i_tag.movupd)
+	{
+		ret = x64i_encode_movupd(inst);
+	}
+	if(inst.tag == x64i_tag.movdqu)
+	{
+		ret = x64i_encode_movdqu(inst);
+	}
+	if(inst.tag == x64i_tag.syscall)
+	{
+		ret = x64i_encode_syscall(inst);
+	}
+	if(inst.tag == x64i_tag.int3)
+	{
+		ret = x64i_encode_int3(inst);
+	}
+	if(ret.ext == x64i_ext.invalid_sentinel)
+	{
+		psyc_panic_begin(zero);
+		putzstr("todo: support encoding for instruction ");
+		putchar('"');
+		putzstr(enumname(inst.tag));
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	// todo: generate the modr/m here if necessary
+
+	// check if any operands are extended registers/spl/dil/sil/bpl (requires base rex at least)
+	i : u64 mut;
+	needs_rex : bool mut := false;
+	for(i = 0; i < x64i_operand_count(inst); i = i + 1)
+	{
+		op ::= [inst.operands # i];
+		if(x64v_contains_extended_register(op) || x64v_contains_spl_dil_sil_bpl(op))
+		{
+			needs_rex = true;
+		}
+	}
+	// add rex prefix if we absolutely need one (crucially: dont add it unless we need it, because its an extra byte to every instruction)
+	if((ret.rex_prefix == zero) && needs_rex)
+	{
+		ret.rex_prefix = x64_rex_prefix.rex;
+	}
+	// note: rex_w is already checked because its baked into the encoding tables indexed by x64i_encoding_table_base_offset_2op et al
+	// todo: check if there is an extended register in modr/m.reg => requires rex_r
+	// todo: check if there is an extended register in modr/m.r/m => requires rex_b
+	// todo: check if there is an extended register in SIB.index => requires rex_x
+	// todo: check if there is an extended register in opcode+rd => requires rex_b
+	return ret;
+};
+
+bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> u64)
+{
+	before_cursor ::= w->cursor;
+	// get the x64i_enc somehow (normally from an encoding tbl)
+	enc ::= x64i_encode(inst);
+	count ::= x64i_operand_count(inst);
+	modrm_sib ::= x64i_encode_modrm_sib(ref enc, inst.operands # 0, x64i_operand_count(inst));
+	modrm ::= modrm_sib >> 8;
+
+	i : u64 mut;
+	for(i = 0; i < countof typeof(enc.legacy_prefixes); i = i + 1)
+	{
+		curprefix ::= [enc.legacy_prefixes # i];
+		if(curprefix != zero)
+		{
+			bwrite8(w, curprefix@s64@u8);
+		}
+	}
+	if(enc.rex_prefix != zero)
+	{
+		bwrite8(w, enc.rex_prefix@s64);
+	}
+
+	// opcodes are 1-2 bytes
+	// if its 1 byte then only print 1!!!
+	if(enc.opcode <= 0xff)
+	{
+		bwrite8(w, enc.opcode);
+	}
+	else
+	{
+		bwrite16(w, enc.opcode);
+	}
+
+
+	if(modrm != x64_invalid_modrm)
+	{
+		bwrite8(w, modrm);
+		if((((modrm >> 6) & 0b11) != 0b11) && ((modrm & 0b111) == 0b100))
+		{
+			// we need a sib byte. write it out.
+			sib ::= modrm_sib & 0xff;
+			bwrite8(w, sib);
+		}
+	}
+	for(i = 0; i < count; i = i + 1)
+	{
+		op ::= [inst.operands # i];
+		if(x64v_is_riprel(op))
+		{
+			if(op.v2 == 8)
+			{
+				bwrite8(w, op.v1);
+			}
+			if(op.v2 == 32)
+			{
+				bwrite32(w, op.v1);
+			}
+		}
+		if(x64v_is_imm(op))
+		{
+			if(op.v1 == 64)
+			{
+				bwrite64(w, op.v2);
+			}
+			if(op.v1 == 32)
+			{
+				bwrite32(w, op.v2);
+			}
+			if(op.v1 == 16)
+			{
+				bwrite16(w, op.v2);
+			}
+			if(op.v1 == 8)
+			{
+				bwrite8(w, op.v2);
+			}
+		}
+		if(x64v_is_mem(op))
+		{
+			if(op.v5 == 64)
+			{
+				bwrite64(w, op.v6);
+			}
+			if(op.v5 == 32)
+			{
+				bwrite32(w, op.v6);
+			}
+			if(op.v5 == 16)
+			{
+				bwrite16(w, op.v6);
+			}
+			if(op.v5 == 8)
+			{
+				bwrite8(w, op.v6);
+			}
+		}
+	}
+	return w->cursor - before_cursor;
+};
+
+bwrite_x64f_encode : func(w : bwriter mut?, fn : x64f -> u64)
+{
+	// this is a bit complex because individual instructions in here could have rip-relative jumps
+	// so we actually encode twice
+	before_cursor ::= w->cursor;
+	i : u64 mut;
+
+	x64f_patch_ripreli(ref fn);
+	// finally re-encode.
+	for(i = 0; i < fn.inst_count; i = i + 1)
+	{
+		bwrite_x64i_encode(w, [fn.inst # i]);
+	}
+
+	return w->cursor - before_cursor;
+};
+
+bwrite_x64p_encode : func(w : bwriter mut?, p : x64p, meta : x64p_encoding_metadata -> u64)
+{
+	x64p_patch_data(ref p, meta);
+	before_cursor ::= w->cursor;
+	i : u64 mut;
+	func_byte_cursor : u64 mut? := arena_alloc(global_arena, p.funcs_count * sizeof u64);
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		[func_byte_cursor # i] = w->cursor - before_cursor;
+		bwrite_x64f_encode(w, [p.funcs # i]);
+	}
+	x64p_patch_fnrefs(ref p, func_byte_cursor);
+	// write again
+	w->cursor = before_cursor;
+	for(i = 0; i < p.funcs_count; i = i + 1)
+	{
+		[func_byte_cursor # i] = w->cursor - before_cursor;
+		bwrite_x64f_encode(w, [p.funcs # i]);
+	}
+	return w->cursor - before_cursor;
+};

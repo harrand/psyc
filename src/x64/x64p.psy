@@ -1,0 +1,250 @@
+x64p : struct
+{
+	//inst : x64i mut?;
+	//inst_count : u64;
+	//inst_cap : u64;
+	funcs : x64f mut?;
+	funcs_count : u64;
+	funcs_cap : u64;
+
+	rodata : x64g mut?;
+	rodata_count : u64;
+	rodata_cap : u64;
+
+	data : x64g mut?;
+	data_count : u64;
+	data_cap : u64;
+
+	bss : x64g mut?;
+	bss_count : u64;
+	bss_cap : u64;
+};
+
+x64p_encoding_metadata : struct
+{
+	rodata_displacement_to_addrstart : u64;
+	data_displacement_to_addrstart : u64;
+	bss_displacement_to_addrstart : u64;
+};
+
+x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
+{
+	buf : u8[1024];
+	tmpwriter ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := buf # 0;
+		.len := sizeof typeof(buf);
+		... := zero;
+	};
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+
+	l : u64 mut;
+	byte_counter : u64 mut := 0;
+	startrel : u64 mut := 0;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		f ::= p->funcs # i;
+		for(j = 0; j < f->inst_count; j = j + 1)
+		{
+			curinst ::= f->inst # j;
+
+			// note: potentially this needs to happen first in the loop instead of last. havent thought it through.
+			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
+			tmpwriter.cursor = 0;
+
+			count ::= x64i_operand_count([curinst]);
+			for(k = 0; k < count; k = k + 1)
+			{
+				curop ::= curinst->operands # k;
+				if(curop->tag == x64v_tag.rodataref)
+				{
+					startrel = startrel + 4;
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->rodata # l].size);
+					}
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (meta.rodata_displacement_to_addrstart@s64 + startrel@s64))@u64;
+				}
+				if(curop->tag == x64v_tag.dataref)
+				{
+					startrel = startrel + 4;
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->data # l].size);
+					}
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (meta.data_displacement_to_addrstart@s64 + startrel@s64))@u64;
+				}
+				if(curop->tag == x64v_tag.bssref)
+				{
+					startrel = startrel + 4;
+					// replace curop with a riprel
+					byte_counter = 0;
+					for(l = 0; l < curop->v1; l = l + 1)
+					{
+						byte_counter = byte_counter + ([p->bss # l].size);
+					}
+					curop->tag = x64v_tag.memreg;
+					curop->r1 = x64_reg.rip;
+					curop->r2 = zero;
+					curop->v1 = curop->v3;
+					curop->v2 = 64;
+					curop->v3 = zero;
+					curop->v4 = 1;
+					curop->v5 = 32;
+					curop->v6 = ((byte_counter@s64) - (meta.bss_displacement_to_addrstart@s64 + startrel@s64))@u64;
+				}
+			}
+		}
+	}
+};
+
+x64p_patch_fnrefs : func(p : x64p mut?, func_byte_cursor : u64 mut? -> v0)
+{
+	buf : u8[1024];
+	tmpwriter ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := buf # 0;
+		.len := sizeof typeof(buf);
+		... := zero;
+	};
+
+	i : u64 mut;
+	j : u64 mut;	
+	k : u64 mut;
+	startrel : u64 mut := 0;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		f ::= p->funcs # i;
+		for(j = 0; j < f->inst_count; j = j + 1)
+		{
+			curinst ::= f->inst # j;
+
+			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
+			tmpwriter.cursor = 0;
+
+			count ::= x64i_operand_count([curinst]);
+			for(k = 0; k < count; k = k + 1)
+			{
+				curop ::= curinst->operands # k;
+				if(curop->tag == x64v_tag.fnref)
+				{
+					byte_dst_from_start ::= [func_byte_cursor # curop->v1];
+					[curop] = x64v
+					{
+						.tag := x64v_tag.riprel;
+						.v1 := ((byte_dst_from_start@s64) - (startrel@s64))@u64;
+						.v2 := 32;
+					};
+				}
+			}
+		}
+	}
+
+};
+
+x64p_rodata_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.rodata_count; i = i + 1)
+	{
+		counter = counter + [p.rodata # i].size;
+	}
+	return counter;
+};
+
+bwrite_x64p_rodata : func(w : bwriter mut?, p : x64p -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.rodata_count; i = i + 1)
+	{
+		cur ::= [p.rodata # i];
+
+		remainder : u64 mut := cur.size - cur.init_data_size;
+		if(cur.init_data == zero)
+		{
+			remainder = cur.size;
+		}
+		else
+		{
+			bwrite_bytes(w, cur.init_data, cur.init_data_size);
+		}
+		// write remainder zeroes
+		for(j = 0; j < remainder; j = j + 1)
+		{
+			bwrite8(w, zero);
+		}
+	}
+};
+
+bwrite_x64p_data : func(w : bwriter mut?, p : x64p -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < p.data_count; i = i + 1)
+	{
+		cur ::= [p.data # i];
+
+		remainder : u64 mut := cur.size - cur.init_data_size;
+		if(cur.init_data == zero)
+		{
+			remainder = cur.size;
+		}
+		else
+		{
+			bwrite_bytes(w, cur.init_data, cur.init_data_size);
+		}
+		// write remainder zeroes
+		for(j = 0; j < remainder; j = j + 1)
+		{
+			bwrite8(w, zero);
+		}
+	}
+};
+
+x64p_data_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.data_count; i = i + 1)
+	{
+		counter = counter + [p.data # i].size;
+	}
+	return counter;
+};
+
+x64p_bss_len : func(p : x64p -> u64)
+{
+	counter : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < p.bss_count; i = i + 1)
+	{
+		counter = counter + [p.bss # i].size;
+	}
+	return counter;
+};
