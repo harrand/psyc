@@ -1,9 +1,9 @@
 irval_tag : enum
 {
-	.reg := 1;
-	.glob := 2;
-	.fnref := 3;
-	.blkref := 4;
+	.reg := 0;
+	.globref := 1;
+	.fnref := 2;
+	.blkref := 3;
 };
 
 irval : struct
@@ -19,7 +19,7 @@ irval_reg : func(idx : u64, type : tyid -> irval)
 	return irval
 	{
 		.tag := irval_tag.reg;
-		.v1 := type@s64@u64;
+		.v1 := ty_clear_all_quals(type)@s64@u64;
 		.v2 := idx;
 	};
 };
@@ -32,4 +32,37 @@ irval_reg_get_type : func(reg : irval -> tyid)
 irval_reg_get_idx : func(reg : irval -> u64)
 {
 	return reg.v2;
+};
+
+bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "_UNKNOWN_REG_");
+};
+
+bwrite_irval_globref : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "_UNKNOWN_GLOBREF_");
+};
+
+bwrite_irval_fnref : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "_UNKNOWN_FNREF_");
+};
+
+bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "_UNKNOWN_BLKREF_");
+};
+
+bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
+{
+	.0 := bwrite_irval_reg;
+	.1 := bwrite_irval_globref;
+	.2 := bwrite_irval_fnref;
+	.3 := bwrite_irval_blkref;
+};
+
+bwrite_irval : func(w : bwriter mut?, v : irval -> v0)
+{
+	[bwrite_irval_dispatch # (v.tag@s64)](w, v);
 };
