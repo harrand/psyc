@@ -21,6 +21,44 @@ irpos : struct
 	blk_cursor : u64;
 };
 
+irfunc_add_blk : func(fn : irfunc mut? -> irpos)
+{
+	if(fn->blks == zero)
+	{
+		fn->blks_cap = 8;
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof typeof([fn->blks]));
+	}
+	while(fn->blks_count >= fn->blks_cap)
+	{
+		oldcap ::= fn->blks_cap;
+		olddata ::= fn->blks;
+		fn->blks_cap = fn->blks_cap * 2;
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof typeof([fn->blks]));
+		memcopy(fn->blks, olddata, oldcap * sizeof typeof([fn->blks]));
+	}
+	idx ::= fn->blks_count;
+	[fn->blks # idx] = irblk
+	{
+		.idx := idx;
+		... := zero;
+	};
+	fn->blks_count = (fn->blks_count + 1);
+	return irpos
+	{
+		.func_cursor := fn->idx;
+		.blk_cursor := idx;
+	};
+};
+
 bwrite_irfunc : func(w : bwriter mut?, fn : irfunc -> v0)
 {
+	bwrite_tyid(w, fn.type);
+	bwrite_zstr(w, " @");
+	bwrite_uint(w, fn.idx);
+};
+
+bwrite_irblk : func(w : bwriter mut?, blk : irblk -> v0)
+{
+	bwrite8(w, '_');
+	bwrite_uint(w, blk.idx);
 };

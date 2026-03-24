@@ -1,21 +1,53 @@
-global_ir : irprog mut := zero;
+irapi_t : struct
+{
+	prog : irprog;
+	pos : irpos;
+};
+irapi : irapi_t mut := zero;
 
 ir_add_func : func(type : tyid -> irpos)
 {
-	return irprog_add_func(ref global_ir, type);
+	irapi.pos = irprog_add_func(ref (irapi.prog), type);
+	return irapi.pos;
+};
+
+ir_add_blk : func(-> irpos)
+{
+	irapi.pos = irfunc_add_blk(ir_current_fn());
+	return irapi.pos;
+};
+
+ir_current_fn : func(-> irfunc mut?)
+{
+	return irapi.prog.funcs # irapi.pos.func_cursor;
+};
+
+ir_get_pos : func(-> irpos)
+{
+	return irapi.pos;
+};
+
+ir_set_pos : func(pos : irpos -> v0)
+{
+	irapi.pos = pos;
 };
 
 ir_add_glob : func(v : val -> irval)
 {
-	return irprog_add_glob(ref global_ir, v);
+	return irprog_add_glob(ref (irapi.prog), v);
 };
 
-ir_get_glob : func(globref : irval -> irglob)
+ir_ref_glob : func(globref : irval -> irglob mut?)
 {
-	return [global_ir.globs # irval_globref_get_idx(globref)];
+	return irapi.prog.globs # irval_globref_get_idx(globref);
+};
+
+ir_ref_func : func(funcref : irval -> irfunc mut?)
+{
+	return irapi.prog.funcs # irval_funcref_get_idx(funcref);
 };
 
 bwrite_ir : func(w : bwriter mut? -> v0)
 {
-	bwrite_irprog(w, global_ir);
+	bwrite_irprog(w, irapi.prog);
 };

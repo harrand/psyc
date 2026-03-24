@@ -25,18 +25,15 @@ irprog_add_func : func(p : irprog mut?, type : tyid -> irpos)
 		memcopy(p->funcs, olddata, oldcap * sizeof typeof([p->funcs]));
 	}
 	idx ::= p->funcs_count;
-	[p->funcs # idx] = irfunc
+	ptr ::= p->funcs # idx;
+	[ptr] = irfunc
 	{
 		.idx := idx;
 		.type := type;
 		... := zero;
 	};
 	p->funcs_count = (p->funcs_count + 1);
-	return irpos
-	{
-		.func_cursor := idx;
-		.blk_cursor := 0;
-	};
+	return irfunc_add_blk(ptr);
 };
 
 irprog_add_glob : func(p : irprog mut?, v : val -> irval)
@@ -70,6 +67,7 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 {
 	// firstly all globs
 	i : u64 mut;
+	j : u64 mut;
 	for(i = 0; i < prog.globs_count; i = i + 1)
 	{
 		bwrite_irglob(w, [prog.globs # i]);
@@ -79,7 +77,23 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 	// then all funcs
 	for(i = 0; i < prog.funcs_count; i = i + 1)
 	{
-		bwrite_irfunc(w, [prog.funcs # i]);
+		fn ::= [prog.funcs # i];
+		bwrite_irfunc(w, fn);
+		bwrite8(w, 10);
+		bwrite_zstr(w, "{");
+		bwrite8(w, 10);
+
+		for(j = 0; j < fn.blks_count; j = j + 1)
+		{
+			blk ::= [fn.blks # j];
+			bwrite_irblk(w, blk);
+			bwrite8(w, ':');
+			bwrite8(w, 10);
+			// todo: insts...
+		}
+		
+		bwrite8(w, 10);
+		bwrite_zstr(w, "}");
 		bwrite8(w, 10);
 	}
 };

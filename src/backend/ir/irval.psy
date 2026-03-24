@@ -2,7 +2,7 @@ irval_tag : enum
 {
 	.reg := 0;
 	.globref := 1;
-	.fnref := 2;
+	.funcref := 2;
 	.blkref := 3;
 };
 
@@ -51,6 +51,21 @@ irval_globref_get_idx : func(globref : irval -> u64)
 	return globref.v1;
 };
 
+//funcref
+irval_funcref : func(pos : irpos -> irval)
+{
+	return irval
+	{
+		.tag := irval_tag.funcref;
+		.v1 := pos.func_cursor;
+	};
+};
+
+irval_funcref_get_idx : func(funcref : irval -> u64)
+{
+	return funcref.v1;
+};
+
 // bwrite
 
 bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
@@ -62,12 +77,12 @@ bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
 
 bwrite_irval_globref : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_irglob(w, ir_get_glob(v));
+	bwrite_irglob(w, [ir_ref_glob(v)]);
 };
 
 bwrite_irval_fnref : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_zstr(w, "_UNKNOWN_FNREF_");
+	bwrite_irfunc(w, [ir_ref_func(v)]);
 };
 
 bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
