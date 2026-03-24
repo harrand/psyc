@@ -1024,7 +1024,7 @@ val_ptr_field : func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, res
 
 val_field : func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolution : val_resolution -> val)
 {
-	type ::= lhs.type;
+	type : tyid mut := lhs.type;
 	// lhs must be a struct type
 	if((!ty_is_struct(type)) && (!ty_is_enum(type)))
 	{
@@ -1044,6 +1044,8 @@ val_field : func(lhs : val, rhs_node : ast?, scope : lexical_scope mut?, resolut
 		memidx : u64 mut;
 		if(ty_is_enum(type))
 		{
+			// remember enumname.foo is statically known so we promote to static.
+			type = ty_set_qual(type, tyqual.qual_static);
 			// the lhs is of enum type but it needs to be a type_only - thats what val_symbol would return on the enum typename itself
 			// but if the val_symbol got a variable that was of enum type then we would want to error out on that
 			if(lhs.tag != (valtag.type_only))
