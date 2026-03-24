@@ -1,4 +1,65 @@
 irprog : struct
 {
-	
+	funcs : irfunc mut?;
+	funcs_count : u64;
+	funcs_cap : u64;
+
+	globs : irglob mut?;
+	globs_count : u64;
+	globs_cap : u64;
+};
+
+irprog_add_func : func(p : irprog mut?, type : tyid -> irpos)
+{
+	if(p->funcs == zero)
+	{
+		p->funcs_cap = 8;
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof typeof([p->funcs]));
+	}
+	while(p->funcs_count >= p->funcs_cap)
+	{
+		oldcap ::= p->funcs_cap;
+		olddata ::= p->funcs;
+		p->funcs_cap = p->funcs_cap * 2;
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof typeof([p->funcs]));
+		memcopy(p->funcs, olddata, oldcap * sizeof typeof([p->funcs]));
+	}
+	idx ::= p->funcs_count;
+	[p->funcs # idx] = irfunc
+	{
+		.idx := idx;
+		.type := type;
+		... := zero;
+	};
+	return irpos
+	{
+		.func_cursor := idx;
+		.blk_cursor := 0;
+	};
+};
+
+irprog_add_glob : func(p : irprog mut?, v : val -> irval)
+{
+	if(p->globs == zero)
+	{
+		p->globs_cap = 8;
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof typeof([p->globs]));
+	}
+	while(p->globs_count >= p->globs_cap)
+	{
+		oldcap ::= p->globs_cap;
+		olddata ::= p->globs;
+		p->globs_cap = p->globs_cap * 2;
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof typeof([p->globs]));
+		memcopy(p->globs, olddata, oldcap * sizeof typeof([p->globs]));
+	}
+	idx ::= p->globs_count;
+	ptr ::= p->globs # idx;
+	[ptr] = irglob
+	{
+		.idx := idx;
+		.type := v.type;
+		.init_val := v.compile_time;
+	};
+	return irval_globref(idx);
 };
