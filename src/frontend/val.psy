@@ -955,6 +955,19 @@ val_symbol : func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	maybe_variable ::= scope_find_variable(scope, sym.data, sym.len);
 	if(maybe_variable != zero)
 	{
+		if(ty_is_bad(maybe_variable->type))
+		{
+			psyc_panic_begin(node->loc);
+			putzstr("attempt to reference variable ");
+			putchar('"');
+			putbytes(maybe_variable->node->decl.name, maybe_variable->node->decl.name_len);
+			putchar('"');
+			putzstr(" but in this context i have not semantically analysed it yet (and thus its type is not available). this is either a bug or you are accessing a variable in a *very* weird way");
+			putchar(10);
+			ast_print_annotated_source(program_find_source_file(node->loc.file)->src, node, 1, underline_colour.red);
+			psyc_diag_end();
+			psyc_exit_failure();
+		}
 		if(resolution == (val_resolution.type_only))
 		{
 			return type_as_val(maybe_variable->type);
@@ -969,6 +982,11 @@ val_symbol : func(node : ast?, scope : lexical_scope?, resolution : val_resoluti
 	maybe_function ::= scope_find_function(scope, sym.data, sym.len);
 	if(maybe_function != zero)
 	{
+		if(ty_is_bad(maybe_function->type))
+		{
+			semal_funcsig(maybe_function);
+			semal_funcdef(maybe_function);
+		}
 		if(resolution == (val_resolution.type_only))
 		{
 			return type_as_val(maybe_function->type);
