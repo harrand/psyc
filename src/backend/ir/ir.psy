@@ -13,13 +13,18 @@ ir_add_func : func(type : tyid -> irpos)
 
 ir_add_blk : func(-> irpos)
 {
-	irapi.pos = irfunc_add_blk(ir_current_fn());
+	irapi.pos = irfunc_add_blk(ir_current_func());
 	return irapi.pos;
 };
 
-ir_current_fn : func(-> irfunc mut?)
+ir_current_func : func(-> irfunc mut?)
 {
 	return irapi.prog.funcs # irapi.pos.func_cursor;
+};
+
+ir_current_blk : func(-> irblk mut?)
+{
+	return ir_current_func()->blks # irapi.pos.blk_cursor;
 };
 
 ir_get_pos : func(-> irpos)
@@ -45,6 +50,19 @@ ir_ref_glob : func(globref : irval -> irglob mut?)
 ir_ref_func : func(funcref : irval -> irfunc mut?)
 {
 	return irapi.prog.funcs # irval_funcref_get_idx(funcref);
+};
+
+ir_add_instruction : func(inst : irinst -> v0)
+{
+	irblk_add_inst(ir_current_blk(), inst);
+};
+
+ir_new_reg_of : func(type : tyid -> irval)
+{
+	fn ::= ir_current_func();
+	idx ::= fn->counter;
+	fn->counter = fn->counter + 1;
+	return irval_reg(idx, type);
 };
 
 bwrite_ir : func(w : bwriter mut? -> v0)

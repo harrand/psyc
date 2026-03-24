@@ -1,0 +1,45 @@
+ir_stack : func(type : tyid -> irval)
+{
+	out ::= ir_new_reg_of(ty_ptr(type, zero));
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.stack;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := irval_imm(datalayout_sizeof_ty(type));
+			.2 := irval_imm(datalayout_alignof_ty(type));
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
+ir_load : func(v : irval -> irval)
+{
+	type : tyid mut := zero;
+	// can only load a reg or globref
+	if(v.tag == irval_tag.reg)
+	{
+		type = ty_underlying(irval_reg_get_type(v));
+	}
+	if(v.tag == irval_tag.globref)
+	{
+		type = ty_underlying(irval_globref_get_type(v));
+	}
+
+	out ::= ir_new_reg_of(type);
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.load;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := v;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};

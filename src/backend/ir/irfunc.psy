@@ -5,6 +5,8 @@ irfunc : struct
 	blks_count : u64;
 	blks_cap : u64;
 	type : tyid;
+
+	counter : u64;
 };
 
 irblk : struct
@@ -50,10 +52,30 @@ irfunc_add_blk : func(fn : irfunc mut? -> irpos)
 	};
 };
 
+irblk_add_inst : func(blk : irblk mut?, inst : irinst -> v0)
+{
+	if(blk->insts == zero)
+	{
+		blk->insts_cap = 8;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+	}
+	while(blk->insts_count >= blk->insts_cap)
+	{
+		oldcap ::= blk->insts_cap;
+		olddata ::= blk->insts;
+		blk->insts_cap = blk->insts_cap * 2;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+		memcopy(blk->insts, olddata, oldcap * sizeof typeof([blk->insts]));
+	}
+	idx ::= blk->insts_count;
+	[blk->insts # idx] = inst;
+	blk->insts_count = (blk->insts_count + 1);
+};
+
 bwrite_irfunc : func(w : bwriter mut?, fn : irfunc -> v0)
 {
 	bwrite_tyid(w, fn.type);
-	bwrite_zstr(w, " @");
+	bwrite_zstr(w, " .");
 	bwrite_uint(w, fn.idx);
 };
 

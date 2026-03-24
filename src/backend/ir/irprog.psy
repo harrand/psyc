@@ -56,7 +56,7 @@ irprog_add_glob : func(p : irprog mut?, v : val -> irval)
 	[ptr] = irglob
 	{
 		.idx := idx;
-		.type := v.type;
+		.type := ty_clear_all_quals(v.type);
 		.init_val := v.compile_time;
 	};
 	p->globs_count = (p->globs_count + 1);
@@ -71,9 +71,11 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 	k : u64 mut;
 	for(i = 0; i < prog.globs_count; i = i + 1)
 	{
-		bwrite_irglob(w, [prog.globs # i]);
+		glob ::= [prog.globs # i];
+		bwrite_irglob(w, glob);
 		bwrite8(w, 10);
 	}
+	bwrite8(w, 10);
 
 	// then all funcs
 	for(i = 0; i < prog.funcs_count; i = i + 1)
