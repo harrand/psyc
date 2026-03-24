@@ -6,9 +6,62 @@ irinst_tag : enum
 irinst : struct
 {
 	tag : irinst_tag;
+	operands : irval mut[4];
+	extra_operands : irval mut?;
+	extra_operands_count : u64;
+};
+
+irinst_operands_count : func(inst : irinst -> u64)
+{
+	i : u64 mut;
+	small_count ::= countof typeof(inst.operands);
+	for(i = 0; i < small_count; i = i + 1)
+	{
+		if([inst.operands # i].tag == zero)
+		{
+			return i;
+		}
+	}
+	return small_count + inst.extra_operands_count;
+};
+
+irinst_get_operand : func(inst : irinst, idx : u64 -> irval mut?)
+{
+	small_count ::= countof typeof(inst.operands);
+	if(idx < small_count)
+	{
+		return inst.operands # idx;
+	}
+	return inst.extra_operands # (idx - small_count);
+};
+
+irinst_add_operand : func(inst : irinst mut?, op : irval -> u64)
+{
+	count ::= irinst_operands_count([inst]);
+	small_count ::= countof typeof(inst->operands);
+	if(count < small_count)
+	{
+		[inst->operands # count] = op;
+	}
+	else
+	{
+		[inst->extra_operands # (count - small_count)] = op;
+	}
+	return count + 1;
 };
 
 bwrite_irinst : func(w : bwriter mut?, inst : irinst -> v0)
 {
 	bwrite_zstr(w, enumname(inst.tag));
+	i : u64 mut;
+	count ::= irinst_operands_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		bwrite_zstr(w, " ");
+		bwrite_irval(w, [irinst_get_operand(inst, i)]);
+		if(i < (count - 1))
+		{
+			bwrite_zstr(w, ",");
+		}
+	}
 };
