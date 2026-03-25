@@ -36,7 +36,7 @@ irprog_add_func : func(p : irprog mut?, type : tyid -> irpos)
 	return irfunc_add_blk(ptr);
 };
 
-irprog_add_glob : func(p : irprog mut?, v : val -> irval)
+irprog_add_glob : func(p : irprog mut?, type : tyid, init : valcompile_time -> irval)
 {
 	if(p->globs == zero)
 	{
@@ -53,11 +53,19 @@ irprog_add_glob : func(p : irprog mut?, v : val -> irval)
 	}
 	idx ::= p->globs_count;
 	ptr ::= p->globs # idx;
+
+	is_mut ::= ty_has_qual(type, tyqual.qual_mut);
+	globty : tyid mut := ty_clear_all_quals(type);
+	if(is_mut)
+	{
+		globty = ty_set_qual(globty, tyqual.qual_mut);
+	}
+
 	[ptr] = irglob
 	{
 		.idx := idx;
-		.type := ty_clear_all_quals(v.type);
-		.init_val := v.compile_time;
+		.type := ty_ptr(globty, zero);
+		.init_val := init;
 	};
 	p->globs_count = (p->globs_count + 1);
 	return irval_globref(idx);
@@ -73,6 +81,8 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 	{
 		glob ::= [prog.globs # i];
 		bwrite_irglob(w, glob);
+		bwrite_zstr(w, " init ");
+		bwrite_valcompile_time(w, glob.init_val);
 		bwrite8(w, 10);
 	}
 	bwrite8(w, 10);

@@ -18,7 +18,12 @@ ir_stack : func(type : tyid -> irval)
 
 ir_load : func(v : irval -> irval)
 {
-	out ::= ir_new_reg_of(ty_underlying(irval_get_type(v)));
+	return ir_load_as(v, ty_underlying(irval_get_type(v)));
+};
+
+ir_load_as : func(v : irval, as : tyid -> irval)
+{
+	out ::= ir_new_reg_of(as);
 	ir_add_instruction(irinst
 	{
 		.tag := irinst_tag.load;
@@ -46,4 +51,45 @@ ir_store : func(dst : irval, v : irval -> v0)
 		};
 		... := zero;
 	});
+};
+
+ir_ret : func(v : irval -> v0)
+{
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.ret;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := v;
+			... := zero;
+		};
+		... := zero;
+	});
+};
+
+ir_retnone : func(-> v0)
+{
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.retnone;
+		.operands := zero;
+		... := zero;
+	});
+};
+
+ir_conv : func(v : irval, to : tyid -> irval)
+{
+	out ::= ir_new_reg_of(to);
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.conv;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := v;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
 };
