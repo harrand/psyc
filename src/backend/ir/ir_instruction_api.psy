@@ -1,4 +1,4 @@
-ir_stack : func(type : tyid -> irval)
+ir_stack_custom : func(type : tyid, size : irval, align : irval -> irval)
 {
 	out ::= ir_new_reg_of(ty_ptr(type, zero));
 	ir_add_instruction(irinst
@@ -7,13 +7,21 @@ ir_stack : func(type : tyid -> irval)
 		.operands := typeof(irinst{}.operands)
 		{
 			.0 := out;
-			.1 := irval_imm(integer_as_val(datalayout_sizeof_ty(type)));
-			.2 := irval_imm(integer_as_val(datalayout_alignof_ty(type)));
+			.1 := size;
+			.2 := align;
 			... := zero;
 		};
 		... := zero;
 	});
 	return out;
+};
+
+ir_stack : func(type : tyid -> irval)
+{
+	sz ::= irval_imm(integer_as_val(datalayout_sizeof_ty(type)));
+	align ::= irval_imm(integer_as_val(datalayout_alignof_ty(type)));
+
+	return ir_stack_custom(type, sz, align);
 };
 
 ir_load : func(v : irval -> irval)
