@@ -6,13 +6,40 @@ irtest : func(-> v0)
 
 	g1 ::= ir_add_glob(tyid.u64, zero);
 
+
 	fn1 ::= ir_add_func(ty_makefn1(tyid.u64, tyid.u64));
 	v1 ::= ir_conv(ir_stack(ty_arr(tyid.u64, 2, zero)), ty_ptr(tyid.u64, zero));
 	ir_store(v1, irval_imm(integer_as_val(69)));
-	ir_ret(ir_load(v1));
+
+	v2 ::= ir_stack(make_test_struct());
+	v2mem1 ::= ir_off_struct(v2, 1);
+
+	ir_ret(ir_conv(ir_load(v2mem1), ir_current_func_return_type()));
 
 	bwrite_ir(w);
 	irtest_end();
+};
+
+make_test_struct : func(-> tyid)
+{
+	mems : tyid[3] mut? weak := arena_alloc(global_arena, sizeof tyid[3]);
+	[mems] = tyid[3]{.0 := tyid.u32; .1 := tyid.u8; .2 := tyid.f64;};
+	names : u8 mut?[3] mut? weak := arena_alloc(global_arena, sizeof u8 mut?[3]);
+	[names] = u8 mut?[3]{.0 := "u32"; .1 := "u8"; .2 := "f64";};
+	name_lens : u64 mut[3] mut? weak := arena_alloc(global_arena, sizeof u64 mut[3]);
+	[name_lens] = u64 mut[3]{.0 := 3; .1 := 2; .2 := 3;};
+	u ::= structty
+	{
+		.members := mems;
+		.member_names := names;
+		.member_name_lens := name_lens;
+		.members_count := 3;
+		... := zero;
+	};
+	id ::= ty_wrap(ty{.tag := tytag.strct; .name := "mystruct"; .name_len := 8; .strct := u; ... := zero;}, zero);
+	cg_struct_sig(id);
+	cg_struct_def(id);
+	return id;
 };
 
 irtest_begin : func(-> v0)

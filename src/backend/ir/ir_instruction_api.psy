@@ -53,6 +53,33 @@ ir_store : func(dst : irval, v : irval -> v0)
 	});
 };
 
+ir_off_bytes : func(type : tyid, ptr : irval, off_bytes : u64 -> irval)
+{
+	out ::= ir_new_reg_of(type);
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.off;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := ptr;
+			.2 := irval_imm(integer_as_val(off_bytes));
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
+ir_off_struct : func(ptr : irval, memidx : u64 -> irval)
+{
+	u ::= ty_underlying(irval_get_type(ptr));
+	quals ::= ty_get_qual(u);
+	strct ::= ty_unwrap(u)->strct;
+	memty ::= [strct.members # memidx];
+	return ir_off_bytes(ty_ptr(memty, quals), ptr, datalayout_offsetof_struct(u, memidx));
+};
+
 ir_ret : func(v : irval -> v0)
 {
 	ir_add_instruction(irinst
