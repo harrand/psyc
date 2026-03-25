@@ -13,6 +13,7 @@ irval : struct
 	v1 : u64;
 	v2 : u64;
 	v3 : u64;
+	immval : val;
 };
 
 // reg
@@ -73,18 +74,24 @@ irval_funcref_get_idx : func(funcref : irval -> u64)
 };
 
 //imm
-irval_imm : func(v : s64 weak -> irval)
+irval_imm : func(v : val mut -> irval)
 {
+	v.type = ty_clear_all_quals(v.type);
 	return irval
 	{
 		.tag := irval_tag.imm;
-		.v1 := v;
+		.immval := v;
 	};
 };
 
-irval_imm_get_value : func(imm : irval -> s64 weak)
+irval_imm_get_value : func(imm : irval -> valcompile_time)
 {
-	return imm.v1;
+	return imm.immval.compile_time;
+};
+
+irval_imm_get_type : func(imm : irval -> tyid)
+{
+	return imm.immval.type;
 };
 
 // bwrite
@@ -113,7 +120,9 @@ bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
 
 bwrite_irval_imm : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_uint(w, irval_imm_get_value(v));
+	bwrite_tyid(w, irval_imm_get_type(v));
+	bwrite_zstr(w, " ");
+	bwrite_valcompile_time(w, irval_imm_get_value(v));
 };
 
 bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]

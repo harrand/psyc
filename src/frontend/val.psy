@@ -345,6 +345,7 @@ integer_as_val : func(n : s64 weak -> val)
 		.type := tyid_integral_literal();
 		.compile_time := valcompile_time
 		{
+			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.integer; .integer := n;};
 			... := zero;
 		};
@@ -362,6 +363,7 @@ float_as_val : func(n : f64 weak -> val)
 		.type := tyid_floating_point_literal();
 		.compile_time := valcompile_time
 		{
+			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.floating_point; .floating_point := n;};
 			... := zero;
 		};
@@ -379,6 +381,7 @@ string_as_val : func(chars : u8?, chars_len : u64 -> val)
 		.type := tyid_string_literal();
 		.compile_time := valcompile_time
 		{
+			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.string; .chars := chars; .chars_len := chars_len;};
 			... := zero;
 		};
@@ -398,6 +401,7 @@ char_as_val : func(char : u8 -> val)
 		.type := tyid_char_literal();
 		.compile_time := valcompile_time
 		{
+			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.char; .chars := chardata; .chars_len := 1;};
 			... := zero;
 		};
@@ -415,6 +419,7 @@ bool_as_val : func(b : bool -> val)
 		.type := tyid_bool_literal();
 		.compile_time := valcompile_time
 		{
+			.is_zero := false;
 			.primitive := ast_literal{.tag := ast_literal_tag.boolean; .boolean := b;};
 			... := zero;
 		};
@@ -2742,4 +2747,74 @@ putval : func(v : val -> v0)
 	putchar(10);
 	putzstr("}");
 	putchar(10);
+};
+
+bwrite_valcompile_time : func(w : bwriter mut?, v : valcompile_time -> v0)
+{
+	i : u64 mut;
+	if(v.is_zero)
+	{
+		bwrite_zstr(w, "zero");
+		return;
+	}
+	if(v.members != zero)
+	{
+		bwrite_zstr(w, "{");
+		bwrite8(w, 10);
+		for(i = 0; i < v.members_count; i = i + 1)
+		{
+			bwrite_zstr(w, "  ");
+			bwrite_valcompile_time(w, [v.members # i].compile_time);
+		}
+		bwrite8(w, 10);
+		bwrite_zstr(w, "}");
+		return;
+	}
+	if(v.funcref_name != zero)
+	{
+		bwrite_bytes(w, v.funcref_name, v.funcref_name_len);
+		return;
+	}
+	if(v.builtinref_name != zero)
+	{
+		bwrite_bytes(w, v.builtinref_name, v.builtinref_name_len);
+		return;
+	}
+	if(v.varref_name != zero)
+	{
+		bwrite_bytes(w, v.varref_name, v.varref_name_len);
+		return;
+	}
+	if(v.valueref != zero)
+	{
+		bwrite_valcompile_time(w, [v.valueref].compile_time);
+		return;
+	}
+	if(v.primitive.tag == ast_literal_tag.integer)
+	{
+		bwrite_sint(w, v.primitive.integer);
+	}
+	if(v.primitive.tag == ast_literal_tag.floating_point)
+	{
+		bwritef64(w, v.primitive.floating_point);
+	}
+	if(v.primitive.tag == ast_literal_tag.char)
+	{
+		bwrite8(w, [v.primitive.chars]);
+	}
+	if(v.primitive.tag == ast_literal_tag.string)
+	{
+		bwrite_bytes(w, v.primitive.chars, v.primitive.chars_len);
+	}
+	if(v.primitive.tag == ast_literal_tag.boolean)
+	{
+		if(v.primitive.boolean)
+		{
+			bwrite_zstr(w, "true");
+		}
+		else
+		{
+			bwrite_zstr(w, "false");
+		}
+	}
 };
