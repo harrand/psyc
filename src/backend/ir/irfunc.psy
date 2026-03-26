@@ -21,6 +21,11 @@ irblk : struct
 	insts : irinst mut?;
 	insts_count : u64;
 	insts_cap : u64;
+
+	param_idx_offset : u64;
+	params : irsz mut?;
+	params_count : u64;
+	params_cap : u64;
 };
 
 irpos : struct
@@ -48,6 +53,7 @@ irfunc_add_blk : func(fn : irfunc mut? -> irpos)
 	[fn->blks # idx] = irblk
 	{
 		.idx := idx;
+		.param_idx_offset := fn->counter;
 		... := zero;
 	};
 	fn->blks_count = (fn->blks_count + 1);
@@ -56,6 +62,30 @@ irfunc_add_blk : func(fn : irfunc mut? -> irpos)
 		.func_cursor := fn->idx;
 		.blk_cursor := idx;
 	};
+};
+
+irblk_add_param : func(blk : irblk mut?, sz : irsz -> irval)
+{
+	if(blk->params == zero)
+	{
+		blk->params_cap = 8;
+		blk->params = arena_alloc(global_arena, blk->params_cap * sizeof typeof([blk->params]));
+	}
+	while(blk->params_count >= blk->params_cap)
+	{
+		oldcap ::= blk->params_cap;
+		olddata ::= blk->params;
+		blk->params_cap = blk->params_cap * 2;
+		blk->params = arena_alloc(global_arena, blk->params_cap * sizeof typeof([blk->params]));
+		memcopy(blk->params, olddata, oldcap * sizeof typeof([blk->params]));
+	}
+	fn ::= ir_current_func();
+	blkidx ::= blk->params_count;
+	[blk->params # blkidx] = sz;
+	blk->params_count = (blk->params_count + 1);
+	idx ::= blk->param_idx_offset + blkidx;
+	fn->counter = fn->counter + 1;
+	return irval_reg(sz, idx);
 };
 
 // note: not safe to call this if there are any local regs coz it increases fn->cursor
@@ -156,4 +186,15 @@ bwrite_irblk : func(w : bwriter mut?, blk : irblk -> v0)
 {
 	bwrite8(w, '_');
 	bwrite_uint(w, blk.idx);
+	bwrite_zstr(w, "(");
+	i : u64 mut;
+	for(i = 0; i < blk.params_count; i = i + 1)
+	{
+		bwrite_irval_reg(w, irval_reg([blk.params # i], blk.param_idx_offset + i));
+		if(i < (blk.params_count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+	bwrite_zstr(w, ")");
 };
