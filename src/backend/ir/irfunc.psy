@@ -80,6 +80,27 @@ irfunc_add_param : func(fn : irfunc mut?, sz : irsz -> irval)
 	return irval_reg(sz, idx);
 };
 
+irfunc_add_return : func(fn : irfunc mut?, sz : irsz -> u64)
+{
+	if(fn->returns == zero)
+	{
+		fn->returns_cap = 8;
+		fn->returns = arena_alloc(global_arena, fn->returns_cap * sizeof typeof([fn->returns]));
+	}
+	while(fn->returns_count >= fn->returns_cap)
+	{
+		oldcap ::= fn->returns_cap;
+		olddata ::= fn->returns;
+		fn->returns_cap = fn->returns_cap * 2;
+		fn->returns = arena_alloc(global_arena, fn->returns_cap * sizeof typeof([fn->returns]));
+		memcopy(fn->returns, olddata, oldcap * sizeof typeof([fn->returns]));
+	}
+	idx ::= fn->returns_count;
+	[fn->returns # idx] = sz;
+	fn->returns_count = (fn->returns_count + 1);
+	return idx;
+};
+
 irblk_add_inst : func(blk : irblk mut?, inst : irinst -> v0)
 {
 	if(blk->insts == zero)
