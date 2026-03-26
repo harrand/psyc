@@ -7,36 +7,72 @@ irval_tag : enum
 	.imm := 5;
 };
 
+irsz : enum
+{
+	.none := 0;
+	.b := 1;
+	.w := 2;
+	.d := 3;
+	.q := 4;
+	.x := 5;
+	.f := 6;
+	.ff := 7;
+};
+
+irsz_size_bytes ::= u64[countof irsz]
+{
+	.0 := 0;
+	.1 := 1;
+	.2 := 2;
+	.3 := 4;
+	.4 := 8;
+	.5 := 16;
+	.6 := 4;
+	.7 := 8;
+};
+
+irsz_is_floating_point ::= bool[countof irsz]
+{
+	.0 := false;
+	.1 := false;
+	.2 := false;
+	.3 := false;
+	.4 := false;
+	.5 := false;
+	.6 := true;
+	.7 := true;
+};
+
 irval : struct
 {
 	tag : irval_tag;
+	r1 : irsz;
 	v1 : u64;
 	v2 : u64;
 	v3 : u64;
-	q1 : valcompile_time;
 };
 
 // reg
-
-irval_reg : func(idx : u64, type : tyid -> irval)
+irval_reg : func(sz : irsz, idx : u64 -> irval)
 {
 	return irval
 	{
 		.tag := irval_tag.reg;
-		.v1 := ty_clear_all_quals(type)@s64@u64;
-		.v2 := idx;
+		.r1 := sz;
+		.v1 := idx;
 	};
 };
 
-irval_reg_get_type : func(reg : irval -> tyid)
+irval_reg_get_irsz : func(reg : irval -> irsz)
 {
-	return reg.v1@s64@tyid;
+	return reg.r1;
 };
 
-irval_reg_get_idx : func(reg : irval -> u64)
+irval_reg_get_index : func(reg : irval -> u64)
 {
-	return reg.v2;
+	return reg.v1;
 };
+
 
 // globref
 irval_globref : func(idx : u64 -> irval)
@@ -46,11 +82,6 @@ irval_globref : func(idx : u64 -> irval)
 		.tag := irval_tag.globref;
 		.v1 := idx;
 	};
-};
-
-irval_globref_get_type : func(globref : irval -> tyid)
-{
-	return ir_ref_glob(globref)->type;
 };
 
 irval_globref_get_idx : func(globref : irval -> u64)
@@ -74,40 +105,35 @@ irval_funcref_get_idx : func(funcref : irval -> u64)
 };
 
 //imm
-irval_imm : func(v : val mut -> irval)
+irval_imm : func(sz : irsz, v : u64 weak -> irval)
 {
-	v.type = ty_clear_all_quals(v.type);
 	return irval
 	{
 		.tag := irval_tag.imm;
-		.v1 := v.type@s64@u64;
-		.q1 := v.compile_time;
+		.r1 := sz;
+		.v1 := v;
 	};
 };
 
-irval_imm_get_value : func(imm : irval -> valcompile_time)
+irval_imm_get_irsz : func(imm : irval -> irsz)
 {
-	return imm.q1;
+	return imm.r1;
 };
 
-irval_imm_get_type : func(imm : irval -> tyid)
+irval_imm_get_value : func(imm : irval -> u64 weak)
 {
-	return imm.v1@s64@tyid;
+	return imm.v1;
 };
 
-irval_get_type : func(v : irval -> tyid)
+irval_get_irsz : func(v : irval -> irsz)
 {
 	if(v.tag == irval_tag.reg)
 	{
-		return irval_reg_get_type(v);
-	}
-	if(v.tag == irval_tag.globref)
-	{
-		return irval_globref_get_type(v);
+		return irval_reg_get_irsz(v);
 	}
 	if(v.tag == irval_tag.imm)
 	{
-		return irval_imm_get_type(v);
+		return irval_imm_get_irsz(v);
 	}
 	return zero;
 };
@@ -116,9 +142,9 @@ irval_get_type : func(v : irval -> tyid)
 
 bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_tyid(w, irval_reg_get_type(v));
-	bwrite_zstr(w, " %");
-	bwrite_uint(w, irval_reg_get_idx(v));
+	bwrite8(w, '%');
+	bwrite_zstr(w, enumname(irval_reg_get_irsz(v)));
+	bwrite_uint(w, irval_reg_get_index(v));
 };
 
 bwrite_irval_globref : func(w : bwriter mut?, v : irval -> v0)
@@ -138,9 +164,9 @@ bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
 
 bwrite_irval_imm : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_tyid(w, irval_imm_get_type(v));
-	bwrite_zstr(w, " ");
-	bwrite_valcompile_time(w, irval_imm_get_value(v));
+	bwrite_zstr(w, enumname(irval_imm_get_irsz(v)));
+	bwrite_zstr(w, "imm ");
+	bwrite_uint(w, irval_imm_get_value(v));
 };
 
 bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
