@@ -1,13 +1,74 @@
 irglob : struct
 {
 	idx : u64;
-	type : tyid;
-	init_val : valcompile_time;
+	data : u8 mut?;
+	size : u64;
+	is_mut : bool;
+};
+
+bwrite_hex_digit : func(w : bwriter mut?, nibble : u8 -> v0)
+{
+	if(nibble < 10)
+	{
+		bwrite8(w, '0' + nibble);
+	}
+	else
+	{
+		bwrite8(w, 'a' + (nibble - 10));
+	}
+};
+
+bwrite8h : func(w : bwriter mut?, byte : u8 -> v0)
+{
+	high ::= (byte >> 4) & 0xf;
+	low ::= byte & 0xf;
+
+	bwrite_hex_digit(w, high);
+	bwrite_hex_digit(w, low);
 };
 
 bwrite_irglob : func(w : bwriter mut?, glob : irglob -> v0)
 {
-	bwrite_tyid(w, glob.type);
-	bwrite_zstr(w, " @");
+	bwrite_zstr(w, "global @");
 	bwrite_uint(w, glob.idx);
+	bwrite_zstr(w, " ");
+	if(glob.is_mut)
+	{
+		bwrite_zstr(w, "mut");
+	}
+	else
+	{
+		bwrite_zstr(w, "const");
+	}
+	bwrite_zstr(w, " := {");
+
+	i : u64 mut;
+
+	byte_print_limit ::= 16;
+	count : u64 mut := glob.size;
+	if(count > byte_print_limit)
+	{
+		count = byte_print_limit;
+	}
+	for(i = 0; i < count; i = i + 1)
+	{
+		if(i % 8 == 0)
+		{
+			bwrite8(w, 10);
+			bwrite_zstr(w, "  ");
+		}
+		else
+		{
+			bwrite8(w, ' ');
+		}
+		bwrite8h(w, [glob.data # i]);
+	}
+	if(count != glob.size)
+	{
+		bwrite_zstr(w, "...");	
+	}
+	bwrite8(w, 10);
+	bwrite_zstr(w, "} (");
+	bwrite_uint(w, glob.size);
+	bwrite_zstr(w, " bytes)");
 };

@@ -4,7 +4,13 @@ irfunc : struct
 	blks : irblk mut?;
 	blks_count : u64;
 	blks_cap : u64;
-	type : tyid;
+
+	params : irsz mut?;
+	params_count : u64;
+	params_cap : u64;
+	returns : irsz mut?;
+	returns_count : u64;
+	returns_cap : u64;
 
 	counter : u64;
 };
@@ -52,6 +58,28 @@ irfunc_add_blk : func(fn : irfunc mut? -> irpos)
 	};
 };
 
+// note: not safe to call this if there are any local regs coz it increases fn->cursor
+irfunc_add_param : func(fn : irfunc mut?, sz : irsz -> irval)
+{
+	if(fn->params == zero)
+	{
+		fn->params_cap = 8;
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof typeof([fn->params]));
+	}
+	while(fn->params_count >= fn->params_cap)
+	{
+		oldcap ::= fn->params_cap;
+		olddata ::= fn->params;
+		fn->params_cap = fn->params_cap * 2;
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof typeof([fn->params]));
+		memcopy(fn->params, olddata, oldcap * sizeof typeof([fn->params]));
+	}
+	idx ::= fn->params_count;
+	[fn->params # idx] = sz;
+	fn->params_count = (fn->params_count + 1);
+	return irval_reg(sz, idx);
+};
+
 irblk_add_inst : func(blk : irblk mut?, inst : irinst -> v0)
 {
 	if(blk->insts == zero)
@@ -74,9 +102,32 @@ irblk_add_inst : func(blk : irblk mut?, inst : irinst -> v0)
 
 bwrite_irfunc : func(w : bwriter mut?, fn : irfunc -> v0)
 {
-	bwrite_tyid(w, fn.type);
-	bwrite_zstr(w, " .");
+	i : u64 mut;
+	bwrite_zstr(w, "$");
 	bwrite_uint(w, fn.idx);
+	bwrite_zstr(w, " : func(");
+	for(i = 0; i < fn.params_count; i = i + 1)
+	{
+		bwrite_irval_reg(w, irval_reg([fn.params # i], i));
+		if(i < (fn.params_count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+	
+	bwrite_zstr(w, ") -> ");
+	for(i = 0; i < fn.returns_count; i = i + 1)
+	{
+		bwrite_zstr(w, enumname([fn.returns # i]));
+		if(i < (fn.returns_count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+	if(fn.returns_count == zero)
+	{
+		bwrite_zstr(w, "none");
+	}
 };
 
 bwrite_irblk : func(w : bwriter mut?, blk : irblk -> v0)

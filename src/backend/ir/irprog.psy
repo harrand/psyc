@@ -9,7 +9,7 @@ irprog : struct
 	globs_cap : u64;
 };
 
-irprog_add_func : func(p : irprog mut?, type : tyid -> irpos)
+irprog_add_func : func(p : irprog mut?, params : irsz mut?, params_count : u64, returns : irsz mut?, returns_count : u64 -> irpos)
 {
 	if(p->funcs == zero)
 	{
@@ -29,14 +29,19 @@ irprog_add_func : func(p : irprog mut?, type : tyid -> irpos)
 	[ptr] = irfunc
 	{
 		.idx := idx;
-		.type := type;
+		.params := params;
+		.params_count := params_count;
+		.returns := returns;
+		.returns_count := returns_count;
+		.counter := params_count;
 		... := zero;
+		
 	};
 	p->funcs_count = (p->funcs_count + 1);
 	return irfunc_add_blk(ptr);
 };
 
-irprog_add_glob : func(p : irprog mut?, type : tyid, init : valcompile_time -> irval)
+irprog_add_glob : func(p : irprog mut?, data : u8 mut?, size : u64, is_mut : bool -> irval)
 {
 	if(p->globs == zero)
 	{
@@ -54,18 +59,12 @@ irprog_add_glob : func(p : irprog mut?, type : tyid, init : valcompile_time -> i
 	idx ::= p->globs_count;
 	ptr ::= p->globs # idx;
 
-	is_mut ::= ty_has_qual(type, tyqual.qual_mut);
-	globty : tyid mut := ty_clear_all_quals(type);
-	if(is_mut)
-	{
-		globty = ty_set_qual(globty, tyqual.qual_mut);
-	}
-
 	[ptr] = irglob
 	{
 		.idx := idx;
-		.type := ty_ptr(globty, zero);
-		.init_val := init;
+		.data := data;
+		.size := size;
+		.is_mut := is_mut;
 	};
 	p->globs_count = (p->globs_count + 1);
 	return irval_globref(idx);
@@ -73,21 +72,10 @@ irprog_add_glob : func(p : irprog mut?, type : tyid, init : valcompile_time -> i
 
 bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 {
-	// firstly all globs
 	i : u64 mut;
 	j : u64 mut;
 	k : u64 mut;
-	for(i = 0; i < prog.globs_count; i = i + 1)
-	{
-		glob ::= [prog.globs # i];
-		bwrite_irglob(w, glob);
-		bwrite_zstr(w, " init ");
-		bwrite_valcompile_time(w, glob.init_val);
-		bwrite8(w, 10);
-	}
-	bwrite8(w, 10);
-
-	// then all funcs
+	// firstly all funcs (and their instructions)
 	for(i = 0; i < prog.funcs_count; i = i + 1)
 	{
 		fn ::= [prog.funcs # i];
@@ -114,4 +102,14 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 		bwrite_zstr(w, "}");
 		bwrite8(w, 10);
 	}
+
+	// then all globs
+	bwrite8(w, 10);
+	for(i = 0; i < prog.globs_count; i = i + 1)
+	{
+		glob ::= [prog.globs # i];
+		bwrite_irglob(w, glob);
+	}
+	bwrite8(w, 10);
+
 };
