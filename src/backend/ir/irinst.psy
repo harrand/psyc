@@ -2,10 +2,10 @@ irinst_tag : enum
 {
 	.stack := 0;
 };
-irinst_tag_assigns_0 ::= bool[countof irinst_tag]
+irinst_tag_assigns_n ::= u8 weak[countof irinst_tag]
 {
-	.0 := true;
-	... := false;
+	.0 := 1;
+	... := 0;
 };
 
 irinst : struct
@@ -59,15 +59,24 @@ bwrite_irinst : func(w : bwriter mut?, inst : irinst -> v0)
 {
 	bwrite_zstr(w, "  ");
 	begin_offset : u64 mut := 0;
-	if([irinst_tag_assigns_0 # inst.tag@s64])
+	i : u64 mut;
+
+	lhs_count ::= [irinst_tag_assigns_n # inst.tag@s64];
+	for(i = 0; i < lhs_count; i = i + 1)
 	{
-		bwrite_irval(w, [irinst_get_operand(inst, 0)]);
+		bwrite_irval(w, [irinst_get_operand(inst, i)]);
+		if(i < (lhs_count - 1))
+		{
+			bwrite_zstr(w, ", ");
+		}
+	}
+	if(lhs_count > 0)
+	{
 		bwrite_zstr(w, " = ");
-		begin_offset = 1;
+		begin_offset = lhs_count;
 	}
 
 	bwrite_zstr(w, enumname(inst.tag));
-	i : u64 mut;
 	count ::= irinst_operands_count(inst);
 	for(i = begin_offset; i < count; i = i + 1)
 	{
