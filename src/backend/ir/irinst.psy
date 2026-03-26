@@ -1,10 +1,12 @@
 irinst_tag : enum
 {
 	.stack := 0;
+	.load := 1;
 };
 irinst_tag_assigns_n ::= u8 weak[countof irinst_tag]
 {
 	.0 := 1;
+	.1 := 1;
 	... := 0;
 };
 
@@ -14,6 +16,7 @@ irinst : struct
 	operands : irval mut[4];
 	extra_operands : irval mut?;
 	extra_operands_count : u64;
+	extra_operands_cap : u64;
 };
 
 irinst_operands_count : func(inst : irinst -> u64)
@@ -50,6 +53,20 @@ irinst_add_operand : func(inst : irinst mut?, op : irval -> u64)
 	}
 	else
 	{
+		extra_idx ::= count - small_count;
+		if(inst->extra_operands == zero)
+		{
+			inst->extra_operands_cap = 4;
+			inst->extra_operands = arena_alloc(global_arena, inst->extra_operands_cap * sizeof typeof([inst->extra_operands]));
+		}
+		while(inst->extra_operands_count >= inst->extra_operands_cap)
+		{
+			oldcap ::= inst->extra_operands_count;
+			olddata ::= inst->extra_operands;
+			inst->extra_operands_cap = inst->extra_operands_cap * 2;
+			inst->extra_operands = arena_alloc(global_arena, inst->extra_operands_cap * sizeof typeof([inst->extra_operands]));
+			memcopy(inst->extra_operands, olddata, oldcap * sizeof typeof([inst->extra_operands]));
+		}
 		[inst->extra_operands # (count - small_count)] = op;
 	}
 	return count + 1;

@@ -15,3 +15,23 @@ ir_stack : func(size : irval, align : irval -> irval)
 	});
 	return ptrout;
 };
+
+ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : irval -> irval)
+{
+	// outreg = load base + (index * scale) + disp
+	// very similar to a memory operand. everything but 'base' is optional
+	out ::= ir_new_reg_of(outsz);
+	inst ::= irinst mut
+	{
+		.tag := irinst_tag.load;
+		... := zero;
+	};
+	// have to add because operands individually because they likely to spill into extra_operands
+	irinst_add_operand(ref inst, out);
+	irinst_add_operand(ref inst, base);
+	irinst_add_operand(ref inst, index);
+	irinst_add_operand(ref inst, scale);
+	irinst_add_operand(ref inst, disp);
+	ir_add_instruction(inst);
+	return out;
+};
