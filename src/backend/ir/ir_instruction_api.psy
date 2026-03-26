@@ -35,3 +35,64 @@ ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : 
 	ir_add_instruction(inst);
 	return out;
 };
+
+ir_store : func(v : irval, base : irval, index : irval, scale : irval, disp : irval -> v0)
+{
+	// outreg = load base + (index * scale) + disp
+	// very similar to a memory operand. everything but 'base' is optional
+	inst ::= irinst mut
+	{
+		.tag := irinst_tag.store;
+		... := zero;
+	};
+	// have to add because operands individually because they likely to spill into extra_operands
+	irinst_add_operand(ref inst, v);
+	irinst_add_operand(ref inst, base);
+	irinst_add_operand(ref inst, index);
+	irinst_add_operand(ref inst, scale);
+	irinst_add_operand(ref inst, disp);
+	ir_add_instruction(inst);
+};
+
+ir_ret : func(retvals : irval mut?, retvals_count : u64 -> v0)
+{
+	inst ::= irinst mut
+	{
+		.tag := irinst_tag.ret;
+		... := zero;
+	};
+	i : u64 mut;
+	for(i = 0; i < retvals_count; i = i + 1)
+	{
+		irinst_add_operand(ref inst, [retvals # i]);
+	}
+	ir_add_instruction(inst);
+};
+
+ir_ret0 : func(-> v0)
+{
+	ir_ret(zero, zero);
+};
+
+ir_ret1 : func(r1 : irval -> v0)
+{
+	ir_ret(ref r1, 1);
+};
+
+ir_ret2 : func(r1 : irval, r2 : irval -> v0)
+{
+	arr ::= irval[2]{.0 := r1; .1 := r2;};
+	ir_ret(arr # 0, countof typeof(arr));
+};
+
+ir_ret3 : func(r1 : irval, r2 : irval, r3 : irval -> v0)
+{
+	arr ::= irval[3]{.0 := r1; .1 := r2; .2 := r3;};
+	ir_ret(arr # 0, countof typeof(arr));
+};
+
+ir_ret4 : func(r1 : irval, r2 : irval, r3 : irval, r4 : irval -> v0)
+{
+	arr ::= irval[4]{.0 := r1; .1 := r2; .2 := r3; .3 := r4;};
+	ir_ret(arr # 0, countof typeof(arr));
+};
