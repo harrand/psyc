@@ -50,6 +50,11 @@ irsz_size_bytes : func(sz : irsz -> u64)
 	return [irsz_size_bytes_arr # sz@s64];
 };
 
+irsz_is_floating_point : func(sz : irsz -> bool)
+{
+	return [irsz_is_floating_point_arr # sz@s64];
+};
+
 irval : struct
 {
 	tag : irval_tag;
@@ -131,6 +136,11 @@ irval_number : func(v : u64 weak -> irval)
 	return irval_imm(irsz.q, v);
 };
 
+irval_float : func(v : f64 weak -> irval)
+{
+	return irval_imm(irsz.ff, [(ref v)@s64?]);
+};
+
 //imm
 irval_imm : func(sz : irsz, v : u64 weak -> irval)
 {
@@ -194,9 +204,18 @@ bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
 
 bwrite_irval_imm : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_zstr(w, enumname(irval_imm_get_irsz(v)));
+	sz ::= irval_imm_get_irsz(v);
+	bwrite_zstr(w, enumname(sz));
 	bwrite_zstr(w, "imm ");
-	bwrite_uint(w, irval_imm_get_value(v));
+	num ::= irval_imm_get_value(v);
+	if(irsz_is_floating_point(sz))
+	{
+		bwrite_float(w, [(ref num)@f64?]);
+	}
+	else
+	{
+		bwrite_uint(w, num);
+	}
 };
 
 bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
