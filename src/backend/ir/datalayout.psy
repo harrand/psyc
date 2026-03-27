@@ -1,0 +1,146 @@
+datalayout_sizeof_integral_psy : func(type : tyid -> u64)
+{
+	return ty_integral_size(type) / 8;
+};
+
+datalayout_sizeof_floating_point_psy : func(type : tyid -> u64)
+{
+	return ty_floating_point_size(type) / 8;
+};
+
+datalayout_alignof_integral_psy : func(type : tyid -> u64)
+{
+	return ty_integral_size(type) / 8;
+};
+
+datalayout_alignof_floating_point_psy : func(type : tyid -> u64)
+{
+	return ty_floating_point_size(type) / 8;
+};
+
+datalayout_sizeof_struct_psy : func(type : tyid -> u64)
+{
+	align ::= datalayout_alignof_struct_psy(type);
+	strct ::= ty_unwrap(type)->strct;
+	cursor : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < strct.members_count; i = i + 1)
+	{
+		curalign ::= datalayout_alignof_ty([strct.members # i]);
+		cursz ::= datalayout_sizeof_ty([strct.members # i]);
+		// align to curalign
+		padding ::= (-cursor) & (curalign - 1);
+		cursor = cursor + padding;
+		// now add the size
+		cursor = cursor + cursz;
+	}
+	// trailing padding as necessary
+	trailing_padding ::= (-cursor) & (align - 1);
+	return cursor + trailing_padding;
+};
+
+datalayout_alignof_struct_psy : func(type : tyid -> u64)
+{
+	strct ::= ty_unwrap(type)->strct;
+	max_align : u64 mut := 1;
+	i : u64 mut;
+	for(i = 0; i < strct.members_count; i = i + 1)
+	{
+		curalign ::= datalayout_alignof_ty([strct.members # i]);
+		if(curalign > max_align)
+		{
+			max_align = curalign;
+		}
+	}
+	return max_align;
+};
+
+datalayout_offsetof_struct_psy : func(type : tyid, idx : u64 -> u64)
+{
+	strct ::= ty_unwrap(type)->strct;
+	cursor : u64 mut := 0;
+	i : u64 mut;
+	for(i = 0; i < idx; i = i + 1)
+	{
+		curalign ::= datalayout_alignof_ty([strct.members # i]);
+		cursz ::= datalayout_sizeof_ty([strct.members # i]);
+		// align to curalign
+		padding ::= (-cursor) & (curalign - 1);
+		cursor = cursor + padding;
+		// now add the size
+		cursor = cursor + cursz;
+	}
+	// trailing padding as necessary
+	final_align ::= datalayout_alignof_ty([strct.members # i]);
+	trailing_padding ::= (-cursor) & (final_align - 1);
+	return cursor + trailing_padding;
+};
+
+datalayout_sizeof_ty_psy : func(type : tyid -> u64)
+{
+	if(ty_is_integral(type))
+	{
+		return datalayout_sizeof_integral_psy(type);
+	}
+	if(ty_is_floating_point(type))
+	{
+		return datalayout_sizeof_floating_point_psy(type);
+	}
+	if(ty_is_ptr(type))
+	{
+		return datalayout_sizeof_ty_psy(tyid.u64);
+	}
+	if(ty_is_arr(type))
+	{
+		// sizeof T[N] == N * sizeof(T)
+		return datalayout_sizeof_ty_psy(ty_underlying(type)) * ty_unwrap(type)->array_len;
+	}
+	if(ty_is_enum(type))
+	{
+		return datalayout_sizeof_ty_psy(tyid.s64);
+	}
+	if(ty_is_fn(type))
+	{
+		return datalayout_sizeof_ty_psy(tyid.u64);
+	}
+	if(ty_is_struct(type))
+	{
+		return datalayout_sizeof_struct_psy(type);
+	}
+	return zero;
+};
+
+datalayout_alignof_ty_psy : func(type : tyid -> u64)
+{
+	if(ty_is_integral(type))
+	{
+		return datalayout_alignof_integral_psy(type);
+	}
+	if(ty_is_floating_point(type))
+	{
+		return datalayout_alignof_floating_point_psy(type);
+	}
+	if(ty_is_ptr(type))
+	{
+		return datalayout_alignof_ty_psy(tyid.u64);
+	}
+	if(ty_is_arr(type))
+	{
+		// alignof T[N] == alignof(T)
+		return datalayout_alignof_ty_psy(ty_underlying(type));
+	}
+	if(ty_is_enum(type))
+	{
+		return datalayout_alignof_ty_psy(tyid.s64);
+	}
+	if(ty_is_fn(type))
+	{
+		return datalayout_alignof_ty_psy(tyid.u64);
+	}
+	if(ty_is_struct(type))
+	{
+		return datalayout_alignof_struct_psy(type);
+	}
+	return zero;
+};
+
