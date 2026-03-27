@@ -475,3 +475,38 @@ ir_cmp_fge : func(lhs : irval, rhs : irval -> irval)
 {
 	return ir_cmp_generic(irinst_tag.cmp_fge, lhs, rhs);
 };
+
+ir_call : func(callee : irval, params : irval mut?, params_count : u64, returns_sz : irsz mut?, returns_out : irval mut?, returns_count : u64 -> v0)
+{
+	inst ::= irinst mut
+	{
+		.tag := irinst_tag.call;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := irval_number(returns_count);
+			... := zero;
+		};
+		... := zero;
+	};
+
+	i : u64 mut;
+	for(i = 0; i < returns_count; i = i + 1)
+	{
+		[returns_out # i] = ir_new_reg_of([returns_sz # i]);
+		irinst_add_operand(ref inst, [returns_out # i]);
+	}
+	irinst_add_operand(ref inst, callee);
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		irinst_add_operand(ref inst, [params # i]);
+	}
+
+	ir_add_instruction(inst);
+};
+
+ir_call_fn : func(callee : irpos, params : irval mut?, params_count : u64, returns_out : irval mut?, returns_count : u64 -> v0)
+{
+	fnref ::= irval_funcref(callee);
+	fn ::= ir_ref_func(fnref);
+	ir_call(fnref, params, params_count, fn->params, returns_out, returns_count);
+};

@@ -1,5 +1,60 @@
 wv : bwriter mut := zero;
 w : bwriter mut? mut := zero;
+
+irfn_fibonacci_recursive : func(-> irpos)
+{
+	// fibonacci (recursive)
+	fn0 ::= ir_add_empty_func();
+	n ::= ir_add_param(irsz.q);
+	ir_add_return(irsz.q);
+
+	base_blk ::= ir_add_blk();
+	def_blk ::= ir_add_blk();
+
+	ir_set_pos(fn0);
+	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
+	ir_jmpif0(is_base_case, base_blk, def_blk);
+
+	ir_set_pos(base_blk);
+	ir_ret1(irval_number(1));
+
+	ir_set_pos(def_blk);
+	// return call(self, n - 1) + call(self, n - 2)
+	recurse_lhs : irval mut;
+	recurse_rhs : irval mut;
+	n_minus_1 ::= ir_sub(n, irval_number(1));
+	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_lhs, 1);
+	n_minus_2 ::= ir_sub(n, irval_number(2));
+	ir_call_fn(fn0, ref n_minus_2, 1, ref recurse_rhs, 1);
+	ir_ret1(ir_add(recurse_lhs, recurse_rhs));
+
+	return fn0;
+};
+
+irfn_factorial_recursive : func(-> irpos)
+{
+	// factorial (recursive)
+	fn0 ::= ir_add_empty_func();
+	n ::= ir_add_param(irsz.q);
+	ir_add_return(irsz.q);
+
+	base_blk ::= ir_add_blk();
+	ir_ret1(n);
+	def_blk ::= ir_add_blk();
+
+	ir_set_pos(fn0);
+	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
+	ir_jmpif0(is_base_case, base_blk, def_blk);
+
+	ir_set_pos(def_blk);
+
+	n_minus_1 ::= ir_sub(n, irval_number(1));
+	recurse_ret : irval mut;
+	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_ret, 1);
+	ir_ret1(ir_umul(n, recurse_ret));
+	return fn0;
+};
+
 irtest : func(-> v0)
 {
 	irtest_begin();
@@ -8,22 +63,14 @@ irtest : func(-> v0)
 	g1v ::= u64 mut[2]{.0 := 0x12345; .1 := -0x101112;};
 	g1 ::= ir_add_glob(ref g1v, sizeof typeof g1v, true);
 
-	fn1 ::= ir_add_empty_func();
-	n ::= ir_add_param(irsz.q);
-	ir_add_return(irsz.q);
+	fib ::= irfn_fibonacci_recursive();
+	fac ::= irfn_factorial_recursive();
+	fn2 ::= ir_add_empty_func();
 
-	base_blk ::= ir_add_blk();
-	def_blk ::= ir_add_blk();
-
-	ir_set_pos(fn1);
-	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
-	ir_jmpif0(is_base_case, base_blk, def_blk);
-
-	ir_set_pos(base_blk);
-	ir_ret1(irval_number(1));
-
-	ir_set_pos(def_blk);
-	ir_ret1(n);
+	call_ret : irval mut;
+	call_param ::= irval_number(69420);
+	ir_call_fn(fib, ref call_param, 1, ref call_ret, 1);
+	ir_ret0();
 
 	bwrite_ir(w);
 	irtest_end();
