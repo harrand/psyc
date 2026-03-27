@@ -4,6 +4,10 @@ irprog : struct
 	funcs_count : u64;
 	funcs_cap : u64;
 
+	asms : irasm mut?;
+	asms_count : u64;
+	asms_cap : u64;
+
 	globs : irglob mut?;
 	globs_count : u64;
 	globs_cap : u64;
@@ -39,6 +43,35 @@ irprog_add_func : func(p : irprog mut?, params : irsz mut?, params_count : u64, 
 	};
 	p->funcs_count = (p->funcs_count + 1);
 	return irfunc_add_blk(ptr);
+};
+
+irprog_add_asm : func(p : irprog mut?, params : irsz mut?, params_count : u64, ret : irsz -> irval)
+{
+	if(p->asms == zero)
+	{
+		p->asms_cap = 8;
+		p->asms = arena_alloc(global_arena, p->asms_cap * sizeof typeof([p->asms]));
+	}
+	while(p->asms_count >= p->asms_cap)
+	{
+		oldcap ::= p->asms_cap;
+		olddata ::= p->asms;
+		p->asms_cap = p->asms_cap * 2;
+		p->asms = arena_alloc(global_arena, p->asms_cap * sizeof typeof([p->asms]));
+		memcopy(p->asms, olddata, oldcap * sizeof typeof([p->asms]));
+	}
+	idx ::= p->asms_count;
+	ptr ::= p->asms # idx;
+	[ptr] = irasm
+	{
+		.idx := idx;
+		.params := params;
+		.params_count := params_count;
+		.ret := ret;
+		... := zero;
+	};
+	p->asms_count = (p->asms_count + 1);
+	return irval_asmref(idx);
 };
 
 irprog_add_glob : func(p : irprog mut?, data : u8 mut?, size : u64, is_mut : bool -> irval)
@@ -101,6 +134,22 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 		
 		bwrite_zstr(w, "}");
 		bwrite8(w, 10);
+		bwrite8(w, 10);
+	}
+
+	for(i = 0; i < prog.asms_count; i = i + 1)
+	{
+		as ::= [prog.asms # i];
+		bwrite_irasm(w, as);
+		bwrite8(w, 10);
+		bwrite_zstr(w, "{");
+		bwrite8(w, 10);
+
+		// todo: put constraints and disasm in here.
+		
+		bwrite_zstr(w, "}");
+		bwrite8(w, 10);
+		bwrite8(w, 10);
 	}
 
 	// then all globs
@@ -109,6 +158,7 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 	{
 		glob ::= [prog.globs # i];
 		bwrite_irglob(w, glob);
+		bwrite8(w, 10);
 	}
 	bwrite8(w, 10);
 

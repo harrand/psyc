@@ -4,7 +4,8 @@ irval_tag : enum
 	.globref := 2;
 	.funcref := 3;
 	.blkref := 4;
-	.imm := 5;
+	.asmref := 5;
+	.imm := 6;
 };
 
 irsz : enum
@@ -131,6 +132,21 @@ irval_blkref_get_idx : func(blkref : irval -> u64)
 	return blkref.v1;
 };
 
+//asmref
+irval_asmref : func(idx : u64 -> irval)
+{
+	return irval
+	{
+		.tag := irval_tag.asmref;
+		.v1 := idx;
+	};
+};
+
+irval_asmref_get_idx : func(asmref : irval -> u64)
+{
+	return asmref.v1;
+};
+
 irval_number : func(v : u64 weak -> irval)
 {
 	return irval_imm(irsz.q, v);
@@ -202,6 +218,12 @@ bwrite_irval_blkref : func(w : bwriter mut?, v : irval -> v0)
 	bwrite_uint(w, irval_blkref_get_idx(v));
 };
 
+bwrite_irval_asmref : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "asm_");
+	bwrite_uint(w, irval_blkref_get_idx(v));
+};
+
 bwrite_irval_imm : func(w : bwriter mut?, v : irval -> v0)
 {
 	sz ::= irval_imm_get_irsz(v);
@@ -224,7 +246,8 @@ bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
 	.1 := bwrite_irval_globref;
 	.2 := bwrite_irval_fnref;
 	.3 := bwrite_irval_blkref;
-	.4 := bwrite_irval_imm;
+	.4 := bwrite_irval_asmref;
+	.5 := bwrite_irval_imm;
 };
 
 bwrite_irval : func(w : bwriter mut?, v : irval -> v0)
