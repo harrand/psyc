@@ -145,7 +145,7 @@ ir_jmp4 : func(blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval -> v0
 	ir_jmp(blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif : func(cond : irval, blk : irpos, params : irval mut?, params_count : u64 -> v0)
+ir_jmpif : func(cond : irval, true_blk : irpos, false_blk : irpos, params : irval mut?, params_count : u64 -> v0)
 {
 	inst ::= irinst mut
 	{
@@ -153,7 +153,8 @@ ir_jmpif : func(cond : irval, blk : irpos, params : irval mut?, params_count : u
 		.operands := typeof(irinst{}.operands)
 		{
 			.0 := cond;
-			.1 := irval_blkref(blk);
+			.1 := irval_blkref(true_blk);
+			.2 := irval_blkref(false_blk);
 			... := zero;
 		};
 		... := zero;
@@ -166,32 +167,32 @@ ir_jmpif : func(cond : irval, blk : irpos, params : irval mut?, params_count : u
 	ir_add_instruction(inst);
 };
 
-ir_jmpif0 : func(cond : irval, blk : irpos -> v0)
+ir_jmpif0 : func(cond : irval, true_blk : irpos, false_blk : irpos -> v0)
 {
-	ir_jmpif(cond, blk, zero, zero);
+	ir_jmpif(cond, true_blk, false_blk, zero, zero);
 };
 
-ir_jmpif1 : func(cond : irval, blk : irpos, p1 : irval -> v0)
+ir_jmpif1 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval -> v0)
 {
-	ir_jmpif(cond, blk, ref p1, 1);
+	ir_jmpif(cond, true_blk, false_blk, ref p1, 1);
 };
 
-ir_jmpif2 : func(cond : irval, blk : irpos, p1 : irval, p2 : irval -> v0)
+ir_jmpif2 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval -> v0)
 {
 	arr ::= irval[2]{.0 := p1; .1 := p2;};
-	ir_jmpif(cond, blk, arr # 0, countof typeof(arr));
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif3 : func(cond : irval, blk : irpos, p1 : irval, p2 : irval, p3 : irval -> v0)
+ir_jmpif3 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval -> v0)
 {
 	arr ::= irval[3]{.0 := p1; .1 := p2; .2 := p3;};
-	ir_jmpif(cond, blk, arr # 0, countof typeof(arr));
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif4 : func(cond : irval, blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval -> v0)
+ir_jmpif4 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval -> v0)
 {
 	arr ::= irval[4]{.0 := p1; .1 := p2; .2 := p3; .3 := p4;};
-	ir_jmpif(cond, blk, arr # 0, countof typeof(arr));
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
 ir_zex : func(outsz : irsz, num : irval -> irval)
@@ -277,4 +278,200 @@ ir_cvti : func(outsz : irsz, num : irval -> irval)
 		... := zero;
 	});
 	return out;
+};
+
+ir_biop : func(tag : irinst_tag, lhs : irval, rhs : irval -> irval)
+{
+	out ::= ir_new_reg_of(irval_get_irsz(lhs));
+	ir_add_instruction(irinst
+	{
+		.tag := tag;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := lhs;
+			.2 := rhs;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
+ir_add : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.add, lhs, rhs);
+};
+
+ir_sub : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.sub, lhs, rhs);
+};
+
+ir_umul : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.umul, lhs, rhs);
+};
+
+ir_smul : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.smul, lhs, rhs);
+};
+
+ir_udiv : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.udiv, lhs, rhs);
+};
+
+ir_sdiv : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.sdiv, lhs, rhs);
+};
+
+ir_mod : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.mod, lhs, rhs);
+};
+
+ir_fadd : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.fadd, lhs, rhs);
+};
+
+ir_fsub : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.fsub, lhs, rhs);
+};
+
+ir_fmul : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.fmul, lhs, rhs);
+};
+
+ir_fdiv : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.fdiv, lhs, rhs);
+};
+
+ir_fmod : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.fmod, lhs, rhs);
+};
+
+ir_xor : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.xor, lhs, rhs);
+};
+
+ir_or : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.or, lhs, rhs);
+};
+
+ir_and : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.and, lhs, rhs);
+};
+
+ir_shl : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.shl, lhs, rhs);
+};
+
+ir_ushr : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.ushr, lhs, rhs);
+};
+
+ir_sshr : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_biop(irinst_tag.sshr, lhs, rhs);
+};
+
+ir_cmp_generic : func(tag : irinst_tag, lhs : irval, rhs : irval -> irval)
+{
+	out ::= ir_new_reg_of(irsz.b);
+	ir_add_instruction(irinst
+	{
+		.tag := tag;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := lhs;
+			.2 := rhs;
+			... := zero;
+		};
+		... := zero;
+	});
+	return out;
+};
+
+ir_cmp_eq : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_eq, lhs, rhs);
+};
+
+ir_cmp_ne : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_ne, lhs, rhs);
+};
+
+ir_cmp_slt : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_slt, lhs, rhs);
+};
+
+ir_cmp_sle : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_sle, lhs, rhs);
+};
+
+ir_cmp_sgt : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_sgt, lhs, rhs);
+};
+
+ir_cmp_sge : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_sge, lhs, rhs);
+};
+
+ir_cmp_ult : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_ult, lhs, rhs);
+};
+
+ir_cmp_ule : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_ule, lhs, rhs);
+};
+
+ir_cmp_ugt : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_ugt, lhs, rhs);
+};
+
+ir_cmp_uge : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_uge, lhs, rhs);
+};
+
+ir_cmp_flt : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_flt, lhs, rhs);
+};
+
+ir_cmp_fle : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_fle, lhs, rhs);
+};
+
+ir_cmp_fgt : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_fgt, lhs, rhs);
+};
+
+ir_cmp_fge : func(lhs : irval, rhs : irval -> irval)
+{
+	return ir_cmp_generic(irinst_tag.cmp_fge, lhs, rhs);
 };

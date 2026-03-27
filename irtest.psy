@@ -9,24 +9,21 @@ irtest : func(-> v0)
 	g1 ::= ir_add_glob(ref g1v, sizeof typeof g1v, true);
 
 	fn1 ::= ir_add_empty_func();
-	par1 ::= ir_add_param(irsz.q);
-	par2 ::= ir_add_param(irsz.w);
-	ir_add_return(irsz.q);
-	ir_add_return(irsz.q);
+	n ::= ir_add_param(irsz.q);
 	ir_add_return(irsz.q);
 
-	v1 ::= ir_stack(irval_number(69), irval_number(8));
-	first_4_bytes ::= ir_load(irsz.d, v1, irval_number(0), irval_number(irsz_size_bytes(irsz.d)), zero);
-	next_4_bytes ::= ir_load(irsz.d, v1, irval_number(1), irval_number(irsz_size_bytes(irsz.d)), zero);
-	ir_store(irval_number(0), v1, zero, zero, zero);
-	ir_ret3(irval_number(0), irval_number(1), irval_number(2));
-
-	blk2 ::= ir_add_blk();
-	blk2par0 ::= ir_blk_add_param(irsz.d);
-	ir_ret1(blk2par0);
+	base_blk ::= ir_add_blk();
+	def_blk ::= ir_add_blk();
 
 	ir_set_pos(fn1);
-	ir_jmpif1(irval_number(1), blk2, ir_cvti(irsz.q, irval_float(12.00123001)));
+	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
+	ir_jmpif0(is_base_case, base_blk, def_blk);
+
+	ir_set_pos(base_blk);
+	ir_ret1(irval_number(1));
+
+	ir_set_pos(def_blk);
+	ir_ret1(n);
 
 	bwrite_ir(w);
 	irtest_end();
