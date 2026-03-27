@@ -16,42 +16,49 @@ ir_stack : func(size : irval, align : irval -> irval)
 	return ptrout;
 };
 
-ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : irval -> irval)
+ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval -> irval)
 {
-	// outreg = load base + (index * scale) + disp
+	// outreg = load base + (index * scale)
 	// very similar to a memory operand. everything but 'base' is optional
 	out ::= ir_new_reg_of(outsz);
-	inst ::= irinst mut
+	ir_add_instruction(irinst
 	{
 		.tag := irinst_tag.load;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := out;
+			.1 := base;
+			.2 := index;
+			.3 := scale;
+			... := zero;
+		};
 		... := zero;
-	};
-	// have to add because operands individually because they likely to spill into extra_operands
-	irinst_add_operand(ref inst, out);
-	irinst_add_operand(ref inst, base);
-	irinst_add_operand(ref inst, index);
-	irinst_add_operand(ref inst, scale);
-	irinst_add_operand(ref inst, disp);
-	ir_add_instruction(inst);
+	});
 	return out;
 };
 
-ir_store : func(v : irval, base : irval, index : irval, scale : irval, disp : irval -> v0)
+ir_store : func(v : irval, base : irval, index : irval, scale : irval -> v0)
 {
-	// outreg = load base + (index * scale) + disp
+	// store v into [base + (index * scale)]
 	// very similar to a memory operand. everything but 'base' is optional
 	inst ::= irinst mut
 	{
 		.tag := irinst_tag.store;
 		... := zero;
 	};
-	// have to add because operands individually because they likely to spill into extra_operands
-	irinst_add_operand(ref inst, v);
-	irinst_add_operand(ref inst, base);
-	irinst_add_operand(ref inst, index);
-	irinst_add_operand(ref inst, scale);
-	irinst_add_operand(ref inst, disp);
-	ir_add_instruction(inst);
+	ir_add_instruction(irinst
+	{
+		.tag := irinst_tag.store;
+		.operands := typeof(irinst{}.operands)
+		{
+			.0 := v;
+			.1 := base;
+			.2 := index;
+			.3 := scale;
+			... := zero;
+		};
+		... := zero;
+	});
 };
 
 ir_ret : func(retvals : irval mut?, retvals_count : u64 -> v0)
