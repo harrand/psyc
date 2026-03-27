@@ -45,7 +45,7 @@ irprog_add_func : func(p : irprog mut?, params : irsz mut?, params_count : u64, 
 	return irfunc_add_blk(ptr);
 };
 
-irprog_add_asm : func(p : irprog mut?, params : irsz mut?, params_count : u64, ret : irsz -> irval)
+irprog_add_asm : func(p : irprog mut?, params : irsz mut?, params_count : u64, ret : irsz, constraint : u8?, constraint_len : u64, code : u8?, code_len : u64 -> irval)
 {
 	if(p->asms == zero)
 	{
@@ -68,6 +68,10 @@ irprog_add_asm : func(p : irprog mut?, params : irsz mut?, params_count : u64, r
 		.params := params;
 		.params_count := params_count;
 		.ret := ret;
+		.constraint := constraint;
+		.constraint_len := constraint_len;
+		.code := code;
+		.code_len := code_len;
 		... := zero;
 	};
 	p->asms_count = (p->asms_count + 1);
@@ -146,7 +150,9 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 		bwrite8(w, 10);
 
 		// todo: put constraints and disasm in here.
+		bwrite_bytes(w, as.code, as.code_len);
 		
+		bwrite8(w, 10);
 		bwrite_zstr(w, "}");
 		bwrite8(w, 10);
 		bwrite8(w, 10);
