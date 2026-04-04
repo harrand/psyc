@@ -4,6 +4,30 @@ irglob : struct
 	data : u8 mut?;
 	size : u64;
 	is_mut : bool;
+
+	patches : irpatch mut?;
+	patches_count : u64;
+	patches_cap : u64;
+};
+
+irglob_add_patch : func(glob : irglob mut?, p : irpatch -> v0)
+{
+	if(glob->patches == zero)
+	{
+		glob->patches_cap = 8;
+		glob->patches = arena_alloc(global_arena, sizeof typeof([glob->patches]) * glob->patches_cap);
+	}
+	while(glob->patches_count >= glob->patches_cap)
+	{
+		oldcap ::= glob->patches_cap;
+		olddata ::= glob->patches;
+		glob->patches_cap = glob->patches_cap * 2;
+		glob->patches = arena_alloc(global_arena, sizeof typeof([glob->patches]) * glob->patches_cap);
+		memcopy(glob->patches, olddata, sizeof typeof([glob->patches]) * oldcap);
+	}
+	idx ::= glob->patches_count;
+	[glob->patches # idx] = p;
+	glob->patches_count = glob->patches_count + 1;
 };
 
 bwrite_hex_digit : func(w : bwriter mut?, nibble : u8 -> v0)
