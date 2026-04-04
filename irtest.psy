@@ -1,6 +1,8 @@
 wv : bwriter mut := zero;
 w : bwriter mut? mut := zero;
 
+tmploc : ast mut? := zero;
+
 irfn_fibonacci_recursive : func(-> irpos)
 {
 	// fibonacci (recursive)
@@ -12,21 +14,21 @@ irfn_fibonacci_recursive : func(-> irpos)
 	def_blk ::= ir_add_blk();
 
 	ir_set_pos(fn0);
-	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
-	ir_jmpif0(is_base_case, base_blk, def_blk);
+	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1), tmploc);
+	ir_jmpif0(is_base_case, base_blk, def_blk, tmploc);
 
 	ir_set_pos(base_blk);
-	ir_ret1(irval_number(1));
+	ir_ret1(irval_number(1), tmploc);
 
 	ir_set_pos(def_blk);
 	// return call(self, n - 1) + call(self, n - 2)
 	recurse_lhs : irval mut;
 	recurse_rhs : irval mut;
-	n_minus_1 ::= ir_sub(n, irval_number(1));
-	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_lhs);
-	n_minus_2 ::= ir_sub(n, irval_number(2));
-	ir_call_fn(fn0, ref n_minus_2, 1, ref recurse_rhs);
-	ir_ret1(ir_add(recurse_lhs, recurse_rhs));
+	n_minus_1 ::= ir_sub(n, irval_number(1), tmploc);
+	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_lhs, tmploc);
+	n_minus_2 ::= ir_sub(n, irval_number(2), tmploc);
+	ir_call_fn(fn0, ref n_minus_2, 1, ref recurse_rhs, tmploc);
+	ir_ret1(ir_add(recurse_lhs, recurse_rhs, tmploc), tmploc);
 
 	return fn0;
 };
@@ -39,19 +41,19 @@ irfn_factorial_recursive : func(-> irpos)
 	ir_add_return(irsz.q);
 
 	base_blk ::= ir_add_blk();
-	ir_ret1(n);
+	ir_ret1(n, tmploc);
 	def_blk ::= ir_add_blk();
 
 	ir_set_pos(fn0);
-	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1));
-	ir_jmpif0(is_base_case, base_blk, def_blk);
+	is_base_case ::= ir_cmp_ule(n, irval_imm(irval_get_irsz(n), 1), tmploc);
+	ir_jmpif0(is_base_case, base_blk, def_blk, tmploc);
 
 	ir_set_pos(def_blk);
 
-	n_minus_1 ::= ir_sub(n, irval_number(1));
+	n_minus_1 ::= ir_sub(n, irval_number(1), tmploc);
 	recurse_ret : irval mut;
-	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_ret);
-	ir_ret1(ir_umul(n, recurse_ret));
+	ir_call_fn(fn0, ref n_minus_1, 1, ref recurse_ret, tmploc);
+	ir_ret1(ir_umul(n, recurse_ret, tmploc), tmploc);
 	return fn0;
 };
 
@@ -71,12 +73,12 @@ irtest : func(-> v0)
 
 	call_ret : irval mut;
 	call_param ::= irval_number(69420);
-	ir_call_fn(fib, ref call_param, 1, ref call_ret);
+	ir_call_fn(fib, ref call_param, 1, ref call_ret, tmploc);
 
 
 	foo ::= ir_add_asm(zero, zero, irsz.q, zero, zero, "mov rax, rdx", 12);
-	ir_call_asm(foo, zero, zero);
-	ir_ret1(ir_trunc(irsz.d, call_ret));
+	ir_call_asm(foo, zero, zero, tmploc);
+	ir_ret1(ir_trunc(irsz.d, call_ret, tmploc), tmploc);
 
 	bwrite_ir(w);
 	irtest_end();
