@@ -350,12 +350,12 @@ cg_global_variable : func(var : variable mut? -> v0)
 	decl ::= var->node->decl;
 	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
 	type ::= var->type;
-	var->cg = LLVMAddGlobal(prog.backend.cg, cg_type(type, true), name_zstr);
+	var->backend.cg = LLVMAddGlobal(prog.backend.cg, cg_type(type, true), name_zstr);
 
 	is_const ::= ty_has_qual(type, tyqual.qual_static) || !ty_has_qual(type, tyqual.qual_mut);
-	LLVMSetGlobalConstant(var->cg, is_const@s32);
-	LLVMSetLinkage(var->cg, LLVMPrivateLinkage);
-	LLVMSetExternallyInitialized(var->cg, false@s32);
+	LLVMSetGlobalConstant(var->backend.cg, is_const@s32);
+	LLVMSetLinkage(var->backend.cg, LLVMPrivateLinkage);
+	LLVMSetExternallyInitialized(var->backend.cg, false@s32);
 
 	if(var->node->children_count <= 1)
 	{
@@ -368,7 +368,7 @@ cg_global_variable : func(var : variable mut? -> v0)
 	}
 	init_node ::= ast_get_child(var->node, 1);
 	init_val ::= val_dynamic(val_convert_to(cg_node(init_node, program_scope()), type, program_scope(), val_resolution.runtime_only, init_node), program_scope(), var->node);
-	LLVMSetInitializer(var->cg, init_val.runtime.cg);
+	LLVMSetInitializer(var->backend.cg, init_val.runtime.cg);
 
 	dbg_declare_global_variable(var);
 };
@@ -383,7 +383,7 @@ cg_local_variable : func(var : variable mut?, fn : function mut?, is_function_pa
 	{
 		// do an alloca
 		decl ::= var->node->decl;
-		var->cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
+		var->backend.cg = LLVMBuildAlloca(ir, cg_type(var->type, true), sstr2zstr(decl.name, decl.name_len, string_arena));
 	}
 };
 
@@ -396,7 +396,7 @@ cg_function_param : func(fn : function mut?, var : variable mut?, idx : u64 -> v
 	// and immediately store that in there.
 	cg_local_variable(var, fn, true);
 	// do the store
-	LLVMBuildStore(ir, param_cg, var->cg);
+	LLVMBuildStore(ir, param_cg, var->backend.cg);
 	dbg_declare_function_param(var, fn, idx);
 };
 
@@ -761,7 +761,7 @@ cg_varref : func(v : variable?, scope : lexical_scope mut?, source : ast? -> val
 		.hand := valhand.lvalue;
 		.type := v->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := v->cg;};
+		.runtime := variable_as_valruntime(v->backend);
 	};
 };
 
@@ -1534,7 +1534,7 @@ cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 		{
 			init = cg_convert_to(cg_load_if_lvalue(val_dynamic(cg_node(init_node, scope), scope, var->node)), var->type, init_node);
 		}
-		LLVMBuildStore(ir, init.runtime.cg, var->cg);
+		LLVMBuildStore(ir, init.runtime.cg, var->backend.cg);
 	}
 	dbg_declare_local_variable(var, scope_get_parent_function(scope));
 	return zero;
