@@ -73,81 +73,158 @@ irchunk_tys : func(rules : irchunking_rules, tys : tyid mut?, tys_count : u64, o
 	{
 		curty ::= [tys # i];
 		curty_sz ::= datalayout_sizeof_ty_psy(curty);
-		if(ty_is_struct(curty))
+		if(curty_sz > (rules.chunk_size_max * 2))
 		{
-			u ::= ty_unwrap(curty);
-
-			strctrule : irchunking_rules mut := rules;
-			strctrule.allow_merges = true;
-			newchunks ::= irchunk_tys(strctrule, u->strct.members, u->strct.members_count, chnk);
-			// overwrite all the new chunk src_idx however to point to this struct.
-			
-			for(j = 0; j < newchunks; j = j + 1)
+			// too large, memory it.
+			[chnk] = irchunk
 			{
-				ptr ::= chnk # j;
-				ptr->src_byte_offset = ptr->src_byte_offset + datalayout_offsetof_struct_psy(curty, ptr->src_idx_begin);
-				ptr->src_idx_begin = i;
-				ptr->src_idx_end = i;
-			}
-			chnkoff = chnkoff + newchunks;
-			chnk = chnk # newchunks;
+				.type := irchunk_type.mem;
+				.src_idx_begin := i;
+				.src_idx_end := i;
+				.src_byte_offset := 0;
+				.sz := curty_sz;
+			};
 		}
 		else
 		{
-			will_overflow_chunk ::= (chnk->sz + curty_sz) >= (rules.chunk_size_max@u64);
-			conflicts_with_chunk_type : bool mut := false;
-			if((i != 0) && (((chnk->type == irchunk_type.fp) && (!ty_is_floating_point(curty))) || ((chnk->type == irchunk_type.nonfp) && (ty_is_floating_point(curty)))))
+			if(ty_is_struct(curty))
 			{
-				conflicts_with_chunk_type = true;
-			}		
-			if(will_overflow_chunk || (!rules.allow_merges && (i != 0)) || conflicts_with_chunk_type)
-			{
-				// current chunk is empty or not available to us, move on
-				chnk = chnk # 1;
-				chnkoff = chnkoff + 1;
-				[chnk] = irchunk{... := zero; .src_idx_begin := i;};
-			}
-			chnk->sz = (chnk->sz + curty_sz);
-			if(ty_is_floating_point(curty))
-			{
-				chnk->type = irchunk_type.fp;
+				u ::= ty_unwrap(curty);
+
+				strctrule : irchunking_rules mut := rules;
+				strctrule.allow_merges = true;
+				newchunks ::= irchunk_tys(strctrule, u->strct.members, u->strct.members_count, chnk);
+				// overwrite all the new chunk src_idx however to point to this struct.
+				
+				for(j = 0; j < newchunks; j = j + 1)
+				{
+					ptr ::= chnk # j;
+					ptr->src_byte_offset = ptr->src_byte_offset + datalayout_offsetof_struct_psy(curty, ptr->src_idx_begin);
+					ptr->src_idx_begin = i;
+					ptr->src_idx_end = i;
+				}
+				chnkoff = chnkoff + newchunks;
+				chnk = chnk # newchunks;
 			}
 			else
 			{
-				chnk->type = irchunk_type.nonfp;
-			}
-			additional_chunk_count : u64 mut := 0;
-			while(chnk->sz > (rules.chunk_size_max@u64))
-			{
-				additional_chunk_count = additional_chunk_count + 1;
-				// this chunk is too big, we must split it up.
-				remain ::= chnk->sz - (rules.chunk_size_max@u64);
-				chnk->sz = (rules.chunk_size_max@u64);
-				chnk->src_idx_end = i;
+				will_overflow_chunk ::= (chnk->sz + curty_sz) >= (rules.chunk_size_max@u64);
+				conflicts_with_chunk_type : bool mut := false;
+				if((i != 0) && (((chnk->type == irchunk_type.fp) && (!ty_is_floating_point(curty))) || ((chnk->type == irchunk_type.nonfp) && (ty_is_floating_point(curty)))))
+				{
+					conflicts_with_chunk_type = true;
+				}		
+				if(will_overflow_chunk || (!rules.allow_merges && (i != 0)) || conflicts_with_chunk_type)
+				{
+					// current chunk is empty or not available to us, move on
+					chnk = chnk # 1;
+					chnkoff = chnkoff + 1;
+					[chnk] = irchunk{... := zero; .src_idx_begin := i;};
+				}
+				chnk->sz = (chnk->sz + curty_sz);
+				if(ty_is_floating_point(curty))
+				{
+					chnk->type = irchunk_type.fp;
+				}
+				else
+				{
+					chnk->type = irchunk_type.nonfp;
+				}
+				additional_chunk_count : u64 mut := 0;
+				while(chnk->sz > (rules.chunk_size_max@u64))
+				{
+					additional_chunk_count = additional_chunk_count + 1;
+					// this chunk is too big, we must split it up.
+					remain ::= chnk->sz - (rules.chunk_size_max@u64);
+					chnk->sz = (rules.chunk_size_max@u64);
+					chnk->src_idx_end = i;
 
-				oldty ::= chnk->type;
-				chnk = chnk # 1;
-				chnkoff = chnkoff + 1;
-				[chnk] = irchunk{.type := oldty; .src_idx_begin := i; .src_byte_offset := additional_chunk_count * (rules.chunk_size_max@u64); .sz := remain; ... := zero;};
-			}
-			cumulative_bit : u64 mut := chnk->src_byte_offset;
-			while(!is_log2_of(chnk->sz, rules.chunk_size_max@u64) && (chnk->sz > 0))
-			{
-				// ok this is definitely smaller than chunk size max (coz of the while loop above) but its not a round number so doesnt fit properly
-				// we need to get the highest round number thats less than chnk_sz
-				// thats our chunk size, and then we create a new chunk with the remaining nonroundness and recurse
-				round_bit ::= highest_log2_of(chnk->sz);
-				cumulative_bit = (cumulative_bit + round_bit);
-				nonround_bit ::= chnk->sz - round_bit;
-				chnk->sz = round_bit;
+					oldty ::= chnk->type;
+					chnk = chnk # 1;
+					chnkoff = chnkoff + 1;
+					[chnk] = irchunk{.type := oldty; .src_idx_begin := i; .src_byte_offset := additional_chunk_count * (rules.chunk_size_max@u64); .sz := remain; ... := zero;};
+				}
+				cumulative_bit : u64 mut := chnk->src_byte_offset;
+				while(!is_log2_of(chnk->sz, rules.chunk_size_max@u64) && (chnk->sz > 0))
+				{
+					// ok this is definitely smaller than chunk size max (coz of the while loop above) but its not a round number so doesnt fit properly
+					// we need to get the highest round number thats less than chnk_sz
+					// thats our chunk size, and then we create a new chunk with the remaining nonroundness and recurse
+					round_bit ::= highest_log2_of(chnk->sz);
+					cumulative_bit = (cumulative_bit + round_bit);
+					nonround_bit ::= chnk->sz - round_bit;
+					chnk->sz = round_bit;
+					chnk->src_idx_end = i;
+					oldty2 ::= chnk->type;
+					chnk = chnk # 1;
+					chnkoff = chnkoff + 1;
+					[chnk] = irchunk{.type := oldty2; .src_idx_begin := i; .src_byte_offset := cumulative_bit; .sz := nonround_bit; ... := zero;};
+				}
 				chnk->src_idx_end = i;
-				oldty2 ::= chnk->type;
-				chnk = chnk # 1;
-				chnkoff = chnkoff + 1;
-				[chnk] = irchunk{.type := oldty2; .src_idx_begin := i; .src_byte_offset := cumulative_bit; .sz := nonround_bit; ... := zero;};
 			}
-			chnk->src_idx_end = i;
 		}
 	}
+	if([out_chunks # chnkoff].type == zero)
+	{
+		return chnkoff;
+	}
 	return chnkoff + 1;
+};
+
+chunk_to_irsz : func(chnk : irchunk? -> irsz)
+{
+	if(chnk->type == irchunk_type.fp)
+	{
+		if(chnk->sz == 4)
+		{
+			return irsz.f;
+		}
+		if(chnk->sz == 8)
+		{
+			return irsz.ff;
+		}
+	}
+	if(chnk->type == irchunk_type.mem)
+	{
+		return irsz.q;
+	}
+	// ok nonfp
+	if(chnk->sz == 1)
+	{
+		return irsz.b;
+	}
+	if(chnk->sz == 2)
+	{
+		return irsz.w;
+	}
+	if(chnk->sz == 4)
+	{
+		return irsz.d;
+	}
+	if(chnk->sz == 8)
+	{
+		return irsz.q;
+	}
+	if(chnk->sz == 16)
+	{
+		return irsz.x;
+	}
+	if(chnk->sz == 32)
+	{
+		return irsz.y;
+	}
+	if(chnk->sz == 64)
+	{
+		return irsz.z;
+	}
+	// panic
+	psyc_panic_begin(zero);
+	putzstr("no codepath to convert chunk{");
+	putzstr(enumname(chnk->type));
+	putzstr(" ");
+	putuint(chnk->sz);
+	putzstr("} to irsz");
+	psyc_diag_end();
+	psyc_exit_failure();
+	return zero;
 };
