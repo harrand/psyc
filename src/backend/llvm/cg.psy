@@ -109,7 +109,7 @@ cg_type : func(type : tyid, should_ref_function_type : bool -> u64)
 	}
 	if(ty_is_struct(t))
 	{
-		return ty_unwrap(t)->strct.cg;
+		return ty_unwrap(t)->strct.backend.cg;
 	}
 	if(ty_is_ptr(t))
 	{
@@ -186,7 +186,7 @@ cg_struct_sig : func(type : tyid -> v0)
 	s ::= ref(t->strct);
 	// goal: set s->cg to something
 	name_zstr ::= sstr2zstr(t->name, t->name_len, string_arena);
-	s->cg = LLVMStructCreateNamed(LLVMGetGlobalContext(), sstr2zstr(t->name, t->name_len, string_arena));
+	s->backend.cg = LLVMStructCreateNamed(LLVMGetGlobalContext(), sstr2zstr(t->name, t->name_len, string_arena));
 };
 
 cg_struct_def : func(type : tyid -> v0)
@@ -200,7 +200,7 @@ cg_struct_def : func(type : tyid -> v0)
 	{
 		[memarr # i] = cg_type([s->members # i], true);
 	}
-	LLVMStructSetBody(s->cg, memarr, s->members_count@u32, false@s32);
+	LLVMStructSetBody(s->backend.cg, memarr, s->members_count@u32, false@s32);
 };
 
 cg_global_variables : func(scope : lexical_scope mut? -> v0)
@@ -250,7 +250,7 @@ llvm_add_function_string_attribute : func(fn : function mut?, attrib_name_zstr :
 
 cg_asm : func(assembly : assembly mut? -> v0)
 {
-	assembly->cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
+	assembly->backend.cg = LLVMGetInlineAsm(cg_type(assembly->type, false), assembly->code, assembly->code_len, assembly->constraints, assembly->constraints_len, true@s32, false@s32, LLVMInlineAsmDialectIntel, false@s32);
 };
 
 cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
@@ -742,7 +742,7 @@ cg_asmref : func(as : assembly? -> val)
 		.hand := valhand.rvalue;
 		.type := as->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := as->cg;};
+		.runtime := valruntime{.cg := as->backend.cg;};
 	};
 };
 
