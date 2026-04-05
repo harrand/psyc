@@ -33,8 +33,37 @@ cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 		[param_tys # i] = [funcscope->variables # i].type;
 	}
 	fntype ::= ty_unwrap(fn->type)->fn;
-	cg_func_params_ir(fntype.param_types, fntype.params_count);
-	cg_func_ret_ir(fntype.return_type);
+
+	chunk_buffer : irchunk mut[128] mut := zero;
+	rules ::= irchunking_rules
+	{
+		.allow_merges := true;
+		.chunk_size_max := 16;
+	};
+
+	// generate and copy chunks for params
+	fn->backend.param_chunks_count = irchunk_tys(rules, fntype.param_types, fntype.params_count, chunk_buffer # 0);
+	fn->backend.param_chunks = arena_alloc(global_arena, fn->backend.param_chunks_count * sizeof irchunk);
+	memcopy(fn->backend.param_chunks, chunk_buffer # 0, fn->backend.param_chunks_count * sizeof irchunk);
+
+	chunk_buffer = zero;
+	// and for returns
+	if(!ty_is_bad(fntype.return_type) && !ty_is_v0(fntype.return_type))
+	{
+		fn->backend.return_chunks_count = irchunk_tys(rules, ref fntype.return_type, 1, chunk_buffer # 0);
+		fn->backend.return_chunks = arena_alloc(global_arena, fn->backend.return_chunks_count * sizeof irchunk);
+		memcopy(fn->backend.return_chunks, chunk_buffer # 0, fn->backend.return_chunks_count * sizeof irchunk);
+	}
+
+	// and then actually populate the irfn signature
+	for(i = 0; i < fn->backend.param_chunks_count; i = i + 1)
+	{
+		ir_add_param(chunk_to_irsz(fn->backend.param_chunks # i));
+	}
+	for(i = 0; i < fn->backend.return_chunks_count; i = i + 1)
+	{
+		ir_add_return(chunk_to_irsz(fn->backend.return_chunks # i));
+	}
 };
 
 cg_func_def : func(fn : function mut? -> v0)
@@ -55,42 +84,6 @@ cg_func_def : func(fn : function mut? -> v0)
 
 cg_func_def_back_params : func(fn : function mut -> v0)
 {
-};
-
-cg_func_params_ir : func(types : tyid?, types_count : u64 -> v0)
-{
-	chunks_arr : irchunk mut[64] := zero;
-	chunks_count ::= irchunk_tys(irchunking_rules
-	{
-		.allow_merges := true;
-		.chunk_size_max := 16;
-	}, types, types_count, chunks_arr # 0);
-
-	i : u64 mut;
-	for(i = 0; i < chunks_count; i = i + 1)
-	{
-		ir_add_param(chunk_to_irsz(chunks_arr # i));
-	}
-};
-
-cg_func_ret_ir : func(type : tyid -> v0)
-{
-	if(ty_is_v0(type))
-	{
-		return;
-	}
-	chunks_arr : irchunk mut[64] := zero;
-	chunks_count ::= irchunk_tys(irchunking_rules
-	{
-		.allow_merges := true;
-		.chunk_size_max := 16;
-	}, ref type, 1, chunks_arr # 0);
-
-	i : u64 mut;
-	for(i = 0; i < chunks_count; i = i + 1)
-	{
-		ir_add_return(chunk_to_irsz(chunks_arr # i));
-	}
 };
 
 cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
