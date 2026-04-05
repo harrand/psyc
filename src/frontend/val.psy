@@ -737,8 +737,7 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 			.scope := local_fnscope;
 			.name := node->function.name;
 			.name_len := node->function.name_len;
-			.cg := zero;
-			.db := zero;
+			... := zero;
 		});
 		semal_funcsig(local_fn);
 		semal_funcdef(local_fn);
@@ -775,7 +774,7 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 		{
 			return type_as_val(tyid_integral_literal());
 		}
-		sizeof_val ::= cg_sizeof(ty_typename_node(ast_get_child(node, 0), scope));
+		sizeof_val ::= integer_as_val(datalayout_sizeof_ty(ty_typename_node(ast_get_child(node, 0), scope)));
 		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(sizeof_val, scope, node);
@@ -788,7 +787,7 @@ val_node : func(node : ast?, scope : lexical_scope?, resolution : val_resolution
 		{
 			return type_as_val(tyid_integral_literal());
 		}
-		alignof_val ::= cg_alignof(ty_typename_node(ast_get_child(node, 0), scope));
+		alignof_val ::= integer_as_val(datalayout_alignof_ty(ty_typename_node(ast_get_child(node, 0), scope)));
 		if(resolution == (val_resolution.runtime_only))
 		{
 			return val_dynamic(alignof_val, scope, node);
@@ -1861,9 +1860,9 @@ val_biop_at : func(lhs : val, rhs : val, scope : lexical_scope?, resolution : va
 		// we know its not a valueref so we can assume its a literal address (pointer arithmetic)
 		address ::= rhs.compile_time.primitive.integer;
 		// add sizeof(lhs) * rhs_index
-		sizeof_lhs ::= val_must_get_integer(cg_sizeof(lhs.type), scope, source);
+		sizeof_lhs ::= datalayout_sizeof_ty(lhs.type);
 		// this is a pointer compile-time value as an address (integer literal under-the-hood) whose address has been manually offsetted.
-		return s_convert_to(integer_as_val(address + (rhs_index * sizeof_lhs)), retty, scope, source);
+		return s_convert_to(integer_as_val(address + (rhs_index * sizeof_lhs@_)), retty, scope, source);
 	}
 	// otherwise it must be a runtime thing.
 	return cg_biop_at(val_dynamic(lhs, scope, source), val_dynamic(rhs, scope, source), source);

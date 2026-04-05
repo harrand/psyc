@@ -133,20 +133,37 @@ psyc_backend : enum
 
 == default ==
 {
-	warning("no build config specified, defaulting to 'debug'");
+	warning("no build config specified, defaulting to 'llvm debug'");
+	llvm();
+};
+
+== llvm ==
+{
+	backend ::= psyc_backend.llvm;
+	debug();
+};
+
+== psyir ==
+{
+	backend ::= psyc_backend.psy;
 	debug();
 };
 
 == _base ==
 {
 	add_build_file("src/stdlib/stdlib.psy");
-	add_source_file("irtest.psy");
 	add_source_directory("src");
 	add_source_directory("src/frontend");
 	add_source_directory("src/backend");
-	add_source_directory("src/backend/llvm");
-	add_source_directory("src/backend/ir");
-	backend ::= psyc_backend.psy;
+	static_if(backend == psyc_backend.psy)
+	{
+		add_source_directory("src/backend/ir");
+		add_source_file("irtest.psy");
+	}
+	else
+	{
+		add_source_directory("src/backend/llvm");
+	}
 
 	executable("psyc_out");
 	static_if(_win32)

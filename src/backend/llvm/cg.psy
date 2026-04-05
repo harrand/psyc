@@ -2,6 +2,12 @@
 // basically this is LLVM land. many functions here have a s_xyz (compile-time) equivalent in s.psy
 ir : u64 mut := zero;
 
+function_backend : struct
+{
+	cg : u64;
+	db : u64;
+};
+
 cg_setup : func(-> v0)
 {
 	cg_begin();
@@ -245,7 +251,7 @@ cg_all_functions : func(scope : lexical_scope mut? -> v0)
 llvm_add_function_string_attribute : func(fn : function mut?, attrib_name_zstr : u8? -> v0)
 {
 	attr ::= LLVMCreateStringAttribute(LLVMGetGlobalContext(), attrib_name_zstr, zstrlen(attrib_name_zstr)@u32, "", 0);
-	LLVMAddAttributeAtIndex(fn->cg, LLVMAttributeFunctionIndex, attr);
+	LLVMAddAttributeAtIndex(fn->backend.cg, LLVMAttributeFunctionIndex, attr);
 };
 
 cg_asm : func(assembly : assembly mut? -> v0)
@@ -255,7 +261,7 @@ cg_asm : func(assembly : assembly mut? -> v0)
 
 cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 {
-	if(fn->cg != zero)
+	if(fn->backend.cg != zero)
 	{
 		return;
 	}
@@ -280,7 +286,7 @@ cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 	{
 		name_zstr = sstr2zstr(fn->name, fn->name_len, string_arena);
 	}
-	fn->cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
+	fn->backend.cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
 };
 
 cg_func_def : func(fn : function mut? -> v0)
@@ -298,7 +304,7 @@ cg_func_def : func(fn : function mut? -> v0)
 
 	// ok we have a scope
 	funcscope ::= fn->scope@lexical_scope mut?;
-	funcscope->cg = LLVMAppendBasicBlock(fn->cg, "entry");
+	funcscope->cg = LLVMAppendBasicBlock(fn->backend.cg, "entry");
 	LLVMPositionBuilderAtEnd(ir, funcscope->cg);
 
 	dbg_declare_function(fn);
@@ -390,7 +396,7 @@ cg_local_variable : func(var : variable mut?, fn : function mut?, is_function_pa
 cg_function_param : func(fn : function mut?, var : variable mut?, idx : u64 -> v0)
 {
 	// ok this ones special
-	param_cg ::= LLVMGetParam(fn->cg, var->param_idx@_);
+	param_cg ::= LLVMGetParam(fn->backend.cg, var->param_idx@_);
 	// param_cg is the param register value
 	// we want to make our own backing alloca
 	// and immediately store that in there.
@@ -717,7 +723,7 @@ cg_members : func(v : val, scope : lexical_scope mut?, source : ast? -> val)
 // return a runtime val representation of a function
 cg_funcref : func(fn : function? -> val)
 {
-	if(fn->cg == zero)
+	if(fn->backend.cg == zero)
 	{
 		cg_func_sig(fn, zero);
 	}
@@ -728,7 +734,7 @@ cg_funcref : func(fn : function? -> val)
 		.hand := valhand.rvalue;
 		.type := fn->type;
 		.compile_time := zero;
-		.runtime := valruntime{.cg := fn->cg;};
+		.runtime := valruntime{.cg := fn->backend.cg;};
 	};
 };
 
@@ -1578,14 +1584,14 @@ cg_if : func(node : ast mut?, scope : lexical_scope mut? -> val)
 
 	else_node ::= ast_get_last_child_if_else(node);
 
-	ifscope ::= LLVMAppendBasicBlock(parent_fn->cg, "if");
+	ifscope ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "if");
 	elsescope : u64 mut := zero;
 
 	if(else_node != zero)
 	{
-		elsescope = LLVMAppendBasicBlock(parent_fn->cg, "else");
+		elsescope = LLVMAppendBasicBlock(parent_fn->backend.cg, "else");
 	}
-	ifcont ::= LLVMAppendBasicBlock(parent_fn->cg, "ifcont");
+	ifcont ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "ifcont");
 	if(else_node == zero)
 	{
 		elsescope = ifcont;
@@ -1658,8 +1664,8 @@ cg_while : func(node : ast mut?, scope : lexical_scope mut? -> val)
 	cond_node ::= ast_get_child(node, 0);
 	cond_val ::= val_convert_to(cg_load_if_lvalue(cg_node(cond_node, scope)), tyid.bool, scope, val_resolution.runtime_only, cond_node);
 
-	whilescope ::= LLVMAppendBasicBlock(parent_fn->cg, "while");
-	whilecont ::= LLVMAppendBasicBlock(parent_fn->cg, "whilecont");
+	whilescope ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "while");
+	whilecont ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "whilecont");
 	i : u64 mut;
 
 	// make the branch
@@ -1707,8 +1713,8 @@ cg_for : func(node : ast mut?, scope : lexical_scope mut? -> val)
 	iter_node ::= ast_get_child(node, 2);
 	// first just do the init
 	cg_node(init_node, scope);
-	forscope ::= LLVMAppendBasicBlock(parent_fn->cg, "for");
-	forcont ::= LLVMAppendBasicBlock(parent_fn->cg, "forcont");
+	forscope ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "for");
+	forcont ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "forcont");
 	i : u64 mut;
 
 	initial_cond_val ::= cg_node(cond_node, scope);
@@ -1797,10 +1803,10 @@ cg_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? 
 	basic_blocks : u64 mut? := arena_alloc(global_arena, sizeof u64 * (e.entries_count - 1));
 	for(i = 0; i < (e.entries_count - 1); i = i + 1)
 	{
-		[basic_blocks # i] = LLVMAppendBasicBlock(parent_fn->cg, "enumname");
+		[basic_blocks # i] = LLVMAppendBasicBlock(parent_fn->backend.cg, "enumname");
 	}
-	badenum_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum");
-	continue_blk ::= LLVMAppendBasicBlock(parent_fn->cg, "badenum_cont");
+	badenum_blk ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "badenum");
+	continue_blk ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "badenum_cont");
 
 	for(i = 0; i < (e.entries_count); i = i + 1)
 	{
@@ -1813,7 +1819,7 @@ cg_builtin_enumname : func(params : val?, scope : lexical_scope?, source : ast? 
 			failure_block = [basic_blocks # i];
 		}
 	
-		success_block ::= LLVMAppendBasicBlock(parent_fn->cg, "enumname_success");
+		success_block ::= LLVMAppendBasicBlock(parent_fn->backend.cg, "enumname_success");
 		LLVMBuildCondBr(ir, condval, success_block, failure_block);
 		LLVMPositionBuilderAtEnd(ir, success_block);
 		LLVMBuildStore(ir, cg_prim(tyid_string_literal(), ast_literal{.tag := ast_literal_tag.string; .chars := [e.entry_names # i]; .chars_len := [e.entry_name_lens # i];}, source).runtime.cg, alloca_str);
