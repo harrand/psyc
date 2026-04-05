@@ -37,6 +37,21 @@ cg_func_sig_ir : func(fn : function mut?, link_name : u8 mut? -> v0)
 cg_func_def_ir : func(fn : function mut? -> v0)
 {
 	ir_set_pos(fn->cg2);
+	irfn ::= ir_current_func();
+
+	i : u64 mut;
+	backed_params : irval mut? := alloca(irfn->params_count * sizeof irval);
+	for(i = 0; i < irfn->params_count; i = i + 1)
+	{
+		param ::= [irfn->params # i];
+		[backed_params # i] = ir_stack(irval_number(irsz_size_bytes(param)), irval_number(1), fn->node);
+		ir_store(ir_get_param(i), [backed_params # i], zero, irval_number(1), fn->node);
+	}
+	
+};
+
+cg_func_def_back_params : func(fn : function mut -> v0)
+{
 };
 
 cg_func_params_ir : func(types : tyid?, types_count : u64 -> v0)
