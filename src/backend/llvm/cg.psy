@@ -2,12 +2,6 @@
 // basically this is LLVM land. many functions here have a s_xyz (compile-time) equivalent in s.psy
 ir : u64 mut := zero;
 
-function_backend : struct
-{
-	cg : u64;
-	db : u64;
-};
-
 cg_setup : func(-> v0)
 {
 	cg_begin();
@@ -31,22 +25,22 @@ codegen : func(-> v0)
 
 cg_begin : func(-> v0)
 {
-	prog.cg = LLVMModuleCreateWithName("Psy Program");
+	prog.backend.cg = LLVMModuleCreateWithName("Psy Program");
 	ir = LLVMCreateBuilder();
 };
 
 cg_end : func(-> v0)
 {
 	fltused_cgty ::= LLVMInt64Type();
-	fltused ::= LLVMAddGlobal(prog.cg, fltused_cgty, "_fltused");
+	fltused ::= LLVMAddGlobal(prog.backend.cg, fltused_cgty, "_fltused");
 	LLVMSetLinkage(fltused, LLVMCommonLinkage);
 	LLVMSetExternallyInitialized(fltused, 0);
 	LLVMSetInitializer(fltused, LLVMConstNull(fltused_cgty));
 
 	err : u8? mut;
-	if(LLVMVerifyModule(prog.cg, 2, ref err) != 0)
+	if(LLVMVerifyModule(prog.backend.cg, 2, ref err) != 0)
 	{
-		str ::= LLVMPrintModuleToString(prog.cg);
+		str ::= LLVMPrintModuleToString(prog.backend.cg);
 		putzstr("Codegen: ");
 		putchar(10);
 		putzstr(str);
@@ -66,7 +60,7 @@ cg_end : func(-> v0)
 	{
 		putzstr("LLVM IR:");
 		putchar(10);
-		putzstr(LLVMPrintModuleToString(prog.cg));
+		putzstr(LLVMPrintModuleToString(prog.backend.cg));
 		putchar(10);
 	}
 };
@@ -286,7 +280,7 @@ cg_func_sig : func(fn : function mut?, link_name : u8 mut? -> v0)
 	{
 		name_zstr = sstr2zstr(fn->name, fn->name_len, string_arena);
 	}
-	fn->backend.cg = LLVMAddFunction(prog.cg, name_zstr, cg_type(fn->type, false));
+	fn->backend.cg = LLVMAddFunction(prog.backend.cg, name_zstr, cg_type(fn->type, false));
 };
 
 cg_func_def : func(fn : function mut? -> v0)
@@ -356,7 +350,7 @@ cg_global_variable : func(var : variable mut? -> v0)
 	decl ::= var->node->decl;
 	name_zstr ::= sstr2zstr(decl.name, decl.name_len, string_arena);
 	type ::= var->type;
-	var->cg = LLVMAddGlobal(prog.cg, cg_type(type, true), name_zstr);
+	var->cg = LLVMAddGlobal(prog.backend.cg, cg_type(type, true), name_zstr);
 
 	is_const ::= ty_has_qual(type, tyqual.qual_static) || !ty_has_qual(type, tyqual.qual_mut);
 	LLVMSetGlobalConstant(var->cg, is_const@s32);
@@ -623,7 +617,7 @@ cg_prim : func(type : tyid, prim : ast_literal, source : ast? -> val)
 		if(prim.tag == (ast_literal_tag.string))	
 		{
 			strval ::= LLVMConstString(prim.chars, prim.chars_len@u32, false@s32);		
-			strglob ::= LLVMAddGlobal(prog.cg, LLVMTypeOf(strval), "");
+			strglob ::= LLVMAddGlobal(prog.backend.cg, LLVMTypeOf(strval), "");
 			LLVMSetLinkage(strglob, LLVMPrivateLinkage);
 			LLVMSetExternallyInitialized(strglob, 0);
 			LLVMSetGlobalConstant(strglob, true@s32);
@@ -1853,7 +1847,7 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 	fn_type ::= LLVMFunctionType(LLVMVoidType(), zero, 0, false@s32);
 	if(debugtrap_fn == 0)
 	{
-		debugtrap_fn = LLVMAddFunction(prog.cg, "llvm.debugtrap", fn_type);
+		debugtrap_fn = LLVMAddFunction(prog.backend.cg, "llvm.debugtrap", fn_type);
 	}
 	LLVMBuildCall2(ir, fn_type, debugtrap_fn, zero, 0, "");
 	return zero;
