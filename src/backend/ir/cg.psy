@@ -79,6 +79,25 @@ cg_func_def : func(fn : function mut? -> v0)
 		[backed_params # i] = ir_stack(irval_number(irsz_size_bytes(param)), irval_number(1), fn->node);
 		ir_store(ir_get_param(i), [backed_params # i], zero, irval_number(1), fn->node);
 	}
+
+	funcscope ::= fn->scope@lexical_scope mut?;
+
+	for(i = 1; i < (fn->node->children_count); i = i + 1)
+	{
+		impl_child ::= ast_get_child(fn->node, i);
+		cg_node(impl_child, funcscope);
+	}
+
+	last_child ::= ast_get_last_child_if_ret(fn->node);
+	if(last_child == zero)
+	{
+		// if we return void then just add a retvoid here
+		// otherwise, error out because we must end with a return.
+		if(ty_is_v0(ty_unwrap(fn->type)->fn.return_type))
+		{
+			ir_ret0(ast_get_child(fn->node, fn->node->children_count - 1));
+		}
+	}
 	
 };
 
@@ -286,4 +305,8 @@ cg_builtin_debugbreak : func(params : val?, scope : lexical_scope?, source : ast
 cg_builtin_alloca : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	return zero;
+};
+
+cg_node : func(node : ast?, scope : lexical_scope mut? -> v0)
+{
 };
