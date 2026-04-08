@@ -116,7 +116,7 @@ cg_decl : func(var : variable mut?, scope : lexical_scope mut? -> val)
 	return zero;
 };
 
-cg_field : func(v : val, idx : u64 -> val)
+cg_field : func(v : val, idx : u64, source : ast? -> val)
 {
 	// its either a register containing the whole struct
 	// or a pointer to it
@@ -130,13 +130,13 @@ cg_field : func(v : val, idx : u64 -> val)
 	if(v.runtime.is_ptr)
 	{
 		// get the offset in bytes to the thing, apply to the ptr, return
-		ret.runtime.cg = ir_add(ret.runtime.cg, offbytes);
+		ret.runtime.cg = ir_add(ret.runtime.cg, irval_number(offbytes), source);
 	}
 	else
 	{
 		// the register contains the whole struct
 		// rightshift the bits down (offset), AND the rest to zeroes
-		ret.runtime.cg = ir_and(ir_ushr(ret.runtime.cg, irval_number(8 * offbytes)), irval_number((1 << (memlen * 8)) - 1));
+		ret.runtime.cg = ir_and(ir_ushr(ret.runtime.cg, irval_number(8 * offbytes), source), irval_number((1 << (memlen * 8)) - 1), source);
 	}
 	ret.type = memty;
 	return ret;
