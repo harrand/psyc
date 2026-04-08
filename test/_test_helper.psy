@@ -1,0 +1,50 @@
+== default ==
+{
+	add_source_file("../src/frontend/diag.psy");
+	add_build_file("../src/stdlib/stdlib.psy");
+};
+
+global_arena_val : arena mut := zero;
+global_arena : arena mut? mut := zero;
+
+// stores strings
+string_arena_val : arena mut := zero;
+string_arena : arena mut? mut := zero;
+
+envp : u8?? mut := zero;
+
+setup_arenas : func( -> v0)
+{
+	global_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	global_arena = ref global_arena_val;
+	arena_auto_align(global_arena, 8);
+
+	string_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	string_arena = ref string_arena_val;
+	arena_auto_align(string_arena, 1);
+};
+
+main : func(args : program_args mut? -> s32)
+{
+	envp = (args->envp);
+	setup_arenas();
+	putchar(10);
+	putchar(10);
+	ret ::= test();
+	putchar(10);
+	putzstr("exit code: ");
+	putuint(ret@_);
+	putzstr("
+");
+	psyc_set_stage(psyc_stage.build);
+	if(ret != 0)
+	{
+		psyc_error_begin(zero);
+		putzstr("detected that test has failed");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	putchar(10);
+	return ret;
+};
+
