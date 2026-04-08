@@ -30,7 +30,7 @@ add_source_file_to_compilation : func(path : u8? -> ast)
 	return add_source_data_to_compilation(path, src.src);
 };
 
-add_build_file_to_compilation : func(path : u8?, config : u8?, config_len : u64 -> ast)
+add_build_file_to_compilation : func(path : u8?, config : u8?, config_len : u64, cwd : u8?, cwd_len : u64 -> ast)
 {
 	src ::= fully_read_file(path);
 	program_push_source_file(src);
@@ -39,13 +39,13 @@ add_build_file_to_compilation : func(path : u8?, config : u8?, config_len : u64 
 	node ::= add_source_file_inner(src, ref file_scope);
 
 	psyc_timed_begin(psyc_stage.build);
-	// for a build file specifically we set the cwd to its parent directory when doing its build region
-	oldcwd : u8? mut;
-	oldcwdlen : u64 mut;
-	directory_get_cwd(ref oldcwd, ref oldcwdlen, string_arena);
+
 	directory_set_cwd(path, path_get_parent_len(path, zstrlen(path)), string_arena);
 	find_and_invoke_build_region(file_scope, config, config_len, zero);
-	directory_set_cwd(oldcwd, oldcwdlen, string_arena);
+	if(cwd != zero)
+	{
+		directory_set_cwd(cwd, cwd_len, string_arena);
+	}
 	psyc_timed_end();
 
 	return node;
@@ -201,7 +201,7 @@ compile_program : func(-> v0)
 	add_preload_to_compilation();
 	builtin_setup();
 	config ::= prog.compile_args.build_config;
-	add_build_file_to_compilation(prog.compile_args.build_file, config, zstrlen(config));
+	add_build_file_to_compilation(prog.compile_args.build_file, config, zstrlen(config), zero, zero);
 	if(prog.type == (program_type.executable))
 	{
 		add_entrypoint_to_compilation();
@@ -214,7 +214,10 @@ compile_program : func(-> v0)
 		cur_build_config ::= [prog.queued_build_path_configs # (prog.queued_build_paths_count - 1)];
 		build_path_zstr ::= sstr2zstr(cur_build_path, cur_build_len, string_arena);
 
-		add_build_file_to_compilation(build_path_zstr, cur_build_config, zstrlen(cur_build_config));
+		cur_build_cwd ::= [prog.queued_build_path_cwds # (prog.queued_build_paths_count - 1)];
+		cur_build_cwd_len ::= [prog.queued_build_path_cwd_lens # (prog.queued_build_paths_count - 1)];
+
+		add_build_file_to_compilation(build_path_zstr, cur_build_config, zstrlen(cur_build_config), cur_build_cwd, cur_build_cwd_len);
 
 		prog.queued_build_paths_count = (prog.queued_build_paths_count - 1);
 	}
