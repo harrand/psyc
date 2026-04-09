@@ -1,40 +1,3 @@
-global_arena_val : arena mut := zero;
-global_arena : arena mut? mut := zero;
-
-// stores strings
-string_arena_val : arena mut := zero;
-string_arena : arena mut? mut := zero;
-
-setup_arenas : func( -> v0)
-{
-	global_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
-	global_arena = ref global_arena_val;
-	arena_auto_align(global_arena, 8);
-
-	string_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
-	string_arena = ref string_arena_val;
-	arena_auto_align(string_arena, 1);
-};
-
-print_arena_summary : func(a : arena mut?, name : u8? -> v0)
-{
-	putzstr(name);
-	putzstr(" arena: ");
-	putuint(a->cur);
-	putzstr("B");
-	if(a->recycling_enabled)
-	{
-		putzstr(" (free list total: ");
-		putuint(free_list_total_size(ref(a->recycle_bin)));
-		putzstr("B");
-		putzstr(", avg: ");
-		putuint(free_list_avg_size(ref(a->recycle_bin)));
-		putzstr("B)");
-	}
-	putchar(10);
-	[a] = zero;
-};
-
 destroy_arenas : func( -> v0)
 {
 	print_arena_summary(global_arena, "global");
@@ -43,11 +6,6 @@ destroy_arenas : func( -> v0)
 	print_arena_summary(string_arena, "string");
 	arena_destroy(string_arena);
 };
-
-argc : s32 mut := zero;
-argv : u8?? mut := zero;
-envp : u8?? mut := zero;
-prog : program mut := zero;
 
 main : func(pargs : program_args? -> s32)
 {
