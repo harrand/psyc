@@ -731,6 +731,35 @@ s_builtin_add_build_file : func(params : val?, scope : lexical_scope?, source : 
 	return zero;
 };
 
+s_builtin_add_build_file_with_config : func(params : val?, scope : lexical_scope?, source : ast? -> val)
+{
+	path_strdata : u8 mut? mut;
+	path_strlen : u64 mut;
+	val_must_get_string([params # 0], scope, source, ref path_strdata, ref path_strlen);
+	path_zstr ::= sstr2zstr(path_strdata, path_strlen, string_arena);
+
+	config_strdata : u8 mut? mut;
+	config_strlen : u64 mut;
+	val_must_get_string([params # 1], scope, source, ref config_strdata, ref config_strlen);
+	config_zstr ::= sstr2zstr(config_strdata, config_strlen, string_arena);
+
+	if(!file_exists(path_zstr))
+	{
+		psyc_error_begin(source->loc);
+		putzstr("build file ");
+		putchar('"');
+		putzstr(path_zstr);
+		putchar('"');
+		putzstr(" could not be found:");
+		putchar(10);
+		ast_print_annotated_source(program_find_source_file(source->loc.file)->src, source, 1, underline_colour.red);
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	program_queue_build_file(path_strdata, path_strlen, config_zstr);
+	return zero;
+};
+
 s_builtin_output : func(params : val?, scope : lexical_scope?, source : ast? -> val)
 {
 	dir_strdata : u8 mut? mut;
