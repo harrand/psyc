@@ -97,8 +97,20 @@ ir_store_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// if we are returning zero/one thing, then use a simple code path
 	// todo: check abi requirements
-	// todo: return value
+	if(ir_ret_get_count(inst) == 1)
+	{
+		// todo: generic irval -> x64v conversion
+		// for now only handle imm
+		ret0 ::= [ir_ret_get_value(inst, 0)];
+		ret0_val ::= irval_imm_get_value(ret0);
+		ret0_size_bits ::= irsz_size_bytes(irval_imm_get_irsz(ret0)) * 8;
+		if(ret0.tag == irval_tag.imm)
+		{
+			x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(ret0_val, ret0_size_bits));
+		}
+	}
 	x64_ret();
 };
 
