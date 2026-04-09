@@ -1,5 +1,42 @@
+x64v_tag_vreg ::= 0;
+
+x64v_vreg : func(ir_reg : irval -> x64v)
+{
+	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	return x64v
+	{
+		.tag := (custom_idx + x64v_tag_vreg)@x64v_tag;
+		.v1 := irval_get_irsz(ir_reg)@s64@_;
+		.v2 := irval_reg_get_index(ir_reg);
+	};
+};
+
+ir_register_custom_x64vs : func(-> v0)
+{
+	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size);
+};
+
+bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
+{
+	ret : u64 mut := 0;
+	sz ::= v.v1@s64@irsz;
+	bwrite_zstr(w, enumname(sz));
+	bwrite_uint(w, v.v2);
+};
+
+x64v_vreg_get_size : func(v : x64v -> u64)
+{
+	return irsz_size_bytes(v.v1@s64@irsz) * 8;
+};
+
+x64v_vreg_get_index : func(v : x64v -> u64)
+{
+	return v.v2;
+};
+
 ir_lower_x64 : func(-> v0)
 {
+	ir_register_custom_x64vs();
 	// given the current irapi, populate the x64api
 	i : u64 mut;
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
