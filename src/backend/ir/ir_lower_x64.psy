@@ -1,4 +1,62 @@
 ir_lower_x64 : func(-> v0)
 {
 	// given the current irapi, populate the x64api
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		irfunc_lower_x64(irapi.prog.funcs # i);
+	}
+};
+
+irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
+{
+	x64_add_func();
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+		for(j = 0; j < blk->insts_count; j = j + 1)
+		{
+			irinst_lower_x64(blk->insts # j);
+		}
+	}
+};
+
+irinst_lower_x64 : func(inst : irinst mut? -> v0)
+{
+	[irinst_lower_fn # (inst->tag@s64)](inst);
+};
+
+irinst_lower_fn ::= func(inst : irinst mut? -> v0)[countof irinst_tag]
+{
+	.0 := ir_stack_lower_x64;
+	.1 := ir_load_lower_x64;
+	.2 := ir_store_lower_x64;
+	.3 := ir_ret_lower_x64;
+	... := zero;
+};
+
+ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
+{
+	size_irval ::= [ir_stack_get_size(inst)];
+	size_val ::= irval_imm_get_value(size_irval);
+	size_size_bits ::= irsz_size_bytes(irval_imm_get_irsz(size_irval)) * 8;
+	// dont worry about align?
+	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(size_val, size_size_bits));
+};
+
+ir_load_lower_x64 : func(inst : irinst mut? -> v0)
+{
+};
+
+ir_store_lower_x64 : func(inst : irinst mut? -> v0)
+{
+};
+
+ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
+{
+	// todo: check abi requirements
+	// todo: return value
+	x64_ret();
 };
