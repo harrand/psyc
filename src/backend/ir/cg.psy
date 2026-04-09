@@ -76,8 +76,8 @@ cg_func_def : func(fn : function mut? -> v0)
 	for(i = 0; i < irfn->params_count; i = i + 1)
 	{
 		param ::= [irfn->params # i];
-		[backed_params # i] = ir_stack(irval_number(irsz_size_bytes(param)), irval_number(1), fn->node);
-		ir_store(ir_get_param(i), [backed_params # i], zero, irval_number(1), fn->node);
+		[backed_params # i] = ir_stack(irval_qimm(irsz_size_bytes(param)), irval_qimm(1), fn->node);
+		ir_store(ir_get_param(i), [backed_params # i], zero, irval_qimm(1), fn->node);
 	}
 
 	funcscope ::= fn->scope@lexical_scope mut?;
@@ -130,13 +130,13 @@ cg_field : func(v : val, idx : u64, source : ast? -> val)
 	if(v.runtime.is_ptr)
 	{
 		// get the offset in bytes to the thing, apply to the ptr, return
-		ret.runtime.cg = ir_add(ret.runtime.cg, irval_number(offbytes), source);
+		ret.runtime.cg = ir_add(ret.runtime.cg, irval_qimm(offbytes), source);
 	}
 	else
 	{
 		// the register contains the whole struct
 		// rightshift the bits down (offset), AND the rest to zeroes
-		ret.runtime.cg = ir_and(ir_ushr(ret.runtime.cg, irval_number(8 * offbytes), source), irval_number((1 << (memlen * 8)) - 1), source);
+		ret.runtime.cg = ir_and(ir_ushr(ret.runtime.cg, irval_qimm(8 * offbytes), source), irval_qimm((1 << (memlen * 8)) - 1), source);
 	}
 	ret.type = memty;
 	return ret;

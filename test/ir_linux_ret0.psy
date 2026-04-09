@@ -1,0 +1,33 @@
+== default ==
+{
+	add_build_file_with_config("./_test_helper.psy", "psyir");
+
+	executable("ir_linux_ret0");
+	postbuild_command("(cd build && ./ir_linux_ret0)");
+};
+
+test : func(-> s32)
+{
+	main_return : irsz := irsz.d;
+	ir_add_func(irabi.psy, zero, zero, ref main_return, 1);
+	ir_ret1(irval_dimm(0), zero);
+
+	teststream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+
+	bwrite_ir(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+
+	// write out the elf.
+	//encode_basic_elf("./generated_ir_linux_ret0.elf", x64api.prog, 0);
+	//file_ensure_executable("./generated_ir_linux_ret0.elf");
+	//cmd ::= "./generated_ir_linux_ret0.elf";
+	//return sys_shell_command(cmd, zstrlen(cmd), envp, global_arena)@_;
+	return 0;
+};
