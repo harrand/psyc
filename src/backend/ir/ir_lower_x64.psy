@@ -105,10 +105,81 @@ ir_lower_x64 : func(-> v0)
 	ir_register_custom_x64vs();
 	// given the current irapi, populate the x64api
 	i : u64 mut;
+	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
+	{
+		irglob_lower_x64(irapi.prog.globs # i);
+	}
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
 		irfunc_lower_x64(irapi.prog.funcs # i);
 	}
+};
+
+irglob_lower_x64 : func(g : irglob mut? -> v0)
+{
+	if(ir_lower.globals == zero)
+	{
+		ir_lower.globals_cap = 64;
+		ir_lower.globals = arena_alloc(global_arena, ir_lower.globals_cap * sizeof typeof([ir_lower.globals]));
+	}
+	while(ir_lower.globals_count >= ir_lower.globals_cap)
+	{
+		oldcap ::= ir_lower.globals_cap;
+		olddata ::= ir_lower.globals;
+		ir_lower.globals_cap = ir_lower.globals_cap * 2;
+		ir_lower.globals = arena_alloc(global_arena, ir_lower.globals_cap * sizeof typeof([ir_lower.globals]));
+		memcopy(ir_lower.globals, olddata, oldcap * sizeof typeof([ir_lower.globals]));
+	}
+	idx ::= g->idx;
+
+	x64_version ::= x64g
+	{
+		.size := g->size;
+		.init_data := g->data;
+		.init_data_size := g->size;
+	};
+
+	type : ir_lower_globtype mut;
+	x64_idx : u64 mut;
+	if(!(g->is_mut))
+	{
+		type = ir_lower_globtype.rodata;
+		x64_idx = x64_add_rodata(x64_version);
+	}
+	else
+	{
+		// are there any nonzeros?
+		any_nonzeros : bool mut := false;
+		j : u64 mut;
+		for(j = 0; j < g->size; j = j + 1)
+		{
+			if([g->data # j] != 0)
+			{
+				any_nonzeros = true;
+			}
+		}
+		if(g->patches_count > 0)
+		{
+			any_nonzeros = true;
+		}
+		if(any_nonzeros)
+		{
+			type = ir_lower_globtype.data;
+			x64_idx = x64_add_data(x64_version);
+		}
+		else
+		{
+			type = ir_lower_globtype.bss;
+			x64_idx = x64_add_bss(x64_version);
+		}
+	}
+	
+	[ir_lower.globals # idx] = ir_lower_globdata
+	{
+		.ir_globidx := idx;
+		.type := type;
+		.x64_globidx := x64_idx;
+	};
 };
 
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
@@ -193,6 +264,24 @@ ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_load_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	out ::= irval_lower_x64v([ir_load_get_out(inst)]);
+
+	base ::= irval_lower_x64v([ir_load_get_base(inst)]);
+	index ::= irval_lower_x64v([ir_load_get_index(inst)]);
+	tmpreg : x64v mut := x64v_reg(x64_reg.rbx, 64);
+	if(x64v_is_riprel(base))
+	{
+		// loading data from a global basically
+		// so we actually need a lea into a temporary register...
+		x64_lea(tmpreg, base);
+		// kinda works (but tmpreg is cursed)
+		x64_mov(out, x64v_memreg(x64v_size(out), tmpreg.r1, x64v_size(tmpreg), index.r1, x64v_size(index), irval_imm_get_value([ir_load_get_scale(inst)]), zero, zero));
+	}
+	else
+	{
+		// doesnt work at all - the fact is we cant use a virtual register within a memory operand which is a serious problem
+		x64_mov(out, x64v_memreg(x64v_size(out), base.r1, x64v_size(base), index.r1, x64v_size(index), irval_imm_get_value([ir_load_get_scale(inst)]), zero, zero));
+	}
 };
 
 ir_store_lower_x64 : func(inst : irinst mut? -> v0)
@@ -208,7 +297,8 @@ ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
 		// todo: generic irval -> x64v conversion
 		// for now only handle imm
 		ret0 ::= [ir_ret_get_value(inst, 0)];
-		x64_mov(x64v_reg(x64_reg.rax, 64), irval_lower_x64v(ret0));
+		ret0_x64 ::= irval_lower_x64v(ret0);
+		x64_mov(x64v_reg(x64_reg.rax, x64v_size(ret0_x64)), ret0_x64);
 	}
 	x64_ret();
 };

@@ -8,10 +8,14 @@
 
 test : func(-> s32)
 {
+	testglobdata : u64 := 0x12345678;
+	testglob ::= ir_add_glob(ref testglobdata, sizeof typeof(testglobdata), false);
+
 	main_return : irsz := irsz.d;
 	ir_add_func(irabi.psy, zero, zero, ref main_return, 1);
-	ir_stack(irval_dimm(64), irval_dimm(1), zero);
-	ir_ret1(irval_dimm(0), zero);
+	stackvar ::= ir_stack(irval_dimm(64), irval_dimm(1), zero);
+	ir_ret1(ir_load(irsz.d, testglob, zero, irval_qimm(1), zero), zero);
+	ir_ret1(ir_load(irsz.d, stackvar, zero, irval_qimm(1), zero), zero);
 
 	teststream ::= bwriter mut
 	{
