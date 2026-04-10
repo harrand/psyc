@@ -20,8 +20,10 @@ bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
 {
 	ret : u64 mut := 0;
 	sz ::= v.v1@s64@irsz;
+	bwrite_colour_blue(w);
 	bwrite_zstr(w, enumname(sz));
 	bwrite_uint(w, v.v2);
+	bwrite_colour_reset(w);
 };
 
 x64v_vreg_get_size : func(v : x64v -> u64)
@@ -122,6 +124,8 @@ ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
 	size_size_bits ::= irsz_size_bytes(irval_imm_get_irsz(size_irval)) * 8;
 	// dont worry about align?
 	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(size_val, size_size_bits));
+	out ::= [ir_stack_get_ptr(inst)];
+	x64_mov(x64v_vreg(out), x64v_reg(x64_reg.rsp, 64));
 };
 
 ir_load_lower_x64 : func(inst : irinst mut? -> v0)
@@ -313,4 +317,28 @@ ir_call_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_brk_lower_x64 : func(inst : irinst mut? -> v0)
 {
+};
+
+bwrite_colour_red : func(w : bwriter mut? -> v0)
+{
+	bwrite8(w, 27);
+	bwrite_zstr(w, "[91m");
+};
+
+bwrite_colour_yellow : func(w : bwriter mut? -> v0)
+{
+	bwrite8(w, 27);
+	bwrite_zstr(w, "[93m");
+};
+
+bwrite_colour_blue : func(w : bwriter mut? -> v0)
+{
+	bwrite8(w, 27);
+	bwrite_zstr(w, "[94m");
+};
+
+bwrite_colour_reset : func(w : bwriter mut? -> v0)
+{
+	bwrite8(w, 27);
+	bwrite_zstr(w, "[0m");
 };
