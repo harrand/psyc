@@ -1,3 +1,24 @@
+ir_lower_globtype : enum
+{
+	.rodata := 0;
+	.data := 1;
+	.bss := 2;
+};
+ir_lower_globdata : struct
+{
+	ir_globidx : u64;
+	type : ir_lower_globtype;
+	x64_globidx : u64;
+};
+// global variable storing lowering data for an ir program while converting to an x64 program
+ir_lower_t : struct
+{
+	globals : ir_lower_globdata mut?;
+	globals_count : u64;
+	globals_cap : u64;
+};
+ir_lower : ir_lower_t mut := zero;
+
 x64v_tag_vreg ::= 0;
 
 x64v_vreg : func(ir_reg : irval -> x64v)
@@ -34,6 +55,49 @@ x64v_vreg_get_size : func(v : x64v -> u64)
 x64v_vreg_get_index : func(v : x64v -> u64)
 {
 	return v.v2;
+};
+
+irval_lower_x64v : func(v : irval -> x64v)
+{
+	if(v.tag == irval_tag.reg)
+	{
+		return x64v_vreg(v);
+	}
+	if(v.tag == irval_tag.globref)
+	{
+		glob ::= ir_ref_glob(v);
+		// figure out if it is rodata, data or bss
+		lower ::= [ir_lower.globals # glob->idx];
+		if(lower.type == ir_lower_globtype.rodata)
+		{
+			return x64v_rodata(lower.x64_globidx, 0, glob->size);
+		}
+		if(lower.type == ir_lower_globtype.data)
+		{
+			return x64v_data(lower.x64_globidx, 0, glob->size);
+		}
+		if(lower.type == ir_lower_globtype.bss)
+		{
+			return x64v_bss(lower.x64_globidx, 0, glob->size);
+		}
+	}
+	if(v.tag == irval_tag.funcref)
+	{
+		return x64v_fn(irval_funcref_get_idx(v));
+	}
+	if(v.tag == irval_tag.blkref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.asmref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.imm)
+	{
+		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
+	}
+	return zero;
 };
 
 ir_lower_x64 : func(-> v0)
@@ -120,10 +184,9 @@ irinst_lower_fn ::= func(inst : irinst mut? -> v0)[countof irinst_tag]
 ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
 {
 	size_irval ::= [ir_stack_get_size(inst)];
-	size_val ::= irval_imm_get_value(size_irval);
-	size_size_bits ::= irsz_size_bytes(irval_imm_get_irsz(size_irval)) * 8;
-	// dont worry about align?
-	x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(size_val, size_size_bits));
+	// dont worry about alignkV?
+	x64_sub(x64v_reg(x64_reg.rsp, 64), irval_lower_x64v(size_irval));
+	//x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(size_val, size_size_bits));
 	out ::= [ir_stack_get_ptr(inst)];
 	x64_mov(x64v_vreg(out), x64v_reg(x64_reg.rsp, 64));
 };
@@ -145,12 +208,7 @@ ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
 		// todo: generic irval -> x64v conversion
 		// for now only handle imm
 		ret0 ::= [ir_ret_get_value(inst, 0)];
-		ret0_val ::= irval_imm_get_value(ret0);
-		ret0_size_bits ::= irsz_size_bytes(irval_imm_get_irsz(ret0)) * 8;
-		if(ret0.tag == irval_tag.imm)
-		{
-			x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(ret0_val, ret0_size_bits));
-		}
+		x64_mov(x64v_reg(x64_reg.rax, 64), irval_lower_x64v(ret0));
 	}
 	x64_ret();
 };
