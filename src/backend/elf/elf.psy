@@ -50,7 +50,7 @@ align_up : func(input : u64, align : u64 -> u64)
 	return input + alignment_padding_req(input, align);
 };
 
-encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
+encode_basic_elf : func(path : u8?, p : x64p mut? -> v0)
 {
 	page_size ::= 0x1000;
 	stream ::= bwriter mut
@@ -113,7 +113,8 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 	bwrite16(w, elf_type_executable); // type
 	bwrite16(w, elf_instruction_set_x64); // machine/instruction set
 	bwrite32(w, 1); // version (current = 1)
-	bwrite64(w, code_begin_addr + entrypoint_offset); // entry point virtual address
+	entrypoint_to_add_to ::= w->cursor;
+	bwrite64(w, code_begin_addr); // entry point virtual address
 	bwrite64(w, 64); // program header offset in bytes
 	bwrite64(w, zero); // section header offset in bytes
 	bwrite32(w, 0); // flags
@@ -202,9 +203,11 @@ encode_basic_elf : func(path : u8?, p : x64p, entrypoint_offset : u64 -> v0)
 		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + bss_len);
 	};
 	// generate meta
-	code_len ::= bwrite_x64p_encode(w, x64api.prog, meta) + 2;
+	code_len ::= bwrite_x64p_encode(w, p, meta) + 2;
 	[(w->buf # code_sz_towrite_twice)@u64 mut? # 0] = code_len;
 	[(w->buf # code_sz_towrite_twice)@u64 mut? # 1] = code_len;
+	code_begin_ptr ::= (w->buf # entrypoint_to_add_to)@u64 mut?;
+	[code_begin_ptr] = [code_begin_ptr] + p->entrypoint_offset_bytes;
 	// and we're done
 	file_write(path, w->buf # 0, w->cursor);
 };

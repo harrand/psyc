@@ -13,8 +13,12 @@ test : func(-> s32)
 
 	main_return : irsz := irsz.d;
 	ir_add_func(irabi.psy, zero, zero, ref main_return, 1);
-	stackvar ::= ir_stack(irval_dimm(64), irval_dimm(1), zero);
-	ir_ret1(ir_load(irsz.d, testglob, zero, irval_qimm(1), zero), zero);
+	ir_ret1(irval_dimm(1), zero);
+	//stackvar ::= ir_stack(irval_dimm(64), irval_dimm(1), zero);
+	//ir_ret1(ir_load(irsz.d, testglob, zero, irval_qimm(1), zero), zero);
+
+	fn2 ::= ir_add_func(irabi.psy, zero, zero, zero, zero);
+	ir_set_entrypoint(fn2);
 
 	teststream ::= bwriter mut
 	{
@@ -29,13 +33,17 @@ test : func(-> s32)
 	putbytes(teststream.buf, teststream.cursor);
 
 	ir_lower_x64();
+	// exit(0) (linux x64 syscall)
+	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
+	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(0, 32));
+	x64_syscall();
 
 	teststream.cursor = 0;
 	x64_dump_disasm_to(ref teststream);
 	putbytes(teststream.buf, teststream.cursor);
 
 	// write out the elf.
-	encode_basic_elf("./generated_ir_linux_ret0.elf", x64api.prog, 0);
+	encode_basic_elf("./generated_ir_linux_ret0.elf", ref(x64api.prog));
 	file_ensure_executable("./generated_ir_linux_ret0.elf");
 	cmd ::= "./generated_ir_linux_ret0.elf";
 	return sys_shell_command(cmd, zstrlen(cmd), envp, global_arena)@_;
