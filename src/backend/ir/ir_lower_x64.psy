@@ -19,87 +19,11 @@ ir_lower_t : struct
 };
 ir_lower : ir_lower_t mut := zero;
 
-x64v_tag_vreg ::= 0;
-
-x64v_vreg : func(ir_reg : irval -> x64v)
-{
-	custom_idx : s64 mut := x64v_tag.custom0@s64;
-	return x64v
-	{
-		.tag := (custom_idx + x64v_tag_vreg)@x64v_tag;
-		.v1 := irval_get_irsz(ir_reg)@s64@_;
-		.v2 := irval_reg_get_index(ir_reg);
-	};
-};
-
 ir_register_custom_x64vs : func(-> v0)
 {
 	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size);
+	x64_register_custom_value_type(x64v_tag_vmemreg, bwrite_x64v_vmemreg, x64v_vmemreg_get_size);
 };
-
-bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
-{
-	ret : u64 mut := 0;
-	sz ::= v.v1@s64@irsz;
-	bwrite_colour_blue(w);
-	bwrite_zstr(w, enumname(sz));
-	bwrite_uint(w, v.v2);
-	bwrite_colour_reset(w);
-};
-
-x64v_vreg_get_size : func(v : x64v -> u64)
-{
-	return irsz_size_bytes(v.v1@s64@irsz) * 8;
-};
-
-x64v_vreg_get_index : func(v : x64v -> u64)
-{
-	return v.v2;
-};
-
-irval_lower_x64v : func(v : irval -> x64v)
-{
-	if(v.tag == irval_tag.reg)
-	{
-		return x64v_vreg(v);
-	}
-	if(v.tag == irval_tag.globref)
-	{
-		glob ::= ir_ref_glob(v);
-		// figure out if it is rodata, data or bss
-		lower ::= [ir_lower.globals # glob->idx];
-		if(lower.type == ir_lower_globtype.rodata)
-		{
-			return x64v_rodata(lower.x64_globidx, 0, glob->size);
-		}
-		if(lower.type == ir_lower_globtype.data)
-		{
-			return x64v_data(lower.x64_globidx, 0, glob->size);
-		}
-		if(lower.type == ir_lower_globtype.bss)
-		{
-			return x64v_bss(lower.x64_globidx, 0, glob->size);
-		}
-	}
-	if(v.tag == irval_tag.funcref)
-	{
-		return x64v_fn(irval_funcref_get_idx(v));
-	}
-	if(v.tag == irval_tag.blkref)
-	{
-		// NOT SURE
-	}
-	if(v.tag == irval_tag.asmref)
-	{
-		// NOT SURE
-	}
-	if(v.tag == irval_tag.imm)
-	{
-		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
-	}
-	return zero;
-};
-
 ir_lower_x64 : func(-> v0)
 {
 	ir_register_custom_x64vs();
@@ -264,24 +188,15 @@ ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_load_lower_x64 : func(inst : irinst mut? -> v0)
 {
-	out ::= irval_lower_x64v([ir_load_get_out(inst)]);
+	out ::= [ir_load_get_out(inst)];
+	outx64 ::= irval_lower_x64v(out);
 
-	base ::= irval_lower_x64v([ir_load_get_base(inst)]);
-	index ::= irval_lower_x64v([ir_load_get_index(inst)]);
-	tmpreg : x64v mut := x64v_reg(x64_reg.rbx, 64);
-	if(x64v_is_riprel(base))
-	{
-		// loading data from a global basically
-		// so we actually need a lea into a temporary register...
-		x64_lea(tmpreg, base);
-		// kinda works (but tmpreg is cursed)
-		x64_mov(out, x64v_memreg(x64v_size(out), tmpreg.r1, x64v_size(tmpreg), index.r1, x64v_size(index), irval_imm_get_value([ir_load_get_scale(inst)]), zero, zero));
-	}
-	else
-	{
-		// doesnt work at all - the fact is we cant use a virtual register within a memory operand which is a serious problem
-		x64_mov(out, x64v_memreg(x64v_size(out), base.r1, x64v_size(base), index.r1, x64v_size(index), irval_imm_get_value([ir_load_get_scale(inst)]), zero, zero));
-	}
+	base : irval mut := [ir_load_get_base(inst)];
+	index ::= [ir_load_get_index(inst)];
+	index_x64 ::= irval_lower_x64v(index);
+	scale ::= [ir_load_get_scale(inst)];
+
+	x64_mov(outx64, x64v_vmemreg(irval_get_irsz(out), base, index, scale));
 };
 
 ir_store_lower_x64 : func(inst : irinst mut? -> v0)
@@ -490,3 +405,159 @@ bwrite_colour_reset : func(w : bwriter mut? -> v0)
 	bwrite8(w, 27);
 	bwrite_zstr(w, "[0m");
 };
+
+// custom x64v
+
+x64v_tag_vreg ::= 0;
+
+x64v_vreg : func(ir_reg : irval -> x64v)
+{
+	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	return x64v
+	{
+		.tag := (custom_idx + x64v_tag_vreg)@x64v_tag;
+		.v1 := irval_get_irsz(ir_reg)@s64@_;
+		.v2 := irval_reg_get_index(ir_reg);
+	};
+};
+
+bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
+{
+	ret : u64 mut := 0;
+	sz ::= v.v1@s64@irsz;
+	bwrite_colour_blue(w);
+	bwrite_zstr(w, enumname(sz));
+	bwrite_uint(w, v.v2);
+	bwrite_colour_reset(w);
+};
+
+x64v_vreg_get_size : func(v : x64v -> u64)
+{
+	return irsz_size_bytes(v.v1@s64@irsz) * 8;
+};
+
+x64v_vreg_get_index : func(v : x64v -> u64)
+{
+	return v.v2;
+};
+
+x64v_tag_vmemreg ::= 1;
+
+x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval -> x64v)
+{
+	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	return x64v
+	{
+		.tag := (custom_idx + x64v_tag_vmemreg)@x64v_tag;
+		.v1 := outsz@s64@_;
+		.v2 := irval_get_irsz(base_reg)@s64@_;
+		.v3 := irval_reg_get_index(base_reg);
+		.v4 := irval_get_irsz(index_reg)@s64@_;
+		.v5 := irval_reg_get_index(index_reg);
+		.v6 := irval_imm_get_value(scale);
+	};
+};
+
+bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
+{
+	ret : u64 mut := 0;
+	out_sz ::= irsz_size_bytes(v.v1@s64@irsz) * 8;
+	mem_size_log2 ::= log2(out_sz) - 3;
+
+	base ::= x64v_vmemreg_get_base(v);
+	index ::= x64v_vmemreg_get_index(v);
+	scale ::= x64v_vmemreg_get_scale(v);
+
+	bwrite_colour_blue(w);
+	bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
+	bwrite_zstr(w, " [");
+	// print unless: base.tag == zero or (base.tag == reg and irsz == 0)
+	// aka if (base.tag != zero && !(base.tag == reg and irsz == 0))
+	if((base.tag != zero) && !((base.tag == irval_tag.reg) && (irval_reg_get_irsz(base) == zero)))
+	{
+		bwrite_irval_reg(w, x64v_vmemreg_get_base(v));
+	}
+	if((index.tag != zero) && !((index.tag == irval_tag.reg) && (irval_reg_get_irsz(index) == zero)))
+	{
+		bwrite_zstr(w, " + ");
+		bwrite_irval_reg(w, x64v_vmemreg_get_index(v));
+	}
+	if(scale != 1)
+	{
+		bwrite_zstr(w, " * ");
+		bwrite_uint(w, scale);
+	}
+	bwrite_zstr(w, "]");
+	bwrite_colour_reset(w);
+};
+
+x64v_vmemreg_get_irsz : func(v : x64v -> irsz)
+{
+	return v.v1@s64@irsz;
+};
+
+x64v_vmemreg_get_size : func(v : x64v -> u64)
+{
+	return irsz_size_bytes(x64v_vmemreg_get_irsz(v)) * 8;
+};
+
+x64v_vmemreg_get_base : func(v : x64v -> irval)
+{
+	return irval_reg(v.v2@s64@irsz, v.v3);
+};
+
+x64v_vmemreg_get_index : func(v : x64v -> irval)
+{
+	return irval_reg(v.v4@s64@irsz, v.v5);
+};
+
+x64v_vmemreg_get_scale : func(v : x64v -> u64)
+{
+	return v.v6;
+};
+
+// generic irval -> x64v lowering function
+
+irval_lower_x64v : func(v : irval -> x64v)
+{
+	if(v.tag == irval_tag.reg)
+	{
+		return x64v_vreg(v);
+	}
+	if(v.tag == irval_tag.globref)
+	{
+		glob ::= ir_ref_glob(v);
+		// figure out if it is rodata, data or bss
+		lower ::= [ir_lower.globals # glob->idx];
+		if(lower.type == ir_lower_globtype.rodata)
+		{
+			return x64v_rodata(lower.x64_globidx, 0, glob->size);
+		}
+		if(lower.type == ir_lower_globtype.data)
+		{
+			return x64v_data(lower.x64_globidx, 0, glob->size);
+		}
+		if(lower.type == ir_lower_globtype.bss)
+		{
+			return x64v_bss(lower.x64_globidx, 0, glob->size);
+		}
+	}
+	if(v.tag == irval_tag.funcref)
+	{
+		return x64v_fn(irval_funcref_get_idx(v));
+	}
+	if(v.tag == irval_tag.blkref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.asmref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.imm)
+	{
+		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
+	}
+	return zero;
+};
+
