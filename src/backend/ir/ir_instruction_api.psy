@@ -564,6 +564,33 @@ ir_call : func(callee : irval, params : irval mut?, params_count : u64, returns_
 	ir_add_instruction(inst);
 };
 
+ir_call_get_callee : func(call : irinst mut? -> irval mut?)
+{
+	return irinst_get_operand([call], ir_call_get_returns_count(call) + 1);
+};
+
+ir_call_get_returns_count : func(call : irinst mut? -> u64)
+{
+	return irval_imm_get_value([irinst_get_operand([call], 0)]);
+};
+
+ir_call_get_return : func(call : irinst mut?, idx : u64 -> irval mut?)
+{
+	return irinst_get_operand([call], 1 + idx);
+};
+
+ir_call_get_params_count : func(call : irinst mut? -> u64)
+{
+	returns_count ::= irval_imm_get_value([irinst_get_operand([call], 0)]);
+	return irinst_operands_count([call]) - (returns_count + 2);
+};
+
+ir_call_get_param : func(call : irinst mut?, idx : u64 -> irval mut?)
+{
+	returns_count ::= irval_imm_get_value([irinst_get_operand([call], 0)]);
+	return irinst_get_operand([call], returns_count + 1 + idx);
+};
+
 ir_call_fn : func(callee : irpos, params : irval mut?, params_count : u64, returns_out : irval mut?, source : ast mut? -> v0)
 {
 	fnref ::= irval_funcref(callee);

@@ -377,6 +377,30 @@ ir_cmp_fge_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_call_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	i : u64 mut;
+	// prepare params/returns
+	callee ::= [ir_call_get_callee(inst)];
+
+	params_count ::= ir_call_get_params_count(inst);
+	params : x64v mut? := arena_alloc(global_arena, params_count * sizeof x64v);
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		[params # i] = irval_lower_x64v([ir_call_get_param(inst, i)]);
+	}
+
+	returns_count ::= ir_call_get_returns_count(inst);
+	returns : x64v mut? := arena_alloc(global_arena, returns_count * sizeof x64v);
+	for(i = 0; i < returns_count; i = i + 1)
+	{
+		[returns # i] = irval_lower_x64v([ir_call_get_return(inst, i)]);
+	}
+
+	// do the call
+	if(callee.tag == irval_tag.asmref)
+	{
+		asmdata ::= ir_ref_asm(callee);
+		x64_parse(asmdata->code, asmdata->code_len, asmdata->constraint, asmdata->constraint_len, params, params_count, returns, returns_count);
+	}
 };
 
 ir_brk_lower_x64 : func(inst : irinst mut? -> v0)
