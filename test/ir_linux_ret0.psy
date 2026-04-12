@@ -18,7 +18,9 @@ test : func(-> s32)
 	//ir_ret1(ir_load(irsz.d, testglob, zero, irval_qimm(1), zero), zero);
 
 	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
-	exit_syscall_code ::= "syscall";
+	exit_syscall_code ::= "mov rax, 60
+mov rdi, 0
+syscall";
 	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
 	fn2 ::= ir_add_func(irabi.psy, zero, zero, zero, zero);
 	ir_call_asm(exit_syscall, zero, zero, zero);
@@ -37,10 +39,6 @@ test : func(-> s32)
 	putbytes(teststream.buf, teststream.cursor);
 
 	ir_lower_x64();
-	// exit(0) (linux x64 syscall)
-	x64_mov(x64v_reg(x64_reg.rax, 64), x64v_imm(60, 32));
-	x64_mov(x64v_reg(x64_reg.rdi, 64), x64v_imm(0, 32));
-	x64_syscall();
 
 	teststream.cursor = 0;
 	x64_dump_disasm_to(ref teststream);

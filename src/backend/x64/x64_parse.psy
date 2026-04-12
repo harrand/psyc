@@ -1,5 +1,124 @@
+isspace : func(ch : u8 -> bool)
+{
+	return (ch == ' ') || (ch == 9);
+};
+
+isnewline : func(ch : u8 -> bool)
+{
+	return ch == 10;
+};
+
+x64_parse_instruction_mnemonic : func(str : u8?, str_len : u64 -> x64i_tag)
+{
+	i : u64 mut;
+	count ::= countof x64i_tag;
+	for(i = 0; i < count; i = i + 1)
+	{
+		name ::= enumname(i@s64@x64i_tag);
+		name_len ::= zstrlen(name);
+		if(name_len == str_len)
+		{
+			if(streql_n(name, str, str_len))
+			{
+				return i@s64@x64i_tag;
+			}
+		}
+	}
+	return zero;
+};
+
+x64_parse_val : func(str : u8?, str_len : u64 -> x64v)
+{
+	i : u64 mut;
+	regcount ::= countof typeof(tbl_regnames);
+	// firstly check if its a register...
+	for(i = 0; i < regcount; i = i + 1)
+	{
+		name : u8? := [tbl_regnames # i];
+		name_len ::= zstrlen(name);
+		if(str_len == name_len)
+		{
+			if(streql_n(str, name, str_len))
+			{
+				// yep this is the register we want
+				// there are 7 entries per register type
+				// so that will tell us which register we are
+				regidx ::= ((i - 1) / 7)@s64@x64_reg;
+				sizeidx ::= (i - 1) % 7;
+				// sizeidx 0 = 1
+				// sizeidx 1 = 2
+				// sizeidx 2 = 4
+				// and so on up until 64 bytes
+				size ::= 1 << sizeidx;
+				return x64v_reg(regidx, size * 8);
+			}
+		}
+	}
+	// assume it must be a numeric literal then...
+	lit ::= interpret_numeric_literal(str, lex_slice{.off := 0; .len := str_len;});
+	if(lit.tag == ast_literal_tag.integer)
+	{
+		return x64v_imm(lit.integer@u64, 32);
+	}
+	if(lit.tag == ast_literal_tag.floating_point)
+	{
+		as_integer ::= [(ref lit.floating_point)@u64?];
+		return x64v_imm(as_integer, 32);
+	}
+	return zero;
+};
+
 x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : u64, params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
+	is_first_this_line : bool mut := true;
 	// todo: parse the assembly
 	// and invoke it directly via x64api
+	cursor : u64 mut := 0;
+	cur_word_begin : s64 weak mut := -1;
+	word_is_number : bool mut := false;
+	// use <= and a special case for ch = zero so we break words and re-use logic without doing it post-loop
+	curinst : x64i mut := zero;
+	while(cursor <= code_len)
+	{
+		ch : u8 mut := zero;
+		if(cursor < code_len)
+		{
+			ch = [code # cursor];
+		}
+		if((isspace(ch) || isnewline(ch) || (ch == zero) || (ch == ',')) && (cur_word_begin != -1))
+		{
+			// word has just finished, cur_word_begin -> cursor
+			if(is_first_this_line)
+			{
+				// this must be an instruction mnemonic
+				curinst.tag = x64_parse_instruction_mnemonic(code # cur_word_begin, cursor - cur_word_begin);
+				is_first_this_line = false;
+			}
+			else
+			{
+				// must be an operand...
+				[curinst.operands # x64i_operand_count(curinst)] = x64_parse_val(code # cur_word_begin, cursor - cur_word_begin);
+			}
+			cur_word_begin = -1;
+		}
+		if((cur_word_begin == -1) && !(isspace(ch) || isnewline(ch) || (ch == zero) || (ch ==  ',')))
+		{
+			// start of a new word
+			cur_word_begin = cursor;
+			word_is_number = isdigit(ch);
+		}
+		if(isnewline(ch))
+		{
+			// we are done with the instruction
+			x64_add_instruction(curinst);
+			curinst = zero;
+			is_first_this_line = true;
+		}
+		cursor = cursor + 1;
+	}
+	// we could have an unfinished instruction (no newline at the end of the code)
+	if(curinst.tag != zero)
+	{
+		x64_add_instruction(curinst);
+	}
 };
