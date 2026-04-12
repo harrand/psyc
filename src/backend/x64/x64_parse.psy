@@ -70,6 +70,13 @@ x64_parse_val : func(str : u8?, str_len : u64 -> x64v)
 
 x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : u64, params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
+	// get the inputs and outputs by parsing constraints...
+	inputs : x64v mut? mut := zero;
+	inputs_count : u64 mut := zero;
+	outputs : x64v mut? mut := zero;
+	outputs_count : u64 mut := zero;
+	x64_parse_constraints(constraint, constraint_len, ref inputs, ref inputs_count, ref outputs, ref outputs_count);
+
 	is_first_this_line : bool mut := true;
 	// todo: parse the assembly
 	// and invoke it directly via x64api
@@ -102,8 +109,19 @@ x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : 
 			}
 			else
 			{
+				outptr ::= curinst.operands # x64i_operand_count(curinst);
 				// must be an operand...
-				[curinst.operands # x64i_operand_count(curinst)] = x64_parse_val(code # cur_word_begin, cursor - cur_word_begin);
+				if([code # cur_word_begin] == '$')
+				{
+					// this is an input...
+					// todo: parse the input...
+					numidx ::= interpret_numeric_literal(code # (cur_word_begin + 1), lex_slice{.off := 0; .len := (cursor - (cur_word_begin + 1));});
+					[outptr] = [inputs # numidx.integer];
+				}
+				else
+				{
+					[outptr] = x64_parse_val(code # cur_word_begin, cursor - cur_word_begin);
+				}
 			}
 			cur_word_begin = -1;
 		}
@@ -125,5 +143,170 @@ x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : 
 	if(curinst.tag != zero)
 	{
 		x64_add_instruction(curinst);
+	}
+};
+
+x64_constraint_type : enum
+{
+	.reg := 1;
+	.num := 2;
+	.memory := 3;
+};
+
+x64_constraint_tag : enum
+{
+	.input := 1;
+	.output := 2;
+	.clobber := 3;
+};
+
+x64_constraint : struct
+{
+	type : x64_constraint_type;
+	tag : x64_constraint_tag;
+	reg : x64_reg;
+	regsize : u64;
+	num : u64;
+};
+
+x64_parse_constraint : func(constraint_bit : u8?, constraint_bit_len : u64 -> x64_constraint)
+{
+	ret : x64_constraint mut := zero;
+	off : u64 mut := 0;
+
+	front ::= [constraint_bit];
+	if(front == '{')
+	{
+		ret.tag = x64_constraint_tag.input;
+		off = 1;
+	}
+	if(front == '=')
+	{
+		ret.tag = x64_constraint_tag.output;
+		off = 2;
+	}
+	if(front == '~')
+	{
+		ret.tag = x64_constraint_tag.clobber;
+		off = 2;
+	}
+	if(isdigit(front))
+	{
+		lit ::= interpret_numeric_literal(constraint_bit, zero);
+		return x64_constraint
+		{
+			.type := x64_constraint_type.num;
+			.tag := x64_constraint_tag.input;
+			.num := lit.integer@u64;
+		};
+	}
+
+	actual_content ::= constraint_bit # off;
+	actual_len ::= constraint_bit_len - off;
+	// must be a register or memory
+	memory_str ::= "memory";
+	memory_strlen ::= zstrlen(memory_str);
+	if(actual_len == memory_strlen)
+	{
+		if(streql_n(actual_content, memory_str, memory_strlen))
+		{
+			ret.type = x64_constraint_type.memory;
+		}
+	}
+	// try register
+	i : u64 mut;
+	regcount ::= countof typeof(tbl_regnames);
+	for(i = 0; i < regcount; i = i + 1)
+	{
+		name : u8? := [tbl_regnames # i];
+		name_len ::= zstrlen(name);
+		if(actual_len == name_len)
+		{
+			if(streql_n(actual_content, name, actual_len))
+			{
+				// yep this is the register we want
+				// there are 7 entries per register type
+				// so that will tell us which register we are
+				regidx ::= ((i - 1) / 7)@s64@x64_reg;
+				sizeidx ::= (i - 1) % 7;
+				// sizeidx 0 = 1
+				// sizeidx 1 = 2
+				// sizeidx 2 = 4
+				// and so on up until 64 bytes
+				size ::= 1 << sizeidx;
+				ret.type = x64_constraint_type.reg;
+				ret.reg = regidx;
+				ret.regsize = size * 8;
+				return ret;
+			}
+		}
+	}
+
+	return ret;
+};
+
+x64_parse_constraints : func(constraint : u8?, constraint_len : u64, inputs : x64v mut? mut?, inputs_count : u64 mut?, outputs : x64v mut? mut?, outputs_count : u64 mut? -> v0)
+{
+	[inputs] = arena_alloc(global_arena, 16 * sizeof x64v);
+	[inputs_count] = 0;
+
+	[outputs] = arena_alloc(global_arena, 16 * sizeof x64v);
+	[outputs_count] = 0;
+
+	// example constraint string:
+	// ={rax},0,{rdi},{rsi},~{rcx}
+	cursor : u64 mut := 0;
+	cur_word_begin : s64 weak mut := -1;
+	// use <= and a special case for ch = zero so we break words and re-use logic without doing it post-loop
+	while(cursor <= constraint_len)
+	{
+		ch : u8 mut := zero;
+		if(cursor < constraint_len)
+		{
+			ch = [constraint # cursor];
+		}
+		if(cur_word_begin == -1)
+		{
+			// we havent started a word yet.
+			// the following chars start a word: 
+			// - a number
+			// - {
+			// - =
+			// - ~
+			if(isdigit(ch) || (ch == '{') || (ch == '=') || (ch == '~'))
+			{
+				cur_word_begin = cursor;
+			}
+		}
+		if((cur_word_begin != -1) && ((ch == ',') || isspace(ch) || (ch == '}')))
+		{
+			// finished a word. cur_word_begin -> cursor
+			cur_constraint ::= x64_parse_constraint(constraint # cur_word_begin, cursor - cur_word_begin);
+			// put it as an input/output/clobber
+			if(cur_constraint.tag == x64_constraint_tag.input)
+			{
+				in_ptr ::= [inputs] # [inputs_count];
+				if(cur_constraint.type == x64_constraint_type.reg)
+				{
+					[in_ptr] = x64v_reg(cur_constraint.reg, cur_constraint.regsize);
+				}
+				if(cur_constraint.type == x64_constraint_type.num)
+				{
+					[in_ptr] = [[outputs] # cur_constraint.num];
+				}
+				[inputs_count] = [inputs_count] + 1;
+			}
+			if(cur_constraint.tag == x64_constraint_tag.output)
+			{
+				out_ptr ::= [outputs] # [outputs_count];
+				if(cur_constraint.type == x64_constraint_type.reg)
+				{
+					[out_ptr] = x64v_reg(cur_constraint.reg, cur_constraint.regsize);
+				}
+				[outputs_count] = [outputs_count] + 1;
+			}
+			cur_word_begin = -1;
+		}
+		cursor = cursor + 1;
 	}
 };
