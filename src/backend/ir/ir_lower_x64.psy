@@ -23,6 +23,7 @@ ir_register_custom_x64vs : func(-> v0)
 {
 	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size);
 	x64_register_custom_value_type(x64v_tag_vmemreg, bwrite_x64v_vmemreg, x64v_vmemreg_get_size);
+	x64_register_custom_value_type(x64v_tag_irblk, bwrite_x64v_irblk, x64v_irblk_get_size);
 };
 ir_lower_x64 : func(-> v0)
 {
@@ -239,6 +240,8 @@ ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_jmp_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	jmploc ::= [ir_jmp_get_blkref(inst)];
+	x64_jmp(irval_lower_x64v(jmploc));
 };
 
 ir_jmpif_lower_x64 : func(inst : irinst mut? -> v0)
@@ -571,6 +574,38 @@ x64v_vmemreg_get_disp : func(v : x64v -> u64)
 	return v.v7;
 };
 
+x64v_tag_irblk ::= 2;
+
+x64v_irblk : func(pos : irpos -> x64v)
+{
+	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	return x64v
+	{
+		.tag := (custom_idx + x64v_tag_irblk)@x64v_tag;
+		.v1 := pos.func_cursor;
+		.v2 := pos.blk_cursor;
+	};
+};
+
+bwrite_x64v_irblk : func(w : bwriter mut?, v : x64v -> v0)
+{
+	bwrite_colour_blue(w);
+	bwrite8(w, '_');
+	bwrite_uint(w, x64v_irblk_get_blk_cursor(v));
+	bwrite_colour_reset(w);
+};
+
+x64v_irblk_get_blk_cursor : func(v : x64v -> u64)
+{
+	return v.v2;
+};
+
+x64v_irblk_get_size : func(v : x64v -> u64)
+{
+	// 32-bit ripreli
+	return 32;
+};
+
 // generic irval -> x64v lowering function
 
 irval_lower_x64v : func(v : irval -> x64v)
@@ -603,7 +638,7 @@ irval_lower_x64v : func(v : irval -> x64v)
 	}
 	if(v.tag == irval_tag.blkref)
 	{
-		// NOT SURE
+		return x64v_irblk(irpos{.func_cursor := x64api.func_cursor; .blk_cursor := irval_blkref_get_idx(v);});
 	}
 	if(v.tag == irval_tag.asmref)
 	{
