@@ -1,0 +1,59 @@
+== default ==
+{
+	add_build_file_with_config("./_test_helper.psy", "psyir");
+
+	executable("ir_linux_helloworld");
+	postbuild_command("(cd build && ./ir_linux_helloworld)");
+};
+
+test : func(-> s32)
+{
+	helloworld_str ::= ir_add_glob("hello world
+", 12, false);
+
+	print_helloworld_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
+	print_helloworld_code ::= "mov rax, 1
+mov rdi, 1
+lea rsi, $0
+mov rdx, 12
+syscall";
+	print_helloworld ::= ir_add_asm(zero, zero, zero, print_helloworld_constraint, zstrlen(print_helloworld_constraint), print_helloworld_code, zstrlen(print_helloworld_code));
+
+	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
+	exit_syscall_code ::= "mov rax, 60
+mov rdi, $0
+syscall";
+	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
+	fn2 ::= ir_add_func(irabi.psy, zero, zero, zero, zero);
+
+	ir_call_asm(print_helloworld, ref helloworld_str, 1, zero);
+
+	exitcode ::= irval_dimm(0);
+	ir_call_asm(exit_syscall, ref exitcode, 1, zero);
+	//ir_call_asm(exit_syscall, zero, zero, zero);
+	ir_set_entrypoint(fn2);
+
+	teststream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+
+	bwrite_ir(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+
+	ir_lower_x64();
+
+	teststream.cursor = 0;
+	x64_dump_disasm_to(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+
+	// write out the elf.
+	encode_basic_elf("./generated_ir_linux_helloworld.elf", ref(x64api.prog));
+	file_ensure_executable("./generated_ir_linux_helloworld.elf");
+	cmd ::= "./generated_ir_linux_helloworld.elf";
+	return sys_shell_command(cmd, zstrlen(cmd), envp, global_arena)@_;
+};

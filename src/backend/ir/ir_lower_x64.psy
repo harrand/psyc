@@ -577,25 +577,25 @@ irval_lower_x64v : func(v : irval -> x64v)
 {
 	if(v.tag == irval_tag.reg)
 	{
+		if(v.r1 == irsz.global_variable)
+		{
+			glob ::= ir_ref_glob(v);
+			// figure out if it is rodata, data or bss
+			lower ::= [ir_lower.globals # glob->idx];
+			if(lower.type == ir_lower_globtype.rodata)
+			{
+				return x64v_rodata(lower.x64_globidx, 0, glob->size);
+			}
+			if(lower.type == ir_lower_globtype.data)
+			{
+				return x64v_data(lower.x64_globidx, 0, glob->size);
+			}
+			if(lower.type == ir_lower_globtype.bss)
+			{
+				return x64v_bss(lower.x64_globidx, 0, glob->size);
+			}
+		}
 		return x64v_vreg(v);
-	}
-	if(v.tag == irval_tag.globref)
-	{
-		glob ::= ir_ref_glob(v);
-		// figure out if it is rodata, data or bss
-		lower ::= [ir_lower.globals # glob->idx];
-		if(lower.type == ir_lower_globtype.rodata)
-		{
-			return x64v_rodata(lower.x64_globidx, 0, glob->size);
-		}
-		if(lower.type == ir_lower_globtype.data)
-		{
-			return x64v_data(lower.x64_globidx, 0, glob->size);
-		}
-		if(lower.type == ir_lower_globtype.bss)
-		{
-			return x64v_bss(lower.x64_globidx, 0, glob->size);
-		}
 	}
 	if(v.tag == irval_tag.funcref)
 	{
