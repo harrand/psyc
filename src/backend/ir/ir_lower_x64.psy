@@ -196,8 +196,9 @@ ir_load_lower_x64 : func(inst : irinst mut? -> v0)
 	index ::= [ir_load_get_index(inst)];
 	index_x64 ::= irval_lower_x64v(index);
 	scale ::= [ir_load_get_scale(inst)];
+	disp ::= [ir_load_get_disp(inst)];
 
-	x64_mov(outx64, x64v_vmemreg(irval_get_irsz(out), base, index, scale));
+	x64_mov(outx64, x64v_vmemreg(irval_get_irsz(out), base, index, scale, disp));
 };
 
 ir_store_lower_x64 : func(inst : irinst mut? -> v0)
@@ -216,8 +217,9 @@ ir_store_lower_x64 : func(inst : irinst mut? -> v0)
 	index ::= [ir_store_get_index(inst)];
 	index_x64 ::= irval_lower_x64v(index);
 	scale ::= [ir_store_get_scale(inst)];
+	disp ::= [ir_store_get_disp(inst)];
 
-	x64_mov(x64v_vmemreg(sz, base, index, scale), vx64);
+	x64_mov(x64v_vmemreg(sz, base, index, scale, disp), vx64);
 };
 
 ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
@@ -484,7 +486,7 @@ x64v_vreg_get_index : func(v : x64v -> u64)
 
 x64v_tag_vmemreg ::= 1;
 
-x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval -> x64v)
+x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval, disp : irval -> x64v)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
 	return x64v
@@ -496,6 +498,7 @@ x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : i
 		.v4 := irval_get_irsz(index_reg)@s64@_;
 		.v5 := irval_reg_get_index(index_reg);
 		.v6 := irval_imm_get_value(scale);
+		.v7 := irval_imm_get_value(disp);
 	};
 };
 
@@ -508,6 +511,7 @@ bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 	base ::= x64v_vmemreg_get_base(v);
 	index ::= x64v_vmemreg_get_index(v);
 	scale ::= x64v_vmemreg_get_scale(v);
+	disp ::= x64v_vmemreg_get_disp(v);
 
 	bwrite_colour_blue(w);
 	bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
@@ -527,6 +531,11 @@ bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 			bwrite_zstr(w, " * ");
 			bwrite_uint(w, scale);
 		}
+	}
+	if(disp != 0)
+	{
+		bwrite_zstr(w, " + ");
+		bwrite_uint(w, disp);
 	}
 	bwrite_zstr(w, "]");
 	bwrite_colour_reset(w);
@@ -555,6 +564,11 @@ x64v_vmemreg_get_index : func(v : x64v -> irval)
 x64v_vmemreg_get_scale : func(v : x64v -> u64)
 {
 	return v.v6;
+};
+
+x64v_vmemreg_get_disp : func(v : x64v -> u64)
+{
+	return v.v7;
 };
 
 // generic irval -> x64v lowering function
