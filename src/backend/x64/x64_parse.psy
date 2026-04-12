@@ -75,7 +75,6 @@ x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : 
 	// and invoke it directly via x64api
 	cursor : u64 mut := 0;
 	cur_word_begin : s64 weak mut := -1;
-	word_is_number : bool mut := false;
 	// use <= and a special case for ch = zero so we break words and re-use logic without doing it post-loop
 	curinst : x64i mut := zero;
 	while(cursor <= code_len)
@@ -84,6 +83,13 @@ x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : 
 		if(cursor < code_len)
 		{
 			ch = [code # cursor];
+			if((ch == '[') || (ch == ']'))
+			{
+				psyc_panic_begin(zero);
+				putzstr("parsing memory operands in inline-assembly is not yet implemented (NYI). sorry.");
+				psyc_diag_end();
+				psyc_exit_failure();
+			}
 		}
 		if((isspace(ch) || isnewline(ch) || (ch == zero) || (ch == ',')) && (cur_word_begin != -1))
 		{
@@ -105,7 +111,6 @@ x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : 
 		{
 			// start of a new word
 			cur_word_begin = cursor;
-			word_is_number = isdigit(ch);
 		}
 		if(isnewline(ch))
 		{

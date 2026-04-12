@@ -202,6 +202,22 @@ ir_load_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_store_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	v ::= [ir_store_get_value(inst)];
+	// now remember, if dst is a memreg (which a store always will be) then the src cannot be an imm64
+	sz ::= irval_get_irsz(v);
+	if((v.tag == irval_tag.imm) && (sz == irsz.q))
+	{
+		// downgrade to 32 bit
+		v = irval_dimm(irval_imm_get_value(v));
+	}
+	vx64 ::= irval_lower_x64v(v);
+
+	base : irval mut := [ir_store_get_base(inst)];
+	index ::= [ir_store_get_index(inst)];
+	index_x64 ::= irval_lower_x64v(index);
+	scale ::= [ir_store_get_scale(inst)];
+
+	x64_mov(x64v_vmemreg(sz, base, index, scale), vx64);
 };
 
 ir_ret_lower_x64 : func(inst : irinst mut? -> v0)
@@ -506,11 +522,11 @@ bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 	{
 		bwrite_zstr(w, " + ");
 		bwrite_irval_reg(w, x64v_vmemreg_get_index(v));
-	}
-	if(scale != 1)
-	{
-		bwrite_zstr(w, " * ");
-		bwrite_uint(w, scale);
+		if(scale != 1)
+		{
+			bwrite_zstr(w, " * ");
+			bwrite_uint(w, scale);
+		}
 	}
 	bwrite_zstr(w, "]");
 	bwrite_colour_reset(w);
