@@ -271,6 +271,24 @@ ir_jmpif_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_zex_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	in ::= [ir_zex_get_in(inst)];
+	insz ::= irval_get_irsz(in);
+	out ::= [ir_zex_get_out(inst)];
+	outsz ::= irval_get_irsz(out);
+
+	// 32 bit -> 64 bit just do a mov to the 32-bit version of out (mov eax, ecx zero extends to rcx)
+	if((outsz == irsz.q) && (insz == irsz.d))
+	{
+		outx64 : x64v mut := irval_lower_x64v(out);
+		// note: im not sure this is always safe.
+		outx64.v1 = 32;
+		x64_mov(outx64, irval_lower_x64v(in));
+	}
+	else
+	{
+		// always a movzx
+		x64_movzx(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
 };
 
 ir_sex_lower_x64 : func(inst : irinst mut? -> v0)
