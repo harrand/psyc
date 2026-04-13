@@ -175,6 +175,40 @@ tbl_customval_size_funcs ::= func(v : x64v -> u64) mut[4] mut
 	... := zero;
 };
 
+tbl_customval_setsize_funcs ::= func(v : x64v mut?, newsz : u64 -> v0) mut[4] mut
+{
+	... := zero;
+};
+
+x64v_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+{
+	if(v->tag == x64v_tag.imm)
+	{
+		v->v1 = newsz;
+	}
+	if(v->tag == x64v_tag.reg)
+	{
+		v->v1 = newsz;
+	}
+	if(v->tag == x64v_tag.memreg)
+	{
+		v->v1 = newsz;
+	}
+	if((v->tag == x64v_tag.riprel) || (v->tag == x64v_tag.ripreli) || (v->tag == x64v_tag.fnref))
+	{
+		v->v2 = newsz;
+	}
+	if((v->tag == x64v_tag.rodataref) || (v->tag == x64v_tag.dataref) || (v->tag == x64v_tag.bssref))
+	{
+		v->v3 = newsz;
+	}
+	if(x64v_is_custom([v]))
+	{
+		customid ::= v->tag@s64 - (x64v_tag.custom0@s64);
+		[tbl_customval_setsize_funcs # customid](v, newsz);
+	}
+};
+
 x64v_size : func(v : x64v -> u64)
 {
 	if(v.tag == x64v_tag.imm)

@@ -21,9 +21,9 @@ ir_lower : ir_lower_t mut := zero;
 
 ir_register_custom_x64vs : func(-> v0)
 {
-	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size);
-	x64_register_custom_value_type(x64v_tag_vmemreg, bwrite_x64v_vmemreg, x64v_vmemreg_get_size);
-	x64_register_custom_value_type(x64v_tag_irblk, bwrite_x64v_irblk, x64v_irblk_get_size);
+	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size, x64v_vreg_set_size);
+	x64_register_custom_value_type(x64v_tag_vmemreg, bwrite_x64v_vmemreg, x64v_vmemreg_get_size, x64v_vmemreg_set_size);
+	x64_register_custom_value_type(x64v_tag_irblk, bwrite_x64v_irblk, x64v_irblk_get_size, x64v_irblk_set_size);
 };
 
 ir_lower_x64 : func(-> v0)
@@ -280,8 +280,7 @@ ir_zex_lower_x64 : func(inst : irinst mut? -> v0)
 	if((outsz == irsz.q) && (insz == irsz.d))
 	{
 		outx64 : x64v mut := irval_lower_x64v(out);
-		// note: im not sure this is always safe.
-		outx64.v1 = 32;
+		x64v_set_size(ref outx64, 32);
 		x64_mov(outx64, irval_lower_x64v(in));
 	}
 	else
@@ -521,6 +520,53 @@ x64v_vreg_get_size : func(v : x64v -> u64)
 	return irsz_size_bytes(v.v1@s64@irsz) * 8;
 };
 
+x64v_vreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+{
+	is_fp ::= irsz_is_floating_point(v->v1@s64@irsz);
+	if(newsz == 8)
+	{
+		v->v1 = (irsz.b@s64@u64);
+	}
+	if(newsz == 16)
+	{
+		v->v1 = (irsz.w@s64@u64);
+	}
+	if(newsz == 32)
+	{
+		if(is_fp)
+		{
+			v->v1 = (irsz.f@s64@u64);
+		}
+		else
+		{
+			v->v1 = (irsz.d@s64@u64);
+		}
+	}
+	if(newsz == 64)
+	{
+		if(is_fp)
+		{
+			v->v1 = (irsz.ff@s64@u64);
+		}
+		else
+		{
+			v->v1 = (irsz.q@s64@u64);
+		}
+	}
+	if(newsz == 128)
+	{
+		v->v1 = (irsz.x@s64@u64);
+	}
+	if(newsz == 256)
+	{
+		v->v1 = (irsz.y@s64@u64);
+	}
+	if(newsz == 512)
+	{
+		v->v1 = (irsz.z@s64@u64);
+	}
+};
+
 x64v_vreg_get_index : func(v : x64v -> u64)
 {
 	return v.v2;
@@ -593,6 +639,53 @@ x64v_vmemreg_get_size : func(v : x64v -> u64)
 	return irsz_size_bytes(x64v_vmemreg_get_irsz(v)) * 8;
 };
 
+x64v_vmemreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+{
+	is_fp ::= irsz_is_floating_point(x64v_vmemreg_get_irsz([v]));
+	if(newsz == 8)
+	{
+		v->v1 = (irsz.b@s64@u64);
+	}
+	if(newsz == 16)
+	{
+		v->v1 = (irsz.w@s64@u64);
+	}
+	if(newsz == 32)
+	{
+		if(is_fp)
+		{
+			v->v1 = (irsz.f@s64@u64);
+		}
+		else
+		{
+			v->v1 = (irsz.d@s64@u64);
+		}
+	}
+	if(newsz == 64)
+	{
+		if(is_fp)
+		{
+			v->v1 = (irsz.ff@s64@u64);
+		}
+		else
+		{
+			v->v1 = (irsz.q@s64@u64);
+		}
+	}
+	if(newsz == 128)
+	{
+		v->v1 = (irsz.x@s64@u64);
+	}
+	if(newsz == 256)
+	{
+		v->v1 = (irsz.y@s64@u64);
+	}
+	if(newsz == 512)
+	{
+		v->v1 = (irsz.z@s64@u64);
+	}
+};
+
 x64v_vmemreg_get_base : func(v : x64v -> irval)
 {
 	return irval_reg(v.v2@s64@irsz, v.v3);
@@ -643,6 +736,11 @@ x64v_irblk_get_size : func(v : x64v -> u64)
 {
 	// 32-bit ripreli
 	return 32;
+};
+
+x64v_irblk_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+{
+	// todo: error out.
 };
 
 // generic irval -> x64v lowering function
