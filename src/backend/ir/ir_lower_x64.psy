@@ -342,11 +342,7 @@ ir_trunc_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_cvtf_lower_x64 : func(inst : irinst mut? -> v0)
 {
-	// i32 -> f32 = cvtsi2ss
-	// i64 -> f32 = cvtsi2ss (rex.w)
-	// i32 -> f64 = cvtsi2sd
-	// i64 -> f64 = cvtsi2sd (rex.w)
-
+	// integer input must be 32 or 64 bit. anything else requires a prior conversion.
 	// integers of other sizes require conversion to the above first.
 	in ::= [ir_trunc_get_in(inst)];
 	insz ::= irval_get_irsz(in);
@@ -354,11 +350,34 @@ ir_cvtf_lower_x64 : func(inst : irinst mut? -> v0)
 	out ::= [ir_trunc_get_out(inst)];
 	outsz ::= irval_get_irsz(out);
 
-	// todo: x64api support for cvtsi2ss and cvtsi2sd
+	if(outsz == irsz.ff)
+	{
+		x64_cvtsi2sd(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
+	else
+	{
+		x64_cvtsi2ss(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
 };
 
 ir_cvti_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// integer input must be 32 or 64 bit. anything else requires a prior conversion.
+	// integers of other sizes require conversion to the above first.
+	in ::= [ir_trunc_get_in(inst)];
+	insz ::= irval_get_irsz(in);
+
+	out ::= [ir_trunc_get_out(inst)];
+	outsz ::= irval_get_irsz(out);
+
+	if(insz == irsz.ff)
+	{
+		x64_cvtsd2si(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
+	else
+	{
+		x64_cvtss2si(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
 };
 
 ir_add_lower_x64 : func(inst : irinst mut? -> v0)
