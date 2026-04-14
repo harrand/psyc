@@ -292,14 +292,69 @@ ir_zex_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_sex_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	in ::= [ir_sex_get_in(inst)];
+	insz ::= irval_get_irsz(in);
+	out ::= [ir_sex_get_out(inst)];
+	outsz ::= irval_get_irsz(out);
+
+	// 32 bit -> 64 bit just do a mov to the 32-bit version of out (mov eax, ecx zero extends to rcx)
+	if((outsz == irsz.q) && (insz == irsz.d))
+	{
+		outx64 : x64v mut := irval_lower_x64v(out);
+		x64v_set_size(ref outx64, 32);
+		x64_mov(outx64, irval_lower_x64v(in));
+	}
+	else
+	{
+		// always a movsx
+		x64_movsx(irval_lower_x64v(out), irval_lower_x64v(in));
+	}
 };
 
 ir_trunc_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// say we have an 8 bit reg
+	// movzx eax, al -> everything is zero but the bottom 8 bits
+	// so you get the operand, pretend its register size is the trunc out size, and do a movzx into the 32 bit version
+	// but remember movzx eax, eax is not allowed
+	// so if outsz == 32 then its just a mov
+	in ::= [ir_trunc_get_in(inst)];
+	insz ::= irval_get_irsz(in);
+
+	out ::= [ir_trunc_get_out(inst)];
+	outsz ::= irval_get_irsz(out);
+
+	inx64 : x64v mut := irval_lower_x64v(in);
+	x64v_set_size(ref inx64, irsz_size_bytes(outsz) * 8);
+
+	outx64 : x64v mut := irval_lower_x64v(out);
+	x64v_set_size(ref outx64, 32);
+
+	if(outsz == irsz.d)
+	{
+		x64_mov(outx64, inx64);
+	}
+	else
+	{
+		x64_movzx(outx64, inx64);
+	}
 };
 
 ir_cvtf_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// i32 -> f32 = cvtsi2ss
+	// i64 -> f32 = cvtsi2ss (rex.w)
+	// i32 -> f64 = cvtsi2sd
+	// i64 -> f64 = cvtsi2sd (rex.w)
+
+	// integers of other sizes require conversion to the above first.
+	in ::= [ir_trunc_get_in(inst)];
+	insz ::= irval_get_irsz(in);
+
+	out ::= [ir_trunc_get_out(inst)];
+	outsz ::= irval_get_irsz(out);
+
+	// todo: x64api support for cvtsi2ss and cvtsi2sd
 };
 
 ir_cvti_lower_x64 : func(inst : irinst mut? -> v0)
@@ -308,6 +363,17 @@ ir_cvti_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_add_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// must be same size
+	out ::= [ir_add_get_out(inst)];
+	outx64 ::= irval_lower_x64v(out);
+
+	lhs ::= [ir_add_get_lhs(inst)];
+	lhsx64 ::= irval_lower_x64v(lhs);
+	rhs ::= [ir_add_get_rhs(inst)];
+	rhsx64 ::= irval_lower_x64v(rhs);
+
+	x64_mov(outx64, lhsx64);
+	x64_add(outx64, rhsx64);
 };
 
 ir_sub_lower_x64 : func(inst : irinst mut? -> v0)
