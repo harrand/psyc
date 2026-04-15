@@ -410,18 +410,33 @@ ir_sub_lower_x64 : func(inst : irinst mut? -> v0)
 
 ir_umul_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// must be same size
+	out ::= [ir_umul_get_out(inst)];
+	outx64 ::= irval_lower_x64v(out);
+
+	lhs ::= [ir_umul_get_lhs(inst)];
+	lhsx64 ::= irval_lower_x64v(lhs);
+	rhs ::= [ir_umul_get_rhs(inst)];
+	rhsx64 ::= irval_lower_x64v(rhs);
+
+	x64_mov(outx64, lhsx64);
+	// mul uses implicit operands, and we dont care about overflow/wraparound checking we just discard the top bits of the larger product size. in other words, umul and smul yield the same x64
+	x64_imul(outx64, rhsx64);
 };
 
 ir_smul_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	return ir_umul_lower_x64(inst);
 };
 
 ir_udiv_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// divison is complicated...
 };
 
 ir_sdiv_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	// divison is complicated...
 };
 
 ir_mod_lower_x64 : func(inst : irinst mut? -> v0)
