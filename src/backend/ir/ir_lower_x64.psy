@@ -597,9 +597,17 @@ ir_shl_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_shl_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_shl_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
 
+	// if rhs is not an immediate, then it must be moved into CL and thats used instead
+	// bitshifting instructions only allow imm or CL as the rhs.
 	x64_mov(outx64, lhsx64);
+	if(rhs.tag != irval_tag.imm)
+	{
+		cl ::= x64v_reg(x64_reg.rcx, 8);
+		x64_mov(cl, rhsx64);
+		rhsx64 = cl;
+	}
 	x64_shl(outx64, rhsx64);
 };
 
@@ -612,9 +620,17 @@ ir_ushr_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_ushr_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_ushr_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
 
+	// if rhs is not an immediate, then it must be moved into CL and thats used instead
+	// bitshifting instructions only allow imm or CL as the rhs.
 	x64_mov(outx64, lhsx64);
+	if(rhs.tag != irval_tag.imm)
+	{
+		cl ::= x64v_reg(x64_reg.rcx, 8);
+		x64_mov(cl, rhsx64);
+		rhsx64 = cl;
+	}
 	x64_shr(outx64, rhsx64);
 };
 
@@ -627,9 +643,17 @@ ir_sshr_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_sshr_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_sshr_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
 
+	// if rhs is not an immediate, then it must be moved into CL and thats used instead
+	// bitshifting instructions only allow imm or CL as the rhs.
 	x64_mov(outx64, lhsx64);
+	if(rhs.tag != irval_tag.imm)
+	{
+		cl ::= x64v_reg(x64_reg.rcx, 8);
+		x64_mov(cl, rhsx64);
+		rhsx64 = cl;
+	}
 	x64_sar(outx64, rhsx64);
 };
 
