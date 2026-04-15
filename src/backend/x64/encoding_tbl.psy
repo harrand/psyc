@@ -12,6 +12,18 @@ x64i_encoding_table_base_offset_1op : func(inst : x64i -> u64)
 	return idx;
 };
 
+x64i_encoding_table_bitshift : func(inst : x64i -> u64)
+{
+	// one operand r/m
+	shiftamt ::= [inst.operands # 1];
+	idx ::= x64i_encoding_table_base_offset_1op(inst);
+	if(shiftamt.tag == x64v_tag.reg)
+	{
+		return idx + 4;
+	}
+	return idx;
+};
+
 x64i_encoding_table_base_offset_2op : func(inst : x64i -> u64)
 {
 	// two operands
@@ -2687,7 +2699,7 @@ encoding_tbl_and ::= x64i_enc[12]
 	};
 };
 
-encoding_tbl_shl ::= x64i_enc[4]
+encoding_tbl_shl ::= x64i_enc[8]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -2701,6 +2713,7 @@ encoding_tbl_shl ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2718,6 +2731,7 @@ encoding_tbl_shl ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2735,6 +2749,7 @@ encoding_tbl_shl ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2752,6 +2767,7 @@ encoding_tbl_shl ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2760,9 +2776,85 @@ encoding_tbl_shl ::= x64i_enc[4]
 			... := zero;
 		};
 	};
+	.4 := x64i_enc // SHL r/m8, CL
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd2;
+		.ext := x64i_ext_opcode_plus_0 + 4;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.5 := x64i_enc // SHL r/m16
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 4;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.6 := x64i_enc // SHL r/m32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 4;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.7 := x64i_enc // SHL r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 4;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
 };
 
-encoding_tbl_sar ::= x64i_enc[4]
+encoding_tbl_sar ::= x64i_enc[8]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -2776,6 +2868,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2784,7 +2877,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 			... := zero;
 		};
 	};
-	.1 := x64i_enc // SAR r/m16
+	.1 := x64i_enc // SAR r/m16, imm8
 	{
 		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
 		.rex_prefix := zero;
@@ -2793,6 +2886,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2801,7 +2895,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 			... := zero;
 		};
 	};
-	.2 := x64i_enc // SAR r/m32
+	.2 := x64i_enc // SAR r/m32, imm8
 	{
 		.legacy_prefixes := zero;
 		.rex_prefix := zero;
@@ -2810,6 +2904,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2818,7 +2913,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 			... := zero;
 		};
 	};
-	.3 := x64i_enc // SAR r/m64
+	.3 := x64i_enc // SAR r/m64, imm8
 	{
 		.legacy_prefixes := zero;
 		.rex_prefix := x64_rex_prefix.rex_w;
@@ -2827,6 +2922,7 @@ encoding_tbl_sar ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2835,9 +2931,85 @@ encoding_tbl_sar ::= x64i_enc[4]
 			... := zero;
 		};
 	};
+	.4 := x64i_enc // SAR r/m8, CL
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd2;
+		.ext := x64i_ext_opcode_plus_0 + 7;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.5 := x64i_enc // SAR r/m16, CL
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 7;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.6 := x64i_enc // SAR r/m32, CL
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 7;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.7 := x64i_enc // SAR r/m64, CL
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 7;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
 };
 
-encoding_tbl_shr ::= x64i_enc[4]
+encoding_tbl_shr ::= x64i_enc[8]
 {
 	// REX.W and operand override 0x66 is already included when necessary
 	// however for non-64-bit operands no REX bits are provided at all
@@ -2851,6 +3023,7 @@ encoding_tbl_shr ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2868,6 +3041,7 @@ encoding_tbl_shr ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2885,6 +3059,7 @@ encoding_tbl_shr ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
@@ -2902,11 +3077,88 @@ encoding_tbl_shr ::= x64i_enc[4]
 		.operand_types := x64v_enc[4]
 		{
 			.0 := x64v_enc.rm;
+			.1 := x64v_enc.imm;
 			... := zero;
 		};
 		.clobbers := x64_clobber[4]
 		{
 			.0 := x64_clobber.op0;
+			... := zero;
+		};
+	};
+	.4 := x64i_enc // SHR r/m8, CL
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd2;
+		.ext := x64i_ext_opcode_plus_0 + 5;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.5 := x64i_enc // SHR r/m16
+	{
+		.legacy_prefixes := x64_legacy_prefix[4]{.0 := x64_legacy_prefix.operand_size_override; ... := zero;};
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 5;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.6 := x64i_enc // SHR r/m32
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 5;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
+			... := zero;
+		};
+	};
+	.7 := x64i_enc // SHR r/m64
+	{
+		.legacy_prefixes := zero;
+		.rex_prefix := x64_rex_prefix.rex_w;
+		.opcode := 0xd3;
+		.ext := x64i_ext_opcode_plus_0 + 5;
+		.operand_types := x64v_enc[4]
+		{
+			.0 := x64v_enc.rm;
+			.1 := x64v_enc.r;
+			... := zero;
+		};
+		.clobbers := x64_clobber[4]
+		{
+			.0 := x64_clobber.op0;
+			.1 := x64_clobber.cl;
 			... := zero;
 		};
 	};
