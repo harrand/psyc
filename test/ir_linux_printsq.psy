@@ -12,10 +12,10 @@ test : func(-> s32)
 	write_syscall_constraint ::= "={rax},0,{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}";
 	write_syscall_code ::= "mov rax, 1
 mov rdi, $0
-lea rsi, $1
+mov rsi, $1
 mov rdx, $2
 syscall";
-	write_syscall ::= ir_add_asm(write_syscall_params # 0, countof typeof(write_syscall_params), irsz.q, write_syscall_constraint, zstrlen(write_syscall_constraint), write_syscall_code, zstrlen(write_syscall_code));
+	write_syscall ::= ir_add_asm(write_syscall_params # 0, countof typeof(write_syscall_params), zero, write_syscall_constraint, zstrlen(write_syscall_constraint), write_syscall_code, zstrlen(write_syscall_code));
 
 	// putbyte : func(chars : u8?, count : u64 -> v0)
 	ir_putbytes ::= ir_add_empty_func(irabi.psy);
@@ -36,14 +36,23 @@ syscall";
 ", helloworld_strlen, false);
 
 	// main func
-	ir_add_empty_func(irabi.psy);
+	ir_main ::= ir_add_empty_func(irabi.psy);
 	putbytes_initial_call_params ::= irval[2]
 	{
 		.0 := helloworld_str;
 		.1 := irval_qimm(helloworld_strlen);
 	};
 	ir_call_fn(ir_putbytes, putbytes_initial_call_params # 0, countof typeof(putbytes_initial_call_params), zero, zero);
-	ir_ret0(zero);
+
+	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
+	exit_syscall_code ::= "mov rax, 60
+mov rdi, $0
+syscall";
+	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
+	exitcode ::= irval_dimm(0);
+	ir_call_asm(exit_syscall, ref exitcode, 1, zero);
+
+	ir_set_entrypoint(ir_main);
 
 	teststream ::= bwriter mut
 	{
