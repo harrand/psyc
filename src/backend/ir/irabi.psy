@@ -11,7 +11,7 @@ tbl_irabi_callprep_x64 ::= func(params : x64v mut?, params_count : u64 -> v0)[co
 	... := zero;
 };
 
-tbl_irabi_register_allocation_x64 ::= func(fn : x64f mut? -> v0)[countof irabi] mut
+tbl_irabi_register_allocation_x64 ::= func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)[countof irabi] mut
 {
 	.0 := irabi_psy_register_allocation_x64;
 	... := zero;
@@ -22,9 +22,9 @@ irabi_callprep_x64 : func(abi : irabi, params : x64v mut?, params_count : u64 ->
 	[tbl_irabi_callprep_x64 # (abi@s64)](params, params_count);
 };
 
-irabi_register_allocation_x64 : func(abi : irabi, fn : x64f mut? -> v0)
+irabi_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
-	[tbl_irabi_register_allocation_x64 # (abi@s64)](fn);
+	[tbl_irabi_register_allocation_x64 # (fn->abi@s64)](fn, fnx64);
 };
 
 // PSY X64 APPLICATION BINARY INTERFACE
@@ -53,6 +53,39 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 	// todo: return values???
 };
 
-irabi_psy_register_allocation_x64 : func(fn : x64f mut? -> v0)
+irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
+	regparams ::= x64_reg[8]
+	{
+		.0 := x64_reg.rbx;
+		.1 := x64_reg.rcx;
+		.2 := x64_reg.rdx;
+		.3 := x64_reg.rdi;
+		.4 := x64_reg.r8;
+		.5 := x64_reg.r9;
+		.6 := x64_reg.r10;
+		.7 := x64_reg.r11;
+	};
+	params_idx_max ::= fn->params_count;
+	i : u64 mut;
+	j : u64 mut;
+	count ::= fnx64->inst_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		parcount ::= x64i_operand_count([inst]);
+		for(j = 0; j < parcount; j = j + 1)
+		{
+			operand ::= inst->operands # j;
+			if(x64v_is_vreg([operand]))
+			{
+				idx ::= x64v_vreg_get_index([operand]);
+				if(idx < params_idx_max)
+				{
+					// its a function param! jsut convert it to the param register.
+					[operand] = x64v_reg([regparams # idx], x64v_size([operand]));
+				}
+			}
+		}
+	}
 };
