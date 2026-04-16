@@ -1,0 +1,41 @@
+irabi : enum
+{
+	.psy := 0;
+	.win64 := 1;
+	.sysv := 2;
+};
+
+tbl_irabi_callprep_x64 ::= func(params : x64v mut?, params_count : u64 -> v0)[countof irabi] mut
+{
+	.0 := irabi_psy_callprep_x64;
+	... := zero;
+};
+
+irabi_callprep_x64 : func(abi : irabi, params : x64v mut?, params_count : u64 -> v0)
+{
+	[tbl_irabi_callprep_x64 # (abi@s64)](params, params_count);
+};
+
+irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
+{
+	regparams ::= x64_reg[8]
+	{
+		.0 := x64_reg.rbx;
+		.1 := x64_reg.rcx;
+		.2 := x64_reg.rdx;
+		.3 := x64_reg.rdi;
+		.4 := x64_reg.r8;
+		.5 := x64_reg.r9;
+		.6 := x64_reg.r10;
+		.7 := x64_reg.r11;
+	};
+
+	i : u64 mut;
+	count ::= countof typeof(regparams);
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		param ::= [params # i];
+		x64_mov(x64v_reg([regparams # i], x64v_size(param)), param);
+	}
+	// todo: return values???
+};
