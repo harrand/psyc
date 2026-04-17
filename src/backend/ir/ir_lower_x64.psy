@@ -452,6 +452,7 @@ ir_udiv_lower_x64 : func(inst : irinst mut? -> v0)
 	// denominator stays as r/m and becomes operand
 	x64_mov(x64v_reg(x64_reg.rax, sz), lhsx64);
 	// todo: 8 bit divide?
+	// note: cwd/cdq/cqo are sign extends, so this is probably wrong for udiv
 	if(sz == 16)
 	{
 		x64_cwd();
@@ -478,11 +479,26 @@ ir_sdiv_lower_x64 : func(inst : irinst mut? -> v0)
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_umul_get_rhs(inst)];
 	rhsx64 ::= irval_lower_x64v(rhs);
+
+	sz ::= x64v_size(lhsx64);
 	// numerator goes into xax
 	// denominator stays as r/m and becomes operand
-	x64_mov(x64v_reg(x64_reg.rax, x64v_size(lhsx64)), lhsx64);
+	x64_mov(x64v_reg(x64_reg.rax, sz), lhsx64);
+	// todo: 8 bit divide?
+	if(sz == 16)
+	{
+		x64_cwd();
+	}
+	if(sz == 32)
+	{
+		x64_cdq();
+	}
+	if(sz == 64)
+	{
+		x64_cqo();
+	}
 	x64_idiv(rhsx64);
-	x64_mov(outx64, x64v_reg(x64_reg.rax, x64v_size(lhsx64)));
+	x64_mov(outx64, x64v_reg(x64_reg.rax, sz));
 };
 
 ir_mod_lower_x64 : func(inst : irinst mut? -> v0)
