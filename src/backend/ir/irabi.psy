@@ -62,7 +62,7 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 
 irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
-	regparams ::= x64_reg[8]
+	regparams ::= x64_reg[12]
 	{
 		.0 := x64_reg.rbx;
 		.1 := x64_reg.rcx;
@@ -72,6 +72,10 @@ irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> 
 		.5 := x64_reg.r9;
 		.6 := x64_reg.r10;
 		.7 := x64_reg.r11;
+		.8 := x64_reg.r12;
+		.9 := x64_reg.r13;
+		.10 := x64_reg.r14;
+		.11 := x64_reg.r15;
 	};
 	params_idx_max ::= fn->params_count;
 	i : u64 mut;
@@ -87,11 +91,32 @@ irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> 
 			if(x64v_is_vreg([operand]))
 			{
 				idx ::= x64v_vreg_get_index([operand]);
-				if(idx < params_idx_max)
-				{
+				//if(idx < params_idx_max)
+				//{
 					// its a function param! jsut convert it to the param register.
 					[operand] = x64v_reg([regparams # idx], x64v_size([operand]));
+				//}
+			}
+			if(x64v_is_vmemreg([operand]))
+			{
+				base ::= x64v_vmemreg_get_base([operand]);
+				base_index ::= irval_reg_get_index(base);
+				base_size ::= irsz_size_bytes(irval_get_irsz(base)) * 8;
+				index ::= x64v_vmemreg_get_index([operand]);
+				index_size ::= irsz_size_bytes(irval_get_irsz(index)) * 8;
+				index_reg ::= [regparams # (irval_reg_get_index(index))];
+				scale : u64 mut := x64v_vmemreg_get_scale([operand]);
+				if(scale == 0)
+				{
+					scale = 1;
 				}
+				disp ::= x64v_vmemreg_get_disp([operand]);
+				disp_scale : u64 mut := 0;
+				if(disp != 0)
+				{
+					disp_scale = 32;
+				}
+				[operand] = x64v_memreg(x64v_vmemreg_get_size([operand]), [regparams # idx], base_size, index_reg, index_size, scale, disp, disp_scale);
 			}
 		}
 	}
