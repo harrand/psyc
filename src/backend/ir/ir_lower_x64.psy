@@ -200,9 +200,15 @@ irinst_lower_fn ::= func(inst : irinst mut? -> v0)[countof irinst_tag]
 
 ir_stack_lower_x64 : func(inst : irinst mut? -> v0)
 {
-	size_irval ::= [ir_stack_get_size(inst)];
+	size ::= [ir_stack_get_size(inst)];
+	sizex64 : x64v mut := irval_lower_x64v(size);
+	if((size.tag == irval_tag.imm) && (irval_get_irsz(size) == irsz.q))
+	{
+		// downgrade size to 32 bit
+		x64v_set_size(ref sizex64, 32);
+	}
 	// dont worry about alignkV?
-	x64_sub(x64v_reg(x64_reg.rsp, 64), irval_lower_x64v(size_irval));
+	x64_sub(x64v_reg(x64_reg.rsp, 64), sizex64);
 	//x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(size_val, size_size_bits));
 	out ::= [ir_stack_get_ptr(inst)];
 	x64_mov(x64v_vreg(out), x64v_reg(x64_reg.rsp, 64));
@@ -409,7 +415,14 @@ ir_sub_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_sub_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_sub_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// set it to be a 32 bit immediate...
+		// todo: if the imm value doesnt fit in 64 bit, put it into a trash register and tdo SUB r64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_mov(outx64, lhsx64);
 	x64_sub(outx64, rhsx64);

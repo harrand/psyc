@@ -35,6 +35,32 @@ syscall";
 	helloworld_str ::= ir_add_glob("hello world
 ", helloworld_strlen, false);
 
+	ir_putuint ::= ir_add_empty_func(irabi.psy);
+	ir_putuint_v ::= ir_add_param(irsz.q);
+	i_is_two_digits ::= ir_cmp_ugt(ir_putuint_v, irval_qimm(9), zero);
+
+	true_blk ::= ir_add_blk();
+	false_blk ::= ir_add_blk();
+	
+	ir_set_pos(ir_putuint);
+	ir_jmpif0(i_is_two_digits, true_blk, false_blk, zero);
+
+	ir_set_pos(true_blk);
+	recursive_call_params ::= ir_udiv(ir_putuint_v, irval_qimm(10), zero);
+	ir_call_fn(ir_putuint, ref recursive_call_params, 1, zero, zero);
+	ir_jmp0(false_blk, zero);
+
+	ir_set_pos(false_blk);
+	paramptr ::= ir_stack(irval_qimm(1), irval_qimm(1), zero);
+	digit ::= ir_sub(ir_putuint_v, ir_umul(ir_udiv(ir_putuint_v, irval_qimm(10), zero), irval_qimm(10), zero), zero);
+	ir_store(ir_trunc(irsz.b, ir_add(irval_qimm('0'), digit, zero), zero), paramptr, zero, zero, zero, zero);
+	putbytes_params ::= irval[2]
+	{
+		.0 := paramptr;
+		.1 := irval_qimm(1);
+	};
+	ir_call_fn(ir_putbytes, putbytes_params # 0, countof typeof(putbytes_params), zero, zero);
+
 	// main func
 	ir_main ::= ir_add_empty_func(irabi.psy);
 	putbytes_initial_call_params ::= irval[2]

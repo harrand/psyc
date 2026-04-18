@@ -173,16 +173,19 @@ x64_nop : func(-> v0)
 
 x64_mov : func(dst : x64v, src : x64v -> v0)
 {
-	if(x64v_is_imm(src) && (x64v_size(src) == 64))
+	if((!x64v_is_custom(src)) && !(x64v_is_custom(dst)))
 	{
-		if(!x64v_is_reg(dst) || (x64v_size(dst) != 64))
+		if(x64v_is_imm(src) && (x64v_size(src) == 64))
 		{
-			panic_assert_failure("mov: 64-bit immediates are only supported if the destination is an r64");
+			if(!x64v_is_reg(dst) || (x64v_size(dst) != 64))
+			{
+				panic_assert_failure("mov: 64-bit immediates are only supported if the destination is an r64");
+			}
 		}
-	}
-	if(!x64v_is_imm(src) && (x64v_size(src) != x64v_size(dst)))
-	{
-		panic_assert_failure("dst and src of mov instruction were not of the same size. this is not allowed unless the src is an imm32 and the dst is 64-bit");
+		if(!x64v_is_imm(src) && (x64v_size(src) != x64v_size(dst)))
+		{
+			panic_assert_failure("dst and src of mov instruction were not of the same size. this is not allowed unless the src is an imm32 and the dst is 64-bit");
+		}
 	}
 	x64_add_instruction(x64i
 	{
