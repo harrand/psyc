@@ -53,11 +53,13 @@ lower_x64_patch_customs : func(-> v0)
 		// note HH: todo: when lowering blocks somehow store the instruction index associated with it (likely via x64_current_instruction_id())
 	// - register allocation (currently tons of x64v_tag_vreg and x64v_tag_vmemreg everywhere). this will be very complex
 	i : u64 mut;
+
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
 		fn ::= irapi.prog.funcs # i;
 		fnx64 ::= x64api.prog.funcs # i;
 		irabi_register_allocation_x64(fn, fnx64);
+		ir_patch_jmp_locations(fn, fnx64);
 	}
 };
 
@@ -136,6 +138,7 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		blk ::= fn->blks # i;
+		blk->usrdata = x64_current_instruction_id();
 		for(j = 0; j < blk->insts_count; j = j + 1)
 		{
 			irinst_lower_x64(blk->insts # j);
@@ -145,6 +148,7 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 
 irinst_lower_x64 : func(inst : irinst mut? -> v0)
 {
+	inst->usrdata = x64_current_instruction_id();
 	[irinst_lower_fn # (inst->tag@s64)](inst);
 };
 
@@ -278,8 +282,10 @@ ir_jmpif_lower_x64 : func(inst : irinst mut? -> v0)
 	cond ::= [ir_jmpif_get_cond(inst)];
 	cond_x64 ::= irval_lower_x64v(cond);
 	trueblk ::= [ir_jmpif_get_true_blk(inst)];
+	falseblk ::= [ir_jmpif_get_false_blk(inst)];
 	x64_test(cond_x64, cond_x64);
 	x64_jnz(irval_lower_x64v(trueblk));
+	x64_jmp(irval_lower_x64v(falseblk));
 };
 
 ir_zex_lower_x64 : func(inst : irinst mut? -> v0)
@@ -1111,6 +1117,12 @@ x64v_irblk_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 	// todo: error out.
 };
 
+x64v_is_irblk : func(v : x64v -> bool)
+{
+	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	return v.tag == ((custom_idx + x64v_tag_irblk)@x64v_tag);
+};
+
 // generic irval -> x64v lowering function
 
 irval_lower_x64v : func(v : irval -> x64v)
@@ -1154,4 +1166,28 @@ irval_lower_x64v : func(v : irval -> x64v)
 		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
 	}
 	return zero;
+};
+
+ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
+{
+	count ::= fnx64->inst_count;
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		ocount ::= x64i_operand_count([inst]);
+		for(j = 0; j < ocount; j = j + 1)
+		{
+			operand ::= inst->operands # j;
+			if(x64v_is_irblk([operand]))
+			{
+				blk ::= fn->blks # x64v_irblk_get_blk_cursor([operand]);
+				// instruction id within this function
+				blk_instruction_id_x64 ::= blk->usrdata@s64;
+				// turn into ripreli
+				[operand] = x64v_ripreli(blk_instruction_id_x64 - (i@s64), 32);
+			}
+		}
+	}
 };
