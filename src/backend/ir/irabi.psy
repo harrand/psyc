@@ -35,7 +35,7 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 	{
 		.0 := x64_reg.rbx;
 		.1 := x64_reg.rcx;
-		.2 := x64_reg.rdx;
+		.2 := x64_reg.rsi;
 		.3 := x64_reg.rdi;
 		.4 := x64_reg.r8;
 		.5 := x64_reg.r9;
@@ -47,13 +47,17 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 	count ::= countof typeof(regparams);
 	for(i = 0; i < params_count; i = i + 1)
 	{
-		param ::= [params # i];
+		param : x64v mut := [params # i];
 		if(x64v_is_riprel(param))
 		{
 			x64_lea(x64v_reg([regparams # i], x64v_size(param)), param);
 		}
 		else
 		{
+			if((param.tag == x64v_tag.imm) && (x64v_size(param) == 64))
+			{
+				x64v_set_size(ref param, 32);
+			}
 			x64_mov(x64v_reg([regparams # i], x64v_size(param)), param);
 		}
 	}
@@ -66,7 +70,7 @@ irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> 
 	{
 		.0 := x64_reg.rbx;
 		.1 := x64_reg.rcx;
-		.2 := x64_reg.rdx;
+		.2 := x64_reg.rsi;
 		.3 := x64_reg.rdi;
 		.4 := x64_reg.r8;
 		.5 := x64_reg.r9;

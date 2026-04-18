@@ -404,9 +404,20 @@ ir_add_lower_x64 : func(inst : irinst mut? -> v0)
 	outx64 ::= irval_lower_x64v(out);
 
 	lhs ::= [ir_add_get_lhs(inst)];
-	lhsx64 ::= irval_lower_x64v(lhs);
+	lhsx64 : x64v mut := irval_lower_x64v(lhs);
 	rhs ::= [ir_add_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((lhs.tag == irval_tag.imm) && (irval_get_irsz(lhs) == irsz.q))
+	{
+		// too large imm64 is not allowed in the intermediate mov
+		x64v_set_size(ref lhsx64, 32);
+	}
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// too large imm64 is not allowed in the intermediate mov
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_mov(outx64, lhsx64);
 	x64_add(outx64, rhsx64);
@@ -419,14 +430,18 @@ ir_sub_lower_x64 : func(inst : irinst mut? -> v0)
 	outx64 ::= irval_lower_x64v(out);
 
 	lhs ::= [ir_sub_get_lhs(inst)];
-	lhsx64 ::= irval_lower_x64v(lhs);
+	lhsx64 : x64v mut := irval_lower_x64v(lhs);
 	rhs ::= [ir_sub_get_rhs(inst)];
 	rhsx64 : x64v mut := irval_lower_x64v(rhs);
 
+	if((lhs.tag == irval_tag.imm) && (irval_get_irsz(lhs) == irsz.q))
+	{
+		// too large imm64 is not allowed in the intermediate mov
+		x64v_set_size(ref lhsx64, 32);
+	}
 	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
 	{
-		// set it to be a 32 bit immediate...
-		// todo: if the imm value doesnt fit in 64 bit, put it into a trash register and tdo SUB r64
+		// too large imm64 is not allowed in the intermediate mov
 		x64v_set_size(ref rhsx64, 32);
 	}
 
@@ -441,13 +456,35 @@ ir_umul_lower_x64 : func(inst : irinst mut? -> v0)
 	outx64 ::= irval_lower_x64v(out);
 
 	lhs ::= [ir_umul_get_lhs(inst)];
-	lhsx64 ::= irval_lower_x64v(lhs);
+	lhsx64 : x64v mut := irval_lower_x64v(lhs);
 	rhs ::= [ir_umul_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((lhs.tag == irval_tag.imm) && (irval_get_irsz(lhs) == irsz.q))
+	{
+		// too large imm64 is not allowed in the intermediate mov
+		x64v_set_size(ref lhsx64, 32);
+	}
 
 	x64_mov(outx64, lhsx64);
 	// mul uses implicit operands, and we dont care about overflow/wraparound checking we just discard the top bits of the larger product size. in other words, umul and smul yield the same x64
-	x64_imul(outx64, rhsx64);
+	if(rhs.tag == irval_tag.imm)
+	{
+		// absolutely not allowed to do that
+		// must move into something temporary
+		if(irval_get_irsz(rhs) == irsz.q)
+		{
+			// too large imm64 is not allowed in the intermediate mov
+			x64v_set_size(ref rhsx64, 32);
+		}
+		intermediate ::= x64v_reg(x64_reg.r15, x64v_size(rhsx64));
+		x64_mov(intermediate, rhsx64);
+		x64_imul(outx64, intermediate);
+	}
+	else
+	{
+		x64_imul(outx64, rhsx64);
+	}
 };
 
 ir_smul_lower_x64 : func(inst : irinst mut? -> v0)
@@ -464,7 +501,7 @@ ir_udiv_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_umul_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_umul_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
 
 	sz ::= x64v_size(lhsx64);
 	// numerator goes into xax
@@ -484,7 +521,23 @@ ir_udiv_lower_x64 : func(inst : irinst mut? -> v0)
 	{
 		x64_cqo();
 	}
-	x64_div(rhsx64);
+	if(rhs.tag == irval_tag.imm)
+	{
+		// absolutely not allowed to do that
+		// must move into something temporary
+		if(irval_get_irsz(rhs) == irsz.q)
+		{
+			// too large imm64 is not allowed in the intermediate mov
+			x64v_set_size(ref rhsx64, 32);
+		}
+		intermediate ::= x64v_reg(x64_reg.r15, x64v_size(rhsx64));
+		x64_mov(intermediate, rhsx64);
+		x64_div(intermediate);
+	}
+	else
+	{
+		x64_div(rhsx64);
+	}
 	x64_mov(outx64, x64v_reg(x64_reg.rax, sz));
 };
 
@@ -516,7 +569,23 @@ ir_sdiv_lower_x64 : func(inst : irinst mut? -> v0)
 	{
 		x64_cqo();
 	}
-	x64_idiv(rhsx64);
+	if(rhs.tag == irval_tag.imm)
+	{
+		// absolutely not allowed to do that
+		// must move into something temporary
+		if(irval_get_irsz(rhs) == irsz.q)
+		{
+			// too large imm64 is not allowed in the intermediate mov
+			x64v_set_size(ref rhsx64, 32);
+		}
+		intermediate ::= x64v_reg(x64_reg.r15, x64v_size(rhsx64));
+		x64_mov(intermediate, rhsx64);
+		x64_idiv(intermediate);
+	}
+	else
+	{
+		x64_idiv(rhsx64);
+	}
 	x64_mov(outx64, x64v_reg(x64_reg.rax, sz));
 };
 
@@ -747,7 +816,13 @@ ir_cmp_eq_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setz(outx64);
@@ -762,7 +837,13 @@ ir_cmp_ne_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setnz(outx64);
@@ -777,7 +858,13 @@ ir_cmp_slt_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setl(outx64);
@@ -792,7 +879,13 @@ ir_cmp_sle_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setle(outx64);
@@ -807,7 +900,13 @@ ir_cmp_sgt_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setg(outx64);
@@ -822,7 +921,13 @@ ir_cmp_sge_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setge(outx64);
@@ -837,7 +942,13 @@ ir_cmp_ult_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setb(outx64);
@@ -852,7 +963,13 @@ ir_cmp_ule_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setbe(outx64);
@@ -867,7 +984,13 @@ ir_cmp_ugt_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_seta(outx64);
@@ -882,7 +1005,13 @@ ir_cmp_uge_lower_x64 : func(inst : irinst mut? -> v0)
 	lhs ::= [ir_cmp_get_lhs(inst)];
 	lhsx64 ::= irval_lower_x64v(lhs);
 	rhs ::= [ir_cmp_get_rhs(inst)];
-	rhsx64 ::= irval_lower_x64v(rhs);
+	rhsx64 : x64v mut := irval_lower_x64v(rhs);
+
+	if((rhs.tag == irval_tag.imm) && (irval_get_irsz(rhs) == irsz.q))
+	{
+		// cannot cmp with imm64
+		x64v_set_size(ref rhsx64, 32);
+	}
 
 	x64_cmp(lhsx64, rhsx64);
 	x64_setae(outx64);
