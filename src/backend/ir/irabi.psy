@@ -5,9 +5,15 @@ irabi : enum
 	.sysv := 2;
 };
 
-tbl_irabi_callprep_x64 ::= func(params : x64v mut?, params_count : u64 -> v0)[countof irabi] mut
+tbl_irabi_precall_x64 ::= func(params : x64v mut?, params_count : u64 -> v0)[countof irabi] mut
 {
-	.0 := irabi_psy_callprep_x64;
+	.0 := irabi_psy_precall_x64;
+	... := zero;
+};
+
+tbl_irabi_postcall_x64 ::= func(params : x64v mut?, params_count : u64 -> v0)[countof irabi] mut
+{
+	.0 := irabi_psy_postcall_x64;
 	... := zero;
 };
 
@@ -17,9 +23,14 @@ tbl_irabi_register_allocation_x64 ::= func(fn : irfunc mut?, fnx64 : x64f mut? -
 	... := zero;
 };
 
-irabi_callprep_x64 : func(abi : irabi, params : x64v mut?, params_count : u64 -> v0)
+irabi_precall_x64 : func(abi : irabi, params : x64v mut?, params_count : u64 -> v0)
 {
-	[tbl_irabi_callprep_x64 # (abi@s64)](params, params_count);
+	[tbl_irabi_precall_x64 # (abi@s64)](params, params_count);
+};
+
+irabi_postcall_x64 : func(abi : irabi, params : x64v mut?, params_count : u64 -> v0)
+{
+	[tbl_irabi_postcall_x64 # (abi@s64)](params, params_count);
 };
 
 irabi_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
@@ -29,7 +40,7 @@ irabi_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 
 // PSY X64 APPLICATION BINARY INTERFACE
 
-irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
+irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 {
 	regparams ::= x64_reg[8]
 	{
@@ -47,6 +58,7 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 	count ::= countof typeof(regparams);
 	for(i = 0; i < params_count; i = i + 1)
 	{
+		x64_push(x64v_reg([regparams # i], 64));
 		param : x64v mut := [params # i];
 		if(x64v_is_riprel(param))
 		{
@@ -62,6 +74,28 @@ irabi_psy_callprep_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 		}
 	}
 	// todo: return values???
+};
+
+irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
+{
+	regparams ::= x64_reg[8]
+	{
+		.0 := x64_reg.rbx;
+		.1 := x64_reg.rcx;
+		.2 := x64_reg.rsi;
+		.3 := x64_reg.rdi;
+		.4 := x64_reg.r8;
+		.5 := x64_reg.r9;
+		.6 := x64_reg.r10;
+		.7 := x64_reg.r11;
+	};
+
+	i : s64 mut;
+	count ::= countof typeof(regparams);
+	for(i = (params_count - 1)@s64; i >= 0; i = i - 1)
+	{
+		x64_pop(x64v_reg([regparams # i], 64));
+	}
 };
 
 irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
