@@ -96,6 +96,7 @@ x64i_enc : struct
 	ext : x64i_ext weak;
 	operand_types : x64v_enc[4];
 	clobbers : x64_clobber[4];
+	needs_modrm : bool;
 };
 
 x64i_enc_legacy_prefix_count : func(enc : x64i_enc -> u64)
@@ -909,8 +910,10 @@ x64_invalid_modrm : u8 static := 0xff;
 
 x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_count : u64 -> u16)
 {
+	enc->needs_modrm = true;
 	if(operands_count == zero)
 	{
+		enc->needs_modrm = false;
 		return (x64_invalid_modrm << 8)@u16;
 	}
 	mod_bits : u8 mut := 0;
@@ -1011,6 +1014,7 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 			// note that we did just add rex_b if the register is extended
 			// but if we are +r then we actually dont need a modrm at all
 			enc->opcode = (enc->opcode + reg_bits@u16);
+			enc->needs_modrm = false;
 			return (x64_invalid_modrm << 8)@u16;
 		}
 	}
@@ -1037,6 +1041,7 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 
 	if((enc->ext == x64i_ext.reg) && (imm_idx != -1))
 	{
+		enc->needs_modrm = false;
 		return (x64_invalid_modrm << 8)@u16;
 	}
 
@@ -1052,6 +1057,7 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 			if(r_idx == -1)
 			{
 				// ok this instruction straigh tup doesnt need one
+				enc->needs_modrm = false;
 				return (x64_invalid_modrm << 8)@u16;
 			}
 			panic_assert_failure("need sib byte (mod != 0b11) but there is no rm???");
@@ -1492,8 +1498,7 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> u64)
 		bwrite16(w, enc.opcode);
 	}
 
-
-	if(modrm != x64_invalid_modrm)
+	if(enc.needs_modrm)
 	{
 		bwrite8(w, modrm);
 		if((((modrm >> 6) & 0b11) != 0b11) && ((modrm & 0b111) == 0b100))

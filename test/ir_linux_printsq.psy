@@ -64,11 +64,26 @@ syscall";
 
 	// main func
 	ir_main ::= ir_add_empty_func(irabi.psy);
+	counter_ptr ::= ir_stack(irval_qimm(8), irval_qimm(1), zero);
+	ir_store(irval_qimm(0), counter_ptr, zero, zero, zero, zero);
+
+	iter_blk ::= ir_add_blk();
+	end_blk ::= ir_add_blk();
+	ir_set_pos(ir_main);
+	ir_jmp0(iter_blk, zero);
+	ir_set_pos(iter_blk);
+
+	v ::= ir_load(irsz.q, counter_ptr, zero, zero, zero, zero);
 	putuint_call_params ::= irval[1]
 	{
-		.0 := irval_qimm(69);
+		.0 := v;
 	};
+	ir_store(ir_add(v, irval_qimm(1), zero), counter_ptr, zero, zero, zero, zero);
 	ir_call_fn(ir_putuint, putuint_call_params # 0, countof typeof(putuint_call_params), zero, zero);
+	cond ::= ir_cmp_ule(v, irval_qimm(10), zero);
+	ir_jmpif0(cond, iter_blk, end_blk, zero);
+
+	ir_set_pos(end_blk);
 
 	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
 	exit_syscall_code ::= "mov rax, 60
