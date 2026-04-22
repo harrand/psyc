@@ -186,8 +186,31 @@ igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count
 // we check all its connected nodes via edges
 // if none of those neighbours have it, then return true
 // otherwise return false
-inode_can_have_colour : func(g : igraph mut?, nodeidx : u64, colour : u64 -> bool)
+inode_can_have_colour : func(g : igraph mut?, nodeidx : u64, colour : inode_colour -> bool)
 {
+	i : u64 mut;
+	for(i = 0; i < g->edges_count; i = i + 1)
+	{
+		e ::= [g->edges # i];
+		neighbour : u64 mut := ~0;
+		if(e.lhs@_ == nodeidx)
+		{
+			neighbour = e.rhs@_;
+		}
+		if(e.rhs@_ == nodeidx)
+		{
+			neighbour = e.lhs@_;
+		}
+		if(neighbour != ~0)
+		{
+			// we are a valid neighbour
+			if([g->nodes # neighbour].colour == colour)
+			{
+				// neighbour has this colour. we cant use this.
+				return false;
+			}
+		}
+	}
 	return true;
 };
 
@@ -219,7 +242,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 			// the node needs a colour.
 			for(j = 0; j < colours_count; j = j + 1)
 			{
-				if((node->colour == inode_colour.undefined) && inode_can_have_colour(g, i, j))
+				if((node->colour == inode_colour.undefined) && inode_can_have_colour(g, i, j@s64@inode_colour))
 				{
 					node->colour = j@s64@inode_colour;
 				}
