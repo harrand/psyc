@@ -108,3 +108,64 @@ x64i_operand_count : func(inst : x64i -> u64)
 	}
 	return i;
 };
+
+x64i_get_clobbers : func(inst : x64i -> x64_reg[countof typeof(x64i_enc{}.clobbers)])
+{
+	ret : x64_reg mut[4] mut := zero;
+
+	count ::= countof typeof(x64i_enc{}.clobbers);
+	clobcount : u64 mut := 0;
+	enc ::= x64i_encode(inst);
+	i : u64 mut;
+	for(i = 0; i < count; i = i + 1)
+	{
+		clob ::= [enc.clobbers # i];
+		if(clob != zero)
+		{
+			op : x64v mut;
+			if(clob == x64_clobber.op0)
+			{
+				op = [inst.operands # 0];
+				if(op.tag == x64v_tag.reg)
+				{
+					[ret # clobcount] = x64v_reg_get_reg(op);
+					clobcount = clobcount + 1;
+				}
+			}
+			if(clob == x64_clobber.op1)
+			{
+				op = [inst.operands # 1];
+				if(op.tag == x64v_tag.reg)
+				{
+					[ret # clobcount] = x64v_reg_get_reg(op);
+					clobcount = clobcount + 1;
+				}
+			}
+			if((clob == x64_clobber.rax) || (clob == x64_clobber.eax) || (clob == x64_clobber.ax) || (clob == x64_clobber.al))
+			{
+				if(op.tag == x64v_tag.reg)
+				{
+					[ret # clobcount] = x64_reg.rax;
+					clobcount = clobcount + 1;
+				}
+			}
+			if((clob == x64_clobber.rdx) || (clob == x64_clobber.edx) || (clob == x64_clobber.dx) || (clob == x64_clobber.dl))
+			{
+				if(op.tag == x64v_tag.reg)
+				{
+					[ret # clobcount] = x64_reg.rdx;
+					clobcount = clobcount + 1;
+				}
+			}
+			if((clob == x64_clobber.rcx) || (clob == x64_clobber.ecx) || (clob == x64_clobber.cx) || (clob == x64_clobber.cl))
+			{
+				if(op.tag == x64v_tag.reg)
+				{
+					[ret # clobcount] = x64_reg.rcx;
+					clobcount = clobcount + 1;
+				}
+			}
+		}
+	}
+	return zero;
+};
