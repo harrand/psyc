@@ -41,27 +41,7 @@ ir_lower_x64 : func(-> v0)
 	}
 	x64_set_entrypoint(x64v_fn(irapi.prog.entrypoint.func_cursor));
 
-	lower_x64_patch_customs();
 	x64api.validation = true;
-};
-
-lower_x64_patch_customs : func(-> v0)
-{
-	// iterate over all funcs and all instructions and their operands
-	// anytime you see a custom tag, patch it to something real
-	// this is where we will do:
-	// - jmp location patching (currently targeting x64v_tag_irblk). this will be reasonable easy - by this point all the instructions are emitted and we will already have matched every single irblk to an instruction id within the current function.
-		// note HH: todo: when lowering blocks somehow store the instruction index associated with it (likely via x64_current_instruction_id())
-	// - register allocation (currently tons of x64v_tag_vreg and x64v_tag_vmemreg everywhere). this will be very complex
-	i : u64 mut;
-
-	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
-	{
-		fn ::= irapi.prog.funcs # i;
-		fnx64 ::= x64api.prog.funcs # i;
-		irabi_register_allocation_x64(fn, fnx64);
-		ir_patch_jmp_locations(fn, fnx64);
-	}
 };
 
 irglob_lower_x64 : func(g : irglob mut? -> v0)
@@ -134,6 +114,7 @@ irglob_lower_x64 : func(g : irglob mut? -> v0)
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
 	x64_add_func();
+	fnx64 ::= x64_current_fn();
 	i : u64 mut;
 	j : u64 mut;
 	for(i = 0; i < fn->blks_count; i = i + 1)
@@ -145,6 +126,9 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 			irinst_lower_x64(blk->insts # j, fn);
 		}
 	}
+
+	irabi_register_allocation_x64(fn, fnx64);
+	ir_patch_jmp_locations(fn, fnx64);
 };
 
 irinst_lower_x64 : func(inst : irinst mut?, fn : irfunc mut? -> v0)
