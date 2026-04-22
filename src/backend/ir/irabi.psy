@@ -100,14 +100,14 @@ igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 	return idx;
 };
 
-igraph_get_or_add_vreg : func(g : igraph mut?, vreg_idx : u64 -> u64)
+igraph_get_or_add_vreg : func(g : igraph mut?, vreg_idx : u64, i : u64 -> u64)
 {
-	return igraph_get_or_add_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; ... := zero;});
+	return igraph_get_or_add_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; .begin_inst := i; ... := zero;});
 };
 
-igraph_get_or_add_reg : func(g : igraph mut?, reg : x64_reg -> u64)
+igraph_get_or_add_reg : func(g : igraph mut?, reg : x64_reg, i : u64 -> u64)
 {
-	return igraph_get_or_add_node(g, inode{.tag := inode_tag.reg; .reg := reg; ... := zero;});
+	return igraph_get_or_add_node(g, inode{.tag := inode_tag.reg; .reg := reg; .begin_inst := i; ... := zero;});
 };
 
 igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
@@ -294,9 +294,9 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	count ::= fnx64->inst_count;
 	inst : x64i mut? mut;
 	parcount : u64 mut;
+	clobbies : typeof(x64i_get_clobbers(zero)) mut;
 
 	operand : x64v mut ? mut;
-	as_node : inode mut;
 	nodeidx : u64 mut;
 
 	base : irval mut;
@@ -312,19 +312,15 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	{
 		inst = fnx64->inst # i;
 		parcount = x64i_operand_count([inst]);
-		for(j = 0; j < parcount; j = j + 1)
+		clobbies = x64i_get_clobbers([inst]);
+		for(j = 0; j < countof typeof(clobbies); j = j + 1)
 		{
-			operand = inst->operands # j;
+			operand = clobbies # j;
 			if(x64v_is_vreg([operand]) || x64v_is_reg([operand]) || x64v_is_vmemreg([operand]))
 			{
-				as_node = inode mut
-				{
-					.begin_inst := i;
-					... := zero;
-				};
 				if(x64v_is_vreg([operand]))
 				{
-					nodeidx = igraph_get_or_add_vreg(ref g, x64v_vreg_get_index([operand]));
+					nodeidx = igraph_get_or_add_vreg(ref g, x64v_vreg_get_index([operand]), i);
 					[g.nodes # nodeidx].end_inst = i;
 				}
 				else
@@ -343,19 +339,19 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 
 						if((base_irsz != zero))
 						{
-							nodeidx = igraph_get_or_add_vreg(ref g, base_index);
+							nodeidx = igraph_get_or_add_vreg(ref g, base_index, i);
 							[g.nodes # nodeidx].end_inst = i;
 						}
 
 						if((index_irsz != zero))
 						{
-							nodeidx = igraph_get_or_add_vreg(ref g, index_index);
+							nodeidx = igraph_get_or_add_vreg(ref g, index_index, i);
 							[g.nodes # nodeidx].end_inst = i;
 						}
 					}
 					else
 					{
-						nodeidx = igraph_get_or_add_reg(ref g, x64v_reg_get_reg([operand]));
+						nodeidx = igraph_get_or_add_reg(ref g, x64v_reg_get_reg([operand]), i);
 						[g.nodes # nodeidx].end_inst = i;
 					}
 				}
@@ -381,7 +377,7 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 			operand = inst->operands # j;
 			if(x64v_is_vreg([operand]) || x64v_is_reg([operand]))
 			{
-				as_node = zero@inode mut;
+				as_node ::= zero@inode mut;
 				if(x64v_is_vreg([operand]))
 				{
 					as_node.tag = inode_tag.vreg;
@@ -424,8 +420,8 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 				index_irsz = irval_get_irsz(index);
 				index_size = irsz_size_bytes(index_irsz) * 8;
 
-				base_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, base_index)].colour;
-				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index)].colour;
+				base_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, base_index, i)].colour;
+				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index, i)].colour;
 				base_reg : x64_reg mut := [regs # (base_reg_colour@s64)];
 				index_reg : x64_reg mut := [regs # (index_reg_colour@s64)];
 				scale : u64 mut := x64v_vmemreg_get_scale([operand]);
