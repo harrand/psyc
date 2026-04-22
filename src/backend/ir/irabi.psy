@@ -53,7 +53,6 @@ inode_colour : enum
 inode : struct
 {
 	tag : inode_tag;
-	vreg : irsz;
 	vidx : u64;
 	reg : x64_reg;
 
@@ -101,15 +100,33 @@ igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 	return idx;
 };
 
+igraph_get_or_add_vreg : func(g : igraph mut?, vreg_idx : u64 -> u64)
+{
+	return igraph_get_or_add_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; ... := zero;});
+};
+
+igraph_get_or_add_reg : func(g : igraph mut?, reg : x64_reg -> u64)
+{
+	return igraph_get_or_add_node(g, inode{.tag := inode_tag.reg; .reg := reg; ... := zero;});
+};
+
 igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
 {
 	i : u64 mut;
 	for(i = 0; i < g->nodes_count; i = i + 1)
 	{
 		cur ::= g->nodes # i;
-		if((cur->tag == node.tag) && (cur->vreg == node.vreg) && (cur->reg == node.reg))
+		if(cur->tag == node.tag)
 		{
-			return i;
+			if((cur->tag == inode_tag.vreg) && (cur->vidx == node.vidx))
+			{
+				// only the index matters, irsz can alias each other
+				return i;
+			}
+			if((cur->tag == inode_tag.reg) && (cur->reg == node.reg))
+			{
+				return i;
+			}
 		}
 	}
 	return igraph_add_node(g, node);
@@ -161,7 +178,7 @@ igraph_populate_edges : func(g : igraph mut? -> v0)
 	}
 };
 
-igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count : u64 -> bool)
+igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count : u64, params_count : u64 -> bool)
 {
 	// if node is an x64 reg and it matches one of the colours, set the node colour to that.
 	i : u64 mut;
@@ -178,6 +195,13 @@ igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count
 		}
 		return true;
 		// if no colour matched then its colour remains ignore - it cannot possibly be allocated to another variable anyway because its not even on the list.
+	}
+	// its a vreg
+	// note: if its a virtual register and its index is less than params count, then it actually MUST be coloured according to that index (its a parameter which must follow abi boundaries. the first param_count elements in colours correspond to parameter reg types)
+	if((node->tag == inode_tag.vreg) && (node->vidx < params_count))
+	{
+		node->colour = node->vidx@s64@inode_colour;
+		return true;
 	}
 	return false;
 };
@@ -215,7 +239,7 @@ inode_can_have_colour : func(g : igraph mut?, nodeidx : u64, colour : inode_colo
 };
 
 // do graph colouring
-igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u64 -> v0)
+igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u64, params_count : u64 -> v0)
 {
 	// foreach node in the graph
 	// assign node->colour to a index corresponding to colours_count
@@ -227,7 +251,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	for(i = 0; i < g->nodes_count; i = i + 1)
 	{
 		node = g->nodes # i;
-		if(!igraph_precolour(node, colours, colours_count))
+		if(!igraph_precolour(node, colours, colours_count, params_count))
 		{
 			node->colour = inode_colour.undefined;
 		}
@@ -240,7 +264,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 		if(node->colour == inode_colour.undefined)
 		{
 			// the node needs a colour.
-			for(j = 0; j < colours_count; j = j + 1)
+			for(j = params_count; j < colours_count; j = j + 1)
 			{
 				if((node->colour == inode_colour.undefined) && inode_can_have_colour(g, i, j@s64@inode_colour))
 				{
@@ -253,7 +277,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	x ::= 9;
 };
 
-register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64 -> v0)
+register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64, params_count : u64 -> v0)
 {
 	// create an interference graph, do graph colouring and assign each colour a register
 	// spill into memory if we run out of registers.
@@ -268,44 +292,155 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	i : u64 mut;
 	j : u64 mut;
 	count ::= fnx64->inst_count;
+	inst : x64i mut? mut;
+	parcount : u64 mut;
+
+	operand : x64v mut ? mut;
+	as_node : inode mut;
+	nodeidx : u64 mut;
+
+	base : irval mut;
+	base_index : u64 mut;
+	base_irsz : irsz mut;
+	base_size : u64 mut;
+	index : irval mut;
+	index_index : u64 mut;
+	index_irsz : irsz mut;
+	index_size : u64 mut;
+
 	for(i = 0; i < count; i = i + 1)
 	{
-		inst ::= fnx64->inst # i;
-		parcount ::= x64i_operand_count([inst]);
+		inst = fnx64->inst # i;
+		parcount = x64i_operand_count([inst]);
 		for(j = 0; j < parcount; j = j + 1)
 		{
-			operand ::= [inst->operands # j];
-			if(x64v_is_vreg(operand) || x64v_is_reg(operand))
+			operand = inst->operands # j;
+			if(x64v_is_vreg([operand]) || x64v_is_reg([operand]) || x64v_is_vmemreg([operand]))
 			{
-				as_node ::= inode mut
+				as_node = inode mut
 				{
 					.begin_inst := i;
 					... := zero;
 				};
-				if(x64v_is_vreg(operand))
+				if(x64v_is_vreg([operand]))
 				{
-					as_node.tag = inode_tag.vreg;
-					as_node.vreg = x64v_vreg_get_irsz(operand);
-					as_node.vidx = x64v_vreg_get_index(operand);
+					nodeidx = igraph_get_or_add_vreg(ref g, x64v_vreg_get_index([operand]));
+					[g.nodes # nodeidx].end_inst = i;
 				}
 				else
 				{
-					as_node.tag = inode_tag.reg;
-					as_node.reg = x64v_reg_get_reg(operand);
+					if(x64v_is_vmemreg([operand]))
+					{
+						// add both the base and the index, ugh...
+						base = x64v_vmemreg_get_base([operand]);
+						base_index = irval_reg_get_index(base);
+						base_irsz = irval_get_irsz(base);
+						base_size = irsz_size_bytes(base_irsz) * 8;
+						index = x64v_vmemreg_get_index([operand]);
+						index_index = irval_reg_get_index(index);
+						index_irsz = irval_get_irsz(index);
+						index_size = irsz_size_bytes(index_irsz) * 8;
+
+						if((base_irsz != zero))
+						{
+							nodeidx = igraph_get_or_add_vreg(ref g, base_index);
+							[g.nodes # nodeidx].end_inst = i;
+						}
+
+						if((index_irsz != zero))
+						{
+							nodeidx = igraph_get_or_add_vreg(ref g, index_index);
+							[g.nodes # nodeidx].end_inst = i;
+						}
+					}
+					else
+					{
+						nodeidx = igraph_get_or_add_reg(ref g, x64v_reg_get_reg([operand]));
+						[g.nodes # nodeidx].end_inst = i;
+					}
 				}
-				nodeidx ::= igraph_get_or_add_node(ref g, as_node);
-				[g.nodes # nodeidx].end_inst = i;
 			}
 		}
 	}
 
 	igraph_populate_edges(ref g);
 
-	igraph_assign(ref g, regs, regs_count);
+	igraph_assign(ref g, regs, regs_count, params_count);
 	
 	// foreach variable in the graph that is not a virtual register, immediately assign it a colour according to the same reg in the array of regs (its okay if its not even in the array tbh, a colour that doesnt make sense is fine coz it wont be re-used anyway as its not in the array)
 	// that is precolouring done
 	// now, foreach uncoloured variable (this will be only virtual registers), assign them a "colour" (index into the regs array). but it must not have the same colour to any other node its attached to
 	// replace their value in the inst operand with the actual x64 register corresponding to the colour (patch in the size by deriving it from the virtual register irsz)
 	// done!
+	for(i = 0; i < count; i = i + 1)
+	{
+		inst = fnx64->inst # i;
+		parcount = x64i_operand_count([inst]);
+		for(j = 0; j < parcount; j = j + 1)
+		{
+			operand = inst->operands # j;
+			if(x64v_is_vreg([operand]) || x64v_is_reg([operand]))
+			{
+				as_node = zero@inode mut;
+				if(x64v_is_vreg([operand]))
+				{
+					as_node.tag = inode_tag.vreg;
+					as_node.vidx = x64v_vreg_get_index([operand]);
+				}
+				else
+				{
+					as_node.tag = inode_tag.reg;
+					as_node.reg = x64v_reg_get_reg([operand]);
+				}
+				nodeidx = igraph_get_or_add_node(ref g, as_node);
+				// assume this never adds - we have a colour at nodeidx now
+				colour ::= [g.nodes # nodeidx].colour;
+				if(colour != inode_colour.ignore)
+				{
+					// ok cool
+					if(colour == inode_colour.undefined)
+					{
+						// we werent able to allocate a register to it.
+						// spill to memory
+					}
+					else
+					{
+						// patch it out.
+						if(x64v_is_vreg([operand]))
+						{
+							[operand] = x64v_reg([regs # colour@s64], x64v_size([operand]));
+						}
+					}
+				}
+			}
+			if(x64v_is_vmemreg([operand]))
+			{
+				base = x64v_vmemreg_get_base([operand]);
+				base_index = irval_reg_get_index(base);
+				base_irsz = irval_get_irsz(base);
+				base_size = irsz_size_bytes(base_irsz) * 8;
+				index = x64v_vmemreg_get_index([operand]);
+				index_index = irval_reg_get_index(index);
+				index_irsz = irval_get_irsz(index);
+				index_size = irsz_size_bytes(index_irsz) * 8;
+
+				base_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, base_index)].colour;
+				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index)].colour;
+				base_reg : x64_reg mut := [regs # (base_reg_colour@s64)];
+				index_reg : x64_reg mut := [regs # (index_reg_colour@s64)];
+				scale : u64 mut := x64v_vmemreg_get_scale([operand]);
+				if(scale == 0)
+				{
+					scale = 1;
+				}
+				disp ::= x64v_vmemreg_get_disp([operand]);
+				disp_scale : u64 mut := 0;
+				if(disp != 0)
+				{
+					disp_scale = 32;
+				}
+				[operand] = x64v_memreg(x64v_vmemreg_get_size([operand]), base_reg, base_size, index_reg, index_size, scale, disp, disp_scale);
+			}
+		}
+	}
 };
