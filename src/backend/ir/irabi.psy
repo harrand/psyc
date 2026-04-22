@@ -44,14 +44,23 @@ inode_tag : enum
 	.vreg := 2;
 };
 
+inode_colour : enum
+{
+	.undefined := ~1;
+	.ignore := ~0;
+};
+
 inode : struct
 {
 	tag : inode_tag;
 	vreg : irsz;
+	vidx : u64;
 	reg : x64_reg;
-	sz : u64;
 
-	colour : u64;
+	begin_inst : u64;
+	end_inst : u64;
+
+	colour : inode_colour;
 };
 
 iedge : struct
@@ -92,6 +101,20 @@ igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 	return idx;
 };
 
+igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
+{
+	i : u64 mut;
+	for(i = 0; i < g->nodes_count; i = i + 1)
+	{
+		cur ::= g->nodes # i;
+		if((cur->tag == node.tag) && (cur->vreg == node.vreg) && (cur->reg == node.reg))
+		{
+			return i;
+		}
+	}
+	return igraph_add_node(g, node);
+};
+
 igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
 {
 	if(g->edges == zero)
@@ -113,20 +136,48 @@ igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
 	return idx;
 };
 
+inodes_overlap : func(lhs : inode mut?, rhs : inode mut? -> bool)
+{
+	return (lhs->begin_inst <= rhs->end_inst) && (rhs->begin_inst <= lhs->end_inst);
+};
+
+igraph_populate_edges : func(g : igraph mut? -> v0)
+{
+	// each node has a begin_inst and an end_inst which forms a lifetime
+	// any nodes whose lifetimes overlap at all must form an edge between them
+	// naive O(n^2)
+
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < g->nodes_count; i = i + 1)
+	{
+		for(j = i + 1; j < g->nodes_count; j = j + 1)
+		{
+			if(inodes_overlap(g->nodes # i, g->nodes # j))
+			{
+				igraph_add_edge(g, iedge{.lhs := i@_; .rhs := j@_;});
+			}
+		}
+	}
+};
+
 igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count : u64 -> bool)
 {
 	// if node is an x64 reg and it matches one of the colours, set the node colour to that.
 	i : u64 mut;
 	if(node->tag == inode_tag.reg)
 	{
+		node->colour = inode_colour.ignore;
 		for(i = 0; i < colours_count; i = i + 1)
 		{
 			if(node->reg == [colours # i])
 			{
-				node->colour = i;
+				node->colour = i@s64@inode_colour;
 				return true;
 			}
 		}
+		return true;
+		// if no colour matched then its colour remains ignore - it cannot possibly be allocated to another variable anyway because its not even on the list.
 	}
 	return false;
 };
@@ -155,7 +206,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 		node = g->nodes # i;
 		if(!igraph_precolour(node, colours, colours_count))
 		{
-			node->colour = ~0;
+			node->colour = inode_colour.undefined;
 		}
 	}
 	j : u64 mut;
@@ -163,19 +214,20 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	for(i = 0; i < g->nodes_count; i = i + 1)
 	{
 		node = g->nodes # i;
-		if(node->colour == ~0)
+		if(node->colour == inode_colour.undefined)
 		{
 			// the node needs a colour.
 			for(j = 0; j < colours_count; j = j + 1)
 			{
-				if(inode_can_have_colour(g, i, j))
+				if((node->colour == inode_colour.undefined) && inode_can_have_colour(g, i, j))
 				{
-					node->colour = j;
+					node->colour = j@s64@inode_colour;
 				}
 			}
 			// if we werent able to find a colour for it, then it should be spilled onto the stack.
 		}
 	}
+	x ::= 9;
 };
 
 register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64 -> v0)
@@ -188,6 +240,8 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	// store a begin/end usage "lifetime range" for each variable
 	// create an interference graph - each variable is one node, and draw an edge between two nodes if their lifetime ranges overlap
 	// you now have an interference graph
+	g ::= zero@igraph mut;
+
 	i : u64 mut;
 	j : u64 mut;
 	count ::= fnx64->inst_count;
@@ -197,11 +251,34 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 		parcount ::= x64i_operand_count([inst]);
 		for(j = 0; j < parcount; j = j + 1)
 		{
-			operand ::= inst->operands # j;
+			operand ::= [inst->operands # j];
+			if(x64v_is_vreg(operand) || x64v_is_reg(operand))
+			{
+				as_node ::= inode mut
+				{
+					.begin_inst := i;
+					... := zero;
+				};
+				if(x64v_is_vreg(operand))
+				{
+					as_node.tag = inode_tag.vreg;
+					as_node.vreg = x64v_vreg_get_irsz(operand);
+					as_node.vidx = x64v_vreg_get_index(operand);
+				}
+				else
+				{
+					as_node.tag = inode_tag.reg;
+					as_node.reg = x64v_reg_get_reg(operand);
+				}
+				nodeidx ::= igraph_get_or_add_node(ref g, as_node);
+				[g.nodes # nodeidx].end_inst = i;
+			}
 		}
 	}
 
-	g ::= zero@igraph mut;
+	igraph_populate_edges(ref g);
+
+	igraph_assign(ref g, regs, regs_count);
 	
 	// foreach variable in the graph that is not a virtual register, immediately assign it a colour according to the same reg in the array of regs (its okay if its not even in the array tbh, a colour that doesnt make sense is fine coz it wont be re-used anyway as its not in the array)
 	// that is precolouring done
