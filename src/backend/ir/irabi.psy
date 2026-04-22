@@ -38,6 +38,145 @@ irabi_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	[tbl_irabi_register_allocation_x64 # (fn->abi@s64)](fn, fnx64);
 };
 
+inode_tag : enum
+{
+	.reg := 1;
+	.vreg := 2;
+};
+
+inode : struct
+{
+	tag : inode_tag;
+	vreg : irsz;
+	reg : x64_reg;
+	sz : u64;
+
+	colour : u64;
+};
+
+iedge : struct
+{
+	lhs : u32;
+	rhs : u32;
+};
+
+igraph : struct
+{
+	nodes : inode mut?;
+	nodes_count : u64;
+	nodes_cap : u64;
+
+	edges : iedge mut?;
+	edges_count : u64;
+	edges_cap : u64;
+};
+
+igraph_add_node : func(g : igraph mut?, node : inode -> u64)
+{
+	if(g->nodes == zero)
+	{
+		g->nodes_cap = 64;
+		g->nodes = arena_alloc(global_arena, g->nodes_cap * sizeof typeof([g->nodes]));
+	}
+	while(g->nodes_count >= g->nodes_cap)
+	{
+		oldcap ::= g->nodes_cap;
+		olddata ::= g->nodes;
+		g->nodes_cap = (g->nodes_cap * 2);
+		g->nodes = arena_alloc(global_arena, g->nodes_cap * sizeof typeof([g->nodes]));
+		memcopy(g->nodes, olddata, oldcap * sizeof typeof([g->nodes]));
+	}
+	idx ::= g->nodes_count;
+	[g->nodes # idx] = node;
+	g->nodes_count = (idx + 1);
+	return idx;
+};
+
+igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
+{
+	if(g->edges == zero)
+	{
+		g->edges_cap = 64;
+		g->edges = arena_alloc(global_arena, g->edges_cap * sizeof typeof([g->edges]));
+	}
+	while(g->edges_count >= g->edges_cap)
+	{
+		oldcap ::= g->edges_cap;
+		olddata ::= g->edges;
+		g->edges_cap = (g->edges_cap * 2);
+		g->edges = arena_alloc(global_arena, g->edges_cap * sizeof typeof([g->edges]));
+		memcopy(g->edges, olddata, oldcap * sizeof typeof([g->edges]));
+	}
+	idx ::= g->edges_count;
+	[g->edges # idx] = edge;
+	g->edges_count = (idx + 1);
+	return idx;
+};
+
+igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count : u64 -> bool)
+{
+	// if node is an x64 reg and it matches one of the colours, set the node colour to that.
+	i : u64 mut;
+	if(node->tag == inode_tag.reg)
+	{
+		for(i = 0; i < colours_count; i = i + 1)
+		{
+			if(node->reg == [colours # i])
+			{
+				node->colour = i;
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
+// caller wants to know if the node at nodeidx can have the given colour
+// we check all its connected nodes via edges
+// if none of those neighbours have it, then return true
+// otherwise return false
+inode_can_have_colour : func(g : igraph mut?, nodeidx : u64, colour : u64 -> bool)
+{
+	return true;
+};
+
+// do graph colouring
+igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u64 -> v0)
+{
+	// foreach node in the graph
+	// assign node->colour to a index corresponding to colours_count
+	// if spill, then call do_spill on it and set its index to be colours_count + stackidx
+
+	// do precolouring first.
+	i : u64 mut;
+	node : inode mut? mut;
+	for(i = 0; i < g->nodes_count; i = i + 1)
+	{
+		node = g->nodes # i;
+		if(!igraph_precolour(node, colours, colours_count))
+		{
+			node->colour = ~0;
+		}
+	}
+	j : u64 mut;
+	// everything that hasnt been precoloured has colour ~0
+	for(i = 0; i < g->nodes_count; i = i + 1)
+	{
+		node = g->nodes # i;
+		if(node->colour == ~0)
+		{
+			// the node needs a colour.
+			for(j = 0; j < colours_count; j = j + 1)
+			{
+				if(inode_can_have_colour(g, i, j))
+				{
+					node->colour = j;
+				}
+			}
+			// if we werent able to find a colour for it, then it should be spilled onto the stack.
+		}
+	}
+};
 
 register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64 -> v0)
 {
@@ -49,6 +188,20 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	// store a begin/end usage "lifetime range" for each variable
 	// create an interference graph - each variable is one node, and draw an edge between two nodes if their lifetime ranges overlap
 	// you now have an interference graph
+	i : u64 mut;
+	j : u64 mut;
+	count ::= fnx64->inst_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		parcount ::= x64i_operand_count([inst]);
+		for(j = 0; j < parcount; j = j + 1)
+		{
+			operand ::= inst->operands # j;
+		}
+	}
+
+	g ::= zero@igraph mut;
 	
 	// foreach variable in the graph that is not a virtual register, immediately assign it a colour according to the same reg in the array of regs (its okay if its not even in the array tbh, a colour that doesnt make sense is fine coz it wont be re-used anyway as its not in the array)
 	// that is precolouring done
