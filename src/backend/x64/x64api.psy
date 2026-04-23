@@ -2,6 +2,7 @@ x64api_t : struct
 {
 	prog : x64p mut;
 	func_cursor : u64;
+	inst_cursor : u64;
 	validation : bool;
 };
 
@@ -45,7 +46,22 @@ x64_current_fn : func(-> x64f mut?)
 
 x64_current_instruction_id : func(-> u64)
 {
-	return x64_current_fn()->inst_count;
+	return x64api.inst_cursor;
+};
+
+x64_position_before_inst : func(id : u64 -> v0)
+{
+	x64api.inst_cursor = id;
+};
+
+x64_position_after_inst : func(id : u64 -> v0)
+{
+	x64api.inst_cursor = (id + 1);
+};
+
+x64_set_current_instruction_id_end : func(-> v0)
+{
+	x64api.inst_cursor = x64_current_fn()->inst_count;
 };
 
 x64_add_rodata : func(g : x64g -> u64)
@@ -119,6 +135,7 @@ x64_getfn : func(-> u64)
 x64_setfn : func(pos : u64 -> v0)
 {
 	x64api.func_cursor = pos;
+	x64api.inst_cursor = 0;
 };
 
 x64_add_instruction : func(inst : x64i -> u64)
@@ -137,7 +154,14 @@ x64_add_instruction : func(inst : x64i -> u64)
 		fn->inst = arena_alloc(global_arena, fn->inst_cap * sizeof x64i);
 		memcopy(fn->inst, old, oldcap * sizeof x64i);
 	}
-	idx ::= fn->inst_count;
+	idx ::= x64api.inst_cursor;
+	if(idx < x64_current_fn()->inst_count)
+	{
+		// move all insts right by one otherwise we will overwrite
+		cpysrc ::= fn->inst # idx;
+		memcopy_backwards(cpysrc # 1, cpysrc, sizeof x64i * (1 + fn->inst_count - idx));
+	}
+	x64api.inst_cursor = x64api.inst_cursor + 1;
 	fn->inst_count = (fn->inst_count + 1);
 	[fn->inst # idx] = inst;
 	return idx;
