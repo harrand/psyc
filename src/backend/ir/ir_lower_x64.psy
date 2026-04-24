@@ -39,10 +39,11 @@ ir_lower_x64 : func(-> v0)
 	{
 		irfunc_lower_x64(irapi.prog.funcs # i);
 	}
-	//for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
-	//{
-	//	x64_lower_save_callee_registers(i);
-	//}
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		x64_lower_save_callee_registers(i);
+	}
+	ir_patch_all_jmp_locations();
 	x64_set_entrypoint(x64v_fn(irapi.prog.entrypoint.func_cursor));
 
 	x64api.validation = true;
@@ -115,6 +116,15 @@ irglob_lower_x64 : func(g : irglob mut? -> v0)
 	};
 };
 
+ir_patch_all_jmp_locations : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		ir_patch_jmp_locations(irapi.prog.funcs # i, x64api.prog.funcs # i);
+	}
+};
+
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
 	x64_add_func();
@@ -132,7 +142,6 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	}
 
 	irabi_register_allocation_x64(fn, fnx64);
-	ir_patch_jmp_locations(fn, fnx64);
 };
 
 irinst_lower_x64 : func(inst : irinst mut?, fn : irfunc mut? -> v0)
@@ -1436,6 +1445,7 @@ ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
 {
 	fnx64 ::= x64api.prog.funcs # fnidx;
+	mygraph ::= igraph_build_x64(fnx64);
 	x64api.func_cursor = fnidx;
 	saved_regs : x64v mut[32] mut := zero;
 	saved_regs_count : u64 mut := 0;
@@ -1460,7 +1470,7 @@ x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
 				{
 					// we save this one
 					// todo: need some way of knowing if it was an sse register
-					if(node->reg != x64_reg.rsp)
+					if((node->reg != x64_reg.rsp) && (igraph_find_reg(ref mygraph, node->reg, zero) != ~0))
 					{
 						[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
 						saved_regs_count = saved_regs_count + 1;

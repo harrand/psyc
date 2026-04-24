@@ -60,6 +60,16 @@ igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 	return idx;
 };
 
+igraph_find_vreg : func(g : igraph mut?, vreg_idx : u64, i : u64 -> u64)
+{
+	return igraph_find_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; .begin_inst := i; ... := zero;});
+};
+
+igraph_find_reg : func(g : igraph mut?, reg : x64_reg, i : u64 -> u64)
+{
+	return igraph_find_node(g, inode{.tag := inode_tag.reg; .reg := reg; .begin_inst := i; ... := zero;});
+};
+
 igraph_get_or_add_vreg : func(g : igraph mut?, vreg_idx : u64, i : u64 -> u64)
 {
 	return igraph_get_or_add_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; .begin_inst := i; ... := zero;});
@@ -70,7 +80,7 @@ igraph_get_or_add_reg : func(g : igraph mut?, reg : x64_reg, i : u64 -> u64)
 	return igraph_get_or_add_node(g, inode{.tag := inode_tag.reg; .reg := reg; .begin_inst := i; ... := zero;});
 };
 
-igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
+igraph_find_node : func(g : igraph mut?, node : inode -> u64)
 {
 	i : u64 mut;
 	for(i = 0; i < g->nodes_count; i = i + 1)
@@ -89,7 +99,17 @@ igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
 			}
 		}
 	}
-	return igraph_add_node(g, node);
+	return ~0;
+};
+
+igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
+{
+	id ::= igraph_find_node(g, node);
+	if(id == ~0)
+	{
+		return igraph_add_node(g, node);
+	}
+	return id;
 };
 
 igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
