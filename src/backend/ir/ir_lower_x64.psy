@@ -39,6 +39,10 @@ ir_lower_x64 : func(-> v0)
 	{
 		irfunc_lower_x64(irapi.prog.funcs # i);
 	}
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		x64_lower_save_callee_registers(i);
+	}
 	x64_set_entrypoint(x64v_fn(irapi.prog.entrypoint.func_cursor));
 
 	x64api.validation = true;
@@ -1426,5 +1430,60 @@ ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 				[operand] = x64v_ripreli(blk_instruction_id_x64 - (i@s64), 32);
 			}
 		}
+	}
+};
+
+x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
+{
+	fnx64 ::= x64api.prog.funcs # fnidx;
+	x64api.func_cursor = fnidx;
+	saved_regs : x64v mut[32] mut := zero;
+	saved_regs_count : u64 mut := 0;
+	// iterate through all instructions
+	// if we see a call, check all the registers that function clobbers and PUSH them all
+	i : u64 mut := 0;
+	j : u64 mut;
+	while(i < fnx64->inst_count)
+	{
+		inst ::= fnx64->inst # i;
+		saved_regs_count = 0;
+		if(inst->tag == x64i_tag.call)
+		{
+			// get all the registers this function clobbers
+			fnref ::= [inst->operands # 0];
+			callee ::= x64api.prog.funcs # x64v_fn_get_idx(fnref);
+			graph ::= igraph_build_x64(callee);
+			for(j = 0; j < graph.nodes_count; j = j + 1)
+			{
+				node ::= graph.nodes # j;
+				if(node->tag == inode_tag.reg)
+				{
+					// we save this one
+					// todo: need some way of knowing if it was an sse register
+					if(node->reg != x64_reg.rsp)
+					{
+						[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
+						saved_regs_count = saved_regs_count + 1;
+					}
+				}
+			}
+
+			// do PUSH and POPs
+			// call starts at 'i'
+			// everytime we add a instruction
+			for(j = 0; j < saved_regs_count; j = j + 1)
+			{
+				x64_position_before_inst(i + j);
+				x64_push([saved_regs # j]);
+			}
+
+			for(j = 0; j < saved_regs_count; j = j + 1)
+			{
+				x64_position_after_inst(i + j + saved_regs_count);
+				x64_pop([saved_regs # (saved_regs_count - (j + 1))]);
+			}
+			i = i + (saved_regs_count * 2);
+		}
+		i = i + 1;
 	}
 };
