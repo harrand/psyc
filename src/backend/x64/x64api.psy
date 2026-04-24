@@ -142,10 +142,17 @@ x64_setfn : func(pos : u64 -> v0)
 x64_add_custom_instruction : func(custom_tag : u64, operands : x64v mut?, operands_count : u64 -> u64)
 {
 	tagbase : u64 := x64i_tag.custom@s64@u64;
-	return x64_add_instruction(x64i
+	ret ::= x64i mut
 	{
 		.tag := (tagbase + custom_tag)@s64@x64i_tag;
-	});
+		.operands := zero;
+	};
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		[ret.operands # i] = [operands # i];
+	}
+	return x64_add_instruction(ret);
 };
 
 x64_add_instruction : func(inst : x64i -> u64)
@@ -178,13 +185,12 @@ x64_add_instruction : func(inst : x64i -> u64)
 };
 
 // delete whatever the current instruction is
-x64_delete_instruction : func(-> v0)
+x64_delete_instruction : func(fn : x64f mut?, idx : u64 -> v0)
 {
-	fn ::= x64_current_fn();
-	cpydst ::= fn->inst # x64_current_instruction_id();
-	count ::= fn->inst_count - (x64_current_instruction_id() + 1);
+	cpydst ::= fn->inst # idx;
+	count ::= fn->inst_count - (idx + 1);
 	memcopy(cpydst, cpydst # 1, sizeof x64i * count);
-	x64api.inst_cursor = x64api.inst_cursor - 1;
+	fn->inst_count = fn->inst_count - 1;
 };
 
 x64_dump_disasm_to : func(w : bwriter mut? -> v0)
