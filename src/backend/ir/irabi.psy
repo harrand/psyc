@@ -277,7 +277,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	x ::= 9;
 };
 
-register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64, params_count : u64 -> v0)
+irabi_get_function_interference_graph : func(fnx64 : x64f mut? -> igraph)
 {
 	// create an interference graph, do graph colouring and assign each colour a register
 	// spill into memory if we run out of registers.
@@ -360,9 +360,33 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	}
 
 	igraph_populate_edges(ref g);
+	return g;
+};
 
+register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64, params_count : u64 -> v0)
+{
+	g ::= irabi_get_function_interference_graph(fnx64);
 	igraph_assign(ref g, regs, regs_count, params_count);
+	i : u64 mut;
+	j : u64 mut;
+
+	count ::= fnx64->inst_count;
+	inst : x64i mut? mut;
+	parcount : u64 mut;
+	clobbies : typeof(x64i_get_clobbers(zero)) mut;
+
+	operand : x64v mut ? mut;
 	
+	nodeidx : u64 mut;
+
+	base : irval mut;
+	base_index : u64 mut;
+	base_irsz : irsz mut;
+	base_size : u64 mut;
+	index : irval mut;
+	index_index : u64 mut;
+	index_irsz : irsz mut;
+	index_size : u64 mut;
 	// foreach variable in the graph that is not a virtual register, immediately assign it a colour according to the same reg in the array of regs (its okay if its not even in the array tbh, a colour that doesnt make sense is fine coz it wont be re-used anyway as its not in the array)
 	// that is precolouring done
 	// now, foreach uncoloured variable (this will be only virtual registers), assign them a "colour" (index into the regs array). but it must not have the same colour to any other node its attached to
