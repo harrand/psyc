@@ -28,6 +28,9 @@ irblk : struct
 	params : irsz mut?;
 	params_count : u64;
 	params_cap : u64;
+
+	successors : u64 mut[2];
+	successors_count : u64;
 };
 
 irpos : struct
@@ -201,22 +204,4 @@ bwrite_irblk : func(w : bwriter mut?, blk : irblk -> v0)
 		}
 	}
 	bwrite_zstr(w, ")");
-};
-
-// given a block, return all the blocks it potentially calls into (between 0 and 2). the array can contain zeros meaning no block
-irblk_get_next_blocks : func(fn : irfunc mut?, blk : irblk mut? -> irblk mut?[2])
-{
-	// get the last instruction
-	ret : irblk mut? mut[2] := zero;
-	lastinst ::= blk->insts # (blk->insts_count - 1);
-	if(lastinst->tag == irinst_tag.jmp)
-	{
-		// just one!
-		return irblk mut?[2]{.0 := ir_ref_blk(fn, [irinst_get_operand([lastinst], 0)]); ... := zero;};
-	}
-	if(lastinst->tag == irinst_tag.jmpif)
-	{
-		return irblk mut?[2]{.0 := ir_ref_blk(fn, [irinst_get_operand([lastinst], 1)]); .1 := ir_ref_blk(fn, [irinst_get_operand([lastinst], 2)]);};
-	}
-	return zero;
 };

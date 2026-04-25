@@ -301,13 +301,13 @@ igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> i
 	return ret;
 };
 
-igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blocks : irblk mut??, blocks_count : u64, inst_add : u64 -> v0)
+igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blk_indices : u64?, blk_indices_count : u64, inst_add : u64 -> v0)
 {
 	i : u64 mut;
-	for(i = 0; i < blocks_count; i = i + 1)
+	for(i = 0; i < blk_indices_count; i = i + 1)
 	{
-		blk ::= [blocks # i];
-		idx ::= blk->idx;
+		idx ::= [blk_indices # i];
+		blk ::= [fn->blks # idx];
 		if(!igraph_has_visited_blk(g, idx))
 		{
 			igraph_add_visited_blk(g, idx);
@@ -316,18 +316,9 @@ igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?
 			lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
 			// append
 			igraph_append_x64(g, fnx64, begin, end, inst_add);
-			// get next blocks
-			nexts ::= irblk_get_next_blocks(fn, blk);
-			counter : u64 mut := 0;
-			j : u64 mut;
-			for(j = 0; j < countof typeof(nexts); j = j + 1)
-			{
-				if([nexts # j] != zero)
-				{
-					counter = counter + 1;
-				}
-			}
-			igraph_append_blocks(g, fn, fnx64, nexts # 0, counter, inst_add + begin);
+			// and our successors...
+			igraph_append_blocks(g, fn, fnx64, blk.successors # 0, blk.successors_count, inst_add + begin);
+			//igraph_append_blocks(g, fn, fnx64, nexts # 0, counter, inst_add + begin);
 		}
 	}
 };

@@ -100,7 +100,19 @@ ir_ref_blk : func(fn : irfunc mut?, blkref : irval -> irblk mut?)
 
 ir_add_instruction : func(inst : irinst -> v0)
 {
-	irblk_add_inst(ir_current_blk(), inst);
+	blk ::= ir_current_blk();
+	irblk_add_inst(blk, inst);
+	blk->successors_count = 0;
+	if(inst.tag == irinst_tag.jmp)
+	{
+		blk->successors = u64[2]{.0 := irval_blkref_get_idx([irinst_get_operand(inst, 0)]); ... := zero;};
+		blk->successors_count = 1;
+	}
+	if(inst.tag == irinst_tag.jmpif)
+	{
+		blk->successors = u64[2]{.0 := irval_blkref_get_idx([irinst_get_operand(inst, 1)]); .1 := irval_blkref_get_idx([irinst_get_operand(inst, 2)]);};
+		blk->successors_count = 2;
+	}
 };
 
 ir_new_reg_of : func(sz : irsz -> irval)
