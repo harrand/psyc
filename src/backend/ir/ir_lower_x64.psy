@@ -130,6 +130,7 @@ ir_patch_all_jmp_locations : func(-> v0)
 };
 
 x64_custom_inst_blkstart ::= 0;
+x64_custom_inst_clobber ::= 1;
 
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
@@ -1063,7 +1064,28 @@ ir_call_lower_x64 : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	if(callee.tag == irval_tag.asmref)
 	{
 		asmdata ::= ir_ref_asm(callee);
+
+		inputs : x64v mut?;
+		inputs_count : u64 mut;
+		outputs : x64v mut?;
+		outputs_count : u64 mut;
+		clobbers : x64v mut?;
+		clobbers_count : u64 mut;
+		// save anything clobbered
+		x64_parse_constraints(asmdata->constraint, asmdata->constraint_len, ref inputs, ref inputs_count, ref outputs, ref outputs_count, ref clobbers, ref clobbers_count);
+		k : u64 mut;
+		for(k = 0; k < clobbers_count; k = k + 1)
+		{
+			x64_push([clobbers # k]);
+			//x64_add_custom_instruction(x64_custom_inst_clobber, clobbers # k, 1);
+		}
+
 		x64_parse(asmdata->code, asmdata->code_len, asmdata->constraint, asmdata->constraint_len, params, params_count, returns, returns_count);
+
+		for(k = 0; k < clobbers_count; k = k + 1)
+		{
+			x64_pop([clobbers # (clobbers_count - (k + 1))]);
+		}
 	}
 	if(callee.tag == irval_tag.funcref)
 	{
@@ -1428,9 +1450,8 @@ irval_lower_x64v : func(v : irval -> x64v)
 ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
 	// iterate through instructions in the fnx64
-	count ::= fnx64->inst_count;
 	i : u64 mut := 0;
-	while(i < count)
+	while(i < fnx64->inst_count)
 	{
 		inst ::= fnx64->inst # i;
 		// foreach custom 'blkstart' instruction, the instruction id represents the instruction that the blk starts at, and the only operand is the blk id (and then delete the instruction)
@@ -1443,7 +1464,15 @@ ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 		}
 		else
 		{
-			i = i + 1;
+			if(x64i_is_custom([inst], x64_custom_inst_clobber))
+			{
+				// clobbers will already have been handled by igraph, so just delete it
+				x64_delete_instruction(fnx64, i);
+			}
+			else
+			{
+				i = i + 1;
+			}
 		}
 	}
 };
@@ -1507,8 +1536,8 @@ x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
 						// todo: uncomment. causes us to only preserve registers that are live in the caller side, and not simply every register we use caller-side
 						//if((reg_my_side.begin_inst <= i) && (i <= reg_my_side.end_inst))
 						//{
-						//	[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
-						//	saved_regs_count = saved_regs_count + 1;
+							[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
+							saved_regs_count = saved_regs_count + 1;
 						//}
 					}
 				}

@@ -70,7 +70,6 @@ x64_parse_val : func(str : u8?, str_len : u64 -> x64v)
 
 x64_parse : func(code : u8?, code_len : u64, constraint : u8?, constraint_len : u64, params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
-	// todo: parse constraint and affect the codegen somehow...
 	is_first_this_line : bool mut := true;
 	// todo: parse the assembly
 	// and invoke it directly via x64api
@@ -239,13 +238,16 @@ x64_parse_constraint : func(constraint_bit : u8?, constraint_bit_len : u64 -> x6
 	return ret;
 };
 
-x64_parse_constraints : func(constraint : u8?, constraint_len : u64, inputs : x64v mut? mut?, inputs_count : u64 mut?, outputs : x64v mut? mut?, outputs_count : u64 mut? -> v0)
+x64_parse_constraints : func(constraint : u8?, constraint_len : u64, inputs : x64v mut? mut?, inputs_count : u64 mut?, outputs : x64v mut? mut?, outputs_count : u64 mut?, clobbers : x64v mut? mut?, clobbers_count : u64 mut? -> v0)
 {
 	[inputs] = arena_alloc(global_arena, 16 * sizeof x64v);
 	[inputs_count] = 0;
 
 	[outputs] = arena_alloc(global_arena, 16 * sizeof x64v);
 	[outputs_count] = 0;
+
+	[clobbers] = arena_alloc(global_arena, 16 * sizeof x64v);
+	[clobbers_count] = 0;
 
 	// example constraint string:
 	// ={rax},0,{rdi},{rsi},~{rcx}
@@ -298,6 +300,15 @@ x64_parse_constraints : func(constraint : u8?, constraint_len : u64, inputs : x6
 					[out_ptr] = x64v_reg(cur_constraint.reg, cur_constraint.regsize);
 				}
 				[outputs_count] = [outputs_count] + 1;
+			}
+			if(cur_constraint.tag == x64_constraint_tag.clobber)
+			{
+				clob_ptr ::= [clobbers] # [clobbers_count];
+				if(cur_constraint.type == x64_constraint_type.reg)
+				{
+					[clob_ptr] = x64v_reg(cur_constraint.reg, cur_constraint.regsize);
+					[clobbers_count] = [clobbers_count] + 1;
+				}
 			}
 			cur_word_begin = -1;
 		}

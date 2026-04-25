@@ -113,21 +113,21 @@ x64i_operand_count : func(inst : x64i -> u64)
 
 x64i_get_clobbers : func(inst : x64i -> x64v[countof typeof(x64i_enc{}.clobbers) + countof typeof(x64i{}.operands)])
 {
-	if(x64i_is_any_custom(inst))
-	{
-		return zero;
-	}
 	ret : x64v mut[countof typeof(x64i_enc{}.clobbers) + countof typeof(x64i{}.operands)] mut := zero;
 
 	count ::= countof typeof(ret);
 	clobcount : u64 mut := 0;
-	enc ::= x64i_encode(inst);
 	i : u64 mut;
 	for(i = 0; i < x64i_operand_count(inst); i = i + 1)
 	{
 		[ret # clobcount] = [inst.operands # i];
 		clobcount = clobcount + 1;
 	}
+	if(x64i_is_any_custom(inst))
+	{
+		return ret;
+	}
+	enc ::= x64i_encode(inst);
 	for(i = 0; i < count; i = i + 1)
 	{
 		clob ::= [enc.clobbers # i];
