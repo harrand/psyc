@@ -43,29 +43,6 @@ ir_patch_all_jmp_locations : func(-> v0)
 	}
 };
 
-x64_custom_inst_blkstart ::= 0;
-x64_custom_inst_clobber ::= 1;
-
-irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
-{
-	x64_add_func();
-	fnx64 ::= x64_current_fn();
-	i : u64 mut;
-	j : u64 mut;
-	for(i = 0; i < fn->blks_count; i = i + 1)
-	{
-		blkid_x64 ::= x64v_imm(i, 64);
-		x64_add_custom_instruction(x64_custom_inst_blkstart, ref blkid_x64, 1);
-		blk ::= fn->blks # i;
-		for(j = 0; j < blk->insts_count; j = j + 1)
-		{
-			irinst_lower_x64(blk->insts # j, fn);
-		}
-	}
-
-	irabi_register_allocation_x64(fn, fnx64);
-};
-
 bwrite_colour_red : func(w : bwriter mut? -> v0)
 {
 	bwrite8(w, 27);
@@ -374,24 +351,19 @@ ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	{
 		inst ::= fnx64->inst # i;
 		// foreach custom 'blkstart' instruction, the instruction id represents the instruction that the blk starts at, and the only operand is the blk id (and then delete the instruction)
-		if(x64i_is_custom([inst], x64_custom_inst_blkstart))
+		if(x64i_is_any_custom([inst]))
 		{
-			op0 ::= [inst->operands # 0];
-			blk ::= fn->blks # x64v_imm_get_value(op0);
-			blk->usrdata = i;
+			if(x64i_is_custom([inst], x64_custom_inst_blkstart))
+			{
+				op0 ::= [inst->operands # 0];
+				blk ::= fn->blks # x64v_imm_get_value(op0);
+				blk->usrdata = i;
+			}
 			x64_delete_instruction(fnx64, i);
 		}
 		else
 		{
-			if(x64i_is_custom([inst], x64_custom_inst_clobber))
-			{
-				// clobbers will already have been handled by igraph, so just delete it
-				x64_delete_instruction(fnx64, i);
-			}
-			else
-			{
-				i = i + 1;
-			}
+			i = i + 1;
 		}
 	}
 };

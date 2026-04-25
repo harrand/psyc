@@ -1,0 +1,24 @@
+x64_custom_inst_blkstart ::= 0;
+x64_custom_inst_blkend ::= 1;
+x64_custom_inst_clobber ::= 2;
+
+irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
+{
+	x64_add_func();
+	fnx64 ::= x64_current_fn();
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blkid_x64 ::= x64v_imm(i, 64);
+		x64_add_custom_instruction(x64_custom_inst_blkstart, ref blkid_x64, 1);
+		blk ::= fn->blks # i;
+		for(j = 0; j < blk->insts_count; j = j + 1)
+		{
+			irinst_lower_x64(blk->insts # j, fn);
+		}
+		x64_add_custom_instruction(x64_custom_inst_blkend, ref blkid_x64, 1);
+	}
+
+	irabi_register_allocation_x64(fn, fnx64);
+};
