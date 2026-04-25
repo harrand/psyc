@@ -1,0 +1,117 @@
+ir_lower_globtype : enum
+{
+	.rodata := 0;
+	.data := 1;
+	.bss := 2;
+};
+
+irglob_lower_x64 : func(g : irglob mut? -> v0)
+{
+	idx ::= g->idx;
+
+	x64_version ::= x64g
+	{
+		.size := g->size;
+		.init_data := g->data;
+		.init_data_size := g->size;
+	};
+
+	type : ir_lower_globtype mut;
+	x64_idx : u64 mut;
+	if(!(g->is_mut))
+	{
+		type = ir_lower_globtype.rodata;
+		x64_idx = x64_add_rodata(x64_version);
+	}
+	else
+	{
+		// are there any nonzeros?
+		any_nonzeros : bool mut := false;
+		j : u64 mut;
+		for(j = 0; j < g->size; j = j + 1)
+		{
+			if([g->data # j] != 0)
+			{
+				any_nonzeros = true;
+			}
+		}
+		if(g->patches_count > 0)
+		{
+			any_nonzeros = true;
+		}
+		if(any_nonzeros)
+		{
+			type = ir_lower_globtype.data;
+			x64_idx = x64_add_data(x64_version);
+		}
+		else
+		{
+			type = ir_lower_globtype.bss;
+			x64_idx = x64_add_bss(x64_version);
+		}
+	}
+	
+	g->usrdata = irglob_make_usrdata_x64(type, x64_idx);
+};
+
+irglob_make_usrdata_x64 : func(type : ir_lower_globtype, x64_glob_idx : u64 -> u64)
+{
+	return (type@s64@u64 << 32) | x64_glob_idx;
+};
+
+irglob_usrdata_get_type : func(usrdata : u64 -> ir_lower_globtype)
+{
+	return (usrdata >> 32)@s64@ir_lower_globtype;
+};
+
+irglob_usrdata_get_x64_idx : func(usrdata : u64 -> u64)
+{
+	return usrdata & 0xffffffff;
+};
+
+// generic irval -> x64v lowering function
+
+irval_lower_x64v : func(v : irval -> x64v)
+{
+	if(v.tag == irval_tag.reg)
+	{
+		if(v.r1 == irsz.global_variable)
+		{
+			glob ::= ir_ref_glob(v);
+			// figure out if it is rodata, data or bss
+			lower_type ::= irglob_usrdata_get_type(glob->usrdata);
+			lower_x64_idx ::= irglob_usrdata_get_x64_idx(glob->usrdata);
+			if(lower_type == ir_lower_globtype.rodata)
+			{
+				return x64v_rodata(lower_x64_idx, 0, glob->size);
+			}
+			if(lower_type == ir_lower_globtype.data)
+			{
+				return x64v_data(lower_x64_idx, 0, glob->size);
+			}
+			if(lower_type == ir_lower_globtype.bss)
+			{
+				return x64v_bss(lower_x64_idx, 0, glob->size);
+			}
+		}
+		return x64v_vreg(v);
+	}
+	if(v.tag == irval_tag.funcref)
+	{
+		return x64v_fn(irval_funcref_get_idx(v));
+	}
+	if(v.tag == irval_tag.blkref)
+	{
+		return x64v_irblk(irpos{.func_cursor := x64api.func_cursor; .blk_cursor := irval_blkref_get_idx(v);});
+	}
+	if(v.tag == irval_tag.asmref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.imm)
+	{
+		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
+	}
+	return zero;
+};
+
