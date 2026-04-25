@@ -38,11 +38,16 @@ irabi_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	[tbl_irabi_register_allocation_x64 # (fn->abi@s64)](fn, fnx64);
 };
 
-register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64, params_count : u64 -> v0)
+register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, regs : x64_reg mut?, regs_count : u64, params_count : u64 -> v0)
 {
-	g ::= igraph_build_x64(fnx64, 0, fnx64->inst_count);
-	igraph_assign(ref g, regs, regs_count, params_count);
 	i : u64 mut;
+
+	// walk through blocks in order
+	g : igraph mut := zero;
+
+	firstblk ::= fn->blks # 0;
+	igraph_append_blocks(ref g, fn, fnx64, ref firstblk, 1, 0);
+	igraph_assign(ref g, regs, regs_count, params_count);
 	j : u64 mut;
 
 	count ::= fnx64->inst_count;

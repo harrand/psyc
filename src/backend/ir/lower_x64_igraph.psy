@@ -37,6 +37,43 @@ igraph : struct
 	edges : iedge mut?;
 	edges_count : u64;
 	edges_cap : u64;
+
+	visited_blks : u64 mut?;
+	visited_blks_count : u64;
+	visited_blks_cap : u64;
+};
+
+igraph_add_visited_blk : func(g : igraph mut?, blkid : u64 -> v0)
+{
+	if(g->visited_blks == zero)
+	{
+		g->visited_blks_cap = 64;
+		g->visited_blks = arena_alloc(global_arena, g->visited_blks_cap * sizeof typeof([g->visited_blks]));
+	}
+	while(g->visited_blks_count >= g->visited_blks_cap)
+	{
+		oldcap ::= g->visited_blks_cap;
+		olddata ::= g->visited_blks;
+		g->visited_blks_cap = (g->visited_blks_cap * 2);
+		g->visited_blks = arena_alloc(global_arena, g->visited_blks_cap * sizeof typeof([g->visited_blks]));
+		memcopy(g->visited_blks, olddata, oldcap * sizeof typeof([g->visited_blks]));
+	}
+
+	[g->visited_blks # (g->visited_blks_count)] = blkid;
+	g->visited_blks_count = (g->visited_blks_count + 1);
+};
+
+igraph_has_visited_blk : func(g : igraph mut?, blkid : u64 -> bool)
+{
+	i : u64 mut;
+	for(i = 0; i < g->visited_blks_count; i = i + 1)
+	{
+		if([g->visited_blks # i] == blkid)
+		{
+			return true;
+		}
+	}
+	return false;
 };
 
 igraph_add_node : func(g : igraph mut?, node : inode -> u64)
@@ -258,6 +295,45 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 
 igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> igraph)
 {
+	ret : igraph mut := zero;
+	igraph_append_x64(ref ret, fnx64, begin_inst, end_inst, 0);
+	igraph_populate_edges(ref ret);
+	return ret;
+};
+
+igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blocks : irblk mut??, blocks_count : u64, inst_add : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < blocks_count; i = i + 1)
+	{
+		blk ::= [blocks # i];
+		idx ::= blk->idx;
+		if(!igraph_has_visited_blk(g, idx))
+		{
+			igraph_add_visited_blk(g, idx);
+			begin : u64 mut;
+			end : u64 mut;
+			lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
+			// append
+			igraph_append_x64(g, fnx64, begin, end, inst_add);
+			// get next blocks
+			nexts ::= irblk_get_next_blocks(fn, blk);
+			counter : u64 mut := 0;
+			j : u64 mut;
+			for(j = 0; j < countof typeof(nexts); j = j + 1)
+			{
+				if([nexts # j] != zero)
+				{
+					counter = counter + 1;
+				}
+			}
+			igraph_append_blocks(g, fn, fnx64, nexts # 0, counter, inst_add + begin);
+		}
+	}
+};
+
+igraph_append_x64 : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, end_inst : u64, inst_add : u64 -> v0)
+{
 	// create an interference graph, do graph colouring and assign each colour a register
 	// spill into memory if we run out of registers.
 
@@ -266,7 +342,6 @@ igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> i
 	// store a begin/end usage "lifetime range" for each variable
 	// create an interference graph - each variable is one node, and draw an edge between two nodes if their lifetime ranges overlap
 	// you now have an interference graph
-	g ::= zero@igraph mut;
 
 	i : u64 mut;
 	j : u64 mut;
@@ -285,8 +360,8 @@ igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> i
 			{
 				if(lower_x64_value_is_vreg([operand]))
 				{
-					nodeidx = igraph_get_or_add_vreg(ref g, lower_x64_custom_vreg_get_index([operand]), i);
-					[g.nodes # nodeidx].end_inst = i;
+					nodeidx = igraph_get_or_add_vreg(g, lower_x64_custom_vreg_get_index([operand]), i + inst_add);
+					[g->nodes # nodeidx].end_inst = i + inst_add + inst_add + inst_add + inst_add;
 				}
 				else
 				{
@@ -302,27 +377,24 @@ igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> i
 
 						if((base_irsz != zero))
 						{
-							nodeidx = igraph_get_or_add_vreg(ref g, base_index, i);
-							[g.nodes # nodeidx].end_inst = i;
+							nodeidx = igraph_get_or_add_vreg(g, base_index, i + inst_add);
+							[g->nodes # nodeidx].end_inst = i + inst_add;
 						}
 
 						if((index_irsz != zero))
 						{
-							nodeidx = igraph_get_or_add_vreg(ref g, index_index, i);
-							[g.nodes # nodeidx].end_inst = i;
+							nodeidx = igraph_get_or_add_vreg(g, index_index, i + inst_add);
+							[g->nodes # nodeidx].end_inst = i + inst_add;
 						}
 					}
 					else
 					{
-						nodeidx = igraph_get_or_add_reg(ref g, x64v_reg_get_reg([operand]), i);
-						[g.nodes # nodeidx].end_inst = i;
+						nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg([operand]), i + inst_add);
+						[g->nodes # nodeidx].end_inst = i + inst_add;
 					}
 				}
 			}
 		}
 	}
-
-	igraph_populate_edges(ref g);
-	return g;
 };
 
