@@ -23,19 +23,20 @@ lower_x64_func_find_blk_region : func(fnx64 : x64f mut?, blkid : u64, out_begin_
 	found_begin : bool mut := false;
 	found_end : bool mut := false;
 	i : u64 mut;
+	tagbase : s64 := x64i_tag.custom@s64;
 	for(i = 0; i < fnx64->inst_count; i = i + 1)
 	{
 		inst ::= fnx64->inst # i;
 		op0 ::= [inst->operands # 0];
-		if((inst->tag@s64 == x64_custom_inst_blkbegin) && (x64v_imm_get_value(op0) == blkid))
+		if((inst->tag@s64 - tagbase == x64_custom_inst_blkbegin) && (x64v_imm_get_value(op0) == blkid))
 		{
 			found_begin = true;
-			[out_begin_inst] = i;
+			[out_begin_inst] = i + 1;
 		}
-		if((inst->tag@s64 == x64_custom_inst_blkend) && (x64v_imm_get_value(op0) == blkid))
+		if((inst->tag@s64 - tagbase == x64_custom_inst_blkend) && (x64v_imm_get_value(op0) == blkid))
 		{
 			found_end = true;
-			[out_end_inst] = i;
+			[out_end_inst] = i - 1;
 		}
 		if(found_begin && found_end)
 		{

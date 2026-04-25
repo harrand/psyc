@@ -46,22 +46,8 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	j : u64 mut;
 
 	count ::= fnx64->inst_count;
-	inst : x64i mut? mut;
-	parcount : u64 mut;
-	clobbies : typeof(x64i_get_clobbers(zero)) mut;
-
-	operand : x64v mut ? mut;
-	
 	nodeidx : u64 mut;
 
-	base : irval mut;
-	base_index : u64 mut;
-	base_irsz : irsz mut;
-	base_size : u64 mut;
-	index : irval mut;
-	index_index : u64 mut;
-	index_irsz : irsz mut;
-	index_size : u64 mut;
 	// foreach variable in the graph that is not a virtual register, immediately assign it a colour according to the same reg in the array of regs (its okay if its not even in the array tbh, a colour that doesnt make sense is fine coz it wont be re-used anyway as its not in the array)
 	// that is precolouring done
 	// now, foreach uncoloured variable (this will be only virtual registers), assign them a "colour" (index into the regs array). but it must not have the same colour to any other node its attached to
@@ -69,11 +55,11 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 	// done!
 	for(i = 0; i < count; i = i + 1)
 	{
-		inst = fnx64->inst # i;
-		parcount = x64i_operand_count([inst]);
+		inst ::= fnx64->inst # i;
+		parcount ::= x64i_operand_count([inst]);
 		for(j = 0; j < parcount; j = j + 1)
 		{
-			operand = inst->operands # j;
+			operand ::= inst->operands # j;
 			if(lower_x64_value_is_vreg([operand]) || x64v_is_reg([operand]))
 			{
 				as_node ::= zero@inode mut;
@@ -110,14 +96,14 @@ register_allocation_graph_colouring : func(fnx64 : x64f mut?, regs : x64_reg mut
 			}
 			if(lower_x64_value_is_vmemreg([operand]))
 			{
-				base = lower_x64_custom_vmemreg_get_base([operand]);
-				base_index = irval_reg_get_index(base);
-				base_irsz = irval_get_irsz(base);
-				base_size = irsz_size_bytes(base_irsz) * 8;
-				index = lower_x64_custom_vmemreg_get_index([operand]);
-				index_index = irval_reg_get_index(index);
-				index_irsz = irval_get_irsz(index);
-				index_size = irsz_size_bytes(index_irsz) * 8;
+				base ::= lower_x64_custom_vmemreg_get_base([operand]);
+				base_index ::= irval_reg_get_index(base);
+				base_irsz ::= irval_get_irsz(base);
+				base_size ::= irsz_size_bytes(base_irsz) * 8;
+				index ::= lower_x64_custom_vmemreg_get_index([operand]);
+				index_index ::= irval_reg_get_index(index);
+				index_irsz ::= irval_get_irsz(index);
+				index_size ::= irsz_size_bytes(index_irsz) * 8;
 
 				base_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, base_index, i)].colour;
 				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index, i)].colour;

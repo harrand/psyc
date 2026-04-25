@@ -242,7 +242,17 @@ bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 
 bwrite_x64i_disasm : func(w : bwriter mut?, inst : x64i -> v0)
 {
-	bwrite_zstr(w, enumname(inst.tag));
+	if(x64i_is_any_custom(inst))
+	{
+		bwrite_colour_yellow(w);
+		bwrite_zstr(w, ".custom");
+		tagbase : s64 := x64i_tag.custom@s64;
+		bwrite_uint(w, inst.tag@s64 - tagbase);
+	}
+	else
+	{
+		bwrite_zstr(w, enumname(inst.tag));
+	}
 	bwrite_zstr(w, " ");
 	i : u64 mut;
 	count ::= x64i_operand_count(inst);
@@ -254,6 +264,10 @@ bwrite_x64i_disasm : func(w : bwriter mut?, inst : x64i -> v0)
 		{
 			bwrite_zstr(w, ", ");
 		}
+	}
+	if(x64i_is_any_custom(inst))
+	{
+		bwrite_colour_reset(w);
 	}
 };
 
