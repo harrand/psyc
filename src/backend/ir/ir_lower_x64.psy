@@ -1500,10 +1500,16 @@ x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
 				{
 					// we save this one
 					// todo: need some way of knowing if it was an sse register
-					if((node->reg != x64_reg.rsp) && (igraph_find_reg(ref mygraph, node->reg, zero) != ~0))
+					regidx ::= igraph_find_reg(ref mygraph, node->reg, zero);
+					if((node->reg != x64_reg.rsp) && (regidx != ~0))
 					{
-						[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
-						saved_regs_count = saved_regs_count + 1;
+						reg_my_side ::= [mygraph.nodes # regidx];
+						// todo: uncomment. causes us to only preserve registers that are live in the caller side, and not simply every register we use caller-side
+						//if((reg_my_side.begin_inst <= i) && (i <= reg_my_side.end_inst))
+						//{
+						//	[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
+						//	saved_regs_count = saved_regs_count + 1;
+						//}
 					}
 				}
 			}
