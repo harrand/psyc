@@ -350,15 +350,9 @@ ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	while(i < fnx64->inst_count)
 	{
 		inst ::= fnx64->inst # i;
-		// foreach custom 'blkstart' instruction, the instruction id represents the instruction that the blk starts at, and the only operand is the blk id (and then delete the instruction)
+		// foreach custom 'blkbegin' instruction, the instruction id represents the instruction that the blk starts at, and the only operand is the blk id (and then delete the instruction)
 		if(x64i_is_any_custom([inst]))
 		{
-			if(x64i_is_custom([inst], x64_custom_inst_blkstart))
-			{
-				op0 ::= [inst->operands # 0];
-				blk ::= fn->blks # x64v_imm_get_value(op0);
-				blk->usrdata = i;
-			}
 			x64_delete_instruction(fnx64, i);
 		}
 		else
@@ -384,9 +378,11 @@ ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 			{
 				blk ::= fn->blks # x64v_irblk_get_blk_cursor([operand]);
 				// instruction id within this function
-				blk_instruction_id_x64 ::= blk->usrdata@s64;
+				blk_begin_x64_id : u64 mut;
+				blk_end_x64_id : u64 mut;
+				x64f_find_blk_region(fnx64, blk->idx, ref blk_begin_x64_id, ref blk_end_x64_id);
 				// turn into ripreli
-				[operand] = x64v_ripreli(blk_instruction_id_x64 - (i@s64), 32);
+				[operand] = x64v_ripreli(blk_begin_x64_id@s64 - (i@s64), 32);
 			}
 		}
 	}

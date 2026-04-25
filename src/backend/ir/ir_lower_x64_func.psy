@@ -1,4 +1,4 @@
-x64_custom_inst_blkstart ::= 0;
+x64_custom_inst_blkbegin ::= 0;
 x64_custom_inst_blkend ::= 1;
 x64_custom_inst_clobber ::= 2;
 
@@ -11,7 +11,7 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		blkid_x64 ::= x64v_imm(i, 64);
-		x64_add_custom_instruction(x64_custom_inst_blkstart, ref blkid_x64, 1);
+		x64_add_custom_instruction(x64_custom_inst_blkbegin, ref blkid_x64, 1);
 		blk ::= fn->blks # i;
 		for(j = 0; j < blk->insts_count; j = j + 1)
 		{
@@ -21,4 +21,34 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	}
 
 	irabi_register_allocation_x64(fn, fnx64);
+};
+
+// return indices to the first/last instructions of the given ir block (that has been lowerd to x64 instructions)
+// adding/removing instructions may invalidate these indices in which case you will need to call this again.
+// (impl note: this does a linear search through the instructions in search of the beginblk/endblk custom intstructions)
+x64f_find_blk_region : func(fnx64 : x64f mut?, blkid : u64, out_begin_inst : u64 mut?, out_end_inst : u64 mut? -> bool)
+{
+	found_begin : bool mut := false;
+	found_end : bool mut := false;
+	i : u64 mut;
+	for(i = 0; i < fnx64->inst_count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		op0 ::= [inst->operands # 0];
+		if((inst->tag@s64 == x64_custom_inst_blkbegin) && (x64v_imm_get_value(op0) == blkid))
+		{
+			found_begin = true;
+			[out_begin_inst] = i;
+		}
+		if((inst->tag@s64 == x64_custom_inst_blkend) && (x64v_imm_get_value(op0) == blkid))
+		{
+			found_end = true;
+			[out_end_inst] = i;
+		}
+		if(found_begin && found_end)
+		{
+			return true;
+		}
+	}
+	return false;
 };
