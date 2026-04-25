@@ -1,45 +1,37 @@
-
-ir_register_custom_x64vs : func(-> v0)
-{
-	x64_register_custom_value_type(x64v_tag_vreg, bwrite_x64v_vreg, x64v_vreg_get_size, x64v_vreg_set_size);
-	x64_register_custom_value_type(x64v_tag_vmemreg, bwrite_x64v_vmemreg, x64v_vmemreg_get_size, x64v_vmemreg_set_size);
-	x64_register_custom_value_type(x64v_tag_irblk, bwrite_x64v_irblk, x64v_irblk_get_size, x64v_irblk_set_size);
-};
-
 ir_lower_x64 : func(-> v0)
 {
-	ir_register_custom_x64vs();
+	lower_x64_custom_value_types();
 	// given the current irapi, populate the x64api
 	i : u64 mut;
 	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
 	{
-		irglob_lower_x64(irapi.prog.globs # i);
+		lower_x64_irglob(irapi.prog.globs # i);
 	}
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		irfunc_lower_x64(irapi.prog.funcs # i);
+		lower_x64_irfunc(irapi.prog.funcs # i);
 	}
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		x64_lower_save_callee_registers(i);
+		lower_x64_save_callee_registers(i);
 	}
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		ir_patch_custom_instructions(irapi.prog.funcs # i, x64api.prog.funcs # i);
+		lower_x64_custom_instructions(irapi.prog.funcs # i, x64api.prog.funcs # i);
 	}
-	ir_patch_all_jmp_locations();
+	lower_x64_all_jmp_locations();
 	x64_set_entrypoint(x64v_fn(irapi.prog.entrypoint.func_cursor));
 
 	x64api.validation = true;
 };
 
 
-ir_patch_all_jmp_locations : func(-> v0)
+lower_x64_all_jmp_locations : func(-> v0)
 {
 	i : u64 mut;
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		ir_patch_jmp_locations(irapi.prog.funcs # i, x64api.prog.funcs # i);
+		lower_x64_jmp_locations(irapi.prog.funcs # i, x64api.prog.funcs # i);
 	}
 };
 
@@ -69,14 +61,14 @@ bwrite_colour_reset : func(w : bwriter mut? -> v0)
 
 // custom x64v
 
-x64v_tag_vreg ::= 0;
+lower_x64_custom_x64v_tag_vreg ::= 0;
 
-x64v_vreg : func(ir_reg : irval -> x64v)
+lower_x64_custom_vreg : func(ir_reg : irval -> x64v)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
 	return x64v
 	{
-		.tag := (custom_idx + x64v_tag_vreg)@x64v_tag;
+		.tag := (custom_idx + lower_x64_custom_x64v_tag_vreg)@x64v_tag;
 		.v1 := irval_get_irsz(ir_reg)@s64@_;
 		.v2 := irval_reg_get_index(ir_reg);
 	};
@@ -85,10 +77,10 @@ x64v_vreg : func(ir_reg : irval -> x64v)
 x64v_is_vreg : func(v : x64v -> bool)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
-	return v.tag == ((custom_idx + x64v_tag_vreg)@x64v_tag);
+	return v.tag == ((custom_idx + lower_x64_custom_x64v_tag_vreg)@x64v_tag);
 };
 
-bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
+bwrite_lower_x64_custom_vreg : func(w : bwriter mut?, v : x64v -> v0)
 {
 	ret : u64 mut := 0;
 	sz ::= v.v1@s64@irsz;
@@ -98,17 +90,17 @@ bwrite_x64v_vreg : func(w : bwriter mut?, v : x64v -> v0)
 	bwrite_colour_reset(w);
 };
 
-x64v_vreg_get_irsz : func(v : x64v -> irsz)
+lower_x64_custom_vreg_get_irsz : func(v : x64v -> irsz)
 {
 	return v.v1@s64@irsz;
 };
 
-x64v_vreg_get_size : func(v : x64v -> u64)
+lower_x64_custom_vreg_get_size : func(v : x64v -> u64)
 {
-	return irsz_size_bytes(x64v_vreg_get_irsz(v)) * 8;
+	return irsz_size_bytes(lower_x64_custom_vreg_get_irsz(v)) * 8;
 };
 
-x64v_vreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+lower_x64_custom_vreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 {
 	is_fp ::= irsz_is_floating_point(v->v1@s64@irsz);
 	if(newsz == 8)
@@ -155,19 +147,19 @@ x64v_vreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 	}
 };
 
-x64v_vreg_get_index : func(v : x64v -> u64)
+lower_x64_custom_vreg_get_index : func(v : x64v -> u64)
 {
 	return v.v2;
 };
 
-x64v_tag_vmemreg ::= 1;
+lower_x64_custom_x64v_tag_vmemreg ::= 1;
 
-x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval, disp : irval -> x64v)
+lower_x64_custom_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval, disp : irval -> x64v)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
 	return x64v
 	{
-		.tag := (custom_idx + x64v_tag_vmemreg)@x64v_tag;
+		.tag := (custom_idx + lower_x64_custom_x64v_tag_vmemreg)@x64v_tag;
 		.v1 := outsz@s64@_;
 		.v2 := irval_get_irsz(base_reg)@s64@_;
 		.v3 := irval_reg_get_index(base_reg);
@@ -181,19 +173,19 @@ x64v_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : i
 x64v_is_vmemreg : func(v : x64v -> bool)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
-	return v.tag == ((custom_idx + x64v_tag_vmemreg)@x64v_tag);
+	return v.tag == ((custom_idx + lower_x64_custom_x64v_tag_vmemreg)@x64v_tag);
 };
 
-bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
+bwrite_lower_x64_custom_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 {
 	ret : u64 mut := 0;
 	out_sz ::= irsz_size_bytes(v.v1@s64@irsz) * 8;
 	mem_size_log2 ::= log2(out_sz) - 3;
 
-	base ::= x64v_vmemreg_get_base(v);
-	index ::= x64v_vmemreg_get_index(v);
-	scale ::= x64v_vmemreg_get_scale(v);
-	disp ::= x64v_vmemreg_get_disp(v);
+	base ::= lower_x64_custom_vmemreg_get_base(v);
+	index ::= lower_x64_custom_vmemreg_get_index(v);
+	scale ::= lower_x64_custom_vmemreg_get_scale(v);
+	disp ::= lower_x64_custom_vmemreg_get_disp(v);
 
 	bwrite_colour_blue(w);
 	bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
@@ -202,12 +194,12 @@ bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 	// aka if (base.tag != zero && !(base.tag == reg and irsz == 0))
 	if((base.tag != zero) && !((base.tag == irval_tag.reg) && (irval_reg_get_irsz(base) == zero)))
 	{
-		bwrite_irval_reg(w, x64v_vmemreg_get_base(v));
+		bwrite_irval_reg(w, lower_x64_custom_vmemreg_get_base(v));
 	}
 	if((index.tag != zero) && !((index.tag == irval_tag.reg) && (irval_reg_get_irsz(index) == zero)))
 	{
 		bwrite_zstr(w, " + ");
-		bwrite_irval_reg(w, x64v_vmemreg_get_index(v));
+		bwrite_irval_reg(w, lower_x64_custom_vmemreg_get_index(v));
 		if(scale != 1)
 		{
 			bwrite_zstr(w, " * ");
@@ -223,19 +215,19 @@ bwrite_x64v_vmemreg : func(w : bwriter mut?, v : x64v -> v0)
 	bwrite_colour_reset(w);
 };
 
-x64v_vmemreg_get_irsz : func(v : x64v -> irsz)
+lower_x64_custom_vmemreg_get_irsz : func(v : x64v -> irsz)
 {
 	return v.v1@s64@irsz;
 };
 
-x64v_vmemreg_get_size : func(v : x64v -> u64)
+lower_x64_custom_vmemreg_get_size : func(v : x64v -> u64)
 {
-	return irsz_size_bytes(x64v_vmemreg_get_irsz(v)) * 8;
+	return irsz_size_bytes(lower_x64_custom_vmemreg_get_irsz(v)) * 8;
 };
 
-x64v_vmemreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+lower_x64_custom_vmemreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 {
-	is_fp ::= irsz_is_floating_point(x64v_vmemreg_get_irsz([v]));
+	is_fp ::= irsz_is_floating_point(lower_x64_custom_vmemreg_get_irsz([v]));
 	if(newsz == 8)
 	{
 		v->v1 = (irsz.b@s64@u64);
@@ -280,59 +272,59 @@ x64v_vmemreg_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 	}
 };
 
-x64v_vmemreg_get_base : func(v : x64v -> irval)
+lower_x64_custom_vmemreg_get_base : func(v : x64v -> irval)
 {
 	return irval_reg(v.v2@s64@irsz, v.v3);
 };
 
-x64v_vmemreg_get_index : func(v : x64v -> irval)
+lower_x64_custom_vmemreg_get_index : func(v : x64v -> irval)
 {
 	return irval_reg(v.v4@s64@irsz, v.v5);
 };
 
-x64v_vmemreg_get_scale : func(v : x64v -> u64)
+lower_x64_custom_vmemreg_get_scale : func(v : x64v -> u64)
 {
 	return v.v6;
 };
 
-x64v_vmemreg_get_disp : func(v : x64v -> u64)
+lower_x64_custom_vmemreg_get_disp : func(v : x64v -> u64)
 {
 	return v.v7;
 };
 
-x64v_tag_irblk ::= 2;
+lower_x64_custom_x64v_tag_irblk ::= 2;
 
-x64v_irblk : func(pos : irpos -> x64v)
+lower_x64_custom_irblk : func(pos : irpos -> x64v)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
 	return x64v
 	{
-		.tag := (custom_idx + x64v_tag_irblk)@x64v_tag;
+		.tag := (custom_idx + lower_x64_custom_x64v_tag_irblk)@x64v_tag;
 		.v1 := pos.func_cursor;
 		.v2 := pos.blk_cursor;
 	};
 };
 
-bwrite_x64v_irblk : func(w : bwriter mut?, v : x64v -> v0)
+bwrite_lower_x64_custom_irblk : func(w : bwriter mut?, v : x64v -> v0)
 {
 	bwrite_colour_blue(w);
 	bwrite8(w, '_');
-	bwrite_uint(w, x64v_irblk_get_blk_cursor(v));
+	bwrite_uint(w, lower_x64_custom_irblk_get_blk_cursor(v));
 	bwrite_colour_reset(w);
 };
 
-x64v_irblk_get_blk_cursor : func(v : x64v -> u64)
+lower_x64_custom_irblk_get_blk_cursor : func(v : x64v -> u64)
 {
 	return v.v2;
 };
 
-x64v_irblk_get_size : func(v : x64v -> u64)
+lower_x64_custom_irblk_get_size : func(v : x64v -> u64)
 {
 	// 32-bit ripreli
 	return 32;
 };
 
-x64v_irblk_set_size : func(v : x64v mut?, newsz : u64 -> v0)
+lower_x64_custom_irblk_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 {
 	// todo: error out.
 };
@@ -340,10 +332,10 @@ x64v_irblk_set_size : func(v : x64v mut?, newsz : u64 -> v0)
 x64v_is_irblk : func(v : x64v -> bool)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
-	return v.tag == ((custom_idx + x64v_tag_irblk)@x64v_tag);
+	return v.tag == ((custom_idx + lower_x64_custom_x64v_tag_irblk)@x64v_tag);
 };
 
-ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
+lower_x64_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
 	// iterate through instructions in the fnx64
 	i : u64 mut := 0;
@@ -362,7 +354,7 @@ ir_patch_custom_instructions : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	}
 };
 
-ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
+lower_x64_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
 	count ::= fnx64->inst_count;
 	i : u64 mut;
@@ -376,11 +368,11 @@ ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 			operand ::= inst->operands # j;
 			if(x64v_is_irblk([operand]))
 			{
-				blk ::= fn->blks # x64v_irblk_get_blk_cursor([operand]);
+				blk ::= fn->blks # lower_x64_custom_irblk_get_blk_cursor([operand]);
 				// instruction id within this function
 				blk_begin_x64_id : u64 mut;
 				blk_end_x64_id : u64 mut;
-				x64f_find_blk_region(fnx64, blk->idx, ref blk_begin_x64_id, ref blk_end_x64_id);
+				lower_x64_func_find_blk_region(fnx64, blk->idx, ref blk_begin_x64_id, ref blk_end_x64_id);
 				// turn into ripreli
 				[operand] = x64v_ripreli(blk_begin_x64_id@s64 - (i@s64), 32);
 			}
@@ -388,7 +380,7 @@ ir_patch_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 	}
 };
 
-x64_lower_save_callee_registers : func(fnidx : u64 -> v0)
+lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 {
 	fnx64 ::= x64api.prog.funcs # fnidx;
 	mygraph ::= igraph_build_x64(fnx64);

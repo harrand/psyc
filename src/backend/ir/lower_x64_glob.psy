@@ -1,11 +1,11 @@
-ir_lower_globtype : enum
+lower_x64_globtype : enum
 {
 	.rodata := 0;
 	.data := 1;
 	.bss := 2;
 };
 
-irglob_lower_x64 : func(g : irglob mut? -> v0)
+lower_x64_irglob : func(g : irglob mut? -> v0)
 {
 	idx ::= g->idx;
 
@@ -16,11 +16,11 @@ irglob_lower_x64 : func(g : irglob mut? -> v0)
 		.init_data_size := g->size;
 	};
 
-	type : ir_lower_globtype mut;
+	type : lower_x64_globtype mut;
 	x64_idx : u64 mut;
 	if(!(g->is_mut))
 	{
-		type = ir_lower_globtype.rodata;
+		type = lower_x64_globtype.rodata;
 		x64_idx = x64_add_rodata(x64_version);
 	}
 	else
@@ -41,30 +41,30 @@ irglob_lower_x64 : func(g : irglob mut? -> v0)
 		}
 		if(any_nonzeros)
 		{
-			type = ir_lower_globtype.data;
+			type = lower_x64_globtype.data;
 			x64_idx = x64_add_data(x64_version);
 		}
 		else
 		{
-			type = ir_lower_globtype.bss;
+			type = lower_x64_globtype.bss;
 			x64_idx = x64_add_bss(x64_version);
 		}
 	}
 	
-	g->usrdata = irglob_make_usrdata_x64(type, x64_idx);
+	g->usrdata = lower_x64_irglob_make_usrdata_x64(type, x64_idx);
 };
 
-irglob_make_usrdata_x64 : func(type : ir_lower_globtype, x64_glob_idx : u64 -> u64)
+lower_x64_irglob_make_usrdata_x64 : func(type : lower_x64_globtype, x64_glob_idx : u64 -> u64)
 {
 	return (type@s64@u64 << 32) | x64_glob_idx;
 };
 
-irglob_usrdata_get_type : func(usrdata : u64 -> ir_lower_globtype)
+lower_x64_irglob_usrdata_get_type : func(usrdata : u64 -> lower_x64_globtype)
 {
-	return (usrdata >> 32)@s64@ir_lower_globtype;
+	return (usrdata >> 32)@s64@lower_x64_globtype;
 };
 
-irglob_usrdata_get_x64_idx : func(usrdata : u64 -> u64)
+lower_x64_irglob_usrdata_get_x64_idx : func(usrdata : u64 -> u64)
 {
 	return usrdata & 0xffffffff;
 };

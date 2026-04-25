@@ -1,0 +1,52 @@
+lower_x64_custom_value_types : func(-> v0)
+{
+	x64_register_custom_value_type(lower_x64_custom_x64v_tag_vreg, bwrite_lower_x64_custom_vreg, lower_x64_custom_vreg_get_size, lower_x64_custom_vreg_set_size);
+	x64_register_custom_value_type(lower_x64_custom_x64v_tag_vmemreg, bwrite_lower_x64_custom_vmemreg, lower_x64_custom_vmemreg_get_size, lower_x64_custom_vmemreg_set_size);
+	x64_register_custom_value_type(lower_x64_custom_x64v_tag_irblk, bwrite_lower_x64_custom_irblk, lower_x64_custom_irblk_get_size, lower_x64_custom_irblk_set_size);
+};
+
+// generic irval -> x64v lowering function
+lower_x64_irval : func(v : irval -> x64v)
+{
+	if(v.tag == irval_tag.reg)
+	{
+		if(v.r1 == irsz.global_variable)
+		{
+			glob ::= ir_ref_glob(v);
+			// figure out if it is rodata, data or bss
+			lower_type ::= lower_x64_irglob_usrdata_get_type(glob->usrdata);
+			lower_x64_idx ::= lower_x64_irglob_usrdata_get_x64_idx(glob->usrdata);
+			if(lower_type == lower_x64_globtype.rodata)
+			{
+				return x64v_rodata(lower_x64_idx, 0, glob->size);
+			}
+			if(lower_type == lower_x64_globtype.data)
+			{
+				return x64v_data(lower_x64_idx, 0, glob->size);
+			}
+			if(lower_type == lower_x64_globtype.bss)
+			{
+				return x64v_bss(lower_x64_idx, 0, glob->size);
+			}
+		}
+		return lower_x64_custom_vreg(v);
+	}
+	if(v.tag == irval_tag.funcref)
+	{
+		return x64v_fn(irval_funcref_get_idx(v));
+	}
+	if(v.tag == irval_tag.blkref)
+	{
+		return lower_x64_custom_irblk(irpos{.func_cursor := x64api.func_cursor; .blk_cursor := irval_blkref_get_idx(v);});
+	}
+	if(v.tag == irval_tag.asmref)
+	{
+		// NOT SURE
+	}
+	if(v.tag == irval_tag.imm)
+	{
+		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
+	}
+	return zero;
+};
+
