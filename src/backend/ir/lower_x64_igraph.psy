@@ -293,6 +293,64 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	}
 };
 
+igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
+{
+	// 1. make graphs for each block
+	// 2. iterate over each block again and check their successors
+	// 3. *any* node in the successors graph at any point now lives through us, so set their end_inst to the end of the block
+	blk_graphs : igraph mut? := arena_alloc(global_arena, fn->blks_count * sizeof igraph);
+	ret ::= blk_graphs # 0;
+	i : u64 mut;
+	ptr : igraph mut? mut;
+	begin : u64 mut;
+	end : u64 mut;
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		ptr = blk_graphs # i;
+		[ptr] = zero;
+		lower_x64_func_find_blk_region(fnx64, i, ref begin, ref end);
+		igraph_append_x64(ptr, fnx64, begin, end, 0);
+	}
+
+	j : u64 mut;
+	k : u64 mut;
+
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+		for(j = 0; j < blk->successors_count; j = j + 1)
+		{
+			succg ::= blk_graphs # [blk->successors # j];
+			lower_x64_func_find_blk_region(fnx64, i, ref begin, ref end);
+			// add all nodes
+			// basically if this node appears in a successor, then its considered to be live throughout this whole block (but in theory a successor could be backwards/forwards so we do a bunch of min/maxes to be safe)
+			for(k = 0; k < succg->nodes_count; k = k + 1)
+			{
+				succnode ::= succg->nodes # k;
+				nodeidx ::= igraph_get_or_add_node(ret, [succnode]);
+
+				mynode ::= ret->nodes # nodeidx;
+				if(mynode->end_inst < end)
+				{
+					mynode->end_inst = end;
+				}
+
+				if(mynode->begin_inst > succnode->begin_inst)
+				{
+					mynode->begin_inst = succnode->begin_inst;
+				}
+				if(mynode->end_inst < succnode->end_inst)
+				{
+					mynode->end_inst = succnode->end_inst;
+				}
+			}
+		}
+	}
+
+	igraph_populate_edges(ret);
+	return [ret];
+};
+
 igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> igraph)
 {
 	ret : igraph mut := zero;
@@ -301,25 +359,18 @@ igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> i
 	return ret;
 };
 
-igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blk_indices : u64?, blk_indices_count : u64, inst_add : u64 -> v0)
+igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blk_indices : u64?, blk_indices_count : u64 -> v0)
 {
 	i : u64 mut;
 	for(i = 0; i < blk_indices_count; i = i + 1)
 	{
 		idx ::= [blk_indices # i];
 		blk ::= [fn->blks # idx];
-		if(!igraph_has_visited_blk(g, idx))
-		{
-			igraph_add_visited_blk(g, idx);
-			begin : u64 mut;
-			end : u64 mut;
-			lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
-			// append
-			igraph_append_x64(g, fnx64, begin, end, inst_add);
-			// and our successors...
-			igraph_append_blocks(g, fn, fnx64, blk.successors # 0, blk.successors_count, inst_add + begin);
-			//igraph_append_blocks(g, fn, fnx64, nexts # 0, counter, inst_add + begin);
-		}
+		begin : u64 mut;
+		end : u64 mut;
+		lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
+		// append
+		igraph_append_x64(g, fnx64, begin, end, 0);
 	}
 };
 
