@@ -3,12 +3,16 @@ ir_pass_dead_block_elimination : func(-> v0)
 	i : u64 mut;
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		irfunc_dead_block_elimination(irapi.prog.funcs # i);
+		// so doing a dead block elimination could delete blocks which contains jumps to other blocks which causes them to become dead too
+		// so the function returns the number of blocks that have been deleted
+		// once it hits zero then we're good.
+		while(irfunc_dead_block_elimination(irapi.prog.funcs # i) != 0){}
 	}
 };
 
-irfunc_dead_block_elimination : func(fn : irfunc mut? -> v0)
+irfunc_dead_block_elimination : func(fn : irfunc mut? -> u64)
 {
+	delete_count : u64 mut := 0;
 	// allocate N mutable zeroes, where N is the number of blocks
 	// iterate through all blocks, foreach successor idx increase their counter by 1
 	// any blocks (apart from the entry block) with a counter of 0 is dead code
@@ -39,10 +43,12 @@ irfunc_dead_block_elimination : func(fn : irfunc mut? -> v0)
 			[fn->blks # i] = [fn->blks # last_idx];
 			[blk_refs # i] = [blk_refs # last_idx];
 			fn->blks_count = fn->blks_count - 1;
+			delete_count = delete_count + 1;
 		}
 		else
 		{
 			i = i + 1;
 		}
 	}
+	return delete_count;
 };
