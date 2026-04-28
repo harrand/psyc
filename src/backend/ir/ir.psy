@@ -194,3 +194,33 @@ bwrite_ir : func(w : bwriter mut? -> v0)
 {
 	bwrite_irprog(w, irapi.prog);
 };
+
+ir_optimise_level : enum
+{
+	.O0 := 0;
+	.O1 := 1;
+};
+
+ir_optimise_tbl ::= func(-> v0)[countof ir_optimise_level] mut
+{
+	.0 := ir_optimise_O0;
+	.1 := ir_optimise_O1;
+};
+
+ir_optimise : func(opt : ir_optimise_level -> v0)
+{
+	[ir_optimise_tbl # (opt@s64)]();
+};
+
+ir_optimise_O0 : func(-> v0)
+{
+};
+
+ir_optimise_O1 : func(-> v0)
+{
+	ir_optimise_O0();
+	ir_pass_dead_block_elimination();
+	ir_pass_dead_reg_elimination();
+	ir_pass_dead_glob_elimination();
+
+};

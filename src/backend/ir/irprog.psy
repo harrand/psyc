@@ -110,6 +110,11 @@ irprog_add_glob : func(p : irprog mut?, data : u8 mut?, size : u64, is_mut : boo
 	return irval_globref(idx);
 };
 
+irprog_delete_glob : func(p : irprog mut?, globidx : u64 -> v0)
+{
+	[p->globs # globidx].idx = ~0;
+};
+
 bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 {
 	i : u64 mut;
@@ -166,8 +171,11 @@ bwrite_irprog : func(w : bwriter mut?, prog : irprog -> v0)
 	for(i = 0; i < prog.globs_count; i = i + 1)
 	{
 		glob ::= [prog.globs # i];
-		bwrite_irglob(w, glob);
-		bwrite8(w, 10);
+		if(glob.idx != ~0)
+		{
+			bwrite_irglob(w, glob);
+			bwrite8(w, 10);
+		}
 	}
 	bwrite8(w, 10);
 
