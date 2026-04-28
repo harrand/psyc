@@ -5,6 +5,39 @@ irapi_t : struct
 };
 irapi : irapi_t mut := zero;
 
+ir_current_instruction_id : func(-> u64)
+{
+	return irapi.pos.inst_cursor;
+};
+
+ir_position_before_inst : func(id : u64 -> v0)
+{
+	irapi.pos.inst_cursor = id;
+};
+
+ir_position_after_inst : func(id : u64 -> v0)
+{
+	irapi.pos.inst_cursor = (id + 1);
+};
+
+ir_position_begin : func(-> v0)
+{
+	irapi.pos.inst_cursor = 0;
+};
+
+ir_position_end : func(-> v0)
+{
+	blk ::= ir_current_blk();
+	if(blk->insts_count == 0)
+	{
+		irapi.pos.inst_cursor = 0;
+	}
+	else
+	{
+		irapi.pos.inst_cursor = blk->insts_count;
+	}
+};
+
 ir_set_entrypoint : func(pos : irpos -> v0)
 {
 	irapi.prog.entrypoint = pos;
@@ -66,6 +99,7 @@ ir_get_pos : func(-> irpos)
 ir_set_pos : func(pos : irpos -> v0)
 {
 	irapi.pos = pos;
+	ir_position_end();
 };
 
 ir_add_asm : func(params : irsz mut?, params_count : u64, ret : irsz, constraint : u8?, constraint_len : u64, code : u8?, code_len : u64 -> irval)
@@ -101,7 +135,32 @@ ir_ref_blk : func(fn : irfunc mut?, blkref : irval -> irblk mut?)
 ir_add_instruction : func(inst : irinst -> v0)
 {
 	blk ::= ir_current_blk();
-	irblk_add_inst(blk, inst);
+
+	if(blk->insts == zero)
+	{
+		blk->insts_cap = 8;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+	}
+	while(blk->insts_count >= blk->insts_cap)
+	{
+		oldcap ::= blk->insts_cap;
+		olddata ::= blk->insts;
+		blk->insts_cap = blk->insts_cap * 2;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+		memcopy(blk->insts, olddata, oldcap * sizeof typeof([blk->insts]));
+	}
+	idx ::= irapi.pos.inst_cursor;
+	if(idx < blk->insts_count)
+	{
+		// move all insts right by one otherwise we will overwrite
+		cpysrc ::= blk->insts # idx;
+		memcopy_backwards(cpysrc # 1, cpysrc, sizeof irinst * (1 + blk->insts_count - idx));
+	}
+	irapi.pos.inst_cursor = (irapi.pos.inst_cursor + 1);
+	blk->insts_count = (blk->insts_count + 1);
+	[blk->insts # idx] = inst;
+	
+	// update successors
 	blk->successors_count = 0;
 	if(inst.tag == irinst_tag.jmp)
 	{
@@ -113,6 +172,14 @@ ir_add_instruction : func(inst : irinst -> v0)
 		blk->successors = u64[2]{.0 := irval_blkref_get_idx([irinst_get_operand(inst, 1)]); .1 := irval_blkref_get_idx([irinst_get_operand(inst, 2)]);};
 		blk->successors_count = 2;
 	}
+};
+
+ir_delete_instruction : func(blk : irblk mut?, idx : u64 -> v0)
+{
+	cpydst ::= blk->insts # idx;
+	count ::= blk->insts_count - (idx + 1);
+	memcopy(cpydst, cpydst # 1, sizeof irinst * count);
+	blk->insts_count = blk->insts_count - 1;
 };
 
 ir_new_reg_of : func(sz : irsz -> irval)
