@@ -1,0 +1,52 @@
+ir_pass_dead_reg_elimination : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		// so doing a dead block elimination could delete blocks which contains jumps to other blocks which causes them to become dead too
+		// so the function returns the number of blocks that have been deleted
+		// once it hits zero then we're good.
+		while(irfunc_dead_reg_elimination(irapi.prog.funcs # i) != 0){}
+	}
+};
+
+irfunc_dead_reg_elimination : func(fn : irfunc mut? -> u64)
+{
+	ret : u64 mut := 0;
+
+	refcounts : u64 mut? := arena_alloc(global_arena, fn->counter * sizeof u64);
+
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	for(i = 0; i < fn->counter; i = i + 1)
+	{
+		[refcounts # i] = zero;
+	}
+	// iterate over all instructions and calc refcounts
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+		for(j = 0; j < blk->insts_count; j = j + 1)
+		{
+			inst ::= blk->insts # j;
+			count ::= irinst_operands_count([inst]);
+			for(k = 0; k < count; k = k + 1)
+			{
+				op ::= irinst_get_operand([inst], k);
+				if(op->tag == irval_tag.reg)
+				{
+					refptr ::= refcounts # irval_reg_get_index([op]);
+					[refptr] = [refptr] + 1;
+				}
+			}
+		}
+	}
+	// do it again, but anytime you see a register who only has a refcount of 1, then the register is not used (because ssa registers must always be defined before use)
+	// if it comes from a call, then you need to amend the call because it might have side-effects
+	// otherwise, just delete the instruction
+	// todo: impl deleting stuff
+	arena_free(global_arena, refcounts, fn->counter * sizeof u64);
+	return ret;
+};
+
