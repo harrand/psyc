@@ -146,6 +146,18 @@ bwrite_x64imm_disasm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
 	bwrite_uint(w, imm);
 };
 
+bwrite_memptr_size : func(w : bwriter mut?, sz : u64 -> v0)
+{
+	// unsized memory operand has no prefix (typically for a LEA operand)
+	if(sz == 0)
+	{
+		return;
+	}
+	memsize_log2 ::= log2(sz) - 3;
+	bwrite_zstr(w, [tbl_memptrnames # memsize_log2]);
+	bwrite_zstr(w, " ");
+};
+
 bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 {
 	if(v.tag == x64v_tag.imm)
@@ -158,9 +170,8 @@ bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 	}
 	if(v.tag == x64v_tag.memreg)
 	{
-		mem_size_log2 ::= log2(v.v1) - 3;
-		bwrite_zstr(w, [tbl_memptrnames # mem_size_log2]);
-		bwrite_zstr(w, " [");
+		bwrite_memptr_size(w, v.v1);
+		bwrite_zstr(w, "[");
 		if(v.v2 != 0)
 		{
 			bwrite_x64reg_disasm(w, v.r1, v.v2);
@@ -202,18 +213,39 @@ bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 	}
 	if(v.tag == x64v_tag.rodataref)
 	{
-		bwrite_zstr(w, "%rodata");
+		bwrite_memptr_size(w, v.v3);
+		bwrite_zstr(w, "[%rodata");
 		bwrite_uint(w, v.v1);
+		if(v.v2 != 0)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_uint(w, v.v2);
+		}
+		bwrite_zstr(w, "]");
 	}
 	if(v.tag == x64v_tag.dataref)
 	{
-		bwrite_zstr(w, "%data");
+		bwrite_memptr_size(w, v.v3);
+		bwrite_zstr(w, "[%data");
 		bwrite_uint(w, v.v1);
+		if(v.v2 != 0)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_uint(w, v.v2);
+		}
+		bwrite_zstr(w, "]");
 	}
 	if(v.tag == x64v_tag.bssref)
 	{
-		bwrite_zstr(w, "%bss");
+		bwrite_memptr_size(w, v.v3);
+		bwrite_zstr(w, "[%bss");
 		bwrite_uint(w, v.v1);
+		if(v.v2 != 0)
+		{
+			bwrite_zstr(w, " + ");
+			bwrite_uint(w, v.v2);
+		}
+		bwrite_zstr(w, "]");
 	}
 	if(v.tag == x64v_tag.fnref)
 	{

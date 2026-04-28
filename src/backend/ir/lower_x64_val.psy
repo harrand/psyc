@@ -10,26 +10,30 @@ lower_x64_irval : func(v : irval -> x64v)
 {
 	if(v.tag == irval_tag.reg)
 	{
-		if(v.r1 == irsz.global_variable)
-		{
-			glob ::= ir_ref_glob(v);
-			// figure out if it is rodata, data or bss
-			lower_type ::= lower_x64_irglob_usrdata_get_type(glob->usrdata);
-			lower_x64_idx ::= lower_x64_irglob_usrdata_get_x64_idx(glob->usrdata);
-			if(lower_type == lower_x64_globtype.rodata)
-			{
-				return x64v_rodata(lower_x64_idx, 0, glob->size);
-			}
-			if(lower_type == lower_x64_globtype.data)
-			{
-				return x64v_data(lower_x64_idx, 0, glob->size);
-			}
-			if(lower_type == lower_x64_globtype.bss)
-			{
-				return x64v_bss(lower_x64_idx, 0, glob->size);
-			}
-		}
 		return lower_x64_custom_vreg(v);
+	}
+	if(v.tag == irval_tag.globref)
+	{
+		// we only expect to really see globrefs as operands to loads and stores
+		// and in those circumstances we have more info (e.g memory operand size)
+		// this codepath will not cover those cases, infact this is only really likely to be called when if we're passing a global to an inline assembly.
+		// in which case this is going to be a memory operand for a LEA
+		glob ::= ir_ref_glob(v);
+		// figure out if it is rodata, data or bss
+		lower_type ::= lower_x64_irglob_usrdata_get_type(glob->usrdata);
+		lower_x64_idx ::= lower_x64_irglob_usrdata_get_x64_idx(glob->usrdata);
+		if(lower_type == lower_x64_globtype.rodata)
+		{
+			return x64v_rodata(lower_x64_idx, 0, 0);
+		}
+		if(lower_type == lower_x64_globtype.data)
+		{
+			return x64v_data(lower_x64_idx, 0, 0);
+		}
+		if(lower_type == lower_x64_globtype.bss)
+		{
+			return x64v_bss(lower_x64_idx, 0, 0);
+		}
 	}
 	if(v.tag == irval_tag.funcref)
 	{
@@ -172,6 +176,25 @@ lower_x64_custom_x64v_tag_vmemreg ::= 1;
 lower_x64_custom_vmemreg : func(outsz : irsz, base_reg : irval, index_reg : irval, scale : irval, disp : irval -> x64v)
 {
 	custom_idx : s64 mut := x64v_tag.custom0@s64;
+	if(irval_is_globref(base_reg))
+	{
+		// memreg base is a global i.e a rodataref etc...
+		glob ::= ir_ref_glob(base_reg);
+		lower_type ::= lower_x64_irglob_usrdata_get_type(glob->usrdata);
+		lower_x64_idx ::= lower_x64_irglob_usrdata_get_x64_idx(glob->usrdata);
+		if(lower_type == lower_x64_globtype.rodata)
+		{
+			return x64v_rodata(lower_x64_idx, irval_imm_get_value(disp), irsz_size_bytes(outsz) * 8);
+		}
+		if(lower_type == lower_x64_globtype.data)
+		{
+			return x64v_data(lower_x64_idx, irval_imm_get_value(disp), irsz_size_bytes(outsz) * 8);
+		}
+		if(lower_type == lower_x64_globtype.bss)
+		{
+			return x64v_bss(lower_x64_idx, irval_imm_get_value(disp), irsz_size_bytes(outsz) *  8);
+		}
+	}
 	return x64v
 	{
 		.tag := (custom_idx + lower_x64_custom_x64v_tag_vmemreg)@x64v_tag;

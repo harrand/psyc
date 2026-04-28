@@ -93,17 +93,21 @@ irval_reg_get_index : func(reg : irval -> u64)
 // globref
 irval_globref : func(idx : u64 -> irval)
 {
-	return irval_reg(irsz.global_variable, idx);
+	return irval
+	{
+		.tag := irval_tag.globref;
+		.v1 := idx;
+	};
 };
 
 irval_globref_get_idx : func(globref : irval -> u64)
 {
-	return irval_reg_get_index(globref);
+	return globref.v1;
 };
 
 irval_is_globref : func(v : irval -> bool)
 {
-	return (v.tag == irval_tag.reg) && (irval_reg_get_irsz(v) == irsz.global_variable);
+	return v.tag == irval_tag.globref;
 };
 
 //funcref
@@ -219,12 +223,6 @@ irval_get_irsz : func(v : irval -> irsz)
 bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
 {
 	sz ::= irval_reg_get_irsz(v);
-	if(sz == irsz.global_variable)
-	{
-		bwrite_zstr(w, "global @");
-		bwrite_uint(w, irval_globref_get_idx(v));
-		return;
-	}
 	bwrite8(w, '%');
 	bwrite_zstr(w, enumname(irval_reg_get_irsz(v)));
 	bwrite_uint(w, irval_reg_get_index(v));
@@ -232,7 +230,8 @@ bwrite_irval_reg : func(w : bwriter mut?, v : irval -> v0)
 
 bwrite_irval_globref : func(w : bwriter mut?, v : irval -> v0)
 {
-	bwrite_irval_reg(w, v);
+	bwrite_zstr(w, "global @");
+	bwrite_uint(w, irval_globref_get_idx(v));
 };
 
 bwrite_irval_fnref : func(w : bwriter mut?, v : irval -> v0)
