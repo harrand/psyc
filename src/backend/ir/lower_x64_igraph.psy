@@ -1,82 +1,75 @@
+// igraph is an interference graph. its used to describe lifetimes of both psyir SSA registers *and* x64 hardware registers within a set of mid-level instructions.
+// mid-level instructions are the result of lowering psyir instructions to x64. they aren't encodable x64 instructions but are very close to the final encodable x64 form. some meta instructions mark the start/end of ir blocks which means the igraph has context of both the IR structure and its transformed x64 machine code.
+
+// an igraph is populated normally from a single function. an igraph is comprised of nodes and edges.
+// a node is 1:1 comparable with a psyir SSA register or an x64 hardware register. it also contains begin/end lifetime information
+// an edge is formed between two nodes if their begin/end lifetimes overlap.
+
+// register allocation is done using a finalised igraph - graph colouring is done on the graph and each colour maps to an index into some array of x64 hardware registers - this array of registers contains the GPRs that variables can be allocated to. which registers are in this array is controlled by the ABI.
+
+
+// what type of variable does this node represent
 inode_tag : enum
 {
+	// an x64 hardware register
 	.reg := 1;
+	// a psyir SSA register
 	.vreg := 2;
 };
 
+// colour given to a node during graph colouring. it ultimately corresponds to an index into some array of ABI-provided x64 hardware GPRs
 inode_colour : enum
 {
+	// given to nodes as an initial placeholder value before register allocation occurs. if an ssa register has this colour after the graph is coloured, then it is considered spilled to stack.
 	.undefined := ~1;
+	// normally given to nodes that are x64 hardware registers, but dont appear in the list of ABI-provided x64 hardware GPRs. these already have a x64 hardware register so there's no need to allocate one.
 	.ignore := ~0;
 };
 
+// represents a node in the interference graph
 inode : struct
 {
+	// what type of variable are we representing?
 	tag : inode_tag;
+	// if tag == inode_tag.vreg, this is the index of the SSA register (the irsz is not important here so we dont store it)
 	vidx : u64;
+	// if tag == inode_tag.reg, this is the x64 hardware register we represent.
 	reg : x64_reg;
 
+	// which instruction id in the function starts our logical lifetime?
 	begin_inst : u64;
+	// which instruction id in the function ends our logical lifetime?
 	end_inst : u64;
+	// note: this format of node only encodes a single lifetime. this is inefficient, as it means any gaps between multiple lifetimes are coalesced into one giant lifetime. i want to fix this later.
 
+	// which colour have we been allocated
 	colour : inode_colour;
+	// if colour == inode_colour.undefined, we are a spilled ssa register and we are [rsp + spill]
 	spill : u64;
 };
 
+// represents an edge between two inodes - implying their lifetimes coincide and thus should not be coloured the same (aka we will not be allocated the same x64 hardware register)
 iedge : struct
 {
 	lhs : u32;
 	rhs : u32;
 };
 
+// interference graph
 igraph : struct
 {
+	// dynamic array of nodes
 	nodes : inode mut?;
 	nodes_count : u64;
 	nodes_cap : u64;
 
+	// dynamic array of edges
 	edges : iedge mut?;
 	edges_count : u64;
 	edges_cap : u64;
-
-	visited_blks : u64 mut?;
-	visited_blks_count : u64;
-	visited_blks_cap : u64;
 };
 
-igraph_add_visited_blk : func(g : igraph mut?, blkid : u64 -> v0)
-{
-	if(g->visited_blks == zero)
-	{
-		g->visited_blks_cap = 64;
-		g->visited_blks = arena_alloc(global_arena, g->visited_blks_cap * sizeof typeof([g->visited_blks]));
-	}
-	while(g->visited_blks_count >= g->visited_blks_cap)
-	{
-		oldcap ::= g->visited_blks_cap;
-		olddata ::= g->visited_blks;
-		g->visited_blks_cap = (g->visited_blks_cap * 2);
-		g->visited_blks = arena_alloc(global_arena, g->visited_blks_cap * sizeof typeof([g->visited_blks]));
-		memcopy(g->visited_blks, olddata, oldcap * sizeof typeof([g->visited_blks]));
-	}
-
-	[g->visited_blks # (g->visited_blks_count)] = blkid;
-	g->visited_blks_count = (g->visited_blks_count + 1);
-};
-
-igraph_has_visited_blk : func(g : igraph mut?, blkid : u64 -> bool)
-{
-	i : u64 mut;
-	for(i = 0; i < g->visited_blks_count; i = i + 1)
-	{
-		if([g->visited_blks # i] == blkid)
-		{
-			return true;
-		}
-	}
-	return false;
-};
-
+// unconditionally add a node and return the index of it
 igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 {
 	if(g->nodes == zero)
@@ -98,26 +91,31 @@ igraph_add_node : func(g : igraph mut?, node : inode -> u64)
 	return idx;
 };
 
+// return the index of the node corresponding to the given ssa virtual register. if it doesnt exist in the graph, return ~0
 igraph_find_vreg : func(g : igraph mut?, vreg_idx : u64, i : u64 -> u64)
 {
 	return igraph_find_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; .begin_inst := i; ... := zero;});
 };
 
+// return the index of the node corresponding to the given x64 hardware register. if it doesnt exist in the graph, return ~0
 igraph_find_reg : func(g : igraph mut?, reg : x64_reg, i : u64 -> u64)
 {
 	return igraph_find_node(g, inode{.tag := inode_tag.reg; .reg := reg; .begin_inst := i; ... := zero;});
 };
 
+// same as igraph_find_vreg, but if it doesnt exist, it adds it instead (and treats 'i' as the instruction id that contains this variable for the first time)
 igraph_get_or_add_vreg : func(g : igraph mut?, vreg_idx : u64, i : u64 -> u64)
 {
 	return igraph_get_or_add_node(g, inode{.tag := inode_tag.vreg; .vidx := vreg_idx; .begin_inst := i; ... := zero;});
 };
 
+// same as igraph_find_reg, but if it doesnt exist, it adds it instead (and treats 'i' as the instruction id that contains this variable for the first time)
 igraph_get_or_add_reg : func(g : igraph mut?, reg : x64_reg, i : u64 -> u64)
 {
 	return igraph_get_or_add_node(g, inode{.tag := inode_tag.reg; .reg := reg; .begin_inst := i; ... := zero;});
 };
 
+// return the index of the node within the graph. if it doesnt exist in the graph, return ~0
 igraph_find_node : func(g : igraph mut?, node : inode -> u64)
 {
 	i : u64 mut;
@@ -128,7 +126,6 @@ igraph_find_node : func(g : igraph mut?, node : inode -> u64)
 		{
 			if((cur->tag == inode_tag.vreg) && (cur->vidx == node.vidx))
 			{
-				// only the index matters, irsz can alias each other
 				return i;
 			}
 			if((cur->tag == inode_tag.reg) && (cur->reg == node.reg))
@@ -140,6 +137,7 @@ igraph_find_node : func(g : igraph mut?, node : inode -> u64)
 	return ~0;
 };
 
+// same as igraph_find_node, but if it doesnt exist, it adds it instead (and treats 'i' as the instruction id that contains the variable for the first time)
 igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
 {
 	id ::= igraph_find_node(g, node);
@@ -150,6 +148,7 @@ igraph_get_or_add_node : func(g : igraph mut?, node : inode -> u64)
 	return id;
 };
 
+// unconditionally add an edge to the graph
 igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
 {
 	if(g->edges == zero)
@@ -171,11 +170,13 @@ igraph_add_edge : func(g : igraph mut?, edge : iedge -> u64)
 	return idx;
 };
 
+// returns true if two nodes instruction begin/end lifetimes overlap
 inodes_overlap : func(lhs : inode mut?, rhs : inode mut? -> bool)
 {
 	return (lhs->begin_inst <= rhs->end_inst) && (rhs->begin_inst <= lhs->end_inst);
 };
 
+// given a graph with nodes but no edges, populate all the edges. an edge is formed between two nodes if their lifetimes overlap.
 igraph_populate_edges : func(g : igraph mut? -> v0)
 {
 	// each node has a begin_inst and an end_inst which forms a lifetime
@@ -196,6 +197,9 @@ igraph_populate_edges : func(g : igraph mut? -> v0)
 	}
 };
 
+// perform precolouring on a node if possible. this is only possible if either:
+// - the node represents an x64 hardware register that exists in the ABI-provided array of registers-to-allocate
+// - the node is an ssa virtual register, but is a parameter, in which case the ssa register representing parameter N *must* be allocated the ABI-specified register associated with parameter N (note this is likely to need reworking for SYSV)
 igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count : u64, params_count : u64 -> bool)
 {
 	// if node is an x64 reg and it matches one of the colours, set the node colour to that.
@@ -224,6 +228,7 @@ igraph_precolour : func(node : inode mut?, colours : x64_reg mut?, colours_count
 	return false;
 };
 
+// internal helper function
 // caller wants to know if the node at nodeidx can have the given colour
 // we check all its connected nodes via edges
 // if none of those neighbours have it, then return true
@@ -293,6 +298,7 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	}
 };
 
+// given an irfunc and its x64 lowered equivalent, populate an interference graph. you should use this to do graph colouring (igraph_assign)
 igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 {
 	// 1. make graphs for each block
@@ -351,29 +357,8 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 	return [ret];
 };
 
-igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> igraph)
-{
-	ret : igraph mut := zero;
-	igraph_append_nodes_within_instructions(ref ret, fnx64, begin_inst, end_inst, 0);
-	igraph_populate_edges(ref ret);
-	return ret;
-};
-
-igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blk_indices : u64?, blk_indices_count : u64 -> v0)
-{
-	i : u64 mut;
-	for(i = 0; i < blk_indices_count; i = i + 1)
-	{
-		idx ::= [blk_indices # i];
-		blk ::= [fn->blks # idx];
-		begin : u64 mut;
-		end : u64 mut;
-		lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
-		// append
-		igraph_append_nodes_within_instructions(g, fnx64, begin, end, 0);
-	}
-};
-
+// given an x64 operand that you found within an instruction of the given id, find all variables (ssa registers or x64 hardware registers) that are referenced by it. for something like a memory operand, this could be upto 2.
+// and then add them to the graph. adds only nodes, no edges. helper function for igraph_append_nodes_from_inst
 igraph_append_nodes_within_operand : func(g : igraph mut?, operand : x64v mut?, inst_id : u64 -> v0)
 {
 	nodeidx : u64 mut;
@@ -426,6 +411,8 @@ igraph_append_nodes_within_operand : func(g : igraph mut?, operand : x64v mut?, 
 	}
 };
 
+// given an x64 instruction, find all variables (ssa registers or x64 hardware registers) that are referenced by all operands of the instruction.
+// and then add them to the graph. adds only nodes, no edges.
 igraph_append_nodes_from_inst : func(g : igraph mut?, inst : x64i mut?, inst_id : u64 -> v0)
 {
 	j : u64 mut;
@@ -439,6 +426,8 @@ igraph_append_nodes_from_inst : func(g : igraph mut?, inst : x64i mut?, inst_id 
 	}
 };
 
+// given a range of lowered x64 instructions within a function, find all variables (ssa registers or x64 hardware registers) that are referenced by all instructions (and their operands) in the range.
+// and then add them to the graph. adds only nodes, no edges.
 igraph_append_nodes_within_instructions : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, end_inst : u64, inst_add : u64 -> v0)
 {
 	// create an interference graph, do graph colouring and assign each colour a register
@@ -458,4 +447,3 @@ igraph_append_nodes_within_instructions : func(g : igraph mut?, fnx64 : x64f mut
 		igraph_append_nodes_from_inst(g, inst, i);
 	}
 };
-
