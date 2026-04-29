@@ -416,13 +416,33 @@ igraph_append_nodes_within_operand : func(g : igraph mut?, operand : x64v mut?, 
 igraph_append_nodes_from_inst : func(g : igraph mut?, inst : x64i mut?, inst_id : u64 -> v0)
 {
 	j : u64 mut;
-	nodeidx : u64 mut;
 	parcount ::= x64i_operand_count([inst]);
 	clobbies ::= x64i_get_clobbers([inst]);
 	for(j = 0; j < countof typeof(clobbies); j = j + 1)
 	{
 		operand ::= clobbies # j;
 		igraph_append_nodes_within_operand(g, clobbies # j, inst_id);
+	}
+
+	nodeidx : u64 mut;
+
+	tagbase : s64 := x64i_tag.custom@s64;
+	if(x64i_is_any_custom([inst]))
+	{
+		op0 ::= [inst->operands # 0];
+
+		if(x64i_is_custom([inst], x64_custom_inst_reg_lifetime_begin))
+		{
+			igraph_get_or_add_reg(g, x64v_reg_get_reg(op0), inst_id);
+		}
+		if(x64i_is_custom([inst], x64_custom_inst_reg_lifetime_end))
+		{
+			nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg(op0), inst_id);
+			if([g->nodes # nodeidx].end_inst <= inst_id)
+			{
+				[g->nodes # nodeidx].end_inst = inst_id;
+			}
+		}
 	}
 };
 
