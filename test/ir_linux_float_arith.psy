@@ -1,0 +1,48 @@
+== default ==
+{
+	add_build_file_with_config("./_test_helper.psy", "psyir");
+
+	executable("ir_linux_float_arith");
+	postbuild_command("(cd build && ./ir_linux_float_arith)");
+};
+
+test : func(-> s32)
+{
+	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
+	exit_syscall_code ::= "mov rax, 60
+mov rdi, $0
+syscall";
+	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
+	ir_add_empty_func(irabi.psy);
+	addres ::= ir_fadd(irval_fimm(0), irval_fimm(5.9), zero);
+
+	exitcode ::= ir_cvti(irsz.d, addres, zero);
+	ir_call_asm(exit_syscall, ref exitcode, 1, zero);
+	ir_unreachable(zero);
+
+	teststream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+
+	ir_pass_validate();
+	ir_optimise(ir_optimise_level.O1);
+
+	bwrite_ir(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+	ir_lower_x64();
+
+	teststream.cursor = 0;
+	x64_dump_disasm_to(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+
+	// write out the elf.
+	encode_basic_elf_x64("./generated_ir_linux_float_arith.elf", ref(x64api.prog));
+	file_ensure_executable("./generated_ir_linux_float_arith.elf");
+	cmd ::= "./generated_ir_linux_float_arith.elf";
+	return sys_shell_command(cmd, zstrlen(cmd), envp, global_arena)@_;
+};
