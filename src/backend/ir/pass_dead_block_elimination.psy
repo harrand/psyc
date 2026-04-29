@@ -17,7 +17,8 @@ irfunc_dead_block_elimination : func(fn : irfunc mut? -> u64)
 	// iterate through all blocks, foreach successor idx increase their counter by 1
 	// any blocks (apart from the entry block) with a counter of 0 is dead code
 	i : u64 mut;
-	blk_refs : u64 mut? := arena_alloc(global_arena, fn->blks_count * sizeof u64);
+	refs_count ::= fn->blks_count * sizeof u64;
+	blk_refs : u64 mut? := arena_alloc(global_arena, refs_count);
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		[blk_refs # i] = zero;
@@ -50,5 +51,6 @@ irfunc_dead_block_elimination : func(fn : irfunc mut? -> u64)
 			i = i + 1;
 		}
 	}
+	arena_free(global_arena, blk_refs, refs_count);
 	return delete_count;
 };
