@@ -23,17 +23,21 @@ irfunc_dead_reg_elimination : func(fn : irfunc mut? -> u64)
 	{
 		[refcounts # i] = zero;
 	}
+	blk : irblk mut? mut;
+	inst : irinst mut? mut;
+	count : u64 mut;
+	op : irval mut? mut;
 	// iterate over all instructions and calc refcounts
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
-		blk ::= fn->blks # i;
+		blk = fn->blks # i;
 		for(j = 0; j < blk->insts_count; j = j + 1)
 		{
-			inst ::= blk->insts # j;
-			count ::= irinst_operands_count([inst]);
+			inst = blk->insts # j;
+			count = irinst_operands_count([inst]);
 			for(k = 0; k < count; k = k + 1)
 			{
-				op ::= irinst_get_operand([inst], k);
+				op = irinst_get_operand([inst], k);
 				if(op->tag == irval_tag.reg)
 				{
 					refptr ::= refcounts # irval_reg_get_index([op]);
@@ -45,7 +49,51 @@ irfunc_dead_reg_elimination : func(fn : irfunc mut? -> u64)
 	// do it again, but anytime you see a register who only has a refcount of 1, then the register is not used (because ssa registers must always be defined before use)
 	// if it comes from a call, then you need to amend the call because it might have side-effects
 	// otherwise, just delete the instruction
-	// todo: impl deleting stuff
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk = fn->blks # i;
+		j = 0;
+		while(j < blk->insts_count)
+		{
+			inst = blk->insts # j;
+			count = irinst_operands_count([inst]);
+			deleted_this_one : bool mut := false;
+			for(k = 0; (k < count) && !deleted_this_one; k = k + 1)
+			{
+				op = irinst_get_operand([inst], k);
+				if(op->tag == irval_tag.reg)
+				{
+					opidx ::= irval_reg_get_index([op]);
+					if([refcounts # opidx] <= 1)
+					{
+						// this is a dead ssa register
+						// if its not a call, just delete the instruction
+						// if it is a call, then the register is an unused return value
+						// which is not okay to delete because the function could have side effects
+						// todo: amend the call to remove the return
+						if(inst->tag != irinst_tag.call)
+						{
+							//putzstr("DID A DELETION $");
+							//putuint(fn->idx);
+							//putzstr(" _");
+							//putuint(i);
+							//putzstr(" inst ");
+							//putuint(j);
+							//putchar(10);
+
+							ir_delete_instruction(blk, j);
+							ret = ret + 1;
+							deleted_this_one = true;
+						}
+					}
+				}
+			}
+			if(!deleted_this_one)
+			{
+				j = j + 1;
+			}
+		}
+	}
 	arena_free(global_arena, refcounts, fn->counter * sizeof u64);
 	return ret;
 };
