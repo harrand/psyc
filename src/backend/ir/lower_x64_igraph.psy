@@ -398,7 +398,7 @@ igraph_append_x64 : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, e
 		for(j = 0; j < countof typeof(clobbies); j = j + 1)
 		{
 			operand ::= clobbies # j;
-			if(lower_x64_value_is_vreg([operand]) || x64v_is_reg([operand]) || lower_x64_value_is_vmemreg([operand]))
+			if(lower_x64_value_is_vreg([operand]) || x64v_is_reg([operand]) || lower_x64_value_is_vmemreg([operand]) || x64v_is_mem([operand]))
 			{
 				if(lower_x64_value_is_vreg([operand]))
 				{
@@ -431,8 +431,26 @@ igraph_append_x64 : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, e
 					}
 					else
 					{
-						nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg([operand]), i + inst_add);
-						[g->nodes # nodeidx].end_inst = i + inst_add;
+						if(x64v_is_mem([operand]))
+						{
+							baseidx64 ::= x64v_memreg_get_base([operand]);
+							indexidx64 ::= x64v_memreg_get_index([operand]);
+							if(baseidx64 != zero)
+							{
+								nodeidx = igraph_get_or_add_reg(g, baseidx64, i + inst_add);
+								[g->nodes # nodeidx].end_inst = i + inst_add;
+							}
+							if(indexidx64 != zero)
+							{
+								nodeidx = igraph_get_or_add_reg(g, indexidx64, i + inst_add);
+								[g->nodes # nodeidx].end_inst = i + inst_add;
+							}
+						}
+						else
+						{
+							nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg([operand]), i + inst_add);
+							[g->nodes # nodeidx].end_inst = i + inst_add;
+						}
 					}
 				}
 			}
