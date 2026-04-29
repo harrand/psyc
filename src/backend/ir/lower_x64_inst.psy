@@ -74,6 +74,7 @@ lower_x64_stack : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 lower_x64_load : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 {
 	out ::= [ir_load_get_out(inst)];
+	sz ::= irval_get_irsz(out);
 	outx64 ::= lower_x64_irval(out);
 
 	base : irval mut := [ir_load_get_base(inst)];
@@ -82,7 +83,24 @@ lower_x64_load : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	scale ::= [ir_load_get_scale(inst)];
 	disp ::= [ir_load_get_disp(inst)];
 
-	x64_mov(outx64, lower_x64_custom_vmemreg(irval_get_irsz(out), base, index, scale, disp));
+	vmemreg ::= lower_x64_custom_vmemreg(sz, base, index, scale, disp);
+
+	if(sz == irsz.x)
+	{
+		x64_movdqu(outx64, vmemreg);
+	}
+	if(sz == irsz.f)
+	{
+		x64_movss(outx64, vmemreg);
+	}
+	if(sz == irsz.ff)
+	{
+		x64_movsd(outx64, vmemreg);
+	}
+	if((sz == irsz.q) || (sz == irsz.d) || (sz == irsz.w) || (sz == irsz.b))
+	{
+		x64_mov(outx64, vmemreg);
+	}
 };
 
 lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
@@ -103,7 +121,24 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	scale ::= [ir_store_get_scale(inst)];
 	disp ::= [ir_store_get_disp(inst)];
 
-	x64_mov(lower_x64_custom_vmemreg(sz, base, index, scale, disp), vx64);
+	vmemreg ::= lower_x64_custom_vmemreg(sz, base, index, scale, disp);
+
+	if((sz == irsz.x) || (sz == irsz.y) || (sz == irsz.z))
+	{
+		x64_movdqu(vmemreg, vx64);
+	}
+	if(sz == irsz.f)
+	{
+		x64_movss(vmemreg, vx64);
+	}
+	if(sz == irsz.ff)
+	{
+		x64_movsd(vmemreg, vx64);
+	}
+	if((sz == irsz.q) || (sz == irsz.d) || (sz == irsz.w) || (sz == irsz.b))
+	{
+		x64_mov(vmemreg, vx64);
+	}
 };
 
 lower_x64_ret : func(inst : irinst mut?, fn : irfunc mut? -> v0)
