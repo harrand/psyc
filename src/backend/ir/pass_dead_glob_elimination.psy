@@ -2,7 +2,8 @@ ir_pass_dead_glob_elimination : func(-> v0)
 {
 	i : u64 mut;
 
-	glob_refcounts : u64 mut? := arena_alloc(global_arena, irapi.prog.globs_count * sizeof u64);
+	refcounts_size ::= irapi.prog.globs_count * sizeof u64;
+	glob_refcounts : u64 mut? := arena_alloc(global_arena, refcounts_size);
 	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
 	{
 		[glob_refcounts # i] = 0;
@@ -43,4 +44,5 @@ ir_pass_dead_glob_elimination : func(-> v0)
 			irprog_delete_glob(ref irapi.prog, i);
 		}
 	}
+	arena_free(global_arena, glob_refcounts, refcounts_size);
 };
