@@ -309,7 +309,7 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 		ptr = blk_graphs # i;
 		[ptr] = zero;
 		lower_x64_func_find_blk_region(fnx64, i, ref begin, ref end);
-		igraph_append_x64(ptr, fnx64, begin, end, 0);
+		igraph_append_nodes_within_instructions(ptr, fnx64, begin, end, 0);
 	}
 
 	j : u64 mut;
@@ -354,7 +354,7 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 igraph_build_x64 : func(fnx64 : x64f mut?, begin_inst : u64, end_inst : u64 -> igraph)
 {
 	ret : igraph mut := zero;
-	igraph_append_x64(ref ret, fnx64, begin_inst, end_inst, 0);
+	igraph_append_nodes_within_instructions(ref ret, fnx64, begin_inst, end_inst, 0);
 	igraph_populate_edges(ref ret);
 	return ret;
 };
@@ -370,11 +370,76 @@ igraph_append_blocks : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?
 		end : u64 mut;
 		lower_x64_func_find_blk_region(fnx64, idx, ref begin, ref end);
 		// append
-		igraph_append_x64(g, fnx64, begin, end, 0);
+		igraph_append_nodes_within_instructions(g, fnx64, begin, end, 0);
 	}
 };
 
-igraph_append_x64 : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, end_inst : u64, inst_add : u64 -> v0)
+igraph_append_nodes_within_operand : func(g : igraph mut?, operand : x64v mut?, inst_id : u64 -> v0)
+{
+	nodeidx : u64 mut;
+	if(x64v_is_reg([operand]))
+	{
+		nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg([operand]), inst_id);
+		[g->nodes # nodeidx].end_inst = inst_id;
+	}
+	if(x64v_is_mem([operand]))
+	{
+		baseidx64 ::= x64v_memreg_get_base([operand]);
+		indexidx64 ::= x64v_memreg_get_index([operand]);
+		if(baseidx64 != zero)
+		{
+			nodeidx = igraph_get_or_add_reg(g, baseidx64, inst_id);
+			[g->nodes # nodeidx].end_inst = inst_id;
+		}
+		if(indexidx64 != zero)
+		{
+			nodeidx = igraph_get_or_add_reg(g, indexidx64, inst_id);
+			[g->nodes # nodeidx].end_inst = inst_id;
+		}
+	}
+	if(lower_x64_value_is_vreg([operand]))
+	{
+		nodeidx = igraph_get_or_add_vreg(g, lower_x64_custom_vreg_get_index([operand]), inst_id);
+		[g->nodes # nodeidx].end_inst = inst_id;
+	}
+	if(lower_x64_value_is_vmemreg([operand]))
+	{
+		// add both the base and the index, ugh...
+		base ::= lower_x64_custom_vmemreg_get_base([operand]);
+		base_index ::= irval_reg_get_index(base);
+		base_irsz ::= irval_get_irsz(base);
+		index ::= lower_x64_custom_vmemreg_get_index([operand]);
+		index_index ::= irval_reg_get_index(index);
+		index_irsz ::= irval_get_irsz(index);
+
+		if((base_irsz != zero))
+		{
+			nodeidx = igraph_get_or_add_vreg(g, base_index, inst_id);
+			[g->nodes # nodeidx].end_inst = inst_id;
+		}
+
+		if((index_irsz != zero))
+		{
+			nodeidx = igraph_get_or_add_vreg(g, index_index, inst_id);
+			[g->nodes # nodeidx].end_inst = inst_id;
+		}
+	}
+};
+
+igraph_append_nodes_from_inst : func(g : igraph mut?, inst : x64i mut?, inst_id : u64 -> v0)
+{
+	j : u64 mut;
+	nodeidx : u64 mut;
+	parcount ::= x64i_operand_count([inst]);
+	clobbies ::= x64i_get_clobbers([inst]);
+	for(j = 0; j < countof typeof(clobbies); j = j + 1)
+	{
+		operand ::= clobbies # j;
+		igraph_append_nodes_within_operand(g, clobbies # j, inst_id);
+	}
+};
+
+igraph_append_nodes_within_instructions : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, end_inst : u64, inst_add : u64 -> v0)
 {
 	// create an interference graph, do graph colouring and assign each colour a register
 	// spill into memory if we run out of registers.
@@ -386,75 +451,11 @@ igraph_append_x64 : func(g : igraph mut?, fnx64 : x64f mut?, begin_inst : u64, e
 	// you now have an interference graph
 
 	i : u64 mut;
-	j : u64 mut;
-
-	nodeidx : u64 mut;
 
 	for(i = begin_inst; i < end_inst; i = i + 1)
 	{
 		inst ::= fnx64->inst # i;
-		parcount ::= x64i_operand_count([inst]);
-		clobbies ::= x64i_get_clobbers([inst]);
-		for(j = 0; j < countof typeof(clobbies); j = j + 1)
-		{
-			operand ::= clobbies # j;
-			if(lower_x64_value_is_vreg([operand]) || x64v_is_reg([operand]) || lower_x64_value_is_vmemreg([operand]) || x64v_is_mem([operand]))
-			{
-				if(lower_x64_value_is_vreg([operand]))
-				{
-					nodeidx = igraph_get_or_add_vreg(g, lower_x64_custom_vreg_get_index([operand]), i + inst_add);
-					[g->nodes # nodeidx].end_inst = i + inst_add + inst_add + inst_add + inst_add;
-				}
-				else
-				{
-					if(lower_x64_value_is_vmemreg([operand]))
-					{
-						// add both the base and the index, ugh...
-						base ::= lower_x64_custom_vmemreg_get_base([operand]);
-						base_index ::= irval_reg_get_index(base);
-						base_irsz ::= irval_get_irsz(base);
-						index ::= lower_x64_custom_vmemreg_get_index([operand]);
-						index_index ::= irval_reg_get_index(index);
-						index_irsz ::= irval_get_irsz(index);
-
-						if((base_irsz != zero))
-						{
-							nodeidx = igraph_get_or_add_vreg(g, base_index, i + inst_add);
-							[g->nodes # nodeidx].end_inst = i + inst_add;
-						}
-
-						if((index_irsz != zero))
-						{
-							nodeidx = igraph_get_or_add_vreg(g, index_index, i + inst_add);
-							[g->nodes # nodeidx].end_inst = i + inst_add;
-						}
-					}
-					else
-					{
-						if(x64v_is_mem([operand]))
-						{
-							baseidx64 ::= x64v_memreg_get_base([operand]);
-							indexidx64 ::= x64v_memreg_get_index([operand]);
-							if(baseidx64 != zero)
-							{
-								nodeidx = igraph_get_or_add_reg(g, baseidx64, i + inst_add);
-								[g->nodes # nodeidx].end_inst = i + inst_add;
-							}
-							if(indexidx64 != zero)
-							{
-								nodeidx = igraph_get_or_add_reg(g, indexidx64, i + inst_add);
-								[g->nodes # nodeidx].end_inst = i + inst_add;
-							}
-						}
-						else
-						{
-							nodeidx = igraph_get_or_add_reg(g, x64v_reg_get_reg([operand]), i + inst_add);
-							[g->nodes # nodeidx].end_inst = i + inst_add;
-						}
-					}
-				}
-			}
-		}
+		igraph_append_nodes_from_inst(g, inst, i);
 	}
 };
 
