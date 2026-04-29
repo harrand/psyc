@@ -83,7 +83,7 @@ lower_x64_jmp_locations : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 {
 	fnx64 ::= x64api.prog.funcs # fnidx;
-	mygraph ::= igraph_build_x64(fnx64, 0, fnx64->inst_count);
+	mygraph ::= igraph_build_func_x64(irapi.prog.funcs # fnidx, fnx64);
 	x64api.func_cursor = fnidx;
 	saved_regs : x64v mut[32] mut := zero;
 	saved_regs_count : u64 mut := 0;
@@ -99,8 +99,9 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 		{
 			// get all the registers this function clobbers
 			fnref ::= [inst->operands # 0];
-			callee ::= x64api.prog.funcs # x64v_fn_get_idx(fnref);
-			graph ::= igraph_build_x64(callee, 0, callee->inst_count);
+			call_fnidx ::= x64v_fn_get_idx(fnref);
+			callee ::= x64api.prog.funcs # call_fnidx;
+			graph ::= igraph_build_func_x64(irapi.prog.funcs # call_fnidx, callee);
 			for(j = 0; j < graph.nodes_count; j = j + 1)
 			{
 				node ::= graph.nodes # j;
@@ -111,12 +112,14 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 					regidx ::= igraph_find_reg(ref mygraph, node->reg, zero);
 					if((node->reg != x64_reg.rsp) && (regidx != ~0))
 					{
-						reg_my_side ::= [mygraph.nodes # regidx];
-						if((reg_my_side.begin_inst <= i) && (i <= reg_my_side.end_inst))
-						{
+						reg_my_side ::= mygraph.nodes # regidx;
+						// if we used it earlier and dont need it again, then its fine we dont need to save it
+						// but if we use it after this call (includingthen we need to save it
+						//if(reg_my_side->end_inst > i)
+						//{
 							[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
 							saved_regs_count = saved_regs_count + 1;
-						}
+						//}
 					}
 				}
 			}
