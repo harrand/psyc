@@ -15,6 +15,9 @@ irfunc : struct
 
 	counter : u64;
 	stack_amt : u64;
+
+	custom_name : u8?;
+	custom_name_len : u64;
 };
 
 irblk : struct
@@ -38,6 +41,12 @@ irpos : struct
 	func_cursor : u64;
 	blk_cursor : u64;
 	inst_cursor : u64;
+};
+
+irfunc_set_name : func(fn : irfunc mut?, name : u8?, name_len : u64 -> v0)
+{
+	fn->custom_name = name;
+	fn->custom_name_len = name_len;
 };
 
 irfunc_add_blk : func(fn : irfunc mut? -> irpos)
@@ -139,33 +148,45 @@ irfunc_add_return : func(fn : irfunc mut?, sz : irsz -> u64)
 	return idx;
 };
 
-bwrite_irfunc : func(w : bwriter mut?, fn : irfunc -> v0)
+bwrite_irfunc_small : func(w : bwriter mut?, fn : irfunc mut? -> v0)
 {
-	i : u64 mut;
 	bwrite_zstr(w, "$");
-	bwrite_uint(w, fn.idx);
-	bwrite_zstr(w, " : func(");
-	for(i = 0; i < fn.params_count; i = i + 1)
+	if(fn->custom_name != zero)
 	{
-		bwrite_irval_reg(w, irval_reg([fn.params # i], i));
-		if(i < (fn.params_count - 1))
+		bwrite_bytes(w, fn->custom_name, fn->custom_name_len);
+	}
+	else
+	{
+		bwrite_uint(w, fn->idx);
+	}
+};
+
+bwrite_irfunc : func(w : bwriter mut?, fn : irfunc mut? -> v0)
+{
+	bwrite_irfunc_small(w, fn);
+	i : u64 mut;
+	bwrite_zstr(w, " : func(");
+	for(i = 0; i < fn->params_count; i = i + 1)
+	{
+		bwrite_irval_reg(w, irval_reg([fn->params # i], i));
+		if(i < (fn->params_count - 1))
 		{
 			bwrite_zstr(w, ", ");
 		}
 	}
 	
 	bwrite_zstr(w, ") ");
-	bwrite_zstr(w, enumname(fn.abi));
+	bwrite_zstr(w, enumname(fn->abi));
 	bwrite_zstr(w, " -> ");
-	for(i = 0; i < fn.returns_count; i = i + 1)
+	for(i = 0; i < fn->returns_count; i = i + 1)
 	{
-		bwrite_zstr(w, enumname([fn.returns # i]));
-		if(i < (fn.returns_count - 1))
+		bwrite_zstr(w, enumname([fn->returns # i]));
+		if(i < (fn->returns_count - 1))
 		{
 			bwrite_zstr(w, ", ");
 		}
 	}
-	if(fn.returns_count == zero)
+	if(fn->returns_count == zero)
 	{
 		bwrite_zstr(w, "none");
 	}
