@@ -28,8 +28,8 @@ syscall";
 		.1 := ir_putbytes_chars;
 		.2 := ir_putbytes_count;
 	};
-	ir_call_asm(write_syscall, ir_putbytes_underlying_call_params # 0, countof typeof(ir_putbytes_underlying_call_params), zero);
-	ir_ret0(zero);
+	ir_call_asm(write_syscall, ir_putbytes_underlying_call_params # 0, countof typeof(ir_putbytes_underlying_call_params));
+	ir_ret0();
 
 	helloworld_strlen ::= 12;
 	helloworld_str ::= ir_add_glob("hello world
@@ -37,53 +37,53 @@ syscall";
 
 	ir_putuint ::= ir_add_empty_func(irabi.psy);
 	ir_putuint_v ::= ir_add_param(irsz.q);
-	i_is_two_digits ::= ir_cmp_ugt(ir_putuint_v, irval_qimm(9), zero);
+	i_is_two_digits ::= ir_cmp_ugt(ir_putuint_v, irval_qimm(9));
 
 	true_blk ::= ir_add_blk();
 	false_blk ::= ir_add_blk();
 
 	ir_set_pos(ir_putuint);
-	ir_jmpif0(i_is_two_digits, true_blk, false_blk, zero);
+	ir_jmpif0(i_is_two_digits, true_blk, false_blk);
 
 	ir_set_pos(true_blk);
-	recursive_call_params ::= ir_udiv(ir_putuint_v, irval_qimm(10), zero);
-	ir_call_fn(ir_putuint, ref recursive_call_params, 1, zero, zero);
-	ir_jmp0(false_blk, zero);
+	recursive_call_params ::= ir_udiv(ir_putuint_v, irval_qimm(10));
+	ir_call_fn(ir_putuint, ref recursive_call_params, 1, zero);
+	ir_jmp0(false_blk);
 
 	ir_set_pos(false_blk);
-	paramptr ::= ir_stack(irval_qimm(1), irval_qimm(1), zero);
-	digit ::= ir_sub(ir_putuint_v, ir_umul(ir_udiv(ir_putuint_v, irval_qimm(10), zero), irval_qimm(10), zero), zero);
-	ir_store(ir_trunc(irsz.b, ir_add(irval_qimm('0'), digit, zero), zero), paramptr, zero, zero, zero, zero);
+	paramptr ::= ir_stack(irval_qimm(1), irval_qimm(1));
+	digit ::= ir_sub(ir_putuint_v, ir_umul(ir_udiv(ir_putuint_v, irval_qimm(10)), irval_qimm(10)));
+	ir_store(ir_trunc(irsz.b, ir_add(irval_qimm('0'), digit)), paramptr, zero, zero, zero);
 	putbytes_params ::= irval[2]
 	{
 		.0 := paramptr;
 		.1 := irval_qimm(1);
 	};
-	ir_call_fn(ir_putbytes, putbytes_params # 0, countof typeof(putbytes_params), zero, zero);
-	ir_ret0(zero);
+	ir_call_fn(ir_putbytes, putbytes_params # 0, countof typeof(putbytes_params), zero);
+	ir_ret0();
 
 	// main func
 	ir_main ::= ir_add_empty_func(irabi.psy);
-	counter_ptr ::= ir_stack(irval_qimm(8), irval_qimm(1), zero);
-	ir_store(irval_qimm(0), counter_ptr, zero, zero, zero, zero);
+	counter_ptr ::= ir_stack(irval_qimm(8), irval_qimm(1));
+	ir_store(irval_qimm(0), counter_ptr, zero, zero, zero);
 
 	iter_blk ::= ir_add_blk();
 	end_blk ::= ir_add_blk();
 	ir_set_pos(ir_main);
-	ir_jmp0(iter_blk, zero);
+	ir_jmp0(iter_blk);
 	ir_set_pos(iter_blk);
 
-	v ::= ir_load(irsz.q, counter_ptr, zero, zero, zero, zero);
+	v ::= ir_load(irsz.q, counter_ptr, zero, zero, zero);
 	putuint_call_params ::= irval[1]
 	{
-		.0 := ir_umul(v, v, zero);
+		.0 := ir_umul(v, v);
 	};
 	
-	v_add_1 ::= ir_add(v, irval_qimm(1), zero);
-	ir_store(v_add_1, counter_ptr, zero, zero, zero, zero);
-	ir_call_fn(ir_putuint, putuint_call_params # 0, countof typeof(putuint_call_params), zero, zero);
-	cond ::= ir_cmp_ult(v_add_1, irval_qimm(10), zero);
-	ir_jmpif0(cond, iter_blk, end_blk, zero);
+	v_add_1 ::= ir_add(v, irval_qimm(1));
+	ir_store(v_add_1, counter_ptr, zero, zero, zero);
+	ir_call_fn(ir_putuint, putuint_call_params # 0, countof typeof(putuint_call_params), zero);
+	cond ::= ir_cmp_ult(v_add_1, irval_qimm(10));
+	ir_jmpif0(cond, iter_blk, end_blk);
 
 	ir_set_pos(end_blk);
 
@@ -93,8 +93,8 @@ mov rdi, $0
 syscall";
 	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
 	exitcode ::= irval_dimm(0);
-	ir_call_asm(exit_syscall, ref exitcode, 1, zero);
-	ir_unreachable(zero);
+	ir_call_asm(exit_syscall, ref exitcode, 1);
+	ir_unreachable();
 
 	ir_set_entrypoint(ir_main);
 

@@ -1,4 +1,4 @@
-ir_stack : func(size : irval, align : irval, source : ast mut? -> irval)
+ir_stack : func(size : irval, align : irval -> irval)
 {
 	ptrout ::= ir_new_reg_of(irsz_ptr);
 	fn ::= ir_current_func();
@@ -13,7 +13,6 @@ ir_stack : func(size : irval, align : irval, source : ast mut? -> irval)
 			.2 := align;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return ptrout;
@@ -34,7 +33,7 @@ ir_stack_get_align : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : irval, source : ast mut? -> irval)
+ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : irval -> irval)
 {
 	// outreg = load base + (index * scale)
 	// very similar to a memory operand. everything but 'base' is optional
@@ -51,7 +50,6 @@ ir_load : func(outsz : irsz, base : irval, index : irval, scale : irval, disp : 
 			.4 := disp;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
@@ -82,7 +80,7 @@ ir_load_get_disp : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 4);
 };
 
-ir_store : func(v : irval, base : irval, index : irval, scale : irval, disp : irval, source : ast mut? -> v0)
+ir_store : func(v : irval, base : irval, index : irval, scale : irval, disp : irval -> v0)
 {
 	// store v into [base + (index * scale)]
 	// very similar to a memory operand. everything but 'base' is optional
@@ -98,7 +96,6 @@ ir_store : func(v : irval, base : irval, index : irval, scale : irval, disp : ir
 			.4 := disp;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 };
@@ -128,12 +125,11 @@ ir_store_get_disp : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 4);
 };
 
-ir_ret : func(retvals : irval mut?, retvals_count : u64, source : ast mut? -> v0)
+ir_ret : func(retvals : irval mut?, retvals_count : u64 -> v0)
 {
 	inst ::= irinst mut
 	{
 		.tag := irinst_tag.ret;
-		.source := source;
 		... := zero;
 	};
 	i : u64 mut;
@@ -154,35 +150,35 @@ ir_ret_get_value : func(inst : irinst mut?, idx : u64 -> irval mut?)
 	return irinst_get_operand([inst], 0 + idx);
 };
 
-ir_ret0 : func(source : ast mut? -> v0)
+ir_ret0 : func(-> v0)
 {
-	ir_ret(zero, zero, source);
+	ir_ret(zero, zero);
 };
 
-ir_ret1 : func(r1 : irval, source : ast mut? -> v0)
+ir_ret1 : func(r1 : irval -> v0)
 {
-	ir_ret(ref r1, 1, source);
+	ir_ret(ref r1, 1);
 };
 
-ir_ret2 : func(r1 : irval, r2 : irval, source : ast mut? -> v0)
+ir_ret2 : func(r1 : irval, r2 : irval -> v0)
 {
 	arr ::= irval[2]{.0 := r1; .1 := r2;};
-	ir_ret(arr # 0, countof typeof(arr), source);
+	ir_ret(arr # 0, countof typeof(arr));
 };
 
-ir_ret3 : func(r1 : irval, r2 : irval, r3 : irval, source : ast mut? -> v0)
+ir_ret3 : func(r1 : irval, r2 : irval, r3 : irval -> v0)
 {
 	arr ::= irval[3]{.0 := r1; .1 := r2; .2 := r3;};
-	ir_ret(arr # 0, countof typeof(arr), source);
+	ir_ret(arr # 0, countof typeof(arr));
 };
 
-ir_ret4 : func(r1 : irval, r2 : irval, r3 : irval, r4 : irval, source : ast mut? -> v0)
+ir_ret4 : func(r1 : irval, r2 : irval, r3 : irval, r4 : irval -> v0)
 {
 	arr ::= irval[4]{.0 := r1; .1 := r2; .2 := r3; .3 := r4;};
-	ir_ret(arr # 0, countof typeof(arr), source);
+	ir_ret(arr # 0, countof typeof(arr));
 };
 
-ir_jmp : func(blk : irpos, params : irval mut?, params_count : u64, source : ast mut? -> v0)
+ir_jmp : func(blk : irpos, params : irval mut?, params_count : u64 -> v0)
 {
 	inst ::= irinst mut
 	{
@@ -192,7 +188,6 @@ ir_jmp : func(blk : irpos, params : irval mut?, params_count : u64, source : ast
 			.0 := irval_blkref(blk);
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	};
 	i : u64 mut;
@@ -218,35 +213,35 @@ ir_jmp_get_param : func(inst : irinst mut?, idx : u64 -> irval mut?)
 	return irinst_get_operand([inst], 1 + idx);
 };
 
-ir_jmp0 : func(blk : irpos, source : ast mut? -> v0)
+ir_jmp0 : func(blk : irpos -> v0)
 {
-	ir_jmp(blk, zero, zero, source);
+	ir_jmp(blk, zero, zero);
 };
 
-ir_jmp1 : func(blk : irpos, p1 : irval, source : ast mut? -> v0)
+ir_jmp1 : func(blk : irpos, p1 : irval -> v0)
 {
-	ir_jmp(blk, ref p1, 1, source);
+	ir_jmp(blk, ref p1, 1);
 };
 
-ir_jmp2 : func(blk : irpos, p1 : irval, p2 : irval, source : ast mut? -> v0)
+ir_jmp2 : func(blk : irpos, p1 : irval, p2 : irval -> v0)
 {
 	arr ::= irval[2]{.0 := p1; .1 := p2;};
-	ir_jmp(blk, arr # 0, countof typeof(arr), source);
+	ir_jmp(blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmp3 : func(blk : irpos, p1 : irval, p2 : irval, p3 : irval, source : ast mut? -> v0)
+ir_jmp3 : func(blk : irpos, p1 : irval, p2 : irval, p3 : irval -> v0)
 {
 	arr ::= irval[3]{.0 := p1; .1 := p2; .2 := p3;};
-	ir_jmp(blk, arr # 0, countof typeof(arr), source);
+	ir_jmp(blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmp4 : func(blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval, source : ast mut? -> v0)
+ir_jmp4 : func(blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval -> v0)
 {
 	arr ::= irval[4]{.0 := p1; .1 := p2; .2 := p3; .3 := p4;};
-	ir_jmp(blk, arr # 0, countof typeof(arr), source);
+	ir_jmp(blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif : func(cond : irval, true_blk : irpos, false_blk : irpos, params : irval mut?, params_count : u64, source : ast mut? -> v0)
+ir_jmpif : func(cond : irval, true_blk : irpos, false_blk : irpos, params : irval mut?, params_count : u64 -> v0)
 {
 	inst ::= irinst mut
 	{
@@ -258,7 +253,6 @@ ir_jmpif : func(cond : irval, true_blk : irpos, false_blk : irpos, params : irva
 			.2 := irval_blkref(false_blk);
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	};
 	i : u64 mut;
@@ -294,35 +288,35 @@ ir_jmpif_get_param : func(inst : irinst mut?, idx : u64 -> irval mut?)
 	return irinst_get_operand([inst], 3 + idx);
 };
 
-ir_jmpif0 : func(cond : irval, true_blk : irpos, false_blk : irpos, source : ast mut? -> v0)
+ir_jmpif0 : func(cond : irval, true_blk : irpos, false_blk : irpos -> v0)
 {
-	ir_jmpif(cond, true_blk, false_blk, zero, zero, source);
+	ir_jmpif(cond, true_blk, false_blk, zero, zero);
 };
 
-ir_jmpif1 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, source : ast mut? -> v0)
+ir_jmpif1 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval -> v0)
 {
-	ir_jmpif(cond, true_blk, false_blk, ref p1, 1, source);
+	ir_jmpif(cond, true_blk, false_blk, ref p1, 1);
 };
 
-ir_jmpif2 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, source : ast mut? -> v0)
+ir_jmpif2 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval -> v0)
 {
 	arr ::= irval[2]{.0 := p1; .1 := p2;};
-	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr), source);
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif3 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval, source : ast mut? -> v0)
+ir_jmpif3 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval -> v0)
 {
 	arr ::= irval[3]{.0 := p1; .1 := p2; .2 := p3;};
-	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr), source);
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
-ir_jmpif4 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval, source : ast mut? -> v0)
+ir_jmpif4 : func(cond : irval, true_blk : irpos, false_blk : irpos, p1 : irval, p2 : irval, p3 : irval, p4 : irval -> v0)
 {
 	arr ::= irval[4]{.0 := p1; .1 := p2; .2 := p3; .3 := p4;};
-	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr), source);
+	ir_jmpif(cond, true_blk, false_blk, arr # 0, countof typeof(arr));
 };
 
-ir_zex : func(outsz : irsz, num : irval, source : ast mut? -> irval)
+ir_zex : func(outsz : irsz, num : irval -> irval)
 {
 	out ::= ir_new_reg_of(outsz);
 	ir_add_instruction(irinst
@@ -334,7 +328,6 @@ ir_zex : func(outsz : irsz, num : irval, source : ast mut? -> irval)
 			.1 := num;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
@@ -350,7 +343,7 @@ ir_zex_get_in : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 1);
 };
 
-ir_sex : func(outsz : irsz, num : irval, source : ast mut? -> irval)
+ir_sex : func(outsz : irsz, num : irval -> irval)
 {
 	out ::= ir_new_reg_of(outsz);
 	ir_add_instruction(irinst
@@ -362,7 +355,6 @@ ir_sex : func(outsz : irsz, num : irval, source : ast mut? -> irval)
 			.1 := num;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
@@ -378,7 +370,7 @@ ir_sex_get_in : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 1);
 };
 
-ir_trunc : func(outsz : irsz, num : irval, source : ast mut? -> irval)
+ir_trunc : func(outsz : irsz, num : irval -> irval)
 {
 	out ::= ir_new_reg_of(outsz);
 	ir_add_instruction(irinst
@@ -390,7 +382,6 @@ ir_trunc : func(outsz : irsz, num : irval, source : ast mut? -> irval)
 			.1 := num;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
@@ -406,7 +397,7 @@ ir_trunc_get_in : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 1);
 };
 
-ir_cvtf : func(outsz : irsz, num : irval, source : ast mut? -> irval)
+ir_cvtf : func(outsz : irsz, num : irval -> irval)
 {
 	out ::= ir_new_reg_of(outsz);
 	ir_add_instruction(irinst
@@ -418,7 +409,6 @@ ir_cvtf : func(outsz : irsz, num : irval, source : ast mut? -> irval)
 			.1 := num;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
@@ -434,7 +424,7 @@ ir_cvtf_get_in : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 1);
 };
 
-ir_cvti : func(outsz : irsz, num : irval, source : ast mut? -> irval)
+ir_cvti : func(outsz : irsz, num : irval -> irval)
 {
 	out ::= ir_new_reg_of(outsz);
 	ir_add_instruction(irinst
@@ -446,13 +436,12 @@ ir_cvti : func(outsz : irsz, num : irval, source : ast mut? -> irval)
 			.1 := num;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
 };
 
-ir_biop : func(tag : irinst_tag, lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_biop : func(tag : irinst_tag, lhs : irval, rhs : irval -> irval)
 {
 	out ::= ir_new_reg_of(irval_get_irsz(lhs));
 	ir_add_instruction(irinst
@@ -465,15 +454,14 @@ ir_biop : func(tag : irinst_tag, lhs : irval, rhs : irval, source : ast mut? -> 
 			.2 := rhs;
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	});
 	return out;
 };
 
-ir_add : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_add : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.add, lhs, rhs, source);
+	return ir_biop(irinst_tag.add, lhs, rhs);
 };
 
 ir_add_get_out : func(inst : irinst mut? -> irval mut?)
@@ -491,9 +479,9 @@ ir_add_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_sub : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_sub : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.sub, lhs, rhs, source);
+	return ir_biop(irinst_tag.sub, lhs, rhs);
 };
 
 ir_sub_get_out : func(inst : irinst mut? -> irval mut?)
@@ -511,9 +499,9 @@ ir_sub_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_umul : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_umul : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.umul, lhs, rhs, source);
+	return ir_biop(irinst_tag.umul, lhs, rhs);
 };
 
 ir_umul_get_out : func(inst : irinst mut? -> irval mut?)
@@ -531,9 +519,9 @@ ir_umul_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_smul : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_smul : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.smul, lhs, rhs, source);
+	return ir_biop(irinst_tag.smul, lhs, rhs);
 };
 
 ir_smul_get_out : func(inst : irinst mut? -> irval mut?)
@@ -551,9 +539,9 @@ ir_smul_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_udiv : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_udiv : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.udiv, lhs, rhs, source);
+	return ir_biop(irinst_tag.udiv, lhs, rhs);
 };
 
 ir_udiv_get_out : func(inst : irinst mut? -> irval mut?)
@@ -571,9 +559,9 @@ ir_udiv_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_sdiv : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_sdiv : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.sdiv, lhs, rhs, source);
+	return ir_biop(irinst_tag.sdiv, lhs, rhs);
 };
 
 ir_sdiv_get_out : func(inst : irinst mut? -> irval mut?)
@@ -591,9 +579,9 @@ ir_sdiv_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_mod : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_mod : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.mod, lhs, rhs, source);
+	return ir_biop(irinst_tag.mod, lhs, rhs);
 };
 
 ir_mod_get_out : func(inst : irinst mut? -> irval mut?)
@@ -611,9 +599,9 @@ ir_mod_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_fadd : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_fadd : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.fadd, lhs, rhs, source);
+	return ir_biop(irinst_tag.fadd, lhs, rhs);
 };
 
 ir_fadd_get_out : func(inst : irinst mut? -> irval mut?)
@@ -631,9 +619,9 @@ ir_fadd_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_fsub : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_fsub : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.fsub, lhs, rhs, source);
+	return ir_biop(irinst_tag.fsub, lhs, rhs);
 };
 
 ir_fsub_get_out : func(inst : irinst mut? -> irval mut?)
@@ -651,9 +639,9 @@ ir_fsub_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_fmul : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_fmul : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.fmul, lhs, rhs, source);
+	return ir_biop(irinst_tag.fmul, lhs, rhs);
 };
 
 ir_fmul_get_out : func(inst : irinst mut? -> irval mut?)
@@ -671,9 +659,9 @@ ir_fmul_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_fdiv : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_fdiv : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.fdiv, lhs, rhs, source);
+	return ir_biop(irinst_tag.fdiv, lhs, rhs);
 };
 
 ir_fdiv_get_out : func(inst : irinst mut? -> irval mut?)
@@ -691,9 +679,9 @@ ir_fdiv_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_fmod : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_fmod : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.fmod, lhs, rhs, source);
+	return ir_biop(irinst_tag.fmod, lhs, rhs);
 };
 
 ir_fmod_get_out : func(inst : irinst mut? -> irval mut?)
@@ -711,9 +699,9 @@ ir_fmod_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_xor : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_xor : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.xor, lhs, rhs, source);
+	return ir_biop(irinst_tag.xor, lhs, rhs);
 };
 
 ir_xor_get_out : func(inst : irinst mut? -> irval mut?)
@@ -731,9 +719,9 @@ ir_xor_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_or : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_or : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.or, lhs, rhs, source);
+	return ir_biop(irinst_tag.or, lhs, rhs);
 };
 
 ir_or_get_out : func(inst : irinst mut? -> irval mut?)
@@ -751,9 +739,9 @@ ir_or_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_and : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_and : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.and, lhs, rhs, source);
+	return ir_biop(irinst_tag.and, lhs, rhs);
 };
 
 ir_and_get_out : func(inst : irinst mut? -> irval mut?)
@@ -771,9 +759,9 @@ ir_and_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_shl : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_shl : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.shl, lhs, rhs, source);
+	return ir_biop(irinst_tag.shl, lhs, rhs);
 };
 
 ir_shl_get_out : func(inst : irinst mut? -> irval mut?)
@@ -791,9 +779,9 @@ ir_shl_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_ushr : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_ushr : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.ushr, lhs, rhs, source);
+	return ir_biop(irinst_tag.ushr, lhs, rhs);
 };
 
 ir_ushr_get_out : func(inst : irinst mut? -> irval mut?)
@@ -811,9 +799,9 @@ ir_ushr_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_sshr : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_sshr : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_biop(irinst_tag.sshr, lhs, rhs, source);
+	return ir_biop(irinst_tag.sshr, lhs, rhs);
 };
 
 ir_sshr_get_out : func(inst : irinst mut? -> irval mut?)
@@ -831,7 +819,7 @@ ir_sshr_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_cmp_generic : func(tag : irinst_tag, lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_generic : func(tag : irinst_tag, lhs : irval, rhs : irval -> irval)
 {
 	out ::= ir_new_reg_of(irsz.b);
 	ir_add_instruction(irinst
@@ -849,9 +837,9 @@ ir_cmp_generic : func(tag : irinst_tag, lhs : irval, rhs : irval, source : ast m
 	return out;
 };
 
-ir_cmp_eq : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_eq : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_eq, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_eq, lhs, rhs);
 };
 
 ir_cmp_get_out : func(inst : irinst mut? -> irval mut?)
@@ -869,72 +857,72 @@ ir_cmp_get_rhs : func(inst : irinst mut? -> irval mut?)
 	return irinst_get_operand([inst], 2);
 };
 
-ir_cmp_ne : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_ne : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_ne, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_ne, lhs, rhs);
 };
 
-ir_cmp_slt : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_slt : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_slt, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_slt, lhs, rhs);
 };
 
-ir_cmp_sle : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_sle : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_sle, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_sle, lhs, rhs);
 };
 
-ir_cmp_sgt : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_sgt : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_sgt, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_sgt, lhs, rhs);
 };
 
-ir_cmp_sge : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_sge : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_sge, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_sge, lhs, rhs);
 };
 
-ir_cmp_ult : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_ult : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_ult, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_ult, lhs, rhs);
 };
 
-ir_cmp_ule : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_ule : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_ule, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_ule, lhs, rhs);
 };
 
-ir_cmp_ugt : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_ugt : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_ugt, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_ugt, lhs, rhs);
 };
 
-ir_cmp_uge : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_uge : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_uge, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_uge, lhs, rhs);
 };
 
-ir_cmp_flt : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_flt : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_flt, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_flt, lhs, rhs);
 };
 
-ir_cmp_fle : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_fle : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_fle, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_fle, lhs, rhs);
 };
 
-ir_cmp_fgt : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_fgt : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_fgt, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_fgt, lhs, rhs);
 };
 
-ir_cmp_fge : func(lhs : irval, rhs : irval, source : ast mut? -> irval)
+ir_cmp_fge : func(lhs : irval, rhs : irval -> irval)
 {
-	return ir_cmp_generic(irinst_tag.cmp_fge, lhs, rhs, source);
+	return ir_cmp_generic(irinst_tag.cmp_fge, lhs, rhs);
 };
 
-ir_call : func(callee : irval, params : irval mut?, params_count : u64, returns_sz : irsz mut?, returns_out : irval mut?, returns_count : u64, source : ast mut? -> v0)
+ir_call : func(callee : irval, params : irval mut?, params_count : u64, returns_sz : irsz mut?, returns_out : irval mut?, returns_count : u64 -> v0)
 {
 	inst ::= irinst mut
 	{
@@ -944,7 +932,6 @@ ir_call : func(callee : irval, params : irval mut?, params_count : u64, returns_
 			.0 := irval_qimm(returns_count);
 			... := zero;
 		};
-		.source := source;
 		... := zero;
 	};
 
@@ -990,46 +977,44 @@ ir_call_get_param : func(call : irinst mut?, idx : u64 -> irval mut?)
 	return irinst_get_operand([call], returns_count + 2 + idx);
 };
 
-ir_call_fn : func(callee : irpos, params : irval mut?, params_count : u64, returns_out : irval mut?, source : ast mut? -> v0)
+ir_call_fn : func(callee : irpos, params : irval mut?, params_count : u64, returns_out : irval mut? -> v0)
 {
 	fnref ::= irval_funcref(callee);
 	fn ::= ir_ref_func(fnref);
-	ir_call(fnref, params, params_count, fn->returns, returns_out, fn->returns_count, source);
+	ir_call(fnref, params, params_count, fn->returns, returns_out, fn->returns_count);
 };
 
-ir_call_asm : func(callee : irval, params : irval mut?, params_count : u64, source : ast mut? -> irval)
+ir_call_asm : func(callee : irval, params : irval mut?, params_count : u64 -> irval)
 {
 	as ::= ir_ref_asm(callee);
 	out : irval mut;
 	if(as->ret == zero)
 	{
-		ir_call(callee, params, params_count, zero, zero, 0, source);
+		ir_call(callee, params, params_count, zero, zero, 0);
 	}
 	else
 	{
-		ir_call(callee, params, params_count, ref(as->ret), ref out, 1, source);
+		ir_call(callee, params, params_count, ref(as->ret), ref out, 1);
 	}
 	return out;
 };
 
-ir_brk : func(source : ast? -> v0)
+ir_brk : func(-> v0)
 {
 	ir_add_instruction(irinst
 	{
 		.tag := irinst_tag.brk;
 		.operands := zero;
-		.source := source;
 		... := zero;
 	});
 };
 
-ir_unreachable : func(source : ast? -> v0)
+ir_unreachable : func(-> v0)
 {
 	ir_add_instruction(irinst
 	{
 		.tag := irinst_tag.unreachable;
 		.operands := zero;
-		.source := source;
 		... := zero;
 	});
 };
