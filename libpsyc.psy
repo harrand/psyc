@@ -36,12 +36,15 @@
 
 prog : program mut := zero;
 
+// stores long-running things
 global_arena_val : arena mut := zero;
 global_arena : arena mut? mut := zero;
-
-// stores strings
+// stores long-running strings
 string_arena_val : arena mut := zero;
 string_arena : arena mut? mut := zero;
+// stores short-lived things
+scratch_arena_val : arena mut := zero;
+scratch_arena : arena mut? mut := zero;
 
 argc : s32 mut := zero;
 argv : u8?? mut := zero;
@@ -56,6 +59,10 @@ setup_arenas : func( -> v0)
 	string_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
 	string_arena = ref string_arena_val;
 	arena_auto_align(string_arena, 1);
+
+	scratch_arena_val = arena_create_virtual_reserve(arena_default_reserve, 4096 * 1024);
+	scratch_arena = ref scratch_arena_val;
+	arena_auto_align(scratch_arena, 1);
 };
 
 destroy_arenas : func( -> v0)
@@ -65,6 +72,8 @@ destroy_arenas : func( -> v0)
 
 	print_arena_summary(string_arena, "string");
 	arena_destroy(string_arena);
+
+	arena_destroy(scratch_arena);
 };
 
 print_arena_summary : func(a : arena mut?, name : u8? -> v0)
