@@ -22,6 +22,10 @@ program : struct
 	debug_symbols : bool;
 	optimization : program_optimization;
 
+	source_files : source_file mut?;
+	source_files_count : u64;
+	source_files_cap : u64;
+
 	cwds : u8 mut? mut?;
 	cwds_count : u64;
 	cwds_cap : u64;
@@ -96,7 +100,9 @@ program_push_cwd : func(cwd : u8? -> v0)
 		prog.cwds_cap = prog.cwds_cap * 2;
 		prog.cwds = arena_alloc(global_arena, prog.cwds_cap * sizeof typeof([prog.cwds # 0]));
 	}
-	[prog.cwds # prog.cwds_count] = cwd;
+	idx ::= prog.cwds_count;
+	[prog.cwds # idx] = cwd;
+	prog.cwds_count = idx + 1;
 	directory_set_cwdz(cwd);
 };
 
@@ -104,4 +110,29 @@ program_pop_cwd : func(-> v0)
 {
 	prog.cwds_count = prog.cwds_count - 1;
 	directory_set_cwdz([prog.cwds # prog.cwds_count]);
+};
+
+program_add_source_file : func(src : source_file -> u64)
+{
+	if(prog.source_files == zero)
+	{
+		prog.source_files_cap = 8;
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof typeof([prog.source_files # 0]));
+	}
+	while(prog.source_files_count >= prog.source_files_cap)
+	{
+		oldcap ::= prog.source_files_cap;
+		olddata ::= prog.source_files;
+		prog.source_files_cap = prog.source_files_cap * 2;
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof typeof([prog.source_files # 0]));
+	}
+	idx ::= prog.source_files_count;
+	[prog.source_files # idx] = src;
+	prog.source_files_count = idx + 1;
+	return idx;
+};
+
+program_get_source_file : func(fileid : u64 -> source_file mut?)
+{
+	return prog.source_files # fileid;
 };

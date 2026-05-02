@@ -10,8 +10,8 @@ compile_program : func(-> v0)
 
 	config ::= prog.compile_args.build_config;
 
-	//add_build_file_to_compilation(prog.compile_args.build_file, config, zstrlen(config), zero, zero);
-	// todo: more source files/build files
+	default_config ::= "default";
+	psyc_add_build_file(args->build_file, default_config, zstrlen(default_config));
 
 	if(!directory_exists(args->output_dir))
 	{
@@ -25,4 +25,36 @@ compile_program : func(-> v0)
 	putchar(13);
 	//codegen();
 	directory_set_cwd(cwd, cwdlen, string_arena);
+};
+
+psyc_add_source_file : func(path : u8? -> ast)
+{
+	file ::= fully_read_file(path);
+	fileid ::= program_add_source_file(file);
+
+	tokens ::= lex(file);
+	return parse(file, ref tokens);
+};
+
+psyc_add_build_file : func(path : u8?, config : u8?, config_len : u64 -> ast)
+{
+	file_node ::= psyc_add_source_file(path);
+	region_node ::= find_build_region(ref file_node, config, config_len);
+	if(region_node == zero)
+	{
+		// couldnt find build region :(
+		psyc_error_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" had no build region named ");
+		putchar('"');
+		putbytes(config, config_len);
+		putchar('"');
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	do_buildmeta(region_node);
+	return file_node;
 };
