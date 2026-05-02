@@ -172,9 +172,9 @@ ast_literal : struct
 	tag : ast_literal_tag;
 	integer : s64;
 	floating_point : f64;
-	// both for char and string literal (escaped char literals have more than 1 char in source for example)
-	chars : u8 mut?;
-	chars_len : u64;
+	char : u8;
+	string : u8?;
+	string_len : u64;
 	boolean : bool;
 };
 
@@ -756,13 +756,16 @@ ast_print_expr_part : func(n : ast -> v0)
 		}
 		if(n.literal.tag == (ast_literal_tag.char))
 		{
-			putzstr(".");
-			putbytes(n.literal.chars, n.literal.chars_len);
+			putzstr(".'");
+			putchar(n.literal.char);
+			putzstr("' (");
+			putuint(n.literal.char);
+			putzstr(")");
 		}
 		if(n.literal.tag == (ast_literal_tag.string))
 		{
 			putzstr(".");
-			putbytes(n.literal.chars, n.literal.chars_len);
+			putbytes(n.literal.string, n.literal.string_len);
 		}
 		if(n.literal.tag == (ast_literal_tag.boolean))
 		{
@@ -999,4 +1002,8 @@ interpret_numeric_literal : func(src : u8?, lexeme : lex_slice -> ast_literal)
 	}
 
 	return ret;
+};
+
+util_escape_string_or_char_literal : func(str : u8?, str_len : u64, out_str : u8 mut? mut?, out_str_len : u64 mut? -> v0)
+{
 };

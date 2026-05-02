@@ -101,6 +101,14 @@ rule_token_numeric_literal2literal_expr : func(nodes : ast mut?, nodes_count : u
 rule_token_char_literal2literal_expr : func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+
+	out_str : u8 mut? mut;
+	out_str_len : u64 mut;
+	util_escape_string_or_char_literal(parse_state.src # lexeme.off, lexeme.len, ref out_str, ref out_str_len);
+	if(out_str_len != 1)
+	{
+		// todo: error out for char being more than one character
+	}
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -111,8 +119,7 @@ rule_token_char_literal2literal_expr : func(nodes : ast mut?, nodes_count : u64 
 			.literal := ast_literal
 			{
 				.tag := ast_literal_tag.char;
-				.chars := parse_state.src # (lexeme.off);
-				.chars_len := lexeme.len;
+				.char := [out_str # 0];
 			};
 			.children := zero;
 			.children_count := zero;
@@ -124,6 +131,9 @@ rule_token_char_literal2literal_expr : func(nodes : ast mut?, nodes_count : u64 
 rule_token_string_literal2literal_expr : func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	lexeme ::= (nodes # 0)->utok.tok.lexeme;
+	out_str : u8 mut? mut;
+	out_str_len : u64 mut;
+	util_escape_string_or_char_literal(parse_state.src # lexeme.off, lexeme.len, ref out_str, ref out_str_len);
 	return rule_result
 	{
 		.tag := rule.reduce;
@@ -134,8 +144,8 @@ rule_token_string_literal2literal_expr : func(nodes : ast mut?, nodes_count : u6
 			.literal := ast_literal
 			{
 				.tag := ast_literal_tag.string;
-				.chars := parse_state.src # (lexeme.off);
-				.chars_len := lexeme.len;
+				.string := out_str;
+				.string_len := out_str_len;
 			};
 			.children := zero;
 			.children_count := zero;
