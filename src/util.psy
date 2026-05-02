@@ -1,3 +1,43 @@
+// read a file path. allocates for the whole file data. returns zero if file didnt exist.
+fully_read_file : func(path : u8? -> source_file)
+{
+	if(!file_exists(path))
+	{
+		psyc_error_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" could not be located (cwd: ");
+		cwd : u8? mut;
+		cwdlen : u64 mut;
+		directory_get_cwd(ref cwd, ref cwdlen, global_arena);
+		putbytes(cwd, cwdlen);
+		putzstr(")");
+		psyc_diag_end();
+		psyc_exit_failure();
+	}
+	len ::= file_size_bytes(path);
+	if(len == 0)
+	{
+		psyc_warning_begin(zero);
+		putzstr("file ");
+		putchar('"');
+		putzstr(path);
+		putchar('"');
+		putzstr(" exists but is empty");
+		psyc_diag_end();
+	}
+	data : u8 mut? := arena_alloc(string_arena, len + 1);
+	file_read(path, data, len);
+	[data # len] = 0;
+	return source_file
+	{
+		.src := data;
+		.path := path;
+	};
+};
+
 isdigit : func(ch : u8 -> bool)
 {
 	return (ch >= '0') && (ch <= '9');
@@ -112,4 +152,55 @@ bytes_parse_literal : func(src : u8?, len : u64 -> ast_literal)
 
 util_escape_string_or_char_literal : func(str : u8?, str_len : u64, out_str : u8 mut? mut?, out_str_len : u64 mut? -> v0)
 {
+	backslash_char ::= 92;
+	cr_char ::= 13;
+	lf_char ::= 10;
+	tab_char ::= 9;
+	null_char ::= 0;
+	// obviously the output string must be <= str_len so we allocate that much as a worst-case
+	[out_str] = arena_alloc(string_arena, str_len);
+	i : u64 mut := 0;
+	j : u64 mut := 0;
+	while(i < str_len)
+	{
+		if(([str # i] == backslash_char) && ((i + 1) < str_len))
+		{
+			i = i + 1;
+			if([str # i] == 'n')
+			{
+				[[out_str] # j] = lf_char;
+				j = j + 1;
+			}
+			if([str # i] == 'r')
+			{
+				[[out_str] # j] = cr_char;
+				j = j + 1;
+			}
+			if([str # i] == 't')
+			{
+				[[out_str] # j] = tab_char;
+				j = j + 1;
+			}
+			if([str # i] == '0')
+			{
+				[[out_str] # j] = null_char;
+				j = j + 1;
+			}
+			if([str # i] == backslash_char)
+			{
+				[[out_str] # j] = backslash_char;
+				j = j + 1;
+			}
+			i = i + 1;
+			// todo: handle unrecognised escape in a sensible way (currently we are just gonna leave them in there)
+		}
+		else
+		{
+			[[out_str] # j] = [str # i];
+			j = j + 1;
+			i = i + 1;
+		}
+	}
+
+	[out_str_len] = j;
 };
