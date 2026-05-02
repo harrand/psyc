@@ -37,7 +37,25 @@ progwalk_function : func(func_node : ast mut? -> v0)
 
 progwalk_structure : func(struct_node : ast mut? -> v0)
 {
-	scope_add_structure(ref prog.global_scope, struct_node);
+	details ::= struct_node->structure;
+	data ::= scope_add_structure(ref prog.global_scope, struct_node);
+	// we know enough to precreate the struct type buffers and wrap it (so we have a tyid now that can be referenced by others even though we havent generated its typeinfo yet)
+	memcount ::= struct_node->children_count;
+	unfinished_type ::= ty_wrap(ty
+	{
+		.tag := tytag.strct;
+		.name := details.name;
+		.name_len := details.name_len;
+		.strct := structty
+		{
+			.members := arena_alloc(global_arena, memcount * sizeof typeof([structty{}.members # 0]));
+			.member_names := arena_alloc(global_arena, memcount * sizeof typeof([structty{}.member_names # 0]));
+			.member_name_lens := arena_alloc(global_arena, memcount * sizeof typeof([structty{}.member_name_lens # 0]));
+			.members_count := memcount;
+			.node := struct_node;
+		};
+
+	}, zero);
 };
 
 progwalk_global_variable : func(var_node : ast mut? -> v0)
