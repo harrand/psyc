@@ -1,0 +1,95 @@
+scope : struct
+{
+	funcs : function mut?;
+	funcs_count : u64;
+	funcs_cap : u64;
+
+	vars : variable;
+	vars_count : u64;
+	vars_cap : u64;
+};
+
+variable : struct
+{
+	node : ast mut?;
+	type : tyid;
+	// if this variable is a parameter to a parent function, this is the param idx.
+	// if its not a param, then this is -1
+	param_idx : u64;
+};
+
+structure : struct
+{
+	node : ast mut?;
+	type : tyid;
+};
+
+function : struct
+{
+	node : ast mut?;
+	type : tyid;
+	name : u8?;
+	name_len : u64;
+};
+
+enumeration : struct
+{
+	node : ast mut?;
+	type : tyid;
+};
+
+assembly : struct
+{
+	node : ast mut?;
+	name : u8?;
+	name_len : u64;
+	type : tyid;
+
+	code : u8?;
+	code_len : u64;
+	constraints : u8?;
+	constraints_len : u64;
+};
+
+scope_add_function : func(s : scope mut?, func_node : ast mut? -> u64)
+{
+	if(s->funcs == zero)
+	{
+		s->funcs_cap = 8;
+		s->funcs = arena_alloc(global_arena, s->funcs_cap * sizeof typeof([s->funcs # 0]));
+	}
+	while(s->funcs_count >= s->funcs_cap)
+	{
+		oldcap ::= s->funcs_cap;
+		olddata ::= s->funcs;
+		s->funcs_cap = s->funcs_cap * 2;
+		s->funcs = arena_alloc(global_arena, s->funcs_cap * sizeof typeof([s->funcs # 0]));
+	}
+	idx ::= s->funcs_count;
+	[s->funcs # idx] = function
+	{
+		.node := func_node;
+		... := zero;
+	};
+	s->funcs_count = idx + 1;
+	return idx;
+};
+
+scope_find_function : func(s : scope mut?, name : u8?, name_len : u64 -> function mut?)
+{
+	i : u64 mut;
+	count ::= s->funcs_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= s->funcs # i;
+		curname ::= cur->name;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	return zero;
+};
