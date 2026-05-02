@@ -4,27 +4,40 @@ scope : struct
 	funcs_count : u64;
 	funcs_cap : u64;
 
-	vars : variable;
+	vars : variable mut?;
 	vars_count : u64;
 	vars_cap : u64;
+
+	structs : structure mut?;
+	structs_count : u64;
+	structs_cap : u64;
+
+	enums : enumeration mut?;
+	enums_count : u64;
+	enums_cap : u64;
+
+	asms : assembly mut?;
+	asms_count : u64;
+	asms_cap : u64;
+};
+
+function : struct
+{
+	node : ast mut?;
+	type : tyid;
+	name : u8?;
+	name_len : u64;
 };
 
 variable : struct
 {
 	node : ast mut?;
 	type : tyid;
-	// if this variable is a parameter to a parent function, this is the param idx.
-	// if its not a param, then this is -1
-	param_idx : u64;
+	name : u8?;
+	name_len : u64;
 };
 
 structure : struct
-{
-	node : ast mut?;
-	type : tyid;
-};
-
-function : struct
 {
 	node : ast mut?;
 	type : tyid;
@@ -36,6 +49,8 @@ enumeration : struct
 {
 	node : ast mut?;
 	type : tyid;
+	name : u8?;
+	name_len : u64;
 };
 
 assembly : struct
@@ -51,7 +66,7 @@ assembly : struct
 	constraints_len : u64;
 };
 
-scope_add_function : func(s : scope mut?, func_node : ast mut? -> u64)
+scope_add_function : func(s : scope mut?, func_node : ast mut? -> function mut?)
 {
 	if(s->funcs == zero)
 	{
@@ -65,14 +80,14 @@ scope_add_function : func(s : scope mut?, func_node : ast mut? -> u64)
 		s->funcs_cap = s->funcs_cap * 2;
 		s->funcs = arena_alloc(global_arena, s->funcs_cap * sizeof typeof([s->funcs # 0]));
 	}
-	idx ::= s->funcs_count;
-	[s->funcs # idx] = function
+	ptr ::= s->funcs # s->funcs_count;
+	[ptr] = function
 	{
 		.node := func_node;
 		... := zero;
 	};
-	s->funcs_count = idx + 1;
-	return idx;
+	s->funcs_count = s->funcs_count + 1;
+	return ptr;
 };
 
 scope_find_function : func(s : scope mut?, name : u8?, name_len : u64 -> function mut?)
@@ -82,6 +97,178 @@ scope_find_function : func(s : scope mut?, name : u8?, name_len : u64 -> functio
 	for(i = 0; i < count; i = i + 1)
 	{
 		cur ::= s->funcs # i;
+		curname ::= cur->name;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	return zero;
+};
+
+scope_add_variable : func(s : scope mut?, func_node : ast mut? -> variable mut?)
+{
+	if(s->vars == zero)
+	{
+		s->vars_cap = 8;
+		s->vars = arena_alloc(global_arena, s->vars_cap * sizeof typeof([s->vars # 0]));
+	}
+	while(s->vars_count >= s->vars_cap)
+	{
+		oldcap ::= s->vars_cap;
+		olddata ::= s->vars;
+		s->vars_cap = s->vars_cap * 2;
+		s->vars = arena_alloc(global_arena, s->vars_cap * sizeof typeof([s->vars # 0]));
+	}
+	ptr ::= s->vars # s->vars_count;
+	[ptr] = variable
+	{
+		.node := func_node;
+		... := zero;
+	};
+	s->vars_count = s->vars_count + 1;
+	return ptr;
+};
+
+scope_find_variable : func(s : scope mut?, name : u8?, name_len : u64 -> variable mut?)
+{
+	i : u64 mut;
+	count ::= s->vars_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= s->vars # i;
+		curname ::= cur->name;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	return zero;
+};
+
+scope_add_structure : func(s : scope mut?, struct_node : ast mut? -> structure mut?)
+{
+	if(s->structs == zero)
+	{
+		s->structs_cap = 8;
+		s->structs = arena_alloc(global_arena, s->structs_cap * sizeof typeof([s->structs # 0]));
+	}
+	while(s->structs_count >= s->structs_cap)
+	{
+		oldcap ::= s->structs_cap;
+		olddata ::= s->structs;
+		s->structs_cap = s->structs_cap * 2;
+		s->structs = arena_alloc(global_arena, s->structs_cap * sizeof typeof([s->structs # 0]));
+	}
+	ptr ::= s->structs # s->structs_count;
+	[ptr] = structure
+	{
+		.node := struct_node;
+		... := zero;
+	};
+	s->structs_count = s->structs_count + 1;
+	return ptr;
+};
+
+scope_find_structure : func(s : scope mut?, name : u8?, name_len : u64 -> structure mut?)
+{
+	i : u64 mut;
+	count ::= s->structs_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= s->structs # i;
+		curname ::= cur->name;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	return zero;
+};
+
+scope_add_enumeration : func(s : scope mut?, enum_node : ast mut? -> enumeration mut?)
+{
+	if(s->enums == zero)
+	{
+		s->enums_cap = 8;
+		s->enums = arena_alloc(global_arena, s->enums_cap * sizeof typeof([s->enums # 0]));
+	}
+	while(s->enums_count >= s->enums_cap)
+	{
+		oldcap ::= s->enums_cap;
+		olddata ::= s->enums;
+		s->enums_cap = s->enums_cap * 2;
+		s->enums = arena_alloc(global_arena, s->enums_cap * sizeof typeof([s->enums # 0]));
+	}
+	ptr ::= s->enums # s->enums_count;
+	[ptr] = enumeration
+	{
+		.node := enum_node;
+		... := zero;
+	};
+	s->enums_count = s->enums_count + 1;
+	return ptr;
+};
+
+scope_find_enumeration : func(s : scope mut?, name : u8?, name_len : u64 -> enumeration mut?)
+{
+	i : u64 mut;
+	count ::= s->enums_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= s->enums # i;
+		curname ::= cur->name;
+		if(cur->name_len == name_len)
+		{
+			if(streql_n(cur->name, name, name_len))
+			{
+				return cur;
+			}
+		}
+	}
+	return zero;
+};
+
+scope_add_assembly : func(s : scope mut?, asm_node : ast mut? -> assembly mut?)
+{
+	if(s->asms == zero)
+	{
+		s->asms_cap = 8;
+		s->asms = arena_alloc(global_arena, s->asms_cap * sizeof typeof([s->asms # 0]));
+	}
+	while(s->asms_count >= s->asms_cap)
+	{
+		oldcap ::= s->asms_cap;
+		olddata ::= s->asms;
+		s->asms_cap = s->asms_cap * 2;
+		s->asms = arena_alloc(global_arena, s->asms_cap * sizeof typeof([s->asms # 0]));
+	}
+	ptr ::= s->asms # s->asms_count;
+	[ptr] = assembly
+	{
+		.node := asm_node;
+		... := zero;
+	};
+	s->asms_count = s->asms_count + 1;
+	return ptr;
+};
+
+scope_find_assembly : func(s : scope mut?, name : u8?, name_len : u64 -> assembly mut?)
+{
+	i : u64 mut;
+	count ::= s->asms_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= s->asms # i;
 		curname ::= cur->name;
 		if(cur->name_len == name_len)
 		{
