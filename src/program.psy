@@ -21,6 +21,10 @@ program : struct
 
 	debug_symbols : bool;
 	optimization : program_optimization;
+
+	cwds : u8 mut? mut?;
+	cwds_count : u64;
+	cwds_cap : u64;
 };
 
 source_file : struct
@@ -76,4 +80,28 @@ region : struct
 	node : ast mut?;
 	name : u8?;
 	name_len : u64;
+};
+
+program_push_cwd : func(cwd : u8? -> v0)
+{
+	if(prog.cwds == zero)
+	{
+		prog.cwds_cap = 8;
+		prog.cwds = arena_alloc(global_arena, prog.cwds_cap * sizeof typeof([prog.cwds # 0]));
+	}
+	while(prog.cwds_count >= prog.cwds_cap)
+	{
+		oldcap ::= prog.cwds_cap;
+		olddata ::= prog.cwds;
+		prog.cwds_cap = prog.cwds_cap * 2;
+		prog.cwds = arena_alloc(global_arena, prog.cwds_cap * sizeof typeof([prog.cwds # 0]));
+	}
+	[prog.cwds # prog.cwds_count] = cwd;
+	directory_set_cwdz(cwd);
+};
+
+program_pop_cwd : func(-> v0)
+{
+	prog.cwds_count = prog.cwds_count - 1;
+	directory_set_cwdz([prog.cwds # prog.cwds_count]);
 };
