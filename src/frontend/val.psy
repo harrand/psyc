@@ -25,6 +25,14 @@ val_tag : enum
 	.type_only := 2;
 };
 
+val_resolution : enum
+{
+	.type_only := 0;
+	.compile_time_only := 1;
+	.runtime_only := 2;
+	.anything := 3;
+};
+
 sval_tag : enum
 {
 	.zero_value := 1;
@@ -49,23 +57,24 @@ sval : struct
 	members_cap : u64;
 };
 
+val_from_node : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	ret ::= val_from_node_inner(node, s, r);
+	// todo: if we get something stricter than our resolution, convert it now (e.g compile_time -> runtime_only).
+	return ret;
+};
 // given a node, get a value representation of it
 // if type_only is true - the val will have a valid .type member but all other fields should be assumed to be undefined
-val_from_node : func(node : ast mut?, type_only : bool -> val)
+val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
 		return val_from_literal(node->literal);
 	}
 	psyc_panic_begin(node);
-	putzstr("reached end of val_from_node");
+	putzstr("reached end of val_from_node_inner");
 	psyc_panic_end(node);
 	return zero;
-};
-
-type_from_node : func(node : ast mut? -> tyid)
-{
-	return val_from_node(node, true).type;
 };
 
 val_from_literal : func(literal : ast_literal -> val)
