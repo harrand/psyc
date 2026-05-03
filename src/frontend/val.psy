@@ -1,3 +1,14 @@
+val : struct
+{
+	// type of the value (everything beyond the 'zero' keyword produces a valid type)
+	type : tyid;
+	// category is lvalue or rvalue
+	category : val_category;
+
+	s : sval;
+	ir : irval;
+};
+
 val_category : enum
 {
 	.lvalue := 0;
@@ -8,25 +19,34 @@ val_type : enum
 {
 	.compile_time := 0;
 	.runtime := 1;
+	.type_only := 2;
 };
 
-val : struct
+sval : struct
 {
-	type : tyid;
-	category : val_category;
 };
 
-val_from_node : func(node : ast mut? -> val)
+// given a node, get a value representation of it
+// if type_only is true - the val will have a valid .type member but all other fields should be assumed to be undefined
+val_from_node : func(node : ast mut?, type_only : bool -> val)
 {
+	if(ast_is_expr(node, ast_expr_tag.literal))
+	{
+		return val_from_literal(node->literal);
+	}
+	psyc_panic_begin(zero);
+	putzstr("reached end of val_from_node");
+	psyc_diag_end();
+	psyc_exit_failure();
 	return zero;
 };
 
-val_from_node_tbl ::= func(node : ast mut? -> val)[countof ast_tag]
+type_from_node : func(node : ast mut? -> tyid)
 {
-	... := val_from_node_invalid;
+	return val_from_node(node, true).type;
 };
 
-val_from_node_invalid : func(node : ast mut? -> val)
+val_from_literal : func(literal : ast_literal -> val)
 {
 	return zero;
 };
