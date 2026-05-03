@@ -3,20 +3,69 @@ semal : func(-> v0)
 	i : u64 mut;
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
-		semal_fnsig(prog.global_scope.funcs # i);
-	}
-	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
-	{
-		semal_fndef(prog.global_scope.funcs # i);
+		semal_func(prog.global_scope.funcs # i);
 	}
 };
 
-semal_fnsig : func(fn : function mut? -> v0)
+semal_func : func(fn : function mut? -> v0)
 {
+	// set fn->type
+	// and populate function scope with all params and locals
 	fn_typename_node ::= ast_get_child(fn->node, 0);
 	fn->type = type_from_typename_node(fn_typename_node, ref prog.global_scope);
+	fn->name = fn->node->function.name;
+	params_count ::= ty_unwrap(fn->type)->fn.params_count;
+
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		param_node ::= ast_get_child(fn_typename_node, i);
+		param_var ::= scope_add_variable(ref(fn->params_scope), param_node);
+		semal_var(param_var, ref(fn->params_scope));
+	}
+	// todo: locals...
 };
 
-semal_fndef : func(fn : function mut? -> v0)
+semal_var : func(var : variable mut?, parent : scope mut? -> v0)
 {
+	// set var->type and var->name
+	var->name = var->node->decl.name;
+
+	var_typename_node ::= ast_get_child(var->node, 0);
+	init_node ::= ast_get_child(var->node, 1);
+
+	// we cannot use type_from_typename_node if the typename node is deduced
+	// so we handle that case here
+	if(var_typename_node->typename.descriptor == (ast_typename_descriptor.deduced))
+	{
+		// it better have an init
+		if(var->node->children_count < 2)
+		{
+			psyc_error_begin(var->node);
+			putzstr("variable ");
+			putchar('"');
+			putsstr(var->name);
+			putchar('"');
+			putzstr(" is of deduced type, but it has no initialiser");
+			psyc_error_end(var->node);
+		}
+		// get the type of init_node
+		var->type = val_from_node(init_node, parent, val_resolution.type_only).type;
+	}
+	else
+	{
+		// just get it from the typename node.
+		var->type = type_from_typename_node(var_typename_node, parent);
+	}
+
+	if(var->type == zero)
+	{
+		psyc_panic_begin(var->node);
+		putzstr("type of variable ");
+		putchar('"');
+		putsstr(var->name);
+		putchar('"');
+		putzstr(" was not able to be deciphered by the semantic analyser");
+		psyc_panic_end(var->node);
+	}
 };
