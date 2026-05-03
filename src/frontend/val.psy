@@ -124,3 +124,40 @@ val_from_bool_literal : func(boolean : bool -> val)
 {
 	return val_from_literal(ast_literal{.tag := ast_literal_tag.boolean; .boolean := boolean;});
 };
+
+val_must_get_integer : func(v : val, source : ast mut? -> s64 weak)
+{
+	if(v.tag != val_tag.compile_time)
+	{
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.integral value from non-compile-time value");
+		psyc_error_end(source);
+		psyc_exit_failure();
+	}
+	if(v.s.tag == sval_tag.zero_value)
+	{
+		return 0;
+	}
+	if(v.s.tag == sval_tag.literal)
+	{
+		if(v.s.literal.tag == ast_literal_tag.integer)
+		{
+			return v.s.literal.integer;
+		}
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.integral value from literal.");
+		putzstr(enumname(v.s.literal.tag));
+		putzstr(" value");
+		psyc_error_end(source);
+		psyc_exit_failure();
+	}
+	psyc_error_begin(source);
+	putzstr("cannot statically retrieve literal.integral value from non-literal ");
+	putchar('"');
+	putzstr(enumname(v.s.tag));
+	putchar('"');
+	putzstr(" value");
+	psyc_error_end(source);
+	psyc_exit_failure();
+	return zero;
+};
