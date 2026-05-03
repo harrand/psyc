@@ -1,9 +1,32 @@
 semal : func(-> v0)
 {
 	i : u64 mut;
+	for(i = 0; i < prog.global_scope.structs_count; i = i + 1)
+	{
+		semal_struct(prog.global_scope.structs # i);
+	}
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
 		semal_func(prog.global_scope.funcs # i);
+	}
+	for(i = 0; i < prog.global_scope.vars_count; i = i + 1)
+	{
+		semal_var(prog.global_scope.vars # i, ref prog.global_scope);
+	}
+};
+
+semal_struct : func(str : structure mut? -> v0)
+{
+	str->name = str->node->structure.name;
+	// str->type was populated as a struct type and its member types preallocated, but not populated
+	// lets populate its member types and member names
+	i : u64 mut;
+	u ::= ty_unwrap(str->type);
+	for(i = 0; i < u->strct.members_count; i = i + 1)
+	{
+		member_decl_node ::= ast_get_child(str->node, i);
+		[u->strct.members # i] = type_from_typename_node(member_decl_node, ref prog.global_scope);
+		[u->strct.member_names # i] = member_decl_node->decl.name;
 	}
 };
 
@@ -23,7 +46,6 @@ semal_func : func(fn : function mut? -> v0)
 		param_var ::= scope_add_variable(ref(fn->params_scope), param_node);
 		semal_var(param_var, ref(fn->params_scope));
 	}
-	// todo: locals...
 };
 
 semal_var : func(var : variable mut?, parent : scope mut? -> v0)
@@ -58,6 +80,7 @@ semal_var : func(var : variable mut?, parent : scope mut? -> v0)
 		var->type = type_from_typename_node(var_typename_node, parent);
 	}
 
+	// sanity-check that we didnt return zero
 	if(var->type == zero)
 	{
 		psyc_panic_begin(var->node);
