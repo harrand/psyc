@@ -70,60 +70,79 @@ psyc_exit_failure : func( -> v0)
 	int3();
 };
 
-psyc_nyi : func(my_srcloc : srcloc -> v0)
-{
-	psyc_panic_begin(my_srcloc);
-	putzstr("NYI");
-	psyc_diag_end(zero);
-	psyc_exit_failure();
-};
-
-psyc_panic_begin : func(my_srcloc : srcloc -> v0)
+psyc_panic_begin : func(node : ast mut? -> v0)
 {
 	psyc_colour_red();
 	putzstr("panic ");
-	print_srcloc(my_srcloc);
+	print_srcloc(node->loc);
 	putchar(':');
 	putchar(' ');
 };
 
-psyc_diag_end : func(loc : srcloc -> v0)
+psyc_message_end : func(node : ast? -> v0)
 {
+	file ::= program_find_source_file(node->loc.file);
+	if(file != zero)
+	{
+		putchar(10);
+		ast_print_annotated_source(file->src, node, 1, underline_colour.blue);
+	}
 	putchar(10);
 	psyc_colour_reset();
 };
 
-psyc_error_begin : func(loc : srcloc -> v0)
+psyc_warning_end : func(node : ast? -> v0)
+{
+	file ::= program_find_source_file(node->loc.file);
+	if(file != zero)
+	{
+		putchar(10);
+		ast_print_annotated_source(file->src, node, 1, underline_colour.yellow);
+	}
+	putchar(10);
+	psyc_colour_reset();
+};
+
+psyc_error_end : func(node : ast? -> v0)
+{
+	file ::= program_find_source_file(node->loc.file);
+	if(file != zero)
+	{
+		putchar(10);
+		ast_print_annotated_source(file->src, node, 1, underline_colour.red);
+	}
+	putchar(10);
+	psyc_colour_reset();
+};
+
+psyc_panic_end : func(node : ast? -> v0)
+{
+	psyc_error_end(node);
+};
+
+psyc_error_begin : func(node : ast mut? -> v0)
 {
 	psyc_colour_red();
 	putzstr(enumname(current_stage));
 	putzstr(" error ");
-	print_srcloc(loc);
+	print_srcloc(node->loc);
 	putzstr(": ");
 };
 
-psyc_warning_begin : func(loc : srcloc -> v0)
+psyc_warning_begin : func(node : ast mut? -> v0)
 {
 	psyc_colour_yellow();
 	putzstr("warning ");
-	print_srcloc(loc);
+	print_srcloc(node->loc);
 	putzstr(": ");
 };
 
-psyc_message_begin : func(loc : srcloc -> v0)
+psyc_message_begin : func(node : ast mut? -> v0)
 {
 	psyc_colour_blue();
 	putzstr("message ");
-	print_srcloc(loc);
+	print_srcloc(node->loc);
 	putzstr(": ");
-};
-
-psyc_panic : func(my_srcloc : srcloc, msg : u8? -> v0)
-{
-	psyc_panic_begin(my_srcloc);
-	putzstr(msg);
-	psyc_diag_end(zero);
-	psyc_exit_failure();
 };
 
 psyc_set_stage : func(stage : psyc_stage -> v0)

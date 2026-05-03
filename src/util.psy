@@ -14,7 +14,7 @@ fully_read_file : func(path : u8? -> source_file)
 		directory_get_cwd(ref cwd, ref cwdlen, global_arena);
 		putbytes(cwd, cwdlen);
 		putzstr(")");
-		psyc_diag_end(zero);
+		psyc_error_end(zero);
 		psyc_exit_failure();
 	}
 	len ::= file_size_bytes(path);
@@ -26,7 +26,7 @@ fully_read_file : func(path : u8? -> source_file)
 		putzstr(path);
 		putchar('"');
 		putzstr(" exists but is empty");
-		psyc_diag_end(zero);
+		psyc_warning_end(zero);
 	}
 	data : u8 mut? := arena_alloc(string_arena, len + 1);
 	file_read(path, data, len);
@@ -112,9 +112,12 @@ bytes_parse_literal : func(src : u8?, len : u64 -> ast_literal)
 
 		if(digit_val >= base)
 		{
+			psyc_panic_begin(zero);
+			putzstr("seemingly asked to parse nonsense bytes as an integer - ");
 			putchar(ch);
 			putuint(digit_val);
-			psyc_panic(zero, "waaah it all went wrong");
+			psyc_panic_end(zero);
+			psyc_exit_failure();
 		}
 
 		if(is_integral)

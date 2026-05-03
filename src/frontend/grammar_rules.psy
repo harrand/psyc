@@ -331,7 +331,7 @@ rule_error_call_comma_followed_by_cparen : func(nodes : ast mut?, nodes_count : 
 {
 	call_node ::= nodes # 0;
 	builtin_name_sym ::= ast_get_child(call_node, 0)->symbol;
-	psyc_error_begin((nodes # 1)->loc);
+	psyc_error_begin(nodes # 1);
 	putzstr("in call to ");
 	putchar('"');
 	putbytes(builtin_name_sym.data, builtin_name_sym.len);
@@ -340,7 +340,7 @@ rule_error_call_comma_followed_by_cparen : func(nodes : ast mut?, nodes_count : 
 	putchar(10);
 	ast_print_annotated_source(parse_state.src, nodes # 1, nodes_count - 1, underline_colour.red);
 	parse_print_state();
-	psyc_diag_end(zero);
+	psyc_error_end(nodes # 1);
 	psyc_exit_failure();
 	return zero;
 };
@@ -424,11 +424,11 @@ rule_token_x_expr_x2unop : func(nodes : ast mut?, nodes_count : u64 -> rule_resu
 	}
 	if(op == zero)
 	{
-		psyc_panic_begin(token_node->loc);
+		psyc_panic_begin(token_node);
 		putzstr("lex_token.");
 		putzstr(enumname(tok));
 		putzstr(" is not a valid unary operator");
-		psyc_diag_end(zero);
+		psyc_panic_end(token_node);
 		psyc_exit_failure();
 	}
 	unop_node ::= ast
@@ -470,11 +470,11 @@ rule_expr_x_token_x_expr_y2biop : func(nodes : ast mut?, nodes_count : u64 -> ru
 	}
 	if(op == zero)
 	{
-		psyc_panic_begin(token_node->loc);
+		psyc_panic_begin(token_node);
 		putzstr("lex_token.");
 		putzstr(enumname(tok));
 		putzstr(" is not a valid binary operator");
-		psyc_diag_end(zero);
+		psyc_panic_end(token_node);
 		psyc_exit_failure();
 	}
 	biop_node ::= ast mut
@@ -800,12 +800,12 @@ rule_typename_function_await_param_or_arrow_decl_finalised_token_comma2function_
 rule_error_typename_function_comma_followed_by_arrow : func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	typename_node ::= nodes # 0;
-	psyc_error_begin((nodes # 2)->loc);
+	psyc_error_begin(nodes # 2);
 	putzstr("in function typename, a ',' must be followed by another typename ");
 	putchar(10);
 	ast_print_annotated_source(parse_state.src, nodes # 2, nodes_count - 2, underline_colour.red);
 	parse_print_state();
-	psyc_diag_end(zero);
+	psyc_error_end(nodes # 2);
 	psyc_exit_failure();
 	return zero;
 };
@@ -1127,20 +1127,20 @@ rule_decl_finalised_token_obrace2function_impl : func(nodes : ast mut?, nodes_co
 	typename_node ::= ast_get_child(decl_node, 0);
 	if(typename_node->tag != (ast_tag.typename))
 	{
-		psyc_panic_begin(decl_node->loc);
+		psyc_panic_begin(decl_node);
 		putzstr("internal error: first child of decl node was expected to be ast_tag.typename but it is ast_tag.");
 		putzstr(enumname(typename_node->tag));
-		psyc_diag_end(zero);
+		psyc_panic_end(decl_node);
 		psyc_exit_failure();
 	}
 	typename ::= typename_node->typename;
 	if(typename.descriptor != (ast_typename_descriptor.function)) 
 	{
-		psyc_error_begin(decl_node->loc);
+		psyc_error_begin(decl_node);
 		putzstr("decl followed immediately by a '{' means a function definition, so i expect the decl typename to be a function type, but it is a ");
 		putzstr(enumname(typename.descriptor));
 		putzstr(" type");
-		psyc_diag_end(zero);
+		psyc_error_end(decl_node);
 		psyc_exit_failure();
 	}
 	decl ::= decl_node->decl;
@@ -1176,20 +1176,20 @@ rule_decl_finalised_token_keyword_extern2function_finalised : func(nodes : ast m
 	typename_node ::= ast_get_child(decl_node, 0);
 	if(typename_node->tag != (ast_tag.typename))
 	{
-		psyc_panic_begin(decl_node->loc);
+		psyc_panic_begin(decl_node);
 		putzstr("internal error: first child of decl node was expected to be ast_tag.typename but it is ast_tag.");
 		putzstr(enumname(typename_node->tag));
-		psyc_diag_end(zero);
+		psyc_panic_end(decl_node);
 		psyc_exit_failure();
 	}
 	typename ::= typename_node->typename;
 	if(typename.descriptor != (ast_typename_descriptor.function)) 
 	{
-		psyc_error_begin(decl_node->loc);
+		psyc_error_begin(decl_node);
 		putzstr("decl followed immediately by a '{' means a function definition, so i expect the decl typename to be a function type, but it is a ");
 		putzstr(enumname(typename.descriptor));
 		putzstr(" type");
-		psyc_diag_end(zero);
+		psyc_error_end(decl_node);
 		psyc_exit_failure();
 	}
 	decl ::= decl_node->decl;
@@ -1304,13 +1304,13 @@ rule_token_dot_token_numeric_literal_token_initialiser2desiginitwip : func(nodes
 	index ::= bytes_parse_literal(parse_state.src # lexeme.off, lexeme.len);
 	if(index.tag != (ast_literal_tag.integer))
 	{
-		psyc_error_begin((nodes # 0)->loc);
+		psyc_error_begin(nodes # 0);
 		putzstr("a designated initialiser index must be an integral literal, you have provided a ");
 		putzstr(enumname(index.tag));
 		putchar(10);
 		ast_print_annotated_source(parse_state.src, nodes # 0, nodes_count, underline_colour.red);
 		parse_print_state();
-		psyc_diag_end(zero);
+		psyc_error_end(nodes # 0);
 		psyc_exit_failure();
 		return zero;
 	}
@@ -1390,10 +1390,10 @@ rule_castwip_typename_finalised2cast : func(nodes : ast mut?, nodes_count : u64 
 	typename_node ::= nodes # 1;
 	if(castwip_node->children_count != 1)
 	{
-		psyc_panic_begin(castwip_node->loc);
+		psyc_panic_begin(castwip_node);
 		putzstr("invalid castwip state. should have 1 child (the expr to cast) but it had ");
 		putuint(castwip_node->children_count);
-		psyc_diag_end(zero);
+		psyc_panic_end(castwip_node);
 		psyc_exit_failure();
 	}
 	ast_add_child(castwip_node, [typename_node], global_arena);
@@ -1542,12 +1542,12 @@ rule_token_keyword_static_if_expr_x_token_obrace2ifwip : func(nodes : ast mut?, 
 
 rule_error_else_without_preceding_if_stmt : func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
-	psyc_error_begin((nodes # 0)->loc);
+	psyc_error_begin(nodes # 0);
 	putzstr("an else statement can only be valid if placed directly after an if-statement");
 	putchar(10);
 	ast_print_annotated_source(parse_state.src, nodes # 0, nodes_count, underline_colour.red);
 	parse_print_state();
-	psyc_diag_end(zero);
+	psyc_error_end(nodes # 0);
 	psyc_exit_failure();
 	return zero;
 };
@@ -1963,14 +1963,14 @@ rule_desiginit_token_semicol2stmt : func(nodes : ast mut?, nodes_count : u64 -> 
 rule_error_commit_non_desiginit_to_blkinit : func(nodes : ast mut?, nodes_count : u64 -> rule_result)
 {
 	stmt_node ::= nodes # 0;
-	psyc_error_begin(stmt_node->loc);
+	psyc_error_begin(stmt_node);
 	putzstr("the ");
 	putzstr(enumname(stmt_node->stmt));
 	putzstr(" below is not valid within a block initialiser, only designated initialisers are allowed.");
 	putchar(10);
 	ast_print_annotated_source(parse_state.src, nodes # 0, nodes_count, underline_colour.red);
 	parse_print_state();
-	psyc_diag_end(zero);
+	psyc_error_end(stmt_node);
 	psyc_exit_failure();
 	return zero;
 };
