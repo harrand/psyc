@@ -1,11 +1,14 @@
 val : struct
 {
+	tag : val_tag;
 	// type of the value (everything beyond the 'zero' keyword produces a valid type)
 	type : tyid;
 	// category is lvalue or rvalue
 	category : val_category;
 
+	// if tag == val_tag.compile_time, this stores the value of the thing at compile-time (now)
 	s : sval;
+	// if tag == val_tag.runtime, this stores the psyir-level value representation of the thing
 	ir : irval;
 };
 
@@ -15,15 +18,35 @@ val_category : enum
 	.rvalue := 1;
 };
 
-val_type : enum
+val_tag : enum
 {
 	.compile_time := 0;
 	.runtime := 1;
 	.type_only := 2;
 };
 
+sval_tag : enum
+{
+	.zero_value := 1;
+	.undefined := 2;
+	.literal := 3;
+	.array_literal := 4;
+	.struct_literal := 5;
+};
+
+// this gets messy really easily so i am going to be *very* specific
 sval : struct
 {
+	// tells you what we're representing. do *not* assuem if val.type is an array type that our sval will always be sval_tag.array_literal. it could be zero, or undefined.
+	tag : sval_tag;
+	// if tag == sval_tag.literal, this has all the info you need. you can assume the literal-tag logically matches up with what the val.type is.
+	literal : ast_literal;
+	// if tag == sval_tag.array_literal or struct_literal, these represent the array elements (or struct members in-order) respectively. members_count should always be equal to countof(val.type), but they could all be undefined.
+	members : sval mut?;
+	// how many things have i stored for you in members
+	members_count : u64;
+	// internal.
+	members_cap : u64;
 };
 
 // given a node, get a value representation of it
@@ -48,5 +71,31 @@ type_from_node : func(node : ast mut? -> tyid)
 
 val_from_literal : func(literal : ast_literal -> val)
 {
-	return zero;
+	ret ::= val mut
+	{
+		.tag := val_tag.compile_time;
+		.category := val_category.rvalue;
+		.s := sval{.tag := sval_tag.literal; .literal := literal;};
+	};
+	if(literal.tag == ast_literal_tag.integer)
+	{
+		ret.type = tyid_integral_literal();
+	}
+	if(literal.tag == ast_literal_tag.floating_point)
+	{
+		ret.type = tyid_floating_point_literal();
+	}
+	if(literal.tag == ast_literal_tag.char)
+	{
+		ret.type = tyid_char_literal();
+	}
+	if(literal.tag == ast_literal_tag.string)
+	{
+		ret.type = tyid_string_literal();
+	}
+	if(literal.tag == ast_literal_tag.boolean)
+	{
+		ret.type = tyid_bool_literal();
+	}
+	return ret;
 };
