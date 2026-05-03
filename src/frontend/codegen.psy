@@ -1,0 +1,53 @@
+codegen : func(-> v0)
+{
+	post_codegen();
+};
+
+post_codegen : func(-> v0)
+{
+	ir_pass_validate();
+	ir_optimise(ir_optimise_level.O1);
+
+	stream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+
+	// --verbose-codegen (IR)
+	if(prog.compile_args.verbose_codegen)
+	{
+		bwrite_ir(ref stream);
+		psyc_message_begin(zero);
+		putzstr("IR Generation Output (--verbose-codegen)");
+		putchar(10);
+		putbytes(stream.buf, stream.cursor);
+		putchar(10);
+		putzstr("===================== (--verbose-codegen end)");
+		psyc_message_end(zero);
+		putchar(10);
+
+		stream.cursor = 0;
+	}
+
+	ir_lower_x64();
+
+	// --verbose-codegen (x64)
+	if(prog.compile_args.verbose_codegen)
+	{
+		x64_dump_disasm_to(ref stream);
+		psyc_message_begin(zero);
+		putzstr("Assembly Generation Output (--verbose-codegen)");
+		putchar(10);
+		putbytes(stream.buf, stream.cursor);
+		putchar(10);
+		putzstr("===================== (--verbose-codegen end)");
+		psyc_message_end(zero);
+		putchar(10);
+
+		stream.cursor = 0;
+	}
+};
