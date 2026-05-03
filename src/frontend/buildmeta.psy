@@ -20,16 +20,38 @@ find_build_region : func(file_node : ast mut?, name : u8?, name_len : u64 -> ast
 	return zero;
 };
 
-do_buildmeta : func(region : ast mut? -> v0)
+do_buildmeta : func(file_node : ast mut?, region_node : ast mut? -> v0)
 {
 	i : u64 mut;
-	count ::= region->children_count;
+	count ::= region_node->children_count;
 	for(i = 0; i < count; i = i + 1)
 	{
-		do_build_instruction(ast_get_child(region, i));
+		do_build_instruction(file_node, ast_get_child(region_node, i));
 	}
 };
 
-do_build_instruction : func(inst : ast mut? -> v0)
+do_build_instruction : func(file_node : ast mut?, inst : ast mut? -> v0)
 {
+	if(ast_is_expr(inst, ast_expr_tag.call))
+	{
+		do_build_instruction_call(file_node, inst);
+	}
+};
+
+do_build_instruction_call : func(file_node : ast mut?, inst : ast mut? -> v0)
+{
+	callee ::= ast_get_child(inst, 0);
+	maybe_region ::= find_build_region(file_node, callee->symbol.data, callee->symbol.len);
+	if(maybe_region != zero)
+	{
+		do_buildmeta(file_node, maybe_region);
+	}
+
+	psyc_error_begin(inst->loc);
+	putzstr("unrecognised static callable ");
+	putchar('"');
+	putbytes(callee->symbol.data, callee->symbol.len);
+	putchar('"');
+	psyc_diag_end();
+	psyc_exit_failure();
 };
