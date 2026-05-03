@@ -21,8 +21,7 @@ tytag : enum
 enumty : struct
 {
 	entries : u64 mut?;
-	entry_names : u8? mut?;
-	entry_name_lens : u64 mut?;
+	entry_names : sstr mut?;
 	entries_count : u64;
 	node : ast?;
 };
@@ -30,8 +29,7 @@ enumty : struct
 structty : struct
 {
 	members : tyid mut?;
-	member_names : u8? mut?;
-	member_name_lens : u64 mut?;
+	member_names : sstr mut?;
 	members_count : u64;
 	node : ast?;
 };
@@ -46,8 +44,7 @@ fnty : struct
 ty : struct
 {
 	tag : tytag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 
 	// if pointer: underlying. if base, id into corresponding tybox
 	base : tyid;
@@ -170,7 +167,7 @@ ty_underlying : func(id : tyid -> tyid)
 	return ty_unwrap(id)->base;
 };
 
-ty_get_enum_entry_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
+ty_get_enum_entry_id : func(id : tyid, name : sstr -> u64)
 {
 	i : u64 mut;
 	if(ty_is_enum(id))
@@ -179,20 +176,16 @@ ty_get_enum_entry_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
 		for(i = 0; i < (enm.entries_count); i = i + 1)
 		{
 			entname ::= [enm.entry_names # i];
-			entname_len ::= [enm.entry_name_lens # i];
-			if(entname_len == name_len)
+			if(sstreql(entname, name))
 			{
-				if(streql_n(entname, name, name_len))
-				{
-					return i;
-				}
+				return i;
 			}
 		}
 	}
 	return -1;
 };
 
-ty_get_struct_member_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
+ty_get_struct_member_id : func(id : tyid, name : sstr -> u64)
 {
 	i : u64 mut;
 	if(ty_is_struct(id))
@@ -201,13 +194,9 @@ ty_get_struct_member_id : func(id : tyid, name : u8?, name_len : u64 -> u64)
 		for(i = 0; i < (strct.members_count); i = i + 1)
 		{
 			memname ::= [strct.member_names # i];
-			memlen ::= [strct.member_name_lens # i];
-			if(memlen == name_len)	
+			if(sstreql(memname, name))
 			{
-				if(streql_n(memname, name, memlen))
-				{
-					return i;
-				}
+				return i;
 			}
 		}
 	}
@@ -435,7 +424,7 @@ bwrite_tyid : func(w : bwriter mut?, type : tyid -> v0)
 sputty : func(id : tyid, out_size : u64 mut?, buffer : u8 mut? -> v0)
 {
 	tydata ::= tybox_at(ref(prog.types), ty_clear_all_quals(id));
-	size : u64 mut := tydata->name_len;
+	size : u64 mut := sstrlen(tydata->name);
 	if(ty_has_qual(id, tyqual.qual_mut))
 	{
 		size = size + zstrlen(qual_str_mut);
@@ -456,8 +445,8 @@ sputty : func(id : tyid, out_size : u64 mut?, buffer : u8 mut? -> v0)
 	if(buffer != zero)
 	{
 		// assume its large enough for the whole thing
-		offset : u64 mut := tydata->name_len;
-		memcopy(buffer # 0, tydata->name, offset);
+		offset : u64 mut := sstrlen(tydata->name);
+		memcopy(buffer # 0, sstrdata(tydata->name), offset);
 		if(ty_has_qual(id, tyqual.qual_mut))
 		{
 			memcopy(buffer # offset, qual_str_mut, zstrlen(qual_str_mut));
@@ -488,7 +477,7 @@ putty : func(id : tyid -> v0)
 	is_weak ::= ty_has_qual(id, tyqual.qual_weak);
 	is_static ::= ty_has_qual(id, tyqual.qual_static);
 	tydata ::= tybox_at(ref(prog.types), ty_clear_all_quals(id));
-	putbytes(tydata->name, tydata->name_len);
+	putsstr(tydata->name);
 	if(is_mut)
 	{
 		putzstr(qual_str_mut);
@@ -535,9 +524,9 @@ ty_contains_ignore_quals : func(lhs : tyid, rhs : tyid -> bool)
 	return false;
 };
 
-ty_find_by_name : func(name : u8?, name_len : u64 -> tyid)
+ty_find_by_name : func(name : sstr -> tyid)
 {
-	return tybox_find(ref(prog.types), name, name_len);
+	return tybox_find(ref(prog.types), name);
 };
 
 // high-level function to convert type data to a tyid (including quals).

@@ -1,4 +1,4 @@
-find_build_region : func(file_node : ast mut?, name : u8?, name_len : u64 -> ast mut?)
+find_build_region : func(file_node : ast mut?, name : sstr -> ast mut?)
 {
 	i : u64 mut;
 	count ::= file_node->children_count;
@@ -7,13 +7,9 @@ find_build_region : func(file_node : ast mut?, name : u8?, name_len : u64 -> ast
 		child ::= ast_get_child(file_node, i);
 		if(ast_is_stmt(child, ast_stmt_tag.region))
 		{
-			reg ::= child->region;
-			if(reg.name_len == name_len)
+			if(sstreql(child->region.name, name))
 			{
-				if(streql_n(reg.name, name, name_len))
-				{
-					return child;
-				}
+				return child;
 			}
 		}
 	}
@@ -45,7 +41,7 @@ do_build_instruction : func(file_node : ast mut?, inst : ast mut? -> v0)
 do_build_instruction_call : func(file_node : ast mut?, inst : ast mut? -> v0)
 {
 	callee ::= ast_get_child(inst, 0);
-	maybe_region ::= find_build_region(file_node, callee->symbol.data, callee->symbol.len);
+	maybe_region ::= find_build_region(file_node, callee->symbol);
 	if(maybe_region != zero)
 	{
 		do_buildmeta(file_node, maybe_region);
@@ -54,7 +50,7 @@ do_build_instruction_call : func(file_node : ast mut?, inst : ast mut? -> v0)
 	psyc_error_begin(inst);
 	putzstr("unrecognised static callable ");
 	putchar('"');
-	putbytes(callee->symbol.data, callee->symbol.len);
+	putsstr(callee->symbol);
 	putchar('"');
 	psyc_error_end(inst);
 };

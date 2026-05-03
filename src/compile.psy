@@ -10,8 +10,8 @@ compile_program : func(-> v0)
 
 	config ::= prog.compile_args.build_config;
 
-	default_config ::= "default";
-	psyc_add_build_file(args->build_file, default_config, zstrlen(default_config));
+	default_config ::= sstr{.data := "default"; .len := 7;};
+	psyc_add_build_file(args->build_file, default_config);
 
 	if(!directory_exists(args->output_dir))
 	{
@@ -19,7 +19,7 @@ compile_program : func(-> v0)
 	}
 	putzstr("semantic...");
 	putchar(13);
-	//semal();
+	semal();
 
 	putzstr("codegen...  ");
 	putchar(13);
@@ -38,10 +38,10 @@ psyc_add_source_file : func(path : u8? -> ast)
 	return file_node;
 };
 
-psyc_add_build_file : func(path : u8?, config : u8?, config_len : u64 -> ast)
+psyc_add_build_file : func(path : u8?, config : sstr -> ast)
 {
 	file_node ::= psyc_add_source_file(path);
-	region_node ::= find_build_region(ref file_node, config, config_len);
+	region_node ::= find_build_region(ref file_node, config);
 	if(region_node == zero)
 	{
 		// couldnt find build region :(
@@ -52,7 +52,7 @@ psyc_add_build_file : func(path : u8?, config : u8?, config_len : u64 -> ast)
 		putchar('"');
 		putzstr(" had no build region named ");
 		putchar('"');
-		putbytes(config, config_len);
+		putsstr(config);
 		putchar('"');
 		psyc_error_end(zero);
 	}

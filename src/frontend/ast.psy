@@ -8,7 +8,7 @@ ast : struct
 
 	// expr payloads
 	literal : ast_literal;
-	symbol : ast_symbol;
+	symbol : sstr;
 	unop : ast_unop;
 	biop : ast_biop;
 
@@ -118,8 +118,7 @@ ast_decl_tag : enum
 ast_decl : struct
 {
 	tag : ast_decl_tag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 	// note: first child of a decl is always the typename
 	// rest represent stmts constituting the impl block
 };
@@ -149,8 +148,7 @@ ast_typename : struct
 
 	quals : tyqual;
 	descriptor : ast_typename_descriptor;
-	basename : u8?;
-	basename_len : u64;
+	basename : sstr;
 	// pointer means child 0 is the underlying type
 	// array means child 0 is the underlying type and child 1 is the array length
 	// function means child 0-(n-1) are the param typenames and child n is the return typename
@@ -176,12 +174,6 @@ ast_literal : struct
 	string : u8?;
 	string_len : u64;
 	boolean : bool;
-};
-
-ast_symbol : struct
-{
-	data : u8?;
-	len : u64;
 };
 
 ast_unop : enum
@@ -261,8 +253,7 @@ ast_structure_tag : enum
 ast_structure : struct
 {
 	tag : ast_structure_tag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 };
 
 ast_function_tag : enum
@@ -274,8 +265,7 @@ ast_function_tag : enum
 ast_function : struct
 {
 	tag : ast_function_tag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 	is_extern : bool;
 	// first child is the typename of the function itself (not the return type)
 	// second child is a node who stores all the stmts of the implementation as its children
@@ -290,8 +280,7 @@ ast_enumeration_tag : enum
 ast_enumeration : struct
 {
 	tag : ast_enumeration_tag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 };
 
 ast_assembly_tag : enum
@@ -304,16 +293,14 @@ ast_assembly_tag : enum
 ast_assembly : struct
 {
 	tag : ast_assembly_tag;
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 	constraints : u8?;
 	constraints_len : u64;
 };
 
 ast_region : struct
 {
-	name : u8?;
-	name_len : u64;
+	name : sstr;
 };
 
 ast_reserve_children : func(node : ast mut?, count : u64, ar : arena mut? -> v0)
@@ -528,9 +515,9 @@ ast_is_weakness_idiom : func(node : ast? -> bool)
 	}
 	weakness_idiom_str ::= "_";
 	weakness_idiom_strlen ::= zstrlen(weakness_idiom_str);
-	if(weakness_idiom_strlen == (typename.basename_len))
+	if(weakness_idiom_strlen == sstrlen(typename.basename))
 	{
-		if(streql_n(weakness_idiom_str, typename.basename, weakness_idiom_strlen))
+		if(streql_n(weakness_idiom_str, sstrdata(typename.basename), weakness_idiom_strlen))
 		{
 			return true;
 		}
@@ -853,7 +840,7 @@ ast_verbose_print : func(n : ast, indent : u64 -> v0)
 		if(n.typename.descriptor == (ast_typename_descriptor.base))
 		{
 			putzstr(".");
-			putbytes(n.typename.basename, n.typename.basename_len);
+			putsstr(n.typename.basename);
 		}
 	}
 	if(n.tag != zero)
