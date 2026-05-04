@@ -9,15 +9,23 @@ codegen_funcs : func(-> v0)
 	i : u64 mut;
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
-		codegen_func(prog.global_scope.funcs # i);
+		codegen_funcsig(prog.global_scope.funcs # i);
+	}
+	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
+	{
+		codegen_funcdef(prog.global_scope.funcs # i);
 	}
 };
 
-codegen_func : func(fn : function mut? -> v0)
+codegen_funcsig : func(fn : function mut? -> v0)
 {
-	ir ::= ir_add_empty_func(irabi.psy);
+	fn->fnref = ir_add_empty_func(irabi.psy);
 
 	fnty ::= ty_unwrap(fn->type)->fn;
+	// we have N param types in psy
+	// but this doesnt necessarily mean N param registers (due to chunking)
+	// paramregs[i] corresponds to chunks[i]
+	paramregs : irval mut[256] := zero;
 	chunks : irchunk mut[256] := zero;
 	chunk_rules ::= irchunking_rules
 	{
@@ -30,9 +38,21 @@ codegen_func : func(fn : function mut? -> v0)
 	i : u64 mut;
 	for(i = 0; i < chunks_cursor; i = i + 1)
 	{
-		ir_add_param(chunk_to_irsz(chunks # i));
+		[paramregs # i] = ir_add_param(chunk_to_irsz(chunks # i));
 	}
 
+	// ideally we go through the function scope
+	// and populate all runtime_slots for variables
+	// but this is gonna be really hard
+	for(i = 0; i < fnty.params_count; i = i + 1)
+	{
+		paramvar ::= fn->params_scope.vars # i;
+		// todo: paramvar->runtime_storage = ...
+	}
+};
+
+codegen_funcdef : func(fn : function mut? -> v0)
+{
 	ir_ret0();
 };
 
