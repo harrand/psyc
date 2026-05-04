@@ -40,6 +40,9 @@ sval_tag : enum
 	.literal := 3;
 	.array_literal := 4;
 	.struct_literal := 5;
+	.function_reference := 6;
+	.variable_reference := 7;
+	.assembly_reference := 8;
 };
 
 // this gets messy really easily so i am going to be *very* specific
@@ -55,6 +58,8 @@ sval : struct
 	members_count : u64;
 	// internal.
 	members_cap : u64;
+	// if tag == sval_tag.function_reference/variable_reference/assembly_reference, this represents a pointer to the underlying function/variable/assembly struct
+	ptr : v0? weak;
 };
 
 rval : struct
@@ -253,19 +258,19 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 	maybe_function ::= scope_find_function_with_fallback(s, symbol);
 	if(maybe_function != zero)
 	{
-		// todo: value representation of a function ref
+		return val_function_reference(maybe_function);
 	}
 
 	maybe_variable ::= scope_find_variable_with_fallback(s, symbol);
 	if(maybe_variable != zero)
 	{
-		// todo: value representation of variable ref
+		return val_variable_reference(maybe_variable);
 	}
 
 	maybe_assembly ::= scope_find_assembly_with_fallback(s, symbol);
 	if(maybe_assembly != zero)
 	{
-		// todo: value representation of assembly ref
+		return val_assembly_reference(maybe_assembly);
 	}
 
 	maybe_type ::= ty_find_by_name(symbol);
@@ -282,4 +287,49 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 	putzstr("reached end of val_from_symbol");
 	psyc_panic_end(symbol_node);
 	return zero;
+};
+
+val_function_reference : func(fn : function mut? -> val)
+{
+	return val
+	{
+		.tag := val_tag.compile_time;
+		.type := fn->type;
+		.category := val_category.rvalue;
+		.s := sval
+		{
+			.tag := sval_tag.function_reference;
+			.ptr := fn;
+		};
+	};
+};
+
+val_variable_reference : func(var : variable mut? -> val)
+{
+	return val
+	{
+		.tag := val_tag.compile_time;
+		.type := var->type;
+		.category := val_category.lvalue;
+		.s := sval
+		{
+			.tag := sval_tag.variable_reference;
+			.ptr := var;
+		};
+	};
+};
+
+val_assembly_reference : func(as : assembly mut? -> val)
+{
+	return val
+	{
+		.tag := val_tag.compile_time;
+		.type := as->type;
+		.category := val_category.rvalue;
+		.s := sval
+		{
+			.tag := sval_tag.assembly_reference;
+			.ptr := as;
+		};
+	};
 };
