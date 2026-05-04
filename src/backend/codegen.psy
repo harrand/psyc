@@ -135,6 +135,18 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 		val_from_node(node, ref(fn->impl_scope), val_resolution.either);
 		return;
 	}
+	if(ast_is_stmt(node, ast_stmt_tag.decl))
+	{
+		// a decl statement does not mean we create the stackslot now - that is sorted out at top-level codegen (global variables) or within function codegen (parameters + locals)
+		// all we need to do is check if the decl has an initialiser, and if it does, do the store.
+		decl_var ::= scope_find_variable(ref(fn->impl_scope), node->decl.name);
+		if(node->children_count > 1)
+		{
+			init_node ::= ast_get_child(node, 1);
+			// todo: get the val of an init_node (runtime)
+			// store it into decl_var.runtime_storage
+		}
+	}
 	// todo: codegen for actual code bits.
 
 	psyc_panic_begin(node);
