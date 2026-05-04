@@ -53,15 +53,26 @@ codegen_funcsig : func(fn : function mut? -> v0)
 
 codegen_funcdef : func(fn : function mut? -> v0)
 {
+	ir_set_pos(fn->fnref);
 	i : u64 mut;
-	impl_ast_begin ::= ast_get_child(fn->node, 1);
-	impl_ast_count ::= fn->node->children_count - 1;
+
+	for(i = 0; i < fn->impl_scope.vars_count; i = i + 1)
+	{
+		localvar ::= fn->impl_scope.vars # i;
+		//localvar->runtime_storage = rval
+		//{
+		//};
+		stk ::= ir_stack(irval_dimm(datalayout_sizeof_ty_psy(localvar->type)), irval_dimm(datalayout_alignof_ty_psy(localvar->type)));
+	}
+
+	// ok now go through
+	util_walk_control_flow_in_nodes(fn->node, 1, fn->node->children_count, codegen_node, fn);
 };
 
 post_codegen : func(-> v0)
 {
-	ir_pass_validate();
-	ir_optimise(ir_optimise_level.O1);
+	//ir_pass_validate();
+	ir_optimise(ir_optimise_level.O0);
 
 	stream ::= bwriter mut
 	{
@@ -113,4 +124,15 @@ post_codegen : func(-> v0)
 	directory_set_cwdz(prog.output.dir);
 	encode_basic_elf_x64(prog.output.name, ref(x64api.prog));
 	file_ensure_executable(prog.output.name);
+};
+
+codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
+{
+	fn ::= usrdata@function mut?;
+
+	// todo: codegen for actual code bits.
+
+	psyc_panic_begin(node);
+	putzstr("codegen_node: dont know how to handle the following node");
+	psyc_panic_end(node);
 };
