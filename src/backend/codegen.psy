@@ -69,10 +69,12 @@ codegen_funcdef : func(fn : function mut? -> v0)
 	for(i = 0; i < fn->impl_scope.vars_count; i = i + 1)
 	{
 		localvar ::= fn->impl_scope.vars # i;
-		//localvar->runtime_storage = rval
-		//{
-		//};
-		stk ::= ir_stack(irval_dimm(datalayout_sizeof_ty_psy(localvar->type)), irval_dimm(datalayout_alignof_ty_psy(localvar->type)));
+
+		localvar->runtime_storage = rval
+		{
+			.tag := rval_tag.ptr;
+			.v := ir_stack(irval_dimm(datalayout_sizeof_ty_psy(localvar->type)), irval_dimm(datalayout_alignof_ty_psy(localvar->type)));
+		};
 	}
 
 	// ok now go through
@@ -224,6 +226,8 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 		if(node->children_count > 1)
 		{
 			init_node ::= ast_get_child(node, 1);
+			init_val ::= val_from_node(init_node, ref(fn->impl_scope), val_resolution.runtime_only);
+			codegen_store(decl_var->runtime_storage, init_val, init_node);
 			// todo: get the val of an init_node (runtime)
 			// store it into decl_var.runtime_storage
 		}
@@ -254,4 +258,20 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 	psyc_panic_begin(node);
 	putzstr("codegen_node: dont know how to handle the following node");
 	psyc_panic_end(node);
+};
+
+codegen_store : func(ptr_val : rval, v : val, source : ast mut? -> v0)
+{
+	// todo: type checking
+	// store v into ptr_val
+
+	if(v.r.tag == rval_tag.scalar)
+	{
+		// easy peasy
+		ir_store(v.r.v, ptr_val.v, zero, zero, zero);
+		return;
+	}
+	psyc_panic_begin(source);
+	putzstr("reached end of codegen_store");
+	psyc_panic_end(source);
 };

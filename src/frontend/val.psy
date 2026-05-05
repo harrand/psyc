@@ -62,17 +62,37 @@ sval : struct
 	ptr : v0? weak;
 };
 
+rval_tag : enum
+{
+	// rval.v is the whole value
+	.scalar := 1;
+	// rval.v is a pointer to the value
+	.ptr := 2;
+	// rval.v ignored, the value is split into separate chunks (each in rval.members)
+	.chunked := 3;
+};
+
 rval : struct
 {
-	elems : irval mut[4];
-	elems_extra : irval mut?;
-	elems_count : u64;
+	tag : rval_tag;
+	v : irval;
+	members : rval mut?;
+	members_chunks : irchunk mut?;
+	members_count : u64;
+	members_cap : u64;
 };
 
 val_from_node : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
 	ret ::= val_from_node_inner(node, s, r);
-	// todo: if we get something stricter than our resolution, convert it now (e.g compile_time -> runtime_only).
+	if(r == val_resolution.compile_time_only)
+	{
+		val_must_be_compile_time(ret, node);
+	}
+	if(r == val_resolution.runtime_only)
+	{
+		return val_ensure_runtime(ret, node);
+	}
 	return ret;
 };
 // given a node, get a value representation of it
@@ -360,6 +380,56 @@ val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
 	// todo: impl
 	psyc_panic_begin(source);
 	putzstr("reached end of val_must_convert");
+	psyc_panic_end(source);
+	return zero;
+};
+
+// given a val, if its an rval, error out. if its a sval, do nothing
+val_must_be_compile_time : func(v : val, source : ast mut? -> v0)
+{
+	if(v.tag == val_tag.runtime)
+	{
+		psyc_error_begin(source);
+		putzstr("value must be statically known in this context, but can only produce a value at runtime");
+		psyc_error_end(source);
+	}
+};
+
+// given a val, if its an rval, do nothing. if its a sval, convert it to an rval
+val_ensure_runtime : func(v : val, source : ast mut? -> val)
+{
+	if(v.tag == val_tag.runtime)
+	{
+		return v;
+	}
+	if(v.tag == val_tag.type_only)
+	{
+		psyc_panic_begin(source);
+		putzstr("call to val_ensure_runtime on a typeonly val representing the type ");
+		putchar('"');
+		putty(v.type);
+		putchar('"');
+		psyc_panic_end(source);
+	}
+	if(v.s.tag == sval_tag.literal)
+	{
+		if(v.s.literal.tag == ast_literal_tag.integer)
+		{
+			// integer literal -> runtime value
+			return val
+			{
+				.tag := val_tag.runtime;
+				.category := val_category.rvalue;
+				.r := rval
+				{
+					.tag := rval_tag.scalar;
+					.v := irval_qimm(v.s.literal.integer);
+				};
+			};
+		}
+	}
+	psyc_panic_begin(source);
+	putzstr("reached end of val_ensure_runtime");
 	psyc_panic_end(source);
 	return zero;
 };
