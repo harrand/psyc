@@ -68,5 +68,11 @@ progwalk_enumeration : func(enum_node : ast mut? -> v0)
 
 progwalk_assembly : func(asm_node : ast mut? -> v0)
 {
-	scope_add_assembly(ref prog.global_scope, asm_node);
+	as ::= scope_add_assembly(ref prog.global_scope, asm_node);
+
+	file_code_lexeme ::= ast_get_child(asm_node, 1)->utok.tok.lexeme;
+	file_source ::= program_find_source_file(asm_node->loc.file)->src;
+
+	as->code = sstr{.data := file_source # file_code_lexeme.off; .len := file_code_lexeme.len;};
+	as->constraints = sstr{.data := asm_node->assembly.constraints; .len := asm_node->assembly.constraints_len;};
 };

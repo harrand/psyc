@@ -15,6 +15,10 @@ codegen_funcs : func(-> v0)
 	{
 		codegen_funcdef(prog.global_scope.funcs # i);
 	}
+	for(i = 0; i < prog.global_scope.asms_count; i = i + 1)
+	{
+		codegen_asm(prog.global_scope.asms # i);
+	}
 };
 
 codegen_funcsig : func(fn : function mut? -> v0)
@@ -30,7 +34,7 @@ codegen_funcsig : func(fn : function mut? -> v0)
 	chunk_rules ::= irchunking_rules
 	{
 		.allow_merges := true;
-		.chunk_size_max_nonfp := 32;
+		.chunk_size_max_nonfp := 64;
 		.chunk_size_max_fp := 8;
 	};
 	chunks_cursor : u64 mut := irchunk_tys(chunk_rules, fnty.param_types, fnty.params_count, chunks # 0);
@@ -73,6 +77,30 @@ codegen_funcdef : func(fn : function mut? -> v0)
 
 	// ok now go through
 	util_walk_control_flow_in_nodes(fn->node, 1, fn->node->children_count, codegen_node, fn);
+};
+
+codegen_asm : func(as : assembly mut? -> v0)
+{
+	fnty ::= ty_unwrap(as->type)->fn;
+
+	paramregs : irsz mut[256] := zero;
+	chunks : irchunk mut[256] := zero;
+	chunk_rules ::= irchunking_rules
+	{
+		.allow_merges := true;
+		.chunk_size_max_nonfp := 64;
+		.chunk_size_max_fp := 8;
+	};
+	chunks_cursor : u64 mut := irchunk_tys(chunk_rules, fnty.param_types, fnty.params_count, chunks # 0);
+
+	i : u64 mut;
+	for(i = 0; i < chunks_cursor; i = i + 1)
+	{
+		[paramregs # i] = chunk_to_irsz(chunks # i);
+	}
+
+	asmref ::= ir_add_asm(paramregs # 0, chunks_cursor, zero, sstrdata(as->constraints), sstrlen(as->constraints), sstrdata(as->code), sstrlen(as->code));
+	as->asm_ir_idx = irval_asmref_get_idx(asmref);
 };
 
 post_codegen : func(-> v0)
