@@ -160,6 +160,53 @@ post_codegen : func(-> v0)
 	file_ensure_executable(prog.output.name);
 };
 
+codegen_if : func(node : ast mut?, fn : function mut? -> v0)
+{
+	psyc_panic_begin(node);
+	putzstr("codegen_if: not yet implemented");
+	psyc_panic_end(node);
+};
+
+codegen_while : func(node : ast mut?, fn : function mut? -> v0)
+{
+	psyc_panic_begin(node);
+	putzstr("codegen_while: not yet implemented");
+	psyc_panic_end(node);
+};
+
+codegen_for : func(node : ast mut?, fn : function mut? -> v0)
+{
+	psyc_panic_begin(node);
+	putzstr("codegen_for: not yet implemented");
+	psyc_panic_end(node);
+};
+
+codegen_ret : func(node : ast mut?, fn : function mut? -> v0)
+{
+	fn_retty ::= ty_unwrap(fn->type)->fn.return_type;
+	if(node->children_count == 0)
+	{
+		if(!ty_matches_ignore_quals(fn_retty, tyid.v0))
+		{
+			psyc_error_begin(node);
+			putzstr("empty return statement is invalid because enclosing function ");
+			putchar('"');
+			putsstr(fn->name);
+			putchar('"');
+			putzstr(" must return a ");
+			putty(fn_retty);
+			psyc_error_end(node);
+		}
+		ir_ret0();
+	}
+	else
+	{
+		psyc_panic_begin(node);
+		putzstr("codegen_ret (with value): not yet implemented");
+		psyc_panic_end(node);
+	}
+};
+
 codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 {
 	fn ::= usrdata@function mut?;
@@ -180,6 +227,26 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 			// todo: get the val of an init_node (runtime)
 			// store it into decl_var.runtime_storage
 		}
+		return;
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.if_block))
+	{
+		codegen_if(node, fn);
+		return;
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.while_block))
+	{
+		codegen_while(node, fn);
+		return;
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.for_block))
+	{
+		codegen_for(node, fn);
+		return;
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.ret))
+	{
+		codegen_ret(node, fn);
 		return;
 	}
 	// todo: codegen for actual code bits.

@@ -20,9 +20,9 @@ val_category : enum
 
 val_tag : enum
 {
-	.compile_time := 0;
-	.runtime := 1;
-	.type_only := 2;
+	.compile_time := 1;
+	.runtime := 2;
+	.type_only := 3;
 };
 
 val_resolution : enum
@@ -87,6 +87,7 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_symbol(node, s);
 	}
+	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
 	psyc_panic_end(node);
@@ -283,6 +284,7 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 		};
 	}
 
+	// todo: impl
 	psyc_panic_begin(symbol_node);
 	putzstr("reached end of val_from_symbol");
 	psyc_panic_end(symbol_node);
@@ -332,4 +334,32 @@ val_assembly_reference : func(as : assembly mut? -> val)
 			.ptr := as;
 		};
 	};
+};
+
+val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
+{
+	conv ::= ty_converts_to(from.type, to);
+
+	if((conv != tyconv.yes) && (conv != tyconv.yes_needs_convert))
+	{
+		psyc_error_begin(source);
+		putzstr("no valid conversion from ");
+		putty(from.type);
+		putzstr(" to ");
+		if(conv == tyconv.no_cant_add_staticness)
+		{
+			putzstr(" (cannot add staticness)");
+		}
+		if(conv == tyconv.no_but_yes_with_weak)
+		{
+			putzstr(" (but an explicit conversion would work)");
+		}
+		psyc_error_end(source);
+	}
+
+	// todo: impl
+	psyc_panic_begin(source);
+	putzstr("reached end of val_must_convert");
+	psyc_panic_end(source);
+	return zero;
 };
