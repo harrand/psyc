@@ -179,17 +179,17 @@ x64v_ripreli : func(riprel : s64 weak, riprel_instruction_id_size : u64 -> x64v)
 
 x64v_rodata : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.rodataref; .v1 := id; .v2 := off; .v3 := sz;};
+	return x64v{.tag := x64v_tag.rodataref; .r1 := x64_reg.rip; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
 x64v_data : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.dataref; .v1 := id; .v2 := off; .v3 := sz;};
+	return x64v{.tag := x64v_tag.dataref; .r1 := x64_reg.rip; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
 x64v_bss : func(id : u64, off : u64, sz : u64 -> x64v)
 {
-	return x64v{.tag := x64v_tag.bssref; .v1 := id; .v2 := off; .v3 := sz;};
+	return x64v{.tag := x64v_tag.bssref; .r1 := x64_reg.rip; .v1 := id; .v2 := off; .v3 := sz;};
 };
 
 x64v_fn : func(id : u64 -> x64v)
@@ -292,6 +292,13 @@ x64v_is_imm : func(v : x64v -> bool)
 
 x64v_is_riprel : func(v : x64v -> bool)
 {
+	if(v.tag == x64v_tag.memreg)
+	{
+		if(x64v_memreg_get_base(v) == x64_reg.rip)
+		{
+			return true;
+		}
+	}
 	return (v.tag == x64v_tag.ripreli) || (v.tag == x64v_tag.riprel) || (v.tag == x64v_tag.rodataref) || (v.tag == x64v_tag.dataref) || (v.tag == x64v_tag.bssref) || (v.tag == x64v_tag.fnref);
 };
 

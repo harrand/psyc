@@ -58,17 +58,25 @@ x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
 		{
 			curinst ::= f->inst # j;
 
-			// note: potentially this needs to happen first in the loop instead of last. havent thought it through.
 			startrel = startrel + bwrite_x64i_encode(ref tmpwriter, [curinst]);
 			tmpwriter.cursor = 0;
 
 			count ::= x64i_operand_count([curinst]);
+			curop : x64v mut? mut;
 			for(k = 0; k < count; k = k + 1)
 			{
-				curop ::= curinst->operands # k;
+				curop = curinst->operands # k;
+				if((curop->tag == x64v_tag.rodataref) || (curop->tag == x64v_tag.dataref) || (curop->tag == x64v_tag.bssref))
+				{
+					// the encoding stays the same *but* we add a rel32 which is 4 bytes
+					startrel = startrel + 4;
+				}
+			}
+			for(k = 0; k < count; k = k + 1)
+			{
+				curop = curinst->operands # k;
 				if(curop->tag == x64v_tag.rodataref)
 				{
-					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
@@ -87,7 +95,6 @@ x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
 				}
 				if(curop->tag == x64v_tag.dataref)
 				{
-					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
@@ -106,7 +113,6 @@ x64p_patch_data : func(p : x64p mut?, meta : x64p_encoding_metadata -> v0)
 				}
 				if(curop->tag == x64v_tag.bssref)
 				{
-					startrel = startrel + 4;
 					// replace curop with a riprel
 					byte_counter = 0;
 					for(l = 0; l < curop->v1; l = l + 1)
