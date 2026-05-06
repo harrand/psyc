@@ -107,6 +107,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_symbol(node, s);
 	}
+	if(ast_is_expr(node, ast_expr_tag.call))
+	{
+		return val_from_call(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -311,6 +315,27 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 	return zero;
 };
 
+val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	// callee must be some type of callable
+	callee ::= val_from_node(ast_get_child(call_node, 0), s, r);
+	callee_type ::= ty_unwrap(callee.type)->fn.return_type;
+	if(!ty_is_fn(callee_type))
+	{
+		psyc_error_begin(call_node);
+		putzstr("attempt to call non-callable ");
+		putchar('"');
+		putty(callee_type);
+		putchar('"');
+		psyc_error_end(call_node);
+	}
+	if(callee.tag == val_tag.type_only)
+	{
+		return val_from_type(callee_type);
+	}
+	return zero;
+};
+
 val_function_reference : func(fn : function mut? -> val)
 {
 	return val
@@ -382,6 +407,15 @@ val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
 	putzstr("reached end of val_must_convert");
 	psyc_panic_end(source);
 	return zero;
+};
+
+val_from_type : func(type : tyid -> val)
+{
+	return val
+	{
+		.tag := val_tag.type_only;
+		.type := type;
+	};
 };
 
 // given a val, if its an rval, error out. if its a sval, do nothing
