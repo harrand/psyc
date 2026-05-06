@@ -315,11 +315,39 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 	return zero;
 };
 
+// verifies that the params passed to the callable are all kosher
+// and returns an array containing the ready-to-go param vals
+val_setup_call_params : func(callee : val, params_nodes : ast mut?, params_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val mut?)
+{
+	callee_fnty ::= ty_unwrap(callee.type)->fn;
+
+	if(params_nodes_count != callee_fnty.params_count)
+	{
+		psyc_error_begin(source);
+		putzstr("incorrect number of arguments in call. expected ");
+		putuint(callee_fnty.params_count);
+		putzstr(", got ");
+		putuint(params_nodes_count);
+		psyc_error_end(source);
+	}
+	call_params : val mut? := arena_alloc(global_arena, params_nodes_count * sizeof val);
+	i : u64 mut;
+	for(i = 0; i < params_nodes_count; i = i + 1)
+	{
+		pnode ::= params_nodes # i;
+		cur ::= val_must_convert(val_from_node(pnode, s, r), [callee_fnty.param_types # i], pnode);
+		[call_params # i] = cur;
+	}
+	return call_params;
+};
+
+
 val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
+	i : u64 mut;
 	// callee must be some type of callable
 	callee ::= val_from_node(ast_get_child(call_node, 0), s, r);
-	callee_return_type ::= ty_unwrap(callee.type)->fn.return_type;
+	callee_fnty ::= ty_unwrap(callee.type)->fn;
 	if(!ty_is_fn(callee.type))
 	{
 		psyc_error_begin(call_node);
@@ -329,19 +357,17 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 		putchar('"');
 		psyc_error_end(call_node);
 	}
+
+	// validate call params
+	call_params_count ::= call_node->children_count - 1;
+	call_params ::= val_setup_call_params(callee, ast_get_child(call_node, 1), call_params_count, s, r, call_node);
+
 	if(callee.tag == val_tag.type_only)
 	{
-		return val_from_type(callee_return_type);
+		return val_from_type(callee_fnty.return_type);
 	}
 	// todo: handle compile_time call
 	// todo: handle runtime call
-	call_params_count ::= call_node->children_count - 1;
-	call_params : val mut? := arena_alloc(global_arena, call_params_count * sizeof val);
-	i : u64 mut;
-	for(i = 0; i < call_params_count; i = i + 1)
-	{
-		[call_params # i] = val_from_node(ast_get_child(call_node, i + 1), s, r);
-	}
 	if((r == val_resolution.runtime_only) || (r == val_resolution.either))
 	{
 		call_param_irvals : irval mut? := arena_alloc(global_arena, call_params_count * sizeof irval);
