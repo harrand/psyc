@@ -335,6 +335,24 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 	}
 	// todo: handle compile_time call
 	// todo: handle runtime call
+	call_params_count ::= call_node->children_count - 1;
+	call_params : val mut? := arena_alloc(global_arena, call_params_count * sizeof val);
+	i : u64 mut;
+	for(i = 0; i < call_params_count; i = i + 1)
+	{
+		[call_params # i] = val_from_node(ast_get_child(call_node, i + 1), s, r);
+	}
+	if((r == val_resolution.runtime_only) || (r == val_resolution.either))
+	{
+		call_param_irvals : irval mut? := arena_alloc(global_arena, call_params_count * sizeof irval);
+		// todo: handle more than just scalars...
+		for(i = 0; i < call_params_count; i = i + 1)
+		{
+			[call_param_irvals # i] = val_ensure_runtime([call_params # i], ast_get_child(call_node, i + 1)).r.v;
+		}
+		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_params_count, zero, zero, zero);
+		return zero;
+	}
 	psyc_panic_begin(call_node);
 	putzstr("reached end of val_from_call");
 	psyc_panic_end(call_node);
@@ -522,6 +540,34 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				};
 			};
 		}
+	}
+	if(v.s.tag == sval_tag.function_reference)
+	{
+		fn ::= v.s.ptr@function mut?;
+		return val
+		{
+			.tag := val_tag.runtime;
+			.category := val_category.rvalue;
+			.r := rval
+			{
+				.tag := rval_tag.scalar;
+				.v := irval_funcref(fn->fnref);
+			};
+		};
+	}
+	if(v.s.tag == sval_tag.assembly_reference)
+	{
+		as ::= v.s.ptr@assembly mut?;
+		return val
+		{
+			.tag := val_tag.runtime;
+			.category := val_category.rvalue;
+			.r := rval
+			{
+				.tag := rval_tag.scalar;
+				.v := irval_asmref(as->asm_ir_idx);
+			};
+		};
 	}
 	psyc_panic_begin(source);
 	putzstr("reached end of val_ensure_runtime");
