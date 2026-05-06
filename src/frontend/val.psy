@@ -427,6 +427,34 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				};
 			};
 		}
+		if(v.s.literal.tag == ast_literal_tag.floating_point)
+		{
+			// floating-point literal -> runtime value
+			return val
+			{
+				.tag := val_tag.runtime;
+				.category := val_category.rvalue;
+				.r := rval
+				{
+					.tag := rval_tag.scalar;
+					.v := irval_ffimm(v.s.literal.floating_point);
+				};
+			};
+		}
+		if(v.s.literal.tag == ast_literal_tag.string)
+		{
+			// string literal -> runtime value
+			return val
+			{
+				.tag := val_tag.runtime;
+				.category := val_category.rvalue;
+				.r := rval
+				{
+					.tag := rval_tag.scalar;
+					.v := ir_add_glob(v.s.literal.string, v.s.literal.string_len, false);
+				};
+			};
+		}
 	}
 	psyc_panic_begin(source);
 	putzstr("reached end of val_ensure_runtime");

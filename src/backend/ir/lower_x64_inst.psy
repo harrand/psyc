@@ -114,7 +114,7 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 		// downgrade to 32 bit
 		v = irval_dimm(irval_imm_get_value(v));
 	}
-	vx64 ::= lower_x64_irval(v);
+	vx64 : x64v mut := lower_x64_irval(v);
 
 	base : irval mut := [ir_store_get_base(inst)];
 	index ::= [ir_store_get_index(inst)];
@@ -138,6 +138,17 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	}
 	if((sz == irsz.q) || (sz == irsz.d) || (sz == irsz.w) || (sz == irsz.b))
 	{
+		// storing a global *into* something else means storing a pointer to it
+		// i.e mov [ptr], riprel xyz
+		// instead of mov [ptr], [riprel xyz]
+		// we need an intermediate lea to represent that
+		if(v.tag == irval_tag.globref)
+		{
+			// use rax as scratch
+			x64_lea(x64v_reg(x64_reg.rax, 64), vx64);
+			vx64 = x64v_reg(x64_reg.rax, 64);
+		}
+		// and just store the address in rax at the location
 		x64_mov(vmemreg, vx64);
 	}
 };
