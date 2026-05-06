@@ -107,7 +107,7 @@ lower_x64_load : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 {
 	v ::= [ir_store_get_value(inst)];
-	// now remember, if dst is a memreg (which a store always will be) then the src cannot be an imm64
+	// now remember, if dst is a memreg (which a store always will be) then the src cannot be an imm64 (if we are not usingmov, then it can be an immediate at all). and src cannot ever be a memory operand either because the dst is.
 	sz ::= irval_get_irsz(v);
 	if((v.tag == irval_tag.imm) && (sz == irsz.q))
 	{
@@ -123,19 +123,9 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	disp ::= [ir_store_get_disp(inst)];
 
 	vmemreg ::= lower_x64_custom_vmemreg(sz, base, index, scale, disp);
+	// incase we need an intermediate...
+	intermediate : x64v mut := x64v_reg(x64_reg.rax, 64);
 
-	if((sz == irsz.x) || (sz == irsz.y) || (sz == irsz.z))
-	{
-		x64_movdqu(vmemreg, vx64);
-	}
-	if(sz == irsz.f)
-	{
-		x64_movss(vmemreg, vx64);
-	}
-	if(sz == irsz.ff)
-	{
-		x64_movsd(vmemreg, vx64);
-	}
 	if((sz == irsz.q) || (sz == irsz.d) || (sz == irsz.w) || (sz == irsz.b))
 	{
 		// storing a global *into* something else means storing a pointer to it
@@ -149,7 +139,47 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 			vx64 = x64v_reg(x64_reg.rax, 64);
 		}
 		// and just store the address in rax at the location instead.
+		if(x64v_is_any_mem(vx64))
+		{
+			x64v_set_size(ref intermediate, x64v_size(vx64));
+			x64_mov(intermediate, vx64);
+			vx64 = intermediate;
+		}
 		x64_mov(vmemreg, vx64);
+	}
+	else
+	{
+		vx64 = lower_x64_irval_but_turn_imms_into_globals(v);
+		if(x64v_is_any_mem(vx64))
+		{
+			x64v_set_size(ref intermediate, x64v_size(vx64));
+			if((sz == irsz.x) || (sz == irsz.y) || (sz == irsz.z))
+			{
+				x64_movdqu(intermediate, vx64);
+			}
+			if(sz == irsz.f)
+			{
+				x64_movss(intermediate, vx64);
+			}
+			if(sz == irsz.ff)
+			{
+				x64_movsd(intermediate, vx64);
+			}
+			vx64 = intermediate;
+		}
+
+		if((sz == irsz.x) || (sz == irsz.y) || (sz == irsz.z))
+		{
+			x64_movdqu(vmemreg, vx64);
+		}
+		if(sz == irsz.f)
+		{
+			x64_movss(vmemreg, vx64);
+		}
+		if(sz == irsz.ff)
+		{
+			x64_movsd(vmemreg, vx64);
+		}
 	}
 };
 
@@ -593,67 +623,19 @@ lower_x64_fadd : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	outx64 ::= lower_x64_irval(out);
 
 	lhs ::= [ir_fadd_get_lhs(inst)];
-	lhsx64 : x64v mut := lower_x64_irval(lhs);
+	lhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(lhs);
 	rhs ::= [ir_fadd_get_rhs(inst)];
-	rhsx64 : x64v mut := lower_x64_irval(rhs);
+	rhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(rhs);
 
 	sz ::= irval_get_irsz(lhs);
 
-	// in theory lhs or rhs can be immediates in which case we need to move them to intermediates...
-	// or... make them into global constants...
-	lhsimm ::= x64v_imm_get_value(lhsx64);
-	rhsimm ::= x64v_imm_get_value(rhsx64);
 	if(sz == irsz.f)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm32 ::= [(ref lhsimm)@f64?]@f32;
-			lhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref lhsimm32;
-				.init_data_size := 4;
-			});
-			lhsx64 = x64v_rodata(lhsrodata32, 0, 32);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm32 ::= [(ref rhsimm)@f64?]@f32;
-			rhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref rhsimm32;
-				.init_data_size := 4;
-			});
-			rhsx64 = x64v_rodata(rhsrodata32, 0, 32);
-		}
 		x64_movss(outx64, lhsx64);
 		x64_addss(outx64, rhsx64);
 	}
-	else
+	if(sz == irsz.ff)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm64 ::= [(ref lhsimm)@f64?];
-			lhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref lhsimm64;
-				.init_data_size := 8;
-			});
-			lhsx64 = x64v_rodata(lhsrodata64, 0, 64);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm64 ::= [(ref rhsimm)@f64?];
-			rhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref rhsimm64;
-				.init_data_size := 8;
-			});
-			rhsx64 = x64v_rodata(rhsrodata64, 0, 64);
-		}
 		x64_movsd(outx64, lhsx64);
 		x64_addsd(outx64, rhsx64);
 	}
@@ -666,67 +648,19 @@ lower_x64_fsub : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	outx64 ::= lower_x64_irval(out);
 
 	lhs ::= [ir_fsub_get_lhs(inst)];
-	lhsx64 : x64v mut := lower_x64_irval(lhs);
+	lhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(lhs);
 	rhs ::= [ir_fsub_get_rhs(inst)];
-	rhsx64 : x64v mut := lower_x64_irval(rhs);
+	rhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(rhs);
 
 	sz ::= irval_get_irsz(lhs);
 
-	// in theory lhs or rhs can be immediates in which case we need to move them to intermediates...
-	// or... make them into global constants...
-	lhsimm ::= x64v_imm_get_value(lhsx64);
-	rhsimm ::= x64v_imm_get_value(rhsx64);
 	if(sz == irsz.f)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm32 ::= [(ref lhsimm)@f64?]@f32;
-			lhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref lhsimm32;
-				.init_data_size := 4;
-			});
-			lhsx64 = x64v_rodata(lhsrodata32, 0, 32);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm32 ::= [(ref rhsimm)@f64?]@f32;
-			rhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref rhsimm32;
-				.init_data_size := 4;
-			});
-			rhsx64 = x64v_rodata(rhsrodata32, 0, 32);
-		}
 		x64_movss(outx64, lhsx64);
 		x64_subss(outx64, rhsx64);
 	}
-	else
+	if(sz == irsz.ff)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm64 ::= [(ref lhsimm)@f64?];
-			lhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref lhsimm64;
-				.init_data_size := 8;
-			});
-			lhsx64 = x64v_rodata(lhsrodata64, 0, 64);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm64 ::= [(ref rhsimm)@f64?];
-			rhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref rhsimm64;
-				.init_data_size := 8;
-			});
-			rhsx64 = x64v_rodata(rhsrodata64, 0, 64);
-		}
 		x64_movsd(outx64, lhsx64);
 		x64_subsd(outx64, rhsx64);
 	}
@@ -739,67 +673,19 @@ lower_x64_fmul : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	outx64 ::= lower_x64_irval(out);
 
 	lhs ::= [ir_fmul_get_lhs(inst)];
-	lhsx64 : x64v mut := lower_x64_irval(lhs);
+	lhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(lhs);
 	rhs ::= [ir_fmul_get_rhs(inst)];
-	rhsx64 : x64v mut := lower_x64_irval(rhs);
+	rhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(rhs);
 
 	sz ::= irval_get_irsz(lhs);
 
-	// in theory lhs or rhs can be immediates in which case we need to move them to intermediates...
-	// or... make them into global constants...
-	lhsimm ::= x64v_imm_get_value(lhsx64);
-	rhsimm ::= x64v_imm_get_value(rhsx64);
 	if(sz == irsz.f)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm32 ::= [(ref lhsimm)@f64?]@f32;
-			lhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref lhsimm32;
-				.init_data_size := 4;
-			});
-			lhsx64 = x64v_rodata(lhsrodata32, 0, 32);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm32 ::= [(ref rhsimm)@f64?]@f32;
-			rhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref rhsimm32;
-				.init_data_size := 4;
-			});
-			rhsx64 = x64v_rodata(rhsrodata32, 0, 32);
-		}
 		x64_movss(outx64, lhsx64);
 		x64_mulss(outx64, rhsx64);
 	}
-	else
+	if(sz == irsz.ff)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm64 ::= [(ref lhsimm)@f64?];
-			lhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref lhsimm64;
-				.init_data_size := 8;
-			});
-			lhsx64 = x64v_rodata(lhsrodata64, 0, 64);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm64 ::= [(ref rhsimm)@f64?];
-			rhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref rhsimm64;
-				.init_data_size := 8;
-			});
-			rhsx64 = x64v_rodata(rhsrodata64, 0, 64);
-		}
 		x64_movsd(outx64, lhsx64);
 		x64_mulsd(outx64, rhsx64);
 	}
@@ -812,67 +698,19 @@ lower_x64_fdiv : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	outx64 ::= lower_x64_irval(out);
 
 	lhs ::= [ir_fdiv_get_lhs(inst)];
-	lhsx64 : x64v mut := lower_x64_irval(lhs);
+	lhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(lhs);
 	rhs ::= [ir_fdiv_get_rhs(inst)];
-	rhsx64 : x64v mut := lower_x64_irval(rhs);
+	rhsx64 ::= lower_x64_irval_but_turn_imms_into_globals(rhs);
 
 	sz ::= irval_get_irsz(lhs);
 
-	// in theory lhs or rhs can be immediates in which case we need to move them to intermediates...
-	// or... make them into global constants...
-	lhsimm ::= x64v_imm_get_value(lhsx64);
-	rhsimm ::= x64v_imm_get_value(rhsx64);
 	if(sz == irsz.f)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm32 ::= [(ref lhsimm)@f64?]@f32;
-			lhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref lhsimm32;
-				.init_data_size := 4;
-			});
-			lhsx64 = x64v_rodata(lhsrodata32, 0, 32);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm32 ::= [(ref rhsimm)@f64?]@f32;
-			rhsrodata32 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 4;
-				.init_data := ref rhsimm32;
-				.init_data_size := 4;
-			});
-			rhsx64 = x64v_rodata(rhsrodata32, 0, 32);
-		}
 		x64_movss(outx64, lhsx64);
 		x64_divss(outx64, rhsx64);
 	}
-	else
+	if(sz == irsz.ff)
 	{
-		if(lhsx64.tag == x64v_tag.imm)
-		{
-			lhsimm64 ::= [(ref lhsimm)@f64?];
-			lhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref lhsimm64;
-				.init_data_size := 8;
-			});
-			lhsx64 = x64v_rodata(lhsrodata64, 0, 64);
-		}
-		if(rhsx64.tag == x64v_tag.imm)
-		{
-			rhsimm64 ::= [(ref rhsimm)@f64?];
-			rhsrodata64 ::= x64_add_or_get_rodata(x64g
-			{
-				.size := 8;
-				.init_data := ref rhsimm64;
-				.init_data_size := 8;
-			});
-			rhsx64 = x64v_rodata(rhsrodata64, 0, 64);
-		}
 		x64_movsd(outx64, lhsx64);
 		x64_divsd(outx64, rhsx64);
 	}

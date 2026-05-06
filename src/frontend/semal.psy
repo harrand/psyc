@@ -104,7 +104,48 @@ semal_var : func(var : variable mut?, parent : scope mut? -> v0)
 semal_asm : func(as : assembly mut?, parent : scope mut? -> v0)
 {
 	as->name = as->node->assembly.name;
-	// todo: given the assembly constraint string turn that into a type and set as->type
+	// we need to come up with a function type to represent the assembly.
+	// we need to know the number of params. to do that, we will use x64_parsing of the inlineasm
+	inputs : x64v mut? mut;
+	inputs_count : u64 mut;
+	outputs : x64v mut? mut;
+	outputs_count : u64 mut;
+	clobbers : x64v mut? mut;
+	clobbers_count : u64 mut;
+	x64_parse_constraints(sstrdata(as->constraints), sstrlen(as->constraints), ref inputs, ref inputs_count, ref outputs, ref outputs_count, ref clobbers, ref clobbers_count);
+	// only care about inputs
+	asm_param_tys : tyid mut? := arena_alloc(global_arena, inputs_count);
+	i : u64 mut;
+	for(i = 0; i < inputs_count; i = i + 1)
+	{
+		cur_param ::= [inputs # i];
+		cur_sz ::= x64v_reg_get_size(cur_param);
+		// if its an xmm reg, we say its f32
+		// otherwise, we say its an unsigned int of whatever the reg size is
+		// a bit stupid and brittle, but best i can do for now.
+		if(cur_sz >= 128)
+		{
+			// 128 bit sse register
+			[asm_param_tys # i] = ty_set_qual(tyid.f64, tyqual.qual_weak);
+		}
+		if(cur_sz == 64)
+		{
+			[asm_param_tys # i] = ty_set_qual(tyid.u64, tyqual.qual_weak);
+		}
+		if(cur_sz == 32)
+		{
+			[asm_param_tys # i] = ty_set_qual(tyid.u32, tyqual.qual_weak);
+		}
+		if(cur_sz == 16)
+		{
+			[asm_param_tys # i] = ty_set_qual(tyid.u16, tyqual.qual_weak);
+		}
+		if(cur_sz == 8)
+		{
+			[asm_param_tys # i] = ty_set_qual(tyid.u8, tyqual.qual_weak);
+		}
+	}
+	as->type = ty_fn(tyid.v0, asm_param_tys, inputs_count, zero);
 };
 
 semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak -> v0)

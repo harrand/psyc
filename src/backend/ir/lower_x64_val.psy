@@ -54,6 +54,15 @@ lower_x64_irval : func(v : irval -> x64v)
 	return zero;
 };
 
+lower_x64_irval_but_turn_imms_into_globals : func(v : irval -> x64v)
+{
+	if(v.tag == irval_tag.imm)
+	{
+		return lower_irval_imm_to_x64_rodata(v);
+	}
+	return lower_x64_irval(v);
+};
+
 bwrite_colour_red : func(w : bwriter mut? -> v0)
 {
 	bwrite8(w, 27);
@@ -373,3 +382,104 @@ lower_x64_value_is_irblk : func(v : x64v -> bool)
 	return v.tag == ((custom_idx + lower_x64_custom_x64v_tag_irblk)@x64v_tag);
 };
 
+lower_irval_imm_to_x64_rodata : func(v : irval -> x64v)
+{
+	// an irval imm is convertible to an x64 imm with no problems
+	// however, many x64 instructions do not take immediates whereas pretty much all the IR instructions do
+	// in those cases we actually want to convert the immediate to global data and return a ripreli to it (which often *do* have memory operand encodings in x64 instructions)
+	
+	// we need to handle all the possible types of immediates im afraid
+	return [lower_irval_imm_to_x64_rodata_tbl # irval_imm_get_irsz(v)@s64](v);
+};
+
+lower_irval_imm_to_x64_rodata_tbl ::= func(v : irval -> x64v)[countof irsz]
+{
+	.0 := zero; // none (unsized immediates are malformed)
+	.1 := lower_irval_bimm_to_x64_rodata;
+	.2 := lower_irval_wimm_to_x64_rodata;
+	.3 := lower_irval_dimm_to_x64_rodata;
+	.4 := lower_irval_qimm_to_x64_rodata;
+	... := zero;
+	.8 := lower_irval_fimm_to_x64_rodata;
+	.9 := lower_irval_ffimm_to_x64_rodata;
+};
+
+lower_irval_bimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	bimm : u8 mut? := arena_alloc(global_arena, 1);
+	[bimm] = irval_imm_get_value(v)@u8;
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 1;
+		.init_data := bimm;
+		.init_data_size := 1;
+	});
+	return x64v_rodata(rodata, 0, 8);
+};
+
+lower_irval_wimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	wimm : u16 mut? := arena_alloc(global_arena, 2);
+	[wimm] = irval_imm_get_value(v)@u16;
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 2;
+		.init_data := wimm;
+		.init_data_size := 2;
+	});
+	return x64v_rodata(rodata, 0, 16);
+};
+
+lower_irval_dimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	dimm : u32 mut? := arena_alloc(global_arena, 4);
+	[dimm] = irval_imm_get_value(v)@u32;
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 4;
+		.init_data := dimm;
+		.init_data_size := 4;
+	});
+	return x64v_rodata(rodata, 0, 32);
+};
+
+lower_irval_qimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	qimm : u64 mut? := arena_alloc(global_arena, 8);
+	[qimm] = irval_imm_get_value(v)@u64;
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 8;
+		.init_data := qimm;
+		.init_data_size := 8;
+	});
+	return x64v_rodata(rodata, 0, 64);
+};
+
+lower_irval_fimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	qimm ::= irval_imm_get_value(v)@u64;
+	fimm : f32 mut? := arena_alloc(global_arena, 4);
+	[fimm] = [(ref qimm)@f64?]@f32;
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 4;
+		.init_data := fimm;
+		.init_data_size := 4;
+	});
+	return x64v_rodata(rodata, 0, 32);
+};
+
+lower_irval_ffimm_to_x64_rodata : func(v : irval -> x64v)
+{
+	qimm ::= irval_imm_get_value(v)@u64;
+	ffimm : f64 mut? := arena_alloc(global_arena, 8);
+	[ffimm] = [(ref qimm)@f64?];
+	rodata ::= x64_add_or_get_rodata(x64g
+	{
+		.size := 8;
+		.init_data := ffimm;
+		.init_data_size := 8;
+	});
+	return x64v_rodata(rodata, 0, 64);
+};

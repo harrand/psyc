@@ -319,22 +319,25 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 {
 	// callee must be some type of callable
 	callee ::= val_from_node(ast_get_child(call_node, 0), s, r);
-	callee_type ::= ty_unwrap(callee.type)->fn.return_type;
-	if(!ty_is_fn(callee_type))
+	callee_return_type ::= ty_unwrap(callee.type)->fn.return_type;
+	if(!ty_is_fn(callee.type))
 	{
 		psyc_error_begin(call_node);
 		putzstr("attempt to call non-callable ");
 		putchar('"');
-		putty(callee_type);
+		putty(callee.type);
 		putchar('"');
 		psyc_error_end(call_node);
 	}
 	if(callee.tag == val_tag.type_only)
 	{
-		return val_from_type(callee_type);
+		return val_from_type(callee_return_type);
 	}
 	// todo: handle compile_time call
 	// todo: handle runtime call
+	psyc_panic_begin(call_node);
+	putzstr("reached end of val_from_call");
+	psyc_panic_end(call_node);
 	return zero;
 };
 
