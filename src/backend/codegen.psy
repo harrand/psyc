@@ -57,7 +57,12 @@ codegen_funcsig : func(fn : function mut? -> v0)
 	for(i = 0; i < fnty.params_count; i = i + 1)
 	{
 		paramvar ::= fn->impl_scope.vars # i;
-		// todo: paramvar->runtime_storage = ...
+		paramvar->runtime_storage = rval
+		{
+			// todo: non-scalar (chunked) params
+			.tag := rval_tag.scalar;
+			.v := [paramregs # i];
+		};
 	}
 };
 
@@ -66,7 +71,8 @@ codegen_funcdef : func(fn : function mut? -> v0)
 	ir_set_pos(fn->fnref);
 	i : u64 mut;
 
-	for(i = 0; i < fn->impl_scope.vars_count; i = i + 1)
+	first_non_param_var_idx ::= ty_unwrap(fn->type)->fn.params_count;
+	for(i = first_non_param_var_idx; i < fn->impl_scope.vars_count; i = i + 1)
 	{
 		localvar ::= fn->impl_scope.vars # i;
 
