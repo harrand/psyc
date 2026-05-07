@@ -430,7 +430,7 @@ val_assembly_reference : func(as : assembly mut? -> val)
 	};
 };
 
-val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
+val_must_convert : func(from : val mut, to : tyid, source : ast mut? -> val)
 {
 	conv ::= ty_converts_to(from.type, to);
 
@@ -454,6 +454,22 @@ val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
 	if(from.tag == val_tag.type_only)
 	{
 		return val_from_type(to);
+	}
+	if((from.tag == val_tag.compile_time) && (from.s.tag == sval_tag.variable_reference))
+	{
+		// if the variable is static then we can get its init node now i guess and go into sval_must_convert
+		// but if its not, then we fallback to runtime.
+		if(ty_has_qual(from.type, tyqual.qual_static))
+		{
+			// todo: get static value (probably have to get init node again because we dont currently store that in variable mut? (maybe we should?))
+			psyc_panic_begin(source);
+			putzstr("todo: given static variable_reference, get its static value initialiser");
+			psyc_panic_end(source);
+		}
+		else
+		{
+			from = val_ensure_runtime(from, source);
+		}
 	}
 	if(from.tag == val_tag.compile_time)
 	{
@@ -483,17 +499,204 @@ val_must_convert : func(from : val, to : tyid, source : ast mut? -> val)
 	return zero;
 };
 
-sval_must_convert : func(from : val, to : tyid, source : ast mut? -> sval)
+sval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> sval)
 {
-	// todo: impl
+	if(ty_matches_ignore_quals(from.type, to))
+	{
+		return from.s;
+	}
+	// 'zero' and 'undefined' transcend types
+	if((from.s.tag == sval_tag.zero_value) || (from.s.tag == sval_tag.undefined))
+	{
+		return from.s;
+	}
+	if(from.s.tag == sval_tag.literal)
+	{
+		from_sz ::= ty_floating_point_size(from.type) + ty_integral_size(from.type);
+		to_sz ::= ty_floating_point_size(to) + ty_integral_size(to);
+		// int to int
+		if(ty_is_integral(from.type) && ty_is_integral(to))
+		{
+			if(to_sz == 8)
+			{
+				from.s.literal.integer = (from.s.literal.integer@s8)@_;
+			}
+			if(to_sz == 16)
+			{
+				from.s.literal.integer = (from.s.literal.integer@s16)@_;
+			}
+			if(to_sz == 32)
+			{
+				from.s.literal.integer = (from.s.literal.integer@s32)@_;
+			}
+			if(to_sz == 64)
+			{
+				from.s.literal.integer = (from.s.literal.integer@s32)@_;
+			}
+			return from.s;
+		}
+		// float to float
+		if(ty_is_floating_point(from.type) && ty_is_floating_point(to))
+		{
+			if(to_sz == 32)
+			{
+				from.s.literal.floating_point = (from.s.literal.floating_point@f32)@_;
+			}
+			if(to_sz == 64)
+			{
+				from.s.literal.floating_point = (from.s.literal.floating_point@f64)@_;
+			}
+			return from.s;
+		}
+		// int to float
+		if(ty_is_integral(from.type) && ty_is_floating_point(to))
+		{
+			if(to_sz == 32)
+			{
+				from.s.literal.floating_point = (from.s.literal.integer)@f32@_;
+			}
+			if(to_sz == 64)
+			{
+				from.s.literal.floating_point = (from.s.literal.integer)@f64@_;
+			}
+			from.s.literal.tag == ast_literal_tag.floating_point;
+			return from.s;
+		}
+		// float to int
+		if(ty_is_floating_point(from.type) && ty_is_integral(to))
+		{
+			if(to_sz == 8)
+			{
+				from.s.literal.integer = (from.s.literal.floating_point@s8)@_;
+			}
+			if(to_sz == 16)
+			{
+				from.s.literal.integer = (from.s.literal.floating_point@s16)@_;
+			}
+			if(to_sz == 32)
+			{
+				from.s.literal.integer = (from.s.literal.floating_point@s32)@_;
+			}
+			if(to_sz == 64)
+			{
+				from.s.literal.integer = (from.s.literal.floating_point@s32)@_;
+			}
+			from.s.literal.tag == ast_literal_tag.integer;
+			return from.s;
+		}
+		// bool to int
+		if(ty_is_bool(from.type) && ty_is_integral(to))
+		{
+			from.s.literal.tag = ast_literal_tag.integer;
+			from.s.literal.integer = (from.s.literal.boolean == true)@_;
+			return from.s;
+		}
+		// int to bool
+		if(ty_is_integral(from.type) && ty_is_bool(to))
+		{
+			from.s.literal.tag = ast_literal_tag.boolean;
+			from.s.literal.boolean = (from.s.literal.integer != 0);
+			return from.s;
+		}
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of sval_must_convert");
 	psyc_panic_end(source);
 	return zero;
 };
 
-rval_must_convert : func(from : val, to : tyid, source : ast mut? -> rval)
+rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 {
+	if(ty_matches_ignore_quals(from.type, to))
+	{
+		return from.r;
+	}
+	if(from.category == val_category.lvalue)
+	{
+		// must load
+		from = codegen_load(from, source);
+	}
+	if(ty_is_prim(from.type) && ty_is_prim(to))
+	{
+		outsz : irsz mut;
+		from_sz ::= ty_floating_point_size(from.type) + ty_integral_size(from.type);
+		to_sz ::= ty_floating_point_size(to) + ty_integral_size(to);
+		// int to int
+		if(ty_is_integral(from.type) && ty_is_integral(to))
+		{
+			if(to_sz == from_sz)
+			{
+				return from.r;
+			}
+			if(from_sz == 8)
+			{
+				outsz = irsz.b;
+			}
+			if(from_sz == 16)
+			{
+				outsz = irsz.w;
+			}
+			if(from_sz == 32)
+			{
+				outsz = irsz.d;
+			}
+			if(from_sz == 64)
+			{
+				outsz = irsz.q;
+			}
+			if(to_sz < from_sz)
+			{
+				// increase size...
+				if(ty_is_signed_integral(from.type))
+				{
+					// signed => sex
+					from.r.v = ir_sex(outsz, from.r.v);
+				}
+				else
+				{
+					// unsigned => zex
+					from.r.v = ir_zex(outsz, from.r.v);
+				}
+			}
+			else
+			{
+				// decrease size => trunc
+				from.r.v = ir_trunc(outsz, from.r.v);
+			}
+			return from.r;
+		}
+		// float to float
+		if(ty_is_floating_point(from.type) && ty_is_floating_point(to))
+		{
+			psyc_panic_begin(source);
+			putzstr("float-to-float conversions are not yet supported by the IR");
+			psyc_panic_end(source);
+			return zero;
+		}
+		// float to int
+		if(ty_is_floating_point(from.type) && ty_is_integral(to))
+		{
+			if(from_sz == 8)
+			{
+				outsz = irsz.b;
+			}
+			if(from_sz == 16)
+			{
+				outsz = irsz.w;
+			}
+			if(from_sz == 32)
+			{
+				outsz = irsz.d;
+			}
+			if(from_sz == 64)
+			{
+				outsz = irsz.q;
+			}
+			// todo: use signed/unsigned variants of cvti in the IR because currently ther e is only one which is wrong
+			from.r.v = ir_cvti(outsz, from.r.v);
+			return from.r;
+		}
+	}
 	// todo: impl
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_must_convert");
@@ -637,7 +840,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 		{
 			.tag := val_tag.runtime;
 			.type := v.type;
-			.category := val_category.rvalue;
+			.category := val_category.lvalue;
 			.r := var->runtime_storage;
 		};
 	}

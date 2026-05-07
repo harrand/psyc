@@ -276,3 +276,40 @@ codegen_store : func(ptr_val : val, store_val : val, source : ast mut? -> v0)
 	putzstr("reached end of codegen_store");
 	psyc_panic_end(source);
 };
+
+codegen_load : func(ptr_val : val, source : ast mut? -> val)
+{
+	chunk_rules ::= irchunking_rules
+	{
+		.allow_merges := true;
+		.chunk_size_max_nonfp := 64;
+		.chunk_size_max_fp := 8;
+	};
+	ptr ::= val_ensure_runtime(ptr_val, source);
+
+	chunks_array : irchunk mut[64] := zero;
+	chunks_count ::= irchunk_tys(chunk_rules, ref(ptr.type), 1, chunks_array # 0);
+
+	if(chunks_count == 1)
+	{
+		// scalar! woop!
+		return val
+		{
+			.tag := val_tag.runtime;
+			.type := ptr.type;
+			.category := val_category.rvalue;
+			.r := rval
+			{
+				.tag := rval_tag.scalar;
+				.v := ir_load(chunk_to_irsz(chunks_array # 0), ptr.r.v, zero, zero, zero);
+			};
+		};
+	}
+
+	// we need to figure out whether we just need a scalar or not.
+	// we need to do chunking...
+	psyc_panic_begin(source);
+	putzstr("reached end of codegen_load");
+	psyc_panic_end(source);
+	return zero;
+};
