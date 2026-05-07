@@ -111,6 +111,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_call(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.cast))
+	{
+		return val_from_cast(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -383,6 +387,16 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 	putzstr("reached end of val_from_call");
 	psyc_panic_end(call_node);
 	return zero;
+};
+
+val_from_cast : func(cast_node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	castee_node ::= ast_get_child(cast_node, 0);
+	castee ::= val_from_node(castee_node, s, r);
+	cast_to_node ::= ast_get_child(cast_node, 1);
+	cast_to ::= type_from_typename_node(cast_to_node, s);
+
+	return val_must_convert(castee, cast_to, cast_node);
 };
 
 val_function_reference : func(fn : function mut? -> val)
@@ -673,22 +687,36 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 			psyc_panic_end(source);
 			return zero;
 		}
+		// int to float
+		if(ty_is_integral(from.type) && ty_is_floating_point(to))
+		{
+			if(to_sz == 32)
+			{
+				outsz = irsz.f;
+			}
+			if(to_sz == 64)
+			{
+				outsz = irsz.ff;
+			}
+			from.r.v = ir_cvtf(outsz, from.r.v);
+			return from.r;
+		}
 		// float to int
 		if(ty_is_floating_point(from.type) && ty_is_integral(to))
 		{
-			if(from_sz == 8)
+			if(to_sz == 8)
 			{
 				outsz = irsz.b;
 			}
-			if(from_sz == 16)
+			if(to_sz == 16)
 			{
 				outsz = irsz.w;
 			}
-			if(from_sz == 32)
+			if(to_sz == 32)
 			{
 				outsz = irsz.d;
 			}
-			if(from_sz == 64)
+			if(to_sz == 64)
 			{
 				outsz = irsz.q;
 			}
