@@ -227,7 +227,7 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 		{
 			init_node ::= ast_get_child(node, 1);
 			init_val ::= val_from_node(init_node, ref(fn->impl_scope), val_resolution.runtime_only);
-			codegen_store(decl_var->runtime_storage, init_val, init_node);
+			codegen_store(val_variable_reference(decl_var), init_val, init_node);
 			// todo: get the val of an init_node (runtime)
 			// store it into decl_var.runtime_storage
 		}
@@ -260,15 +260,16 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 	psyc_panic_end(node);
 };
 
-codegen_store : func(ptr_val : rval, v : val, source : ast mut? -> v0)
+codegen_store : func(ptr_val : val, store_val : val, source : ast mut? -> v0)
 {
-	// todo: type checking
-	// store v into ptr_val
-
+	// store store_val into ptr_val at runtime
+	// todo: compile-time version?
+	ptr ::= val_ensure_runtime(ptr_val, source);
+	v ::= val_ensure_runtime(val_must_convert(store_val, ptr.type, source), source);
 	if(v.r.tag == rval_tag.scalar)
 	{
 		// easy peasy
-		ir_store(v.r.v, ptr_val.v, zero, zero, zero);
+		ir_store(v.r.v, ptr.r.v, zero, zero, zero);
 		return;
 	}
 	psyc_panic_begin(source);
