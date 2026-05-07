@@ -111,9 +111,37 @@ codegen_asm : func(as : assembly mut? -> v0)
 	as->asm_ir_idx = irval_asmref_get_idx(asmref);
 };
 
+codegen_setup_entrypoint : func(-> v0)
+{
+	entrypoint_name ::= sstr{.data := "main"; .len := 4;};
+
+	// set the entrypoint
+	found_entrypoint : bool mut := false;
+	i : u64 mut;
+	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
+	{
+		fn ::= prog.global_scope.funcs # i;	
+		if(sstreql(fn->name, entrypoint_name))
+		{
+			found_entrypoint = true;
+			ir_set_entrypoint(irpos{.func_cursor := i; ... := zero;});
+		}
+	}
+	if(!found_entrypoint)
+	{
+		psyc_error_begin(zero);
+		putzstr("no entrypoint exists in the program. expected a function called ");
+		putchar('"');
+		putsstr(entrypoint_name);
+		putchar('"');
+		psyc_error_end(zero);
+	}
+};
+
 post_codegen : func(-> v0)
 {
 	ir_pass_validate();
+	codegen_setup_entrypoint();
 	ir_optimise(ir_optimise_level.O0);
 
 	stream ::= bwriter mut
