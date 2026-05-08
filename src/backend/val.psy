@@ -172,9 +172,9 @@ val_from_char_literal : func(char : u8 weak -> val)
 	return val_from_literal(ast_literal{.tag := ast_literal_tag.char; .char := char;});
 };
 
-val_from_string_literal : func(string : u8?, string_len : u64 -> val)
+val_from_string_literal : func(string : sstr -> val)
 {
-	return val_from_literal(ast_literal{.tag := ast_literal_tag.string; .string := string; .string_len := string_len;});
+	return val_from_literal(ast_literal{.tag := ast_literal_tag.string; .string := sstrdata(string); .string_len := sstrlen(string);});
 };
 
 val_from_bool_literal : func(boolean : bool -> val)
@@ -276,6 +276,74 @@ val_must_get_char : func(v : val, source : ast mut? -> u8)
 	}
 	psyc_error_begin(source);
 	putzstr("cannot statically retrieve literal.char value from non-literal ");
+	putchar('"');
+	putzstr(enumname(v.s.tag));
+	putchar('"');
+	putzstr(" value");
+	psyc_error_end(source);
+	return zero;
+};
+
+val_must_get_string : func(v : val, source : ast mut? -> sstr)
+{
+	if(v.tag != val_tag.compile_time)
+	{
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.string value from non-compile-time value");
+		psyc_error_end(source);
+	}
+	if(v.s.tag == sval_tag.zero_value)
+	{
+		return zero;
+	}
+	if(v.s.tag == sval_tag.literal)
+	{
+		if(v.s.literal.tag == ast_literal_tag.string)
+		{
+			return sstr{.data := v.s.literal.string; .len := v.s.literal.string_len;};
+		}
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.string value from literal.");
+		putzstr(enumname(v.s.literal.tag));
+		putzstr(" value");
+		psyc_error_end(source);
+	}
+	psyc_error_begin(source);
+	putzstr("cannot statically retrieve literal.string value from non-literal ");
+	putchar('"');
+	putzstr(enumname(v.s.tag));
+	putchar('"');
+	putzstr(" value");
+	psyc_error_end(source);
+	return zero;
+};
+
+val_must_get_bool : func(v : val, source : ast mut? -> bool)
+{
+	if(v.tag != val_tag.compile_time)
+	{
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.bool value from non-compile-time value");
+		psyc_error_end(source);
+	}
+	if(v.s.tag == sval_tag.zero_value)
+	{
+		return zero;
+	}
+	if(v.s.tag == sval_tag.literal)
+	{
+		if(v.s.literal.tag == ast_literal_tag.boolean)
+		{
+			return v.s.literal.boolean;
+		}
+		psyc_error_begin(source);
+		putzstr("cannot statically retrieve literal.bool value from literal.");
+		putzstr(enumname(v.s.literal.tag));
+		putzstr(" value");
+		psyc_error_end(source);
+	}
+	psyc_error_begin(source);
+	putzstr("cannot statically retrieve literal.bool value from non-literal ");
 	putchar('"');
 	putzstr(enumname(v.s.tag));
 	putchar('"');

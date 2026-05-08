@@ -1,0 +1,84 @@
+== default ==
+{
+	add_build_file("./_test_helper.psy");
+
+	executable("val_from_literals");
+	postbuild_command("(cd build && ./val_from_literals)");
+};
+
+test_integer_literal : func(i : s64 weak -> v0)
+{
+	v ::= val_from_integer_literal(i);
+	if(val_must_get_integer(v, zero) != i)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+test_floating_point_literal : func(i : f64 weak -> v0)
+{
+	v ::= val_from_floating_point_literal(i);
+	if(val_must_get_floating_point(v, zero) != i)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+test_char_literal : func(i : u8 weak -> v0)
+{
+	v ::= val_from_char_literal(i);
+	if(val_must_get_char(v, zero) != i)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+test_string_literal : func(str : sstr -> v0)
+{
+	v ::= val_from_string_literal(str);
+	if(sstreql(val_must_get_string(v, zero), str))
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+test_bool_literal : func(b : bool -> v0)
+{
+	v ::= val_from_bool_literal(b);
+	if(val_must_get_bool(v, zero) != b)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+zstr2sstr : func(zstr : u8? -> sstr)
+{
+	return sstr{.data := zstr; .len := zstrlen(zstr);};
+};
+
+test : func(-> s32)
+{
+	i : u64 mut;
+	for(i = ~0 - 10000; i < ~0; i = i + 1)
+	{
+		test_integer_literal(i);
+		test_floating_point_literal(i@f64 + 0.342985 * i);
+		test_char_literal(i);
+	}
+	test_bool_literal(true);
+	test_bool_literal(false);
+	test_string_literal(zstr2sstr("hello world"));
+	test_string_literal(zstr2sstr(""));
+	test_string_literal(zero);
+	return 0;
+};
