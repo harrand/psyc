@@ -115,6 +115,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_cast(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.biop))
+	{
+		return val_from_biop(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -397,6 +401,51 @@ val_from_cast : func(cast_node : ast mut?, s : scope mut?, r : val_resolution ->
 	cast_to ::= type_from_typename_node(cast_to_node, s);
 
 	return val_must_convert(castee, cast_to, cast_node);
+};
+
+val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	lhs_node ::= ast_get_child(biop_node, 0);
+	rhs_node ::= ast_get_child(biop_node, 1);
+
+	lhs ::= val_from_node(lhs_node, s, r);
+	rhs ::= val_from_node(rhs_node, s, r);
+
+	if(r == val_resolution.type_only)
+	{
+		if(ast_biop_is_compare(biop_node))
+		{
+			return val_from_type(tyid.bool);
+		}
+		if(biop_node->biop.op == ast_biop_op.at)
+		{
+			return val_from_type(ty_ptr(ty_underlying(lhs.type), zero));
+		}
+		// todo: sort out quals here properly...
+		ret_type ::= ty_of_arithmetic(lhs.type, rhs.type);
+		if(ret_type == zero)
+		{
+			psyc_error_begin(biop_node);
+			putzstr("binary operator ");
+			putchar('"');
+			putzstr(enumname(biop_node->biop.op));
+			putchar('"');
+			putzstr(" is invalid on types ");
+			putchar('"');
+			putty(lhs.type);
+			putchar('"');
+			putzstr(" and ");
+			putchar('"');
+			putty(lhs.type);
+			putchar('"');
+			psyc_error_end(biop_node);
+		}
+		return val_from_type(ret_type);
+	}
+	psyc_panic_begin(biop_node);
+	putzstr("reached end of val_from_biop");
+	psyc_panic_end(biop_node);
+	return zero;
 };
 
 val_function_reference : func(fn : function mut? -> val)
