@@ -226,5 +226,80 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 			return true;
 		}
 	}
+	if(v.s.tag == sval_tag.array_literal)
+	{
+		// this is easy, just iterate through members and recurse on them all
+		for(i = 0; i < v.s.members_count; i = i + 1)
+		{
+			datalayout_serialise_compile_time_val(w, val
+			{
+				.tag := val_tag.compile_time;
+				.type := ty_underlying(v.type);
+				.category := val_category.rvalue;
+				.s := [v.s.members # i];
+			});
+		}
+		return true;
+	}
+	j : u64 mut;
+	if(v.s.tag == sval_tag.struct_literal)
+	{
+		data_begin ::= w->cursor;
+		// alignment treats data_begin as 0
+		strct ::= ty_unwrap(v.type)->strct;
+		for(i = 0; i < v.s.members_count; i = i + 1)
+		{
+			offset_from_start ::= w->cursor - data_begin;
+			desired_offset_from_start ::= datalayout_offsetof_struct(v.type, i);
+			// assume offset_from_start is never greater than desired_offset_from_start, either the same or lower (latter means we add padding bytes now)
+			for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
+			{
+				bwrite8(w, zero);
+			}
+			datalayout_serialise_compile_time_val(w, val
+			{
+				.tag := val_tag.compile_time;
+				.type := [strct.members # i];
+				.category := val_category.rvalue;
+				.s := [v.s.members # i];
+			});
+		}
+		return true;
+	}
+	if(v.s.tag == sval_tag.function_reference)
+	{
+		// we're gonna need to add a patch to the global. but we only have access to the data buffer - not the whole global. so gonna need to refactor
+		psyc_panic_begin(zero);
+		putzstr("static variable initialiser contains reference to function ");
+		putchar('"');
+		putsstr(v.s.ptr@function mut?->name);
+		putchar('"');
+		putzstr(", but serialising function references to IR global data buffers is not yet implemented, so i cannot generate this global for now. sorry.");
+		psyc_panic_end(zero);
+		return false;
+	}
+	if(v.s.tag == sval_tag.variable_reference)
+	{
+		// this is easy, just get the compile_time_storage and go on that...
+		return datalayout_serialise_compile_time_val(w, val
+		{
+			.tag := val_tag.compile_time;
+			.type := v.type;
+			.category := val_category.rvalue;
+			.s := v.s.ptr@variable mut?->compile_time_storage;
+		});
+	}
+	if(v.s.tag == sval_tag.assembly_reference)
+	{
+		psyc_panic_begin(zero);
+		putzstr("static variable initialiser contains reference to assembly ");
+		putchar('"');
+		putsstr(v.s.ptr@assembly mut?->name);
+		putchar('"');
+		putzstr(", but i havent really thought through how it would work, and why you would ever want to do this. currently i am 90% confident you are doing this by accident");
+		psyc_panic_end(zero);
+		// now this really makes no sense...
+		return false;
+	}
 	return false;
 };
