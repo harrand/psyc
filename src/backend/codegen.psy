@@ -7,6 +7,10 @@ codegen : func(-> v0)
 codegen_funcs : func(-> v0)
 {
 	i : u64 mut;
+	for(i = 0; i < prog.global_scope.vars_count; i = i + 1)
+	{
+		codegen_global_variable(prog.global_scope.vars # i);
+	}
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
 		codegen_funcsig(prog.global_scope.funcs # i);
@@ -19,6 +23,24 @@ codegen_funcs : func(-> v0)
 	{
 		codegen_asm(prog.global_scope.asms # i);
 	}
+};
+
+codegen_global_variable : func(var : variable mut? -> v0)
+{
+	i : u64 mut;
+	globdata_len : u64 := datalayout_sizeof_ty_psy(var->type);
+	globdata : u8 mut? := arena_alloc(global_arena, globdata_len);
+	// todo: populate globdata
+	// for now, just zero out everything.
+	for(i = 0; i < globdata_len; i = i + 1)
+	{
+		[globdata # i] = zero;
+	}
+	var->runtime_storage = rval
+	{
+		.tag := rval_tag.ptr;
+		.v := ir_add_glob(globdata, globdata_len, ty_has_qual(var->type, tyqual.qual_mut));
+	};
 };
 
 codegen_funcsig : func(fn : function mut? -> v0)
