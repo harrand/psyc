@@ -28,18 +28,28 @@ codegen_funcs : func(-> v0)
 codegen_global_variable : func(var : variable mut? -> v0)
 {
 	i : u64 mut;
-	globdata_len : u64 := datalayout_sizeof_ty_psy(var->type);
-	globdata : u8 mut? := arena_alloc(global_arena, globdata_len);
-	// todo: populate globdata
-	// for now, just zero out everything.
-	for(i = 0; i < globdata_len; i = i + 1)
+	wv ::= bwriter mut
 	{
-		[globdata # i] = zero;
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+	w ::= ref wv;
+	// serialise the initialiser to a buffer
+	serialise_success ::= datalayout_serialise_compile_time_val(w, val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only));
+	if(!serialise_success)
+	{
+		psyc_panic_begin(var->node);
+		putzstr("failed to serialise compile-time val - reached end of datalayout_serialise_compile_time_val");
+		psyc_panic_end(var->node);
 	}
+
 	var->runtime_storage = rval
 	{
 		.tag := rval_tag.ptr;
-		.v := ir_add_glob(globdata, globdata_len, ty_has_qual(var->type, tyqual.qual_mut));
+		.v := ir_add_glob(w->buf, w->cursor, ty_has_qual(var->type, tyqual.qual_mut));
 	};
 };
 

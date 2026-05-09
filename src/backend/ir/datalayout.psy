@@ -152,3 +152,79 @@ datalayout_alignof_ty_psy : func(type : tyid -> u64)
 	return zero;
 };
 
+datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
+{
+	i : u64 mut;
+	sz ::= datalayout_sizeof_ty_psy(v.type);
+	intsz ::= ty_integral_size(v.type);
+	fpsz ::= ty_floating_point_size(v.type);
+	if(v.tag != val_tag.compile_time)
+	{
+		return false;
+	}
+	if(v.s.tag == sval_tag.zero_value)
+	{
+		for(i = 0; i < sz; i = i + 1)
+		{
+			bwrite8(w, zero);
+		}
+	}
+	if(v.s.tag == sval_tag.undefined)
+	{
+		for(i = 0; i < sz; i = i + 1)
+		{
+			bwrite8(w, 0xfa);
+		}
+	}
+	if(v.s.tag == sval_tag.literal)
+	{
+		if(v.s.literal.tag == ast_literal_tag.integer)
+		{
+			if(intsz == 8)
+			{
+				bwrite8(w, v.s.literal.integer);
+			}
+			if(intsz == 16)
+			{
+				bwrite16(w, v.s.literal.integer);
+			}
+			if(intsz == 32)
+			{
+				bwrite32(w, v.s.literal.integer);
+			}
+			if(intsz == 64)
+			{
+				bwrite64(w, v.s.literal.integer);
+			}
+			return true;
+		}
+		if(v.s.literal.tag == ast_literal_tag.floating_point)
+		{
+			if(fpsz == 32)
+			{
+				bwritef32(w, v.s.literal.floating_point);
+			}
+			if(fpsz == 64)
+			{
+				bwritef64(w, v.s.literal.floating_point);
+			}
+			return true;
+		}
+		if(v.s.literal.tag == ast_literal_tag.char)
+		{
+			bwrite8(w, v.s.literal.char);
+			return true;
+		}
+		if(v.s.literal.tag == ast_literal_tag.string)
+		{
+			bwrite_bytes(w, v.s.literal.string, v.s.literal.string_len);
+			return true;
+		}
+		if(v.s.literal.tag == ast_literal_tag.boolean)
+		{
+			bwrite8(w, v.s.literal.boolean);
+			return true;
+		}
+	}
+	return false;
+};
