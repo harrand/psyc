@@ -1,0 +1,49 @@
+== default ==
+{
+	add_build_file("./_test_helper.psy");
+
+	executable("sval_muls");
+	postbuild_command("(cd build && ./sval_muls)");
+};
+
+test_iequals : func(lhs : s64 weak, rhs : s64 weak -> v0)
+{
+	if(lhs != rhs)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+};
+
+do_static_imul : func(lhs : s64 weak, rhs : s64 weak -> s64)
+{
+	sval_ret ::= sval_from_biop_mul(val_from_integer_literal(lhs), val_from_integer_literal(rhs), zero, zero);
+	if(sval_ret.tag != sval_tag.literal)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+	if(sval_ret.literal.tag != ast_literal_tag.integer)
+	{
+		psyc_error_begin(zero);
+		putzstr("fugg");
+		psyc_error_end(zero);
+	}
+	return sval_ret.literal.integer;
+};
+
+test : func(-> s32)
+{
+	i : s64 mut;
+	j : s64 mut;
+	for(i = 0; i < 100; i = i + 1)
+	{
+		for(j = 50; j < 70; j = j + 1)
+		{
+			test_iequals(do_static_imul(i, j), i * j);
+		}
+	}
+	return 0;
+};

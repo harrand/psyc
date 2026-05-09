@@ -934,12 +934,84 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 
 sval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
 {
+	if(op == ast_biop_op.add)
+	{
+		return sval_from_biop_add(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.sub)
+	{
+		return sval_from_biop_sub(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.mul)
+	{
+		return sval_from_biop_mul(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.div)
+	{
+		return sval_from_biop_div(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of sval_from_biop (");
 	putzstr(enumname(op));
 	putzstr(")");
 	psyc_panic_end(source);
 	return zero;
+};
+
+sval_from_biop_add : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+{
+	// always assume these are scalars
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := lhs.s.literal.integer + rhs.s.literal.integer;
+		};
+	};
+};
+
+sval_from_biop_sub : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+{
+	// always assume these are scalars
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := lhs.s.literal.integer - rhs.s.literal.integer;
+		};
+	};
+};
+
+sval_from_biop_mul : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+{
+	// always assume these are scalars
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := lhs.s.literal.integer * rhs.s.literal.integer;
+		};
+	};
+};
+
+sval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+{
+	// always assume these are scalars
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := lhs.s.literal.integer / rhs.s.literal.integer;
+		};
+	};
 };
 
 rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
