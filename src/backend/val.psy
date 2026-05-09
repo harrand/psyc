@@ -952,6 +952,14 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_sub(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.mul)
+	{
+		return rval_from_biop_mul(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.div)
+	{
+		return rval_from_biop_div(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_from_biop (");
 	putzstr(enumname(op));
@@ -977,6 +985,44 @@ rval_from_biop_sub : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 	{
 		.tag := rval_tag.scalar;
 		.v := ir_sub(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_mul : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_smul(lhs.r.v, rhs.r.v);
+		};
+	}
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_umul(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_sdiv(lhs.r.v, rhs.r.v);
+		};
+	}
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_udiv(lhs.r.v, rhs.r.v);
 	};
 };
 
