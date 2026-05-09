@@ -365,7 +365,7 @@ val_from_symbol : func(symbol_node : ast mut?, s : scope mut? -> val)
 	maybe_variable ::= scope_find_variable_with_fallback(s, symbol);
 	if(maybe_variable != zero)
 	{
-		return val_variable_reference(maybe_variable);
+		return val_variable_reference(maybe_variable, symbol_node);
 	}
 
 	maybe_assembly ::= scope_find_assembly_with_fallback(s, symbol);
@@ -629,9 +629,12 @@ val_function_reference : func(fn : function mut? -> val)
 	};
 };
 
-val_variable_reference : func(var : variable mut? -> val)
+val_variable_reference : func(var : variable mut?, source : ast mut? -> val)
 {
-	return val
+	// the variable reference is easy.
+	// but if the variable is of runtime type, then there really is no good pretending we have a compile-time value so we immediately runtime-ify it
+	// note: if we're doing build region stuff then in theory we might always want the variable reference even if the type is not static... in which case i suggest making a second function that always gets a variable reference, or provide a resolution parameter to this function? not sure.
+	varref ::= val
 	{
 		.tag := val_tag.compile_time;
 		.type := var->type;
@@ -642,6 +645,11 @@ val_variable_reference : func(var : variable mut? -> val)
 			.ptr := var;
 		};
 	};
+	if(ty_has_qual(var->type, tyqual.qual_static))
+	{
+		return varref;
+	}
+	return val_ensure_runtime(varref, source);
 };
 
 val_assembly_reference : func(as : assembly mut? -> val)
