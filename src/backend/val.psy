@@ -482,7 +482,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	lhs_node ::= ast_get_child(biop_node, 0);
 	rhs_node ::= ast_get_child(biop_node, 1);
 
-	lhs ::= val_from_node(lhs_node, s, r);
+	lhs : val mut := val_from_node(lhs_node, s, r);
 	rhs : val mut := val_from_node(rhs_node, s, r);
 
 	ret_type : tyid mut := zero;
@@ -523,6 +523,17 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 				ret_type = ty_of_arithmetic(lhs.type, rhs.type);
 			}
 		}
+	}
+
+	// if we are not assign, then both must be loaded if needed
+	// if we are assign, only rhs needs to be loaded
+	if((lhs.category == val_category.lvalue) && (biop_node->biop.op != ast_biop_op.assign))
+	{
+		lhs = codegen_load(lhs, biop_node);
+	}
+	if(rhs.category == val_category.lvalue)
+	{
+		rhs = codegen_load(rhs, biop_node);
 	}
 
 	if(ret_type == zero)
@@ -955,6 +966,37 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 			from.r.v = ir_cvti(outsz, from.r.v);
 			return from.r;
 		}
+		if(ty_is_bool(from.type) && ty_is_integral(to))
+		{
+			// same as u8
+			if(to_sz == 8)
+			{
+				return from.r;
+			}
+			if(to_sz == 16)
+			{
+				outsz = irsz.w;
+			}
+			if(to_sz == 32)
+			{
+				outsz = irsz.d;
+			}
+			if(to_sz == 64)
+			{
+				outsz = irsz.q;
+			}
+			from.r.v = ir_zex(outsz, from.r.v);
+			return from.r;
+		}
+		if(ty_is_integral(from.type) && ty_is_bool(to))
+		{
+			if(from_sz == 8)
+			{
+				return from.r;
+			}
+			from.r.v = ir_trunc(irsz.b, from.r.v);
+			return from.r;
+		}
 	}
 	// todo: impl
 	psyc_panic_begin(source);
@@ -1067,6 +1109,30 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_div(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.compare_equal)
+	{
+		return rval_from_biop_compare_equal(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.compare_not_equal)
+	{
+		return rval_from_biop_compare_equal(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.compare_less)
+	{
+		return rval_from_biop_compare_less(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.compare_less_equal)
+	{
+		return rval_from_biop_compare_less_equal(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.compare_greater)
+	{
+		return rval_from_biop_compare_greater(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.compare_greater_equal)
+	{
+		return rval_from_biop_compare_greater_equal(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_from_biop (");
 	putzstr(enumname(op));
@@ -1136,6 +1202,100 @@ rval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 	{
 		.tag := rval_tag.scalar;
 		.v := ir_udiv(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_equal : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_eq(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_not_equal : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_eq(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_less : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_cmp_slt(lhs.r.v, rhs.r.v);
+		};
+	}
+
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_ult(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_less_equal : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_cmp_sle(lhs.r.v, rhs.r.v);
+		};
+	}
+
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_ule(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_greater : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_cmp_sgt(lhs.r.v, rhs.r.v);
+		};
+	}
+
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_ugt(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_compare_greater_equal : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	type ::= ty_of_arithmetic(lhs.type, rhs.type);
+	if(ty_is_signed_integral(type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_cmp_sge(lhs.r.v, rhs.r.v);
+		};
+	}
+
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_cmp_uge(lhs.r.v, rhs.r.v);
 	};
 };
 
