@@ -948,6 +948,10 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_add(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.sub)
+	{
+		return rval_from_biop_sub(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_from_biop (");
 	putzstr(enumname(op));
@@ -963,6 +967,16 @@ rval_from_biop_add : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 	{
 		.tag := rval_tag.scalar;
 		.v := ir_add(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_sub : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_sub(lhs.r.v, rhs.r.v);
 	};
 };
 
@@ -1109,7 +1123,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 		{
 			.tag := val_tag.runtime;
 			.type := v.type;
-			.category := val_category.rvalue;
+			.category := var_category;
 			.r := var->runtime_storage;
 		};
 	}
