@@ -479,36 +479,105 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	lhs ::= val_from_node(lhs_node, s, r);
 	rhs ::= val_from_node(rhs_node, s, r);
 
-	if(r == val_resolution.type_only)
+	ret_type : tyid mut := zero;
+	if(ast_biop_is_compare(biop_node))
 	{
-		if(ast_biop_is_compare(biop_node))
-		{
-			return val_from_type(tyid.bool);
-		}
+		ret_type = tyid.bool;
+	}
+	else
+	{
 		if(biop_node->biop.op == ast_biop_op.at)
 		{
-			return val_from_type(ty_ptr(ty_underlying(lhs.type), zero));
+			ret_type = ty_ptr(ty_underlying(lhs.type), zero);
 		}
-		// todo: sort out quals here properly...
-		ret_type ::= ty_of_arithmetic(lhs.type, rhs.type);
-		if(ret_type == zero)
+		else
 		{
+			ret_type = ty_of_arithmetic(lhs.type, rhs.type);
+		}
+	}
+
+	if(ret_type == zero)
+	{
+		psyc_error_begin(biop_node);
+		putzstr("binary operator ");
+		putchar('"');
+		putzstr(enumname(biop_node->biop.op));
+		putchar('"');
+		putzstr(" is invalid on types ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		putzstr(" and ");
+		putchar('"');
+		putty(lhs.type);
+		putchar('"');
+		psyc_error_end(biop_node);
+	}
+	if(r == val_resolution.type_only)
+	{
+		return val_from_type(ret_type);
+	}
+
+	// get a common resolution of lhs, rhs and the parameter
+	// lowest one of them all is used
+	lowest_common_resolution : val_resolution mut := val_resolution.either;
+	if((lhs.tag == val_tag.runtime) || (rhs.tag == val_tag.runtime))
+	{
+		// must be runtime
+		lowest_common_resolution = val_resolution.runtime_only;
+		if(r == val_resolution.compile_time_only)
+		{
+			// error: we were asked for a compile-time value but one of the operands is runtime only
 			psyc_error_begin(biop_node);
-			putzstr("binary operator ");
-			putchar('"');
-			putzstr(enumname(biop_node->biop.op));
-			putchar('"');
-			putzstr(" is invalid on types ");
-			putchar('"');
-			putty(lhs.type);
-			putchar('"');
-			putzstr(" and ");
-			putchar('"');
-			putty(lhs.type);
-			putchar('"');
+			putzstr("binary operator must be evaluated at compile-time, but this is impossible because ");
+			if((lhs.tag == val_tag.runtime) && (rhs.tag == val_tag.runtime))
+			{
+				putzstr("both operands are runtime-values");
+			}
+			else
+			{
+				if(lhs.tag == val_tag.runtime)
+				{
+					putzstr("the left-hand-side operand is a runtime-value");
+				}
+				else
+				{
+					putzstr("the right-hand-side operand is a runtime-value");
+				}
+			}
 			psyc_error_end(biop_node);
 		}
-		return val_from_type(ret_type);
+	}
+	else
+	{
+		lowest_common_resolution = r;
+	}
+
+	ret_category : val_category mut := val_category.rvalue;
+	if(biop_node->biop.op == ast_biop_op.at)
+	{
+		ret_category = val_category.lvalue;
+	}
+
+	if(lowest_common_resolution == val_resolution.runtime_only)
+	{
+		return val
+		{
+			.tag := val_tag.runtime;
+			.type := ret_type;
+			.category := ret_category;
+			.r := rval_from_biop(val_ensure_runtime(lhs, biop_node), val_ensure_runtime(rhs, biop_node), s, biop_node);
+		};
+	}
+	else
+	{
+		return val
+		{
+			.tag := val_tag.compile_time;
+			.type := ret_type;
+			.category := ret_category;
+			.s := sval_from_biop(val_must_be_compile_time(lhs, biop_node), val_must_be_compile_time(rhs, biop_node), s, biop_node);
+		};
 	}
 	psyc_panic_begin(biop_node);
 	putzstr("reached end of val_from_biop");
@@ -849,6 +918,22 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 	return zero;
 };
 
+sval_from_biop : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+{
+	psyc_panic_begin(source);
+	putzstr("reached end of sval_from_biop");
+	psyc_panic_end(source);
+	return zero;
+};
+
+rval_from_biop : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	psyc_panic_begin(source);
+	putzstr("reached end of rval_from_biop");
+	psyc_panic_end(source);
+	return zero;
+};
+
 val_from_type : func(type : tyid -> val)
 {
 	return val
@@ -859,7 +944,7 @@ val_from_type : func(type : tyid -> val)
 };
 
 // given a val, if its an rval, error out. if its a sval, do nothing
-val_must_be_compile_time : func(v : val, source : ast mut? -> v0)
+val_must_be_compile_time : func(v : val, source : ast mut? -> val)
 {
 	if(v.tag == val_tag.runtime)
 	{
@@ -867,6 +952,7 @@ val_must_be_compile_time : func(v : val, source : ast mut? -> v0)
 		putzstr("value must be statically known in this context, but can only produce a value at runtime");
 		psyc_error_end(source);
 	}
+	return v;
 };
 
 // given a val, if its an rval, do nothing. if its a sval, convert it to an rval
