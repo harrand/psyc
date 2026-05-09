@@ -483,7 +483,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	rhs_node ::= ast_get_child(biop_node, 1);
 
 	lhs ::= val_from_node(lhs_node, s, r);
-	rhs ::= val_from_node(rhs_node, s, r);
+	rhs : val mut := val_from_node(rhs_node, s, r);
 
 	ret_type : tyid mut := zero;
 	if(ast_biop_is_compare(biop_node))
@@ -492,13 +492,36 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	}
 	else
 	{
-		if(biop_node->biop.op == ast_biop_op.at)
+		if(biop_node->biop.op == ast_biop_op.assign)
 		{
-			ret_type = ty_ptr(ty_underlying(lhs.type), zero);
+			ret_type = lhs.type;
+			if(!ty_has_qual(lhs.type, tyqual.qual_mut))
+			{
+				psyc_error_begin(biop_node);
+				putzstr("invalid assign to non-mutable left-hand-side operand of type ");
+				putchar('"');
+				putty(lhs.type);
+				putchar('"');
+				psyc_error_end(biop_node);
+			}
+			if(lhs.category != val_category.lvalue)
+			{
+				psyc_error_begin(biop_node);
+				putzstr("invalid assign to rvalue");
+				psyc_error_end(biop_node);
+			}
+			rhs = val_must_convert(rhs, lhs.type, biop_node);
 		}
 		else
 		{
-			ret_type = ty_of_arithmetic(lhs.type, rhs.type);
+			if(biop_node->biop.op == ast_biop_op.at)
+			{
+				ret_type = ty_ptr(ty_underlying(lhs.type), zero);
+			}
+			else
+			{
+				ret_type = ty_of_arithmetic(lhs.type, rhs.type);
+			}
 		}
 	}
 
@@ -1016,6 +1039,10 @@ sval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 
 rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
 {
+	if(op == ast_biop_op.assign)
+	{
+		return rval_from_biop_assign(lhs, rhs, s, source);
+	}
 	if(op == ast_biop_op.add)
 	{
 		return rval_from_biop_add(lhs, rhs, s, source);
@@ -1038,6 +1065,12 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	putzstr(")");
 	psyc_panic_end(source);
 	return zero;
+};
+
+rval_from_biop_assign : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	codegen_store(lhs, rhs, source);
+	return lhs.r;
 };
 
 rval_from_biop_add : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
