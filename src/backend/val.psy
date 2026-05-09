@@ -450,7 +450,13 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 		// todo: handle more than just scalars...
 		for(i = 0; i < call_params_count; i = i + 1)
 		{
-			[call_param_irvals # i] = val_ensure_runtime([call_params # i], ast_get_child(call_node, i + 1)).r.v;
+			param_node ::= ast_get_child(call_node, i + 1);
+			runtime_param : val mut := val_ensure_runtime([call_params # i], param_node);
+			if(runtime_param.category == val_category.lvalue)
+			{
+				runtime_param = codegen_load(runtime_param, param_node);
+			}
+			[call_param_irvals # i] = runtime_param.r.v;
 		}
 		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_params_count, zero, zero, zero);
 		return zero;
@@ -566,7 +572,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 			.tag := val_tag.runtime;
 			.type := ret_type;
 			.category := ret_category;
-			.r := rval_from_biop(val_ensure_runtime(lhs, biop_node), val_ensure_runtime(rhs, biop_node), s, biop_node);
+			.r := rval_from_biop(biop_node->biop.op, val_ensure_runtime(lhs, biop_node), val_ensure_runtime(rhs, biop_node), s, biop_node);
 		};
 	}
 	else
@@ -576,7 +582,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 			.tag := val_tag.compile_time;
 			.type := ret_type;
 			.category := ret_category;
-			.s := sval_from_biop(val_must_be_compile_time(lhs, biop_node), val_must_be_compile_time(rhs, biop_node), s, biop_node);
+			.s := sval_from_biop(biop_node->biop.op, val_must_be_compile_time(lhs, biop_node), val_must_be_compile_time(rhs, biop_node), s, biop_node);
 		};
 	}
 	psyc_panic_begin(biop_node);
@@ -671,13 +677,21 @@ val_must_convert : func(from : val mut, to : tyid, source : ast mut? -> val)
 			from = val_ensure_runtime(from, source);
 		}
 	}
+
+	ret_category : val_category mut := from.category;
+	// if no conversion was necessary, then preserve value category of the source
+	// if a conversion is necessary, it must be an rvalue
+	if(conv == tyconv.yes_needs_convert)
+	{
+		ret_category = val_category.rvalue;
+	}
 	if(from.tag == val_tag.compile_time)
 	{
 		return val
 		{
 			.tag := val_tag.compile_time;
 			.type := to;
-			.category := val_category.rvalue;
+			.category := ret_category;
 			.s := sval_must_convert(from, to, source);
 		};
 	}
@@ -687,7 +701,7 @@ val_must_convert : func(from : val mut, to : tyid, source : ast mut? -> val)
 		{
 			.tag := val_tag.runtime;
 			.type := to;
-			.category := val_category.rvalue;
+			.category := ret_category;
 			.r := rval_must_convert(from, to, source);
 		};
 	}
@@ -918,20 +932,38 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 	return zero;
 };
 
-sval_from_biop : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
+sval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> sval)
 {
 	psyc_panic_begin(source);
-	putzstr("reached end of sval_from_biop");
+	putzstr("reached end of sval_from_biop (");
+	putzstr(enumname(op));
+	putzstr(")");
 	psyc_panic_end(source);
 	return zero;
 };
 
-rval_from_biop : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
 {
+	if(op == ast_biop_op.add)
+	{
+		return rval_from_biop_add(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
-	putzstr("reached end of rval_from_biop");
+	putzstr("reached end of rval_from_biop (");
+	putzstr(enumname(op));
+	putzstr(")");
 	psyc_panic_end(source);
 	return zero;
+};
+
+rval_from_biop_add : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_add(lhs.r.v, rhs.r.v);
+	};
 };
 
 val_from_type : func(type : tyid -> val)
@@ -1066,12 +1098,18 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 	}
 	if(v.s.tag == sval_tag.variable_reference)
 	{
+		// a variable reference that is a parameter is not an lvalue, but if its a local variable or global then it is an lvalue
 		var ::= v.s.ptr@variable mut?;
+		var_category : val_category mut := val_category.lvalue;
+		if(var->local_param_idx != ~0)
+		{
+			var_category = val_category.rvalue;
+		}
 		return val
 		{
 			.tag := val_tag.runtime;
 			.type := v.type;
-			.category := val_category.lvalue;
+			.category := val_category.rvalue;
 			.r := var->runtime_storage;
 		};
 	}
