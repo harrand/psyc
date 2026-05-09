@@ -100,6 +100,14 @@ semal_var : func(var : variable mut?, parent : scope mut? -> v0)
 		putzstr(" was not able to be deciphered by the semantic analyser");
 		psyc_panic_end(var->node);
 	}
+
+	// if the type is static and we have a qualifier, set compile_time_storage now
+	// note: if type is static and we *dont* have a qualifier, this should probably error out
+	if(ty_has_qual(var->type, tyqual.qual_static) && (var->node->children_count > 1))
+	{
+		init ::= val_from_node(init_node, parent, val_resolution.compile_time_only);
+		var->compile_time_storage = sval_must_convert(init, var->type, init_node);
+	}
 };
 
 semal_asm : func(as : assembly mut?, parent : scope mut? -> v0)
