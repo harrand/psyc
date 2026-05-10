@@ -56,8 +56,6 @@ sval : struct
 	members : sval mut?;
 	// how many things have i stored for you in members
 	members_count : u64;
-	// internal.
-	members_cap : u64;
 	// if tag == sval_tag.function_reference/variable_reference/assembly_reference, this represents a pointer to the underlying function/variable/assembly struct
 	ptr : v0? weak;
 };
@@ -79,7 +77,6 @@ rval : struct
 	members : rval mut?;
 	members_chunks : chunk mut?;
 	members_count : u64;
-	members_cap : u64;
 };
 
 val_from_node : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
@@ -462,6 +459,8 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 		call_return_irszs : irsz mut? mut := zero;
 		call_return_irvals_count : u64 mut := 0;
 
+		dummy_chunks : chunk mut[128] mut;
+
 		if(!ty_is_v0(callee_fnty.return_type))
 		{
 			// generate some registers
@@ -469,7 +468,6 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 			putzstr("call to function that returns a value is NYI");
 			psyc_warning_end(call_node);
 			// need to know the returns count
-			dummy_chunks : chunk mut[128] mut;
 			call_return_irvals_count = chunk_tys(chunking_rules_psy, ref(callee_fnty.return_type), 1, dummy_chunks # 0);
 
 			call_return_irvals = arena_alloc(global_arena, call_return_irvals_count * sizeof irval);
@@ -504,6 +502,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 
 		// store all return results into a single rval
 		out_members : rval mut? := arena_alloc(global_arena, call_return_irvals_count * sizeof rval);
+		out_chunks : chunk mut? := arena_alloc(global_arena, call_return_irvals_count * sizeof chunk);
 		for(i = 0; i < call_return_irvals_count; i = i + 1)
 		{
 			[out_members # i] = rval
@@ -511,6 +510,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 				.tag := rval_tag.scalar;
 				.v := [call_return_irvals # i];
 			};
+			[out_chunks # i] = [dummy_chunks # i];
 		}
 		return val
 		{
@@ -521,6 +521,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 			{
 				.tag := rval_tag.chunked;
 				.members := out_members;
+				.members_chunks := out_chunks;
 				.members_count := call_return_irvals_count;
 			};
 		};
