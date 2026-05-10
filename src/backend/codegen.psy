@@ -38,11 +38,11 @@ codegen_global_variable : func(var : variable mut? -> v0)
 	};
 	w ::= ref wv;
 	// serialise the initialiser to a buffer
-	serialise_success ::= datalayout_serialise_compile_time_val(w, val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only));
+	serialise_success ::= datalayout_serialise_compile_time_val(w, val_must_convert(val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only), var->type, var->node));
 	if(!serialise_success)
 	{
 		psyc_panic_begin(var->node);
-		putzstr("failed to serialise compile-time val - reached end of datalayout_serialise_compile_time_val");
+		putzstr("failed to serialise compile-time val - reached end of codegen_global_variable");
 		psyc_panic_end(var->node);
 	}
 
@@ -258,7 +258,7 @@ codegen_ret : func(node : ast mut?, fn : function mut? -> v0)
 	else
 	{
 		ret_node ::= ast_get_child(node, 0);
-		ret_val : val mut := val_must_convert(codegen_load_if_lvalue(val_from_node(ret_node, ref(fn->impl_scope), val_resolution.runtime_only), ret_node), fn_retty, ret_node);
+		ret_val : val mut := val_ensure_runtime(val_must_convert(codegen_load_if_lvalue(val_from_node(ret_node, ref(fn->impl_scope), val_resolution.runtime_only), ret_node), fn_retty, ret_node), ret_node);
 
 		unpacked : irval mut? mut;
 		unpacked_count : u64 mut;

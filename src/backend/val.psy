@@ -1776,6 +1776,59 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 			};
 		};
 	}
+	if(v.s.tag == sval_tag.struct_literal)
+	{
+		// runtime them all.
+		strct ::= ty_unwrap(v.type)->strct;
+		i : u64 mut;
+		chunks : chunk mut[128] := zero;
+		chunks_count ::= chunk_tys(chunking_rules_psy, ref(v.type), 1, chunks # 0);
+
+		members : rval mut? := arena_alloc(global_arena, chunks_count * sizeof rval);
+		members_chunks : chunk mut? := arena_alloc(global_arena, chunks_count * sizeof chunk);
+		memcopy(members_chunks, chunks # 0, chunks_count * sizeof chunk);
+	
+		wv ::= bwriter mut
+		{
+			.endian := native_endianness();
+			.buf := zero;
+			.len := zero;
+			.cursor := zero;
+			.ar := global_arena;
+		};
+		w ::= ref wv;
+		// we've serialised it out now
+		datalayout_serialise_compile_time_val(ref wv, v);
+		// go through the chunks, gather offsets from 0, and just copy it over...
+		cursor : u64 mut := 0;
+		for(i = 0; i < chunks_count; i = i + 1)
+		{
+			chnk ::= chunks # i;
+			sz ::= chunk_to_irsz(chnk);
+			scratch : u64 mut := zero;
+			memcopy(ref scratch, wv.buf # cursor, chnk->sz);
+			[members # i] = rval
+			{
+				.tag := rval_tag.scalar;
+				.v := irval_imm(sz, scratch);
+			};
+
+			cursor = cursor + chnk->sz;
+		}
+		return val
+		{
+			.tag := val_tag.runtime;
+			.type := v.type;
+			.category := val_category.rvalue;
+			.r := rval
+			{
+				.tag := rval_tag.chunked;
+				.members := members;
+				.members_chunks := members_chunks;
+				.members_count := chunks_count;
+			};
+		};
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of val_ensure_runtime");
 	psyc_panic_end(source);
@@ -1815,6 +1868,7 @@ rval_fully_unpack : func(r : rval, out_vals : irval mut? mut?, out_vals_count : 
 				memcopy([out_vals], olddata, oldcap * sizeof irval);
 			}
 			[[out_vals] # [out_vals_count]] = [inner_vals # j];
+			[out_vals_count] = [out_vals_count] + 1;
 		}
 	}
 };
