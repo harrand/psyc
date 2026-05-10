@@ -113,9 +113,8 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 					if((node->reg != x64_reg.rsp) && (regidx != ~0))
 					{
 						reg_my_side ::= mygraph.nodes # regidx;
-						// if we used it earlier and dont need it again, then its fine we dont need to save it
-						// but if we use it after this call (includingthen we need to save it
-						if(reg_my_side->end_inst > i)
+						// if we used the register before and use it afterwards, then we must assume this call will screw us up
+						if((reg_my_side->begin_inst < i) && (reg_my_side->end_inst > i))
 						{
 							[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
 							saved_regs_count = saved_regs_count + 1;

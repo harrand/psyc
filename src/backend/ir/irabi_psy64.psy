@@ -36,7 +36,7 @@ irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 	// todo: return values???
 };
 
-irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
+irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
 	regparams ::= x64_reg[8]
 	{
@@ -50,11 +50,21 @@ irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 		.7 := x64_reg.r11;
 	};
 
+	regouts ::= x64_reg[2]
+	{
+		.0 := x64_reg.rax;
+		.1 := x64_reg.rdx;
+	};
+
 	i : s64 mut;
 	count ::= countof typeof(regparams);
 	for(i = (params_count - 1)@s64; i >= 0; i = i - 1)
 	{
 		x64_pop(x64v_reg([regparams # i], 64));
+	}
+	for(i = 0; i@_ < returns_count; i = i + 1)
+	{
+		x64_mov([returns # i], x64v_reg([regouts # i], 64));
 	}
 };
 

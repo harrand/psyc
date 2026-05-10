@@ -1,0 +1,55 @@
+== default ==
+{
+	add_build_file("./_test_helper.psy");
+
+	executable("ir_linux_return_value");
+	postbuild_command("(cd build && ./ir_linux_return_value)");
+};
+
+test : func(-> s32)
+{
+
+	fn1 ::= ir_add_empty_func(irabi.psy);
+	ir_add_return(irsz.q);
+	ir_ret1(irval_qimm(69));
+
+	exit_syscall_constraint ::= "={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}";
+	exit_syscall_code ::= "mov rax, 60
+mov rdi, $0
+syscall";
+	exit_syscall ::= ir_add_asm(zero, zero, zero, exit_syscall_constraint, zstrlen(exit_syscall_constraint), exit_syscall_code, zstrlen(exit_syscall_code));
+	fn2 ::= ir_add_func(irabi.psy, zero, zero, zero, zero);
+
+	callret : irval mut;
+	ir_call_fn(fn1, zero, zero, ref callret);
+	exitcode ::= ir_trunc(irsz.d, ir_sub(callret, irval_qimm(69)));
+	ir_call_asm(exit_syscall, ref exitcode, 1);
+	ir_unreachable();
+	ir_set_entrypoint(fn2);
+
+	teststream ::= bwriter mut
+	{
+		.endian := native_endianness();
+		.buf := zero;
+		.len := zero;
+		.cursor := zero;
+		.ar := global_arena;
+	};
+
+	ir_pass_validate();
+	ir_optimise(ir_optimise_level.O1);
+
+	bwrite_ir(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+	ir_lower_x64();
+
+	teststream.cursor = 0;
+	x64_dump_disasm_to(ref teststream);
+	putbytes(teststream.buf, teststream.cursor);
+
+	// write out the elf.
+	encode_basic_elf_x64("./generated_ir_linux_return_value.elf", ref(x64api.prog));
+	file_ensure_executable("./generated_ir_linux_return_value.elf");
+	cmd ::= "./generated_ir_linux_return_value.elf";
+	return sys_shell_command(cmd, zstrlen(cmd), envp, global_arena)@_;
+};
