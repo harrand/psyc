@@ -269,9 +269,20 @@ codegen_ret : func(node : ast mut?, fn : function mut? -> v0)
 	}
 	else
 	{
-		psyc_panic_begin(node);
-		putzstr("codegen_ret (with value): not yet implemented");
-		psyc_panic_end(node);
+		ret_node ::= ast_get_child(node, 0);
+		ret_val : val mut := val_must_convert(codegen_load_if_lvalue(val_from_node(ret_node, ref(fn->impl_scope), val_resolution.runtime_only), ret_node), fn_retty, ret_node);
+
+		chunk_rules ::= chunking_rules
+		{
+			.allow_merges := true;
+			.chunk_size_max_nonfp := 64;
+			.chunk_size_max_fp := 8;
+		};
+
+		unpacked : irval mut? mut;
+		unpacked_count : u64 mut;
+		rval_fully_unpack(ret_val.r, ref unpacked, ref unpacked_count);
+		ir_ret(unpacked, unpacked_count);
 	}
 };
 
@@ -339,6 +350,15 @@ codegen_store : func(ptr_val : val, store_val : val, source : ast mut? -> v0)
 	psyc_panic_begin(source);
 	putzstr("reached end of codegen_store");
 	psyc_panic_end(source);
+};
+
+codegen_load_if_lvalue : func(maybe_ptr_val : val, source : ast mut? -> val)
+{
+	if(maybe_ptr_val.category == val_category.lvalue)
+	{
+		return codegen_load(maybe_ptr_val, source);
+	}
+	return maybe_ptr_val;
 };
 
 codegen_load : func(ptr_val : val, source : ast mut? -> val)
