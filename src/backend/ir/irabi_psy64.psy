@@ -46,16 +46,18 @@ irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 			x64_mov(x64v_reg([psy64_params # i], x64v_size(param)), param);
 		}
 	}
-	// todo: return values???
+	// todo: prepare stack for pointery return value(s)?
 };
 
 irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
 	i : s64 mut;
+	// pop params off
 	for(i = (params_count - 1)@s64; i >= 0; i = i - 1)
 	{
 		x64_pop(x64v_reg([psy64_params # i], 64));
 	}
+	// mov psy64 abi return registers to their ssa registers to be used by caller(s)
 	for(i = 0; i@_ < returns_count; i = i + 1)
 	{
 		x64_mov([returns # i], x64v_reg([psy64_returns # i], 64));
@@ -76,4 +78,14 @@ irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> 
 		[candidates # (i + base)] = [psy64_scratches # i];
 	}
 	register_allocation_graph_colouring(fn, fnx64, candidates # 0, countof typeof(candidates), fn->params_count);
+};
+
+irabi_psy_movreturns_x64 : func(returns : x64v mut?, returns_count : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < returns_count; i = i + 1)
+	{
+		cur ::= [returns # i];
+		x64_mov(x64v_reg([psy64_returns # i], x64v_size(cur)), cur);
+	}
 };

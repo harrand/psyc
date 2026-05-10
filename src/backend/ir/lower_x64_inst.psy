@@ -190,12 +190,13 @@ lower_x64_ret : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	// if we are returning zero/one thing, then use a simple code path
 	count ::= ir_ret_get_count(inst);
 	// todo: assert count == fn->params_count
+	returns_x64 : x64v mut? := arena_alloc(global_arena, count * sizeof x64v);
 	i : u64 mut;
 	for(i = 0; i < count; i = i + 1)
 	{
-		out_x64 ::= lower_x64_irval([ir_ret_get_value(inst, i)]);
-		x64_mov(x64v_reg([psy64_returns # i], x64v_size(out_x64)), out_x64);
+		[returns_x64 # i] = lower_x64_irval([ir_ret_get_value(inst, i)]);
 	}
+	irabi_movreturns_x64(fn->abi, returns_x64, count);
 	x64_add(x64v_reg(x64_reg.rsp, 64), x64v_imm(fn->stack_amt, 32));
 	x64_ret();
 };
