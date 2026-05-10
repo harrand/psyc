@@ -458,15 +458,72 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 			}
 			[call_param_irvals # i] = runtime_param.r.v;
 		}
-		// todo: return values...
+		call_return_irvals : irval mut? mut := zero;
+		call_return_irszs : irsz mut? mut := zero;
+		call_return_irvals_count : u64 mut := 0;
+
 		if(!ty_is_v0(callee_fnty.return_type))
 		{
+			// generate some registers
 			psyc_warning_begin(call_node);
 			putzstr("call to function that returns a value is NYI");
 			psyc_warning_end(call_node);
+			// need to know the returns count
+			dummy_chunks : chunk mut[128] mut;
+			call_return_irvals_count = chunk_tys(chunking_rules_psy, ref(callee_fnty.return_type), 1, dummy_chunks # 0);
+
+			call_return_irvals = arena_alloc(global_arena, call_return_irvals_count * sizeof irval);
+			call_return_irszs = arena_alloc(global_arena, call_return_irvals_count * sizeof irsz);
+			for(i = 0; i < call_return_irvals_count; i = i + 1)
+			{
+				[call_return_irszs # i] = chunk_to_irsz(dummy_chunks # i);
+			}
 		}
-		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_params_count, zero, zero, zero);
-		return zero;
+		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_params_count, call_return_irszs, call_return_irvals, call_return_irvals_count);
+		if(call_return_irvals_count == 0)
+		{
+			return zero;
+		}
+
+		// if we only have 1 chunk then keep it as a scalar
+		// possible todo: catch if the chunk in dummy_chunks was type.mem and set rval.tag accordingly? when we have the concept of ABI returning pointers to preallocated stack bits
+		if(call_return_irvals_count == 1)
+		{
+			return val
+			{
+				.tag := val_tag.runtime;
+				.type := callee_fnty.return_type;
+				.category := val_category.rvalue;
+				.r := rval
+				{
+					.tag := rval_tag.scalar;
+					.v := [call_return_irvals # 0];
+				};
+			};
+		}
+
+		// store all return results into a single rval
+		out_members : rval mut? := arena_alloc(global_arena, call_return_irvals_count * sizeof rval);
+		for(i = 0; i < call_return_irvals_count; i = i + 1)
+		{
+			[out_members # i] = rval
+			{
+				.tag := rval_tag.scalar;
+				.v := [call_return_irvals # i];
+			};
+		}
+		return val
+		{
+			.tag := val_tag.runtime;
+			.type := callee_fnty.return_type;
+			.category := val_category.rvalue;
+			.r := rval
+			{
+				.tag := rval_tag.chunked;
+				.members := out_members;
+				.members_count := call_return_irvals_count;
+			};
+		};
 	}
 	psyc_panic_begin(call_node);
 	putzstr("reached end of val_from_call");
