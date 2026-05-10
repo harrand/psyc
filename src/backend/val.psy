@@ -82,6 +82,10 @@ rval : struct
 val_from_node : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
 	ret ::= val_from_node_inner(node, s, r);
+	if(val_is_zero(ret))
+	{
+		return ret;
+	}
 	if(r == val_resolution.compile_time_only)
 	{
 		val_must_be_compile_time(ret, node);
@@ -92,10 +96,105 @@ val_from_node : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 	}
 	return ret;
 };
+
+val_zero : func(-> val)
+{
+	return val
+	{
+		.tag := val_tag.compile_time;
+		.type := zero;
+		.category := val_category.rvalue;
+		.s := sval
+		{
+			.tag := sval_tag.zero_value;
+		};
+	};
+};
+
+val_is_zero : func(v : val -> bool)
+{
+	return (v.tag == val_tag.compile_time) && (v.s.tag == sval_tag.zero_value);
+};
+
+val_zero_as : func(to : tyid -> val)
+{
+	i : u64 mut;
+	ret : val mut;
+	members : sval mut? mut;
+	if(ty_is_integral(to))
+	{
+		ret = val_from_integer_literal(zero);
+		ret.type = to;
+		return ret;
+	}
+	if(ty_is_floating_point(to))
+	{
+		ret = val_from_floating_point_literal(zero);
+		ret.type = to;
+		return ret;
+	}
+	if(ty_is_bool(to))
+	{
+		ret = val_from_bool_literal(zero);
+		ret.type = to;
+		return ret;
+	}
+	if(ty_is_arr(to))
+	{
+		arrlen ::= ty_unwrap(to)->array_len;
+		members = arena_alloc(global_arena, arrlen * sizeof sval);
+		for(i = 0; i < arrlen; i = i + 1)
+		{
+			[members # i] = val_zero_as(ty_underlying(to)).s;
+		}
+		return val
+		{
+			.tag := val_tag.compile_time;
+			.type := to;
+			.category := val_category.rvalue;
+			.s := sval
+			{
+				.tag := sval_tag.array_literal;
+				.members := members;
+				.members_count := arrlen;
+			};
+		};
+	}
+	if(ty_is_struct(to))
+	{
+		strct ::= ty_unwrap(to)->strct;
+		members = arena_alloc(global_arena, strct.members_count * sizeof sval);
+		for(i = 0; i < strct.members_count; i = i + 1)
+		{
+			[members # i] = val_zero_as([strct.members # i]).s;
+		}
+		return val
+		{
+			.tag := val_tag.compile_time;
+			.type := to;
+			.category := val_category.rvalue;
+			.s := sval
+			{
+				.tag := sval_tag.struct_literal;
+				.members := members;
+				.members_count := strct.members_count;
+			};
+		};
+	}
+	psyc_panic_begin(zero);
+	putzstr("reached end of val_zero_as");
+	psyc_panic_end(zero);
+	return zero;
+};
+
 // given a node, get a value representation of it
 // if type_only is true - the val will have a valid .type member but all other fields should be assumed to be undefined
 val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
+	if(ast_is_expr(node, ast_expr_tag.zero_value))
+	{
+		return val_zero();
+	}
 	if(ast_is_expr(node, ast_expr_tag.literal))
 	{
 		return val_from_literal(node->literal);
@@ -745,6 +844,10 @@ val_assembly_reference : func(as : assembly mut? -> val)
 
 val_must_convert : func(from : val mut, to : tyid, source : ast mut? -> val)
 {
+	if(val_is_zero(from))
+	{
+		return val_zero_as(to);
+	}
 	conv ::= ty_converts_to(from.type, to);
 
 	if((conv != tyconv.yes) && (conv != tyconv.yes_needs_convert))
