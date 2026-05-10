@@ -1,28 +1,41 @@
 // PSY X64 APPLICATION BINARY INTERFACE
 
+psy64_params ::= x64_reg[8]
+{
+	.0 := x64_reg.rbx;
+	.1 := x64_reg.rcx;
+	.2 := x64_reg.rsi;
+	.3 := x64_reg.rdi;
+	.4 := x64_reg.r8;
+	.5 := x64_reg.r9;
+	.6 := x64_reg.r10;
+	.7 := x64_reg.r11;
+};
+
+psy64_scratches ::= x64_reg[4]
+{
+	.0 := x64_reg.r12;
+	.1 := x64_reg.r13;
+	.2 := x64_reg.r14;
+	.3 := x64_reg.r15;
+};
+
+psy64_returns ::= x64_reg[2]
+{
+	.0 := x64_reg.rax;
+	.1 := x64_reg.rdx;
+};
+
 irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 {
-	regparams ::= x64_reg[8]
-	{
-		.0 := x64_reg.rbx;
-		.1 := x64_reg.rcx;
-		.2 := x64_reg.rsi;
-		.3 := x64_reg.rdi;
-		.4 := x64_reg.r8;
-		.5 := x64_reg.r9;
-		.6 := x64_reg.r10;
-		.7 := x64_reg.r11;
-	};
-
 	i : u64 mut;
-	count ::= countof typeof(regparams);
 	for(i = 0; i < params_count; i = i + 1)
 	{
-		x64_push(x64v_reg([regparams # i], 64));
+		x64_push(x64v_reg([psy64_params # i], 64));
 		param : x64v mut := [params # i];
 		if(x64v_is_riprel(param))
 		{
-			x64_lea(x64v_reg([regparams # i], x64v_size(param)), param);
+			x64_lea(x64v_reg([psy64_params # i], x64v_size(param)), param);
 		}
 		else
 		{
@@ -30,7 +43,7 @@ irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 			{
 				x64v_set_size(ref param, 32);
 			}
-			x64_mov(x64v_reg([regparams # i], x64v_size(param)), param);
+			x64_mov(x64v_reg([psy64_params # i], x64v_size(param)), param);
 		}
 	}
 	// todo: return values???
@@ -38,52 +51,29 @@ irabi_psy_precall_x64 : func(params : x64v mut?, params_count : u64 -> v0)
 
 irabi_psy_postcall_x64 : func(params : x64v mut?, params_count : u64, returns : x64v mut?, returns_count : u64 -> v0)
 {
-	regparams ::= x64_reg[8]
-	{
-		.0 := x64_reg.rbx;
-		.1 := x64_reg.rcx;
-		.2 := x64_reg.rsi;
-		.3 := x64_reg.rdi;
-		.4 := x64_reg.r8;
-		.5 := x64_reg.r9;
-		.6 := x64_reg.r10;
-		.7 := x64_reg.r11;
-	};
-
-	regouts ::= x64_reg[2]
-	{
-		.0 := x64_reg.rax;
-		.1 := x64_reg.rdx;
-	};
-
 	i : s64 mut;
-	count ::= countof typeof(regparams);
 	for(i = (params_count - 1)@s64; i >= 0; i = i - 1)
 	{
-		x64_pop(x64v_reg([regparams # i], 64));
+		x64_pop(x64v_reg([psy64_params # i], 64));
 	}
 	for(i = 0; i@_ < returns_count; i = i + 1)
 	{
-		x64_mov([returns # i], x64v_reg([regouts # i], 64));
+		x64_mov([returns # i], x64v_reg([psy64_returns # i], 64));
 	}
 };
 
 irabi_psy_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
 {
-	regparams ::= x64_reg[12]
+	candidates : x64_reg mut[countof typeof(psy64_params) + countof typeof(psy64_scratches)];
+	i : u64 mut;
+	for(i = 0; i < countof typeof(psy64_params); i = i + 1)
 	{
-		.0 := x64_reg.rbx;
-		.1 := x64_reg.rcx;
-		.2 := x64_reg.rsi;
-		.3 := x64_reg.rdi;
-		.4 := x64_reg.r8;
-		.5 := x64_reg.r9;
-		.6 := x64_reg.r10;
-		.7 := x64_reg.r11;
-		.8 := x64_reg.r12;
-		.9 := x64_reg.r13;
-		.10 := x64_reg.r14;
-		.11 := x64_reg.r15;
-	};
-	register_allocation_graph_colouring(fn, fnx64, regparams # 0, countof typeof(regparams), fn->params_count);
+		[candidates # i] = [psy64_params # i];
+	}
+	for(i = 0; i < countof typeof(psy64_scratches); i = i + 1)
+	{
+		base ::= countof typeof(psy64_params);
+		[candidates # (i + base)] = [psy64_scratches # i];
+	}
+	register_allocation_graph_colouring(fn, fnx64, candidates # 0, countof typeof(candidates), fn->params_count);
 };

@@ -188,12 +188,13 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 lower_x64_ret : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 {
 	// if we are returning zero/one thing, then use a simple code path
-	// todo: check abi requirements
-	if(ir_ret_get_count(inst) == 1)
+	count ::= ir_ret_get_count(inst);
+	// todo: assert count == fn->params_count
+	i : u64 mut;
+	for(i = 0; i < count; i = i + 1)
 	{
-		ret0 ::= [ir_ret_get_value(inst, 0)];
-		ret0_x64 ::= lower_x64_irval(ret0);
-		x64_mov(x64v_reg(x64_reg.rax, x64v_size(ret0_x64)), ret0_x64);
+		out_x64 ::= lower_x64_irval([ir_ret_get_value(inst, i)]);
+		x64_mov(x64v_reg([psy64_returns # i], x64v_size(out_x64)), out_x64);
 	}
 	x64_add(x64v_reg(x64_reg.rsp, 64), x64v_imm(fn->stack_amt, 32));
 	x64_ret();
