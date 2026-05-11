@@ -926,6 +926,13 @@ sval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> sval)
 	{
 		return from.s;
 	}
+	if(ty_is_ptr(from.type) && ty_is_ptr(to))
+	{
+		if(ty_matches_ignore_quals(ty_underlying(from.type), ty_underlying(to)))
+		{
+			return from.s;
+		}
+	}
 	// 'zero' and 'undefined' transcend types
 	if((from.s.tag == sval_tag.zero_value) || (from.s.tag == sval_tag.undefined))
 	{
@@ -1067,23 +1074,27 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 			{
 				return from.r;
 			}
-			if(from_sz == 8)
+			if(to_sz == 8)
 			{
 				outsz = irsz.b;
 			}
-			if(from_sz == 16)
+			if(to_sz == 16)
 			{
 				outsz = irsz.w;
 			}
-			if(from_sz == 32)
+			if(to_sz == 32)
 			{
 				outsz = irsz.d;
 			}
-			if(from_sz == 64)
+			if(to_sz == 64)
 			{
 				outsz = irsz.q;
 			}
-			if(to_sz < from_sz)
+			if(to_sz == to_sz)
+			{
+				return from.r;
+			}
+			if(from_sz < to_sz)
 			{
 				// increase size...
 				if(ty_is_signed_integral(from.type))
