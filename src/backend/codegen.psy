@@ -62,33 +62,62 @@ codegen_funcsig : func(fn : function mut? -> v0)
 	// but this doesnt necessarily mean N param registers (due to chunking)
 	// paramregs[i] corresponds to chunks[i]
 	paramregs : irval mut[256] := zero;
-	chunks : chunk mut[256] := zero;
-	chunks_cursor : u64 mut := chunk_tys(chunking_rules_psy, fnty.param_types, fnty.params_count, chunks # 0);
+	chunks : chunk mut[256] mut := zero;
+	chunks_cursor : u64 mut := 0;
+	//chunks_cursor : u64 mut := chunk_tys(chunking_rules_psy, fnty.param_types, fnty.params_count, chunks # 0);
 
 	i : u64 mut;
-	for(i = 0; i < chunks_cursor; i = i + 1)
+	j : u64 mut;
+	for(i = 0; i < fnty.params_count; i = i + 1)
 	{
-		[paramregs # i] = ir_add_param(chunk_to_irsz(chunks # i));
+		cur_cursor ::= chunk_tys(chunking_rules_psy, fnty.param_types # i, 1, chunks # chunks_cursor);
+		for(j = 0; j < cur_cursor; j = j + 1)
+		{
+			chnk ::= chunks # (j + chunks_cursor);
+			[paramregs # (j + chunks_cursor)] = ir_add_param(chunk_to_irsz(chnk));
+		}
+
+		paramvar ::= fn->impl_scope.vars # i;
+		if(cur_cursor == 1)
+		{
+			// one chunk, its a scalar
+			paramvar->runtime_storage = rval
+			{
+				.tag := rval_tag.scalar;
+				.v := [paramregs # (chunks_cursor + 0)];
+			};
+		}
+		else
+		{
+			// multi chunks
+			param_members : rval mut? := arena_alloc(global_arena, cur_cursor * sizeof rval);
+			param_chunks : chunk mut? := arena_alloc(global_arena, cur_cursor * sizeof chunk);
+			for(j = 0; j < cur_cursor; j = j + 1)
+			{
+				[param_members # j] = rval
+				{
+					.tag := rval_tag.scalar;
+					.v := [paramregs # (chunks_cursor + j)];
+				};
+				[param_chunks # j] = [chunks # (chunks_cursor + j)];
+			}
+			paramvar->runtime_storage = rval
+			{
+				.tag := rval_tag.chunked;
+				.members := param_members;
+				.members_chunks := param_chunks;
+				.members_count := cur_cursor;
+			};
+		}
+
+		chunks_cursor = chunks_cursor + cur_cursor;
 	}
 
+	chunks = zero;
 	chunks_cursor = chunk_tys(chunking_rules_psy, ref(fnty.return_type), 1, chunks # 0);
 	for(i = 0; i < chunks_cursor; i = i + 1)
 	{
 		ir_add_return(chunk_to_irsz(chunks # i));
-	}
-
-	// ideally we go through the function scope
-	// and populate all runtime_slots for variables
-	// but this is gonna be really hard
-	for(i = 0; i < fnty.params_count; i = i + 1)
-	{
-		paramvar ::= fn->impl_scope.vars # i;
-		paramvar->runtime_storage = rval
-		{
-			// todo: non-scalar (chunked) params
-			.tag := rval_tag.scalar;
-			.v := [paramregs # i];
-		};
 	}
 };
 
