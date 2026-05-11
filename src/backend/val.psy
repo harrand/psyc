@@ -215,6 +215,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_biop(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.dereference))
+	{
+		return val_from_dereference(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -691,7 +695,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 
 	// if we are not assign, then both must be loaded if needed
 	// if we are assign, only rhs needs to be loaded
-	if((lhs.category == val_category.lvalue) && (biop_node->biop.op != ast_biop_op.assign))
+	if((lhs.category == val_category.lvalue) && (biop_node->biop.op != ast_biop_op.assign) && (biop_node->biop.op != ast_biop_op.at))
 	{
 		lhs = codegen_load(lhs, biop_node);
 	}
@@ -787,6 +791,23 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	putzstr("reached end of val_from_biop");
 	psyc_panic_end(biop_node);
 	return zero;
+};
+
+val_from_dereference : func(ptr_node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	if(r == val_resolution.compile_time_only)
+	{
+		psyc_panic_begin(ptr_node);
+		putzstr("dont know how to dereference a thing at compile time");
+		psyc_panic_end(ptr_node);
+	}
+	// its incredibly easy for us.
+	// just pretend the thing is an lvalue
+	//ptr_val : val mut := codegen_load_if_lvalue(val_from_node(ast_get_child(ptr_node, 0), s, r), ptr_node);
+	ptr_val : val mut := val_from_node(ast_get_child(ptr_node, 0), s, r);
+	ptr_val.type = ty_underlying(ptr_val.type);
+	ptr_val.category = val_category.lvalue;
+	return ptr_val;
 };
 
 val_function_reference : func(fn : function mut? -> val)
@@ -1477,6 +1498,10 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_compare_greater_equal(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.at)
+	{
+		return rval_from_biop_at(lhs, rhs, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_from_biop (");
 	putzstr(enumname(op));
@@ -1641,6 +1666,22 @@ rval_from_biop_compare_greater_equal : func(lhs : val, rhs : val, s : scope mut?
 		.tag := rval_tag.scalar;
 		.v := ir_cmp_uge(lhs.r.v, rhs.r.v);
 	};
+};
+
+rval_from_biop_at : func(lhs : val mut, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// lhs is some kind of pointer
+	if(ty_is_ptr(lhs.type))
+	{
+		lhs = codegen_load_if_lvalue(lhs, source);
+	}
+	// ok we're either an rval.ptr or an rval.scalar that represents a pointer.
+	// doesnt matter - we just add anyway
+	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
+	// todo: ideally we dont add/mul here we turn it into an rval suitable for a memory operand with all this data encoded. toughie though.
+	// todo: if rhs.r.v is an immediate 0 value, we dont need the add or the mul
+	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_dimm(elem_size)));
+	return lhs.r;
 };
 
 val_from_type : func(type : tyid -> val)
