@@ -45,11 +45,52 @@ lower_x64_parallelise_moves : func(fn : irfunc mut?, fnx64 : x64f mut?, begin : 
 	// we are free to rearrange them as much as we want, so long as there is no stepping over in the end
 
 	// also the operands (src + dst) are guaranteed to not be custom x64vs
-	i : u64 mut;
-	for(i = begin; i < end; i = i + 1)
+
+	regcount_minus_rip ::= countof x64_reg - 1;
+	reg_write_indices ::= u64 mut[countof x64_reg - 1] mut
 	{
-		inst ::= fnx64->inst # i;
+		.0 := ~0;
+		... := ~0;
+	};
+	i : u64 mut;
+	inst : x64i mut? mut;
+	// go through and collect all the writes
+	for(i = begin; i <= end; i = i + 1)
+	{
+		inst = fnx64->inst # i;
+		dst ::= [inst->operands # 0];
+		if(x64v_is_reg(dst))
+		{
+			ptr ::= reg_write_indices # (x64v_reg_get_reg(dst)@s64);
+			if([ptr] > i)
+			{
+				[ptr] = i;
+			}
+		}
 	}
+	// now go through again
+	for(i = begin; i <= end; i = i + 1)
+	{
+		inst = fnx64->inst # i;
+		// now get the source
+		src ::= [inst->operands # 1];
+		if(x64v_is_reg(src))
+		{
+			// check if this was written to before...
+			last_write ::= [reg_write_indices # x64v_reg_get_reg(src)@s64];
+			if(last_write < i)
+			{
+				// this has been written to before!
+				// we should swap the instructions at last_write and i
+				tmp ::= [inst];
+				[inst] = [fnx64->inst # last_write];
+				[fnx64->inst # last_write] = tmp;
+				// then go back so we dont skip over anything post-changes
+				i = last_write;
+			}
+		}
+	}
+	return;
 };
 
 lower_x64_do_parallel_moves : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
