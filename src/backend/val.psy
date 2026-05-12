@@ -810,7 +810,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 
 	// if we are not assign, then both must be loaded if needed
 	// if we are assign, only rhs needs to be loaded
-	if(biop_node->biop.op != ast_biop_op.at)
+	if((biop_node->biop.op != ast_biop_op.at) && (biop_node->biop.op != ast_biop_op.assign))
 	{
 		lhs = codegen_load_if_lvalue(lhs, lhs_node);
 	}
@@ -1548,10 +1548,19 @@ sval_from_biop_compare_greater_equal : func(lhs : val, rhs : val, s : scope mut?
 
 rval_from_unop : func(op : ast_unop, operand : val, s : scope mut?, source : ast mut? -> rval)
 {
+	if(op == ast_unop.reference)
+	{
+		return rval_from_unop_reference(operand, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of rval_from_unop");
 	psyc_panic_end(source);
 	return zero;
+};
+
+rval_from_unop_reference : func(operand : val, s : scope mut?, source : ast mut? -> rval)
+{
+	return operand.r;
 };
 
 sval_from_unop : func(op : ast_unop, operand : val, s : scope mut?, source : ast mut? -> sval)
@@ -1790,7 +1799,7 @@ rval_from_biop_at : func(lhs : val mut, rhs : val, s : scope mut?, source : ast 
 	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
 	// todo: ideally we dont add/mul here we turn it into an rval suitable for a memory operand with all this data encoded. toughie though.
 	// todo: if rhs.r.v is an immediate 0 value, we dont need the add or the mul
-	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_dimm(elem_size)));
+	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_imm(irval_get_irsz(rhs.r.v), elem_size)));
 	return lhs.r;
 };
 
