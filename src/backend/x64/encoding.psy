@@ -1064,6 +1064,14 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 		}
 		// scale_bits == scale, which can only be 1/2/4/8
 		scale_bits = log2(rm.v2)@u8;
+		// disp size is 0 therefore ignore scale (default to 0b000 which is 1)
+		if(rm.v6 == 0)
+		{
+			scale_bits = 0;
+		}
+
+		base_size ::= rm.v2;
+		index_size ::= rm.v3;
 
 		index_bits = rm.r2@s64@u8;
 		if(index_bits > 7)
@@ -1071,6 +1079,12 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 			index_bits = index_bits & 0b111;
 			// set rex.x
 			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_x);
+		}
+		// index size is 0 therefore ignore index register
+		if(index_size == 0)
+		{
+			// means no index register.
+			index_bits = 0b100;
 		}
 
 		base_bits = rm.r1@s64@u8;
@@ -1080,9 +1094,6 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 			// set rex.x
 			enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
 		}
-
-		base_size ::= rm.v2;
-		index_size ::= rm.v3;
 		if(base_size == 32)
 		{
 			// 32 bit addressing mode. need to add the legacy prefix
