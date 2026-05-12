@@ -6,6 +6,7 @@ irval_tag : enum
 	.blkref := 4;
 	.asmref := 5;
 	.imm := 6;
+	.null := 7;
 };
 
 irsz : enum
@@ -200,6 +201,31 @@ irval_imm_get_value : func(imm : irval -> u64 weak)
 	return imm.v1;
 };
 
+// null
+irval_null : func(-> irval)
+{
+	return irval{.tag := irval_tag.null; ... := zero;};
+};
+
+irval_is_null : func(v : irval -> bool)
+{
+	return v.tag == irval_tag.null;
+};
+
+irval_is_null_or_zero : func(v : irval -> bool)
+{
+	return (v.tag == zero) || irval_is_null(v);
+};
+
+irval_or_null : func(v : irval -> irval)
+{
+	if(v.tag == zero)
+	{
+		return irval_null();
+	}
+	return v;
+};
+
 irval_get_irsz : func(v : irval -> irsz)
 {
 	if(v.tag == irval_tag.reg)
@@ -266,6 +292,11 @@ bwrite_irval_imm : func(w : bwriter mut?, v : irval -> v0)
 	}
 };
 
+bwrite_irval_null : func(w : bwriter mut?, v : irval -> v0)
+{
+	bwrite_zstr(w, "null");
+};
+
 bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
 {
 	.0 := bwrite_irval_reg;
@@ -274,6 +305,7 @@ bwrite_irval_dispatch ::= typeof(bwrite_irval)[countof irval_tag]
 	.3 := bwrite_irval_blkref;
 	.4 := bwrite_irval_asmref;
 	.5 := bwrite_irval_imm;
+	.6 := bwrite_irval_null;
 };
 
 bwrite_irval : func(w : bwriter mut?, v : irval -> v0)

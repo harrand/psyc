@@ -197,7 +197,20 @@ bwrite_irinst : func(w : bwriter mut?, inst : irinst -> v0)
 	begin_offset = lhs_count + begin_idx;
 
 	bwrite_zstr(w, enumname(inst.tag));
-	count ::= irinst_operands_count(inst);
+	count : u64 mut := irinst_operands_count(inst);
+
+	last_nonnull : u64 mut := begin_offset;
+	for(i = begin_offset; i < count; i = i + 1)
+	{
+		if(!irval_is_null_or_zero([irinst_get_operand(inst, i)]))
+		{
+			last_nonnull = i + 1;
+		}
+	}
+	if(last_nonnull < count)
+	{
+		count = last_nonnull;
+	}
 	for(i = begin_offset; i < count; i = i + 1)
 	{
 		bwrite_zstr(w, " ");
