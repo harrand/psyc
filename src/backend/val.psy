@@ -211,6 +211,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_cast(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.unop))
+	{
+		return val_from_unop(node, s, r);
+	}
 	if(ast_is_expr(node, ast_expr_tag.biop))
 	{
 		return val_from_biop(node, s, r);
@@ -645,6 +649,83 @@ val_from_cast : func(cast_node : ast mut?, s : scope mut?, r : val_resolution ->
 	return val_must_convert(castee, cast_to, cast_node);
 };
 
+val_from_unop : func(unop_node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	operand_node ::= ast_get_child(unop_node, 0);
+	operand : val mut := val_from_node(operand_node, s, r);
+
+	ret_type : tyid mut := zero;
+	if(unop_node->unop == ast_unop.reference)
+	{
+		ret_type = ty_ptr(operand.type, zero);
+	}
+	else
+	{
+		ret_type = operand.type;
+		if(unop_node->unop == ast_unop.logical_invert)
+		{
+			if(!ty_is_bool(operand.type))
+			{
+				psyc_error_begin(unop_node);
+				putzstr("the logical operand unary operator (!) is only valid on a boolean type. you have provided a ");
+				putchar('"');
+				putty(operand.type);
+				putchar('"');
+				psyc_error_end(unop_node);
+			}
+		}
+	}
+
+	if(ret_type == zero)
+	{
+		psyc_error_begin(unop_node);
+		putzstr("unary operator ");
+		putchar('"');
+		putzstr(enumname(unop_node->unop));
+		putchar('"');
+		putzstr(" is invalid on type ");
+		putchar('"');
+		putty(operand.type);
+		putchar('"');
+		psyc_error_end(unop_node);
+	}
+	if(r == val_resolution.type_only)
+	{
+		return val_from_type(ret_type);
+	}
+
+	operand = codegen_load_if_lvalue(operand, operand_node);
+	// todo: codegen_load_if_lvalue will turn compile-time params into runtime params,
+	// meaning that if this is called with compile_time_only the below code will error out.
+	// todo: maybe only do the codegen_load_if_lvalues if they are runtime values?
+
+	lowest_common_resolution : val_resolution mut := val_resolution.either;
+	if((operand.tag == val_tag.runtime))
+	{
+		lowest_common_resolution = val_resolution.runtime_only;
+		if(r == val_resolution.compile_time_only)
+		{
+			psyc_error_begin(unop_node);
+			putzstr("unary operator must be evaluated at compile-time, but this is impossible because the operand is a runtime-value");
+			psyc_error_end(unop_node);
+		}
+	}
+
+	if(lowest_common_resolution == val_resolution.runtime_only)
+	{
+		// runtime impl
+	}
+	else
+	{
+		// compile-time impl
+	}
+
+	psyc_error_begin(unop_node);
+	putzstr("reached end of val_from_unop");
+	psyc_error_end(unop_node);
+	return zero;
+};
+
 val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
 	lhs_node ::= ast_get_child(biop_node, 0);
@@ -693,17 +774,6 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 		}
 	}
 
-	// if we are not assign, then both must be loaded if needed
-	// if we are assign, only rhs needs to be loaded
-	if((lhs.category == val_category.lvalue) && (biop_node->biop.op != ast_biop_op.assign) && (biop_node->biop.op != ast_biop_op.at))
-	{
-		lhs = codegen_load(lhs, biop_node);
-	}
-	if(rhs.category == val_category.lvalue)
-	{
-		rhs = codegen_load(rhs, biop_node);
-	}
-
 	if(ret_type == zero)
 	{
 		psyc_error_begin(biop_node);
@@ -725,6 +795,18 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	{
 		return val_from_type(ret_type);
 	}
+
+	// if we are not assign, then both must be loaded if needed
+	// if we are assign, only rhs needs to be loaded
+	if(biop_node->biop.op != ast_biop_op.at)
+	{
+		lhs = codegen_load_if_lvalue(lhs, lhs_node);
+	}
+	rhs = codegen_load_if_lvalue(rhs, rhs_node);
+
+	// todo: codegen_load_if_lvalue will turn compile-time params into runtime params,
+	// meaning that if this is called with compile_time_only the below code will error out.
+	// todo: maybe only do the codegen_load_if_lvalues if they are runtime values?
 
 	// get a common resolution of lhs, rhs and the parameter
 	// lowest one of them all is used
