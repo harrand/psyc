@@ -981,6 +981,14 @@ x64i_encode_modrm_sib : func(enc : x64i_enc mut?, operands : x64v?, operands_cou
 				rm_bits = (rm_bits & 0b111);
 				enc->rex_prefix = (enc->rex_prefix | x64_rex_prefix.rex_b);
 			}
+
+			is_edge_case ::= (rm.r1 == x64_reg.rbp) || (rm.r1 == x64_reg.r13);
+			if(is_edge_case)
+			{
+				// we actually *must* have a displacement even if its zero
+				// so we set to rel8
+				mod_bits = 0b01;
+			}
 		}
 	}
 	if(r_idx != -1)
@@ -1550,6 +1558,15 @@ bwrite_x64i_encode : func(w : bwriter mut?, inst : x64i -> u64)
 			if(op.v2 == 32)
 			{
 				bwrite32(w, op.v1);
+			}
+		}
+		else
+		{
+			if(x64v_is_mem(op) && ((x64v_memreg_get_base(op) == x64_reg.rbp) || (x64v_memreg_get_base(op) == x64_reg.r13)))
+			{
+				// we have a memory operand and the base register is an edge case (r13 or rbp)
+				// we have to put an absolute displacement due to encoding edge-case reasons. its guaranteed to be rel8 (from encode_modrm_sib) so we chuck in a zero byte in here now.
+				bwrite8(w, zero);
 			}
 		}
 		if(x64v_is_imm(op))
