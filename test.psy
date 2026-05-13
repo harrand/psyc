@@ -15,12 +15,12 @@ big_chungus : struct
 	b : f64;
 };
 
-syscall1 : asm("{rax},{rdi},~{rcx},~{r11}" -> v0)
+syscall1 : asm("={rax},0,{rdi},~{rcx},~{r11}" -> s64 weak)
 {
 	syscall
 };
 
-syscall3 : asm("{rax},{rdi},{rsi},{rdx},~{rcx},~{r11}" -> v0)
+syscall3 : asm("={rax},0,{rdi},{rsi},{rdx},~{rcx},~{r11}" -> s64 weak)
 {
 	syscall
 };
@@ -29,6 +29,11 @@ write : func(fd : u32 weak, buf : u8? weak, count : u64 -> v0)
 {
 	syscall3(1, fd, buf, count);
 	return;
+};
+
+open : func(filename_zstr : u8? weak, flags : s32 weak, mode : s32 weak -> s32)
+{
+	return syscall3(2, filename_zstr, flags, mode);
 };
 
 exit : func(code : u64 weak -> v0)
