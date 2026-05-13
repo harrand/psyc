@@ -357,9 +357,14 @@ codegen_store : func(ptr_val : val, store_val : val, source : ast mut? -> v0)
 		ir_store(v.r.v, ptr.r.v, zero, zero, zero);
 		return;
 	}
-	psyc_panic_begin(source);
-	putzstr("reached end of codegen_store");
-	psyc_panic_end(source);
+	i : u64 mut;
+	bytes : u64 mut := 0;
+	for(i = 0; i < v.r.members_count; i = i + 1)
+	{
+		chnk ::= [v.r.members_chunks # i];
+		ir_store([v.r.members # i].v, ptr.r.v, zero, zero, irval_dimm(bytes));
+		bytes = bytes + chnk.sz;
+	}
 };
 
 codegen_load_if_lvalue : func(maybe_ptr_val : val, source : ast mut? -> val)
@@ -393,11 +398,34 @@ codegen_load : func(ptr_val : val, source : ast mut? -> val)
 			};
 		};
 	}
+	bytes : u64 mut := 0;
+	members : rval mut? := arena_alloc(global_arena, chunks_count * sizeof rval);
+	out_chunks : chunk mut? := arena_alloc(global_arena, chunks_count * sizeof chunk);
+	i : u64 mut;
+	for(i = 0; i < chunks_count; i = i + 1)
+	{
+		chnk ::= chunks_array # i;
+		[out_chunks # i] = [chnk];
 
-	// we need to figure out whether we just need a scalar or not.
-	// we need to do chunking...
-	psyc_panic_begin(source);
-	putzstr("reached end of codegen_load");
-	psyc_panic_end(source);
-	return zero;
+		[members # i] = rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_load(chunk_to_irsz(chnk), ptr.r.v, zero, zero, irval_dimm(bytes));
+		};
+		bytes = bytes + chnk->sz;
+	}
+
+	return val
+	{
+		.tag := val_tag.runtime;
+		.type := ptr.type;
+		.category := val_category.rvalue;
+		.r := rval
+		{
+			.tag := rval_tag.chunked;
+			.members := members;
+			.members_chunks := out_chunks;
+			.members_count := chunks_count;
+		};
+	};
 };
