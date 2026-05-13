@@ -247,9 +247,40 @@ post_codegen : func(-> v0)
 
 codegen_if : func(node : ast mut?, fn : function mut? -> v0)
 {
-	psyc_panic_begin(node);
-	putzstr("codegen_if: not yet implemented");
-	psyc_panic_end(node);
+	cond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	cur ::= ir_get_pos();
+	true_blk ::= ir_add_blk();
+	false_blk ::= ir_add_blk();
+	cont_blk ::= ir_add_blk();
+
+	ir_set_pos(cur);
+	ir_jmpif(cond_val.r.v, true_blk, false_blk);
+	ir_set_pos(true_blk);
+
+	else_node ::= ast_get_last_child_if_else(node);
+	if_contents_end : u64 mut := node->children_count;
+	if(else_node != zero)
+	{
+		if_contents_end = if_contents_end - 1;
+	}
+	util_walk_control_flow_in_nodes(node, 1, if_contents_end, codegen_node, fn);
+	// if the blk doesnt currently have a terminator, then add one
+	if(ir_current_blk()->successors_count == 0)
+	{
+		ir_jmp(cont_blk);
+	}
+
+	ir_set_pos(false_blk);
+	if(else_node != zero)
+	{
+		util_walk_control_flow_in_nodes(else_node, 0, else_node->children_count, codegen_node, fn);
+	}
+	if(ir_current_blk()->successors_count == 0)
+	{
+		ir_jmp(cont_blk);
+	}
+
+	ir_set_pos(cont_blk);
 };
 
 codegen_while : func(node : ast mut?, fn : function mut? -> v0)
