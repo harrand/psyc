@@ -1117,6 +1117,19 @@ lower_x64_call : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 
 		x64_parse(asmdata->code, asmdata->code_len, asmdata->constraint, asmdata->constraint_len, params, params_count, returns, returns_count);
 
+		if(outputs_count > 0)
+		{
+			x64_add_custom_instruction(x64_custom_inst_parallel_moves_begin, zero, zero);
+			for(k = 0; k < outputs_count; k = k + 1)
+			{
+				cur_output ::= outputs # k;
+				cur_return ::= returns # k;
+				// todo e.g: movzx if param is 16 bit and input is 64
+				x64_mov([cur_return], x64v_reg(x64v_reg_get_reg([cur_output]), x64v_size([cur_return])));
+			}
+			x64_add_custom_instruction(x64_custom_inst_parallel_moves_end, zero, zero);
+		}
+
 		for(k = 0; k < clobbers_count; k = k + 1)
 		{
 			// insert a meta instruction, telling us that a lifetime for this register ends here
