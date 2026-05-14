@@ -285,9 +285,21 @@ codegen_if : func(node : ast mut?, fn : function mut? -> v0)
 
 codegen_while : func(node : ast mut?, fn : function mut? -> v0)
 {
-	psyc_panic_begin(node);
-	putzstr("codegen_while: not yet implemented");
-	psyc_panic_end(node);
+	cond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	cur ::= ir_get_pos();
+	true_blk ::= ir_add_blk();
+	cont_blk ::= ir_add_blk();
+
+	ir_set_pos(cur);
+	ir_jmpif(cond_val.r.v, true_blk, cont_blk);
+	ir_set_pos(true_blk);
+
+	util_walk_control_flow_in_nodes(node, 1, node->children_count, codegen_node, fn);
+	// if the blk doesnt currently have a terminator, then add one
+	recond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	ir_jmpif(recond_val.r.v, true_blk, cont_blk);
+
+	ir_set_pos(cont_blk);
 };
 
 codegen_for : func(node : ast mut?, fn : function mut? -> v0)
