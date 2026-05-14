@@ -551,6 +551,10 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 	call_params_count ::= call_node->children_count - 1;
 	call_params ::= val_setup_call_params(callee, ast_get_child(call_node, 1), call_params_count, s, r, call_node);
 
+	chunks : chunk mut[128];
+	// not necessarily the same as call_params_count - one param could be many vals
+	call_vals_count ::= chunk_tys(chunking_rules_psy, callee_fnty.param_types # 0, callee_fnty.params_count, chunks # 0);
+
 	if(callee.tag == val_tag.type_only)
 	{
 		return val_from_type(callee_fnty.return_type);
@@ -559,8 +563,10 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 	// todo: handle runtime call
 	if((r == val_resolution.runtime_only) || (r == val_resolution.either))
 	{
-		call_param_irvals : irval mut? := arena_alloc(global_arena, call_params_count * sizeof irval);
+		call_param_irvals : irval mut? := arena_alloc(global_arena, call_vals_count * sizeof irval);
 		// todo: handle more than just scalars...
+		vals_cursor : u64 mut := 0;
+		j : u64 mut;
 		for(i = 0; i < call_params_count; i = i + 1)
 		{
 			param_node ::= ast_get_child(call_node, i + 1);
@@ -569,7 +575,14 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 			{
 				runtime_param = codegen_load(runtime_param, param_node);
 			}
-			[call_param_irvals # i] = runtime_param.r.v;
+			param_vals : irval mut? mut;	
+			param_vals_count : u64 mut;
+			rval_fully_unpack(runtime_param.r, ref param_vals, ref param_vals_count);
+			for(j = 0; j < param_vals_count; j = j + 1)
+			{
+				[call_param_irvals # (vals_cursor + j)] = [param_vals # j];
+			}
+			vals_cursor = vals_cursor + param_vals_count;
 		}
 		call_return_irvals : irval mut? mut := zero;
 		call_return_irszs : irsz mut? mut := zero;
@@ -589,7 +602,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 				[call_return_irszs # i] = chunk_to_irsz(dummy_chunks # i);
 			}
 		}
-		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_params_count, call_return_irszs, call_return_irvals, call_return_irvals_count);
+		ir_call(val_ensure_runtime(callee, ast_get_child(call_node, 0)).r.v, call_param_irvals # 0, call_vals_count, call_return_irszs, call_return_irvals, call_return_irvals_count);
 		if(call_return_irvals_count == 0)
 		{
 			return zero;
