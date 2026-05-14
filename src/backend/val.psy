@@ -2070,6 +2070,21 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 		datalayout_serialise_compile_time_val(ref wv, v);
 		// go through the chunks, gather offsets from 0, and just copy it over...
 		cursor : u64 mut := 0;
+		if((chunks_count == 1) && ([chunks # 0].type == chunk_type.mem))
+		{
+			// make it into a global
+			return val
+			{
+				.tag := val_tag.runtime;
+				.type := v.type;
+				.category := val_category.rvalue;
+				.r := rval
+				{
+					.tag := rval_tag.ptr;
+					.v := irprog_add_glob(ref(irapi.prog), wv.buf, wv.cursor, true);
+				};
+			};
+		}
 		for(i = 0; i < chunks_count; i = i + 1)
 		{
 			chnk ::= chunks # i;
