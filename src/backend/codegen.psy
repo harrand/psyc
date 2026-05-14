@@ -247,7 +247,8 @@ post_codegen : func(-> v0)
 
 codegen_if : func(node : ast mut?, fn : function mut? -> v0)
 {
-	cond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	cond_node ::= ast_get_child(node, 0);
+	cond_val ::= val_from_node(cond_node, ref(fn->impl_scope), val_resolution.runtime_only);
 	cur ::= ir_get_pos();
 	true_blk ::= ir_add_blk();
 	false_blk ::= ir_add_blk();
@@ -285,7 +286,8 @@ codegen_if : func(node : ast mut?, fn : function mut? -> v0)
 
 codegen_while : func(node : ast mut?, fn : function mut? -> v0)
 {
-	cond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	cond_node ::= ast_get_child(node, 0);
+	cond_val ::= val_from_node(cond_node, ref(fn->impl_scope), val_resolution.runtime_only);
 	cur ::= ir_get_pos();
 	true_blk ::= ir_add_blk();
 	cont_blk ::= ir_add_blk();
@@ -296,7 +298,7 @@ codegen_while : func(node : ast mut?, fn : function mut? -> v0)
 
 	util_walk_control_flow_in_nodes(node, 1, node->children_count, codegen_node, fn);
 	// if the blk doesnt currently have a terminator, then add one
-	recond_val ::= val_from_node(ast_get_child(node, 0), ref(fn->impl_scope), val_resolution.runtime_only);
+	recond_val ::= val_from_node(cond_node, ref(fn->impl_scope), val_resolution.runtime_only);
 	ir_jmpif(recond_val.r.v, true_blk, cont_blk);
 
 	ir_set_pos(cont_blk);
@@ -304,9 +306,27 @@ codegen_while : func(node : ast mut?, fn : function mut? -> v0)
 
 codegen_for : func(node : ast mut?, fn : function mut? -> v0)
 {
-	psyc_panic_begin(node);
-	putzstr("codegen_for: not yet implemented");
-	psyc_panic_end(node);
+	init_node ::= ast_get_child(node, 0);
+	cond_node ::= ast_get_child(node, 1);
+	iter_node ::= ast_get_child(node, 2);
+
+	codegen_node(init_node, fn);
+	cond_val ::= val_from_node(cond_node, ref(fn->impl_scope), val_resolution.runtime_only);
+
+	cur ::= ir_get_pos();
+	true_blk ::= ir_add_blk();
+	cont_blk ::= ir_add_blk();
+
+	ir_set_pos(cur);
+	ir_jmpif(cond_val.r.v, true_blk, cont_blk);
+	ir_set_pos(true_blk);
+
+	util_walk_control_flow_in_nodes(node, 3, node->children_count, codegen_node, fn);
+	codegen_node(iter_node, fn);
+	recond_val ::= val_from_node(cond_node, ref(fn->impl_scope), val_resolution.runtime_only);
+	ir_jmpif(recond_val.r.v, true_blk, cont_blk);
+	
+	ir_set_pos(cont_blk);
 };
 
 codegen_ret : func(node : ast mut?, fn : function mut? -> v0)
@@ -343,7 +363,7 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 {
 	fn ::= usrdata@function mut?;
 
-	if(ast_is_stmt(node, ast_stmt_tag.expr))
+	if(ast_is_stmt(node, ast_stmt_tag.expr) || ast_is_any_expr(node))
 	{
 		val_from_node(node, ref(fn->impl_scope), val_resolution.either);
 		return;
