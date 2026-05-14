@@ -224,6 +224,14 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_dereference(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.field))
+	{
+		return val_from_field(node, s, r);
+	}
+	if(ast_is_expr(node, ast_expr_tag.ptrfield))
+	{
+		return val_from_ptrfield(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -901,6 +909,64 @@ val_from_dereference : func(ptr_node : ast mut?, s : scope mut?, r : val_resolut
 	ptr_val.type = ty_underlying(ptr_val.type);
 	ptr_val.category = val_category.lvalue;
 	return ptr_val;
+};
+
+val_from_field : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	lhs_node ::= ast_get_child(node, 0);
+	lhs : val mut := val_from_node(lhs_node, s, r);
+	lhsty ::= lhs.type;
+
+	strct ::= ty_unwrap(lhsty)->strct;
+
+	rhs_node ::= ast_get_child(node, 1);
+	i : u64 mut;
+	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
+	{
+		for(i = 0; i < strct.members_count; i = i + 1)
+		{
+			if(sstreql([strct.member_names # i], rhs_node->symbol))
+			{
+				// memidx == i
+				// if we are a ptr (as in type or rval tag), then offset by offsetof(member)
+				// otherwise, assume we are chunked and siphon out the chunked data into ssa reg(s)
+				return val
+				{
+					.tag := lhs.tag;
+					.type := [strct.members # i];
+					.category := lhs.category;
+					.r := rval_siphon_member(lhs.r, datalayout_offsetof_struct(lhsty, i), datalayout_sizeof_ty([strct.members # i]));
+				};
+			}
+		}
+		// didnt find the member
+		psyc_error_begin(rhs_node);
+		putzstr("struct type ");
+		putchar('"');
+		putty(lhsty);
+		putchar('"');
+		putzstr(" has no member named ");
+		putchar('"');
+		putsstr(rhs_node->symbol);
+		putchar('"');
+		psyc_error_end(rhs_node);
+	}
+	// rhs is either a call (member function call)
+	// or a symbol (struct/enum member access)
+	psyc_panic_begin(node);
+	putzstr("reached end of val_from_field");
+	psyc_panic_end(node);
+	return zero;
+};
+
+val_from_ptrfield : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	// rhs is either a call (member function call)
+	// or a symbol (struct/enum member access)
+	psyc_panic_begin(node);
+	putzstr("reached end of val_from_ptrfield");
+	psyc_panic_end(node);
+	return zero;
 };
 
 val_function_reference : func(fn : function mut? -> val)
@@ -2074,4 +2140,48 @@ rval_fully_unpack : func(r : rval, out_vals : irval mut? mut?, out_vals_count : 
 			[out_vals_count] = [out_vals_count] + 1;
 		}
 	}
+};
+
+rval_siphon_member : func(r : rval, off : u64, len : u64 -> rval)
+{
+	if(r.tag == rval_tag.ptr)
+	{
+		// easy, just offset
+		return rval
+		{
+			.tag := rval_tag.ptr;
+			.v := ir_add(r.v, irval_qimm(off));
+		};
+	}
+	i : u64 mut;
+	chnkbegin : u64 mut := 0;
+	for(i = 0; i < r.members_count; i = i + 1)
+	{
+		chnk ::= r.members_chunks # i;
+		chnkend ::= chnkbegin + chnk->sz;
+
+		if((chnkbegin <= off) && ((chnkbegin + chnk->sz) >= off))
+		{
+			// beginning of our data starts here
+			dst_from_begin ::= off - chnkbegin;
+			//if(dst_from_begin == 0)
+			//{
+				// easy part...
+			//}
+			// does it also end here?
+			if(chnkend >= (off + len))
+			{
+				// great
+				// bad: assume this chunk just holds everything perfectly.
+				return [r.members # i];
+			}
+		}
+
+		chnkbegin = chnkend;
+	}
+	// assume our rval is chunked.
+	psyc_panic_begin(zero);
+	putzstr("reached end of rval_siphon_member");
+	psyc_panic_end(zero);
+	return zero;
 };
