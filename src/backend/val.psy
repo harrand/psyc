@@ -660,7 +660,8 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 val_from_cast : func(cast_node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
 	castee_node ::= ast_get_child(cast_node, 0);
-	castee ::= val_from_node(castee_node, s, r);
+	castee : val mut := val_from_node(castee_node, s, r);
+	castee.type = ty_set_qual(castee.type, tyqual.qual_weak);
 	cast_to_node ::= ast_get_child(cast_node, 1);
 	cast_to ::= type_from_typename_node(cast_to_node, s);
 
@@ -1064,6 +1065,7 @@ val_must_convert : func(from : val mut, to : tyid, source : ast mut? -> val)
 		putzstr("no valid conversion from ");
 		putty(from.type);
 		putzstr(" to ");
+		putty(to);
 		if(conv == tyconv.no_cant_add_staticness)
 		{
 			putzstr(" (cannot add staticness)");
