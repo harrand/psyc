@@ -103,7 +103,7 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 	// byte offset from start of elf to code segment
 	rodata_segment_begin ::= align_up(elf_hdr_size + (proghdr_count * proghdr_size), page_size);
 	data_and_bss_segment_begin ::= align_up(rodata_segment_begin + rodata_len, page_size);
-	code_segment_begin ::= align_up(data_and_bss_segment_begin + data_len, page_size);
+	code_segment_begin ::= align_up(data_and_bss_segment_begin + data_len + bss_len, page_size);
 	// entry point virtual address
 	base_vaddr ::= 0x400000;
 	rodata_begin_addr ::= align_up(base_vaddr + rodata_segment_begin, page_size);
@@ -188,6 +188,11 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 		panic_assert_failure("data_segment_begin seems to be off");
 	}
 	bwrite_x64p_data(w, x64api.prog);
+	i : u64 mut;
+	for(i = 0; i < bss_len; i = i + 1)
+	{
+		bwrite8(w, 0);
+	}
 	while(alignment_padding_req(w->cursor, page_size) != 0)
 	{
 		bwrite8(w, 0);
@@ -200,7 +205,7 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 	{
 		.rodata_displacement_to_addrstart := code_begin_addr - rodata_begin_addr;
 		.data_displacement_to_addrstart := code_begin_addr - data_and_bss_begin_addr;
-		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + bss_len);
+		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + data_len);
 	};
 	// generate meta
 	code_len ::= bwrite_x64p_encode(w, p, meta) + 2;
