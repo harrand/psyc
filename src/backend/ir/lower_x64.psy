@@ -91,9 +91,21 @@ lower_x64_parallelise_moves : func(fn : irfunc mut?, fnx64 : x64f mut?, begin : 
 			{
 				// this has been written to before!
 				// we should swap the instructions at last_write and i
-				tmp ::= [inst];
-				[inst] = [fnx64->inst # last_write];
-				[fnx64->inst # last_write] = tmp;
+
+				other ::= fnx64->inst # last_write;
+				if(x64v_reg_similar([other->operands # 0], [inst->operands # 1]) && x64v_reg_similar([other->operands # 1], [inst->operands # 0]))
+				{
+					// if they are the same moves but with operands swapped...
+					// then delete them and do an xchg instead...
+					int3();
+				}
+				else
+				{
+					// else do the swap
+					tmp ::= [inst];
+					[inst] = [other];
+					[other] = tmp;
+				}
 				// then go back so we dont skip over anything post-changes
 				i = last_write;
 			}

@@ -4,6 +4,18 @@ lower_x64_irblk : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 
 	blkid_x64 ::= x64v_imm(blk->idx, 64);
 	x64_add_custom_instruction(x64_custom_inst_blkbegin, ref blkid_x64, 1);
+
+	// mov the abi param registers to ssa registers (ideally these get optimised away)
+	// (but only if we are the entry block)
+	if(blk->idx == 0)
+	{
+		for(i = 0; i < fn->params_count; i = i + 1)
+		{
+			param ::= lower_x64_irval(irval_reg([fn->params # i], i));
+			x64_mov(param, x64v_reg([psy64_params # i], x64v_size(param)));
+		}
+	}
+
 	for(i = 0; i < blk->insts_count; i = i + 1)
 	{
 		lower_x64_irinst(blk->insts # i, fn);

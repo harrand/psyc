@@ -105,6 +105,11 @@ x64v_imm_get_value : func(imm : x64v -> u64)
 	return imm.v2;
 };
 
+x64v_imm_same : func(lhs : x64v, rhs : x64v -> bool)
+{
+	return (lhs.v1 == rhs.v1) && (lhs.v2 == rhs.v2);
+};
+
 x64v_reg : func(reg : x64_reg, sz : u64 -> x64v)
 {
 	return x64v{.tag := x64v_tag.reg; .r1 := reg; .v1 := sz; ... := zero;};
@@ -118,6 +123,16 @@ x64v_reg_get_reg : func(v : x64v -> x64_reg)
 x64v_reg_get_size : func(v : x64v -> u64)
 {
 	return v.v1;
+};
+
+x64v_reg_same : func(lhs : x64v, rhs : x64v -> bool)
+{
+	return (lhs.r1 == rhs.r1) && (lhs.v1 == rhs.v1);
+};
+
+x64v_reg_similar : func(lhs : x64v, rhs : x64v -> bool)
+{
+	return x64v_reg_get_reg(lhs) == x64v_reg_get_reg(rhs);
 };
 
 x64v_memreg : func(memsize : u64, base_reg : x64_reg, base_regsize : u64, index_reg : x64_reg, index_regsize : u64, scale : u64, displacement : u64, displacement_size : u64 -> x64v)
@@ -381,4 +396,18 @@ x64v_imm_size : func(v : x64v -> u64)
 x64v_imm_value : func(v : x64v -> u64)
 {
 	return v.v2;
+};
+
+x64v_same : func(lhs : x64v, rhs : x64v -> bool)
+{
+	if(x64v_is_imm(lhs) && x64v_is_imm(rhs))
+	{
+		return x64v_imm_same(lhs, rhs);
+	}
+	if(x64v_is_reg(lhs) && x64v_is_reg(rhs))
+	{
+		return x64v_reg_same(lhs, rhs);
+	}
+	// todo: other types...
+	return false;
 };
