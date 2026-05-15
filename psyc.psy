@@ -3,8 +3,16 @@
 	add_source_file("psyutil.psy");
 };
 
+agg_t : struct
+{
+	x : u64 mut;
+};
+
+agg : agg_t mut := zero;
+
 main : func(-> v0)
 {
+	agg.x = 5;
 	mystr : sstr mut;
 	mystr.data = "hello";
 	mystr.len = 5;
@@ -13,9 +21,27 @@ main : func(-> v0)
 	iargv : u8?? mut;
 	ienvp : u8?? mut;
 	// todo: inlineasm to setup these params
-	putchar('z');
+	putchar('a' + (agg.x)@u8);
 	putsstr(mystr);
 
+	// this reproduces issue60
+	//i : u64 mut;
+	//for(i = 0; i < 5; i = i + 1)
+	//{
+	//	putchar('a' + i@u8);
+	//}
+
+	//str : u8 static? static := "./psyc.psy";
+	str : u8 mut? := "./psyc.psy";
+	cat(str);
 	exit(0);
 	unreachable;
+};
+
+cat : func(path : u8? -> v0)
+{
+	data : u8 mut[2048];
+	amt ::= read(0, data # 0, 2048);
+	write(1, data # 0, amt);
+	return;
 };
