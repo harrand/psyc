@@ -460,3 +460,40 @@ igraph_append_nodes_within_instructions : func(g : igraph mut?, fnx64 : x64f mut
 		igraph_append_nodes_from_inst(g, inst, i);
 	}
 };
+
+igraph_append_nodes_from_calls : func(g : igraph mut?, fnx64 : x64f mut? -> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < fnx64->inst_count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		if(inst->tag == x64i_tag.call)
+		{
+			call_fnidx ::= x64v_fn_get_idx([inst->operands # 0]);
+			callee ::= irapi.prog.funcs # call_fnidx;
+			callee_x64 ::= x64api.prog.funcs # call_fnidx;
+			callee_graph : igraph mut := igraph_build_func_x64(callee, callee_x64);
+			igraph_append_nodes_from_calls(ref callee_graph, callee_x64);
+			for(j = 0; j < callee_graph.nodes_count; j = j + 1)
+			{
+				node : inode mut := [callee_graph.nodes # j];
+				if(node.tag == inode_tag.reg)
+				{
+					node.begin_inst = i;
+					node.end_inst = i;
+					idx ::= igraph_get_or_add_node(g, node);
+					ournode ::= g->nodes # idx;
+					if(ournode->begin_inst > i)
+					{
+						ournode->begin_inst = i;
+					}
+					if(ournode->end_inst < i)
+					{
+						ournode->end_inst = i;
+					}
+				}
+			}
+		}
+	}
+};

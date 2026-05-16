@@ -207,6 +207,8 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 	// if we see a call, check all the registers that function clobbers and PUSH them all
 	i : u64 mut := 0;
 	j : u64 mut;
+
+	offset : u64 mut := 0;
 	while(i < fnx64->inst_count)
 	{
 		inst ::= fnx64->inst # i;
@@ -218,6 +220,7 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 			call_fnidx ::= x64v_fn_get_idx(fnref);
 			callee ::= x64api.prog.funcs # call_fnidx;
 			graph ::= igraph_build_func_x64(irapi.prog.funcs # call_fnidx, callee);
+			igraph_append_nodes_from_calls(ref graph, callee);
 			for(j = 0; j < graph.nodes_count; j = j + 1)
 			{
 				node ::= graph.nodes # j;
@@ -230,7 +233,7 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 					{
 						reg_my_side ::= mygraph.nodes # regidx;
 						// if we used the register before and use it afterwards, then we must assume this call will screw us up
-						if((reg_my_side->begin_inst < i) && (reg_my_side->end_inst > i))
+						if(((reg_my_side->begin_inst + offset) < i) && ((reg_my_side->end_inst + offset) > i))
 						{
 							[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
 							saved_regs_count = saved_regs_count + 1;
@@ -254,6 +257,7 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 				x64_position_after_inst(i + j + saved_regs_count);
 				x64_pop([saved_regs # (saved_regs_count - (j + 1))]);
 			}
+			offset = offset + (saved_regs_count * 2);
 			i = i + (saved_regs_count * 2);
 		}
 		i = i + 1;
