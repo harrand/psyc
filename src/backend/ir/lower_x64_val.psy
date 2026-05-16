@@ -74,6 +74,20 @@ lower_x64_irval_but_use_reg_to_lea_globrefs : func(v : irval, reg : x64_reg -> x
 	return ret;
 };
 
+// if both lhs and rhs are memory operands, do an intermediate mov
+lower_x64v_use_intermediate_if_both_memory : func(lhs : x64v mut?, rhs : x64v mut?, intermediate : x64_reg -> v0)
+{
+	if(x64v_is_any_mem([lhs]) || lower_x64_value_is_vmemreg([lhs]))
+	{
+		if(x64v_is_any_mem([rhs]) || lower_x64_value_is_vmemreg([rhs]))
+		{
+			intermediate_reg ::= x64v_reg(intermediate, x64v_size([lhs]));
+			x64_lea(intermediate_reg, [lhs]);
+			[lhs] = intermediate_reg;
+		}
+	}
+};
+
 bwrite_colour_red : func(w : bwriter mut? -> v0)
 {
 	bwrite8(w, 27);

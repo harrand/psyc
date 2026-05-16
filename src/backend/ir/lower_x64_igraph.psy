@@ -291,6 +291,45 @@ igraph_assign : func(g : igraph mut?, colours : x64_reg mut?, colours_count : u6
 	}
 };
 
+igraph_backpropagate_successor_blk_recursive : func(g : igraph mut?, fn : irfunc mut?, fnx64 : x64f mut?, blk_idx : u64, succ_idx : u64, blk_graphs : igraph mut?, blk_visited_markers : bool mut? -> v0)
+{
+	if([blk_visited_markers # succ_idx] == true)
+	{
+		return;
+	}
+	begin : u64 mut;
+	end : u64 mut;
+	lower_x64_func_find_blk_region(fnx64, blk_idx, ref begin, ref end);
+	i : u64 mut;
+	succg ::= blk_graphs # succ_idx;
+	for(i = 0; i < succg->nodes_count; i = i + 1)
+	{
+		succnode ::= succg->nodes # i;
+		nidx ::= igraph_get_or_add_node(g, [succnode]);
+		mynode ::= g->nodes # nidx;
+		if(mynode->end_inst < end)
+		{
+			mynode->end_inst = end;
+		}
+		if(mynode->begin_inst > succnode->begin_inst)
+		{
+			mynode->begin_inst = succnode->begin_inst;
+		}
+		if(mynode->end_inst < succnode->end_inst)
+		{
+			mynode->end_inst = succnode->end_inst;
+		}
+	}	
+
+	[blk_visited_markers # succ_idx] = true;
+	succblk ::= fn->blks # succ_idx;
+	j : u64 mut;
+	for(j = 0; j < succblk->successors_count; j = j + 1)
+	{
+		descendant_idx ::= [succblk->successors # j];
+		igraph_backpropagate_successor_blk_recursive(g, fn, fnx64, blk_idx, descendant_idx, blk_graphs, blk_visited_markers);
+	}
+};
 // given an irfunc and its x64 lowered equivalent, populate an interference graph. you should use this to do graph colouring (igraph_assign)
 igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 {
@@ -298,6 +337,7 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 	// 2. iterate over each block again and check their successors
 	// 3. *any* node in the successors graph at any point now lives through us, so set their end_inst to the end of the block
 	blk_graphs : igraph mut? := arena_alloc(global_arena, fn->blks_count * sizeof igraph);
+	blk_visited_markers : bool mut? := arena_alloc(global_arena, fn->blks_count * sizeof bool);
 	ret ::= blk_graphs # 0;
 	i : u64 mut;
 	ptr : igraph mut? mut;
@@ -307,6 +347,7 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 	{
 		ptr = blk_graphs # i;
 		[ptr] = zero;
+		[blk_visited_markers # i] = false;
 		lower_x64_func_find_blk_region(fnx64, i, ref begin, ref end);
 		igraph_append_nodes_within_instructions(ptr, fnx64, begin, end, 0);
 	}
@@ -317,35 +358,17 @@ igraph_build_func_x64 : func(fn : irfunc mut?, fnx64 : x64f mut? -> igraph)
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		blk ::= fn->blks # i;
+		// this is great in dealing with successor blocks - but it doesnt deal with the successor of the successor blocks...
 		for(j = 0; j < blk->successors_count; j = j + 1)
 		{
-			succg ::= blk_graphs # [blk->successors # j];
-			lower_x64_func_find_blk_region(fnx64, i, ref begin, ref end);
-			// add all nodes
-			// basically if this node appears in a successor, then its considered to be live throughout this whole block (but in theory a successor could be backwards/forwards so we do a bunch of min/maxes to be safe)
-			for(k = 0; k < succg->nodes_count; k = k + 1)
-			{
-				succnode ::= succg->nodes # k;
-				nodeidx ::= igraph_get_or_add_node(ret, [succnode]);
-
-				mynode ::= ret->nodes # nodeidx;
-				if(mynode->end_inst < end)
-				{
-					mynode->end_inst = end;
-				}
-
-				if(mynode->begin_inst > succnode->begin_inst)
-				{
-					mynode->begin_inst = succnode->begin_inst;
-				}
-				if(mynode->end_inst < succnode->end_inst)
-				{
-					mynode->end_inst = succnode->end_inst;
-				}
-			}
+			succ_idx ::= [blk->successors # j];
+			igraph_backpropagate_successor_blk_recursive(ret, fn, fnx64, i, succ_idx, blk_graphs, blk_visited_markers);
+		}
+		for(j = 0; j < fn->blks_count; j = j + 1)
+		{
+			[blk_visited_markers # j] = false;
 		}
 	}
-
 	igraph_populate_edges(ret);
 	return [ret];
 };
