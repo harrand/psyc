@@ -1157,3 +1157,25 @@ lower_x64_unreachable : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	x64_int3();
 };
 
+lower_x64_fixup_double_memory_operands : func(fn : irfunc mut?, fnx64 : x64f mut? -> v0)
+{
+	x64_setfn(fn->idx);
+	i : u64 mut;
+	for(i = 0; i < fnx64->inst_count; i = i + 1)
+	{
+		inst ::= fnx64->inst # i;
+		lhs ::= inst->operands # 0;
+		rhs ::= inst->operands # 1;
+		lhs_is_mem ::= x64v_is_any_mem([lhs]);
+		rhs_is_mem ::= x64v_is_any_mem([rhs]);
+		if((x64i_operand_count([inst]) == 2) && lhs_is_mem && rhs_is_mem)
+		{
+			tmp ::= [rhs];
+			memsize ::= x64v_memreg_get_size(tmp);
+			intermediate ::= x64v_reg(x64_reg.rax, memsize);
+			[rhs] = intermediate;
+			x64_position_before_inst(i);
+			x64_mov(intermediate, tmp);
+		}
+	}
+};
