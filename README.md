@@ -67,11 +67,11 @@ Psy programs are simpler than C programs. They are:
 
 ## Build Regions
 Build regions can:
-	- Add source files, or add whole directories of source files.
-	- Invoke another *build region*, either in the same build file or in another.
-	- Specify the name of the output executable.
-	- Specify whether debugging symbols should be written into the output executable.
-	- Specify which optimisations should be performed by the code generator.
-	- Do conditional logic, for example you can only add a source file if you are on windows, or fail compilation with a custom error message on ARM.
-	- Invoke external commands as a prebuild or postbuild command (though this is generally discouraged)
-	- Describe which function should be considered an entrypoint to the program (by default, this is called `main`)
+- Add source files, or add whole directories of source files.
+- Invoke another *build region*, either in the same build file or in another.
+- Specify the name of the output executable.
+- Specify whether debugging symbols should be written into the output executable.
+- Specify which optimisations should be performed by the code generator.
+- Do conditional logic, for example you can only add a source file if you are on windows, or fail compilation with a custom error message on ARM.
+- Invoke external commands as a prebuild or postbuild command (though this is generally discouraged)
+- Describe which function should be considered an entrypoint to the program (by default, this is called `main`)
