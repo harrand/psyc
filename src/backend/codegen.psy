@@ -140,6 +140,22 @@ codegen_funcdef : func(fn : function mut? -> v0)
 
 	// ok now go through
 	util_walk_control_flow_in_nodes(fn->node, 1, fn->node->children_count, codegen_node, fn);
+
+	irfn ::= ir_current_func();
+	// any blocks missing a terminator will get one added
+	if(ty_is_v0(ty_unwrap(fn->type)->fn.return_type))
+	{
+		for(i = 0; i < irfn->blks_count; i = i + 1)
+		{
+			if(!irblk_has_terminator(irfn->blks # i))
+			{
+				old ::= irapi.pos;
+				irapi.pos.blk_cursor = i;
+				ir_ret0();
+				irapi.pos = old;
+			}
+		}
+	}
 };
 
 codegen_asm : func(as : assembly mut? -> v0)
