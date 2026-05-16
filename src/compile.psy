@@ -28,6 +28,21 @@ compile_program : func(-> v0)
 	directory_set_cwd(cwd, cwdlen, string_arena);
 };
 
+psyc_add_source_directory_basedir : u8 mut? mut := zero;
+psyc_add_source_directory_iterate : func(path : u8? -> v0)
+{
+	if([path # 0] != '.')
+	{
+		psyc_add_source_file(zpath_combine(psyc_add_source_directory_basedir, path, global_arena));
+	}
+};
+
+psyc_add_source_directory : func(path : u8? -> v0)
+{
+	psyc_add_source_directory_basedir = path;
+	directory_iterate(path, psyc_add_source_directory_iterate, global_arena);
+};
+
 psyc_add_source_file : func(path : u8? -> ast)
 {
 	file ::= fully_read_file(path);
