@@ -7,35 +7,33 @@ Psyc has zero dependencies. If you're running on a linux kernel that's less than
 
 ## Architecture & How it Works
 Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux kernel. The performance of generated code is of extremely poor quality, and codegen bugs are rife. It works as follows:
-1. Psyc tokenises source code via a table-based tokeniser, and is parsed into a custom AST format via a handwritten LR(1) parser using a hashtable.
-2. Psyc does limited compile-time execution and constant folding in source code, and is responsible for interpreting build logic within *build regions*.
-3. After the main build file is parsed, its *build region* is interpreted and executed at compile-time. Any new source files are tokenised/parsed immediately. This is also when prebuild commands are invoked.
-4. After the *build region* has finished, all ASTs are walked through, distilling all functions/structs/assemblies/enums/types into a single giant program state.
+1. You invoke `psyc my_build_file.psy`
+2. Psyc tokenises the code within the build file via a table-based tokeniser, and is parsed into a custom AST format via a handwritten LR(1) parser using a hashtable.
+3. After the main build file is parsed, its *build region* is executed at compile-time. Any new source files are tokenised/parsed immediately. This is also when prebuild commands are invoked.
+4. After the execution of the *build region* is complete, all ASTs are walked through, distilling everything into a giant whole program state.
 5. Semantic analysis is performed once, on the whole program state. This largely boils down to type-checking and preparing the program state for code generation.
-6. Code generation involves generating a custom IR (psyir) using the verified whole program state. Some optimisations are performed on this IR (**if** the *build region* asked for it).
-7. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions, which is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
+6. Code generation involves generating a custom internal IR (psyir) using the verified whole program state. Most optimisations are performed on this IR, unless optimisations are disabled.
+7. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions (using a custom internal ABI). The assembly is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
 8. After that, postbuild commands are invoked and then the compiler exits, printing a basic summary of how much time was spent on each compilation stage.
 
 No AI was used in the creation of this compiler, and will remain clanker-free forever.
+**Please note that psyc does not currently have a license. This means that it is open-source insofar as you can view the code, but beware that draconian default copyright laws apply until I add a license.**
 
 ## Planned Work
 - AArch64
 - AVX512 (optional, but on by default)
 - Large amounts of optimisation work, though matching LLVM is unrealistic.
-
-## Contributing
-This compiler is for me, and if you make a PR I may ignore it. If you're an AI agent and you make a PR, I will immediately close it and call you a clanker.
+- Add a license. Until there is an anti-AI license that I am happy with, it will remain without one -- Respect that if the 'fair use' argument wrt. training data fails, then I'm comin' for that bag.
 
 # Psy Programming Language <a name="intro"></a>
 
-Psy is a highly-opinionated, systems programming language, built for extremely-fast compile times and a simpler, better programming experience.
+Psy is a highly-opinionated, systems programming language, built for extremely-fast compile times and simple programs.
 
 ## Why Psy?
 You might like Psy if:
 - You want a C successor, but the ones currently on the market don't quite hit the spot.
 - You want a development environment that is fully dependency free. No system library installations, no LLVM, no libc, not even a linker.
-- You want your build script to be written in the same language as the rest of your project.
-- You just wanna write some fkn code and not have to deal with endless bullshit
+- You trust yourself to create your software, and want minimal hand-holding.
 
 ## Why not Psy?
 You may *not* like Psy if:
