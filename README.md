@@ -6,23 +6,15 @@ Psyc is a compiler for the Psy Programming Language.
 Psyc has zero dependencies. If you're running on a linux kernel that's less than several decades old, the compiler should *just work*, and make no use of any userland code, such as libc or a linker.
 
 ## Architecture & How it Works
-Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux kernel. The performance of generated code is of extremely poor quality, and codegen bugs are rife.
-
-Psyc tokenises source code via a table-based tokeniser, and is parsed into a custom AST format via a handwritten LR(1) parser using a hashtable.
-
-Psyc does limited compile-time execution and constant folding in source code, and is responsible for interpreting build logic within *build regions*.
-
-After the main build file is parsed, its *build region* is interpreted and executed at compile-time. Any new source files are tokenised/parsed immediately. This is also when prebuild commands are invoked.
-
-After the *build region* has finished, all ASTs are walked through, distilling all functions/structs/assemblies/enums/types into a single giant program state.
-
-Semantic analysis is performed once, on the whole program state. This largely boils down to type-checking and preparing the program state for code generation.
-
-Code generation involves generating a custom IR (psyir) using the verified whole program state. Some optimisations are performed on this IR (**if** the *build region* asked for it).
-
-Afterwards, the whole program IR is lowered down to x86_64 assembly instructions, which is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
-
-After that, postbuild commands are invoked and then the compiler exits, printing a basic summary of how much time was spent on each compilation stage.
+Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux kernel. The performance of generated code is of extremely poor quality, and codegen bugs are rife. It works as follows:
+1. Psyc tokenises source code via a table-based tokeniser, and is parsed into a custom AST format via a handwritten LR(1) parser using a hashtable.
+2. Psyc does limited compile-time execution and constant folding in source code, and is responsible for interpreting build logic within *build regions*.
+3. After the main build file is parsed, its *build region* is interpreted and executed at compile-time. Any new source files are tokenised/parsed immediately. This is also when prebuild commands are invoked.
+4. After the *build region* has finished, all ASTs are walked through, distilling all functions/structs/assemblies/enums/types into a single giant program state.
+5. Semantic analysis is performed once, on the whole program state. This largely boils down to type-checking and preparing the program state for code generation.
+6. Code generation involves generating a custom IR (psyir) using the verified whole program state. Some optimisations are performed on this IR (**if** the *build region* asked for it).
+7. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions, which is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
+8. After that, postbuild commands are invoked and then the compiler exits, printing a basic summary of how much time was spent on each compilation stage.
 
 No AI was used in the creation of this compiler, and will remain clanker-free forever.
 
