@@ -944,10 +944,19 @@ val_from_field : func(node : ast mut?, s : scope mut?, r : val_resolution -> val
 				// memidx == i
 				// if we are a ptr (as in type or rval tag), then offset by offsetof(member)
 				// otherwise, assume we are chunked and siphon out the chunked data into ssa reg(s)
+				memtype : tyid mut := [strct.members # i];
+				if(ty_has_qual(lhsty, tyqual.qual_mut))
+				{
+					memtype = ty_set_qual(memtype, tyqual.qual_mut);
+				}
+				if(r == val_resolution.type_only)
+				{
+					return val_from_type(memtype);
+				}
 				return val
 				{
 					.tag := lhs.tag;
-					.type := [strct.members # i];
+					.type := memtype;
 					.category := lhs.category;
 					.r := rval_siphon_member(lhs.r, datalayout_offsetof_struct(lhsty, i), datalayout_sizeof_ty([strct.members # i]));
 				};
@@ -2174,6 +2183,11 @@ rval_fully_unpack : func(r : rval, out_vals : irval mut? mut?, out_vals_count : 
 
 rval_siphon_member : func(r : rval, off : u64, len : u64 -> rval)
 {
+	if(r.tag == rval_tag.scalar)
+	{
+		// ignore off and len
+		return r;
+	}
 	if(r.tag == rval_tag.ptr)
 	{
 		// easy, just offset
