@@ -811,7 +811,6 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 				putzstr("invalid assign to rvalue");
 				psyc_error_end(biop_node);
 			}
-			rhs = val_must_convert(rhs, lhs.type, biop_node);
 		}
 		else
 		{
@@ -824,6 +823,11 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 				ret_type = ty_of_arithmetic(lhs.type, rhs.type);
 			}
 		}
+	}
+
+	if((biop_node->biop.op != ast_biop_op.at) && (biop_node->biop.op != ast_biop_op.assign))
+	{
+		rhs = val_must_convert(rhs, lhs.type, biop_node);
 	}
 
 	if(ret_type == zero)
@@ -1798,7 +1802,7 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	}
 	if(op == ast_biop_op.compare_not_equal)
 	{
-		return rval_from_biop_compare_equal(lhs, rhs, s, source);
+		return rval_from_biop_compare_not_equal(lhs, rhs, s, source);
 	}
 	if(op == ast_biop_op.compare_less)
 	{
@@ -1906,7 +1910,7 @@ rval_from_biop_compare_not_equal : func(lhs : val, rhs : val, s : scope mut?, so
 	return rval
 	{
 		.tag := rval_tag.scalar;
-		.v := ir_cmp_eq(lhs.r.v, rhs.r.v);
+		.v := ir_cmp_ne(lhs.r.v, rhs.r.v);
 	};
 };
 
@@ -2039,10 +2043,29 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 		putchar('"');
 		psyc_panic_end(source);
 	}
+	outsz : irsz mut;
+
 	if(v.s.tag == sval_tag.literal)
 	{
 		if(v.s.literal.tag == ast_literal_tag.integer)
 		{
+			intsz ::= ty_integral_size(v.type);
+			if(intsz == 8)
+			{
+				outsz = irsz.b;
+			}
+			if(intsz == 16)
+			{
+				outsz = irsz.w;
+			}
+			if(intsz == 32)
+			{
+				outsz = irsz.d;
+			}
+			if(intsz == 64)
+			{
+				outsz = irsz.q;
+			}
 			// integer literal -> runtime value
 			return val
 			{
@@ -2052,13 +2075,22 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				.r := rval
 				{
 					.tag := rval_tag.scalar;
-					.v := irval_qimm(v.s.literal.integer);
+					.v := irval_imm(outsz, v.s.literal.integer);
 				};
 			};
 		}
 		if(v.s.literal.tag == ast_literal_tag.floating_point)
 		{
 			// floating-point literal -> runtime value
+			fltsz ::= ty_floating_point_size(v.type);
+			if(fltsz == 32)
+			{
+				outsz = irsz.f;
+			}
+			if(fltsz == 64)
+			{
+				outsz = irsz.ff;
+			}
 			return val
 			{
 				.tag := val_tag.runtime;
@@ -2067,7 +2099,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				.r := rval
 				{
 					.tag := rval_tag.scalar;
-					.v := irval_ffimm(v.s.literal.floating_point);
+					.v := irval_imm(outsz, v.s.literal.floating_point);
 				};
 			};
 		}
