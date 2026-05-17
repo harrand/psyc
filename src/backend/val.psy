@@ -612,7 +612,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 		call_return_irszs : irsz mut? mut := zero;
 		call_return_irvals_count : u64 mut := 0;
 
-		dummy_chunks : chunk mut[128] mut;
+		dummy_chunks : chunk mut[128] mut := zero;
 
 		if(!ty_is_v0(callee_fnty.return_type))
 		{
@@ -1816,6 +1816,10 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_div(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.bitwise_or)
+	{
+		return rval_from_biop_bitwise_or(lhs, rhs, s, source);
+	}
 	if(op == ast_biop_op.compare_equal)
 	{
 		return rval_from_biop_compare_equal(lhs, rhs, s, source);
@@ -1913,6 +1917,16 @@ rval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 	{
 		.tag := rval_tag.scalar;
 		.v := ir_udiv(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_bitwise_or : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_or(lhs.r.v, rhs.r.v);
 	};
 };
 
