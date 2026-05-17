@@ -1026,8 +1026,62 @@ val_from_field : func(node : ast mut?, s : scope mut?, r : val_resolution -> val
 
 val_from_ptrfield : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
-	// rhs is either a call (member function call)
-	// or a symbol (struct/enum member access)
+	lhs_node ::= ast_get_child(node, 0);
+	deref_node ::= ast
+	{
+		.tag := ast_tag.expr;
+		.expr := ast_expr_tag.dereference;
+		.loc := node->loc;
+		... := zero;
+	};
+	ast_add_child(ref deref_node, [lhs_node], global_arena);
+
+	lhs : val mut := val_from_dereference(ref deref_node, s, r);
+	lhsty ::= lhs.type;
+
+	strct ::= ty_unwrap(lhsty)->strct;
+
+	rhs_node ::= ast_get_child(node, 1);
+	i : u64 mut;
+	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
+	{
+		for(i = 0; i < strct.members_count; i = i + 1)
+		{
+			if(sstreql([strct.member_names # i], rhs_node->symbol))
+			{
+				// memidx == i
+				// if we are a ptr (as in type or rval tag), then offset by offsetof(member)
+				// otherwise, assume we are chunked and siphon out the chunked data into ssa reg(s)
+				memtype : tyid mut := [strct.members # i];
+				if(ty_has_qual(lhsty, tyqual.qual_mut))
+				{
+					memtype = ty_set_qual(memtype, tyqual.qual_mut);
+				}
+				if(r == val_resolution.type_only)
+				{
+					return val_from_type(memtype);
+				}
+				return val
+				{
+					.tag := lhs.tag;
+					.type := memtype;
+					.category := lhs.category;
+					.r := rval_siphon_member(lhs.r, datalayout_offsetof_struct(lhsty, i), datalayout_sizeof_ty([strct.members # i]));
+				};
+			}
+		}
+		// didnt find the member
+		psyc_error_begin(rhs_node);
+		putzstr("struct type ");
+		putchar('"');
+		putty(lhsty);
+		putchar('"');
+		putzstr(" has no member named ");
+		putchar('"');
+		putsstr(rhs_node->symbol);
+		putchar('"');
+		psyc_error_end(rhs_node);
+	}
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_ptrfield");
 	psyc_panic_end(node);
