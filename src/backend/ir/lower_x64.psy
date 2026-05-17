@@ -230,7 +230,8 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 					// we save this one
 					// todo: need some way of knowing if it was an sse register
 					regidx ::= igraph_find_reg(ref mygraph, node->reg, zero);
-					if((node->reg != x64_reg.rsp) && (regidx != ~0))
+					// dont save rsp or any return regisers (psy64 abi)
+					if((node->reg != x64_reg.rsp) && (node->reg != x64_reg.rax) && (node->reg != x64_reg.rdx) && (regidx != ~0))
 					{
 						reg_my_side ::= mygraph.nodes # regidx;
 						// if we used the register before and use it afterwards, then we must assume this call will screw us up
@@ -247,6 +248,7 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 			// do PUSH and POPs
 			// call starts at 'i'
 			// everytime we add a instruction
+
 			for(j = 0; j < saved_regs_count; j = j + 1)
 			{
 				x64_position_before_inst(i + j);
