@@ -1,6 +1,10 @@
 semal : func(-> v0)
 {
 	i : u64 mut;
+	for(i = 0; i < prog.global_scope.enums_count; i = i + 1)
+	{
+		semal_enum(prog.global_scope.enums # i);
+	}
 	for(i = 0; i < prog.global_scope.structs_count; i = i + 1)
 	{
 		semal_struct(prog.global_scope.structs # i);
@@ -117,6 +121,35 @@ semal_var : func(var : variable mut?, parent : scope mut? -> v0)
 		init ::= val_from_node(init_node, parent, val_resolution.compile_time_only);
 		var->compile_time_storage = sval_must_convert(init, var->type, init_node);
 	}
+};
+
+semal_enum : func(en : enumeration mut? -> v0)
+{
+	enumdata ::= en->node->enumeration;
+	entcount ::= en->node->children_count;
+	en->name = enumdata.name;
+	enum_type ::= ty mut
+	{
+		.tag := tytag.enm;
+		.name := enumdata.name;
+		.enm := enumty
+		{
+			.entries := arena_alloc(global_arena, entcount * sizeof u64);
+			.entry_names := arena_alloc(global_arena, entcount * sizeof sstr);
+			.entries_count := entcount;
+			.node := en->node;
+		};
+	};
+	i : u64 mut;
+	for(i = 0; i < entcount; i = i + 1)
+	{
+		entry_node ::= ast_get_child(en->node, i);
+		desig ::= entry_node->desiginit;
+		entry_val ::= val_from_node(ast_get_child(entry_node, 0), ref(prog.global_scope), val_resolution.compile_time_only);
+		[enum_type.enm.entry_names # i] = sstr{.data := desig.symbol; .len := desig.symbol_len;};
+		[enum_type.enm.entries # i] = val_must_get_integer(entry_val, entry_node);
+	}
+	en->type = ty_wrap(enum_type, zero);
 };
 
 semal_asm : func(as : assembly mut?, parent : scope mut? -> v0)

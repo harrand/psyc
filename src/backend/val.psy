@@ -973,10 +973,37 @@ val_from_field : func(node : ast mut?, s : scope mut?, r : val_resolution -> val
 	lhs : val mut := val_from_node(lhs_node, s, r);
 	lhsty ::= lhs.type;
 
+	i : u64 mut;
+	rhs_node ::= ast_get_child(node, 1);
+
+	if(ty_is_enum(lhsty))
+	{
+		// enum mode
+		enm ::= ty_unwrap(lhsty)->enm;
+		for(i = 0; i < enm.entries_count; i = i + 1)
+		{
+			if(sstreql([enm.entry_names # i], rhs_node->symbol))
+			{
+				retval : val mut := val_from_integer_literal([enm.entries # i]);
+				retval.type = lhsty;
+				return retval;
+			}
+		}
+		// error out
+		psyc_error_begin(rhs_node);
+		putzstr("enum ");
+		putchar('"');
+		putty(lhsty);
+		putchar('"');
+		putzstr(" has no entry named ");
+		putchar('"');
+		putsstr(rhs_node->symbol);
+		putchar('"');
+		psyc_error_end(rhs_node);
+	}
+	// struct mode
 	strct ::= ty_unwrap(lhsty)->strct;
 
-	rhs_node ::= ast_get_child(node, 1);
-	i : u64 mut;
 	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
 	{
 		for(i = 0; i < strct.members_count; i = i + 1)
