@@ -1012,9 +1012,78 @@ val_from_ptrfield : func(node : ast mut?, s : scope mut?, r : val_resolution -> 
 
 val_from_blkinit : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
 {
-	psyc_panic_begin(node);
-	putzstr("reached end of val_from_blkinit");
-	psyc_panic_end(node);
+	i : u64 mut;
+	init_type ::= type_from_typename_node(ast_get_child(node, 0), s);
+	init_count ::= node->children_count - 1;
+	inits_begin ::= ast_get_child(node, 1);
+	if(ty_is_struct(init_type))
+	{
+		val_from_blkinit_struct(init_type, inits_begin, init_count, s, r, node);
+	}
+	if(ty_is_arr(init_type))
+	{
+		val_from_blkinit_array(init_type, inits_begin, init_count, s, r, node);
+	}
+	psyc_error_begin(node);
+	putzstr("invalid block-initialiser of non-struct, non-array type ");
+	putchar('"');
+	putty(init_type);
+	putchar('"');
+	psyc_error_end(node);
+	return zero;
+};
+
+val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
+{
+	count ::= ty_countof(type);
+	inits : val mut? := arena_alloc(global_arena, count * sizeof val);
+	i : u64 mut;
+
+	lowest_common_resolution : val_resolution mut := val_resolution.either;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur_init ::= val_from_node(init_nodes # i, s, r);
+		if(cur_init.tag == val_tag.runtime)
+		{
+			lowest_common_resolution = val_resolution.runtime_only;
+		}
+		[inits # i] = cur_init;
+	}
+
+	// if lowest_common_resolution == either, then we can follow the desired resolution
+	if(lowest_common_resolution == val_resolution.either)
+	{
+		lowest_common_resolution = r;
+	}
+	else
+	{
+		// otherwise, it must be runtime, in which case we can only produce a runtime value.
+		if(r == val_resolution.compile_time_only)
+		{
+			psyc_error_begin(node);
+			putzstr("this block-initialiser cannot produce a compile-time value");
+			psyc_error_end(node);
+		}
+		lowest_common_resolution = val_resolution.runtime_only;
+	}
+
+	if(lowest_common_resolution == val_resolution.runtime_only)
+	{
+		//return rval_from_blkinit_struct();
+	}
+	//return sval_from_blkinit_struct();
+
+	psyc_panic_begin(source);
+	putzstr("reached end of val_from_blkinit_struct");
+	psyc_panic_end(source);
+	return zero;
+};
+
+val_from_blkinit_array : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
+{
+	psyc_panic_begin(source);
+	putzstr("reached end of val_from_blkinit_struct");
+	psyc_panic_end(source);
 	return zero;
 };
 
