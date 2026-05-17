@@ -178,15 +178,13 @@ codegen_asm : func(as : assembly mut? -> v0)
 
 codegen_setup_entrypoint : func(-> v0)
 {
-	entrypoint_name ::= sstr{.data := "main"; .len := 4;};
-
 	// set the entrypoint
 	found_entrypoint : bool mut := false;
 	i : u64 mut;
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
 		fn ::= prog.global_scope.funcs # i;	
-		if(sstreql(fn->name, entrypoint_name))
+		if(sstreql(fn->name, prog.entrypoint))
 		{
 			found_entrypoint = true;
 			ir_set_entrypoint(irpos{.func_cursor := i; ... := zero;});
@@ -197,7 +195,7 @@ codegen_setup_entrypoint : func(-> v0)
 		psyc_error_begin(zero);
 		putzstr("no entrypoint exists in the program. expected a function called ");
 		putchar('"');
-		putsstr(entrypoint_name);
+		putsstr(prog.entrypoint);
 		putchar('"');
 		psyc_error_end(zero);
 	}

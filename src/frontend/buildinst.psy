@@ -4,6 +4,7 @@ buildinst : enum
 	.add_source_file := 2;
 	.add_build_file := 3;
 	.add_source_directory := 4;
+	.entrypoint := 5;
 };
 
 buildinst_setup : func(-> v0)
@@ -12,6 +13,7 @@ buildinst_setup : func(-> v0)
 	[tbl_buildinst_types # (buildinst.add_source_file@s64)] = ty_makefn1(tyid_string_literal(), tyid.v0);
 	[tbl_buildinst_types # (buildinst.add_build_file@s64)] = ty_makefn1(tyid_string_literal(), tyid.v0);
 	[tbl_buildinst_types # (buildinst.add_source_directory@s64)] = ty_makefn1(tyid_string_literal(), tyid.v0);
+	[tbl_buildinst_types # (buildinst.entrypoint@s64)] = ty_makefn1(tyid_string_literal(), tyid.v0);
 };
 
 find_buildinst : func(name : sstr -> buildinst)
@@ -78,6 +80,12 @@ buildinst_call_add_source_directory : func(params : val mut?, params_count : u64
 	psyc_add_source_directory(path_zstr);
 };
 
+buildinst_call_entrypoint : func(params : val mut?, params_count : u64, source : ast mut? -> v0)
+{
+	path ::= val_must_get_string([params # 0], source);
+	prog.entrypoint = val_must_get_string([params # 0], source);
+};
+
 tbl_buildinst_types : tyid mut[countof buildinst + 1] mut := zero;
 tbl_buildinst_handlers ::= func(params : val mut?, params_count : u64, source : ast mut? -> v0) mut[countof buildinst + 1]
 {
@@ -86,4 +94,5 @@ tbl_buildinst_handlers ::= func(params : val mut?, params_count : u64, source : 
 	.2 := buildinst_call_add_source_file;
 	.3 := buildinst_call_add_build_file;
 	.4 := buildinst_call_add_source_directory;
+	.5 := buildinst_call_entrypoint;
 };
