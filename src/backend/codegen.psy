@@ -38,7 +38,21 @@ codegen_global_variable : func(var : variable mut? -> v0)
 	};
 	w ::= ref wv;
 	// serialise the initialiser to a buffer
-	serialise_success ::= datalayout_serialise_compile_time_val(w, val_must_convert(val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only), var->type, var->node));
+	init_val : val mut := val
+	{
+		.tag := val_tag.compile_time;
+		.type := var->type;
+		.category := val_category.rvalue;
+		.s := sval
+		{
+			.tag := sval_tag.undefined;
+		};
+	};
+	if(var->node->children_count > 1)
+	{
+		init_val = val_must_convert(val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only), var->type, var->node);
+	}
+	serialise_success ::= datalayout_serialise_compile_time_val(w, init_val);
 	if(!serialise_success)
 	{
 		psyc_panic_begin(var->node);
