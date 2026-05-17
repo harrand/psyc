@@ -6,8 +6,18 @@ arena : struct
 	cur : u64;
 };
 
+MMAP_MAP_PRIVATE ::= 0x02;
+MMAP_MAP_ANONYMOUS ::= 0x20;
+MMAP_PROT_NONE ::= 0x00;
+MMAP_PROT_READ ::= 0x01;
+MMAP_PROT_WRITE ::= 0x02;
+MMAP_PROT_EXEC ::= 0x04;
+
 arena_create : func(reserve : u64, initial_commit : u64 -> arena)
 {
 	ret : arena mut;
+	ret.res = reserve;
+	ret.com = initial_commit;
+	ret.ptr = linux_mmap(zero, ret.res, MMAP_PROT_NONE, MMAP_MAP_PRIVATE | MMAP_MAP_ANONYMOUS, zero, zero);
 	return ret;
 };
