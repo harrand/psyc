@@ -1,23 +1,35 @@
+arena_mode : enum
+{
+	.fixed := 1;
+	.virtual := 2;
+};
+
 arena : struct
 {
 	ptr : v0? weak;
 	res : u64;
 	com : u64;
 	cur : u64;
+	mode : arena_mode;
 };
 
-MMAP_MAP_PRIVATE ::= 0x02;
-MMAP_MAP_ANONYMOUS ::= 0x20;
-MMAP_PROT_NONE ::= 0x00;
-MMAP_PROT_READ ::= 0x01;
-MMAP_PROT_WRITE ::= 0x02;
-MMAP_PROT_EXEC ::= 0x04;
-
-arena_create : func(reserve : u64, initial_commit : u64 -> arena)
+arena_create_virtual : func(reserve : u64, initial_commit : u64 -> arena)
 {
 	ret : arena mut;
 	ret.res = reserve;
 	ret.com = initial_commit;
-	ret.ptr = linux_mmap(zero, ret.res, MMAP_PROT_NONE, MMAP_MAP_PRIVATE | MMAP_MAP_ANONYMOUS, zero, zero);
+	// 0x00 = PROT_NONE
+	// 0x22 = MAP_PRIVATE | MAP_ANONYMOUS
+	// reserve
+	ret.ptr = linux_mmap(zero, ret.res, 0x00, 0x22, zero, zero);
+	ret.mode = arena_mode.virtual;
+	// initial commit
+	// 0x03 = PROT_READ | PROT_WRITE
+	linux_mprotect(ret.ptr, initial_commit, 0x03);
 	return ret;
+};
+
+arena_destroy : func(a : arena mut? -> v0)
+{
+	linux_munmap(a->ptr, a->res);
 };
