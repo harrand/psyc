@@ -1,16 +1,9 @@
-arena_mode : enum
-{
-	.fixed := 1;
-	.virtual := 2;
-};
-
 arena : struct
 {
 	ptr : v0? weak;
 	res : u64;
 	com : u64;
 	cur : u64;
-	mode : arena_mode;
 };
 
 arena_create_virtual : func(reserve : u64, initial_commit : u64 -> arena)
@@ -18,14 +11,23 @@ arena_create_virtual : func(reserve : u64, initial_commit : u64 -> arena)
 	ret : arena mut;
 	ret.res = reserve;
 	ret.com = initial_commit;
+	ret.cur = 0;
 	// 0x00 = PROT_NONE
 	// 0x22 = MAP_PRIVATE | MAP_ANONYMOUS
 	// reserve
 	ret.ptr = linux_mmap(zero, ret.res, 0x00, 0x22, zero, zero);
-	ret.mode = arena_mode.virtual;
 	// initial commit
 	// 0x03 = PROT_READ | PROT_WRITE
 	linux_mprotect(ret.ptr, initial_commit, 0x03);
+	return ret;
+};
+
+arena_create_preallocated : func(ptr : v0? weak, len : u64 -> arena)
+{
+	ret : arena mut;
+	ret.res = len;
+	ret.com = len;
+	ret.cur = 0;
 	return ret;
 };
 
