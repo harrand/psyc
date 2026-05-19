@@ -6,36 +6,30 @@ arena : struct
 	cur : u64;
 };
 
-arena_create_virtual : func(reserve : u64, initial_commit : u64 -> arena)
+arena_create_virtual : func(reserve : u64, initial_commit : u64, out : arena mut? -> v0)
 {
-	ret : arena mut;
-	ret.res = reserve;
-	ret.com = initial_commit;
-	ret.cur = 0;
+	out->res = reserve;
+	out->com = initial_commit;
+	out->cur = 0;
 	// 0x00 = PROT_NONE
 	// 0x22 = MAP_PRIVATE | MAP_ANONYMOUS
 	// reserve
-	ret.ptr = linux_mmap(zero, ret.res, 0x00, 0x22, zero, zero);
+	out->ptr = linux_mmap(zero, out->res, 0x00, 0x22, zero, zero);
 	// initial commit
 	// 0x03 = PROT_READ | PROT_WRITE
-	linux_mprotect(ret.ptr, initial_commit, 0x03);
-	return ret;
+	linux_mprotect(out->ptr, initial_commit, 0x03);
 };
 
-arena_create_preallocated : func(ptr : v0? weak, len : u64 -> arena)
+arena_create_preallocated : func(ptr : v0? weak, len : u64, out : arena mut? -> v0)
 {
-	ret : arena mut;
-	ret.res = len;
-	ret.com = len;
-	ret.cur = 0;
-	ret.ptr = ptr;
-	return ret;
+	out->res = len;
+	out->com = len;
+	out->cur = 0;
+	out->ptr = ptr;
 };
 
 arena_alloc : func(a : arena mut?, len : u64 -> v0? weak)
 {
-	off ::= a->cur;
-	a->cur = a->cur + len;
 	return a->ptr;
 };
 
