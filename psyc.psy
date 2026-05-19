@@ -2,7 +2,7 @@
 {
 	add_source_file("psyutil.psy");
 	add_source_directory("src/common");
-	entrypoint("start");
+	entrypoint("_start");
 };
 
 global_arena_value : arena mut;
@@ -19,7 +19,30 @@ teardown_arenas : func(-> v0)
 	arena_destroy(global_arena);
 };
 
-start : func(-> v0)
+pargc : s64? mut;
+pargv : u8??? mut;
+argc : s64 mut;
+argv : u8?? mut;
+__start : asm("{rax},{rcx}" -> v0)
+{
+	mov $0, rsp
+	mov r8, rsp
+	add r8, 8
+	mov $1, r8
+};
+
+_start : func(-> v0)
+{
+	__start(ref(pargc), ref(pargv));
+	argc = [pargc];
+	argv = [pargv];
+
+	exit(argc@s32);
+	main();
+	unreachable;
+};
+
+main : func(-> v0)
 {
 	write(1, "hello there, i am\t bob", 22);
 
@@ -29,7 +52,4 @@ start : func(-> v0)
 	[ptr@u64 mut?] = 4;
 
 	teardown_arenas();
-
-	exit(0);
-	unreachable;
 };
