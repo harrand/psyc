@@ -34,6 +34,28 @@ syscall6 : asm("={rax},0,{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memor
 	syscall
 };
 
+linux_read : func(fd : u32 weak, buf : u8 mut? weak, count : u64 -> u64)
+{
+	return syscall3(0, fd, buf, count);
+};
+
+linux_write : func(fd : u32 weak, buf : u8? weak, count : u64 -> v0)
+{
+	syscall3(1, fd, buf, count);
+	return;
+};
+
+linux_open : func(filename_zstr : u8? weak, flags : s32 weak, mode : s32 weak -> s32)
+{
+	return syscall3(2, filename_zstr, flags, mode);
+};
+
+linux_exit : func(code : u64 weak -> v0)
+{
+	syscall1(60, code);
+	return;
+};
+
 linux_mmap : func(addr : v0? weak, length : u64, prot : s32, flags : s32, fd : s32, offset : s64 -> v0? weak)
 {
 	return syscall6(9, addr@u64, length, prot, flags, fd, offset)@u64;
