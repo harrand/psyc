@@ -170,5 +170,33 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 		//}
 	}
 	// todo: actually allocate this amount of stack spill...
+	if(spill_counter > 0)
+	{
+		x64_preinflate_stack(fnx64->inst, fnx64->inst_count, spill_counter);
+		x64_position_before_inst(0);
+		x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(spill_counter, 32));
+	}
 	fn->stack_amt = (fn->stack_amt) + spill_counter;
+};
+
+x64_preinflate_stack : func(insts : x64i mut?, insts_count : u64, inflate_amt : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < insts_count; i = i + 1)
+	{
+		inst ::= insts # i;
+		if((inst->tag == x64i_tag.add))
+		{
+			if(x64i_operand_count([inst]) > 0)
+			{
+				dst ::= [inst->operands # 0];
+				srcptr ::= inst->operands # 1;
+				if(x64v_is_reg(dst) && (x64v_reg_get_reg(dst) == x64_reg.rsp) && x64v_is_imm([srcptr]))
+				{
+					// increment srcptr by inflate_fmt
+					x64v_imm_set_value(srcptr, x64v_imm_get_value([srcptr]) + inflate_amt);
+				}
+			}
+		}
+	}
 };
