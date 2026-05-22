@@ -135,7 +135,17 @@ bwrite_x64reg_disasm : func(w : bwriter mut?, r : x64_reg, sz : u64 -> v0)
 {
 	regidx ::= r@s64@u64;
 	offset ::= log2(sz) - 3; // -3 because 2^3 = 8 and our index starts from 1
-	bwrite_zstr(w, [tbl_regnames # (1 + (regidx * 7) + offset)]);
+	idx ::= 1 + (regidx * 7) + offset;
+	if(idx >= countof typeof(tbl_regnames))
+	{
+		bwrite_colour_red(w);
+		bwrite_zstr(w, "badreg");
+		bwrite_colour_reset(w);
+	}
+	else
+	{
+		bwrite_zstr(w, [tbl_regnames # idx]);
+	}
 };
 
 bwrite_x64imm_disasm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)

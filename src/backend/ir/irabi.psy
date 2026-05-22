@@ -142,22 +142,34 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 				index_irsz ::= irval_get_irsz(index);
 				index_size ::= irsz_size_bytes(index_irsz) * 8;
 
-				base_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, base_index, i)].colour;
+				base_reg_idx ::= igraph_get_or_add_vreg(ref g, base_index, i);
+				base_reg_colour ::= [g.nodes # base_reg_idx].colour;
 				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index, i)].colour;
-				base_reg : x64_reg mut := [regs # (base_reg_colour@s64)];
-				index_reg : x64_reg mut := [regs # (index_reg_colour@s64)];
-				scale : u64 mut := lower_x64_custom_vmemreg_get_scale([operand]);
-				if(scale == 0)
+				if(base_reg_colour == inode_colour.undefined)
 				{
-					scale = 1;
+					// fuck, the base reg got spilled.
+					// assume we can ignore the index/scale/disp
+					// and this becomes simple
+					// todo: assert index.r1 == zero && lower_x64_custom_vmemreg_get_disp([operand]) == 0
+					[operand] = x64v_memreg(base_size, x64_reg.rsp, 64, zero, zero, 1, fn->stack_amt + [g.nodes # base_reg_idx].spill, 32);
 				}
-				disp ::= lower_x64_custom_vmemreg_get_disp([operand]);
-				disp_scale : u64 mut := 0;
-				if(disp != 0)
+				else
 				{
-					disp_scale = 32;
+					base_reg : x64_reg mut := [regs # (base_reg_colour@s64)];
+					index_reg : x64_reg mut := [regs # (index_reg_colour@s64)];
+					scale : u64 mut := lower_x64_custom_vmemreg_get_scale([operand]);
+					if(scale == 0)
+					{
+						scale = 1;
+					}
+					disp ::= lower_x64_custom_vmemreg_get_disp([operand]);
+					disp_scale : u64 mut := 0;
+					if(disp != 0)
+					{
+						disp_scale = 32;
+					}
+					[operand] = x64v_memreg(lower_x64_custom_vmemreg_get_size([operand]), base_reg, base_size, index_reg, index_size, scale, disp, disp_scale);
 				}
-				[operand] = x64v_memreg(lower_x64_custom_vmemreg_get_size([operand]), base_reg, base_size, index_reg, index_size, scale, disp, disp_scale);
 			}
 		}
 		// random testing code: insert a NOP before every call
