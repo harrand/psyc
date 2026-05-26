@@ -5,6 +5,18 @@ x64_custom_inst_reg_lifetime_end ::= 3;
 x64_custom_inst_parallel_moves_begin ::= 4;
 x64_custom_inst_parallel_moves_end ::= 5;
 
+lower_x64_func_prolog : func(-> v0)
+{
+	x64_push(x64v_reg(x64_reg.rbp, 64));
+	x64_mov(x64v_reg(x64_reg.rbp, 64), x64v_reg(x64_reg.rsp, 64));
+};
+
+lower_x64_func_epilog : func(-> v0)
+{
+	x64_mov(x64v_reg(x64_reg.rsp, 64), x64v_reg(x64_reg.rbp, 64));
+	x64_pop(x64v_reg(x64_reg.rbp, 64));
+};
+
 lower_x64_irfunc : func(fn : irfunc mut? -> v0)
 {
 	x64_add_func();
@@ -18,6 +30,8 @@ lower_x64_irfunc : func(fn : irfunc mut? -> v0)
 	}
 
 	irabi_register_allocation_x64(fn, fnx64);
+	x64_position_before_inst(0);
+	lower_x64_func_prolog();
 };
 
 // return indices to the first/last instructions of the given ir block (that has been lowerd to x64 instructions)

@@ -1,0 +1,26 @@
+ir_pass_register_alias : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		// so doing a dead block elimination could delete blocks which contains jumps to other blocks which causes them to become dead too
+		// so the function returns the number of blocks that have been deleted
+		// once it hits zero then we're good.
+		irfunc_register_aliases(irapi.prog.funcs # i);
+	}
+};
+
+irfunc_register_aliases : func(fn : irfunc mut? -> v0)
+{
+	// go through all blocks and instructions
+	fn->aliases = arena_alloc(global_arena, fn->counter * sizeof typeof([fn->aliases # 0]));
+	i : u64 mut;
+	saved ::= [global_arena];
+	for(i = 0; i < fn->counter; i = i + 1)
+	{
+		// by default every reg has no alias
+		[fn->aliases # i] = ~0;
+	}
+	
+	[global_arena] = saved;
+};
