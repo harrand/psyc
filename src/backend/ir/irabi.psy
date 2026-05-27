@@ -147,11 +147,10 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 				index_reg_colour ::= [g.nodes # igraph_get_or_add_vreg(ref g, index_index, i)].colour;
 				if(base_reg_colour == inode_colour.undefined)
 				{
-					// fuck, the base reg got spilled.
-					// assume we can ignore the index/scale/disp
-					// and this becomes simple
-					// todo: assert index.r1 == zero && lower_x64_custom_vmemreg_get_disp([operand]) == 0
-					[operand] = x64v_memreg(base_size, x64_reg.rbp, 64, zero, zero, 1, -([g.nodes # base_reg_idx].spill + 8), 32);
+					intermediate ::= x64v_reg(x64_reg.rdx, 64);
+					[operand] = x64v_memreg(base_size, x64_reg.rdx, 64, zero, zero, 1, zero, zero);
+					x64_position_before_inst(i);
+					x64_mov(intermediate, x64v_memreg(base_size, x64_reg.rbp, 64, zero, zero, 1, -([g.nodes # base_reg_idx].spill + 8), 32));
 				}
 				else
 				{
@@ -186,7 +185,7 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 	{
 		x64_preinflate_stack(fnx64->inst, fnx64->inst_count, spill_counter);
 		x64_position_before_inst(0);
-		x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(spill_counter, 32));
+		x64_sub(x64v_reg(x64_reg.rsp, 64), x64v_imm(spill_counter + 8, 32));
 	}
 	fn->stack_amt = (fn->stack_amt) + spill_counter;
 };
