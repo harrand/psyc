@@ -153,7 +153,7 @@ bwrite_x64imm_disasm : func(w : bwriter mut?, sz : u64, imm : u64 -> v0)
 	bwrite_zstr(w, "imm");
 	bwrite_uint(w, sz);
 	bwrite_zstr(w, " ");
-	bwrite_uint(w, imm);
+	bwrite_sint(w, imm);
 };
 
 bwrite_memptr_size : func(w : bwriter mut?, sz : u64 -> v0)
@@ -198,8 +198,17 @@ bwrite_x64v_disasm : func(w : bwriter mut?, v : x64v -> v0)
 		}
 		if(v.v6 != 0)
 		{
-			bwrite_zstr(w, " + ");
-			bwrite_x64imm_disasm(w, v.v5, v.v6);
+			immv : s64 mut := v.v6@s64;
+			if(immv < 0)
+			{
+				bwrite_zstr(w, " - ");
+				immv = -immv;
+			}
+			else
+			{
+				bwrite_zstr(w, " + ");
+			}
+			bwrite_x64imm_disasm(w, v.v5, immv@u64);
 		}
 		bwrite_zstr(w, "]");
 	}
