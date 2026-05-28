@@ -1,6 +1,13 @@
 args_t : struct
 {
-	build_file_name : u8?;
+	build_file : u8?;
+};
+
+args : args_t mut := zero;
+
+debugbreak : asm("" -> v0)
+{
+	int3
 };
 
 write_arg : func(arg : u8? -> v0)
@@ -8,14 +15,28 @@ write_arg : func(arg : u8? -> v0)
 	linux_write(1, arg, zstrlen(arg));
 };
 
+handle_arg : func(arg : u8??, dst : u64 -> v0)
+{
+	write_arg([arg]);
+	if(zstrbegin([arg], '-'))
+	{
+		linux_write(1, "NICE", 4);
+	}
+	else
+	{
+		args.build_file = [arg];
+	}
+};
+
 parse_args : func(-> v0)
 {
 	i : s64 mut;
 
-	ptr : u8? mut;
 	for(i = 0; i < argc; i = i + 1)
 	{
-		ptr = [argv # i];
-		linux_write(1, ptr, zstrlen(ptr));
+		handle_arg(argv # i, (argc - i)@u64);
 	}
+
+	linux_write(1, "\n\nbuild str: ", 13);
+	linux_write(1, args.build_file, zstrlen(args.build_file));
 };
