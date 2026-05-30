@@ -8,7 +8,22 @@ args : args_t mut := zero;
 
 args_should_dump_tokens : func(-> bool)
 {
-	return (args.dump_flag | 0b10000000) != 0;
+	return (args.dump_flag & 0b10000000) != 0;
+};
+
+args_should_dump_ast : func(-> bool)
+{
+	return (args.dump_flag & 0b01000000) != 0;
+};
+
+args_should_dump_ir : func(-> bool)
+{
+	return (args.dump_flag & 0b00100000) != 0;
+};
+
+args_should_dump_asm : func(-> bool)
+{
+	return (args.dump_flag | 0b00010000) != 0;
 };
 
 debugbreak : asm("" -> v0)
@@ -16,14 +31,8 @@ debugbreak : asm("" -> v0)
 	int3
 };
 
-write_arg : func(arg : u8? -> v0)
-{
-	linux_write(1, arg, zstrlen(arg));
-};
-
 handle_arg : func(arg : u8??, dst : u64 -> v0)
 {
-	write_arg([arg]);
 	if(zstrbegin([arg], '-'))
 	{
 		if(zstreql([arg], "--dump-tokens\0"))
@@ -32,16 +41,17 @@ handle_arg : func(arg : u8??, dst : u64 -> v0)
 		}
 		if(zstreql([arg], "--dump-ast\0"))
 		{
-			args.dump_flag = (args.dump_flag | 0b010000000);
+			args.dump_flag = (args.dump_flag | 0b01000000);
 		}
 		if(zstreql([arg], "--dump-ir\0"))
 		{
-			args.dump_flag = (args.dump_flag | 0b001000000);
+			args.dump_flag = (args.dump_flag | 0b00100000);
 		}
 		if(zstreql([arg], "--dump-asm\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b000100000);
 		}
+		// todo: if none of these, error out?
 	}
 	else
 	{
@@ -69,10 +79,4 @@ parse_args : func(-> v0)
 	{
 		handle_arg(argv # i, (argc - i)@u64);
 	}
-
-	linux_write(1, "\n\nbuild str: ", 13);
-	colour_red();
-	linux_write(1, args.build_file, zstrlen(args.build_file));
-	colour_reset();
-	linux_write(1, "bye", 3);
 };
