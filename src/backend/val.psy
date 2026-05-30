@@ -806,6 +806,19 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 		lhs = val_zero_as(rhs.type);
 	}
 
+	// if we are assign, only rhs needs to be loaded
+	if((biop_node->biop.op != ast_biop_op.at) && (biop_node->biop.op != ast_biop_op.assign))
+	{
+		lhs = codegen_load_if_lvalue(lhs, lhs_node);
+	}
+	rhs = codegen_load_if_lvalue(rhs, rhs_node);
+	if(biop_node->biop.op != ast_biop_op.at)
+	{
+		rhs = val_must_convert(rhs, lhs.type, rhs_node);
+	}
+
+
+
 	ret_type : tyid mut := zero;
 	if(ast_biop_is_compare(biop_node))
 	{
@@ -845,11 +858,6 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 		}
 	}
 
-	if((biop_node->biop.op != ast_biop_op.at) && (biop_node->biop.op != ast_biop_op.assign))
-	{
-		rhs = val_must_convert(rhs, lhs.type, biop_node);
-	}
-
 	if(ret_type == zero)
 	{
 		psyc_error_begin(biop_node);
@@ -873,17 +881,6 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	}
 
 	// if we are not assign, then both must be loaded if needed
-	// if we are assign, only rhs needs to be loaded
-	if((biop_node->biop.op != ast_biop_op.at) && (biop_node->biop.op != ast_biop_op.assign))
-	{
-		lhs = codegen_load_if_lvalue(lhs, lhs_node);
-	}
-	rhs = codegen_load_if_lvalue(rhs, rhs_node);
-	if(biop_node->biop.op != ast_biop_op.at)
-	{
-		rhs = val_must_convert(rhs, lhs.type, rhs_node);
-	}
-
 	// todo: codegen_load_if_lvalue will turn compile-time params into runtime params,
 	// meaning that if this is called with compile_time_only the below code will error out.
 	// todo: maybe only do the codegen_load_if_lvalues if they are runtime values?
@@ -1498,7 +1495,7 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 			{
 				outsz = irsz.q;
 			}
-			if(to_sz == to_sz)
+			if(from_sz == to_sz)
 			{
 				return from.r;
 			}
