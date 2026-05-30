@@ -1,9 +1,15 @@
 args_t : struct
 {
 	build_file : u8?;
+	dump_flag : u8;
 };
 
 args : args_t mut := zero;
+
+args_should_dump_tokens : func(-> bool)
+{
+	return (args.dump_flag | 0b10000000) != 0;
+};
 
 debugbreak : asm("" -> v0)
 {
@@ -20,7 +26,22 @@ handle_arg : func(arg : u8??, dst : u64 -> v0)
 	write_arg([arg]);
 	if(zstrbegin([arg], '-'))
 	{
-		linux_write(1, "NICE", 4);
+		if(zstreql([arg], "--dump-tokens\0"))
+		{
+			args.dump_flag = (args.dump_flag | 0b10000000);
+		}
+		if(zstreql([arg], "--dump-ast\0"))
+		{
+			args.dump_flag = (args.dump_flag | 0b010000000);
+		}
+		if(zstreql([arg], "--dump-ir\0"))
+		{
+			args.dump_flag = (args.dump_flag | 0b001000000);
+		}
+		if(zstreql([arg], "--dump-asm\0"))
+		{
+			args.dump_flag = (args.dump_flag | 0b000100000);
+		}
 	}
 	else
 	{
