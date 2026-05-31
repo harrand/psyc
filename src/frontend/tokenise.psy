@@ -16,19 +16,19 @@ token_buffer : struct
 	tokens_cap : u64;
 };
 
-token_buffer_append : func(toks : token_buffer mut?, tok : token, ar : arena mut? -> v0)
+token_buffer_append : func(toks : token_buffer mut?, tok : token -> v0)
 {
 	if(toks->tokens == zero)
 	{
 		toks->tokens_cap = 1024;
-		toks->tokens = arena_alloc(ar, toks->tokens_cap * sizeof typeof([toks # 0]));
+		toks->tokens = arena_alloc(scratch_arena, toks->tokens_cap * sizeof typeof([toks # 0]));
 	}
 	while(toks->tokens_count >= toks->tokens_cap)
 	{
 		olddata ::= toks->tokens;
 		oldcap ::= toks->tokens_cap;
 		toks->tokens_cap = (toks->tokens_cap * 2);
-		toks->tokens = arena_alloc(ar, toks->tokens_cap * sizeof typeof([toks # 0]));
+		toks->tokens = arena_alloc(scratch_arena, toks->tokens_cap * sizeof typeof([toks # 0]));
 		memcopy(toks->tokens, olddata, oldcap * sizeof typeof([toks # 0]));
 	}
 	[toks->tokens # (toks->tokens_count)] = tok;
@@ -52,7 +52,7 @@ dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 {
 	mytok : token;
-	token_buffer_append(toks, mytok, scratch_arena);
+	token_buffer_append(toks, mytok);
 
 	if(args_should_dump_tokens())
 	{
