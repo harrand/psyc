@@ -2445,14 +2445,25 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 		{
 			chnk ::= chunks # i;
 			sz ::= chunk_to_irsz(chnk);
-			scratch : u64 mut := zero;
-			memcopy(ref scratch, wv.buf # cursor, chnk->sz);
-			[members # i] = rval
+			if(chnk->type == chunk_type.mem)
 			{
-				.tag := rval_tag.scalar;
-				.v := irval_imm(sz, scratch);
-			};
-
+				// it *must* be a global
+				[members # i] = rval
+				{
+					.tag := rval_tag.ptr;
+					.v := ir_add_glob(wv.buf # cursor, chnk->sz, true, false);
+				};
+			}
+			else
+			{
+				scratch : u64 mut := zero;
+				memcopy(ref scratch, wv.buf # cursor, chnk->sz);
+				[members # i] = rval
+				{
+					.tag := rval_tag.scalar;
+					.v := irval_imm(sz, scratch);
+				};
+			}
 			cursor = cursor + chnk->sz;
 		}
 		return val
