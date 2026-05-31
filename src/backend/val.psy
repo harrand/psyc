@@ -123,7 +123,7 @@ val_zero_as : func(to : tyid -> val)
 	i : u64 mut;
 	ret : val mut;
 	members : sval mut? mut;
-	if(ty_is_integral(to))
+	if(ty_is_integral(to) || ty_is_enum(to))
 	{
 		ret = val_from_integer_literal(zero);
 		ret.type = to;
@@ -1449,6 +1449,18 @@ rval_must_convert : func(from : val mut, to : tyid, source : ast mut? -> rval)
 		// must load
 		from = codegen_load(from, source);
 	}
+	// enum to int
+	if(ty_is_enum(from.type) && ty_is_integral(to))
+	{
+		// enum -> integer conversions are a noop (conversion would fail if the integer wasnt s64)
+		return from.r;
+	}
+	// int to enum
+	if(ty_is_enum(from.type) && ty_is_integral(to))
+	{
+		// integer -> enum conversions are a noop (conversion would fail if the integer wasnt s64)
+		return from.r;
+	}
 	// ptr to ptr
 	if(ty_is_ptr(from.type) && ty_is_ptr(to))
 	{
@@ -1855,10 +1867,61 @@ rval_from_unop_reference : func(operand : val, s : scope mut?, source : ast mut?
 
 sval_from_unop : func(op : ast_unop, operand : val, s : scope mut?, source : ast mut? -> sval)
 {
+	if(op == ast_unop.minus)
+	{
+		return sval_from_unop_minus(operand, s, source);
+	}
+	if(op == ast_unop.bitwise_invert)
+	{
+		return sval_from_unop_bitwise_invert(operand, s, source);
+	}
+	if(op == ast_unop.logical_invert)
+	{
+		return sval_from_unop_logical_invert(operand, s, source);
+	}
 	psyc_panic_begin(source);
 	putzstr("reached end of sval_from_unop");
 	psyc_panic_end(source);
 	return zero;
+};
+
+sval_from_unop_minus : func(operand : val, s : scope mut?, source : ast mut? -> sval)
+{
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := -operand.s.literal.integer;
+		};
+	};
+};
+
+sval_from_unop_bitwise_invert : func(operand : val, s : scope mut?, source : ast mut? -> sval)
+{
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.integer;
+			.integer := ~operand.s.literal.integer;
+		};
+	};
+};
+
+sval_from_unop_logical_invert : func(operand : val, s : scope mut?, source : ast mut? -> sval)
+{
+	return sval
+	{
+		.tag := sval_tag.literal;
+		.literal := ast_literal
+		{
+			.tag := ast_literal_tag.boolean;
+			.boolean := !operand.s.literal.boolean;
+		};
+	};
 };
 
 rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
