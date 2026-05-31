@@ -1,4 +1,37 @@
 file : enum
 {
-	
+	.none := ~0;
+	.cwd := ~1;
+};
+
+file_stats : struct
+{
+	size : u64;
+};
+
+path : enum
+{
+};
+
+__linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
+{
+	out->size = s->st_size@u64;
+};
+
+zstr2path : func(zstr : u8? -> path)
+{
+	return zstr@u64@s64@path;
+};
+
+path2zstr : func(p : path -> u8?)
+{
+	return p@s64@u64@u8?;
+};
+
+path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
+{
+	linux_out : linux_stat_t mut;
+	linux_fstatat(relative_to@s64@s32, path2zstr(p), ref linux_out, 0);
+	__linux_stat2file_stats(ref linux_out, stats);
+	return zero;
 };
