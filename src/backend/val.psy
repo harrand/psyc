@@ -241,6 +241,14 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_blkinit(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.sizeof_t))
+	{
+		return val_from_sizeof(node, s, r);
+	}
+	if(ast_is_expr(node, ast_expr_tag.alignof_t))
+	{
+		return val_from_alignof(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -1176,6 +1184,20 @@ val_from_blkinit_array : func(type : tyid, init_nodes : ast mut?, init_nodes_cou
 	putzstr("reached end of val_from_blkinit_struct");
 	psyc_panic_end(source);
 	return zero;
+};
+
+val_from_sizeof : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	typename_node ::= ast_get_child(node, 0);
+	type ::= type_from_typename_node(typename_node, s);
+	return val_from_integer_literal(datalayout_sizeof_ty(type));
+};
+
+val_from_alignof : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	typename_node ::= ast_get_child(node, 0);
+	type ::= type_from_typename_node(typename_node, s);
+	return val_from_integer_literal(datalayout_alignof_ty(type));
 };
 
 val_function_reference : func(fn : function mut? -> val)
