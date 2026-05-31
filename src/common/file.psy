@@ -9,8 +9,58 @@ file_stats : struct
 	size : u64;
 };
 
+file_access : enum
+{
+	.read := 0;
+	.write := 1;
+	.read_write := 2;
+};
+
 path : enum
 {
+};
+
+path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
+{
+	linux_out : linux_stat_t mut;
+	linux_err : s32 := linux_fstatat(relative_to@s64@s32, path2zstr(p), ref linux_out, 0);
+	if(linux_err == -13) // EACCESS
+	{
+		return err.noperm;
+	}
+	if(linux_err == -14) // EFAULT
+	{
+		return err.badparam;
+	}
+	if(linux_err == -2) // ENOENT
+	{
+		return err.notfound;
+	}
+	if(linux_err == -20) // ENOTDIR
+	{
+		return err.badparam;
+	}
+	if(linux_err == -9) // EBADF
+	{
+		return err.badparam;
+	}
+	__linux_stat2file_stats(ref linux_out, stats);
+	return zero;
+};
+
+path_open : func(p : path, relative_to : file, access : file_access -> file)
+{
+	return linux_openat(relative_to@s64@s32, path2zstr(p), 0, access@s64)@s64@file;
+};
+
+file_get_error : func(f : file -> err)
+{
+	return -(f@s64)@err;
+};
+
+file_is_valid : func(f : file -> bool)
+{
+	return f@s64 > 0;
 };
 
 __linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
@@ -26,12 +76,4 @@ zstr2path : func(zstr : u8? -> path)
 path2zstr : func(p : path -> u8?)
 {
 	return p@s64@u64@u8?;
-};
-
-path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
-{
-	linux_out : linux_stat_t mut;
-	linux_fstatat(relative_to@s64@s32, path2zstr(p), ref linux_out, 0);
-	__linux_stat2file_stats(ref linux_out, stats);
-	return zero;
 };
