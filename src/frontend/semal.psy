@@ -202,6 +202,22 @@ semal_asm : func(as : assembly mut?, parent : scope mut? -> v0)
 semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
 {
 	s ::= usrdata@scope mut?;
+	if(ast_is_stmt(node, ast_stmt_tag.if_block))
+	{
+		semal_node_collect_locals(node, 1, node->children_count, s);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.while_block))
+	{
+		semal_node_collect_locals(node, 1, node->children_count, s);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.for_block))
+	{
+		semal_node_collect_locals(node, 1, node->children_count, s);
+	}
+	if(ast_is_stmt(node, ast_stmt_tag.else_block))
+	{
+		semal_node_collect_locals(node, 0, node->children_count, s);
+	}
 	if(ast_is_stmt(node, ast_stmt_tag.decl))
 	{
 		// we are a local
@@ -211,7 +227,13 @@ semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak ->
 	}
 };
 
+semal_node_collect_locals : func(node : ast mut?, begin : u64, end : u64, s : scope mut? -> v0)
+{
+	util_walk_control_flow_in_nodes(node, begin, end, semal_func_collect_locals_callback, s);
+};
+
+
 semal_func_collect_locals : func(fn : function mut? -> v0)
 {
-	util_walk_control_flow_in_nodes(fn->node, 1, fn->node->children_count, semal_func_collect_locals_callback, ref(fn->impl_scope));
+	semal_node_collect_locals(fn->node, 1, fn->node->children_count, ref(fn->impl_scope));
 };
