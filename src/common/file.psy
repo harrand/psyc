@@ -23,7 +23,15 @@ path : enum
 path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
 {
 	linux_out : linux_stat_t mut;
-	linux_err : s32 := linux_fstatat(relative_to@s64@s32, path2zstr(p), ref linux_out, 0);
+
+	linux_dirfd : s32 mut := relative_to@s64@s32;
+	// todo: dont convert to s32, this works around a compiler bug
+	if(relative_to@s64@s32 == (file.cwd)@s64@s32)
+	{
+		linux_dirfd = -100; // AT_FDCWD
+	}
+
+	linux_err : s32 := linux_fstatat(linux_dirfd, path2zstr(p), ref linux_out, 0);
 	if(linux_err == -13) // EACCESS
 	{
 		return err.noperm;
@@ -50,7 +58,13 @@ path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> e
 
 path_open : func(p : path, relative_to : file, access : file_access -> file)
 {
-	return linux_openat(relative_to@s64@s32, path2zstr(p), 0, access@s64)@s64@file;
+	linux_dirfd : s32 mut := relative_to@s64@s32;
+	// todo: dont convert to s32, this works around a compiler bug
+	if(relative_to@s64@s32 == (file.cwd)@s64@s32)
+	{
+		linux_dirfd = -100; // AT_FDCWD
+	}
+	return linux_openat(linux_dirfd, path2zstr(p), 0, access@s64)@s64@file;
 };
 
 file_get_error : func(f : file -> err)
@@ -61,6 +75,16 @@ file_get_error : func(f : file -> err)
 file_is_valid : func(f : file -> bool)
 {
 	return f@s64 > 0;
+};
+
+file_read : func(f : file, out : u8 mut?, out_size : u64 -> err)
+{
+	ret : s32 := linux_read(f@s64@s32, out, out_size)@s32;
+	if(ret >= 0)
+	{
+		return zero;
+	}
+	return err.unknown;
 };
 
 __linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
