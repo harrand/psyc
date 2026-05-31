@@ -278,20 +278,21 @@ lower_x64_trunc : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	outsz ::= irval_get_irsz(out);
 
 	inx64 : x64v mut := lower_x64_irval(in);
-	x64v_set_size(ref inx64, irsz_size_bytes(outsz) * 8);
-
+	// make them both the same
 	outx64 : x64v mut := lower_x64_irval(out);
-	x64v_set_size(ref outx64, 32);
+	x64v_set_size(ref outx64, x64v_size(inx64));
 
-	if(outsz == irsz.d)
+	size_bits ::= irsz_size_bytes(outsz) * 8;
+	mask ::= (size_bits * size_bits) - 1;
+	x64_mov(outx64, inx64);
+
+	mask_imm : x64v mut := x64v_imm(mask, x64v_size(outx64));
+	if(x64v_size(mask_imm) == 64)
 	{
-		x64_mov(outx64, inx64);
+		// cant 'and' an imm64
+		x64v_set_size(ref mask_imm, 32);
 	}
-	else
-	{
-		inx64 = lower_x64_irval_but_turn_imms_into_globals(in);
-		x64_movzx(outx64, inx64);
-	}
+	x64_and(outx64, mask_imm);
 };
 
 lower_x64_cvtf : func(inst : irinst mut?, fn : irfunc mut? -> v0)
