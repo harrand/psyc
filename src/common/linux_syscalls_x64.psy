@@ -55,6 +55,16 @@ linux_close : func(fd : s32 -> s32)
 	return syscall1(3, fd);
 };
 
+linux_stat : func(path : u8?, statbuf : linux_stat_t mut? -> s32)
+{
+	return syscall2(4, path, statbuf);
+};
+
+linux_fstatat : func(dirfd : s32, filename : u8?, statbuf : linux_stat_t mut?, flag : s32 -> s32)
+{
+	return syscall4(262, dirfd, filename, statbuf, flag);
+};
+
 linux_exit : func(code : u64 weak -> v0)
 {
 	syscall1(60, code);
@@ -74,4 +84,36 @@ linux_munmap : func(addr : v0? weak, length : u64 -> s32)
 linux_mprotect : func(addr : v0? weak, size : u64, prot : s32 -> s32)
 {
 	return syscall3(10, addr@u64, size, prot);
+};
+
+linux_timespec : struct
+{
+	tv_sec : u64;
+	tv_nsec : u64;
+};
+
+linux_stat_t : struct
+{
+	st_dev : u64;
+	st_ino : u64;
+	st_mode : u32;
+	mypad : u32;
+	st_nlink : u64;
+	st_uid : u32;
+	st_gid : u32;
+	st_rdev : u64;
+
+	st_size : s64;
+	st_blksize : s64;
+	st_blocks : s64;
+
+	st_atim : linux_timespec;
+	pad0 : u32;
+	st_mtim : linux_timespec;
+	pad1 : u32;
+	st_ctim : linux_timespec;
+	pad2 : u32;
+
+	pad3 : u64;
+	pad4 : u64;
 };
