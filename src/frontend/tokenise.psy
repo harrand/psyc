@@ -1,5 +1,12 @@
+token_tag : enum
+{
+};
+
 token : struct
 {
+	tag : token_tag;
+	begin : u64;
+	end : u64;
 };
 
 token_buffer : struct
@@ -28,7 +35,28 @@ token_buffer_append : func(toks : token_buffer mut?, tok : token, ar : arena mut
 	toks->tokens_count = toks->tokens_count + 1;
 };
 
+dump_one_token : func(t : token? -> v0)
+{
+	putzstr("token\n");
+};
+
+dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < toks->tokens_count; i = i + 1)
+	{
+		dump_one_token(toks->tokens # i);
+	}
+};
+
 tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 {
+	mytok : token;
+	token_buffer_append(toks, mytok, scratch_arena);
+
+	if(args_should_dump_tokens())
+	{
+		dump_tokens(toks, src, src_len);
+	}
 };
 
