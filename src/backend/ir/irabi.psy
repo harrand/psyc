@@ -61,7 +61,6 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 	g ::= igraph_build_func_x64(fn, fnx64);
 	igraph_assign(ref g, regs, regs_count, params_count);
 
-	count ::= fnx64->inst_count;
 	nodeidx : u64 mut;
 
 	spill_counter : u64 mut := 0;
@@ -82,7 +81,7 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 	// now, foreach uncoloured variable (this will be only virtual registers), assign them a "colour" (index into the regs array). but it must not have the same colour to any other node its attached to
 	// replace their value in the inst operand with the actual x64 register corresponding to the colour (patch in the size by deriving it from the virtual register irsz)
 	// done!
-	for(i = 0; i < count; i = i + 1)
+	for(i = 0; i < fnx64->inst_count; i = i + 1)
 	{
 		inst ::= fnx64->inst # i;
 		parcount ::= x64i_operand_count([inst]);
@@ -151,6 +150,7 @@ register_allocation_graph_colouring : func(fn : irfunc mut?, fnx64 : x64f mut?, 
 					[operand] = x64v_memreg(base_size, x64_reg.rdx, 64, zero, zero, 1, zero, zero);
 					x64_position_before_inst(i);
 					x64_mov(intermediate, x64v_memreg(base_size, x64_reg.rbp, 64, zero, zero, 1, -([g.nodes # base_reg_idx].spill + 8), 32));
+					i = i - 1;
 				}
 				else
 				{
