@@ -1,0 +1,30 @@
+lex_entry_tag : enum
+{
+	// entry.data is the token type you have just found.
+	.finish := 1;
+	// discard the current range - you've probably hit a comment.
+	.discard := 2;
+};
+
+lex_entry : struct
+{
+	tag : lex_entry_tag;
+	data : u64;
+	next : lex_entry mut?;
+};
+
+lex_table : struct
+{
+	tbl : lex_entry mut[255];
+};
+
+lex_char0 : lex_table mut := zero; // first-char dispatch table
+lex_main : lex_table mut := zero;
+lex_symbol_continuation : lex_table mut := zero; // every char after the first char of a symbol, up until whitespace
+lex_string_literal : lex_table mut := zero; // contents of a string literal, up until the terminating quote
+lex_char_literal : lex_table mut := zero; // contents of a char literal, up until the terminating quote
+lex_decimal : lex_table mut := zero; // base-10 number
+lex_hex : lex_table mut := zero; // base-16 number
+lex_binary : lex_table mut := zero; // base-2 number
+lex_precomment : lex_table mut := zero; // the '//' part preceding comment body
+lex_comment : lex_table mut := zero; // all chars proceeding a comment '//' up until the end of the current line
