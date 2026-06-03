@@ -20,11 +20,11 @@ lex_table : struct
 
 lex_init : func(-> v0)
 {
-	lex_init_char0();
 	lex_init_main();
 	lex_init_symbol_continuation();
 	lex_init_string_literal();
 	lex_init_char_literal();
+	lex_init_number_prefix();
 	lex_init_decimal();
 	lex_init_hex();
 	lex_init_binary();
@@ -32,20 +32,16 @@ lex_init : func(-> v0)
 	lex_init_comment();
 };
 
-lex_char0 : lex_table mut := zero; // first-char dispatch table
 lex_main : lex_table mut := zero;
 lex_symbol_continuation : lex_table mut := zero; // every char after the first char of a symbol, up until whitespace
 lex_string_literal : lex_table mut := zero; // contents of a string literal, up until the terminating quote
 lex_char_literal : lex_table mut := zero; // contents of a char literal, up until the terminating quote
+lex_number_prefix : lex_table mut := zero; // given '0', dispatches either to hex (0x), binary (0b) or decimal (everything else)
 lex_decimal : lex_table mut := zero; // base-10 number
 lex_hex : lex_table mut := zero; // base-16 number
 lex_binary : lex_table mut := zero; // base-2 number
 lex_precomment : lex_table mut := zero; // the '//' part preceding comment body
 lex_comment : lex_table mut := zero; // all chars proceeding a comment '//' up until the end of the current line
-
-lex_init_char0 : func(-> v0)
-{
-};
 
 lex_init_main : func(-> v0)
 {
@@ -63,6 +59,10 @@ lex_init_char_literal : func(-> v0)
 {
 };
 
+lex_init_number_prefix : func(-> v0)
+{
+};
+
 lex_init_decimal : func(-> v0)
 {
 };
@@ -77,6 +77,10 @@ lex_init_binary : func(-> v0)
 
 lex_init_precomment : func(-> v0)
 {
+	entry : lex_entry mut;
+	idx : u64 mut := 47;
+	debugbreak();
+	[lex_main.tbl # idx] = entry;
 };
 
 lex_init_comment : func(-> v0)
