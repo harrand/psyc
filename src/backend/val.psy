@@ -2204,8 +2204,27 @@ rval_from_biop_at : func(lhs : val mut, rhs : val, s : scope mut?, source : ast 
 	// lhs is some kind of pointer
 	if(ty_is_ptr(lhs.type))
 	{
-		lhs = codegen_load_if_lvalue(lhs, source);
+		return rval_from_biop_at_ptr(lhs, rhs, s, source);
 	}
+	return rval_from_biop_at_arr(lhs, rhs, s, source);
+};
+
+rval_from_biop_at_ptr : func(lhs : val mut, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// lhs is some kind of pointer
+	lhs = codegen_load_if_lvalue(lhs, source);
+	// ok we're either an rval.ptr or an rval.scalar that represents a pointer.
+	// doesnt matter - we just add anyway
+	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
+	// todo: ideally we dont add/mul here we turn it into an rval suitable for a memory operand with all this data encoded. toughie though.
+	// todo: if rhs.r.v is an immediate 0 value, we dont need the add or the mul
+	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_imm(irval_get_irsz(rhs.r.v), elem_size)));
+	return lhs.r;
+};
+
+rval_from_biop_at_arr : func(lhs : val mut, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// lhs is some kind of array. it must be an lvalue so we dont load.
 	// ok we're either an rval.ptr or an rval.scalar that represents a pointer.
 	// doesnt matter - we just add anyway
 	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
