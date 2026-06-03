@@ -2275,7 +2275,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 
 	if(v.s.tag == sval_tag.literal)
 	{
-		if(v.s.literal.tag == ast_literal_tag.integer)
+		if((v.s.literal.tag == ast_literal_tag.integer) || (v.s.literal.tag == ast_literal_tag.char))
 		{
 			intsz : u64 mut := ty_integral_size(v.type);
 			if(ty_is_enum(v.type))
@@ -2299,6 +2299,11 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				outsz = irsz.q;
 			}
 			// integer literal -> runtime value
+			outv : irval mut := irval_imm(outsz, v.s.literal.integer);
+			if(v.s.literal.tag == ast_literal_tag.char)
+			{
+				outv = irval_imm(outsz, v.s.literal.char);
+			}
 			return val
 			{
 				.tag := val_tag.runtime;
@@ -2307,7 +2312,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				.r := rval
 				{
 					.tag := rval_tag.scalar;
-					.v := irval_imm(outsz, v.s.literal.integer);
+					.v := outv;
 				};
 			};
 		}
@@ -2332,21 +2337,6 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				{
 					.tag := rval_tag.scalar;
 					.v := irval_imm(outsz, v.s.literal.floating_point);
-				};
-			};
-		}
-		if(v.s.literal.tag == ast_literal_tag.char)
-		{
-			// floating-point literal -> runtime value
-			return val
-			{
-				.tag := val_tag.runtime;
-				.type := v.type;
-				.category := val_category.rvalue;
-				.r := rval
-				{
-					.tag := rval_tag.scalar;
-					.v := irval_bimm(v.s.literal.char);
 				};
 			};
 		}
