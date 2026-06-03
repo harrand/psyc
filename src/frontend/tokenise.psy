@@ -1,3 +1,11 @@
+token : struct
+{
+	tag : token_tag;
+	begin : u64;
+	end : u64;
+	loc : srcloc;
+};
+
 token_tag : enum
 {
 	.number := 1;
@@ -68,14 +76,6 @@ token_tag : enum
 	.symbol := 66;
 };
 
-token : struct
-{
-	tag : token_tag;
-	begin : u64;
-	end : u64;
-	loc : srcloc;
-};
-
 srcloc : struct
 {
 	file : u8?;
@@ -90,7 +90,7 @@ token_buffer : struct
 	tokens_cap : u64;
 };
 
-token_buffer_append : func(toks : token_buffer mut?, tok : token -> v0)
+token_buffer_append : func(toks : token_buffer mut?, tok : token? -> v0)
 {
 	if(toks->tokens == zero)
 	{
@@ -105,7 +105,7 @@ token_buffer_append : func(toks : token_buffer mut?, tok : token -> v0)
 		toks->tokens = arena_alloc(scratch_arena, toks->tokens_cap * sizeof typeof([toks # 0]));
 		memcopy(toks->tokens, olddata, oldcap * sizeof typeof([toks # 0]));
 	}
-	[toks->tokens # (toks->tokens_count)] = tok;
+	[toks->tokens # (toks->tokens_count)] = [tok];
 	toks->tokens_count = (toks->tokens_count + 1);
 };
 
@@ -128,16 +128,30 @@ dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 	}
 };
 
+tokenise_state : struct
+{
+	toks : token_buffer mut?;
+	src : u8?;
+	src_len : u64;
+};
+
 tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 {
+	state : tokenise_state mut;
+	state.toks = toks;
+	state.src = src;
+	state.src_len = src_len;
+
 	mytok : token mut;
 	mytok.tag = zero;
-	token_buffer_append(toks, mytok);
-	token_buffer_append(toks, mytok);
+
+	token_buffer_append(state.toks, ref mytok);
+	//debugbreak();
+	token_buffer_append(state.toks, ref mytok);
 
 	if(args_should_dump_tokens())
 	{
-		dump_tokens(toks, src, src_len);
+		dump_tokens(state.toks, src, src_len);
 	}
 };
 
