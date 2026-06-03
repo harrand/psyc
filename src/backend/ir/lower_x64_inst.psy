@@ -401,6 +401,23 @@ lower_x64_umul : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 		// too large imm64 is not allowed in the intermediate mov
 		x64v_set_size(ref lhsx64, 32);
 	}
+	if(irval_get_irsz(lhs) == irsz.b)
+	{
+		// 8 bit imul is not a thing, extend both to 16-bit
+		x64v_set_size(ref outx64, 16);
+		oldlhs ::= lhsx64;
+		x64v_set_size(ref lhsx64, 16);
+		oldrhs ::= rhsx64;
+		x64v_set_size(ref rhsx64, 16);
+		if(lhs.tag != irval_tag.imm)
+		{
+			x64_movzx(lhsx64, oldlhs);
+		}
+		if(lhs.tag != irval_tag.imm)
+		{
+			x64_movzx(rhsx64, oldrhs);
+		}
+	}
 
 	x64_mov(outx64, lhsx64);
 	// mul uses implicit operands, and we dont care about overflow/wraparound checking we just discard the top bits of the larger product size. in other words, umul and smul yield the same x64
@@ -425,7 +442,57 @@ lower_x64_umul : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 
 lower_x64_smul : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 {
-	lower_x64_umul(inst, fn);
+	// must be same size
+	out ::= [ir_umul_get_out(inst)];
+	outx64 ::= lower_x64_irval(out);
+
+	lhs ::= [ir_umul_get_lhs(inst)];
+	lhsx64 : x64v mut := lower_x64_irval_but_use_reg_to_lea_globrefs(lhs, x64_reg.rax);
+	rhs ::= [ir_umul_get_rhs(inst)];
+	rhsx64 : x64v mut := lower_x64_irval_but_use_reg_to_lea_globrefs(rhs, x64_reg.rdx);
+
+	if((lhs.tag == irval_tag.imm) && (irval_get_irsz(lhs) == irsz.q))
+	{
+		// too large imm64 is not allowed in the intermediate mov
+		x64v_set_size(ref lhsx64, 32);
+	}
+	if(irval_get_irsz(lhs) == irsz.b)
+	{
+		// 8 bit imul is not a thing, extend both to 16-bit
+		x64v_set_size(ref outx64, 16);
+		oldlhs ::= lhsx64;
+		x64v_set_size(ref lhsx64, 16);
+		oldrhs ::= rhsx64;
+		x64v_set_size(ref rhsx64, 16);
+		if(lhs.tag != irval_tag.imm)
+		{
+			x64_movsx(lhsx64, oldlhs);
+		}
+		if(lhs.tag != irval_tag.imm)
+		{
+			x64_movsx(rhsx64, oldrhs);
+		}
+	}
+
+	x64_mov(outx64, lhsx64);
+	// mul uses implicit operands, and we dont care about overflow/wraparound checking we just discard the top bits of the larger product size. in other words, umul and smul yield the same x64
+	if(rhs.tag == irval_tag.imm)
+	{
+		// absolutely not allowed to do that
+		// must move into something temporary
+		intermediate ::= x64v_reg(x64_reg.r15, x64v_size(rhsx64));
+		if(irval_get_irsz(rhs) == irsz.q)
+		{
+			// too large imm64 is not allowed in the intermediate mov
+			x64v_set_size(ref rhsx64, 32);
+		}
+		x64_mov(intermediate, rhsx64);
+		x64_imul(outx64, intermediate);
+	}
+	else
+	{
+		x64_imul(outx64, rhsx64);
+	}
 };
 
 lower_x64_udiv : func(inst : irinst mut?, fn : irfunc mut? -> v0)
