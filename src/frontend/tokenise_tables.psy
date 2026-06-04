@@ -53,10 +53,44 @@ lex_init_symbol_continuation : func(-> v0)
 
 lex_init_string_literal : func(-> v0)
 {
+	// "...
+	out : lex_entry mut;
+	i : u64 mut;
+
+	// string_literal + <anything else> => lex_string_literal
+	out.tag = zero;
+	out.data = zero;
+	out.next = ref lex_string_literal;
+	for(i = 0; i < 255; i = i + 1)
+	{
+		[lex_string_literal.tbl # i] = out;
+	}
+	// string_literal + '"' => finish (string literal)
+	out.tag = lex_entry_tag.finish;
+	out.data = token_tag.string_literal;
+	out.next = zero;
+	[lex_string_literal.tbl # '"'] = out;
 };
 
 lex_init_char_literal : func(-> v0)
 {
+	// '...
+	out : lex_entry mut;
+	i : u64 mut;
+
+	// char_literal + <anything else> => lex_char_literal
+	out.tag = zero;
+	out.data = zero;
+	out.next = ref lex_char_literal;
+	for(i = 0; i < 255; i = i + 1)
+	{
+		[lex_char_literal.tbl # i] = out;
+	}
+	// char_literal + '"' => finish (char literal)
+	out.tag = lex_entry_tag.finish;
+	out.data = token_tag.char_literal;
+	out.next = zero;
+	[lex_char_literal.tbl # '"'] = out;
 };
 
 lex_init_number_prefix : func(-> v0)
