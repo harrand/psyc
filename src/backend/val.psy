@@ -2217,8 +2217,14 @@ rval_from_biop_at_ptr : func(lhs : val mut, rhs : val, s : scope mut?, source : 
 	// doesnt matter - we just add anyway
 	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
 	// todo: ideally we dont add/mul here we turn it into an rval suitable for a memory operand with all this data encoded. toughie though.
-	// todo: if rhs.r.v is an immediate 0 value, we dont need the add or the mul
-	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_imm(irval_get_irsz(rhs.r.v), elem_size)));
+	// we always promote these to 64 bit
+	rhs_scaled : irval mut := rhs.r.v;
+	if(irval_get_irsz(rhs_scaled) != irsz.q)
+	{
+		rhs_scaled = ir_zex(irsz.q, rhs_scaled);
+	}
+
+	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs_scaled, irval_qimm(elem_size)));
 	return lhs.r;
 };
 
@@ -2230,7 +2236,13 @@ rval_from_biop_at_arr : func(lhs : val mut, rhs : val, s : scope mut?, source : 
 	elem_size ::= datalayout_sizeof_ty(ty_underlying(lhs.type));
 	// todo: ideally we dont add/mul here we turn it into an rval suitable for a memory operand with all this data encoded. toughie though.
 	// todo: if rhs.r.v is an immediate 0 value, we dont need the add or the mul
-	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs.r.v, irval_imm(irval_get_irsz(rhs.r.v), elem_size)));
+	rhs_scaled : irval mut := rhs.r.v;
+	if(irval_get_irsz(rhs_scaled) != irsz.q)
+	{
+		rhs_scaled = ir_zex(irsz.q, rhs_scaled);
+	}
+
+	lhs.r.v = ir_add(lhs.r.v, ir_umul(rhs_scaled, irval_qimm(elem_size)));
 	return lhs.r;
 };
 
