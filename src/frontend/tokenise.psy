@@ -135,8 +135,20 @@ tokenise_state : struct
 	src_len : u64;
 };
 
+tokenise_done : func(state : tokenise_state mut? -> bool)
+{
+	return state->src_len == 0;
+};
+
+tokenise_step : func(state : tokenise_state mut? -> v0)
+{
+	// todo: real impl
+	state->src_len = (state->src_len - 1);
+};
+
 tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 {
+
 	state : tokenise_state mut;
 	state.toks = toks;
 	state.src = src;
@@ -145,8 +157,12 @@ tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 	mytok : token mut;
 	mytok.tag = zero;
 
+	while(!tokenise_done(ref state))
+	{
+		tokenise_step(ref state);
+	}
+
 	token_buffer_append(state.toks, ref mytok);
-	//debugbreak();
 	token_buffer_append(state.toks, ref mytok);
 
 	if(args_should_dump_tokens())
