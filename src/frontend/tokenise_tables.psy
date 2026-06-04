@@ -2,8 +2,10 @@ lex_entry_tag : enum
 {
 	// entry.data is the token type you have just found.
 	.finish := 1;
-	// discard the current range - you've probably hit a comment.
+	// discard the current range - you've probably hit a comment or whitespace.
 	.discard := 2;
+	// syntax error
+	.error := 3;
 };
 
 lex_entry : struct
@@ -46,6 +48,88 @@ lex_comment : lex_table mut := zero; // all chars proceeding a comment '//' up u
 lex_init_main : func(-> v0)
 {
 	// note: the lex_installs overwrite any entries existing in here.
+	out : lex_entry mut;
+	i : u64 mut;
+
+	// lex_main + <anything else> => error
+	out.tag = lex_entry_tag.error;
+	out.data = zero;
+	out.next = zero;
+	for(i = 0; i < 255; i = i + 1)
+	{
+		[lex_main.tbl # i] = out;
+	}
+
+	// lex_main + <any whitespace> => finish
+	out.tag = lex_entry_tag.discard;
+	out.data = zero;
+	out.next = zero;
+	
+	[lex_main.tbl # '\n'] = out;
+	[lex_main.tbl # '\r'] = out;
+	[lex_main.tbl # ' '] = out;
+	[lex_main.tbl # '\t'] = out;
+
+	// lex_main + a-zA-Z_ => symbol_continuation
+	out.tag = zero;
+	out.data = zero;
+	out.next = ref lex_symbol_continuation;
+
+	[lex_main.tbl # 'a'] = out;
+	[lex_main.tbl # 'b'] = out;
+	[lex_main.tbl # 'c'] = out;
+	[lex_main.tbl # 'd'] = out;
+	[lex_main.tbl # 'e'] = out;
+	[lex_main.tbl # 'f'] = out;
+	[lex_main.tbl # 'g'] = out;
+	[lex_main.tbl # 'h'] = out;
+	[lex_main.tbl # 'i'] = out;
+	[lex_main.tbl # 'j'] = out;
+	[lex_main.tbl # 'k'] = out;
+	[lex_main.tbl # 'l'] = out;
+	[lex_main.tbl # 'm'] = out;
+	[lex_main.tbl # 'n'] = out;
+	[lex_main.tbl # 'o'] = out;
+	[lex_main.tbl # 'p'] = out;
+	[lex_main.tbl # 'q'] = out;
+	[lex_main.tbl # 'r'] = out;
+	[lex_main.tbl # 's'] = out;
+	[lex_main.tbl # 't'] = out;
+	[lex_main.tbl # 'u'] = out;
+	[lex_main.tbl # 'v'] = out;
+	[lex_main.tbl # 'w'] = out;
+	[lex_main.tbl # 'x'] = out;
+	[lex_main.tbl # 'y'] = out;
+	[lex_main.tbl # 'z'] = out;
+
+	[lex_main.tbl # 'A'] = out;
+	[lex_main.tbl # 'B'] = out;
+	[lex_main.tbl # 'C'] = out;
+	[lex_main.tbl # 'D'] = out;
+	[lex_main.tbl # 'E'] = out;
+	[lex_main.tbl # 'F'] = out;
+	[lex_main.tbl # 'G'] = out;
+	[lex_main.tbl # 'H'] = out;
+	[lex_main.tbl # 'I'] = out;
+	[lex_main.tbl # 'J'] = out;
+	[lex_main.tbl # 'K'] = out;
+	[lex_main.tbl # 'L'] = out;
+	[lex_main.tbl # 'M'] = out;
+	[lex_main.tbl # 'N'] = out;
+	[lex_main.tbl # 'O'] = out;
+	[lex_main.tbl # 'P'] = out;
+	[lex_main.tbl # 'Q'] = out;
+	[lex_main.tbl # 'R'] = out;
+	[lex_main.tbl # 'S'] = out;
+	[lex_main.tbl # 'T'] = out;
+	[lex_main.tbl # 'U'] = out;
+	[lex_main.tbl # 'V'] = out;
+	[lex_main.tbl # 'W'] = out;
+	[lex_main.tbl # 'X'] = out;
+	[lex_main.tbl # 'Y'] = out;
+	[lex_main.tbl # 'Z'] = out;
+
+	[lex_main.tbl # '_'] = out;
 };
 
 lex_init_symbol_continuation : func(-> v0)
