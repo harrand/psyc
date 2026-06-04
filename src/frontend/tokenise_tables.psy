@@ -9,8 +9,8 @@ lex_entry_tag : enum
 lex_entry : struct
 {
 	tag : lex_entry_tag;
-	data : u64;
-	next : lex_entry mut?;
+	data : token_tag;
+	next : lex_table mut?;
 };
 
 lex_table : struct
@@ -77,8 +77,23 @@ lex_init_binary : func(-> v0)
 
 lex_init_precomment : func(-> v0)
 {
-	entry : lex_entry mut;
-	[lex_main.tbl # '/'] = entry;
+	out : lex_entry mut;
+	// main + '/' => lex_precomment
+	out.tag = zero;
+	out.next = ref lex_precomment;
+	[lex_main.tbl # '/'] = out;
+
+
+	// lex_precomment + <anything else> => <finish>
+	out.tag = lex_entry_tag.finish;
+	out.data = token_tag.fslash;
+	out.next = zero;
+
+	// lex_precomment + '/' => lex_comment
+	out.tag = zero;
+	out.next = ref lex_comment;
+
+	[lex_precomment.tbl # '/'] = out;
 };
 
 lex_init_comment : func(-> v0)
