@@ -156,7 +156,11 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 {
 	i : u64 mut;
 	sz ::= datalayout_sizeof_ty(v.type);
-	intsz ::= ty_integral_size(v.type);
+	intsz : u64 mut := ty_integral_size(v.type);
+	if(ty_is_enum(v.type))
+	{
+		intsz = 64;
+	}
 	fpsz ::= ty_floating_point_size(v.type);
 	if(v.tag != val_tag.compile_time)
 	{
@@ -227,6 +231,10 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 			bwrite8(w, v.s.literal.boolean);
 			return true;
 		}
+	}
+	if(v.s.tag == sval_tag.pointer_literal)
+	{
+		bwrite64(w, v.s.ptr@u64);
 	}
 	if(v.s.tag == sval_tag.array_literal)
 	{
