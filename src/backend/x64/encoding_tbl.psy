@@ -64,22 +64,28 @@ x64i_encoding_table_base_offset_movx : func(inst : x64i -> u64)
 	o1 ::= [inst.operands # 1];
 	sz1 ::= x64v_size(o1);
 	base_idx : u64 mut := 0;
-	if(sz1 == 8)
+	if((sz0 == 16) && (sz1 == 8))
 	{
-		base_idx = 0;
+		return 0;
 	}
-	if(sz1 == 16)
+	if((sz0 == 32) && (sz1 == 8))
 	{
-		base_idx = 3;
+		return 1;
 	}
-	if(sz1 == 32)
+	if((sz0 == 64) && (sz1 == 8))
 	{
-		base_idx = 5;
+		return 2;
 	}
-	// sz0 * 2^N == sz1
-	// 2^N = sz1/sz0
-	// N = log2(sz1 / sz0)
-	return base_idx + log2(sz1 / sz0);
+	if((sz0 == 32) && (sz1 == 16))
+	{
+		return 3;
+	}
+	if((sz0 == 64) && (sz1 == 16))
+	{
+		return 4;
+	}
+	panic_assert_failure("unexpected param sizes to movXx");
+	return 0;
 };
 
 // lea is a special case
