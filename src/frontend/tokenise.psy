@@ -133,31 +133,67 @@ tokenise_state : struct
 	toks : token_buffer mut?;
 	src : u8?;
 	src_len : u64;
+	cursor : u64;
+
+	cur_tbl : lex_table mut?;
+	cur_begin : u64;
+};
+
+tokenise_state_reset : func(state : tokenise_state mut? -> v0)
+{
+	state->cur_tbl = ref lex_main;
+	state->cur_begin = state->cursor;
 };
 
 tokenise_done : func(state : tokenise_state mut? -> bool)
 {
-	return state->src_len == 0;
+	return (state->src_len == 0);
 };
 
 tokenise_step : func(state : tokenise_state mut? -> v0)
 {
-	// todo: real impl
-	state->src_len = (state->src_len - 1);
+	entry : lex_entry mut? := state->cur_tbl->tbl # [state->src # state->cursor];
+	out_tok : token mut;
+	// index into the table and get the entry
+	if(entry->tag == zero)
+	{
+		putzstr("KEEP GOING");
+		state->cur_tbl = entry->next;
+	}
+	if(entry->tag == lex_entry_tag.finish)
+	{
+		putzstr("FINISH");
+		out_tok.tag = entry->data;
+		out_tok.begin = state->cur_begin;
+		out_tok.end = state->cursor;
+		// todo: set srcloc?
+		tokenise_state_reset(state);
+	}
+	if(entry->tag == lex_entry_tag.discard)
+	{
+		putzstr("DISCARD");
+		tokenise_state_reset(state);
+	}
+	else
+	{
+		state->src = (state->src # 1);
+		state->src_len = (state->src_len - 1);
+	}
 };
 
 tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 {
-
 	state : tokenise_state mut;
 	state.toks = toks;
 	state.src = src;
 	state.src_len = src_len;
+	state.cursor = 0;
+	tokenise_state_reset(ref state);
 
 	mytok : token mut;
 	mytok.tag = zero;
 
-	while(!tokenise_done(ref state))
+	while(tokenise_done(ref state) == false)
 	{
 		tokenise_step(ref state);
 	}
