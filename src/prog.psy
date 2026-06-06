@@ -6,6 +6,18 @@ program_optimisation : enum
 	.O3 := 3;
 };
 
+source_file : struct
+{
+	node : ast mut?;
+	src : sstr;
+	path : path;
+};
+
+source : enum
+{
+	.invalid := ~0;
+};
+
 prog_t : struct
 {
 	stack_size : u64;
@@ -13,6 +25,10 @@ prog_t : struct
 	opt : program_optimisation;
 	output : sstr;
 	entrypoint : sstr;
+
+	source_files : source_file mut?;
+	source_files_count : u64;
+	source_files_cap : u64;
 };
 
 // whole program state
@@ -24,4 +40,33 @@ prog ::= prog_t mut
 	.opt := program_optimisation.O0;
 	.output := sstr{.data := "build/psyout\0"; .len := 12;};
 	.entrypoint := sstr{.data := "main\0"; .len := 5;};
+	.source_files := zero;
+	.source_files_count := zero;
+	.source_files_cap := zero;
+};
+
+prog_add_source_file : func(src : source_file? -> source)
+{
+	if(prog.source_files == zero)
+	{
+		prog.source_files_cap = 8;
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof source_file);
+	}
+	while(prog.source_files_count >= prog.source_files_cap)
+	{
+		i : u64 mut;
+		oldcap ::= prog.source_files_cap;
+		olddata ::= prog.source_files;
+		prog.source_files_cap = prog.source_files_cap * 2;
+		prog.source_files = arena_alloc(global_arena, prog.source_files_cap * sizeof source_file);
+		for(i = 0; i < oldcap; i = i + 1)
+		{
+			[prog.source_files # i] = [olddata # i];
+		}
+	}
+
+	[prog.source_files # prog.source_files_count] = [src];
+	ret : source mut := prog.source_files_count@s64@source;
+	prog.source_files_count = prog.source_files_count + 1;
+	return ret;
 };

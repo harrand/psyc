@@ -8,7 +8,7 @@ add_build_file : func(p : path -> v0)
 	add_source_file(p);
 };
 
-add_source_file : func(p : path -> v0)
+add_source_file : func(p : path -> source)
 {
 	stats : file_stats mut;
 	staterr ::= path_get_stats(p, ref stats, file.cwd);
@@ -32,7 +32,7 @@ add_source_file : func(p : path -> v0)
 		putchar('"');
 		putzstr(" could not be found\0");
 		err_end();
-		return;
+		return source.invalid;
 	}
 	if(stats.size == 0)
 	{
@@ -43,7 +43,7 @@ add_source_file : func(p : path -> v0)
 		putchar('"');
 		putzstr(" is empty, skipping...\0");
 		warn_end();
-		return;
+		return source.invalid;
 	}
 	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
 	f : file := path_open(p, file.cwd, file_access.read);
@@ -55,4 +55,11 @@ add_source_file : func(p : path -> v0)
 	toks.tokens_count = 0;
 	toks.tokens_cap = 0;
 	tokenise(ref toks, ptr, stats.size);
+
+	src : source_file mut;
+	src.node = zero;
+	src.src.data = ptr;
+	src.src.len = stats.size;
+	src.path = p;
+	return prog_add_source_file(ref src);
 };
