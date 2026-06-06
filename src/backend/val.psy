@@ -2558,13 +2558,22 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 			.ar := global_arena;
 		};
 		w ::= ref wv;
+		glob_patches : irpatch mut? mut := zero;
+		glob_patches_count : u64 mut := 0;
 		// we've serialised it out now
-		datalayout_serialise_compile_time_val(ref wv, v);
+		datalayout_serialise_compile_time_val(ref wv, v, ref glob_patches, ref glob_patches_count);
 		// go through the chunks, gather offsets from 0, and just copy it over...
 		cursor : u64 mut := 0;
 		if((chunks_count == 1) && ([chunks # 0].type == chunk_type.mem))
 		{
 			// make it into a global
+			globref ::= irprog_add_glob(ref(irapi.prog), wv.buf, wv.cursor, true, false);
+			glob ::= ir_ref_glob(globref);
+			for(i = 0; i < glob_patches_count; i = i + 1)
+			{
+				irglob_add_patch(glob, [glob_patches # i]);
+			}
+			
 			return val
 			{
 				.tag := val_tag.runtime;
@@ -2573,7 +2582,7 @@ val_ensure_runtime : func(v : val, source : ast mut? -> val)
 				.r := rval
 				{
 					.tag := rval_tag.ptr;
-					.v := irprog_add_glob(ref(irapi.prog), wv.buf, wv.cursor, true, false);
+					.v := globref;
 				};
 			};
 		}

@@ -152,8 +152,9 @@ datalayout_alignof_ty : func(type : tyid -> u64)
 	return zero;
 };
 
-datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
+datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val, patches : irpatch mut? mut?, patches_count : u64 mut? -> bool)
 {
+	patches_cap : u64 mut := 0;
 	i : u64 mut;
 	sz ::= datalayout_sizeof_ty(v.type);
 	intsz : u64 mut := ty_integral_size(v.type);
@@ -223,7 +224,27 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 		}
 		if(v.s.literal.tag == ast_literal_tag.string)
 		{
-			bwrite_bytes(w, v.s.literal.string, v.s.literal.string_len);
+			// add patch...
+			if([patches] == zero)
+			{
+				patches_cap = 8;
+				[patches] = arena_alloc(global_arena, patches_cap * sizeof irpatch);
+			}
+			while([patches_count] >= patches_cap)
+			{
+				oldcap ::= patches_cap;
+				olddata ::= [patches];
+				patches_cap = patches_cap * 2;
+				[patches] = arena_alloc(global_arena, patches_cap * sizeof irpatch);
+				memcopy([patches], olddata, oldcap * sizeof irpatch);
+			}
+			[[patches] # [patches_count]] = irpatch
+			{
+				.off := w->cursor;
+				.v := ir_add_glob(v.s.literal.string, v.s.literal.string_len, false, true);
+			};
+			[patches_count] = [patches_count] + 1;
+			bwrite64(w, 0);
 			return true;
 		}
 		if(v.s.literal.tag == ast_literal_tag.boolean)
@@ -247,7 +268,7 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 				.type := ty_underlying(v.type);
 				.category := val_category.rvalue;
 				.s := [v.s.members # i];
-			});
+			}, patches, patches_count);
 		}
 		return true;
 	}
@@ -272,7 +293,7 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 				.type := [strct.members # i];
 				.category := val_category.rvalue;
 				.s := [v.s.members # i];
-			});
+			}, patches, patches_count);
 		}
 		return true;
 	}
@@ -297,7 +318,7 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val -> bool)
 			.type := v.type;
 			.category := val_category.rvalue;
 			.s := v.s.ptr@variable mut?->compile_time_storage;
-		});
+		}, patches, patches_count);
 	}
 	if(v.s.tag == sval_tag.assembly_reference)
 	{

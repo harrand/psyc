@@ -52,7 +52,9 @@ codegen_global_variable : func(var : variable mut? -> v0)
 	{
 		init_val = val_must_convert(val_from_node(ast_get_child(var->node, 1), ref(prog.global_scope), val_resolution.compile_time_only), var->type, var->node);
 	}
-	serialise_success ::= datalayout_serialise_compile_time_val(w, init_val);
+	glob_patches : irpatch mut? mut := zero;
+	glob_patches_count : u64 mut := 0;
+	serialise_success ::= datalayout_serialise_compile_time_val(w, init_val, ref glob_patches, ref glob_patches_count);
 	if(!serialise_success)
 	{
 		psyc_panic_begin(var->node);
@@ -60,11 +62,17 @@ codegen_global_variable : func(var : variable mut? -> v0)
 		psyc_panic_end(var->node);
 	}
 
+	globref ::= ir_add_glob(w->buf, w->cursor, ty_has_qual(var->type, tyqual.qual_mut), ty_is_ptr(var->type));
+	glob ::= ir_ref_glob(globref);
 	var->runtime_storage = rval
 	{
 		.tag := rval_tag.ptr;
 		.v := ir_add_glob(w->buf, w->cursor, ty_has_qual(var->type, tyqual.qual_mut), ty_is_ptr(var->type));
 	};
+	for(i = 0; i < glob_patches_count; i = i + 1)
+	{
+		irglob_add_patch(glob, [glob_patches # i]);
+	}
 };
 
 codegen_funcsig : func(fn : function mut? -> v0)

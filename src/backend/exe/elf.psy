@@ -168,6 +168,16 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 	bwrite64(w, 0); // p_memsz
 	bwrite64(w, page_size); // p_align
 
+	meta ::= x64p_encoding_metadata
+	{
+		.rodata_start_absolute_vaddr := rodata_begin_addr;
+		.data_and_bss_start_absolute_vaddr := data_and_bss_begin_addr;
+		.rodata_displacement_to_addrstart := code_begin_addr - rodata_begin_addr;
+		.data_displacement_to_addrstart := code_begin_addr - data_and_bss_begin_addr;
+		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + data_len);
+	};
+	lower_x64_irglob_apply_patches(meta);
+
 	// ok we should now be at rodata_segment_begin
 	// align to page
 	while(alignment_padding_req(w->cursor, page_size) != 0)
@@ -201,12 +211,7 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 	{
 		panic_assert_failure("code_segment_begin seems to be off");
 	}
-	meta ::= x64p_encoding_metadata
-	{
-		.rodata_displacement_to_addrstart := code_begin_addr - rodata_begin_addr;
-		.data_displacement_to_addrstart := code_begin_addr - data_and_bss_begin_addr;
-		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + data_len);
-	};
+	
 	// generate meta
 	code_len ::= bwrite_x64p_encode(w, p, meta) + 2;
 	[(w->buf # code_sz_towrite_twice)@u64 mut? # 0] = code_len;

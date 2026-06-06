@@ -73,3 +73,69 @@ lower_x64_irglob_usrdata_get_x64_idx : func(usrdata : u64 -> u64)
 	return usrdata & 0xffffffff;
 };
 
+lower_x64_irglob_apply_patches : func(meta : x64p_encoding_metadata -> v0)
+{
+	// the glob will have N patches
+	// the patches should refer to other globals, and at some offset.
+	// we need to serialise the absolute address of the global at that address in the globs memory.
+	// note that by this point we can assume all globals have been written out (in their non-patched form)
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
+	{
+		g ::= irapi.prog.globs # i;
+		globmem ::= g->data;
+		j : u64 mut;
+		for(j = 0; j < g->patches_count; j = j + 1)
+		{
+			cur ::= g->patches # j;
+			curmem ::= globmem # cur->off;
+			k : u64 mut;
+			if(irval_is_globref(cur->v))
+			{
+				target_glob ::= ir_ref_glob(cur->v);
+				target_globtype ::= lower_x64_irglob_usrdata_get_type(target_glob->usrdata);
+				target_glob_x64_idx ::= lower_x64_irglob_usrdata_get_x64_idx(target_glob->usrdata);
+				// get the byte offet
+				vaddr : u64 mut;
+				if(target_globtype == lower_x64_globtype.rodata)
+				{
+					vaddr = meta.rodata_start_absolute_vaddr;
+					for(k = 0; k < target_glob_x64_idx; k = k + 1)
+					{
+						vaddr = vaddr + [x64api.prog.rodata # k].size;
+					}
+				}
+				if(target_globtype == lower_x64_globtype.data)
+				{
+					vaddr = meta.data_and_bss_start_absolute_vaddr;
+					for(k = 0; k < target_glob_x64_idx; k = k + 1)
+					{
+						vaddr = vaddr + [x64api.prog.data # k].size;
+					}
+				}
+				if(target_globtype == lower_x64_globtype.bss)
+				{
+					vaddr = meta.data_and_bss_start_absolute_vaddr;
+					for(k = 0; k < x64api.prog.data_count; k = k + 1)
+					{
+						vaddr = vaddr + [x64api.prog.data # k].size;
+					}
+					for(k = 0; k < target_glob_x64_idx; k = k + 1)
+					{
+						vaddr = vaddr + [x64api.prog.bss # k].size;
+					}
+				}
+				// vaddr is the address.
+				// just write that at the memory
+				[curmem@u64 mut?] = vaddr;
+			}
+			else
+			{
+				psyc_panic_begin(zero);
+				putzstr("non-globref irpatches are not yet implemented.");
+				psyc_panic_end(zero);
+			}
+		}
+	}
+	
+};
