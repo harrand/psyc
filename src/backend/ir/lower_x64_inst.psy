@@ -1257,22 +1257,40 @@ lower_x64_fixup_disallowed_memory_operands : func(fn : irfunc mut?, fnx64 : x64f
 	// e.g imul is not allowed op0 to be r/m
 	x64_setfn(fn->idx);
 	i : u64 mut := 0;
+
+	tmp : x64v mut;
+	memsize : u64 mut;
+	intermediate : x64v mut;
 	while(i < fnx64->inst_count)
 	{
 		inst ::= fnx64->inst # i;
 		lhs ::= inst->operands # 0;
 		lhs_is_mem ::= x64v_is_any_mem([lhs]);
-		if(((inst->tag == x64i_tag.imul) || (inst->tag == x64i_tag.movzx) || (inst->tag == x64i_tag.movsx)) && lhs_is_mem)
+		if((inst->tag == x64i_tag.imul) && lhs_is_mem)
 		{
-			tmp ::= [lhs];
-			memsize ::= x64v_size(tmp);
-			intermediate ::= x64v_reg(x64_reg.rax, memsize);
+			tmp = [lhs];
+			memsize = x64v_size(tmp);
+			intermediate = x64v_reg(x64_reg.rax, memsize);
 			[lhs] = intermediate;
 			x64_position_before_inst(i);
 			x64_mov(intermediate, tmp);
 		}
 		else
 		{
+			if(((inst->tag == x64i_tag.movzx) || (inst->tag == x64i_tag.movsx)) && lhs_is_mem)
+			{
+				// basically want to zext/sext memory
+				// e.g movzx QWORD PTR [rbp - 40], al
+				// what we want to do is:
+				// movzx intermediate, al
+				// mov QWORD PTR[rbp - 40], intermediate
+				tmp = [lhs];
+				memsize = x64v_size(tmp);
+				intermediate = x64v_reg(x64_reg.rax, memsize);
+				[lhs] = intermediate;
+				x64_position_after_inst(i);
+				x64_mov(tmp, intermediate);
+			}
 			i = i + 1;
 		}
 	}
