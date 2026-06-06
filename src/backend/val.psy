@@ -1115,37 +1115,31 @@ val_from_blkinit : func(node : ast mut?, s : scope mut?, r : val_resolution -> v
 	init_type ::= type_from_typename_node(ast_get_child(node, 0), s);
 	init_count ::= node->children_count - 1;
 	inits_begin ::= ast_get_child(node, 1);
-	if(ty_is_struct(init_type))
-	{
-		return val_from_blkinit_struct(init_type, inits_begin, init_count, s, r, node);
-	}
-	if(ty_is_arr(init_type))
-	{
-		return val_from_blkinit_array(init_type, inits_begin, init_count, s, r, node);
-	}
-	psyc_error_begin(node);
-	putzstr("invalid block-initialiser of non-struct, non-array type ");
-	putchar('"');
-	putty(init_type);
-	putchar('"');
-	psyc_error_end(node);
-	return zero;
+	return val_from_blkinit_inner(init_type, inits_begin, init_count, s, r, node);
 };
 
-val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
+val_from_blkinit_inner : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
 {
-	count ::= ty_countof(type);
+	if(!ty_is_struct(type))
+	{
+		psyc_panic_begin(source);
+		putzstr("blkinit for non-struct type ");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		putzstr(" is not yet implemented (even though arrays should be)");
+		psyc_panic_end(source);
+	}
+	count ::= init_nodes_count;
 	i : u64 mut;
 
 	lowest_common_resolution : val_resolution mut := val_resolution.either;
 	for(i = 0; i < count; i = i + 1)
 	{
-		//cur_init ::= val_from_desiginit(type, init_nodes # i, s, r);
 		if(cur_init.tag == val_tag.runtime)
 		{
 			lowest_common_resolution = val_resolution.runtime_only;
 		}
-		//[inits # i] = cur_init;
 	}
 
 	// if lowest_common_resolution == either, then we can follow the desired resolution
@@ -1177,6 +1171,12 @@ val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_co
 	}
 	for(i = 0; i < count; i = i + 1)
 	{
+		if((init_nodes # i)->desiginit.descriptor == ast_desiginit_descriptor.ellipsis)
+		{
+			psyc_error_begin(init_nodes # i);
+			putzstr("ellipses are not yet implemented within blkinits");
+			psyc_error_end(init_nodes # i);
+		}
 		cur_init ::= val_from_desiginit(type, init_nodes # i, s, lowest_common_resolution);
 		if(lowest_common_resolution == val_resolution.runtime_only)
 		{
@@ -1220,14 +1220,6 @@ val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_co
 		};
 	}
 	return ret;
-};
-
-val_from_blkinit_array : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
-{
-	psyc_panic_begin(source);
-	putzstr("reached end of val_from_blkinit_struct");
-	psyc_panic_end(source);
-	return zero;
 };
 
 val_from_desiginit : func(type : tyid, node : ast mut?, s : scope mut?, r : val_resolution -> val)
