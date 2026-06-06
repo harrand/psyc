@@ -11,7 +11,29 @@ add_build_file : func(p : path -> v0)
 add_source_file : func(p : path -> v0)
 {
 	stats : file_stats mut;
-	path_get_stats(p, ref stats, file.cwd);
+	staterr ::= path_get_stats(p, ref stats, file.cwd);
+	if(staterr == err.notfound)
+	{
+		err_begin();
+		putzstr("file \0");
+		putchar('"');
+		putzstr(path2zstr(p));
+		putchar('"');
+		putzstr(" could not be found\0");
+		err_end();
+		return;
+	}
+	if(stats.size == 0)
+	{
+		warn_begin();
+		putzstr("file \0");
+		putchar('"');
+		putzstr(path2zstr(p));
+		putchar('"');
+		putzstr(" is empty, skipping...\0");
+		warn_end();
+		return;
+	}
 	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
 	f : file := path_open(p, file.cwd, file_access.read);
 	file_read(f, ptr, stats.size);
