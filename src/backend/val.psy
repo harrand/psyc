@@ -1117,11 +1117,11 @@ val_from_blkinit : func(node : ast mut?, s : scope mut?, r : val_resolution -> v
 	inits_begin ::= ast_get_child(node, 1);
 	if(ty_is_struct(init_type))
 	{
-		val_from_blkinit_struct(init_type, inits_begin, init_count, s, r, node);
+		return val_from_blkinit_struct(init_type, inits_begin, init_count, s, r, node);
 	}
 	if(ty_is_arr(init_type))
 	{
-		val_from_blkinit_array(init_type, inits_begin, init_count, s, r, node);
+		return val_from_blkinit_array(init_type, inits_begin, init_count, s, r, node);
 	}
 	psyc_error_begin(node);
 	putzstr("invalid block-initialiser of non-struct, non-array type ");
@@ -1135,18 +1135,17 @@ val_from_blkinit : func(node : ast mut?, s : scope mut?, r : val_resolution -> v
 val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
 {
 	count ::= ty_countof(type);
-	inits : val mut? := arena_alloc(global_arena, count * sizeof val);
 	i : u64 mut;
 
 	lowest_common_resolution : val_resolution mut := val_resolution.either;
 	for(i = 0; i < count; i = i + 1)
 	{
-		cur_init ::= val_from_node(init_nodes # i, s, r);
+		//cur_init ::= val_from_desiginit(type, init_nodes # i, s, r);
 		if(cur_init.tag == val_tag.runtime)
 		{
 			lowest_common_resolution = val_resolution.runtime_only;
 		}
-		[inits # i] = cur_init;
+		//[inits # i] = cur_init;
 	}
 
 	// if lowest_common_resolution == either, then we can follow the desired resolution
@@ -1166,16 +1165,61 @@ val_from_blkinit_struct : func(type : tyid, init_nodes : ast mut?, init_nodes_co
 		lowest_common_resolution = val_resolution.runtime_only;
 	}
 
+	rinits : rval mut? mut;
+	sinits : sval mut? mut;
 	if(lowest_common_resolution == val_resolution.runtime_only)
 	{
-		//return rval_from_blkinit_struct();
+		rinits = arena_alloc(global_arena, count * sizeof rval);
 	}
-	//return sval_from_blkinit_struct();
+	else
+	{
+		sinits = arena_alloc(global_arena, count * sizeof sval);
+	}
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur_init ::= val_from_desiginit(type, init_nodes # i, s, lowest_common_resolution);
+		if(lowest_common_resolution == val_resolution.runtime_only)
+		{
+			[rinits # i] = cur_init.r;
+		}
+		else
+		{
+			[sinits # i] = cur_init.s;
+		}
+	}
 
-	psyc_panic_begin(source);
-	putzstr("reached end of val_from_blkinit_struct");
-	psyc_panic_end(source);
-	return zero;
+	if(r == val_resolution.type_only)
+	{
+		return val_from_type(type);
+	}
+
+	ret ::= val mut
+	{
+		.tag := val_tag.compile_time;
+		.type := type;
+		.category := val_category.rvalue;
+	};
+	if(lowest_common_resolution == val_resolution.runtime_only)
+	{
+		ret.tag = val_tag.runtime;
+		// convert the inits list to chunked values...
+		psyc_panic_begin(source);
+		putzstr("blkinit at runtime is NYI");
+		psyc_panic_end(source);
+		ret.r = rval
+		{
+		};
+	}
+	else
+	{
+		ret.s = sval
+		{
+			.tag := sval_tag.struct_literal;
+			.members := sinits;
+			.members_count := count;
+		};
+	}
+	return ret;
 };
 
 val_from_blkinit_array : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
@@ -1184,6 +1228,54 @@ val_from_blkinit_array : func(type : tyid, init_nodes : ast mut?, init_nodes_cou
 	putzstr("reached end of val_from_blkinit_struct");
 	psyc_panic_end(source);
 	return zero;
+};
+
+val_from_desiginit : func(type : tyid, node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	desig ::= node->desiginit;
+	memidx : u64 mut := ~0;
+	memty : tyid mut := zero;
+	i : u64 mut;
+	if(ty_is_struct(type))
+	//if(desig.descriptor == ast_desiginit_descriptor.symbol)
+	{
+		symsstr ::= sstr{.data := desig.symbol; .len := desig.symbol_len;};
+		// todo: error if not struct
+		strct ::= ty_unwrap(type)->strct;
+		for(i = 0; i < strct.members_count; i = i + 1)
+		{
+			memsstr ::= [strct.member_names # i];
+			if(desig.descriptor == ast_desiginit_descriptor.symbol)
+			{
+				if(sstreql(symsstr, memsstr))
+				{
+					memidx = i;
+					memty = [strct.members # i];
+				}
+			}
+			else
+			{
+				if(i == desig.integer@_)
+				{
+					memidx = i;
+					memty = [strct.members # i];
+				}
+			}
+		}
+	}
+	if(memidx == ~0)
+	{
+		psyc_error_begin(node);
+		putzstr("cannot decipher member ");
+		putchar('"');
+		putbytes(desig.symbol, desig.symbol_len);
+		putchar('"');
+		putzstr(" of struct/array type ");
+		putty(type);
+		psyc_error_end(node);
+	}
+
+	return val_must_convert(val_from_node(ast_get_child(node, 0), s, r), memty, node);
 };
 
 val_from_sizeof : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
