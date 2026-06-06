@@ -154,7 +154,7 @@ datalayout_alignof_ty : func(type : tyid -> u64)
 
 datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val, patches : irpatch mut? mut?, patches_count : u64 mut? -> bool)
 {
-	patches_cap : u64 mut := 0;
+	patches_cap : u64 mut := [patches_count];
 	i : u64 mut;
 	sz ::= datalayout_sizeof_ty(v.type);
 	intsz : u64 mut := ty_integral_size(v.type);
@@ -299,15 +299,29 @@ datalayout_serialise_compile_time_val : func(w : bwriter mut?, v : val, patches 
 	}
 	if(v.s.tag == sval_tag.function_reference)
 	{
-		// we're gonna need to add a patch to the global. but we only have access to the data buffer - not the whole global. so gonna need to refactor
-		psyc_panic_begin(zero);
-		putzstr("static variable initialiser contains reference to function ");
-		putchar('"');
-		putsstr(v.s.ptr@function mut?->name);
-		putchar('"');
-		putzstr(", but serialising function references to IR global data buffers is not yet implemented, so i cannot generate this global for now. sorry.");
-		psyc_panic_end(zero);
-		return false;
+		// add patch...
+		if([patches] == zero)
+		{
+			patches_cap = 8;
+			[patches] = arena_alloc(global_arena, patches_cap * sizeof irpatch);
+		}
+		while([patches_count] >= patches_cap)
+		{
+			oldcap2 ::= patches_cap;
+			olddata2 ::= [patches];
+			patches_cap = patches_cap * 2;
+			[patches] = arena_alloc(global_arena, patches_cap * sizeof irpatch);
+			memcopy([patches], olddata2, oldcap2 * sizeof irpatch);
+		}
+		refd_function : function mut? := v.s.ptr@function?;
+		[[patches] # [patches_count]] = irpatch
+		{
+			.off := w->cursor;
+			.v := irval_funcref(refd_function->fnref);
+		};
+		[patches_count] = [patches_count] + 1;
+		bwrite64(w, 0);
+		return true;
 	}
 	if(v.s.tag == sval_tag.variable_reference)
 	{

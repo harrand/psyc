@@ -1221,14 +1221,24 @@ lower_x64_call : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 			x64_add_custom_instruction(x64_custom_inst_reg_lifetime_end, clobbers # (clobbers_count - (k + 1)), 1);
 		}
 	}
-	if(callee.tag == irval_tag.funcref)
+	else
 	{
-		// respect abi here...
-		// pass register params and SHIT
-		callfn ::= ir_ref_func(callee);
-		irabi_precall_x64(callfn->abi, params, params_count);
-		x64_call(lower_x64_irval(callee));
-		irabi_postcall_x64(callfn->abi, params, params_count, returns, returns_count);
+		if(callee.tag == irval_tag.funcref)
+		{
+			// respect abi here...
+			// pass register params and SHIT
+			callfn ::= ir_ref_func(callee);
+			irabi_precall_x64(callfn->abi, params, params_count);
+			x64_call(lower_x64_irval(callee));
+			irabi_postcall_x64(callfn->abi, params, params_count, returns, returns_count);
+		}
+		else
+		{
+			// todo: somehow deal with abiness for an absolute address of a function pointer.
+			irabi_precall_x64(irabi.psy, params, params_count);
+			x64_call(lower_x64_irval(callee));
+			irabi_postcall_x64(irabi.psy, params, params_count, returns, returns_count);
+		}
 	}
 };
 

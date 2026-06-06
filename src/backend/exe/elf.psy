@@ -170,12 +170,18 @@ encode_basic_elf_x64 : func(path : u8?, p : x64p mut? -> v0)
 
 	meta ::= x64p_encoding_metadata
 	{
+		.code_start_absolute_vaddr := code_begin_addr;
 		.rodata_start_absolute_vaddr := rodata_begin_addr;
 		.data_and_bss_start_absolute_vaddr := data_and_bss_begin_addr;
 		.rodata_displacement_to_addrstart := code_begin_addr - rodata_begin_addr;
 		.data_displacement_to_addrstart := code_begin_addr - data_and_bss_begin_addr;
 		.bss_displacement_to_addrstart := code_begin_addr - (data_and_bss_begin_addr + data_len);
 	};
+	old ::= x64api.validation;
+	x64api.validation = false;
+	x64p_patch_data(p, meta);
+	x64api.validation = old;
+
 	lower_x64_irglob_apply_patches(meta);
 
 	// ok we should now be at rodata_segment_begin

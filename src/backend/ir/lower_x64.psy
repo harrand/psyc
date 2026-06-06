@@ -218,29 +218,56 @@ lower_x64_save_callee_registers : func(fnidx : u64 -> v0)
 		if(inst->tag == x64i_tag.call)
 		{
 			// get all the registers this function clobbers
-			fnref ::= [inst->operands # 0];
-			call_fnidx ::= x64v_fn_get_idx(fnref);
-			callee ::= x64api.prog.funcs # call_fnidx;
-			ir_callee ::= irapi.prog.funcs # call_fnidx;
-			graph ::= igraph_build_func_x64(irapi.prog.funcs # call_fnidx, callee);
-			igraph_append_nodes_from_calls(ref graph, ir_callee, callee);
-			for(j = 0; j < graph.nodes_count; j = j + 1)
+			first_op ::= [inst->operands # 0];
+			if(x64v_is_fn(first_op))
 			{
-				node ::= graph.nodes # j;
-				if(node->tag == inode_tag.reg)
+				fnref ::= [inst->operands # 0];
+				call_fnidx ::= x64v_fn_get_idx(fnref);
+				callee ::= x64api.prog.funcs # call_fnidx;
+				ir_callee ::= irapi.prog.funcs # call_fnidx;
+				graph ::= igraph_build_func_x64(irapi.prog.funcs # call_fnidx, callee);
+				igraph_append_nodes_from_calls(ref graph, ir_callee, callee);
+				for(j = 0; j < graph.nodes_count; j = j + 1)
 				{
-					// we save this one
-					// todo: need some way of knowing if it was an sse register
-					regidx ::= igraph_find_reg(ref mygraph, node->reg, zero);
-					// dont save rsp or any return regisers (psy64 abi)
-					if((node->reg != x64_reg.rsp) && (node->reg != x64_reg.rax) && (node->reg != x64_reg.rbp) && (node->reg != x64_reg.rdx) && (regidx != ~0))
+					node ::= graph.nodes # j;
+					if(node->tag == inode_tag.reg)
 					{
-						reg_my_side ::= mygraph.nodes # regidx;
-						// if we used the register before and use it afterwards, then we must assume this call will screw us up
-						if(((reg_my_side->begin_inst + offset) < i) && ((reg_my_side->end_inst + offset) > i))
+						// we save this one
+						// todo: need some way of knowing if it was an sse register
+						regidx ::= igraph_find_reg(ref mygraph, node->reg, zero);
+						// dont save rsp or any return regisers (psy64 abi)
+						if((node->reg != x64_reg.rsp) && (node->reg != x64_reg.rax) && (node->reg != x64_reg.rbp) && (node->reg != x64_reg.rdx) && (regidx != ~0))
 						{
-							[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
-							saved_regs_count = saved_regs_count + 1;
+							reg_my_side ::= mygraph.nodes # regidx;
+							// if we used the register before and use it afterwards, then we must assume this call will screw us up
+							if(((reg_my_side->begin_inst + offset) < i) && ((reg_my_side->end_inst + offset) > i))
+							{
+								[saved_regs # saved_regs_count] = x64v_reg(node->reg, 64);
+								saved_regs_count = saved_regs_count + 1;
+							}
+						}
+					}
+				}
+			}
+			else
+			{
+				// we are not calling a fnref directly
+				// we dont know exactly what we are calling
+				// so we better save everything that we're going to use.
+				for(j = 0; j < mygraph.nodes_count; j = j + 1)
+				{
+					my_cur_node ::= mygraph.nodes # j;
+					if(my_cur_node->tag == inode_tag.reg)
+					{
+						// a register that is being used
+						if((my_cur_node->reg != x64_reg.rsp) && (my_cur_node->reg != x64_reg.rax) && (my_cur_node->reg != x64_reg.rbp) && (my_cur_node->reg != x64_reg.rdx))
+						{
+							// ideally later than our call
+							if(((my_cur_node->begin_inst + offset) < i) && ((my_cur_node->end_inst + offset) > i))
+							{
+								[saved_regs # saved_regs_count] = x64v_reg(my_cur_node->reg, 64);
+								saved_regs_count = saved_regs_count + 1;
+							}
 						}
 					}
 				}

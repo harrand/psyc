@@ -131,9 +131,19 @@ lower_x64_irglob_apply_patches : func(meta : x64p_encoding_metadata -> v0)
 			}
 			else
 			{
-				psyc_panic_begin(zero);
-				putzstr("non-globref irpatches are not yet implemented.");
-				psyc_panic_end(zero);
+				if(irval_is_funcref(cur->v))
+				{
+					fnidx ::= irval_funcref_get_idx(cur->v);
+					irfn ::= irapi.prog.funcs # fnidx;
+					x64fn ::= x64api.prog.funcs # (irfn->idx);
+					[curmem@u64 mut?] = meta.code_start_absolute_vaddr + x64fn->offset_bytes;
+				}
+				else
+				{
+					psyc_panic_begin(zero);
+					putzstr("non-globref, non-funcref irpatches are not yet implemented.");
+					psyc_panic_end(zero);
+				}
 			}
 		}
 	}
