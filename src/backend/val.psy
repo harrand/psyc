@@ -207,7 +207,12 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	}
 	if(ast_is_expr(node, ast_expr_tag.symbol))
 	{
-		return val_from_symbol(node, s);
+		symret ::= val_from_symbol(node, s);
+		if(r == val_resolution.type_only)
+		{
+			return val_from_type(symret.type);
+		}
+		return symret;
 	}
 	if(ast_is_expr(node, ast_expr_tag.call))
 	{
@@ -556,7 +561,9 @@ val_setup_call_params : func(callee : val, params_nodes : ast mut?, params_nodes
 	for(i = 0; i < params_nodes_count; i = i + 1)
 	{
 		pnode ::= params_nodes # i;
-		cur ::= val_must_convert(val_from_node(pnode, s, r), [callee_fnty.param_types # i], pnode);
+		curv ::= val_from_node(pnode, s, r);
+		is_typeonly ::= r == val_resolution.type_only;
+		cur ::= val_must_convert(curv, [callee_fnty.param_types # i], pnode);
 		[call_params # i] = cur;
 	}
 	return call_params;
@@ -819,13 +826,19 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	{
 		lhs = codegen_load_if_lvalue(lhs, lhs_node);
 	}
+	if(biop_node->biop.op == ast_biop_op.at)
+	{
+		// for at, we do actually load if the lhs type is a ptr
+		if(ty_is_ptr(lhs.type))
+		{
+			lhs = codegen_load_if_lvalue(lhs, lhs_node);
+		}
+	}
 	rhs = codegen_load_if_lvalue(rhs, rhs_node);
 	if(biop_node->biop.op != ast_biop_op.at)
 	{
 		rhs = val_must_convert(rhs, lhs.type, rhs_node);
 	}
-
-
 
 	ret_type : tyid mut := zero;
 	if(ast_biop_is_compare(biop_node))
@@ -929,7 +942,7 @@ val_from_biop : func(biop_node : ast mut?, s : scope mut?, r : val_resolution ->
 	}
 
 	ret_category : val_category mut := val_category.rvalue;
-	if(biop_node->biop.op == ast_biop_op.assign)
+	if((biop_node->biop.op == ast_biop_op.assign))
 	{
 		ret_category = val_category.lvalue;
 	}
@@ -1035,7 +1048,7 @@ val_from_field : func(node : ast mut?, s : scope mut?, r : val_resolution -> val
 				{
 					.tag := lhs.tag;
 					.type := memtype;
-					.category := lhs.category;
+					.category := val_category.lvalue;
 					.r := rval_siphon_member(lhs.r, datalayout_offsetof_struct(lhsty, i), datalayout_sizeof_ty([strct.members # i]));
 				};
 			}
@@ -1064,7 +1077,7 @@ val_from_ptrfield : func(node : ast mut?, s : scope mut?, r : val_resolution -> 
 {
 	// lhs value is some kind of ptr
 	lhs_node ::= ast_get_child(node, 0);
-	lhs ::= val_from_node(lhs_node, s, r);
+	lhs ::= codegen_load_if_lvalue(val_from_node(lhs_node, s, r), node);
 	rhs_symbol ::= ast_get_child(node, 1)->symbol;
 	if(!ty_is_ptr(lhs.type))
 	{

@@ -418,7 +418,7 @@ codegen_node : func(node : ast mut?, usrdata : v0? weak -> v0)
 		{
 			init_node ::= ast_get_child(node, 1);
 			init_val ::= val_ensure_runtime(val_must_convert(val_from_node(init_node, ref(fn->impl_scope), val_resolution.either), decl_var->type, init_node), init_node);
-			codegen_store(val_variable_reference(decl_var, init_node), init_val, init_node);
+			codegen_store(val_variable_reference(decl_var, init_node), codegen_load_if_lvalue(init_val, init_node), init_node);
 		}
 		return;
 	}
@@ -459,7 +459,7 @@ codegen_store : func(ptr_val : val, store_val : val, source : ast mut? -> v0)
 	// store store_val into ptr_val at runtime
 	// todo: compile-time version?
 	ptr ::= val_ensure_runtime(ptr_val, source);
-	v ::= val_ensure_runtime(val_must_convert(store_val, ptr.type, source), source);
+	v ::= val_must_convert(codegen_load_if_lvalue(val_ensure_runtime(store_val, source), source), ptr.type, source);
 	if((v.r.tag == rval_tag.scalar) || (v.r.tag == rval_tag.ptr))
 	{
 		// easy peasy
