@@ -54,7 +54,8 @@ lower_x64_irval : func(v : irval -> x64v)
 	}
 	if(v.tag == irval_tag.imm)
 	{
-		return x64v_imm(irval_imm_get_value(v), irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
+		immval ::= irval_imm_get_value(v);
+		return x64v_imm(immval, irsz_size_bytes(irval_imm_get_irsz(v)) * 8);
 	}
 	return zero;
 };
@@ -64,6 +65,12 @@ lower_x64_irval_but_truncate_imm64s_to_imm32 : func(v_ : irval -> x64v)
 	v : irval mut := v_;
 	if((v.tag == irval_tag.imm) && (irval_imm_get_irsz(v) == irsz.q))
 	{
+		immval ::= irval_imm_get_value(v);
+		if((immval & 0x00000000ffffffff) != immval)
+		{
+			// immval is truly 64 bit, turn it into a globref
+			return lower_x64_irval_but_turn_imms_into_globals(v);
+		}
 		irval_imm_set_irsz(ref v, irsz.d);
 	}
 	return lower_x64_irval(v);
