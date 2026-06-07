@@ -4,6 +4,7 @@ arena : struct
 	res : u64;
 	com : u64;
 	cur : u64;
+	aalign : u64;
 };
 
 arena_create_virtual : func(reserve : u64, initial_commit : u64, out : arena mut? -> v0)
@@ -11,6 +12,7 @@ arena_create_virtual : func(reserve : u64, initial_commit : u64, out : arena mut
 	out->res = reserve;
 	out->com = initial_commit;
 	out->cur = 0;
+	out->aalign = 1;
 	// 0x00 = PROT_NONE
 	// 0x22 = MAP_PRIVATE | MAP_ANONYMOUS
 	// reserve
@@ -28,9 +30,47 @@ arena_create_preallocated : func(ptr : v0? weak, len : u64, out : arena mut? -> 
 	out->ptr = ptr;
 };
 
+arena_align : func(a : arena mut?, align : u64 -> u64)
+{
+	addr ::= (a->ptr)@u64 + a->cur;
+	padding ::= (-addr) & (align - 1);
+	a->cur = a->cur + padding;
+	return padding;
+};
+
+arena_auto_align : func(a : arena mut?, align : u64 -> v0)
+{
+	a->aalign = align;
+};
+
+_arena_dub : func(a : arena mut? -> v0)
+{
+	if(a->com = 0)
+	{
+		a->com = 4096;
+	}
+	byteptr ::= (a->ptr)@u8?;
+	offset ::= byteptr # a->com;
+	linux_mprotect(a->ptr, a->com * 2, 0x03);
+	a->com = a->com * 2;
+};
+
 arena_alloc : func(a : arena mut?, len : u64 -> v0? weak)
 {
-	return a->ptr;
+	while((a->cur + len) > (a->com))
+	{
+		_arena_dub(a);
+	}
+	addr ::= a->ptr@u64 mut;
+	arena_align(a, a->aalign);
+	addr = addr + a->cur;
+	a->cur = a->cur + len;
+	return addr@v0? weak;
+};
+
+arena_clear : func(a : arena mut? -> v0)
+{
+	a->cur = 0;
 };
 
 // dont call this on a preallocated arena
