@@ -61,8 +61,12 @@ path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> e
 	{
 		return err.badparam;
 	}
-	__linux_stat2file_stats(ref linux_out, stats);
-	return zero;
+	if(linux_err == 0)
+	{
+		__linux_stat2file_stats(ref linux_out, stats);
+		return zero;
+	}
+	return err.unknown;
 };
 
 path_open : func(p : path, relative_to : file, access : file_access -> file)
@@ -73,6 +77,20 @@ path_open : func(p : path, relative_to : file, access : file_access -> file)
 		linux_dirfd = -100; // AT_FDCWD
 	}
 	return linux_openat(linux_dirfd, path2zstr(p), 0, access@s64)@s64@file;
+};
+
+file_close : func(f : file -> err)
+{
+	linux_err : s32 := linux_close(f@s64@s32);
+	if(linux_err == -9) // EBADF
+	{
+		return err.badparam;
+	}
+	if(linux_err == 0)
+	{
+		return zero;
+	}
+	return err.unknown;
 };
 
 file_get_error : func(f : file -> err)
