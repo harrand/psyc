@@ -1,11 +1,13 @@
 lex_entry_tag : enum
 {
-	// entry.data is the token type you have just found.
-	.finish := 1;
-	// discard the current range - you've probably hit a comment or whitespace.
-	.discard := 2;
 	// syntax error
-	.error := 3;
+	.error := 0;
+	// keep going
+	.continue := 1;
+	// entry.data is the token type you have just found.
+	.finish := 2;
+	// discard the current range - you've probably hit a comment or whitespace.
+	.discard := 3;
 };
 
 lex_entry : struct
@@ -67,7 +69,7 @@ lex_init_main : func(-> v0)
 
 	// lex_main + <anything else> => error
 	out.tag = lex_entry_tag.error;
-	out.data = zero;
+	out.data = token_tag.semicol;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
 	{
@@ -85,7 +87,7 @@ lex_init_main : func(-> v0)
 	[lex_main.tbl # '\t'] = out;
 
 	// lex_main + a-zA-Z_ => symbol_continuation
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.data = zero;
 	out.next = ref lex_symbol_continuation;
 
@@ -162,7 +164,7 @@ lex_init_symbol_continuation : func(-> v0)
 	}
 
 	// lex_symbol + a-zA-Z0-9_
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.data = zero;
 	out.next = ref lex_symbol_continuation;
 
@@ -241,7 +243,7 @@ lex_init_string_literal : func(-> v0)
 	i : u64 mut;
 
 	// string_literal + <anything else> => lex_string_literal
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.data = zero;
 	out.next = ref lex_string_literal;
 	for(i = 0; i < 255; i = i + 1)
@@ -262,7 +264,7 @@ lex_init_char_literal : func(-> v0)
 	i : u64 mut;
 
 	// char_literal + <anything else> => lex_char_literal
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.data = zero;
 	out.next = ref lex_char_literal;
 	for(i = 0; i < 255; i = i + 1)
@@ -290,15 +292,15 @@ lex_init_number_prefix : func(-> v0)
 		[lex_number_prefix.tbl # i] = out;
 	}
 	// number_prefix + 'x' => lex_hex
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_hex;
 	[lex_number_prefix.tbl # 'x'] = out;
 	// number_prefix + 'b' => lex_binary
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_binary;
 	[lex_number_prefix.tbl # 'b'] = out;
 	// number_prefix + <any digit> => lex_decimal
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_binary;
 	[lex_number_prefix.tbl # '0'] = out;
 	[lex_number_prefix.tbl # '1'] = out;
@@ -326,7 +328,7 @@ lex_init_decimal : func(-> v0)
 		[lex_decimal.tbl # i] = out;
 	}
 	// lex_decimal + <any_digit> => lex_decimal
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_decimal;
 	[lex_decimal.tbl # '0'] = out;
 	[lex_decimal.tbl # '1'] = out;
@@ -356,7 +358,7 @@ lex_init_hex : func(-> v0)
 		[lex_hex.tbl # i] = out;
 	}
 	// lex_hex + <any_digit> => lex_hex
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_hex;
 	[lex_hex.tbl # '0'] = out;
 	[lex_hex.tbl # '1'] = out;
@@ -396,7 +398,7 @@ lex_init_binary : func(-> v0)
 		[lex_binary.tbl # i] = out;
 	}
 	// lex_binary + <any_digit> => lex_binary
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_binary;
 	[lex_binary.tbl # '0'] = out;
 	[lex_binary.tbl # '1'] = out;
@@ -406,7 +408,7 @@ lex_init_precomment : func(-> v0)
 {
 	out : lex_entry mut;
 	// main + '/' => lex_precomment
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_precomment;
 	[lex_main.tbl # '/'] = out;
 
@@ -417,7 +419,7 @@ lex_init_precomment : func(-> v0)
 	out.next = zero;
 
 	// lex_precomment + '/' => lex_comment
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_comment;
 
 	[lex_precomment.tbl # '/'] = out;
@@ -426,7 +428,7 @@ lex_init_precomment : func(-> v0)
 lex_init_comment : func(-> v0)
 {
 	out : lex_entry mut;
-	out.tag = zero;
+	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_comment;
 	// everything but a newline recurses forever
 	i : u64 mut;

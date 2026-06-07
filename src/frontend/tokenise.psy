@@ -147,15 +147,21 @@ tokenise_state_reset : func(state : tokenise_state mut? -> v0)
 
 tokenise_done : func(state : tokenise_state mut? -> bool)
 {
-	return (state->src_len == 0);
+	return state->cursor >= state->src_len;
 };
 
 tokenise_step : func(state : tokenise_state mut? -> v0)
 {
-	entry : lex_entry mut? := state->cur_tbl->tbl # [state->src # state->cursor];
+	entry : lex_entry mut? := lex_main.tbl # [state->src # state->cursor];
 	out_tok : token mut;
 	// index into the table and get the entry
-	if(entry->tag == zero)
+	if(entry->tag == lex_entry_tag.error)
+	{
+		err_begin();
+		putzstr("syntax error\0");
+		err_end();
+	}
+	if(entry->tag == lex_entry_tag.continue)
 	{
 		putzstr("KEEP GOING");
 		state->cur_tbl = entry->next;
@@ -176,8 +182,7 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	}
 	else
 	{
-		state->src = (state->src # 1);
-		state->src_len = (state->src_len - 1);
+		state->cursor = state->cursor + 1;
 	}
 };
 
@@ -190,16 +195,10 @@ tokenise : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 	state.cursor = 0;
 	tokenise_state_reset(ref state);
 
-	mytok : token mut;
-	mytok.tag = zero;
-
 	while(tokenise_done(ref state) == false)
 	{
 		tokenise_step(ref state);
 	}
-
-	token_buffer_append(state.toks, ref mytok);
-	token_buffer_append(state.toks, ref mytok);
 
 	if(args_should_dump_tokens())
 	{
