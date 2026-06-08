@@ -116,6 +116,16 @@ file_read : func(f : file, out : u8 mut?, out_size : u64 -> err)
 __linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
 {
 	out->size = s->st_size@u64;
+	out->type = file_type.notfound;
+	type ::= s->st_mode & 0xf000;
+	if(type == 0x4000)
+	{
+		out->type = file_type.dir;
+	}
+	if(type == 0x8000)
+	{
+		out->type = file_type.file;
+	}
 };
 
 zstr2path : func(zstr : u8? -> path)
