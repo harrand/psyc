@@ -130,10 +130,11 @@ dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 
 tokenise_state : struct
 {
+	src : source;
 	toks : token_buffer mut?;
-	src : u8?;
-	src_len : u64;
 	cursor : u64;
+	line : u64;
+	col : u64;
 
 	cur_tbl : lex_table mut?;
 	cur_begin : u64;
@@ -147,18 +148,30 @@ tokenise_state_reset : func(state : tokenise_state mut? -> v0)
 
 tokenise_done : func(state : tokenise_state mut? -> bool)
 {
-	return state->cursor >= state->src_len;
+	return state->cursor >= prog_get_source(state->src)->src_len;
 };
 
 tokenise_step : func(state : tokenise_state mut? -> v0)
 {
-	entry : lex_entry mut? := lex_main.tbl # [state->src # state->cursor];
+	f ::= prog_get_source(state->src);
+	entry : lex_entry mut? := lex_main.tbl # [f->src # state->cursor];
 	out_tok : token mut;
 	// index into the table and get the entry
 	if(entry->tag == lex_entry_tag.error)
 	{
 		err_begin();
-		putzstr("syntax error\0");
+		putzstr("syntax error at \0");
+		putzstr(path2zstr(f->path));
+		putchar('(');
+		putuint(state->line);
+		putchar(':');
+		putuint(state->col);
+		putzstr("): unsupported character '\0");
+		ch ::= [f->src # state->cursor];
+		putchar(ch);
+		putzstr("' (char code \0");
+		putsint(ch);
+		putzstr(")\n\0");
 		err_end();
 	}
 	if(entry->tag == lex_entry_tag.continue)
@@ -191,10 +204,11 @@ tokenise : func(toks : token_buffer mut?, s : source -> v0)
 	srcfile ::= prog_get_source(s);
 
 	state : tokenise_state mut;
+	state.src = s;
 	state.toks = toks;
-	state.src = srcfile->src;
-	state.src_len = srcfile->src_len;
 	state.cursor = 0;
+	state.line = 1;
+	state.col = 1;
 	tokenise_state_reset(ref state);
 
 	while(tokenise_done(ref state) == false)
