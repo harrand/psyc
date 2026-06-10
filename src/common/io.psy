@@ -36,3 +36,76 @@ putsint : func(i : s64 weak -> v0)
 		putuint(i@u64);
 	}
 };
+
+putcol : enum
+{
+	.reset := 0;
+	.red := 1;
+	.red_underline := 2;
+	.yellow := 3;
+	.yellow_underline := 4;
+	.blue := 5;
+	.blue_underline := 6;
+	.green := 7;
+	.green_underline := 8;
+};
+
+putcol_tbl ::= func(-> v0)[countof putcol]
+{
+	.0 := colour_reset;
+	.1 := colour_red;
+	.2 := colour_red_underline;
+	.3 := colour_yellow;
+	.4 := colour_yellow_underline;
+	.5 := colour_blue;
+	.6 := colour_blue_underline;
+	.7 := colour_green;
+	.8 := colour_green_underline;
+};
+
+put_setcol : func(col : putcol -> v0)
+{
+	[putcol_tbl # col@s64]();
+};
+
+putsrc : func(s : source, begin : u64, end : u64, col : putcol -> v0)
+{
+	src ::= prog_get_source(s);
+	line_begin : u64 mut := 0;
+	line_begin_cursor : u64 mut := 0;
+
+	i : u64 mut;
+	for(i = 0; i < begin; i = i + 1)
+	{
+		if([src->src # i] == '\n')
+		{
+			line_begin = line_begin + 1;
+			line_begin_cursor = i;
+		}
+	}
+
+	line_end : u64 mut := 0;
+	line_end_cursor : u64 mut := 0;
+	
+	for(i = begin; i < end; i = i + 1)
+	{
+		if([src->src # i] == '\n')
+		{
+			line_end = line_begin + 1;
+		}
+	}
+	for(i = end; (i < src->src_len) && ([src->src # i] != '\n'); i = i + 1)
+	{
+	}
+	line_end_cursor = i;
+
+	// print the lines containing begin/end
+	// but highlight the specific part
+	colour_reset();
+	putchars(src->src # line_begin_cursor, begin - line_begin_cursor);
+	put_setcol(col);
+	putchars(src->src # begin, end - begin);
+	colour_reset();
+	putchars(src->src # end, line_end_cursor - end);
+	putchar('\n');
+};
