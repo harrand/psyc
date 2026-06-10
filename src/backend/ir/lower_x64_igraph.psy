@@ -493,31 +493,44 @@ igraph_append_nodes_from_calls : func(g : igraph mut?, fn : irfunc mut?, fnx64 :
 		inst ::= fnx64->inst # i;
 		if(inst->tag == x64i_tag.call)
 		{
-			call_fnidx ::= x64v_fn_get_idx([inst->operands # 0]);
-			if(call_fnidx != fn->idx)
+			firstop ::= [inst->operands # 0];
+			if(x64v_is_fn(firstop))
 			{
-				callee ::= irapi.prog.funcs # call_fnidx;
-				callee_x64 ::= x64api.prog.funcs # call_fnidx;
-				callee_graph : igraph mut := igraph_build_func_x64(callee, callee_x64);
-				igraph_append_nodes_from_calls(ref callee_graph, callee, callee_x64);
-				for(j = 0; j < callee_graph.nodes_count; j = j + 1)
+				call_fnidx ::= x64v_fn_get_idx([inst->operands # 0]);
+				if(call_fnidx != fn->idx)
 				{
-					node : inode mut := [callee_graph.nodes # j];
-					if(node.tag == inode_tag.reg)
+					callee ::= irapi.prog.funcs # call_fnidx;
+					callee_x64 ::= x64api.prog.funcs # call_fnidx;
+					callee_graph : igraph mut := igraph_build_func_x64(callee, callee_x64);
+					igraph_append_nodes_from_calls(ref callee_graph, callee, callee_x64);
+					for(j = 0; j < callee_graph.nodes_count; j = j + 1)
 					{
-						node.begin_inst = i;
-						node.end_inst = i;
-						idx ::= igraph_get_or_add_node(g, node);
-						ournode ::= g->nodes # idx;
-						if(ournode->begin_inst > i)
+						node : inode mut := [callee_graph.nodes # j];
+						if(node.tag == inode_tag.reg)
 						{
-							ournode->begin_inst = i;
-						}
-						if(ournode->end_inst < i)
-						{
-							ournode->end_inst = i;
+							node.begin_inst = i;
+							node.end_inst = i;
+							idx ::= igraph_get_or_add_node(g, node);
+							ournode ::= g->nodes # idx;
+							if(ournode->begin_inst > i)
+							{
+								ournode->begin_inst = i;
+							}
+							if(ournode->end_inst < i)
+							{
+								ournode->end_inst = i;
+							}
 						}
 					}
+				}
+			}
+			else
+			{
+				// unknown function. have no choice but to add *all* registers :/
+				k : u64 mut;
+				for(k = 0; k < (countof x64_reg - 1); k = k + 1)
+				{
+					igraph_get_or_add_reg(g, k@s64@x64_reg, i);
 				}
 			}
 		}

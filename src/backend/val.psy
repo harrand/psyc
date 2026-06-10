@@ -254,6 +254,10 @@ val_from_node_inner : func(node : ast mut?, s : scope mut?, r : val_resolution -
 	{
 		return val_from_alignof(node, s, r);
 	}
+	if(ast_is_expr(node, ast_expr_tag.countof_t))
+	{
+		return val_from_countof(node, s, r);
+	}
 	// todo: impl
 	psyc_panic_begin(node);
 	putzstr("reached end of val_from_node_inner");
@@ -574,7 +578,7 @@ val_from_call : func(call_node : ast mut?, s : scope mut?, r : val_resolution ->
 {
 	i : u64 mut;
 	// callee must be some type of callable
-	callee ::= val_from_node(ast_get_child(call_node, 0), s, r);
+	callee ::= codegen_load_if_lvalue(val_from_node(ast_get_child(call_node, 0), s, r), call_node);
 	callee_fnty ::= ty_unwrap(callee.type)->fn;
 	if(!ty_is_fn(callee.type))
 	{
@@ -1133,14 +1137,13 @@ val_from_blkinit : func(node : ast mut?, s : scope mut?, r : val_resolution -> v
 
 val_from_blkinit_inner : func(type : tyid, init_nodes : ast mut?, init_nodes_count : u64, s : scope mut?, r : val_resolution, source : ast mut? -> val)
 {
-	if(!ty_is_struct(type))
+	if(!ty_is_struct(type) && !ty_is_arr(type))
 	{
-		psyc_panic_begin(source);
-		putzstr("blkinit for non-struct type ");
+		psyc_error_begin(source);
+		putzstr("blkinit is invalid for non-struct, non-array type ");
 		putchar('"');
 		putty(type);
 		putchar('"');
-		putzstr(" is not yet implemented (even though arrays should be)");
 		psyc_panic_end(source);
 	}
 	count ::= init_nodes_count;
@@ -1225,9 +1228,14 @@ val_from_blkinit_inner : func(type : tyid, init_nodes : ast mut?, init_nodes_cou
 	}
 	else
 	{
+		rettag : sval_tag mut := sval_tag.struct_literal;
+		if(!ty_is_struct(type))
+		{
+			rettag = sval_tag.array_literal;
+		}
 		ret.s = sval
 		{
-			.tag := sval_tag.struct_literal;
+			.tag := rettag;
 			.members := sinits;
 			.members_count := count;
 		};
@@ -1268,6 +1276,11 @@ val_from_desiginit : func(type : tyid, node : ast mut?, s : scope mut?, r : val_
 			}
 		}
 	}
+	else
+	{
+		memidx = desig.integer@u64;
+		memty = ty_underlying(type);
+	}
 	if(memidx == ~0)
 	{
 		psyc_error_begin(node);
@@ -1295,6 +1308,13 @@ val_from_alignof : func(node : ast mut?, s : scope mut?, r : val_resolution -> v
 	typename_node ::= ast_get_child(node, 0);
 	type ::= type_from_typename_node(typename_node, s);
 	return val_from_integer_literal(datalayout_alignof_ty(type));
+};
+
+val_from_countof : func(node : ast mut?, s : scope mut?, r : val_resolution -> val)
+{
+	typename_node ::= ast_get_child(node, 0);
+	type ::= type_from_typename_node(typename_node, s);
+	return val_from_integer_literal(ty_countof(type));
 };
 
 val_function_reference : func(fn : function mut? -> val)
@@ -2107,6 +2127,14 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_bitwise_and(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.logical_or)
+	{
+		return rval_from_biop_logical_or(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.logical_and)
+	{
+		return rval_from_biop_logical_and(lhs, rhs, s, source);
+	}
 	if(op == ast_biop_op.compare_equal)
 	{
 		return rval_from_biop_compare_equal(lhs, rhs, s, source);
@@ -2218,6 +2246,26 @@ rval_from_biop_bitwise_or : func(lhs : val, rhs : val, s : scope mut?, source : 
 };
 
 rval_from_biop_bitwise_and : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_and(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_logical_or : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_or(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_logical_and : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
 {
 	// always assume these are scalars
 	return rval
