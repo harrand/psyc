@@ -175,12 +175,23 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	{
 		//putzstr("KEEP GOING\0");
 	}
-	if(entry->tag == lex_entry_tag.finish)
+	if(entry->tag == lex_entry_tag.finish_exclusive)
 	{
 		//putzstr("FINISH\0");
 		out_tok.tag = entry->data;
 		out_tok.begin = state->cur_begin;
 		out_tok.end = state->cursor;
+		token_buffer_append(state->toks, ref out_tok);
+		// todo: set srcloc?
+		tokenise_state_reset(state);
+		should_advance = false;
+	}
+	if(entry->tag == lex_entry_tag.finish_inclusive)
+	{
+		//putzstr("FINISH\0");
+		out_tok.tag = entry->data;
+		out_tok.begin = state->cur_begin;
+		out_tok.end = state->cursor + 1;
 		token_buffer_append(state->toks, ref out_tok);
 		// todo: set srcloc?
 		tokenise_state_reset(state);
@@ -381,7 +392,7 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 	for(i = 0; i < len; i = i + 1)
 	{
 		ent = ((tbl->tbl) # [zstr # i]);
-		if((ent->tag) == (lex_entry_tag.finish))
+		if((ent->tag == lex_entry_tag.finish_exclusive) || (ent->tag == lex_entry_tag.finish_inclusive))
 		{
 			if((ent->next) == zero)
 			{
@@ -414,7 +425,7 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 	{
 		last ::= [zstr # len];
 		ent = ((tbl->tbl) # last);
-		if((ent->tag) == (lex_entry_tag.finish))
+		if((ent->tag == lex_entry_tag.finish_exclusive) || (ent->tag == lex_entry_tag.finish_inclusive))
 		{
 			if(ent->data != token_tag.symbol)
 			{
@@ -429,13 +440,13 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 				err_end();
 			}
 		}
-		ent->tag = lex_entry_tag.finish;
+		ent->tag = lex_entry_tag.finish_inclusive;
 		ent->data = t;
 	}
 	if(break != zero)
 	{
 		winning_entry : lex_entry mut;
-		winning_entry.tag = lex_entry_tag.finish;
+		winning_entry.tag = lex_entry_tag.finish_exclusive;
 		winning_entry.data = t;
 		for(i = 0; i < 255; i = i + 1)
 		{
