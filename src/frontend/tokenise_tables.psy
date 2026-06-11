@@ -4,8 +4,10 @@ lex_entry_tag : enum
 	.error := 0;
 	// keep going
 	.continue := 1;
-	// entry.data is the token type you have just found.
-	.finish := 2;
+	// entry.data is the token type you have just found. char containing this entry does not count towards the lexeme
+	.finish_exclusive := 2;
+	// entry.data is the token type you have just found. char containing this entry counts towards the lexeme
+	.finish_inclusive := 2;
 	// discard the current range - you've probably hit a comment or whitespace.
 	.discard := 3;
 };
@@ -152,6 +154,12 @@ lex_init_main : func(-> v0)
 	[lex_main.tbl # ' '] = out;
 	[lex_main.tbl # '\t'] = out;
 
+	// lex_main + " => string_literal
+	out.tag = lex_entry_tag.continue;
+	out.data = zero;
+	out.next = ref lex_string_literal;
+	[lex_main.tbl # '"'] = out;
+
 	// lex_main + a-zA-Z_ => symbol_continuation
 	out.tag = lex_entry_tag.continue;
 	out.data = zero;
@@ -221,7 +229,7 @@ lex_install_symbol_continuation : func(tbl : lex_table mut? -> v0)
 	i : u64 mut;
 
 	// lex_symbol + <anything else> => finish
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.symbol;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
@@ -322,7 +330,7 @@ lex_init_string_literal : func(-> v0)
 		[lex_string_literal.tbl # i] = out;
 	}
 	// string_literal + '"' => finish (string literal)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.string_literal;
 	out.next = zero;
 	[lex_string_literal.tbl # '"'] = out;
@@ -343,7 +351,7 @@ lex_init_char_literal : func(-> v0)
 		[lex_char_literal.tbl # i] = out;
 	}
 	// char_literal + '"' => finish (char literal)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.char_literal;
 	out.next = zero;
 	[lex_char_literal.tbl # '"'] = out;
@@ -355,7 +363,7 @@ lex_init_number_prefix : func(-> v0)
 	out : lex_entry mut;
 	i : u64 mut;
 	// number_prefix + <anything else> => finish (number 0)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.number;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
@@ -391,7 +399,7 @@ lex_init_decimal : func(-> v0)
 	i : u64 mut;
 
 	// lex_decimal + <anything else> => finish (number)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.number;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
@@ -421,7 +429,7 @@ lex_init_hex : func(-> v0)
 	i : u64 mut;
 
 	// lex_hex + <anything else> => finish (number)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.number;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
@@ -461,7 +469,7 @@ lex_init_binary : func(-> v0)
 	i : u64 mut;
 
 	// lex_binary + <anything else> => finish (number)
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.number;
 	out.next = zero;
 	for(i = 0; i < 255; i = i + 1)
@@ -485,7 +493,7 @@ lex_init_precomment : func(-> v0)
 
 
 	// lex_precomment + <anything else> => <finish>
-	out.tag = lex_entry_tag.finish;
+	out.tag = lex_entry_tag.finish_exclusive;
 	out.data = token_tag.fslash;
 	out.next = zero;
 
