@@ -171,12 +171,12 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	}
 	if(entry->tag == lex_entry_tag.continue)
 	{
-		putzstr("KEEP GOING\0");
+		//putzstr("KEEP GOING\0");
 		state->cur_tbl = entry->next;
 	}
 	if(entry->tag == lex_entry_tag.finish)
 	{
-		putzstr("FINISH\0");
+		//putzstr("FINISH\0");
 		out_tok.tag = entry->data;
 		out_tok.begin = state->cur_begin;
 		out_tok.end = state->cursor;
@@ -185,13 +185,10 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	}
 	if(entry->tag == lex_entry_tag.discard)
 	{
-		putzstr("DISCARD\0");
+		//putzstr("DISCARD\0");
 		tokenise_state_reset(state);
 	}
-	else
-	{
-		state->cursor = state->cursor + 1;
-	}
+	state->cursor = state->cursor + 1;
 };
 
 tokenise : func(toks : token_buffer mut?, s : source -> v0)
@@ -219,11 +216,136 @@ tokenise : func(toks : token_buffer mut?, s : source -> v0)
 
 lex_break_type : enum
 {
+	.punctuation_or_whitespace := 1;
+	.not_equals_symbol := 2;
+	.not_canglebrack := 4;
+	.not_oanglebrack := 8;
+	.not_ampersand := 16;
+	.not_bar := 32;
+	.not_fslash := 64;
+	.everything := 128;
 };
 
-matches_break_type : func(b : lex_break_type, c : u8 -> bool)
+impl_is_punctuation : func(ch : u8 -> bool)
 {
+	if(ch >= 'a')
+	{
+		if(ch <= 'z')
+		{
+			return false;
+		}
+	}
+	if(ch >= 'A')
+	{
+		if(ch <= 'Z')
+		{
+			return false;
+		}
+	}
+	if(ch >= '0')
+	{
+		if(ch <= '9')
+		{
+			return false;
+		}
+	}
+	if(ch == '_')
+	{
+		return false;
+	}
 	return true;
+};
+
+impl_is_whitespace : func(ch : u8 -> bool)
+{
+	if(ch == 0x20) // ' '
+	{
+		return true;
+	}
+	if(ch == 0x0c) // '\f'
+	{
+		return true;
+	}
+	if(ch == 0x0a) // '\n'
+	{
+		return true;
+	}
+	if(ch == 0x0d) // '\r'
+	{
+		return true;
+	}
+	if(ch == 0x09) // '/t'
+	{
+		return true;
+	}
+	if(ch == 0x0b) // '/v'
+	{
+		return true;
+	}
+	return false;
+};
+
+matches_break_type : func(break : lex_break_type, ch : u8 -> bool)
+{
+	matches : bool mut := false;
+	if((break & (lex_break_type.punctuation_or_whitespace)) != zero)
+	{
+		if(impl_is_punctuation(ch))
+		{
+			matches = true;
+		}
+		if(impl_is_whitespace(ch))
+		{
+			matches = true;
+		}
+	}
+	if((break & (lex_break_type.everything)) != zero)
+	{
+		matches = true;
+	}
+	if((break & (lex_break_type.not_equals_symbol)) != zero)
+	{
+		if(ch == '=')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_canglebrack)) != zero)
+	{
+		if(ch == '>')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_oanglebrack)) != zero)
+	{
+		if(ch == '<')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_ampersand)) != zero)
+	{
+		if(ch == '&')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_bar)) != zero)
+	{
+		if(ch == '|')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_fslash)) != zero)
+	{
+		if(ch == '/')
+		{
+			matches = false;
+		}
+	}
+	return matches;
 };
 
 tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_type -> v0)
@@ -241,28 +363,18 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 	//		- in all other cases, overwrite it to .success with the data being the given lex token.
 
 	len : u64 mut := zstrlen(zstr);
-	//if(break == zero)
-	//{
-	//	len = len - 1;
-	//}
+	if(break == zero)
+	{
+		len = len - 1;
+	}
 	tbl : lex_table mut? mut := ref lex_main;
 	i : u64 mut;
 	c : u8 mut;
 	ent : lex_entry mut? mut;
 	newtbl : lex_table mut? mut;
-	putchar('\n');
 	for(i = 0; i < len; i = i + 1)
 	{
-		putchar('\n');
-		putuint(tbl->tbl # 0);
-		putzstr("   \0");
 		ent = ((tbl->tbl) # [zstr # i]);
-		putuint(ent);
-		putzstr("   \0");
-		putchar([zstr # i]);
-		putzstr(" - \0");
-		putsint(ent->tag@s64);
-		putzstr("   \0");
 		if((ent->tag) == (lex_entry_tag.finish))
 		{
 			if((ent->next) == zero)
@@ -292,42 +404,42 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 		tbl = ent->next;
 	}
 
-	//if(break == zero)
-	//{
-		//last ::= [zstr # len];
-		//ent = ((tbl->tbl) # last);
-		//if((ent->tag) == (lex_entry_tag.finish))
-		//{
-			//if(ent->data != token_tag.symbol)
-			//{
-				//err_begin();
-				//putzstr(".success entry for token_tag.\0");
-				//putsint(t@s64);
-				////putzstr(enumname(t));
-				//putzstr(" steps on the .success entry for token_tag.\0");
-				//putsint(ent->data@s64);
-				////putzstr(enumname((ent->data)@s64@lex_token));
-				//putzstr(" - do they have the exact same front identifier?\0");
-				//err_end();
-			//}
-		//}
-		//ent->tag = lex_entry_tag.finish;
-		//ent->data = t;
-	//}
-	//if(break != zero)
-	//{
-		//winning_entry : lex_entry mut;
-		//winning_entry.tag = lex_entry_tag.finish;
-		//winning_entry.data = t;
-		//for(i = 0; i < 255; i = i + 1)
-		//{
-			//final ::= (tbl->tbl) # i;
-			//fnext ::= final->next;
-			//if(matches_break_type(break, i@u8))
-			//{
-				//([final]) = winning_entry;
-				//(final->next) = fnext;
-			//}
-		//}
-	//}
+	if(break == zero)
+	{
+		last ::= [zstr # len];
+		ent = ((tbl->tbl) # last);
+		if((ent->tag) == (lex_entry_tag.finish))
+		{
+			if(ent->data != token_tag.symbol)
+			{
+				err_begin();
+				putzstr(".success entry for token_tag.\0");
+				putsint(t@s64);
+				//putzstr(enumname(t));
+				putzstr(" steps on the .success entry for token_tag.\0");
+				putsint(ent->data@s64);
+				//putzstr(enumname((ent->data)@s64@lex_token));
+				putzstr(" - do they have the exact same front identifier?\0");
+				err_end();
+			}
+		}
+		ent->tag = lex_entry_tag.finish;
+		ent->data = t;
+	}
+	if(break != zero)
+	{
+		winning_entry : lex_entry mut;
+		winning_entry.tag = lex_entry_tag.finish;
+		winning_entry.data = t;
+		for(i = 0; i < 255; i = i + 1)
+		{
+			final ::= (tbl->tbl) # i;
+			fnext ::= final->next;
+			if(matches_break_type(break, i@u8))
+			{
+				([final]) = winning_entry;
+				(final->next) = fnext;
+			}
+		}
+	}
 };
