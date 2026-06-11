@@ -22,14 +22,17 @@ lex_table : struct
 	tbl : lex_entry mut[255];
 };
 
-lex_new_table : func(-> lex_table mut?)
+lex_newtable : func(-> lex_table mut?)
 {
 	ret : lex_table mut? := arena_alloc(global_arena, sizeof lex_table);
 	i : u64 mut;
 	// zero it all out
 	for(i = 0; i < 255; i = i + 1)
 	{
-		[ret->tbl # i] = zero;
+		cur ::= ret->tbl # i;
+		cur->tag = lex_entry_tag.error;
+		cur->data = zero;
+		cur->next = zero;
 	}
 	return ret;
 };
@@ -52,10 +55,10 @@ lex_init : func(-> v0)
 	tokenise_install_strmatch(token_tag.noteq, "!=\0", zero);
 	tokenise_install_strmatch(token_tag.ampamp, "&&\0", zero);
 	tokenise_install_strmatch(token_tag.pipepipe, "||\0", zero);
-	tokenise_install_strmatch(token_tag.lesseq, "<=\0", zero);
-	tokenise_install_strmatch(token_tag.greateq, ">=\0", zero);
 	tokenise_install_strmatch(token_tag.oangleoangle, "<<\0", zero);
 	tokenise_install_strmatch(token_tag.canglecangle, ">>\0", zero);
+	tokenise_install_strmatch(token_tag.lesseq, "<=\0", zero);
+	tokenise_install_strmatch(token_tag.greateq, ">=\0", zero);
 
 	tokenise_install_strmatch(token_tag.semicol, ";\0", zero);
 	tokenise_install_strmatch(token_tag.col, ":\0", zero);
