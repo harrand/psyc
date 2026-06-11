@@ -84,6 +84,8 @@ token_buffer : struct
 
 token_buffer_append : func(toks : token_buffer mut?, tok : token? -> v0)
 {
+	putuint(tok->tag@s64);
+	putchar('\n');
 	if(toks->tokens == zero)
 	{
 		toks->tokens_cap = 1024;
@@ -147,7 +149,15 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 {
 	f ::= prog_get_source(state->src);
 	entry : lex_entry mut? := lex_main.tbl # [f->src # state->cursor];
+	state->cur_tbl = entry->next;
 	out_tok : token mut;
+
+	should_advance : bool mut := true;
+
+	putchar([f->src # state->cursor]);
+	putzstr(" \0");
+	putsint(entry->tag@s64);
+	putchar('\n');
 	// index into the table and get the entry
 	if(entry->tag == lex_entry_tag.error)
 	{
@@ -164,7 +174,6 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	if(entry->tag == lex_entry_tag.continue)
 	{
 		//putzstr("KEEP GOING\0");
-		state->cur_tbl = entry->next;
 	}
 	if(entry->tag == lex_entry_tag.finish)
 	{
@@ -175,6 +184,7 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 		token_buffer_append(state->toks, ref out_tok);
 		// todo: set srcloc?
 		tokenise_state_reset(state);
+		should_advance = false;
 	}
 	if(entry->tag == lex_entry_tag.discard)
 	{
@@ -182,6 +192,9 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 		tokenise_state_reset(state);
 	}
 	state->cursor = state->cursor + 1;
+	if(should_advance)
+	{
+	}
 };
 
 tokenise : func(toks : token_buffer mut?, s : source -> v0)
