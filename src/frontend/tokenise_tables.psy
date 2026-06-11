@@ -7,9 +7,9 @@ lex_entry_tag : enum
 	// entry.data is the token type you have just found. char containing this entry does not count towards the lexeme
 	.finish_exclusive := 2;
 	// entry.data is the token type you have just found. char containing this entry counts towards the lexeme
-	.finish_inclusive := 2;
+	.finish_inclusive := 3;
 	// discard the current range - you've probably hit a comment or whitespace.
-	.discard := 3;
+	.discard := 4;
 };
 
 lex_entry : struct
@@ -27,15 +27,6 @@ lex_table : struct
 lex_newtable : func(-> lex_table mut?)
 {
 	ret : lex_table mut? := arena_alloc(global_arena, sizeof lex_table);
-	i : u64 mut;
-	// zero it all out
-	for(i = 0; i < 255; i = i + 1)
-	{
-		cur ::= ret->tbl # i;
-		cur->tag = lex_entry_tag.error;
-		cur->data = zero;
-		cur->next = zero;
-	}
 	lex_install_symbol_continuation(ret);
 	return ret;
 };
@@ -90,7 +81,8 @@ lex_init : func(-> v0)
 	tokenise_install_strmatch(token_tag.emark, "!\0", lex_break_type.everything | lex_break_type.not_equals_symbol);
 	tokenise_install_strmatch(token_tag.oangle, "<\0", lex_break_type.everything | lex_break_type.not_oanglebrack);
 	tokenise_install_strmatch(token_tag.cangle, ">\0", lex_break_type.everything | lex_break_type.not_canglebrack);
-	tokenise_install_strmatch(token_tag.keyword_static_if, "static_if\0", zero);
+
+	tokenise_install_strmatch(token_tag.keyword_static_if, "static_if\0", lex_break_type.punctuation_or_whitespace);
 	tokenise_install_strmatch(token_tag.keyword_if, "if\0", lex_break_type.punctuation_or_whitespace);
 	tokenise_install_strmatch(token_tag.keyword_else, "else\0", lex_break_type.punctuation_or_whitespace);
 	tokenise_install_strmatch(token_tag.keyword_while, "while\0", lex_break_type.punctuation_or_whitespace);
