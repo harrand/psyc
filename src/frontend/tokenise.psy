@@ -84,8 +84,6 @@ token_buffer : struct
 
 token_buffer_append : func(toks : token_buffer mut?, tok : token? -> v0)
 {
-	putuint(tok->tag@s64);
-	putchar('\n');
 	if(toks->tokens == zero)
 	{
 		toks->tokens_cap = 1024;
@@ -148,7 +146,7 @@ tokenise_done : func(state : tokenise_state mut? -> bool)
 tokenise_step : func(state : tokenise_state mut? -> v0)
 {
 	f ::= prog_get_source(state->src);
-	entry : lex_entry mut? := lex_main.tbl # [f->src # state->cursor];
+	entry : lex_entry mut? := state->cur_tbl->tbl # [f->src # state->cursor];
 	state->cur_tbl = entry->next;
 	out_tok : token mut;
 
@@ -157,6 +155,8 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	putchar([f->src # state->cursor]);
 	putzstr(" \0");
 	putsint(entry->tag@s64);
+	putzstr(" from \0");
+	putuint(entry@u64);
 	putchar('\n');
 	// index into the table and get the entry
 	if(entry->tag == lex_entry_tag.error)
@@ -179,10 +179,11 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	{
 		//putzstr("FINISH\0");
 		out_tok.tag = entry->data;
+		putsint(entry->data@s64);
+		putchar('\n');
 		out_tok.begin = state->cur_begin;
 		out_tok.end = state->cursor;
 		token_buffer_append(state->toks, ref out_tok);
-		// todo: set srcloc?
 		tokenise_state_reset(state);
 		should_advance = false;
 	}
@@ -190,21 +191,23 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	{
 		//putzstr("FINISH\0");
 		out_tok.tag = entry->data;
+		putsint(entry->data@s64);
+		putchar('\n');
 		out_tok.begin = state->cur_begin;
 		out_tok.end = state->cursor + 1;
 		token_buffer_append(state->toks, ref out_tok);
 		// todo: set srcloc?
 		tokenise_state_reset(state);
-		should_advance = false;
+		//should_advance = false;
 	}
 	if(entry->tag == lex_entry_tag.discard)
 	{
 		//putzstr("DISCARD\0");
 		tokenise_state_reset(state);
 	}
-	state->cursor = state->cursor + 1;
 	if(should_advance)
 	{
+		state->cursor = state->cursor + 1;
 	}
 };
 
@@ -440,6 +443,13 @@ tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_ty
 				err_end();
 			}
 		}
+		putzstr("last char of '\0");
+		putzstr(zstr);
+		putzstr("' wrote finish_inclusive into \0");
+		putuint(ent);
+		putzstr("(was \0");
+		putuint(ent->tag@s64);
+		putzstr(")\n\0");
 		ent->tag = lex_entry_tag.finish_inclusive;
 		ent->data = t;
 	}
