@@ -8,9 +8,9 @@ Psyc has zero dependencies. If you're running on a linux kernel that's less than
 ## Architecture & How it Works
 Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux kernel. The performance of generated code is of extremely poor quality, and codegen bugs are rife. It works as follows:
 1. You invoke `psyc my_build_file.psy`
-2. Psyc tokenises the code within the build file via a table-based tokeniser, and is parsed into a custom AST format via a handwritten LR(1) parser using a hashtable.
-3. After the main build file is parsed, its *build region* is executed at compile-time. Any new source files are tokenised/parsed immediately. This is also when prebuild commands are invoked.
-4. After the execution of the *build region* is complete, all ASTs are walked through, distilling everything into a giant whole program state.
+2. Psyc reads the contents of the file, and passes the whole thing through a table-based finite-state-machine. A large array of tokens is created. These tokens are parsed into a custom AST format via a handwritten LR(1) parser using a open-addressed hashtable.
+3. After the main build file is parsed, its *build region* is executed at compile-time. For any new source file added by the build region, step 2 and 3 is repeated (recursively). Afterwards, there is an array containing a fully-parsed AST for each source file in the program.
+4. Program-walking aka 'progwalking' occurs. All ASTs are walked through, distilling all functions, inline-assemblies, globals, and types into a single, giant whole program state.
 5. Semantic analysis is performed once, on the whole program state. This largely boils down to type-checking and preparing the program state for code generation.
 6. Code generation involves generating a custom internal IR (psyir) using the verified whole program state. Most optimisations are performed on this IR, unless optimisations are disabled.
 7. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions (using a custom internal ABI). The assembly is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
@@ -23,7 +23,13 @@ No AI was used in the creation of this compiler, and will remain clanker-free fo
 - AArch64
 - AVX512 (optional, but on by default)
 - Large amounts of optimisation work, though matching LLVM is unrealistic.
-- Add a license. Until there is an anti-AI license that I am happy with, it will remain without one -- Respect that if the 'fair use' argument wrt. training data fails, then I'm comin' for that bag.
+- Add a license. Until there is an anti-AI license that I am happy with, it will remain without one.
+
+# Unplanned/Rejected Work
+- LLVM support. I have removed this and am *never* going back
+- LSP/other tooling support
+- Foreign Function Interface (FFI)
+- Static Linking
 
 # Psy Programming Language <a name="intro"></a>
 
