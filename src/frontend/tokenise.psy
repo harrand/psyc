@@ -112,8 +112,6 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 	state->cur_tbl = entry->next;
 	out_tok : token mut;
 
-	should_advance : bool mut := true;
-
 	// index into the table and get the entry
 	if(entry->tag == lex_entry_tag.error)
 	{
@@ -127,6 +125,12 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 		putsrc(state->src, state->cursor, state->cursor + 1, putcol.red_underline);
 		err_end();
 	}
+
+	if(entry->tag != lex_entry_tag.finish_exclusive)
+	{
+		state->cursor = state->cursor + 1;
+	}
+
 	if(entry->tag == lex_entry_tag.continue)
 	{
 		//putzstr("KEEP GOING\0");
@@ -139,28 +143,21 @@ tokenise_step : func(state : tokenise_state mut? -> v0)
 		out_tok.end = state->cursor;
 		token_buffer_append(state->toks, ref out_tok);
 		tokenise_state_reset(state);
-		should_advance = false;
 	}
 	if(entry->tag == lex_entry_tag.finish_inclusive)
 	{
 		//putzstr("FINISH\0");
 		out_tok.tag = entry->data;
 		out_tok.begin = state->cur_begin;
-		out_tok.end = state->cursor + 1;
+		out_tok.end = state->cursor;
 		token_buffer_append(state->toks, ref out_tok);
 		// todo: set srcloc?
 		tokenise_state_reset(state);
-		//should_advance = false;
 	}
 	if(entry->tag == lex_entry_tag.discard)
 	{
 		//putzstr("DISCARD\0");
 		tokenise_state_reset(state);
-	}
-
-	if(should_advance)
-	{
-		state->cursor = state->cursor + 1;
 	}
 };
 
@@ -206,11 +203,13 @@ token_buffer_append : func(toks : token_buffer mut?, tok : token? -> v0)
 	toks->tokens_count = (toks->tokens_count + 1);
 };
 
-dump_one_token : func(t : token? -> v0)
+dump_one_token : func(t : token?, src : u8?, src_len : u64 -> v0)
 {
 	putzstr("token \0");
 	putuint(t->tag@s64);
-	putchar('\n');
+	putchar(' ');
+	putchars(src # t->begin, t->end - t->begin);
+	putzstr("\n\0");
 };
 
 dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
@@ -221,7 +220,7 @@ dump_tokens : func(toks : token_buffer mut?, src : u8?, src_len : u64 -> v0)
 	i : u64 mut;
 	for(i = 0; i < toks->tokens_count; i = i + 1)
 	{
-		dump_one_token(toks->tokens # i);
+		dump_one_token(toks->tokens # i, src, src_len);
 	}
 };
 
