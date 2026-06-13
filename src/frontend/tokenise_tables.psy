@@ -152,6 +152,13 @@ lex_init_main : func(-> v0)
 	out.next = ref lex_string_literal;
 	[lex_main.tbl # '"'] = out;
 
+	// lex_main + ' => char_literal
+	out.tag = lex_entry_tag.continue;
+	out.data = zero;
+	out.next = ref lex_char_literal;
+	// 39 = '
+	[lex_main.tbl # 39] = out;
+
 	// lex_main + 0 => lex_number_prefix
 	out.tag = lex_entry_tag.continue;
 	out.next = ref lex_number_prefix;
@@ -360,11 +367,11 @@ lex_init_char_literal : func(-> v0)
 	{
 		[lex_char_literal.tbl # i] = out;
 	}
-	// char_literal + '"' => finish (char literal)
+	// char_literal + ' => finish (char literal)
 	out.tag = lex_entry_tag.finish_inclusive;
 	out.data = token_tag.char_literal;
 	out.next = zero;
-	[lex_char_literal.tbl # '"'] = out;
+	[lex_char_literal.tbl # 39] = out;
 };
 
 lex_init_number_prefix : func(-> v0)
@@ -530,5 +537,235 @@ lex_init_comment : func(-> v0)
 	out.data = zero;
 	out.next = zero;
 	[lex_comment.tbl # '\n'] = out;
+};
+
+lex_break_type : enum
+{
+	.punctuation_or_whitespace := 1;
+	.not_equals_symbol := 2;
+	.not_canglebrack := 4;
+	.not_oanglebrack := 8;
+	.not_ampersand := 16;
+	.not_bar := 32;
+	.not_fslash := 64;
+	.everything := 128;
+};
+
+impl_is_punctuation : func(ch : u8 -> bool)
+{
+	if(ch >= 'a')
+	{
+		if(ch <= 'z')
+		{
+			return false;
+		}
+	}
+	if(ch >= 'A')
+	{
+		if(ch <= 'Z')
+		{
+			return false;
+		}
+	}
+	if(ch >= '0')
+	{
+		if(ch <= '9')
+		{
+			return false;
+		}
+	}
+	if(ch == '_')
+	{
+		return false;
+	}
+	return true;
+};
+
+impl_is_whitespace : func(ch : u8 -> bool)
+{
+	if(ch == 0x20) // ' '
+	{
+		return true;
+	}
+	if(ch == 0x0c) // '\f'
+	{
+		return true;
+	}
+	if(ch == 0x0a) // '\n'
+	{
+		return true;
+	}
+	if(ch == 0x0d) // '\r'
+	{
+		return true;
+	}
+	if(ch == 0x09) // '/t'
+	{
+		return true;
+	}
+	if(ch == 0x0b) // '/v'
+	{
+		return true;
+	}
+	return false;
+};
+
+matches_break_type : func(break : lex_break_type, ch : u8 -> bool)
+{
+	matches : bool mut := false;
+	if((break & (lex_break_type.punctuation_or_whitespace)) != zero)
+	{
+		if(impl_is_punctuation(ch))
+		{
+			matches = true;
+		}
+		if(impl_is_whitespace(ch))
+		{
+			matches = true;
+		}
+	}
+	if((break & (lex_break_type.everything)) != zero)
+	{
+		matches = true;
+	}
+	if((break & (lex_break_type.not_equals_symbol)) != zero)
+	{
+		if(ch == '=')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_canglebrack)) != zero)
+	{
+		if(ch == '>')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_oanglebrack)) != zero)
+	{
+		if(ch == '<')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_ampersand)) != zero)
+	{
+		if(ch == '&')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_bar)) != zero)
+	{
+		if(ch == '|')
+		{
+			matches = false;
+		}
+	}
+	if((break & (lex_break_type.not_fslash)) != zero)
+	{
+		if(ch == '/')
+		{
+			matches = false;
+		}
+	}
+	return matches;
+};
+
+tokenise_install_strmatch : func(t : token_tag, zstr : u8?, break : lex_break_type -> v0)
+{
+	// for each char 'c' in the front identifier:
+	// take entry 'e' from index 'c' # the current table and look # its tag
+	//		- if its 'zero', then overwrite it to .none and create a new table and point e->next to it.
+	//		- if its .none, then it redirects to another table already, we just move on
+	//		- if its .success, then we move on, unless it doesnt have a ->next in which case we make one and then move on.
+	//		- if its .discard, then overwrite it to .none and create a new table and point e->next to it.
+	//	e = e->next
+	// when we run out of chars, we are left with the final entry of e
+	// if 'need_punc_next' is false, then we look # e again.
+	//		- if its .success, we probably have duplicate lex rules and we should assert
+	//		- in all other cases, overwrite it to .success with the data being the given lex token.
+
+	len : u64 mut := zstrlen(zstr);
+	if(break == zero)
+	{
+		len = len - 1;
+	}
+	tbl : lex_table mut? mut := ref lex_main;
+	i : u64 mut;
+	c : u8 mut;
+	ent : lex_entry mut? mut;
+	newtbl : lex_table mut? mut;
+	for(i = 0; i < len; i = i + 1)
+	{
+		ent = ((tbl->tbl) # [zstr # i]);
+		if((ent->tag == lex_entry_tag.finish_exclusive) || (ent->tag == lex_entry_tag.finish_inclusive))
+		{
+			if((ent->next) == zero)
+			{
+				ent->next = lex_newtable();
+			}
+		}
+		if((ent->tag) == (lex_entry_tag.continue))
+		{
+			// note: if it goes to symbol continuation then we do overwrite it
+			if((ent->next) == ref lex_symbol_continuation)
+			{
+				ent->next = lex_newtable();
+				ent->tag = lex_entry_tag.continue;
+			}
+		}
+		if((ent->tag) == (lex_entry_tag.discard))
+		{
+			ent->next = lex_newtable();
+			ent->tag = lex_entry_tag.continue;
+		}
+		if((ent->tag) == lex_entry_tag.error)
+		{
+			ent->next = lex_newtable();
+			ent->tag = lex_entry_tag.continue;
+		}
+		tbl = ent->next;
+	}
+
+	if(break == zero)
+	{
+		last ::= [zstr # len];
+		ent = ((tbl->tbl) # last);
+		if((ent->tag == lex_entry_tag.finish_exclusive) || (ent->tag == lex_entry_tag.finish_inclusive))
+		{
+			if(ent->data != token_tag.symbol)
+			{
+				err_begin();
+				putzstr(".success entry for token_tag.\0");
+				putsint(t@s64);
+				//putzstr(enumname(t));
+				putzstr(" steps on the .success entry for token_tag.\0");
+				putsint(ent->data@s64);
+				//putzstr(enumname((ent->data)@s64@lex_token));
+				putzstr(" - do they have the exact same front identifier?\0");
+				err_end();
+			}
+		}
+		ent->tag = lex_entry_tag.finish_inclusive;
+		ent->data = t;
+	}
+	if(break != zero)
+	{
+		winning_entry : lex_entry mut;
+		winning_entry.tag = lex_entry_tag.finish_exclusive;
+		winning_entry.data = t;
+		for(i = 0; i < 255; i = i + 1)
+		{
+			final ::= (tbl->tbl) # i;
+			fnext ::= final->next;
+			if(matches_break_type(break, i@u8))
+			{
+				([final]) = winning_entry;
+				(final->next) = fnext;
+			}
+		}
+	}
 };
 
