@@ -76,6 +76,22 @@ lower_x64_irval_but_truncate_imm64s_to_imm32 : func(v_ : irval -> x64v)
 	return lower_x64_irval(v);
 };
 
+lower_x64_irval_but_truncate_imm64s_to_imm32_and_use_reg_to_lea_globrefs : func(v_ : irval, r : x64_reg -> x64v)
+{
+	v : irval mut := v_;
+	if((v.tag == irval_tag.imm) && (irval_imm_get_irsz(v) == irsz.q))
+	{
+		immval ::= irval_imm_get_value(v);
+		if((immval & 0x00000000ffffffff) != immval)
+		{
+			// immval is truly 64 bit, turn it into a globref
+			return lower_x64_irval_but_turn_imms_into_globals(v);
+		}
+		irval_imm_set_irsz(ref v, irsz.d);
+	}
+	return lower_x64_irval_but_use_reg_to_lea_globrefs(v, r);
+};
+
 lower_x64_irval_but_turn_imms_into_globals : func(v : irval -> x64v)
 {
 	if(v.tag == irval_tag.imm)
