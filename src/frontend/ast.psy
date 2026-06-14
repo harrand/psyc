@@ -25,11 +25,11 @@ ast_tag : enum
 {
 	// represents a single token (d0 = token?)
 	.token := 1;
-	// expression (d0 = expr_tag)
+	// expression (d1 = expr_tag)
 	.expr := 2;
 	// stmt (d0 = stmt_tag)
 	.stmt := 3;
-	// declaration (d1 = name, d2 = name_len)
+	// declaration stmt (d1 = name, d2 = name_len, d3 = decl_parse_state, child0 = typename, child1 = optional expr)
 	.decl := 4;
 	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N
 	.typename := 5;
@@ -223,7 +223,7 @@ ast_token_get_data : func(n : ast mut? -> token mut?)
 
 ast_expr_get_tag : func(n : ast mut? -> ast_expr_tag mut?)
 {
-	return ref(n->d0)@ast_expr_tag mut?;
+	return ref(n->d1)@ast_expr_tag mut?;
 };
 
 ast_stmt_get_tag : func(n : ast mut? -> ast_stmt_tag mut?)
@@ -239,6 +239,25 @@ ast_decl_get_name : func(n : ast mut? -> u8 mut? mut?)
 ast_decl_get_name_len : func(n : ast mut? -> u64 mut?)
 {
 	return ref(n->d2);
+};
+
+ast_decl_get_typename_node : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_decl_maybe_get_init_node : func(n : ast mut? -> ast mut?)
+{
+	if(n->children_count > 1)
+	{
+		return n->children # 1;
+	}
+	return zero;
+};
+
+ast_decl_get_parse_state : func(n : ast mut? -> ast_decl_parse_state mut?)
+{
+	return ref(n->d3)@ast_decl_parse_state mut?;
 };
 
 ast_typename_get_tag : func(n : ast mut? -> ast_typename_tag mut?)
