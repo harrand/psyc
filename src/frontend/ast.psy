@@ -11,6 +11,10 @@ ast : struct
 	d2 : u64;
 	// datapoint 3 - use depends on tag
 	d3 : u64;
+	// datapoint 4 - use depends on tag
+	d4 : u64;
+	// datapoint 5 - use depends on tag
+	d5 : u64;
 	// list of children
 	children : ast mut?;
 	children_count : u32;
@@ -19,13 +23,78 @@ ast : struct
 
 ast_tag : enum
 {
-};
-
-ast_expr_tag : enum
-{
+	// represents a single token (d0 = token?)
+	.token := 1;
+	// expression (d0 = expr_tag)
+	.expr := 2;
+	// stmt (d0 = stmt_tag)
+	.stmt := 3;
+	// declaration (d1 = name, d2 = name_len)
+	.decl := 4;
+	// typename (d0 = typename_tag)
+	.typename := 5;
 };
 
 ast_stmt_tag : enum
 {
+	// expression stmt (d1 = expr_tag)
+	.expr := 1;
+	// declaration stmt (d1 = name, d2 = name_len, d3 = decl_parse_state, child0 = typename, child1 = optional expr)
+	.decl := 2;
+	// structure stmt (d1 = name, d2 = name_len, d3 = structure_parse_state, child0... = decl-stmt data members)
+	.structure := 3;
+	// function stmt (d1 = name, d2 = name_len, d3 = function_parse_state, child0 = return typename, child1... = param decls 1-N, childN... = function body statements)
+	.function := 4;
+	// enumeration stmt (d1 = name, d2 = name_len, d3 = enumeration_parse_state, child0... = entry init statements)
+	.enumeration := 5;
+	// assembly stmt (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = assembly code symbol)
+	.assembly := 6;
+	// region stmt (d1 = name, d2 = name_len, child0... = region body statements)
+	.region := 7;
+	// if stmt (d1 = is_static, child0 = condition expression, child1... = if-body statements)
+	.if_blk := 8;
+	// else stmt (no data, child0... = else-body statements)
+	.else_blk := 9;
+	// while stmt (no data, child0 = condition expression, child1... = while-body statements)
+	.while_blk := 10;
+	// for stmt (no data, child0 = initialiser expression, child1 = condition expression, child2 = iterate expresion, child3... = for-body statements)
+	.for_blk := 11;
+	// return statement (no data, child0 = optional return expression)
+	.ret := 12;
+	// unreachable statement (no data)
+	.unreach := 13;
+	// init statement (d1 = init_type, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
+	.init := 14;
 };
 
+ast_expr_tag : enum
+{
+	// symbol expression (d2 = chars, d3 = chars_len)
+	.symbol := 1;
+	// literal expression (d2 = literal_type, d3 = integer/floating-point/char/string/boolean, d4 = string_len)
+	.literal := 2;
+	// 'zero' value (no data)
+	.zero_value := 3;
+	// unary operator (d2 = unop_tag, child0 = operand expression)
+	.unop := 4;
+	// binary operator (d2 = biop_tag, d3 = precedence, child0 = lhs expression, child1 = rhs expression)
+	.unop := 5;
+	// call (no data, child1 = callee expr/symbol, child1... = param expression nodes)
+	.call := 6;
+	// block initialiser (no data, child0 = typename node, child1... = member init statements)
+	.blkinit := 7;
+	// dereference (no data, child0 = operand expression)
+	.dereference := 8;
+	// cast (no data, child0 = castee expr, child1 = typename node)
+	.cast := 9;
+	// field-access (no data, child0 = field lhs expression, child1 = field rhs symbol expression)
+	.field := 10;
+	// ptr-field-access (no data, child0 = field lhs expression, child1 = field rhs symbol expression)
+	.ptrfield := 11;
+	// sizeof-expression (no data, child0 = typename node)
+	.sizeof_t := 12;
+	// alignof-expression (no data, child0 = typename node)
+	.alignof_t := 13;
+	// countof-expression (no data, child0 = typename node)
+	.countof_t := 14;
+};
