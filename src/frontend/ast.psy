@@ -66,6 +66,7 @@ ast_stmt_tag : enum
 	// init statement (d1 = init_tag, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
 	.init := 14;
 };
+
 ast_expr_tag : enum
 {
 	// symbol expression (d2 = chars, d3 = chars_len)
@@ -116,6 +117,15 @@ ast_init_tag : enum
 	.integer := 2;
 	// ... := 0
 	.ellipsis := 3;
+};
+
+ast_literal_tag : enum
+{
+	.integer := 1;
+	.floating_point := 2;
+	.char := 3;
+	.string := 4;
+	.boolean := 5;
 };
 
 tag_offset_token : func(-> u64 weak)
@@ -519,4 +529,39 @@ ast_init_get_symbol : func(n : ast mut? -> u8 mut? mut?)
 ast_init_get_symbol_len : func(n : ast mut? -> u64 mut?)
 {
 	return ref(n->d2)@u64 mut?;
+};
+
+ast_literal_get_tag : func(n : ast mut? -> ast_literal_tag mut?)
+{
+	return ref(n->d2)@ast_literal_tag mut?;
+};
+
+// only valid if ast_literal_get_tag(n) == ast_literal_tag.integer
+ast_literal_get_integer : func(n : ast mut? -> s64 mut?)
+{
+	return ref(n->d3)@s64 mut?;
+};
+
+// only valid if ast_literal_get_tag(n) == ast_literal_tag.floating_point
+ast_literal_get_floating_point : func(n : ast mut? -> f64 mut?)
+{
+	return ref(n->d3)@f64 mut?;
+};
+
+// only valid if ast_literal_get_tag(n) == ast_literal_tag.char
+ast_literal_get_char : func(n : ast mut? -> u8 mut?)
+{
+	return ref(n->d3)@u8 mut?;
+};
+
+// only valid if ast_literal_get_tag(n) == ast_literal_tag.string
+ast_literal_get_string : func(n : ast mut? -> u8 mut?)
+{
+	return ref(n->d3)@u8 mut?;
+};
+
+// only valid if ast_literal_get_tag(n) == ast_literal_tag.string
+ast_literal_get_string_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d4)@u64 mut?;
 };
