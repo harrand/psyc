@@ -31,7 +31,7 @@ ast_tag : enum
 	.stmt := 3;
 	// declaration (d1 = name, d2 = name_len)
 	.decl := 4;
-	// typename (d0 = typename_tag)
+	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N
 	.typename := 5;
 };
 
@@ -97,4 +97,171 @@ ast_expr_tag : enum
 	.alignof_t := 13;
 	// countof-expression (no data, child0 = typename node)
 	.countof_t := 14;
+};
+
+ast_typename_tag : enum
+{
+	.base := 1;
+	.array := 2;
+	.pointer := 3;
+	.function := 4;
+	.type_of := 5;
+	.deduced := 6;
+};
+
+tag_offset_token : func(-> u64 weak)
+{
+	return countof ast_tag + 1;
+};
+
+tag_offset_expr : func(-> u64 weak)
+{
+	return tag_offset_token() + countof token_tag + 1;
+};
+
+tag_offset_stmt : func(-> u64 weak)
+{
+	return tag_offset_expr() + countof ast_expr_tag + 1;
+};
+
+tag_offset_typename : func(-> u64 weak)
+{
+	return tag_offset_stmt() + countof ast_stmt_tag + 1;
+};
+
+tag_offset_function : func(-> u64 weak)
+{
+	return tag_offset_typename() + countof ast_typename_parse_state + 1;
+};
+
+tag_offset_structure : func(-> u64 weak)
+{
+	return tag_offset_function() + countof ast_function_parse_state + 1;
+};
+
+tag_offset_enumeration : func(-> u64 weak)
+{
+	return tag_offset_structure() + countof ast_structure_parse_state + 1;
+};
+
+tag_offset_assembly : func(-> u64 weak)
+{
+	return tag_offset_enumeration() + countof ast_enumeration_parse_state + 1;
+};
+
+tag_offset_decl : func(-> u64 weak)
+{
+	return tag_offset_assembly() + countof ast_assembly_parse_state + 1;
+};
+
+ast_maximum_uid : func(-> u64)
+{
+	return tag_offset_decl() + countof ast_decl_parse_state + 1;
+};
+
+ast_uid : func(n : ast mut? -> u64)
+{
+	t ::= n->tag;
+	if(t == ast_tag.token)
+	{
+		return tag_offset_token() + ast_token_get_data(n)->tag@s64;
+	}
+	unreachable;
+	// todo: rest...
+};
+
+// internal parse state
+
+ast_typename_parse_state : enum
+{
+	.wip := 1;
+	.array_await_length := 2;
+	.function_await_param_or_arrow := 3;
+	.function_await_return_type := 4;
+	.finalised := 5;
+};
+
+ast_function_parse_state : enum
+{
+	.impl := 1;
+	.finalised := 2;
+};
+
+ast_structure_parse_state : enum
+{
+	.wip := 1;
+	.finalised := 2;
+};
+
+ast_enumeration_parse_state : enum
+{
+	.wip := 1;
+	.finalised := 2;
+};
+
+ast_assembly_parse_state : enum
+{
+	.wip := 1;
+	.coding := 2;
+	.finalised := 3;
+};
+
+ast_decl_parse_state : enum
+{
+	.await_type := 1;
+	.noinit := 2;
+	.await_init_expr := 3;
+	.finalised := 4;
+};
+
+// ACCESSOR HELPER FUNCTIONS
+
+ast_token_get_data : func(n : ast mut? -> token mut?)
+{
+	return n->d0@token mut?;
+};
+
+ast_expr_get_tag : func(n : ast mut? -> ast_expr_tag mut?)
+{
+	return ref(n->d0)@ast_expr_tag mut?;
+};
+
+ast_stmt_get_tag : func(n : ast mut? -> ast_stmt_tag mut?)
+{
+	return ref(n->d0)@ast_stmt_tag mut?;
+};
+
+ast_decl_get_name : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d1)@u8 mut? mut?;
+};
+
+ast_decl_get_name_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d2);
+};
+
+ast_typename_get_tag : func(n : ast mut? -> ast_typename_tag mut?)
+{
+	return ref(n->d0)@ast_typename_tag mut?;
+};
+
+ast_typename_get_quals : func(n : ast mut? -> tyqual mut?)
+{
+	return ref(n->d1)@tyqual mut?;
+};
+
+ast_typename_get_basename : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d2)@u8 mut? mut?;
+};
+
+ast_typename_get_basename_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d3)@u64 mut?;
+};
+
+ast_typename_get_parse_state : func(n : ast mut? -> ast_typename_parse_state mut?)
+{
+	return ref(n->d4)@ast_typename_parse_state mut?;
 };
