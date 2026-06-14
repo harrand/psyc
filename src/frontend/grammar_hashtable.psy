@@ -1,0 +1,32 @@
+grammar_entry : struct
+{
+	uids : u8 weak mut[6];
+	lookahead : u8 weak;
+	stash : u8 weak;
+};
+
+grammar_hashtable_elem : struct
+{
+	key : grammar_entry;
+	hash : u64;
+	occupied : bool;
+	rule : func(nodes : ast mut?, nodes_count : u64 -> grammar_result);
+};
+
+grammar_result_type : enum
+{
+	.shift := 1;
+	.reduce := 2;
+	.stash := 3;
+	.unstash := 4;
+	.commit := 5;
+};
+
+grammar_result : struct
+{
+	type : grammar_result_type;
+	shift_or_delete_count : u64;
+	delete_offset : u64;
+	// if replacement.tag == zero, there is no replacement.
+	replacement : ast;
+};
