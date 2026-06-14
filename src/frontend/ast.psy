@@ -63,10 +63,9 @@ ast_stmt_tag : enum
 	.ret := 12;
 	// unreachable statement (no data)
 	.unreach := 13;
-	// init statement (d1 = init_type, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
+	// init statement (d1 = init_tag, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
 	.init := 14;
 };
-
 ast_expr_tag : enum
 {
 	// symbol expression (d2 = chars, d3 = chars_len)
@@ -107,6 +106,16 @@ ast_typename_tag : enum
 	.function := 4;
 	.type_of := 5;
 	.deduced := 6;
+};
+
+ast_init_tag : enum
+{
+	// .foo := 0
+	.symbol := 1;
+	// .1 := 0
+	.integer := 2;
+	// ... := 0
+	.ellipsis := 3;
 };
 
 tag_offset_token : func(-> u64 weak)
@@ -330,14 +339,14 @@ ast_function_get_return_typename : func(n : ast mut? -> ast mut?)
 	return n->children # 0;
 };
 
-ast_function_get_params_count : func(n : ast mut? -> u32)
-{
-	return n->children_count - 1;
-};
-
 ast_function_get_params : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 1;
+};
+
+ast_function_get_body : func(n : ast mut?, params_count : u32 -> ast mut?)
+{
+	return n->children # (1 + params_count);
 };
 
 ast_enumeration_get_name : func(n : ast mut? -> u8 mut? mut?)
@@ -393,4 +402,121 @@ ast_assembly_get_parse_state : func(n : ast mut? -> ast_assembly_parse_state mut
 ast_assembly_get_code_symbol : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
+};
+
+ast_region_get_name : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d1)@u8 mut? mut?;
+};
+
+ast_region_get_name_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d2)@u64 mut?;
+};
+
+ast_region_get_body : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_if_get_is_static : func(n : ast mut? -> bool mut?)
+{
+	return ref(n->d1)@bool mut?;
+};
+
+ast_if_get_condition_expression : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_if_get_body : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
+};
+
+ast_if_get_body_count : func(n : ast mut? -> u32)
+{
+	return n->children_count - 1;
+};
+
+ast_else_get_body : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_else_get_body_count : func(n : ast mut? -> u32)
+{
+	return n->children_count;
+};
+
+ast_while_get_condition_expression : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_while_get_body : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
+};
+
+ast_while_get_body_count : func(n : ast mut? -> u32)
+{
+	return n->children_count - 1;
+};
+
+ast_for_get_initialiser_expression : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
+};
+
+ast_for_get_condition_expression : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
+};
+
+ast_for_get_iterate_expression : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 2;
+};
+
+ast_for_get_body : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 3;
+};
+
+ast_for_get_body_count : func(n : ast mut? -> u32)
+{
+	return n->children_count - 3;
+};
+
+ast_ret_get_expr : func(n : ast mut? -> ast mut?)
+{
+	if(n->children_count == 0)
+	{
+		return zero;
+	}
+	return n->children # 0;
+};
+
+ast_init_get_tag : func(n : ast mut? -> ast_init_tag mut?)
+{
+	return ref(n->d1)@ast_init_tag mut?;
+};
+
+// only valid if ast_init_get_tag(n) == ast_init_tag.integer
+ast_init_get_integer : func(n : ast mut? -> s64 mut?)
+{
+	return ref(n->d2)@s64 mut?;
+};
+
+// only valid if ast_init_get_tag(n) == ast_init_tag.symbol
+ast_init_get_symbol : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d2)@u8 mut? mut?;
+};
+
+// only valid if ast_init_get_tag(n) == ast_init_tag.symbol
+ast_init_get_symbol_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d2)@u64 mut?;
 };
