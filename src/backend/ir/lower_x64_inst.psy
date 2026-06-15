@@ -118,6 +118,8 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 	scale ::= [ir_store_get_scale(inst)];
 	disp ::= [ir_store_get_disp(inst)];
 
+	fooey ::= v.tag == irval_tag.funcref;
+
 	vmemreg ::= lower_x64_custom_vmemreg(sz, base, index, scale, disp);
 	// incase we need an intermediate...
 	intermediate : x64v mut := x64v_reg(x64_reg.rax, 64);
@@ -128,7 +130,7 @@ lower_x64_store : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 		// i.e mov [ptr], riprel xyz
 		// instead of mov [ptr], [riprel xyz]
 		// we need an intermediate lea to represent that
-		if(v.tag == irval_tag.globref)
+		if((v.tag == irval_tag.globref) || (v.tag == irval_tag.funcref))
 		{
 			// use rax as scratch
 			x64_lea(x64v_reg(x64_reg.rax, 64), vx64);
@@ -208,7 +210,7 @@ lower_x64_jmp : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 lower_x64_jmpif : func(inst : irinst mut?, fn : irfunc mut? -> v0)
 {
 	// falseblk is just continue straight on
-	// trueblk is the branch
+	// truelk is the branch
 	cond ::= [ir_jmpif_get_cond(inst)];
 	cond_x64 ::= lower_x64_irval(cond);
 	trueblk ::= [ir_jmpif_get_true_blk(inst)];
