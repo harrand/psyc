@@ -1,12 +1,50 @@
+parse_state_t : struct
+{
+	src : source_file mut?;
+	toks : token_buffer mut?;
+	toks_cursor : u64;
+	nodes : ast mut[6];
+	nodes_cursor : u64;
+	lookahead : ast;
+
+	stash : ast mut[64];
+	stash_cursor : u64 mut;
+};
+parse_state : parse_state_t mut := zero;
+
 parse : func(s : source, toks : token_buffer mut? -> v0)
 {
-	src ::= prog_get_source(s);
+	parse_state.src = prog_get_source(s);
+	parse_state.toks = toks;
+	parse_state.toks_cursor = 0;
+	parse_state.nodes_cursor = 0;
+	parse_state.stash_cursor = 0;
+
+	parse_state_update_lookahead(0);
+
+	putchar('\n');
+	putchar('\n');
+	dump_a_node(ref(parse_state.lookahead), parse_state.src->src, parse_state.src->src_len, 1);
 
 	if(args_should_dump_ast())
 	{
 		putchar('\n');
-		dump_nodes(ref(src->node), src->src, src->src_len);
+		dump_nodes(ref(parse_state.src->node), parse_state.src->src, parse_state.src->src_len);
 	}
+};
+
+token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
+{
+	out_ast->tag = ast_tag.token;
+	[ast_token_get_tag(out_ast)] = in_tok->tag;
+	[ast_token_get_begin_cursor(out_ast)] = in_tok->begin;
+	[ast_token_get_end_cursor(out_ast)] = in_tok->end;
+};
+
+parse_state_update_lookahead : func(tokidx : u64 -> v0)
+{
+	newtok ::= parse_state.toks->tokens # tokidx;
+	token2ast(newtok, ref(parse_state.lookahead));
 };
 
 dump_a_node : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
@@ -16,7 +54,11 @@ dump_a_node : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
 	{
 		putzstr("\t\0");
 	}
-	putzstr("node\n\0");
+
+	// node dumping bits
+	putzstr("node \0");
+	putsint(n->tag@s64);
+	putzstr("\n\0");
 };
 
 dump_nodes_inner : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
