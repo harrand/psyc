@@ -2162,6 +2162,14 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	{
 		return rval_from_biop_div(lhs, rhs, s, source);
 	}
+	if(op == ast_biop_op.bitshift_left)
+	{
+		return rval_from_biop_bitshift_left(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.bitshift_right)
+	{
+		return rval_from_biop_bitshift_right(lhs, rhs, s, source);
+	}
 	if(op == ast_biop_op.bitwise_or)
 	{
 		return rval_from_biop_bitwise_or(lhs, rhs, s, source);
@@ -2169,6 +2177,10 @@ rval_from_biop : func(op : ast_biop_op, lhs : val, rhs : val, s : scope mut?, so
 	if(op == ast_biop_op.bitwise_and)
 	{
 		return rval_from_biop_bitwise_and(lhs, rhs, s, source);
+	}
+	if(op == ast_biop_op.xor)
+	{
+		return rval_from_biop_xor(lhs, rhs, s, source);
 	}
 	if(op == ast_biop_op.logical_or)
 	{
@@ -2278,6 +2290,34 @@ rval_from_biop_div : func(lhs : val, rhs : val, s : scope mut?, source : ast mut
 	};
 };
 
+rval_from_biop_bitshift_right : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	if(ty_is_signed_integral(lhs.type))
+	{
+		return rval
+		{
+			.tag := rval_tag.scalar;
+			.v := ir_sshr(lhs.r.v, rhs.r.v);
+		};
+	}
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_ushr(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_bitshift_left : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_shl(lhs.r.v, rhs.r.v);
+	};
+};
+
 rval_from_biop_bitwise_or : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
 {
 	// always assume these are scalars
@@ -2295,6 +2335,16 @@ rval_from_biop_bitwise_and : func(lhs : val, rhs : val, s : scope mut?, source :
 	{
 		.tag := rval_tag.scalar;
 		.v := ir_and(lhs.r.v, rhs.r.v);
+	};
+};
+
+rval_from_biop_xor : func(lhs : val, rhs : val, s : scope mut?, source : ast mut? -> rval)
+{
+	// always assume these are scalars
+	return rval
+	{
+		.tag := rval_tag.scalar;
+		.v := ir_xor(lhs.r.v, rhs.r.v);
 	};
 };
 
