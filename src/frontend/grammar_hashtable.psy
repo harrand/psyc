@@ -1,6 +1,6 @@
 grammar_entry : struct
 {
-	uids : u8 weak mut[4];
+	uids : u8 weak mut[6];
 	lookahead : u8 weak;
 	stash : u8 weak;
 };
@@ -66,10 +66,49 @@ grammar_entry_hash : func(e : grammar_entry? -> u64)
 	return h;
 };
 
-grammar_find : func(key : grammar_entry? -> u64)
+grammar_find_idx : func(key : grammar_entry? -> u64)
 {
-	
+	hash ::= grammar_entry_hash(key);
+	idx : u64 mut := hash & (grammar.elements_cap - 1);
+	while(((grammar.elements # idx)->occupied) && ((grammar.elements # idx)->hash != hash))
+	{
+		idx = ((idx + 1) % (grammar.elements_cap - 1));
+	}
+	return idx;
+};
+
+grammar_find_rule : func(key : grammar_entry? -> func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0))
+{
+	idx ::= grammar_find_idx(key);
+	slot ::= grammar.elements # idx;
+	if(slot->occupied)
+	{
+		return slot->rule;
+	}
 	return zero;
+};
+
+grammar_hashtable_insert : func(key : grammar_entry?, rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
+{
+	if(grammar.elements_count >= (grammar.elements_cap - 1))
+	{
+		panic_begin();
+		putzstr("grammar_hashtable is too small\0");
+		panic_end();
+	}
+
+	idx ::= grammar_find_idx(key);
+	slot ::= grammar.elements # idx;
+	if(slot->occupied)
+	{
+		err_begin();
+		putzstr("grammar_hashtable_insert more than once for the same key/entry\0");
+		err_end();
+	}
+	slot->key = [key];
+	slot->hash = grammar_entry_hash(key);
+	slot->occupied = true;
+	slot->rule = rule;
 };
 
 grammar_init : func(-> v0)
@@ -118,7 +157,7 @@ state2 : func(uid0 : u8 weak, uid1 : u8 weak, lookahead : u8 weak, stash : u8 we
 	out_entry->stash = stash;
 };
 
-state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> grammar_entry mut?)
 {
 	[out_entry->uids # 0] = uid0;
 	[out_entry->uids # 1] = 0;
@@ -126,7 +165,15 @@ state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : 
 	[out_entry->uids # 3] = 0;
 	[out_entry->uids # 4] = 0;
 	[out_entry->uids # 5] = 0;
-	[out_entry->uids # 6] = 0;
 	out_entry->lookahead = lookahead;
 	out_entry->stash = stash;
+	return out_entry;
+};
+
+token : func(tok : token_tag -> u64)
+{
+	n : ast mut;
+	n.tag = ast_tag.token;
+	[ast_token_get_tag(ref n)] = tok;
+	return ast_uid(ref n);
 };

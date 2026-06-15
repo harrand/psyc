@@ -23,7 +23,7 @@ ast : struct
 
 ast_tag : enum
 {
-	// represents a single token (d0 = token?)
+	// represents a single token (d0 = token_tag, d1 = begin, d2 = end)
 	.token := 1;
 	// expression (d1 = expr_tag)
 	.expr := 2;
@@ -33,6 +33,16 @@ ast_tag : enum
 	.decl := 4;
 	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N
 	.typename := 5;
+	// init (d1 = init_tag, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
+	.init := 6;
+	// structure (d1 = name, d2 = name_len, d3 = structure_parse_state, child0... = decl-stmt data members)
+	.structure := 7;
+	// function (d1 = name, d2 = name_len, d3 = function_parse_state, child0 = return typename, child1... = param decls 1-N, childN... = function body statements)
+	.function := 8;
+	// enumeration (d1 = name, d2 = name_len, d3 = enumeration_parse_state, child0... = entry init statements)
+	.enumeration := 9;
+	// assembly (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = assembly code symbol)
+	.assembly := 10;
 };
 
 ast_stmt_tag : enum
@@ -191,10 +201,42 @@ ast_uid : func(n : ast mut? -> u64)
 	t ::= n->tag;
 	if(t == ast_tag.token)
 	{
-		return tag_offset_token() + ast_token_get_data(n)->tag@s64;
+		return tag_offset_token() + [ast_token_get_tag(n)]@s64;
 	}
-	unreachable;
-	// todo: rest...
+	if(t == ast_tag.expr)
+	{
+		return tag_offset_expr() + [ast_expr_get_tag(n)]@s64;
+	}
+	if(t == ast_tag.stmt)
+	{
+		return tag_offset_stmt() + [ast_stmt_get_tag(n)]@s64;
+	}
+	if(t == ast_tag.typename)
+	{
+		return tag_offset_typename() + [ast_typename_get_parse_state(n)]@s64;
+	}
+	if(t == ast_tag.function)
+	{
+		return tag_offset_function() + [ast_function_get_parse_state(n)]@s64;
+	}
+	if(t == ast_tag.structure)
+	{
+		return tag_offset_structure() + [ast_structure_get_parse_state(n)]@s64;
+	}
+	if(t == ast_tag.enumeration)
+	{
+		return tag_offset_enumeration() + [ast_enumeration_get_parse_state(n)]@s64;
+	}
+	if(t == ast_tag.assembly)
+	{
+		return tag_offset_assembly() + [ast_assembly_get_parse_state(n)]@s64;
+	}
+	if(t == ast_tag.decl)
+	{
+		return tag_offset_decl() + [ast_decl_get_parse_state(n)]@s64;
+	}
+	// anything else just uses its ast_tag as its uid
+	return n->tag@s64@u64;
 };
 
 // internal parse state
@@ -243,9 +285,19 @@ ast_decl_parse_state : enum
 
 // ACCESSOR HELPER FUNCTIONS
 
-ast_token_get_data : func(n : ast mut? -> token mut?)
+ast_token_get_tag : func(n : ast mut? -> token_tag mut?)
 {
-	return n->d0@token mut?;
+	return ref(n->d0)@token_tag mut?;
+};
+
+ast_token_get_begin_cursor : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d1)@u64 mut?;
+};
+
+ast_token_get_end_cursor : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d2)@u64 mut?;
 };
 
 ast_expr_get_tag : func(n : ast mut? -> ast_expr_tag mut?)
