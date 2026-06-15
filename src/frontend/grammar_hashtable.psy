@@ -1,6 +1,6 @@
 grammar_entry : struct
 {
-	uids : u8 weak mut[6];
+	uids : u8 weak mut[4];
 	lookahead : u8 weak;
 	stash : u8 weak;
 };
@@ -45,9 +45,88 @@ grammar_hashtable : struct
 
 grammar : grammar_hashtable mut := zero;
 
+grammar_entry_hash : func(e : grammar_entry? -> u64)
+{
+	h : u64 mut :=
+		([e->uids # 0] << 0) |
+		([e->uids # 1] << 8) |
+		([e->uids # 2] << 16) |
+		([e->uids # 3] << 24) |
+		([e->uids # 4] << 32) |
+		([e->uids # 5] << 40) |
+		(e->lookahead << 48) | 
+		(e->stash << 56);
+	
+	// spread bits around
+	h = h ^ (h >> 33);
+	h = h * 0xff51afd7ed558ccd;
+	h = h ^ (h >> 33);
+	h = h * 0xc4ceb9fe1a85ec53;
+	h = h ^ (h >> 33);
+	return h;
+};
+
+grammar_find : func(key : grammar_entry? -> u64)
+{
+	
+	return zero;
+};
+
 grammar_init : func(-> v0)
 {
 	grammar.elements_cap = 131072; // 2<<17 aka 65536 * 2
 	grammar.elements = arena_alloc(global_arena, grammar.elements_cap * sizeof grammar_hashtable_elem);
 	grammar_install();
+};
+
+state4 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+{
+	[out_entry->uids # 0] = uid0;
+	[out_entry->uids # 1] = uid1;
+	[out_entry->uids # 2] = uid2;
+	[out_entry->uids # 3] = uid3;
+	[out_entry->uids # 4] = 0;
+	[out_entry->uids # 5] = 0;
+	[out_entry->uids # 6] = 0;
+	out_entry->lookahead = lookahead;
+	out_entry->stash = stash;
+};
+
+state3 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+{
+	[out_entry->uids # 0] = uid0;
+	[out_entry->uids # 1] = uid1;
+	[out_entry->uids # 2] = uid2;
+	[out_entry->uids # 3] = 0;
+	[out_entry->uids # 4] = 0;
+	[out_entry->uids # 5] = 0;
+	[out_entry->uids # 6] = 0;
+	out_entry->lookahead = lookahead;
+	out_entry->stash = stash;
+};
+
+state2 : func(uid0 : u8 weak, uid1 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+{
+	[out_entry->uids # 0] = uid0;
+	[out_entry->uids # 1] = uid1;
+	[out_entry->uids # 2] = 0;
+	[out_entry->uids # 3] = 0;
+	[out_entry->uids # 4] = 0;
+	[out_entry->uids # 5] = 0;
+	[out_entry->uids # 6] = 0;
+	out_entry->lookahead = lookahead;
+	out_entry->stash = stash;
+};
+
+state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+{
+	[out_entry->uids # 0] = uid0;
+	[out_entry->uids # 1] = 0;
+	[out_entry->uids # 2] = 0;
+	[out_entry->uids # 3] = 0;
+	[out_entry->uids # 4] = 0;
+	[out_entry->uids # 5] = 0;
+	[out_entry->uids # 6] = 0;
+	out_entry->lookahead = lookahead;
+	out_entry->stash = stash;
 };
