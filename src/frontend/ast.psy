@@ -284,7 +284,6 @@ ast_decl_parse_state : enum
 };
 
 // ACCESSOR HELPER FUNCTIONS
-
 ast_token_get_tag : func(n : ast mut? -> token_tag mut?)
 {
 	return ref(n->d0)@token_tag mut?;
@@ -734,4 +733,45 @@ ast_alignof_get_operand : func(n : ast mut? -> ast mut?)
 ast_countof_get_operand : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
+};
+
+// TOKEN -> AST CONVERSION
+
+token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
+{
+	out_ast->tag = ast_tag.token;
+	[ast_token_get_tag(out_ast)] = in_tok->tag;
+	[ast_token_get_begin_cursor(out_ast)] = in_tok->begin;
+	[ast_token_get_end_cursor(out_ast)] = in_tok->end;
+};
+
+// DUMPING TO STDOUT
+
+ast_dump_one : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < tabcount; i = i + 1)
+	{
+		putzstr("\t\0");
+	}
+
+	// node dumping bits
+	putzstr("node \0");
+	putsint(n->tag@s64);
+	putzstr("\n\0");
+};
+
+ast_dump_inner : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
+{
+	ast_dump_one(n, src, src_len, tabcount);
+	i : u32 mut;
+	for(i = 0; i < n->children_count; i = i + 1)
+	{
+		ast_dump_inner(n->children # i, src, src_len, tabcount + 1);
+	}
+};
+
+ast_dump : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	ast_dump_inner(n, src, src_len, 0);
 };
