@@ -1,0 +1,320 @@
+endianness : enum
+{
+	.big := 1;
+	.little := 2;
+};
+
+native_endianness : func(-> endianness)
+{
+	x ::= 1@u16;
+	ptr ::= ref(x)@u8?;
+	if([ptr] == 1)
+	{
+		return endianness.little;
+	}
+	return endianness.big;
+};
+
+bwriter : struct
+{
+	endian : endianness;
+	buf : u8 mut?;
+	len : u64;
+	cursor : u64;
+	ar : arena mut?;
+};
+
+_bwriter_ensure : func(w : bwriter mut?, len : u64 -> v0)
+{
+	if(w->buf == zero)
+	{
+		w->len = (len * 8);
+		w->buf = arena_alloc(w->ar, w->len);
+	}
+	while((w->cursor + len) >= (w->len))
+	{
+		oldbuf ::= w->buf;
+		oldlen ::= w->len;
+		w->len = (w->len * 2);
+		w->buf = arena_alloc(w->ar, w->len);
+		memcopy(w->buf, oldbuf, oldlen);
+		//arena_free(w->ar, oldbuf, oldlen);
+	}
+};
+
+bwrite_bytes : func(w : bwriter mut?, buf : u8? weak, len : u64 -> v0)
+{
+	_bwriter_ensure(w, len);
+	memcopy(w->buf # (w->cursor), buf, len);
+	w->cursor = (w->cursor + len);
+};
+
+bwrite8 : func(w : bwriter mut?, v : u8 weak -> v0)
+{
+	_bwriter_ensure(w, 1);
+	[w->buf # (w->cursor)] = v;
+	w->cursor = (w->cursor + 1);
+};
+
+bwrite16 : func(w : bwriter mut?, v : u16 weak -> v0)
+{
+	_bwriter_ensure(w, 2);
+	if (w->endian == (endianness.little))
+	{
+		[w->buf # (w->cursor + 0)] = (v & 0xFF);
+		[w->buf # (w->cursor + 1)] = ((v >> 8) & 0xFF);
+	}
+	else
+	{
+		[w->buf # (w->cursor + 0)] = ((v >> 8) & 0xFF);
+		[w->buf # (w->cursor + 1)] = (v & 0xFF);
+	}
+	w->cursor = (w->cursor + 2);
+};
+
+bwrite32 : func(w : bwriter mut?, v : u32 weak -> v0)
+{
+	_bwriter_ensure(w, 4);
+	if (w->endian == (endianness.little))
+	{
+		[w->buf # (w->cursor + 0)] = (v >> 0) & 0xFF;
+		[w->buf # (w->cursor + 1)] = (v >> 8) & 0xFF;
+		[w->buf # (w->cursor + 2)] = (v >> 16) & 0xFF;
+		[w->buf # (w->cursor + 3)] = (v >> 24) & 0xFF;
+	}
+	else
+	{
+		[w->buf # (w->cursor + 0)] = (v >> 24) & 0xFF;
+		[w->buf # (w->cursor + 1)] = (v >> 16) & 0xFF;
+		[w->buf # (w->cursor + 2)] = (v >> 8) & 0xFF;
+		[w->buf # (w->cursor + 3)] = (v >> 0) & 0xFF;
+	}
+	w->cursor = (w->cursor + 4);
+};
+
+bwrite64 : func(w : bwriter mut?, v : u64 weak -> v0)
+{
+	_bwriter_ensure(w, 8);
+	if (w->endian == (endianness.little))
+	{
+		[w->buf # (w->cursor + 0)] = (((v >> (8 * 0)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 1)] = (((v >> (8 * 1)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 2)] = (((v >> (8 * 2)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 3)] = (((v >> (8 * 3)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 4)] = (((v >> (8 * 4)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 5)] = (((v >> (8 * 5)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 6)] = (((v >> (8 * 6)) & 0xFF)@u8);
+		[w->buf # (w->cursor + 7)] = (((v >> (8 * 7)) & 0xFF)@u8);
+	}
+	else
+	{
+		[w->buf # (w->cursor + 0)] = (((v >> (8 * (7 - 0))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 1)] = (((v >> (8 * (7 - 1))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 2)] = (((v >> (8 * (7 - 2))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 3)] = (((v >> (8 * (7 - 3))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 4)] = (((v >> (8 * (7 - 4))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 5)] = (((v >> (8 * (7 - 5))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 6)] = (((v >> (8 * (7 - 6))) & 0xFF)@u8);
+		[w->buf # (w->cursor + 7)] = (((v >> (8 * (7 - 7))) & 0xFF)@u8);
+	}
+	w->cursor = (w->cursor + 8);
+};
+
+//bwritef32 : func(w : bwriter mut?, f : f32 weak -> v0)
+//{
+//	// pretend its a u32
+//	fcpy ::= f;
+//	bwrite32(w, [ref(fcpy)@u32?]);
+//};
+
+//bwritef64 : func(w : bwriter mut?, f : f64 weak -> v0)
+//{
+//	// pretend its a u64
+//	fcpy ::= f;
+//	bwrite64(w, [ref(fcpy)@u64?]);
+//};
+
+bwrite_zstr : func(w : bwriter mut?, z : u8? -> v0)
+{
+	bwrite_bytes(w, z, zstrlen(z));
+};
+
+bwrite_uint : func(w : bwriter mut?, u : u64 weak -> v0)
+{
+	if(u > 9)
+	{
+		bwrite_uint(w, u / 10);
+	}
+	digit ::= u - ((u / 10) * 10);
+	bwrite8(w, '0' + digit);
+};
+
+bwrite_sint : func(w : bwriter mut?, s : s64 weak -> v0)
+{
+	if(s < 0)
+	{
+		bwrite8(w, '-');
+		bwrite_uint(w, -s);
+	}
+	else
+	{
+		bwrite_uint(w, s);
+	}
+};
+
+//bwrite_float : func(w : bwriter mut?, f : f64 weak -> v0)
+//{
+//	if(f < 0.0)
+//	{
+//		if(f != f)
+//		{
+//			bwrite_zstr(w, "NaN");
+//			return;
+//		}
+//		bwrite8(w, '-');
+//		bwrite_float(w, -f);
+//	}
+//	
+//	scale ::= 10000000000.0; // 10^10
+//
+//	// Multiply first, then add 0.5 to round, then cast to integer
+//	scaled ::= (f * scale + 0.5)@s64;
+//
+//	int_part ::= scaled / 10000000000;
+//	decimal_part ::= scaled % 10000000000;
+//
+//	bwrite_uint(w, int_part);
+//	bwrite8(w, '.');
+//
+//	// Pad leading zeros for decimal part (up to 10 digits)
+//	divisor : s64 mut := 1000000000; // 10^9
+//	while(divisor > 0)
+//
+//	{
+//		if(decimal_part < divisor)
+//		{
+//			bwrite8(w, '0');
+//		}
+//		divisor = divisor / 10;
+//	}
+//
+//	bwrite_uint(w, decimal_part);
+//};
+
+breader : struct
+{
+	endian : endianness;
+	buf : u8?;
+	len : u64;
+	cursor : u64;
+};
+
+bread_bytes : func(r : breader mut?, buf : u8 mut? weak, len : u64 -> v0)
+{
+	memcopy(buf, r->buf # (r->cursor), len);
+	r->cursor = (r->cursor + len);
+};
+
+bread8 : func(r : breader mut? -> u8 weak)
+{
+	v ::= [r->buf # r->cursor];
+	r->cursor = (r->cursor + 1);
+	return v;
+};
+
+bread16 : func(r : breader mut? -> u16 weak)
+{
+    b0 ::= [r->buf # r->cursor];
+    b1 ::= [r->buf # (r->cursor + 1)];
+
+	v : u16 mut;
+    if (r->endian == (endianness.little))
+    {
+        v = ((b0 @ u16) | ((b1 @ u16) << 8));
+    }
+    else
+    {
+        v = (((b0 @ u16) << 8) | (b1 @ u16));
+    }
+
+    r->cursor = (r->cursor + 2);
+    return v;
+};
+
+bread32 : func(r : breader mut? -> u32 weak)
+{
+    b0 ::= [r->buf # (r->cursor + 0)];
+    b1 ::= [r->buf # (r->cursor + 1)];
+    b2 ::= [r->buf # (r->cursor + 2)];
+    b3 ::= [r->buf # (r->cursor + 3)];
+
+    v : u32 mut;
+    if (r->endian == (endianness.little))
+    {
+        v = ((b0 @ u32) |
+             ((b1 @ u32) << 8) |
+             ((b2 @ u32) << 16) |
+             ((b3 @ u32) << 24));
+    }
+    else
+    {
+        v = (((b0 @ u32) << 24) |
+             ((b1 @ u32) << 16) |
+             ((b2 @ u32) << 8) |
+             (b3 @ u32));
+    }
+
+    r->cursor = (r->cursor + 4);
+    return v;
+};
+
+bread64 : func(r : breader mut? -> u64 weak)
+{
+    b0 ::= [r->buf # (r->cursor + 0)];
+    b1 ::= [r->buf # (r->cursor + 1)];
+    b2 ::= [r->buf # (r->cursor + 2)];
+    b3 ::= [r->buf # (r->cursor + 3)];
+    b4 ::= [r->buf # (r->cursor + 4)];
+    b5 ::= [r->buf # (r->cursor + 5)];
+    b6 ::= [r->buf # (r->cursor + 6)];
+    b7 ::= [r->buf # (r->cursor + 7)];
+
+    v : u64 mut;
+    if (r->endian == (endianness.little))
+    {
+        v = ((b0 @ u64) |
+             ((b1 @ u64) << 8) |
+             ((b2 @ u64) << 16) |
+             ((b3 @ u64) << 24) |
+             ((b4 @ u64) << 32) |
+             ((b5 @ u64) << 40) |
+             ((b6 @ u64) << 48) |
+             ((b7 @ u64) << 56));
+    }
+    else
+    {
+        v = (((b0 @ u64) << 56) |
+             ((b1 @ u64) << 48) |
+             ((b2 @ u64) << 40) |
+             ((b3 @ u64) << 32) |
+             ((b4 @ u64) << 24) |
+             ((b5 @ u64) << 16) |
+             ((b6 @ u64) << 8) |
+             (b7 @ u64));
+    }
+
+    r->cursor = (r->cursor + 8);
+    return v;
+};
+
+//breadf32 : func(r : breader mut? -> f32 weak)
+//{
+//	u ::= bread32(r);
+//	return [ref(u)@f32?];
+//};
+
+//breadf64 : func(r : breader mut? -> f64 weak)
+//{
+//	u ::= bread64(r);
+//	return [ref(u)@f64?];
+//};
