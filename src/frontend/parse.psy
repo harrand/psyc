@@ -29,13 +29,14 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 
 	parse_state_update_lookahead(0);
 	shift(1);
-	putzstr("token0: \n\0");
-	ast_dump_one(parse_state.nodes # 0, parse_state.src->src, parse_state.src->src_len, 0);
-	commit(parse_state.nodes # 0);
 
-	putchar('\n');
-	putchar('\n');
-	ast_dump_one(ref(parse_state.lookahead), parse_state.src->src, parse_state.src->src_len, 1);
+	// compiler bug: !parse_complete() evalutes to true if the function returns false (ANDS it with 1 and then setz's the result which is 1)
+	//while(parse_complete() == false)
+	//{
+		// todo: get enxt rule
+		// check its valid (syntax error otherwise)
+		// invoke the rule and carry out the result
+	//}
 
 	if(args_should_dump_ast())
 	{
@@ -44,17 +45,37 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 	}
 };
 
-shift : func(n : u64 -> v0)
+parse_complete : func(-> bool)
+{
+	// parsing is complete if *all* the following are true:
+	return
+	// - we've processed all the tokens
+		(parse_state.toks_cursor >= parse_state.toks->tokens_count)
+			&&
+	// - there are no nodes in our buffer
+		(parse_state.nodes_cursor == 0)
+			&&
+	// - the stash is empty
+		(parse_state.stash_cursor == 0);
+};
+
+shift : func(n : u64 -> u64)
 {
 	// try to shift n new tokens onto the parse state
 	i : u64 mut;
 	for(i = 0; i < n; i = i + 1)
 	{
+		if(parse_state.toks_cursor >= parse_state.toks->tokens_count)
+		{
+			// we're out of tokens!
+			return i;
+		}
 		[parse_state.nodes # parse_state.nodes_cursor] = parse_state.lookahead;
 		parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
 		parse_state.toks_cursor = parse_state.toks_cursor + 1;
 		parse_state_update_lookahead(parse_state.toks_cursor);
 	}
+	return n;
 };
 
 commit : func(n : ast mut? -> v0)
