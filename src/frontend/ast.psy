@@ -23,6 +23,7 @@ ast : struct
 
 ast_tag : enum
 {
+	// zero represents the root/empty node (d0 = source)
 	// represents a single token (d0 = token_tag, d1 = begin, d2 = end)
 	.token := 1;
 	// expression (d1 = expr_tag)
@@ -284,17 +285,22 @@ ast_decl_parse_state : enum
 };
 
 // ACCESSOR HELPER FUNCTIONS
+ast_root_get_source : func(n : ast mut? -> source mut?)
+{
+	return ref(n->d0)@source mut?;
+};
+
 ast_token_get_tag : func(n : ast mut? -> token_tag mut?)
 {
 	return ref(n->d0)@token_tag mut?;
 };
 
-ast_token_get_begin_cursor : func(n : ast mut? -> u64 mut?)
+ast_token_get_begin : func(n : ast mut? -> u64 mut?)
 {
 	return ref(n->d1)@u64 mut?;
 };
 
-ast_token_get_end_cursor : func(n : ast mut? -> u64 mut?)
+ast_token_get_end : func(n : ast mut? -> u64 mut?)
 {
 	return ref(n->d2)@u64 mut?;
 };
@@ -741,11 +747,98 @@ token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
 {
 	out_ast->tag = ast_tag.token;
 	[ast_token_get_tag(out_ast)] = in_tok->tag;
-	[ast_token_get_begin_cursor(out_ast)] = in_tok->begin;
-	[ast_token_get_end_cursor(out_ast)] = in_tok->end;
+	[ast_token_get_begin(out_ast)] = in_tok->begin;
+	[ast_token_get_end(out_ast)] = in_tok->end;
 };
 
 // DUMPING TO STDOUT
+
+ast_dump_tbl ::= func(n : ast mut?, src : u8?, src_len : u64 -> v0)[countof ast_tag]
+{
+	.0 := ast_dump_root;
+	.1 := ast_dump_token;
+	.2 := ast_dump_expr;	
+	.3 := ast_dump_stmt;
+	.4 := ast_dump_decl;
+	.5 := ast_dump_typename;
+	.6 := ast_dump_init;
+	.7 := ast_dump_structure;
+	.8 := ast_dump_function;
+	.9 := ast_dump_enumeration;
+	.10 := ast_dump_assembly;
+};
+
+ast_dump_root : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	s ::= [ast_root_get_source(n)];
+	srcptr ::= prog_get_source(s);
+	if(srcptr == zero)
+	{
+		putzstr("root(unnamed)\n\0");
+	}
+	else
+	{
+		putzstr("root(\0");
+		putzstr(path2zstr(srcptr->path));
+		putzstr(")\n\0");
+	}
+};
+
+ast_dump_token : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("token \0");
+	putuint([ast_token_get_tag(n)]@s64);
+	putchar(' ');
+	beg ::= [ast_token_get_begin(n)];
+	end ::= [ast_token_get_end(n)];
+	putchars(src # beg, end - beg);
+	putzstr("\n\0");
+};
+
+ast_dump_expr : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("expr\n\0");
+};
+
+ast_dump_stmt : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("stmt\n\0");
+};
+
+ast_dump_decl : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("decl\n\0");
+};
+
+ast_dump_typename : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("typename\n\0");
+};
+
+ast_dump_init : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("init\n\0");
+};
+
+ast_dump_structure : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("structure\n\0");
+};
+
+ast_dump_function : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("function\n\0");
+};
+
+ast_dump_enumeration : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("enumeration\n\0");
+};
+
+ast_dump_assembly : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("assembly\n\0");
+};
 
 ast_dump_one : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
 {
@@ -755,10 +848,7 @@ ast_dump_one : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0
 		putzstr("\t\0");
 	}
 
-	// node dumping bits
-	putzstr("node \0");
-	putsint(n->tag@s64);
-	putzstr("\n\0");
+	[ast_dump_tbl # (n->tag@s64)](n, src, src_len);
 };
 
 ast_dump_inner : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
