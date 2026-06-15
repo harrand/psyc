@@ -23,8 +23,15 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 
 	// assign our 'source' value to the root node of our associated ast.
 	[ast_root_get_source(root)] = s;
+	root->children = zero;
+	root->children_count = 0;
+	root->children_cap = 0;
 
 	parse_state_update_lookahead(0);
+	shift(1);
+	putzstr("token0: \n\0");
+	ast_dump_one(parse_state.nodes # 0, parse_state.src->src, parse_state.src->src_len, 0);
+	commit(parse_state.nodes # 0);
 
 	putchar('\n');
 	putchar('\n');
@@ -35,6 +42,30 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 		putchar('\n');
 		ast_dump(root, parse_state.src->src, parse_state.src->src_len);
 	}
+};
+
+shift : func(n : u64 -> v0)
+{
+	// try to shift n new tokens onto the parse state
+	i : u64 mut;
+	for(i = 0; i < n; i = i + 1)
+	{
+		[parse_state.nodes # parse_state.nodes_cursor] = parse_state.lookahead;
+		parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
+		parse_state.toks_cursor = parse_state.toks_cursor + 1;
+		parse_state_update_lookahead(parse_state.toks_cursor);
+	}
+};
+
+commit : func(n : ast mut? -> v0)
+{
+	top : ast mut? mut := parse_state.stash # parse_state.stash_cursor;
+	if(parse_state.stash_cursor == 0)
+	{
+		// stash empty, commit to root node.
+		top ::= ref(parse_state.src->node);
+	}
+	ast_add_child(top, n);
 };
 
 parse_state_update_lookahead : func(tokidx : u64 -> v0)

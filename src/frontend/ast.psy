@@ -284,6 +284,33 @@ ast_decl_parse_state : enum
 	.finalised := 4;
 };
 
+ast_add_child : func(node : ast mut?, child : ast? -> v0)
+{
+	if(node->children == zero)
+	{
+		node->children_cap = 2;
+		node->children = arena_alloc(global_arena, sizeof ast * (node->children_cap));
+	}
+	while(node->children_cap <= (node->children_count))
+	{
+		old ::= node->children;
+		oldcap ::= node->children_cap;
+
+		node->children_cap = (node->children_cap * 2);
+		node->children = arena_alloc(global_arena, sizeof ast * (node->children_cap@u64));	
+		memcopy(node->children, old, oldcap@u64 * sizeof ast);
+	}
+	[node->children # (node->children_count)] = [child];
+	node->children_count = (node->children_count + 1);
+	// note: i have decided that if you add a node as a child, the parent node almost certainly should include it when quoting source
+	// so im potentially extending its end cursor
+	// if thats wrong then comment this shit out.
+	//if(node->end_cursor < (child.end_cursor))
+	//{
+	//	node->end_cursor = (child.end_cursor);
+	//}
+};
+
 // ACCESSOR HELPER FUNCTIONS
 ast_root_get_source : func(n : ast mut? -> source mut?)
 {
@@ -749,6 +776,9 @@ token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
 	[ast_token_get_tag(out_ast)] = in_tok->tag;
 	[ast_token_get_begin(out_ast)] = in_tok->begin;
 	[ast_token_get_end(out_ast)] = in_tok->end;
+	out_ast->children = zero;
+	out_ast->children_count = 0;
+	out_ast->children_cap = 0;
 };
 
 // DUMPING TO STDOUT
@@ -854,8 +884,8 @@ ast_dump_one : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0
 ast_dump_inner : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
 {
 	ast_dump_one(n, src, src_len, tabcount);
-	i : u32 mut;
-	for(i = 0; i < n->children_count; i = i + 1)
+	i : u64 mut;
+	for(i = 0; i < n->children_count@u64; i = i + 1)
 	{
 		ast_dump_inner(n->children # i, src, src_len, tabcount + 1);
 	}
