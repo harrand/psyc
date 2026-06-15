@@ -24,54 +24,17 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 
 	putchar('\n');
 	putchar('\n');
-	dump_a_node(ref(parse_state.lookahead), parse_state.src->src, parse_state.src->src_len, 1);
+	ast_dump_one(ref(parse_state.lookahead), parse_state.src->src, parse_state.src->src_len, 1);
 
 	if(args_should_dump_ast())
 	{
 		putchar('\n');
-		dump_nodes(ref(parse_state.src->node), parse_state.src->src, parse_state.src->src_len);
+		ast_dump(ref(parse_state.src->node), parse_state.src->src, parse_state.src->src_len);
 	}
-};
-
-token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
-{
-	out_ast->tag = ast_tag.token;
-	[ast_token_get_tag(out_ast)] = in_tok->tag;
-	[ast_token_get_begin_cursor(out_ast)] = in_tok->begin;
-	[ast_token_get_end_cursor(out_ast)] = in_tok->end;
 };
 
 parse_state_update_lookahead : func(tokidx : u64 -> v0)
 {
 	newtok ::= parse_state.toks->tokens # tokidx;
 	token2ast(newtok, ref(parse_state.lookahead));
-};
-
-dump_a_node : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
-{
-	i : u64 mut;
-	for(i = 0; i < tabcount; i = i + 1)
-	{
-		putzstr("\t\0");
-	}
-
-	// node dumping bits
-	putzstr("node \0");
-	putsint(n->tag@s64);
-	putzstr("\n\0");
-};
-
-dump_nodes_inner : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
-{
-	dump_a_node(n, src, src_len, tabcount);
-	i : u32 mut;
-	for(i = 0; i < n->children_count; i = i + 1)
-	{
-		dump_nodes_inner(n->children # i, src, src_len, tabcount + 1);
-	}
-};
-
-dump_nodes : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
-{
-	dump_nodes_inner(n, src, src_len, 0);
 };
