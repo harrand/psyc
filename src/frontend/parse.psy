@@ -31,18 +31,89 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 	shift(1);
 
 	// compiler bug: !parse_complete() evalutes to true if the function returns false (ANDS it with 1 and then setz's the result which is 1)
-	//while(parse_complete() == false)
-	//{
+	while(parse_complete() == false)
+	{
+		rule ::= parse_get_next_rule();
+		if(rule == zero)
+		{
+			err_begin();
+			putzstr("syntax error :/\0");
+			err_end();
+		}
+		parse_invoke_rule(rule);
 		// todo: get enxt rule
 		// check its valid (syntax error otherwise)
 		// invoke the rule and carry out the result
-	//}
+	}
 
 	if(args_should_dump_ast())
 	{
 		putchar('\n');
 		ast_dump(root, parse_state.src->src, parse_state.src->src_len);
 	}
+};
+
+parse_state_get_current_key : func(out_key : grammar_entry mut?, include_lookahead : bool, include_stash : bool -> v0)
+{
+	[out_key->uids # 0] = 0;
+	[out_key->uids # 1] = 0;
+	[out_key->uids # 2] = 0;
+	[out_key->uids # 3] = 0;
+	[out_key->uids # 4] = 0;
+	[out_key->uids # 5] = 0;
+	out_key->lookahead = 0;
+	out_key->stash = 0;
+
+	i : u64 mut;
+	for(i = 0; i < parse_state.nodes_cursor; i = i + 1)
+	{
+		[out_key->uids # i] = ast_uid(parse_state.nodes # i);
+	}
+	if(include_lookahead)
+	{
+		out_key->lookahead = ast_uid(ref(parse_state.lookahead));
+	}
+	if(include_stash && (parse_state.stash_cursor > 0))
+	{
+		out_key->stash = ast_uid(parse_state.stash # (parse_state.stash_cursor - 1));
+	}
+};
+
+parse_get_next_rule : func(-> func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0))
+{
+	rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) mut;
+	entry : grammar_entry mut;
+
+	// first try with both stash and lookahead
+	parse_state_get_current_key(ref entry, true, true);
+	rule = grammar_find_rule(ref entry);
+	if(rule != zero)
+	{
+		return rule;
+	}
+	// no lookahead, yes stash
+	parse_state_get_current_key(ref entry, false, true);
+	rule = grammar_find_rule(ref entry);
+	if(rule != zero)
+	{
+		return rule;
+	}
+	// yes lookahead, no stash
+	parse_state_get_current_key(ref entry, true, false);
+	rule = grammar_find_rule(ref entry);
+	if(rule != zero)
+	{
+		return rule;
+	}
+	// neither
+	parse_state_get_current_key(ref entry, false, false);
+	return grammar_find_rule(ref entry);
+};
+
+parse_invoke_rule : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
+{
+	result : grammar_result mut;
+	rule(parse_state.nodes # 0, parse_state.nodes_cursor, ref result);
 };
 
 parse_complete : func(-> bool)
