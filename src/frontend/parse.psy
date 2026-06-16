@@ -1,3 +1,8 @@
+// to understand how the parsing works, you should first read grammar_hashtable.psy and then be hopelessly confused.
+// at the start of the compiler, the hashtable is populated with all the parse states and associated rules that comprise the language.
+// when you want to parse some source code, you repeatedly load the state of the parser into the grammar state to get an associated hash, and then retrieve a callback function (the parse rule) from the hashtable which tells the parser what to do next.
+// this means that the below parser code doesnt actually do that much - the logic is in the grammar, all we do is hash our parse state repeatedly and call the parsing rule until we are finished parsing (or we hit an error)
+
 parse_state_t : struct
 {
 	src : source_file mut?;
@@ -63,61 +68,60 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 	}
 };
 
-parse_state_get_current_key : func(out_key : grammar_entry mut?, include_lookahead : bool, include_stash : bool -> v0)
+// load the current parse state as the grammar state
+parse_state_load : func(include_lookahead : bool, include_stash : bool -> v0)
 {
-	[out_key->uids # 0] = 0;
-	[out_key->uids # 1] = 0;
-	[out_key->uids # 2] = 0;
-	[out_key->uids # 3] = 0;
-	[out_key->uids # 4] = 0;
-	[out_key->uids # 5] = 0;
-	out_key->lookahead = 0;
-	out_key->stash = 0;
+	[cur_entry.uids # 0] = 0;
+	[cur_entry.uids # 1] = 0;
+	[cur_entry.uids # 2] = 0;
+	[cur_entry.uids # 3] = 0;
+	[cur_entry.uids # 4] = 0;
+	[cur_entry.uids # 5] = 0;
+	cur_entry.lookahead = 0;
+	cur_entry.stash = 0;
 
 	i : u64 mut;
 	for(i = 0; i < parse_state.nodes_cursor; i = i + 1)
 	{
-		[out_key->uids # i] = ast_uid(parse_state.nodes # i);
+		[cur_entry.uids # i] = ast_uid(parse_state.nodes # i);
 	}
 	if(include_lookahead)
 	{
-		out_key->lookahead = ast_uid(ref(parse_state.lookahead));
+		cur_entry.lookahead = ast_uid(ref(parse_state.lookahead));
 	}
 	if(include_stash && (parse_state.stash_cursor > 0))
 	{
-		out_key->stash = ast_uid(parse_state.stash # (parse_state.stash_cursor - 1));
+		cur_entry.stash = ast_uid(parse_state.stash # (parse_state.stash_cursor - 1));
 	}
 };
 
 parse_get_next_rule : func(-> func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0))
 {
 	rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) mut;
-	entry : grammar_entry mut;
-
 	// first try with both stash and lookahead
-	parse_state_get_current_key(ref entry, true, true);
-	rule = grammar_find_rule(ref entry);
+	parse_state_load(true, true);
+	rule = grammar_find_rule();
 	if(rule != zero)
 	{
 		return rule;
 	}
 	// no lookahead, yes stash
-	parse_state_get_current_key(ref entry, false, true);
-	rule = grammar_find_rule(ref entry);
+	parse_state_load(false, true);
+	rule = grammar_find_rule();
 	if(rule != zero)
 	{
 		return rule;
 	}
 	// yes lookahead, no stash
-	parse_state_get_current_key(ref entry, true, false);
-	rule = grammar_find_rule(ref entry);
+	parse_state_load(true, false);
+	rule = grammar_find_rule();
 	if(rule != zero)
 	{
 		return rule;
 	}
 	// neither
-	parse_state_get_current_key(ref entry, false, false);
-	return grammar_find_rule(ref entry);
+	parse_state_load(false, false);
+	return grammar_find_rule();
 };
 
 parse_invoke_rule : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)

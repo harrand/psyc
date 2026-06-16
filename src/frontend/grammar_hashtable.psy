@@ -1,3 +1,19 @@
+// GRAMMAR HASHTABLE
+// the entire grammar is stored in a giant hashtable. the current state of a parser can be hashed into a single value - this is your index into the hashtable.
+// the value stored at this index is called a 'parse rule'. this is a callback function which instructs the parser on what to do when this particular parse state is seen. a parse rule of 'zero' means there is no rule to handle this parse state, AKA a syntax error.
+
+// this source file contains the hashtable, and various functions to interact with it.
+
+// the stateN functions set the grammar state to be a set of N hashed nodes.
+// in parse.psy, the 'parse_state_load' function sets the grammar state to match the state of the parser.
+// for example: state1(token(keyword_return), token(semicol), zero) means the following is set as the grammar state:
+// 'return'
+// lookahead:';'
+// stash:<ignore>
+//
+// - a call to 'grammar_associate' will associate a parsing rule with whatever the current grammar state is
+// - a call to 'grammar_find_rule' will retrieve the parsing rule associated with the current grammar state (or zero if there isnt one)
+
 grammar_entry : struct
 {
 	uids : u8 weak mut[6];
@@ -5,6 +21,7 @@ grammar_entry : struct
 	stash : u8 weak;
 };
 
+// this is just a compile-time buffer used to store the grammar state. alot of functions e.g stateN and parse_state_load will modify this. it is expected to change very, very frequently.
 cur_entry : grammar_entry mut;
 
 grammar_hashtable_elem : struct
@@ -79,8 +96,10 @@ grammar_find_idx : func(key : grammar_entry? -> u64)
 	return idx;
 };
 
-grammar_find_rule : func(key : grammar_entry? -> func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0))
+// find the rule associated with the current loaded grammar state
+grammar_find_rule : func(-> func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0))
 {
+	key ::= ref cur_entry;
 	idx ::= grammar_find_idx(key);
 	slot ::= grammar.elements # idx;
 	if(slot->occupied)
@@ -90,7 +109,8 @@ grammar_find_rule : func(key : grammar_entry? -> func(nodes : ast mut?, nodes_co
 	return zero;
 };
 
-grammar_hashtable_insert : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
+// associate the current grammar state with a rule. will panic if the state already has a rule associated with it.
+grammar_associate : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
 {
 	key ::= ref cur_entry;
 	if(grammar.elements_count >= (grammar.elements_cap - 1))
@@ -105,7 +125,7 @@ grammar_hashtable_insert : func(rule : func(nodes : ast mut?, nodes_count : u64,
 	if(slot->occupied)
 	{
 		err_begin();
-		putzstr("grammar_hashtable_insert more than once for the same key/entry\0");
+		putzstr("grammar_associate more than once for the same key/entry\0");
 		err_end();
 	}
 	slot->key = [key];
