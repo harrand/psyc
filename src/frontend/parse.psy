@@ -36,8 +36,18 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 		rule ::= parse_get_next_rule();
 		if(rule == zero)
 		{
+			// print out an error
 			err_begin();
-			putzstr("syntax error :/\0");
+			putzstr("invalid syntax at \0");
+			// get the begin/end cursors comprising all current nodes
+			begin : u64 weak := (parse_state.nodes # 0)->src_beg;
+			end : u64 weak mut := begin;
+			if(parse_state.nodes_cursor > 0)
+			{
+				end = (parse_state.nodes # (parse_state.nodes_cursor - 1))->src_end;
+			}
+			// print the source at those cursors
+			putsrc(s, begin, end, putcol.red_underline);
 			err_end();
 		}
 		parse_invoke_rule(rule);
