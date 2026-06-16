@@ -5,6 +5,8 @@ grammar_entry : struct
 	stash : u8 weak;
 };
 
+cur_entry : grammar_entry mut;
+
 grammar_hashtable_elem : struct
 {
 	key : grammar_entry;
@@ -88,8 +90,9 @@ grammar_find_rule : func(key : grammar_entry? -> func(nodes : ast mut?, nodes_co
 	return zero;
 };
 
-grammar_hashtable_insert : func(key : grammar_entry?, rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
+grammar_hashtable_insert : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
 {
+	key ::= ref cur_entry;
 	if(grammar.elements_count >= (grammar.elements_cap - 1))
 	{
 		panic_begin();
@@ -118,56 +121,55 @@ grammar_init : func(-> v0)
 	grammar_install();
 };
 
-state4 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+state4 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, uid3 : u8 weak, lookahead : u8 weak, stash : u8 weak -> v0)
 {
-	[out_entry->uids # 0] = uid0;
-	[out_entry->uids # 1] = uid1;
-	[out_entry->uids # 2] = uid2;
-	[out_entry->uids # 3] = uid3;
-	[out_entry->uids # 4] = 0;
-	[out_entry->uids # 5] = 0;
-	[out_entry->uids # 6] = 0;
-	out_entry->lookahead = lookahead;
-	out_entry->stash = stash;
+	[cur_entry.uids # 0] = uid0;
+	[cur_entry.uids # 1] = uid1;
+	[cur_entry.uids # 2] = uid2;
+	[cur_entry.uids # 3] = uid3;
+	[cur_entry.uids # 4] = 0;
+	[cur_entry.uids # 5] = 0;
+	[cur_entry.uids # 6] = 0;
+	cur_entry.lookahead = lookahead;
+	cur_entry.stash = stash;
 };
 
-state3 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
+state3 : func(uid0 : u8 weak, uid1 : u8 weak, uid2 : u8 weak, lookahead : u8 weak, stash : u8 weak -> v0)
 {
-	[out_entry->uids # 0] = uid0;
-	[out_entry->uids # 1] = uid1;
-	[out_entry->uids # 2] = uid2;
-	[out_entry->uids # 3] = 0;
-	[out_entry->uids # 4] = 0;
-	[out_entry->uids # 5] = 0;
-	[out_entry->uids # 6] = 0;
-	out_entry->lookahead = lookahead;
-	out_entry->stash = stash;
+	[cur_entry.uids # 0] = uid0;
+	[cur_entry.uids # 1] = uid1;
+	[cur_entry.uids # 2] = uid2;
+	[cur_entry.uids # 3] = 0;
+	[cur_entry.uids # 4] = 0;
+	[cur_entry.uids # 5] = 0;
+	[cur_entry.uids # 6] = 0;
+	cur_entry.lookahead = lookahead;
+	cur_entry.stash = stash;
 };
 
 state2 : func(uid0 : u8 weak, uid1 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> v0)
 {
-	[out_entry->uids # 0] = uid0;
-	[out_entry->uids # 1] = uid1;
-	[out_entry->uids # 2] = 0;
-	[out_entry->uids # 3] = 0;
-	[out_entry->uids # 4] = 0;
-	[out_entry->uids # 5] = 0;
-	[out_entry->uids # 6] = 0;
-	out_entry->lookahead = lookahead;
-	out_entry->stash = stash;
+	[cur_entry.uids # 0] = uid0;
+	[cur_entry.uids # 1] = uid1;
+	[cur_entry.uids # 2] = 0;
+	[cur_entry.uids # 3] = 0;
+	[cur_entry.uids # 4] = 0;
+	[cur_entry.uids # 5] = 0;
+	[cur_entry.uids # 6] = 0;
+	cur_entry.lookahead = lookahead;
+	cur_entry.stash = stash;
 };
 
-state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak, out_entry : grammar_entry mut? -> grammar_entry mut?)
+state1 : func(uid0 : u8 weak, lookahead : u8 weak, stash : u8 weak -> v0)
 {
-	[out_entry->uids # 0] = uid0;
-	[out_entry->uids # 1] = 0;
-	[out_entry->uids # 2] = 0;
-	[out_entry->uids # 3] = 0;
-	[out_entry->uids # 4] = 0;
-	[out_entry->uids # 5] = 0;
-	out_entry->lookahead = lookahead;
-	out_entry->stash = stash;
-	return out_entry;
+	[cur_entry.uids # 0] = uid0;
+	[cur_entry.uids # 1] = 0;
+	[cur_entry.uids # 2] = 0;
+	[cur_entry.uids # 3] = 0;
+	[cur_entry.uids # 4] = 0;
+	[cur_entry.uids # 5] = 0;
+	cur_entry.lookahead = lookahead;
+	cur_entry.stash = stash;
 };
 
 token : func(tok : token_tag -> u64)
