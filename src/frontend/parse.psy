@@ -47,16 +47,30 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 			// get the begin/end cursors comprising all current nodes
 			begin : u32 mut := (parse_state.nodes # 0)->src_beg;
 			// if we have a stashtop, then the source underline should begin there
-			if(parse_state.stash_cursor > 0)
-			{
-				begin = (parse_state.stash # 0)->src_beg;
-			}
+			//if(parse_state.stash_cursor > 0)
+			//{
+			//	begin = (parse_state.stash # 0)->src_beg;
+			//}
 			end : u32 mut := begin;
 			if(parse_state.nodes_cursor > 0)
 			{
 				end = (parse_state.nodes # (parse_state.nodes_cursor - 1))->src_end;
 			}
 			putsrc(s, begin@u64, end@u64, putcol.red_underline);
+			// extra info
+			//if(1 == 1)
+			//{
+				//putzstr("\n\n(\0");
+				//putuint(parse_state.nodes_cursor);
+				//putzstr(" nodes, \0");
+				//putuint(parse_state.stash_cursor);
+				//putzstr(" stashed)\n\0");
+				//i : u64 mut;
+				//for(i = 0; i < parse_state.nodes_cursor; i = i + 1)
+				//{
+				//	ast_dump(parse_state.nodes # i, parse_state.src->src, parse_state.src->src_len);
+				//}
+			//}
 			err_end();
 		}
 		parse_invoke_rule(rule);
@@ -268,6 +282,14 @@ reduce : func(r : grammar_result mut? -> v0)
 	{
 		[parse_state.nodes # (parse_state.nodes_cursor)] = r->replacement;
 		parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
+	}
+	else
+	{
+		if(r->delete_offset > 0)
+		{
+			// the last node before the delete_offset should have its src_end extended to fit hte deleted nodes
+			(parse_state.nodes # (r->delete_offset - 1))->src_end = r->replacement.src_end;
+		}
 	}
 };
 
