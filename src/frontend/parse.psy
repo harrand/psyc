@@ -56,9 +56,6 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 			err_end();
 		}
 		parse_invoke_rule(rule);
-		// todo: get enxt rule
-		// check its valid (syntax error otherwise)
-		// invoke the rule and carry out the result
 	}
 
 	if(args_should_dump_ast())
@@ -124,10 +121,52 @@ parse_get_next_rule : func(-> func(nodes : ast mut?, nodes_count : u64, out_resu
 	return grammar_find_rule();
 };
 
+rule_handler_shift : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
+{
+	shift(result->shift_or_delete_count);
+	putzstr("shift\n\0");
+};
+
+rule_handler_reduce : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: reduce impl\n\0");
+	panic_end();
+};
+
+rule_handler_stash : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: stash impl\n\0");
+	panic_end();
+};
+
+rule_handler_unstash : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: unstash impl\n\0");
+	panic_end();
+};
+
+rule_handler_commit : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
+{
+	commit(nodes # 0);
+};
+
+rule_handler_tbl ::= func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)[countof grammar_result_type]
+{
+	.0 := rule_handler_shift;
+	.1 := rule_handler_reduce;
+	.2 := rule_handler_stash;
+	.3 := rule_handler_unstash;
+	.4 := rule_handler_commit;
+};
+
 parse_invoke_rule : func(rule : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0) -> v0)
 {
 	result : grammar_result mut;
 	rule(parse_state.nodes # 0, parse_state.nodes_cursor, ref result);
+	[rule_handler_tbl # (result.type@s64)](parse_state.nodes # 0, parse_state.nodes_cursor, ref result);
 };
 
 parse_complete : func(-> bool)

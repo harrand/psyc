@@ -24,6 +24,21 @@ grammar_entry : struct
 // this is just a compile-time buffer used to store the grammar state. alot of functions e.g stateN and parse_state_load will modify this. it is expected to change very, very frequently.
 cur_entry : grammar_entry mut;
 
+grammar_state_dump : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < countof typeof(cur_entry.uids); i = i + 1)
+	{
+		putuint([cur_entry.uids # i]);
+		putchar(' ');
+	}
+	putchar('\n');
+	putuint(cur_entry.lookahead);
+	putchar(' ');
+	putuint(cur_entry.stash);
+	putchar('\n');
+};
+
 grammar_hashtable_elem : struct
 {
 	key : grammar_entry;
@@ -39,11 +54,11 @@ grammar_hashtable_elem_is_valid : func(e : grammar_hashtable_elem mut? -> bool)
 
 grammar_result_type : enum
 {
-	.shift := 1;
-	.reduce := 2;
-	.stash := 3;
-	.unstash := 4;
-	.commit := 5;
+	.shift := 0;
+	.reduce := 1;
+	.stash := 2;
+	.unstash := 3;
+	.commit := 4;
 };
 
 grammar_result : struct
@@ -67,14 +82,14 @@ grammar : grammar_hashtable mut := zero;
 grammar_entry_hash : func(e : grammar_entry? -> u64)
 {
 	h : u64 mut :=
-		([e->uids # 0] << 0) |
-		([e->uids # 1] << 8) |
-		([e->uids # 2] << 16) |
-		([e->uids # 3] << 24) |
-		([e->uids # 4] << 32) |
-		([e->uids # 5] << 40) |
-		(e->lookahead << 48) | 
-		(e->stash << 56);
+		([e->uids # 0]@u64 << 0) |
+		([e->uids # 1]@u64 << 8) |
+		([e->uids # 2]@u64 << 16) |
+		([e->uids # 3]@u64 << 24) |
+		([e->uids # 4]@u64 << 32) |
+		([e->uids # 5]@u64 << 40) |
+		(e->lookahead@u64 << 48) | 
+		(e->stash@u64 << 56);
 	
 	// spread bits around
 	h = h ^ (h >> 33);
@@ -82,6 +97,7 @@ grammar_entry_hash : func(e : grammar_entry? -> u64)
 	h = h ^ (h >> 33);
 	h = h * 0xc4ceb9fe1a85ec53;
 	h = h ^ (h >> 33);
+
 	return h;
 };
 
