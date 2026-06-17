@@ -46,6 +46,8 @@ ast_tag : enum
 	.enumeration := 9;
 	// assembly (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = assembly code symbol)
 	.assembly := 10;
+	// region (d1 = name, d2 = name_len, d3 = region_parse_state,  child0... = region body statements)
+	.region := 11;
 };
 
 ast_stmt_tag : enum
@@ -62,7 +64,7 @@ ast_stmt_tag : enum
 	.enumeration := 5;
 	// assembly stmt (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = assembly code symbol)
 	.assembly := 6;
-	// region stmt (d1 = name, d2 = name_len, child0... = region body statements)
+	// region stmt (d1 = name, d2 = name_len, d3 = region_parse_state,  child0... = region body statements)
 	.region := 7;
 	// if stmt (d1 = is_static, child0 = condition expression, child1... = if-body statements)
 	.if_blk := 8;
@@ -301,9 +303,14 @@ tag_offset_assembly : func(-> u64 weak)
 	return tag_offset_enumeration() + countof ast_enumeration_parse_state + 1;
 };
 
-tag_offset_decl : func(-> u64 weak)
+tag_offset_region : func(-> u64 weak)
 {
 	return tag_offset_assembly() + countof ast_assembly_parse_state + 1;
+};
+
+tag_offset_decl : func(-> u64 weak)
+{
+	return tag_offset_region() + countof ast_region_parse_state + 1;
 };
 
 ast_maximum_uid : func(-> u64)
@@ -388,6 +395,12 @@ ast_assembly_parse_state : enum
 	.wip := 1;
 	.coding := 2;
 	.finalised := 3;
+};
+
+ast_region_parse_state : enum
+{
+	.wip := 1;
+	.finalised := 2;
 };
 
 ast_decl_parse_state : enum
@@ -623,6 +636,11 @@ ast_region_get_name_len : func(n : ast mut? -> u64 mut?)
 ast_region_get_body : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
+};
+
+ast_region_get_parse_state : func(n : ast mut? -> ast_region_parse_state mut?)
+{
+	return ref(n->d3)@ast_region_parse_state mut?;
 };
 
 ast_if_get_is_static : func(n : ast mut? -> bool mut?)
