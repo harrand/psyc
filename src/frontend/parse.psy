@@ -248,9 +248,28 @@ unstash : func(-> v0)
 
 reduce : func(r : grammar_result mut? -> v0)
 {
-	panic_begin();
-	putzstr("reduce\n\0");
-	panic_end();
+	// 1. delete all the requested nodes at the required offset
+	// to do this:
+	// - get a pointer to the nodes array at the offset (A)
+	// - get a second pointer A # delete_count (B)
+	// - forwards memcopy from B to A
+	// - reduce nodes_cursor by the delete_count
+	pointer_a ::= parse_state.nodes # (r->delete_offset);
+	pointer_b ::= pointer_a # (r->shift_or_delete_count - 1);
+
+	// before we delete anything, say that the replacement (even if we dont use it we are setting this anyway) begin/end cursors match the whole deletion span
+	r->replacement.src_beg = pointer_a->src_beg;
+	r->replacement.src_end = pointer_b->src_end;
+
+	memcopy(pointer_a, pointer_b, (parse_state.nodes_cursor - r->shift_or_delete_count) * sizeof ast);
+	parse_state.nodes_cursor = parse_state.nodes_cursor - (r->shift_or_delete_count);
+	
+	// 2. append the replacement node to the end of the nodes list if there is one
+	if(r->replacement.tag != zero)
+	{
+		[parse_state.nodes # (parse_state.nodes_cursor)] = r->replacement;
+		parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
+	}
 };
 
 commit : func(n : ast mut? -> v0)
