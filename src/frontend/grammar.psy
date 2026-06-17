@@ -3,6 +3,8 @@ grammar_install : func(-> v0)
 	// the 'grammar' global variable is a hashtable (grammar_hashtable) of fixed capacity. it is assumed we will never need to resize it.
 	grammar_return();
 	grammar_setup_base_operators();
+
+	grammar_region();
 };
 
 grammar_return : func(-> v0)
@@ -32,4 +34,25 @@ grammar_setup_base_operator : func(t : token_tag -> v0)
 
 grammar_setup_base_operator_expr : func(t : token_tag -> v0)
 {
+};
+
+grammar_region : func(-> v0)
+{
+	// compare happens to be an operator so it has some rules that we
+	// need to work around. unstash it from its wip-biop state if we see 'eqeq symbol eqeq'
+	state1(token(token_tag.symbol),
+		token(token_tag.eqeq), token(token_tag.eqeq));
+	grammar_associate(rule_shift1);
+
+	state2(token(token_tag.symbol), token(token_tag.eqeq),
+		zero, token(token_tag.eqeq));
+	grammar_associate(rule_unstash);
+
+	state3(token(token_tag.eqeq), token(token_tag.symbol), token(token_tag.eqeq),
+		token(token_tag.obrace), zero);
+	grammar_associate(rule_shift1);
+
+	state4(token(token_tag.eqeq), token(token_tag.symbol), token(token_tag.eqeq), token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_eqeq_symbol_eqeq_obrace2wipregion);
 };
