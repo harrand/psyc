@@ -161,7 +161,7 @@ rule_handler_unstash : func(nodes : ast mut?, nodes_count : u64, result : gramma
 
 rule_handler_commit : func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)
 {
-	commit(nodes # 0);
+	commit();
 };
 
 rule_handler_tbl ::= func(nodes : ast mut?, nodes_count : u64, result : grammar_result mut? -> v0)[countof grammar_result_type]
@@ -293,7 +293,7 @@ reduce : func(r : grammar_result mut? -> v0)
 	}
 };
 
-commit : func(n : ast mut? -> v0)
+commit : func(-> v0)
 {
 	top : ast mut? mut := parse_state.stash # parse_state.stash_cursor;
 	if(parse_state.stash_cursor == 0)
@@ -301,7 +301,11 @@ commit : func(n : ast mut? -> v0)
 		// stash empty, commit to root node.
 		top ::= ref(parse_state.src->node);
 	}
-	ast_add_child(top, n);
+	ast_add_child(top, parse_state.nodes # 0);
+	memcopy(parse_state.nodes # 0, parse_state.nodes # 1, (parse_state.nodes_cursor - 1) * sizeof ast);
+	parse_state.nodes_cursor = parse_state.nodes_cursor - 1;
+
+	shift_if_empty();
 };
 
 parse_state_update_lookahead : func(tokidx : u64 -> v0)
