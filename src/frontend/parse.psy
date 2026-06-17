@@ -45,14 +45,18 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 			err_begin();
 			putzstr("invalid syntax at \0");
 			// get the begin/end cursors comprising all current nodes
-			begin : u64 weak := (parse_state.nodes # 0)->src_beg;
-			end : u64 weak mut := begin;
+			begin : u32 mut := (parse_state.nodes # 0)->src_beg;
+			// if we have a stashtop, then the source underline should begin there
+			if(parse_state.stash_cursor > 0)
+			{
+				begin = (parse_state.stash # 0)->src_beg;
+			}
+			end : u32 mut := begin;
 			if(parse_state.nodes_cursor > 0)
 			{
 				end = (parse_state.nodes # (parse_state.nodes_cursor - 1))->src_end;
 			}
-			// print the source at those cursors
-			putsrc(s, begin, end, putcol.red_underline);
+			putsrc(s, begin@u64, end@u64, putcol.red_underline);
 			err_end();
 		}
 		parse_invoke_rule(rule);
@@ -179,6 +183,14 @@ parse_complete : func(-> bool)
 		(parse_state.stash_cursor == 0);
 };
 
+shift_if_empty : func(-> v0)
+{
+	if(parse_state.nodes_cursor == 0)
+	{
+		shift(1);
+	}
+};
+
 shift : func(n : u64 -> u64)
 {
 	// try to shift n new tokens onto the parse state
@@ -205,9 +217,20 @@ stash : func(-> v0)
 	// moved noves # 1 onwards leftwards to cover the gap
 	// increment stash cursor
 	// decrement nodes cursor
-	panic_begin();
-	putzstr("nyi: stash\0");
-	panic_end();
+	if(parse_state.stash_cursor >= (sizeof typeof(parse_state.stash)) / sizeof typeof([parse_state.stash # 0]))
+	{
+		panic_begin();
+		putzstr("reached the absolute stash limit. submit a bug report or better yet jesus christ dont nest so much code!");
+		panic_end();
+	}
+	// todo: assert nodes_cursor > 0
+	[parse_state.stash # (parse_state.stash_cursor)] = [parse_state.nodes # 0];
+
+	memcopy(parse_state.nodes # 0, parse_state.nodes # 1, (parse_state.nodes_cursor - 1) * sizeof ast);
+	parse_state.stash_cursor = parse_state.stash_cursor + 1;
+	parse_state.nodes_cursor = parse_state.nodes_cursor - 1;
+
+	shift_if_empty();
 };
 
 unstash : func(-> v0)
@@ -217,9 +240,12 @@ unstash : func(-> v0)
 	// copy stashtop into nodes # 0
 	// decrement stash cursor
 	// increment nodes cursor
-	panic_begin();
-	putzstr("nyi: unstash\0");
-	panic_end();
+	stashtop ::= parse_state.stash # (parse_state.stash_cursor - 1);
+	memcopy_backwards(parse_state.nodes # 1, parse_state.nodes # 0, (parse_state.nodes_cursor - 1) * sizeof ast);
+	[parse_state.nodes # 0] = [stashtop];
+
+	parse_state.stash_cursor = parse_state.stash_cursor - 1;
+	parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
 };
 
 commit : func(n : ast mut? -> v0)
