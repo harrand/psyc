@@ -6,11 +6,14 @@ grammar_install : func(-> v0)
 	grammar_basic_exprs();
 
 	grammar_region();
+
 	grammar_call();
 	grammar_call_param();
-
 	foreach_expr(grammar_callee_expr);
 	foreach_expr(grammar_call_param_expr);
+
+	grammar_typename();
+	foreach_expr(grammar_typename_array_length_expr);
 
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
@@ -189,4 +192,84 @@ grammar_call_param_expr : func(t : ast_expr_tag -> v0)
 	state2(_call(ast_call_parse_state.wip), _expr(t),
 		zero, zero);
 	grammar_associate(rule_callwip_exprx2callawaitnext);
+};
+
+grammar_typename : func(-> v0)
+{
+	// under some circumstances we want to treat a symbol as the start of a typename
+	// (normally if some certain node is stashtop)
+	// we list them all here:
+
+	// normally a symbol by itself (e.g 'foo' is a symbol expression)
+	// in the case that we have an await_typename stashed however we can say its a typename
+	state1(_token(token_tag.symbol),
+		zero, _decl(ast_decl_parse_state.awaittype));
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
+		zero, _typename(ast_typename_parse_state.functionawaitreturntype));
+	grammar_associate(rule_symbol2typenamewip);
+
+	// todo: duplicate above but for
+	// castwip
+	// assemblywip
+	// keyword_sizeof
+	// keyword_alignof
+	// keyword_countof
+
+	// blkinits start with a typename so its a bit weird
+	// symbol followed by the following lookaheads means typename:
+	// {
+	state1(_token(token_tag.symbol),
+		_token(token_tag.obrace), zero);
+	grammar_associate(rule_symbol2typenamewip);
+	// any qualifier keyword
+	state1(_token(token_tag.symbol),
+		_token(token_tag.keyword_mut), zero);
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
+		_token(token_tag.keyword_weak), zero);
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
+		_token(token_tag.keyword_static), zero);
+	grammar_associate(rule_symbol2typenamewip);
+	// ?
+	state1(_token(token_tag.symbol),
+		_token(token_tag.qmark), zero);
+	grammar_associate(rule_symbol2typenamewip);
+	// [
+	state1(_token(token_tag.symbol),
+		_token(token_tag.obrack), zero);
+	grammar_associate(rule_symbol2typenamewip);
+	
+	// now a wip typename basically stays wip until it doesnt have any lookaheads we expect (in which case we finalise it)
+	// but lets do the lookahead first to keep things intuitive.
+	// if we see something we like we shift1 to get it into the node array and then process it in some way
+
+	// first are all the qual tokens (TODO)
+	// then pointerness (TODO)
+	// then arrayness (TODO)
+
+	// more TODOs. theres a fuckton more
+};
+
+grammar_typename_array_length_expr : func(t : ast_expr_tag -> v0)
+{
+	// we need to be quite careful here
+	// we dont want to munch before a biop for example
+	// so when we see the expr we actually shift again
+	// only when its array_await_length,  exprtag, ] do we know for sure
+	state1(_expr(t),
+		_token(token_tag.cbrack), _typename(ast_typename_parse_state.arrayawaitlength));
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.cbrack),
+		zero, _typename(ast_typename_parse_state.arrayawaitlength));
+	grammar_associate(rule_unstash);
+
+	state3(_typename(ast_typename_parse_state.arrayawaitlength), _expr(t), _token(token_tag.cbrack),
+		zero, zero);
+	grammar_associate(rule_typenamearrayawaitlength_exprx_cbrack2typenamewip);
 };
