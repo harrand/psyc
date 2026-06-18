@@ -70,7 +70,25 @@ rule_number2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result :
 	out ::= nodes # 0;
 	out->tag = ast_tag.expr;
 	[ast_expr_get_tag(out)] = ast_expr_tag.literal;
-	[ast_literal_get_tag(out)] = ast_literal_tag.integer;
+	numparse : parseutil_number mut;
+	parseutil_parse_number(parse_state.src->src # (out->src_beg), (out->src_end - out->src_beg)@u64, ref numparse);
+	if(numparse.tag == parseutil_number_tag.integer)
+	{
+		[ast_literal_get_tag(out)] = ast_literal_tag.integer;
+		[ast_literal_get_integer(out)] = numparse.i;
+	}
+	if(numparse.tag == parseutil_number_tag.floating_point)
+	{
+		[ast_literal_get_tag(out)] = ast_literal_tag.floating_point;
+		[ast_literal_get_floating_point(out)] = numparse.f;
+	}
+	if(numparse.tag == zero)
+	{
+		panic_begin();
+		putzstr("parsing of numeric literal yields zero parseutil_number_tag\n\0");
+		putsrc(parse_state.s, out->src_beg@u64, out->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
 	[ast_literal_get_integer(out)] = 0;
 };
 
