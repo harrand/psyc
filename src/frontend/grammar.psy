@@ -6,12 +6,14 @@ grammar_install : func(-> v0)
 	grammar_exprify();
 
 	grammar_region();
+	grammar_call();
+	grammar_call_param();
 
-	foreach_expr(grammar_expr_callee);
+	foreach_expr(grammar_callee_expr);
+	foreach_expr(grammar_call_param_expr);
 
 	foreach_expr(grammar_stmtify_expr);
-	foreach_stmt(grammar_stmt_commit);
-	grammar_call();
+	foreach_stmt(grammar_commit_stmt);
 };
 
 grammar_return : func(-> v0)
@@ -26,6 +28,10 @@ grammar_exprify : func(-> v0)
 	state1(_token(token_tag.symbol),
 		zero, zero);
 	grammar_associate(rule_symbol2symbolexpr);
+
+	state1(_token(token_tag.string_literal),
+		zero, zero);
+	grammar_associate(rule_stringlit2literalexpr);
 };
 
 grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
@@ -99,14 +105,14 @@ grammar_region : func(-> v0)
 	grammar_associate(rule_regionwip_cbrace_semicol2region_stmt);
 };
 
-grammar_stmt_commit : func(t : ast_stmt_tag -> v0)
+grammar_commit_stmt : func(t : ast_stmt_tag -> v0)
 {
 	state1(_stmt(t),
 		zero, zero);
 	grammar_associate(rule_commit);
 };
 
-grammar_expr_callee : func(t : ast_expr_tag -> v0)
+grammar_callee_expr : func(t : ast_expr_tag -> v0)
 {
 	state1(_expr(t),
 		_token(token_tag.oparen), zero);
@@ -130,4 +136,35 @@ grammar_call : func(-> v0)
 	state2(_call(ast_call_parse_state.wip), _token(token_tag.cparen),
 		zero, zero);
 	grammar_associate(rule_callwip_cparen2callexpr);
+};
+
+grammar_call_param : func(-> v0)
+{
+	state1(_call(ast_call_parse_state.awaitnext),
+		_token(token_tag.comma), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_call(ast_call_parse_state.awaitnext), _token(token_tag.comma),
+		zero, zero);
+	grammar_associate(rule_callawaitnext_comma2callwip);
+
+	state1(_call(ast_call_parse_state.awaitnext),
+		_token(token_tag.cparen), zero);
+	grammar_associate(rule_callawaitnext2callwip);
+
+};
+
+grammar_call_param_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.comma), _call(ast_call_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state1(_expr(t),
+		_token(token_tag.cparen), _call(ast_call_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_call(ast_call_parse_state.wip), _expr(t),
+		zero, zero);
+	grammar_associate(rule_callwip_exprx2callawaitnext);
 };
