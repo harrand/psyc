@@ -48,6 +48,8 @@ ast_tag : enum
 	.assembly := 10;
 	// region (d1 = name, d2 = name_len, d3 = region_parse_state,  child0... = region body statements)
 	.region := 11;
+	// call (d2 = call_parse_state, child0 = callee expr/symbol, child1... = param expression nodes)
+	.call := 12;
 };
 
 ast_stmt_tag : enum
@@ -94,7 +96,7 @@ ast_expr_tag : enum
 	.unop := 4;
 	// binary operator (d2 = biop_tag, d3 = precedence, child0 = lhs expression, child1 = rhs expression)
 	.unop := 5;
-	// call (no data, child0 = callee expr/symbol, child1... = param expression nodes)
+	// call (d2 = call_parse_state, child0 = callee expr/symbol, child1... = param expression nodes)
 	.call := 6;
 	// block initialiser (no data, child0 = typename node, child1... = member init statements)
 	.blkinit := 7;
@@ -278,9 +280,14 @@ tag_offset_stmt : func(-> u64 weak)
 	return tag_offset_expr() + countof ast_expr_tag + 1;
 };
 
-tag_offset_typename : func(-> u64 weak)
+tag_offset_call : func(-> u64 weak)
 {
 	return tag_offset_stmt() + countof ast_stmt_tag + 1;
+};
+
+tag_offset_typename : func(-> u64 weak)
+{
+	return tag_offset_call() + countof ast_call_parse_state + 1;
 };
 
 tag_offset_function : func(-> u64 weak)
@@ -333,6 +340,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_stmt() + [ast_stmt_get_tag(n)]@s64;
 	}
+	if(t == ast_tag.call)
+	{
+		return tag_offset_call() + [ast_call_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.typename)
 	{
 		return tag_offset_typename() + [ast_typename_get_parse_state(n)]@s64;
@@ -362,6 +373,13 @@ ast_uid : func(n : ast mut? -> u64)
 };
 
 // internal parse state
+
+ast_call_parse_state : enum
+{
+	.wip := 1;
+	.await_next := 2;
+	.finalised := 3;
+};
 
 ast_typename_parse_state : enum
 {
@@ -810,6 +828,11 @@ ast_biop_get_rhs : func(n : ast mut? -> ast mut?)
 	return n->children # 1;
 };
 
+ast_call_get_parse_state : func(n : ast mut? -> ast_call_parse_state mut?)
+{
+	return ref(n->d2)@ast_call_parse_state mut?;
+};
+
 ast_call_get_callee : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
@@ -1022,5 +1045,14 @@ foreach_stmt : func(cb : func(t : ast_stmt_tag -> v0) -> v0)
 	for(i = 0; i < countof ast_stmt_tag; i = i + 1)
 	{
 		cb(i@s64@ast_stmt_tag);
+	}
+};
+
+foreach_expr : func(cb : func(t : ast_expr_tag -> v0) -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < countof ast_expr_tag; i = i + 1)
+	{
+		cb(i@s64@ast_expr_tag);
 	}
 };

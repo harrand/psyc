@@ -3,10 +3,15 @@ grammar_install : func(-> v0)
 	// the 'grammar' global variable is a hashtable (grammar_hashtable) of fixed capacity. it is assumed we will never need to resize it.
 	grammar_return();
 	grammar_setup_base_operators();
+	grammar_exprify();
 
 	grammar_region();
 
+	foreach_expr(grammar_expr_callee);
+
+	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_stmt_commit);
+	grammar_call();
 };
 
 grammar_return : func(-> v0)
@@ -14,6 +19,24 @@ grammar_return : func(-> v0)
 	state1(_token(token_tag.keyword_return),
 		_token(token_tag.semicol), zero);
 	grammar_associate(rule_shift1);
+};
+
+grammar_exprify : func(-> v0)
+{
+	state1(_token(token_tag.symbol),
+		zero, zero);
+	grammar_associate(rule_symbol2symbolexpr);
+};
+
+grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.semicol), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_exprx_semicol2exprstmt);
 };
 
 grammar_setup_base_operators : func(-> v0)
@@ -81,4 +104,30 @@ grammar_stmt_commit : func(t : ast_stmt_tag -> v0)
 	state1(_stmt(t),
 		zero, zero);
 	grammar_associate(rule_commit);
+};
+
+grammar_expr_callee : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.oparen), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_exprx_oparen2callwip);
+};
+
+grammar_call : func(-> v0)
+{
+	state1(_call(ast_call_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_call(ast_call_parse_state.wip),
+		_token(token_tag.cparen), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_call(ast_call_parse_state.wip), _token(token_tag.cparen),
+		zero, zero);
+	grammar_associate(rule_callwip_cparen2callexpr);
 };

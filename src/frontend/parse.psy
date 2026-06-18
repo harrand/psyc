@@ -60,16 +60,16 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 			// extra info
 			//if(1 == 1)
 			//{
-				//putzstr("\n\n(\0");
-				//putuint(parse_state.nodes_cursor);
-				//putzstr(" nodes, \0");
-				//putuint(parse_state.stash_cursor);
-				//putzstr(" stashed)\n\0");
-				//i : u64 mut;
-				//for(i = 0; i < parse_state.nodes_cursor; i = i + 1)
-				//{
-				//	ast_dump(parse_state.nodes # i, parse_state.src->src, parse_state.src->src_len);
-				//}
+				putzstr("\n\n(\0");
+				putuint(parse_state.nodes_cursor);
+				putzstr(" nodes, \0");
+				putuint(parse_state.stash_cursor);
+				putzstr(" stashed)\n\0");
+				i : u64 mut;
+				for(i = 0; i < parse_state.nodes_cursor; i = i + 1)
+				{
+					ast_dump(parse_state.nodes # i, parse_state.src->src, parse_state.src->src_len);
+				}
 			//}
 			err_end();
 		}
@@ -268,7 +268,12 @@ reduce : func(r : grammar_result mut? -> v0)
 	// - forwards memcopy from B to A
 	// - reduce nodes_cursor by the delete_count
 	pointer_a ::= parse_state.nodes # (r->delete_offset);
-	pointer_b ::= pointer_a # (r->shift_or_delete_count - 1);
+	off : u64 mut := r->shift_or_delete_count;
+	if(off > 0)
+	{
+		off = off - 1;
+	}
+	pointer_b ::= pointer_a # off;
 
 	// before we delete anything, say that the replacement (even if we dont use it we are setting this anyway) begin/end cursors match the whole deletion span
 	r->replacement.src_beg = pointer_a->src_beg;
