@@ -46,6 +46,34 @@ rule_stringlit2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_resul
 	[ast_literal_get_string_len(out)] = (out->src_end - out->src_beg)@u64;
 };
 
+rule_charlit2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 0;
+	out_result->delete_offset = 0;
+	out_result->replacement.tag = zero;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.expr;
+	[ast_expr_get_tag(out)] = ast_expr_tag.literal;
+	[ast_literal_get_tag(out)] = ast_literal_tag.char;
+	[ast_literal_get_char(out)] = parseutil_escape_char(parse_state.src->src # (out->src_beg), (out->src_end - out->src_beg)@u64);
+};
+
+rule_number2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 0;
+	out_result->delete_offset = 0;
+	out_result->replacement.tag = zero;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.expr;
+	[ast_expr_get_tag(out)] = ast_expr_tag.literal;
+	[ast_literal_get_tag(out)] = ast_literal_tag.integer;
+	[ast_literal_get_integer(out)] = 0;
+};
+
 rule_exprx_oparen2callwip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
