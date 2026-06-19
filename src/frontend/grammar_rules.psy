@@ -200,6 +200,31 @@ rule_symbol2typenamewip : func(nodes : ast mut?, nodes_count : u64, out_result :
 	[ast_typename_get_basename_len(out)] = (out->src_end - out->src_beg)@u64;
 };
 
+rule_typenamewip_qualx2typenamewip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+	out_result->replacement.tag = zero;
+
+	qual_keyword_node ::= nodes # 1;
+	keyword_qual ::= [ast_token_get_tag(qual_keyword_node)];
+
+	out ::= nodes # 0;
+	if(keyword_qual == token_tag.keyword_mut)
+	{
+		[ast_typename_get_quals(out)] = [ast_typename_get_quals(out)] | tyqual.qual_mut;
+	}
+	if(keyword_qual == token_tag.keyword_weak)
+	{
+		[ast_typename_get_quals(out)] = [ast_typename_get_quals(out)] | tyqual.qual_weak;
+	}
+	if(keyword_qual == token_tag.keyword_static)
+	{
+		[ast_typename_get_quals(out)] = [ast_typename_get_quals(out)] | tyqual.qual_static;
+	}
+};
+
 rule_typenamearrayawaitlength_exprx_cbrack2typenamewip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
@@ -212,6 +237,44 @@ rule_typenamearrayawaitlength_exprx_cbrack2typenamewip : func(nodes : ast mut?, 
 	out ::= nodes # 0;
 	[ast_typename_get_parse_state(out)] = ast_typename_parse_state.wip;
 	ast_add_child(out, array_length_expr_node);
+};
+
+rule_typenamewip2finalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 0;
+	out_result->delete_offset = 0;
+	out_result->replacement.tag = zero;
+
+
+	out ::= nodes # 0;
+	[ast_typename_get_parse_state(out)] = ast_typename_parse_state.finalised;
+};
+
+rule_symbol_col2declawaittype : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+	out_result->replacement.tag = zero;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.decl;
+	[ast_decl_get_parse_state(out)] = ast_decl_parse_state.awaittype;
+};
+
+rule_declawaittype_typenamefinalised2declnoinit : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+	out_result->replacement.tag = zero;
+
+	typename_node ::= nodes # 1;
+
+	out ::= nodes # 0;
+	[ast_decl_get_parse_state(out)] = ast_decl_parse_state.noinit;
+	ast_add_child(out, typename_node);
 };
 
 rule_exprx_semicol2exprstmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
