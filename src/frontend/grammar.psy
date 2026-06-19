@@ -15,6 +15,9 @@ grammar_install : func(-> v0)
 	grammar_typename();
 	foreach_expr(grammar_typename_array_length_expr);
 
+	grammar_decl_explicitly_typed();
+	grammar_decl_deducibly_typed();
+
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
 };
@@ -248,11 +251,40 @@ grammar_typename : func(-> v0)
 	// but lets do the lookahead first to keep things intuitive.
 	// if we see something we like we shift1 to get it into the node array and then process it in some way
 
-	// first are all the qual tokens (TODO)
+	// first are all the qual tokens
+	state1(_typename(ast_typename_parse_state.wip),
+		_token(token_tag.keyword_mut), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.wip), _token(token_tag.keyword_mut),
+		zero, zero);
+	grammar_associate(rule_typenamewip_qualx2typenamewip);
+
+	state1(_typename(ast_typename_parse_state.wip),
+		_token(token_tag.keyword_weak), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.wip), _token(token_tag.keyword_weak),
+		zero, zero);
+	grammar_associate(rule_typenamewip_qualx2typenamewip);
+
+	state1(_typename(ast_typename_parse_state.wip),
+		_token(token_tag.keyword_static), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.wip), _token(token_tag.keyword_static),
+		zero, zero);
+	grammar_associate(rule_typenamewip_qualx2typenamewip);
 	// then pointerness (TODO)
 	// then arrayness (TODO)
 
 	// more TODOs. theres a fuckton more
+
+	// ok now that we've done the lookahead possibilities.
+	// if we dont see any of those then we assume the lookahead is irrelevant and our typename is now complete.
+	state1(_typename(ast_typename_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_typenamewip2finalised);
 };
 
 grammar_typename_array_length_expr : func(t : ast_expr_tag -> v0)
@@ -272,4 +304,34 @@ grammar_typename_array_length_expr : func(t : ast_expr_tag -> v0)
 	state3(_typename(ast_typename_parse_state.arrayawaitlength), _expr(t), _token(token_tag.cbrack),
 		zero, zero);
 	grammar_associate(rule_typenamearrayawaitlength_exprx_cbrack2typenamewip);
+};
+
+grammar_decl_explicitly_typed : func(-> v0)
+{
+	state1(_token(token_tag.symbol),
+		_token(token_tag.col), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_token(token_tag.symbol), _token(token_tag.col),
+		zero, zero);
+	grammar_associate(rule_symbol_col2declawaittype);
+
+	// decl.awaittype gets stashed until a typename is found
+	state1(_decl(ast_decl_parse_state.awaittype),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	// unstash awaittype if we have a finalised typename ready to go
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _decl(ast_decl_parse_state.awaittype));
+	grammar_associate(rule_unstash);
+
+	// finally we have a decl with no initialiser
+	state2(_decl(ast_decl_parse_state.awaittype), _typename(ast_typename_parse_state.finalised),
+		zero, zero);
+	grammar_associate(rule_declawaittype_typenamefinalised2declnoinit);
+};
+
+grammar_decl_deducibly_typed : func(-> v0)
+{
 };
