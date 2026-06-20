@@ -439,11 +439,27 @@ ast_add_child : func(node : ast mut?, child : ast? -> v0)
 	while(node->children_cap <= (node->children_count))
 	{
 		old ::= node->children;
-		oldcap ::= node->children_cap;
+		oldcap ::= node->children_cap@u64;
+		if(oldcap == 0)
+		{
+			putzstr("node \0");
+			putuint(node->tag@s64);
+			putzstr(" is dodgy. beg/end \0");
+			putuint(node->src_beg);
+			putchar(',');
+			putuint(node->src_end);
+			putzstr(" child ptr: \0");
+			putuint(node->children@u64);
+
+			putchar('\n');
+			
+			ast_dump_one(node, zero, zero, 0);
+		}
 
 		node->children_cap = (node->children_cap * 2);
-		node->children = arena_alloc(global_arena, sizeof ast * (node->children_cap@u64));	
-		memcopy(node->children, old, oldcap@u64 * sizeof ast);
+		newcap ::= node->children_cap@u64;
+		node->children = arena_alloc(global_arena, sizeof ast * newcap);
+		memcopy(node->children, old, oldcap * sizeof ast);
 	}
 	[node->children # (node->children_count)] = [child];
 	node->children_count = (node->children_count + 1);
