@@ -288,11 +288,65 @@ grammar_typename : func(-> v0)
 	// then arrayness (TODO)
 
 	// more TODOs. theres a fuckton more
-	// then functionness (TODO)
+	// then functionness. alot of functionness rules...
 	state1(_token(token_tag.keyword_func),
 		_token(token_tag.oparen), zero);
 	grammar_associate(rule_shift1);
 
+	state2(_token(token_tag.keyword_func), _token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_keywordfunc_oparen2typenamefunctionawaitparamorarrow);
+
+	state1(_typename(ast_typename_parse_state.functionawaitparamorarrow),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	// add param to function
+	state1(_decl(ast_decl_parse_state.finalised),
+		zero, _typename(ast_typename_parse_state.functionawaitparamorarrow));
+	grammar_associate(rule_unstash);
+
+	state2(_typename(ast_typename_parse_state.functionawaitparamorarrow), _decl(ast_decl_parse_state.finalised),
+		_token(token_tag.arrow), zero);
+	grammar_associate(rule_shift1);
+
+	state3(_typename(ast_typename_parse_state.functionawaitparamorarrow), _decl(ast_decl_parse_state.finalised), _token(token_tag.arrow),
+		zero, zero);
+	grammar_associate(rule_typenamefunctionawaitparamorarrow_declfinalised_arrow2typenamefunctionawaitreturntype);
+
+	state2(_typename(ast_typename_parse_state.functionawaitparamorarrow), _decl(ast_decl_parse_state.finalised),
+		_token(token_tag.comma), zero);
+	grammar_associate(rule_shift1);
+
+	
+	state3(_typename(ast_typename_parse_state.functionawaitparamorarrow), _decl(ast_decl_parse_state.finalised), _token(token_tag.comma),
+		zero, zero);
+	grammar_associate(rule_typenamefunctionawaitparamorarrow_declfinalised_comma2typenamefunctionawaitparamorarrow);
+
+	state1(_typename(ast_typename_parse_state.functionawaitparamorarrow),
+		_token(token_tag.arrow), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.functionawaitparamorarrow), _token(token_tag.arrow),
+		zero, zero);
+	grammar_associate(rule_typenamefunctionawaitparamorarrow_arrow2typenamefunctionawaitreturntype);
+
+	// stash until we see our return type
+	state1(_typename(ast_typename_parse_state.functionawaitreturntype),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _typename(ast_typename_parse_state.functionawaitreturntype));
+	grammar_associate(rule_unstash);
+
+	state2(_typename(ast_typename_parse_state.functionawaitreturntype), _typename(ast_typename_parse_state.finalised),
+		_token(token_tag.cparen), zero);
+	grammar_associate(rule_shift1);
+
+	state3(_typename(ast_typename_parse_state.functionawaitreturntype), _typename(ast_typename_parse_state.finalised), _token(token_tag.cparen),
+		zero, zero);
+	grammar_associate(rule_typenamefunctionawaitreturntype_typenamefinalised_cparen2typenamewip);
 	// ok now that we've done the lookahead possibilities.
 	// if we dont see any of those then we assume the lookahead is irrelevant and our typename is now complete.
 	state1(_typename(ast_typename_parse_state.wip),
