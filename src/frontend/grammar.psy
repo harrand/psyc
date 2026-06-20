@@ -18,6 +18,8 @@ grammar_install : func(-> v0)
 	grammar_decl_explicitly_typed();
 	grammar_decl_deducibly_typed();
 
+	grammar_func();
+
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
 };
@@ -275,10 +277,21 @@ grammar_typename : func(-> v0)
 	state2(_typename(ast_typename_parse_state.wip), _token(token_tag.keyword_static),
 		zero, zero);
 	grammar_associate(rule_typenamewip_qualx2typenamewip);
-	// then pointerness (TODO)
+	// then pointerness
+	state1(_typename(ast_typename_parse_state.wip),
+		_token(token_tag.qmark), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.wip), _token(token_tag.qmark),
+		zero, zero);
+	grammar_associate(rule_typenamewip_qmark2typenamewip);
 	// then arrayness (TODO)
 
 	// more TODOs. theres a fuckton more
+	// then functionness (TODO)
+	state1(_token(token_tag.keyword_func),
+		_token(token_tag.oparen), zero);
+	grammar_associate(rule_shift1);
 
 	// ok now that we've done the lookahead possibilities.
 	// if we dont see any of those then we assume the lookahead is irrelevant and our typename is now complete.
@@ -361,5 +374,9 @@ grammar_decl_explicitly_typed : func(-> v0)
 };
 
 grammar_decl_deducibly_typed : func(-> v0)
+{
+};
+
+grammar_func : func(-> v0)
 {
 };
