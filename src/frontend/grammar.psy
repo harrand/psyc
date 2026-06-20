@@ -330,6 +330,34 @@ grammar_decl_explicitly_typed : func(-> v0)
 	state2(_decl(ast_decl_parse_state.awaittype), _typename(ast_typename_parse_state.finalised),
 		zero, zero);
 	grammar_associate(rule_declawaittype_typenamefinalised2declnoinit);
+
+	// give the thing an initialiser
+	state1(_decl(ast_decl_parse_state.noinit),
+		_token(token_tag.init), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_decl(ast_decl_parse_state.noinit), _token(token_tag.init),
+		zero, zero);
+	grammar_associate(rule_declnoinit_init2declawaitinitexpr);
+
+	state1(_decl(ast_decl_parse_state.awaitinitexpr),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	// code to handle init-exprs is in grammar_decl_init_expr
+	// so lets move on to finalisation
+	state1(_decl(ast_decl_parse_state.noinit),
+		zero, zero);
+	grammar_associate(rule_declnoinit2declfinalised);
+
+	// stmtify decls
+	state1(_decl(ast_decl_parse_state.finalised),
+		_token(token_tag.semicol), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_decl(ast_decl_parse_state.finalised), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_declfinalised_semicol2declstmt);
 };
 
 grammar_decl_deducibly_typed : func(-> v0)
