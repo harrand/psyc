@@ -36,10 +36,49 @@ parseutil_parse_number : func(str : u8?, len : u64, out : parseutil_number mut? 
 	}
 
 	[out] = zero;
+	out->tag = parseutil_number_tag.integer;
+	digit_val : s64 mut := 0;
+	frac_div : f64 mut := 1.0;
 
-	warn_begin();
-	putzstr("nyi: parseutil_parse_number is NYI, returning a zero parseutil_number_tag\0");
-	warn_end();
+	while(cursor < len)
+	{
+		ch ::= [str # cursor];
+		if(ch == '.')
+		{
+			out->tag = parseutil_number_tag.floating_point;
+		}
+		if((ch >= 'a') && (ch <= 'f'))
+		{
+			digit_val = (10 + (ch - 'a'));
+		}
+		if((ch >= 'A') && (ch <= 'F'))
+		{
+			digit_val = (10 + (ch - 'A'));
+		}
+
+		if(out->tag == parseutil_number_tag.integer)
+		{
+			out->i = (out->i * base) + digit_val;
+		}
+		else
+		{
+			if(ch >= '0' && (ch <= '9'))
+			{
+				frac_div = (frac_div / (base@f64));
+				out->f = (out->f + (digit_val@f64) * frac_div);
+			}
+		}
+		cursor = cursor + 1;
+	}
+
+	if(out->tag == parseutil_number_tag.integer)
+	{
+		out->i = sign * out->i;
+	}
+	else
+	{
+		out->f = sign@f64 * out->f;
+	}
 };
 
 parseutil_escape_char : func(str : u8?, str_len : u64 -> u8)
