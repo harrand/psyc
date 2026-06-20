@@ -278,25 +278,16 @@ reduce : func(r : grammar_result mut? -> v0)
 	pointer_b ::= pointer_a # off;
 
 	// before we delete anything, say that the replacement (even if we dont use it we are setting this anyway) begin/end cursors match the whole deletion span
-	r->replacement.src_beg = pointer_a->src_beg;
-	r->replacement.src_end = pointer_b->src_end;
-
+	beg : u32 mut := pointer_a->src_beg;
+	end : u32 mut := pointer_b->src_end;
+	
 	memcopy(pointer_a, pointer_b, (parse_state.nodes_cursor - r->shift_or_delete_count) * sizeof ast);
 	parse_state.nodes_cursor = parse_state.nodes_cursor - (r->shift_or_delete_count);
 	
-	// 2. append the replacement node to the end of the nodes list if there is one
-	if(r->replacement.tag != zero)
+	if(r->delete_offset > 0)
 	{
-		[parse_state.nodes # (parse_state.nodes_cursor)] = r->replacement;
-		parse_state.nodes_cursor = parse_state.nodes_cursor + 1;
-	}
-	else
-	{
-		if(r->delete_offset > 0)
-		{
-			// the last node before the delete_offset should have its src_end extended to fit hte deleted nodes
-			(parse_state.nodes # (r->delete_offset - 1))->src_end = r->replacement.src_end;
-		}
+		// the last node before the delete_offset should have its src_end extended to fit hte deleted nodes
+		(parse_state.nodes # (r->delete_offset - 1))->src_end = end;
 	}
 };
 
