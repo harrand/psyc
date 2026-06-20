@@ -95,6 +95,84 @@ grammar_setup_base_operator : func(t : token_tag -> v0)
 
 grammar_setup_base_operator_expr : func(t : token_tag -> v0)
 {
+	i : u64 mut;
+	j : u64 mut;
+
+	e1 : ast_expr_tag mut;
+	e2 : ast_expr_tag mut;
+	for(i = 0; i < countof ast_expr_tag; i = i + 1)
+	{
+		e1 = (i + 1)@s64@ast_expr_tag;
+		// lhs bit
+		state1(_expr(e1),
+			_token(t), zero);
+		grammar_associate(rule_stash);
+
+		// rhs stuff
+		state1(_expr(e1),
+			zero, _token(t));
+		grammar_associate(rule_unstash);
+
+		// edge-case (part 1 of 2): look at the above reduction. in the case that the lookahead is a ) then it means the expr is an unfinished call
+		// currently we will munch the preceding expression early
+		// i.e foo + get_foo(123) // munches the 'get_foo' as a symbol expression
+		// so we will shift1 instead to force it into the grammar_call codepath
+		// we have to do another bandaid fix slightly later on. keep your eye out for it.
+		state1(_expr(e1),
+			_token(token_tag.oparen), _token(t));
+		grammar_associate(rule_shift1);
+
+		// same with field tokens
+		state1(_expr(e1),
+			_token(token_tag.dot), _token(t));
+		grammar_associate(rule_shift1);
+
+		state1(_expr(e1),
+			_token(token_tag.arrow), _token(t));
+		grammar_associate(rule_shift1);
+
+		// if there's not another expr stashed then this is an unop
+		state2(_token(t), _expr(e1),
+			zero, zero);
+		grammar_associate(rule_tokenx_exprx2unop);
+
+		// now for both lhs and rhs
+		for(j = 0; j < countof ast_expr_tag; j = j + 1)
+		{
+			e2 = (j + 1)@s64@ast_expr_tag;
+			state2(_token(t), _expr(e2),
+				zero, _expr(e1));
+			grammar_associate(rule_unstash);
+
+			// edge-case (part 2 of 2): look at the above reduction. in the case that the lookahead is a ) then it means the expr is an unfinished call
+			// currently we will munch the preceding expression early
+			// i.e foo + get_foo(123) // munches the 'get_foo' as a symbol expression
+			// so we will stash the token instead
+			state2(_token(t), _expr(e2),
+				_token(token_tag.oparen), _expr(e1));
+			grammar_associate(rule_stash);
+
+			state2(_token(t), _expr(e2),
+				_token(token_tag.dot), _expr(e1));
+			grammar_associate(rule_stash);
+
+			state2(_token(t), _expr(e2),
+				_token(token_tag.cast), _expr(e1));
+			grammar_associate(rule_shift1);
+
+			state3(_token(t), _expr(e2), _token(token_tag.cast),
+				zero, _expr(e1));
+			grammar_associate(rule_stash);
+
+			state2(_token(t), _expr(e2),
+				_token(token_tag.arrow), _expr(e1));
+			grammar_associate(rule_stash);
+
+			state3(_expr(e1), _token(t), _expr(e2),
+				zero, zero);
+			grammar_associate(rule_exprx_tokenx_exprx2biop);
+		}
+	}
 };
 
 grammar_region : func(-> v0)

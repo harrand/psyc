@@ -382,6 +382,39 @@ rule_declfinalised_obrace2functionimpl : func(nodes : ast mut?, nodes_count : u6
 	//}
 };
 
+rule_tokenx_exprx2unop : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	expr_node ::= nodes # 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.expr;
+	[ast_expr_get_tag(out)] = ast_expr_tag.unop;
+	ast_add_child(out, expr_node);
+};
+
+rule_exprx_tokenx_exprx2biop : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 2;
+	out_result->delete_offset = 1;
+
+	lhsnode ::= nodes # 0;
+	toknode ::= nodes # 1;
+	rhsnode ::= nodes # 2;
+
+	out ::= lhsnode;
+	lhscpy ::= [lhsnode];
+	[out] = [toknode];
+	out->tag = ast_tag.expr;
+	[ast_expr_get_tag(out)] = ast_expr_tag.biop;
+	ast_add_child(out, ref lhscpy);
+	ast_add_child(out, rhsnode);
+};
+
 rule_exprx_semicol2exprstmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
