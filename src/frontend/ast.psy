@@ -50,6 +50,8 @@ ast_tag : enum
 	.region := 11;
 	// call (d2 = call_parse_state, child0 = callee expr/symbol, child1... = param expression nodes)
 	.call := 12;
+	// field-access (d2 = field_parse_state, child0 = field lhs expression, child1 = field rhs symbol/typename)
+	.field := 13;
 };
 
 ast_stmt_tag : enum
@@ -104,16 +106,14 @@ ast_expr_tag : enum
 	.dereference := 8;
 	// cast (no data, child0 = castee expr, child1 = typename node)
 	.cast := 9;
-	// field-access (no data, child0 = field lhs expression, child1 = field rhs symbol/typename)
+	// field-access (d2 = field_parse_state, child0 = field lhs expression, child1 = field rhs symbol/typename)
 	.field := 10;
-	// ptr-field-access (no data, child0 = field lhs expression, child1 = field rhs symbol expression)
-	.ptrfield := 11;
 	// sizeof-expression (no data, child0 = typename node)
-	.sizeof_t := 12;
+	.sizeof_t := 11;
 	// alignof-expression (no data, child0 = typename node)
-	.alignof_t := 13;
+	.alignof_t := 12;
 	// countof-expression (no data, child0 = typename node)
-	.countof_t := 14;
+	.countof_t := 13;
 };
 
 ast_typename_tag : enum
@@ -285,9 +285,14 @@ tag_offset_call : func(-> u64 weak)
 	return tag_offset_stmt() + countof ast_stmt_tag + 1;
 };
 
-tag_offset_typename : func(-> u64 weak)
+tag_offset_field : func(-> u64 weak)
 {
 	return tag_offset_call() + countof ast_call_parse_state + 1;
+};
+
+tag_offset_typename : func(-> u64 weak)
+{
+	return tag_offset_field() + countof ast_field_parse_state + 1;
 };
 
 tag_offset_function : func(-> u64 weak)
@@ -344,6 +349,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_call() + [ast_call_get_parse_state(n)]@s64;
 	}
+	if(t == ast_tag.field)
+	{
+		return tag_offset_field() + [ast_field_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.typename)
 	{
 		return tag_offset_typename() + [ast_typename_get_parse_state(n)]@s64;
@@ -379,6 +388,14 @@ ast_call_parse_state : enum
 	.wip := 1;
 	.awaitnext := 2;
 	.finalised := 3;
+};
+
+ast_field_parse_state : enum
+{
+	.wipdot := 1;
+	.wiparrow := 2;
+	.finaliseddot := 3;
+	.finalisedarrow := 4;
 };
 
 ast_typename_parse_state : enum
@@ -908,6 +925,11 @@ ast_cast_get_castee : func(n : ast mut? -> ast mut?)
 ast_cast_get_cast_typename : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 1;
+};
+
+ast_field_get_parse_state : func(n : ast mut? -> ast_field_parse_state mut?)
+{
+	return ref(n->d2)@ast_field_parse_state mut?;
 };
 
 ast_field_get_lhs : func(n : ast mut? -> ast mut?)
