@@ -72,6 +72,10 @@ parse : func(s : source, toks : token_buffer mut? -> v0)
 				{
 					ast_dump(parse_state.nodes # i, parse_state.src->src, parse_state.src->src_len);
 				}
+				for(i = 0; i < parse_state.stash_cursor; i = i + 1)
+				{
+					ast_dump(parse_state.stash # i, parse_state.src->src, parse_state.src->src_len);
+				}
 			//}
 			err_end();
 		}
@@ -293,11 +297,10 @@ reduce : func(r : grammar_result mut? -> v0)
 
 commit : func(-> v0)
 {
-	top : ast mut? mut := parse_state.stash # parse_state.stash_cursor;
-	if(parse_state.stash_cursor == 0)
+	top : ast mut? mut := ref(parse_state.src->node);
+	if(parse_state.stash_cursor > 0)
 	{
-		// stash empty, commit to root node.
-		top ::= ref(parse_state.src->node);
+		top = parse_state.stash # (parse_state.stash_cursor - 1);
 	}
 	ast_add_child(top, parse_state.nodes # 0);
 	memcopy(parse_state.nodes # 0, parse_state.nodes # 1, (parse_state.nodes_cursor - 1) * sizeof ast);

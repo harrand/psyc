@@ -47,6 +47,19 @@ rule_keywordreturn_semicol2returnstmt : func(nodes : ast mut?, nodes_count : u64
 	[ast_stmt_get_tag(out)] = ast_stmt_tag.ret;
 };
 
+rule_keywordreturn_exprx_semicol2returnstmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 2;
+	out_result->delete_offset = 1;
+
+	expr_node ::= nodes # 1;
+	out ::= nodes # 0;
+	out->tag = ast_tag.stmt;
+	[ast_stmt_get_tag(out)] = ast_stmt_tag.ret;
+	ast_add_child(out, expr_node);
+};
+
 rule_keywordunreachable_semicol2unreachablestmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
@@ -519,6 +532,19 @@ rule_symbol_col_init2declawaitinitexpr : func(nodes : ast mut?, nodes_count : u6
 	[ast_typename_get_tag(ref deduced_typename_node)] = ast_typename_tag.deduced;
 	[ast_typename_get_quals(ref deduced_typename_node)] = zero;
 	ast_add_child(out, ref deduced_typename_node);
+};
+
+rule_declawaitinitexpr_exprx2declfinalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	init_expr_node ::= nodes # 1;
+	out ::= nodes # 0;
+	out->tag = ast_tag.decl;
+	[ast_decl_get_parse_state(out)] = ast_decl_parse_state.finalised;
+	ast_add_child(out, init_expr_node);
 };
 
 rule_declfinalised_obrace2functionimpl : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
