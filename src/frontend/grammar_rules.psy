@@ -4,6 +4,12 @@ rule_shift1 : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_res
 	out_result->shift_or_delete_count = 1;
 };
 
+rule_shift2 : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.shift;
+	out_result->shift_or_delete_count = 2;
+};
+
 rule_stash : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.stash;
@@ -307,6 +313,85 @@ rule_functionfinalised_semicol2functionstmt : func(nodes : ast mut?, nodes_count
 	out ::= nodes # 0;
 	out->tag = ast_tag.stmt;
 	[ast_stmt_get_tag(out)] = ast_stmt_tag.function;
+};
+
+rule_symbol_col_keywordasm_oparen2assemblyawaitconstraint : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 3;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.assembly;
+	[ast_assembly_get_name(out)] = parse_state.src->src # (out->src_beg);
+	[ast_assembly_get_name_len(out)] = (out->src_end - out->src_beg)@u64;
+	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitconstraint;
+};
+
+rule_assemblyawaitconstraint_stringlit_arrow2assemblyawaitreturntype : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 2;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	strlit_node ::= nodes # 1;
+	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitreturntype;
+	[ast_assembly_get_constraints(out)] = [ast_literal_get_string(strlit_node)];
+	[ast_assembly_get_constraints_len(out)] = [ast_literal_get_string_len(strlit_node)];
+};
+
+rule_assemblyawaitreturntype_typenamefinalised_cparen_obrace2assemblycoding : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 3;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	typename_node ::= nodes # 1;
+	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.coding;
+	ast_add_child(out, typename_node);
+};
+
+rule_assemblycoding_tokenx2assemblycoding : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	token_node ::= nodes # 1;
+	// check if we have only 1 child (there is no coding symbol)
+	if(out->children_count == 1)
+	{
+		ast_add_child(out, token_node);
+	}
+	else
+	{
+		// extend the tokens length
+		(out->children # 1)->src_end = token_node->src_end;
+	}
+};
+
+rule_assemblycoding_cbrace2assemblyfinalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.finalised;
+};
+
+rule_assemblyfinalised_semicol2assemblystmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.stmt;
+	[ast_stmt_get_tag(out)] = ast_stmt_tag.assembly;
 };
 
 rule_typenamewip2finalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
