@@ -8,6 +8,9 @@ grammar_install : func(-> v0)
 	grammar_parentheses();
 	foreach_expr(grammar_parenthesise_expr);
 
+	grammar_deref();
+	foreach_expr(grammar_deref_expr);
+
 	grammar_region();
 
 	grammar_call();
@@ -91,6 +94,33 @@ grammar_parenthesise_expr : func(t : ast_expr_tag -> v0)
 	state3(_token(token_tag.oparen), _expr(t), _token(token_tag.cparen),
 		zero, zero);
 	grammar_associate(rule_oparen_exprx_cparen2expr);
+};
+
+grammar_deref : func(-> v0)
+{
+	state1(_token(token_tag.obrack),
+		zero, zero);
+	grammar_associate(rule_stash);
+};
+
+grammar_deref_expr : func(t : ast_expr_tag -> v0)
+{
+	// try not to early munch exprs here. make sure the lookahead is cbrack
+	// btw yes we do stash obrack and treat that as our equivalent of an ast_deref_tag
+	// most of the time we cant do this because certain things require more than 1 token but [is] just [ expr ]
+	// we have a limited number of possible ast states so this allows us to save one.
+	// in short: do this sparingly, for anything of nontrivial complexity use a specific ast tag but for something like this its chill + simpler + faster
+	state1(_expr(t),
+		_token(token_tag.cbrack), _token(token_tag.obrack));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.obrack), _expr(t),
+		_token(token_tag.cbrack), zero);
+	grammar_associate(rule_shift1);
+
+	state3(_token(token_tag.obrack), _expr(t), _token(token_tag.cbrack),
+		zero, zero);
+	grammar_associate(rule_obrack_exprx_cbrack2dereferenceexpr);
 };
 
 grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
