@@ -20,6 +20,9 @@ grammar_install : func(-> v0)
 
 	grammar_func();
 
+	foreach_expr(grammar_field_expr);
+	grammar_field();
+
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
 };
@@ -522,4 +525,80 @@ grammar_func : func(-> v0)
 	state1(_function(ast_function_parse_state.impl),
 		zero, zero);
 	grammar_associate(rule_stash);
+};
+
+grammar_field_expr : func(t : ast_expr_tag -> v0)
+{
+	// x.y
+	state1(_expr(t),
+		_token(token_tag.dot), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.dot),
+		_token(token_tag.symbol), zero);
+	grammar_associate(rule_exprx_dot2fieldwipdot);
+
+	// x->y
+	state1(_expr(t),
+		_token(token_tag.arrow), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.arrow),
+		_token(token_tag.symbol), zero);
+	grammar_associate(rule_exprx_arrow2fieldwiparrow);
+};
+
+grammar_field : func(-> v0)
+{
+	state1(_field(ast_field_parse_state.wipdot),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_field(ast_field_parse_state.wiparrow),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	// now we dont do this for every expr. just expr.symbol (for normal member access)
+	// and expr.call for a call to a member function call (not a method - a data member that is a function reference)
+	// feel free to add error rules for all other expr tags
+
+	// foo.bar
+	// just a member access
+	state1(_expr(ast_expr_tag.symbol),
+		zero, _field(ast_field_parse_state.wipdot));
+	grammar_associate(rule_unstash);
+
+	state2(_field(ast_field_parse_state.wipdot), _expr(ast_expr_tag.symbol),
+		zero, zero);
+	grammar_associate(rule_fieldwipdot_exprsymbol2fieldfinaliseddotexpr);
+
+	// foo.bar(...)
+	// call of a function reference datamember
+	state1(_expr(ast_expr_tag.call),
+		zero, _field(ast_field_parse_state.wipdot));
+	grammar_associate(rule_unstash);
+	
+	state2(_field(ast_field_parse_state.wipdot), _expr(ast_expr_tag.call),
+		zero, zero);
+	grammar_associate(rule_fieldwipdot_exprcall2fieldfinaliseddotexpr);
+
+	// foo->bar
+	// a ptr member access
+	state1(_expr(ast_expr_tag.symbol),
+		zero, _field(ast_field_parse_state.wiparrow));
+	grammar_associate(rule_unstash);
+
+	state2(_field(ast_field_parse_state.wiparrow), _expr(ast_expr_tag.symbol),
+		zero, zero);
+	grammar_associate(rule_fieldwiparrow_exprsymbol2fieldfinalisedarrowexpr);
+
+	// foo->bar(...)
+	// call of a function reference ptr-datamember
+	state1(_expr(ast_expr_tag.call),
+		zero, _field(ast_field_parse_state.wiparrow));
+	grammar_associate(rule_unstash);
+	
+	state2(_field(ast_field_parse_state.wiparrow), _expr(ast_expr_tag.call),
+		zero, zero);
+	grammar_associate(rule_fieldwiparrow_exprcall2fieldfinalisedarrowexpr);
 };
