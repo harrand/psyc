@@ -12,6 +12,9 @@ grammar_install : func(-> v0)
 	grammar_deref();
 	foreach_expr(grammar_deref_expr);
 
+	foreach_expr(grammar_cast_expr);
+	grammar_cast();
+
 	grammar_region();
 
 	grammar_call();
@@ -138,6 +141,34 @@ grammar_deref_expr : func(t : ast_expr_tag -> v0)
 		zero, zero);
 	grammar_associate(rule_obrack_exprx_cbrack2dereferenceexpr);
 };
+
+grammar_cast_expr : func(t : ast_expr_tag -> v0)
+{
+	// expr@typename
+	state1(_expr(t),
+		_token(token_tag.cast), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.cast),
+		zero, zero);
+	grammar_associate(rule_exprx_cast2castwip);
+};
+
+grammar_cast : func( -> v0)
+{
+	state1(_cast(ast_cast_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _cast(ast_cast_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_cast(ast_cast_parse_state.wip), _typename(ast_typename_parse_state.finalised),
+		zero, zero);
+	grammar_associate(rule_castwip_typenamefinalised2castexpr);
+};
+
 
 grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
 {
