@@ -44,7 +44,7 @@ ast_tag : enum
 	.function := 8;
 	// enumeration (d1 = name, d2 = name_len, d3 = enumeration_parse_state, child0... = entry init statements)
 	.enumeration := 9;
-	// assembly (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = assembly code symbol)
+	// assembly (d1 = name, d2 = name_len, d3 = constraints, d4 = constaints_len, d5 = assembly_parse_state, child0 = return typename, child1 = assembly code symbol)
 	.assembly := 10;
 	// region (d1 = name, d2 = name_len, d3 = region_parse_state,  child0... = region body statements)
 	.region := 11;
@@ -427,9 +427,10 @@ ast_enumeration_parse_state : enum
 
 ast_assembly_parse_state : enum
 {
-	.wip := 1;
-	.coding := 2;
-	.finalised := 3;
+	.awaitconstraint := 1;
+	.awaitreturntype := 2;
+	.coding := 3;
+	.finalised := 4;
 };
 
 ast_region_parse_state : enum
@@ -679,9 +680,14 @@ ast_assembly_get_parse_state : func(n : ast mut? -> ast_assembly_parse_state mut
 	return ref(n->d5)@ast_assembly_parse_state mut?;
 };
 
-ast_assembly_get_code_symbol : func(n : ast mut? -> ast mut?)
+ast_assembly_get_typename : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
+};
+
+ast_assembly_get_code_symbol : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
 };
 
 ast_region_get_name : func(n : ast mut? -> u8 mut? mut?)

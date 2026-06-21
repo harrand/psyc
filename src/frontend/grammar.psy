@@ -19,6 +19,7 @@ grammar_install : func(-> v0)
 	grammar_decl_deducibly_typed();
 
 	grammar_func();
+	grammar_asm();
 
 	foreach_expr(grammar_field_expr);
 	grammar_field();
@@ -296,6 +297,10 @@ grammar_typename : func(-> v0)
 		zero, _typename(ast_typename_parse_state.functionawaitreturntype));
 	grammar_associate(rule_symbol2typenamewip);
 
+	state1(_token(token_tag.symbol),
+		zero, _assembly(ast_assembly_parse_state.awaitreturntype));
+	grammar_associate(rule_symbol2typenamewip);
+
 	// todo: duplicate above but for
 	// castwip
 	// assemblywip
@@ -542,6 +547,76 @@ grammar_func : func(-> v0)
 	state2(_function(ast_function_parse_state.finalised), _token(token_tag.semicol),
 		zero, zero);
 	grammar_associate(rule_functionfinalised_semicol2functionstmt);
+};
+
+grammar_asm : func(-> v0)
+{
+	state2(_token(token_tag.symbol), _token(token_tag.col),
+		_token(token_tag.keyword_asm), zero);
+	grammar_associate(rule_shift2);
+
+	state4(_token(token_tag.symbol), _token(token_tag.col), _token(token_tag.keyword_asm), _token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_symbol_col_keywordasm_oparen2assemblyawaitconstraint);
+
+	state1(_assembly(ast_assembly_parse_state.awaitconstraint),
+		_token(token_tag.string_literal), zero);
+	grammar_associate(rule_shift2);
+
+	state3(_assembly(ast_assembly_parse_state.awaitconstraint), _token(token_tag.string_literal), _token(token_tag.arrow),
+		zero, zero);
+	grammar_associate(rule_assemblyawaitconstraint_stringlit_arrow2assemblyawaitreturntype);
+
+	state1(_assembly(ast_assembly_parse_state.awaitreturntype),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _assembly(ast_assembly_parse_state.awaitreturntype));
+	grammar_associate(rule_unstash);
+
+	state2(_assembly(ast_assembly_parse_state.awaitreturntype), _typename(ast_typename_parse_state.finalised),
+		_token(token_tag.cparen), zero);
+	grammar_associate(rule_shift2);
+
+	state4(_assembly(ast_assembly_parse_state.awaitreturntype), _typename(ast_typename_parse_state.finalised), _token(token_tag.cparen), _token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_assemblyawaitreturntype_typenamefinalised_cparen_obrace2assemblycoding);
+
+	// now we are in coding mode
+	// iterate through all token types.
+	// everything that isnt cbrace just gets appended...
+	i : u64 mut;
+	for(i = 0; i < countof token_tag; i = i + 1)
+	{
+		t ::= (i + 1)@s64@token_tag;
+		if(t != token_tag.cbrace)
+		{
+			state1(_assembly(ast_assembly_parse_state.coding),
+				_token(t), zero);
+			grammar_associate(rule_shift1);
+
+			state2(_assembly(ast_assembly_parse_state.coding), _token(t),
+				zero, zero);
+			grammar_associate(rule_assemblycoding_tokenx2assemblycoding);
+		}
+	}
+	state1(_assembly(ast_assembly_parse_state.coding),
+		_token(token_tag.cbrace), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_assembly(ast_assembly_parse_state.coding), _token(token_tag.cbrace),
+		zero, zero);
+	grammar_associate(rule_assemblycoding_cbrace2assemblyfinalised);
+
+	// stmtify asms
+	state1(_assembly(ast_assembly_parse_state.finalised),
+		_token(token_tag.semicol), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_assembly(ast_assembly_parse_state.finalised), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_assemblyfinalised_semicol2assemblystmt);
 };
 
 grammar_field_expr : func(t : ast_expr_tag -> v0)
