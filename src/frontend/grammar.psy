@@ -5,6 +5,9 @@ grammar_install : func(-> v0)
 	grammar_setup_base_operators();
 	grammar_basic_exprs();
 
+	grammar_parentheses();
+	foreach_expr(grammar_parenthesise_expr);
+
 	grammar_region();
 
 	grammar_call();
@@ -66,6 +69,28 @@ grammar_basic_exprs : func(-> v0)
 	state1(_token(token_tag.keyword_false),
 		zero, zero);
 	grammar_associate(rule_keywordfalse2literalexpr);
+};
+
+grammar_parentheses : func(-> v0)
+{
+	state1(_token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_stash);
+};
+
+grammar_parenthesise_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.cparen), _token(token_tag.oparen));
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.cparen),
+		zero, _token(token_tag.oparen));
+	grammar_associate(rule_unstash);
+
+	state3(_token(token_tag.oparen), _expr(t), _token(token_tag.cparen),
+		zero, zero);
+	grammar_associate(rule_oparen_exprx_cparen2expr);
 };
 
 grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
