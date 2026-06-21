@@ -2,6 +2,8 @@ grammar_install : func(-> v0)
 {
 	// the 'grammar' global variable is a hashtable (grammar_hashtable) of fixed capacity. it is assumed we will never need to resize it.
 	grammar_return();
+	foreach_expr(grammar_return_expr);
+
 	grammar_unreachable();
 	grammar_setup_base_operators();
 	grammar_basic_exprs();
@@ -28,6 +30,8 @@ grammar_install : func(-> v0)
 	grammar_decl_explicitly_typed();
 	grammar_decl_deducibly_typed();
 
+	foreach_expr(grammar_decl_init_expr);
+
 	grammar_func();
 	grammar_asm();
 
@@ -47,6 +51,25 @@ grammar_return : func(-> v0)
 	state2(_token(token_tag.keyword_return), _token(token_tag.semicol),
 		zero, zero);
 	grammar_associate(rule_keywordreturn_semicol2returnstmt);
+
+	state1(_token(token_tag.keyword_return),
+		zero, zero);
+	grammar_associate(rule_stash);
+};
+
+grammar_return_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.semicol), _token(token_tag.keyword_return));
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.semicol),
+		zero, _token(token_tag.keyword_return));
+	grammar_associate(rule_unstash);
+
+	state3(_token(token_tag.keyword_return), _expr(t), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_keywordreturn_exprx_semicol2returnstmt);
 };
 
 grammar_unreachable : func(-> v0)
@@ -168,7 +191,6 @@ grammar_cast : func( -> v0)
 		zero, zero);
 	grammar_associate(rule_castwip_typenamefinalised2castexpr);
 };
-
 
 grammar_stmtify_expr : func(t : ast_expr_tag -> v0)
 {
@@ -400,15 +422,24 @@ grammar_typename : func(-> v0)
 	grammar_associate(rule_symbol2typenamewip);
 
 	state1(_token(token_tag.symbol),
+		zero, _cast(ast_cast_parse_state.wip));
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
 		zero, _assembly(ast_assembly_parse_state.awaitreturntype));
 	grammar_associate(rule_symbol2typenamewip);
 
-	// todo: duplicate above but for
-	// castwip
-	// assemblywip
-	// keyword_sizeof
-	// keyword_alignof
-	// keyword_countof
+	state1(_token(token_tag.symbol),
+		zero, _token(token_tag.keyword_sizeof));
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
+		zero, _token(token_tag.keyword_alignof));
+	grammar_associate(rule_symbol2typenamewip);
+
+	state1(_token(token_tag.symbol),
+		zero, _token(token_tag.keyword_countof));
+	grammar_associate(rule_symbol2typenamewip);
 
 	// blkinits start with a typename so its a bit weird
 	// symbol followed by the following lookaheads means typename:
@@ -624,6 +655,23 @@ grammar_decl_deducibly_typed : func(-> v0)
 	state3(_token(token_tag.symbol), _token(token_tag.col), _token(token_tag.init),
 		zero, zero);
 	grammar_associate(rule_symbol_col_init2declawaitinitexpr);
+};
+
+grammar_decl_init_expr : func(t : ast_expr_tag -> v0)
+{
+	i : u64 mut;
+
+	state1(_expr(t),
+		_token(token_tag.semicol), _decl(ast_decl_parse_state.awaitinitexpr));
+	grammar_associate(rule_unstash);
+
+	state1(_expr(t),
+		_token(token_tag.comma), _decl(ast_decl_parse_state.awaitinitexpr));
+	grammar_associate(rule_unstash);
+
+	state2(_decl(ast_decl_parse_state.awaitinitexpr), _expr(t),
+		zero, zero);
+	grammar_associate(rule_declawaitinitexpr_exprx2declfinalised);
 };
 
 grammar_func : func(-> v0)
