@@ -1,18 +1,32 @@
 compile : func(-> v0)
 {
-	add_build_file(args.build_file);
+	add_build_file(args.build_file, args.target.data, args.target.len);
 	putchar('\r');
 	putzstr("finalising...\0");
 	putchar('\n');
 };
 
-add_build_file : func(p : path -> v0)
+add_build_file : func(p : path, target : u8?, target_len : u64 -> v0)
 {
 	putchar('\r');
 	putzstr(path2zstr(p));
 	putzstr("...\0");
 
-	add_source_file(p);
+	src ::= add_source_file(p);
+
+	file_node ::= ref(prog_get_source(src)->node);
+	region_node ::= find_build_region(file_node, target, target_len);
+	if(region_node == zero)
+	{
+		err_begin();
+		putzstr("build file '\0");
+		putzstr(path2zstr(p));
+		putzstr("' has no build-region named '\0");
+		putchars(target, target_len);
+		putzstr("'\n\0");
+		
+		err_end();
+	}
 };
 
 add_source_file : func(p : path -> source)

@@ -2,9 +2,15 @@ args_t : struct
 {
 	build_file : path;
 	dump_flag : u8;
+	target : sstr;
 };
 
-args : args_t mut := zero;
+args ::= args_t mut
+{
+	.build_file := zero;
+	.dump_flag := 0;
+	.target := sstr{.data := "default"; .len := 7;};
+};
 
 args_should_dump_tokens : func(-> bool)
 {
@@ -31,32 +37,39 @@ debugbreak : asm("" -> v0)
 	int3
 };
 
-handle_arg : func(arg : u8??, dst : u64 -> v0)
+handle_arg : func(arg : u8??, dst : u64 -> u64)
 {
 	if(zstrbegin([arg], '-'))
 	{
+		if(zstreql([arg], "-b\0"))
+		{
+			args.target = zstr2sstr([arg # 1]);
+			return 1;
+		}
 		if(zstreql([arg], "--dump-tokens\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b10000000);
+			return 0;
 		}
 		if(zstreql([arg], "--dump-ast\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b01000000);
+			return 0;
 		}
 		if(zstreql([arg], "--dump-ir\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b00100000);
+			return 0;
 		}
 		if(zstreql([arg], "--dump-asm\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b00010000);
+			return 0;
 		}
 		// todo: if none of these, error out?
 	}
-	else
-	{
-		args.build_file = zstr2path([arg]);
-	}
+	args.build_file = zstr2path([arg]);
+	return 0;
 };
 
 print_usage : func(-> v0)
@@ -77,6 +90,6 @@ parse_args : func(-> v0)
 	}
 	for(i = 0; i < argc; i = i + 1)
 	{
-		handle_arg(argv # i, (argc - i)@u64);
+		i = i + handle_arg(argv # i, (argc - i)@u64)@s64;
 	}
 };
