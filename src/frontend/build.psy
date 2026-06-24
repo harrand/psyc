@@ -32,10 +32,17 @@ execute_build_inst_expr : func(expr : ast mut?, src : source -> v0)
 
 execute_build_inst_call : func(call : ast mut?, src : source -> v0)
 {
-	warn_begin();
-	putzstr("todo: call\n\0");
-	putsrc(src, call->src_beg@u64, call->src_end@u64, putcol.yellow_underline);
-	warn_end();
+	callee ::= ast_call_get_callee(call);
+	if([ast_expr_get_tag(callee)] != ast_expr_tag.symbol)
+	{
+		err_begin();
+		putzstr("call is not a valid build instruction\n\0");
+		putsrc(src, callee->src_beg@u64, callee->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	call_symbol ::= prog_get_source(src)->src # (callee->src_beg);
+	call_symbol_len ::= callee->src_end - callee->src_beg;
+	execute_build_builtin(call_symbol, call_symbol_len, ast_call_get_params(call), ast_call_get_params_count(call), src, call);
 };
 
 execute_build_inst_invalid : func(stmt : ast mut?, src : source -> v0)
@@ -79,4 +86,50 @@ execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source -> v0)[counto
 	.10 := execute_build_inst_invalid;
 	.11 := execute_build_inst_invalid;
 	.12 := execute_build_inst_invalid;
+};
+
+execute_build_builtin_add_source_file : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	warn_begin();
+	putzstr("add_source_file NYI\n\0");
+	warn_end();
+};
+
+execute_build_builtin_add_source_directory : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	warn_begin();
+	putzstr("add_source_directory NYI\n\0");
+	warn_end();
+};
+
+execute_build_builtin_entrypoint : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	warn_begin();
+	putzstr("entrypoint NYI\n\0");
+	warn_end();
+};
+
+execute_build_builtin : func(name : u8?, name_len : u32, params : ast mut?, params_count : u32, src : source, node : ast mut? -> v0)
+{
+	if(streql(name, name_len@u64, "add_source_file", 15))
+	{
+		execute_build_builtin_add_source_file(params, params_count, src);
+		return;
+	}
+	if(streql(name, name_len@u64, "add_source_directory", 20))
+	{
+		execute_build_builtin_add_source_directory(params, params_count, src);
+		return;
+	}
+	if(streql(name, name_len@u64, "entrypoint", 10))
+	{
+		execute_build_builtin_entrypoint(params, params_count, src);
+		return;
+	}
+	err_begin();
+	putzstr("unrecognised build builtin '\0");
+	putchars(name, name_len@u64);
+	putzstr("'\n\0");
+	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+	err_end();
 };
