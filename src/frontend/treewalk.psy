@@ -8,5 +8,77 @@
 // and record a reference to their respective nodes within the whole program state 'prog'
 treewalk : func(s : source -> v0)
 {
-	node ::= prog_get_source(s)->node;
+	node ::= ref(prog_get_source(s)->node);
+	i : u32 mut;
+	count ::= node->children_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		child ::= node->children # i;
+		[treewalk_stmt_tbl # [ast_stmt_get_tag(child)]@s64](child, s);
+	}
+};
+
+treewalk_stmt_none : func(stmt : ast mut?, s : source -> v0)
+{
+};
+
+treewalk_stmt_decl : func(stmt : ast mut?, s : source -> v0)
+{
+	name ::= [ast_decl_get_name(stmt)];
+	name_len ::= [ast_decl_get_name_len(stmt)];
+	// todo: prog_add_global(...)
+};
+
+treewalk_stmt_structure : func(stmt : ast mut?, s : source -> v0)
+{
+	name ::= [ast_structure_get_name(stmt)];
+	name_len ::= [ast_structure_get_name_len(stmt)];
+	putchars(name, name_len);
+	putchar('\n');
+	// todo: add struct type
+};
+
+treewalk_stmt_function : func(stmt : ast mut?, s : source -> v0)
+{
+	name ::= [ast_function_get_name(stmt)];
+	name_len ::= [ast_function_get_name_len(stmt)];
+	putchars(name, name_len);
+	putchar('\n');
+	// todo: prog_add_func(...)
+};
+
+treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
+{
+	name ::= [ast_enumeration_get_name(stmt)];
+	name_len ::= [ast_enumeration_get_name_len(stmt)];
+	putchars(name, name_len);
+	putchar('\n');
+	// todo: prog_add_func(...)
+};
+
+treewalk_stmt_assembly : func(stmt : ast mut?, s : source -> v0)
+{
+	name ::= [ast_assembly_get_name(stmt)];
+	name_len ::= [ast_assembly_get_name_len(stmt)];
+	putchars(name, name_len);
+	putchar('\n');
+	// todo: prog_add_asm(...)
+};
+
+treewalk_stmt_tbl ::= func(stmt : ast mut?, s : source -> v0)[countof ast_stmt_tag]
+{
+	.0 := treewalk_stmt_none;
+	.1 := treewalk_stmt_decl;
+	.2 := treewalk_stmt_structure;
+	.3 := treewalk_stmt_function;
+	.4 := treewalk_stmt_enumeration;
+	.5 := treewalk_stmt_assembly;
+	.6 := treewalk_stmt_none;
+	.7 := treewalk_stmt_none;
+	.8 := treewalk_stmt_none;
+	.9 := treewalk_stmt_none;
+	.10 := treewalk_stmt_none;
+	.11 := treewalk_stmt_none;
+	.12 := treewalk_stmt_none;
+	.13 := treewalk_stmt_none;
 };
