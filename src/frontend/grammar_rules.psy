@@ -376,6 +376,43 @@ rule_functionfinalised_semicol2functionstmt : func(nodes : ast mut?, nodes_count
 	[ast_stmt_get_tag(out)] = ast_stmt_tag.function;
 };
 
+rule_symbol_col_keywordstruct_obrace2structurewip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 3;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.structure;
+	[ast_structure_get_parse_state(out)] = ast_structure_parse_state.wip;
+	[ast_structure_get_name(out)] = parse_state.src->src # out->src_beg # 1;
+	[ast_structure_get_name_len(out)] = (out->src_end - out->src_beg - 2)@u64;
+};
+
+rule_structurewip_cbrace2structurefinalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.structure;
+	[ast_structure_get_parse_state(out)] = ast_structure_parse_state.finalised;
+	[ast_structure_get_name(out)] = parse_state.src->src # out->src_beg # 1;
+	[ast_structure_get_name_len(out)] = (out->src_end - out->src_beg - 2)@u64;
+};
+
+rule_structurefinalised_semicol2structurestmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.stmt;
+	[ast_stmt_get_tag(out)] = ast_stmt_tag.structure;
+};
+
 rule_symbol_col_keywordasm_oparen2assemblyawaitconstraint : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
@@ -512,6 +549,34 @@ rule_initwip_exprx_semicol2initstmt : func(nodes : ast mut?, nodes_count : u64, 
 	[ast_stmt_get_tag(out)] = ast_stmt_tag.init;
 	ast_add_child(out, expr_node);
 };
+
+rule_typenamefinalised_obrace2blkinitwip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	outcpy ::= [out];
+	out->children = zero;
+	out->children_count = 0;
+	out->children_cap = 0;
+	out->tag = ast_tag.blkinit;
+	[ast_blkinit_get_parse_state(out)] = ast_blkinit_parse_state.wip;
+	ast_add_child(out, ref outcpy);
+};
+
+rule_blkinitwip_cbrace2blkinitexpr : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.expr;
+	[ast_expr_get_tag(out)] = ast_expr_tag.blkinit;
+};
+
 
 rule_typenamewip2finalised : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {

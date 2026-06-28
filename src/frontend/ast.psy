@@ -56,6 +56,8 @@ ast_tag : enum
 	.cast := 14;
 	// if (d1 = is_static, d2 = if_parse_state, child0 = condition expression, child1... = if-body statements)
 	.ifblk := 15;
+	// block initialiser (d2 = blkinit_parse_state, child0 = typename node, child1... = member init statements)
+	.blkinit := 16;
 };
 
 ast_stmt_tag : enum
@@ -104,7 +106,7 @@ ast_expr_tag : enum
 	.biop := 4;
 	// call (d2 = call_parse_state, child0 = callee expr/symbol, child1... = param expression nodes)
 	.call := 5;
-	// block initialiser (no data, child0 = typename node, child1... = member init statements)
+	// block initialiser (d2 = blkinit_parse_state, child0 = typename node, child1... = member init statements)
 	.blkinit := 6;
 	// dereference (no data, child0 = operand expression)
 	.dereference := 7;
@@ -303,9 +305,14 @@ tag_offset_init : func(-> u64 weak)
 	return tag_offset_typename() + countof ast_typename_parse_state + 1;
 };
 
-tag_offset_if : func(-> u64 weak)
+tag_offset_blkinit : func(-> u64 weak)
 {
 	return tag_offset_init() + countof ast_init_parse_state + 1;
+};
+
+tag_offset_if : func(-> u64 weak)
+{
+	return tag_offset_blkinit() + countof ast_blkinit_parse_state + 1;
 };
 
 tag_offset_cast : func(-> u64 weak)
@@ -379,6 +386,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_init() + [ast_init_get_parse_state(n)]@s64;
 	}
+	if(t == ast_tag.blkinit)
+	{
+		return tag_offset_blkinit() + [ast_blkinit_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.ifblk)
 	{
 		return tag_offset_if() + [ast_if_get_parse_state(n)]@s64;
@@ -438,6 +449,11 @@ ast_typename_parse_state : enum
 };
 
 ast_init_parse_state : enum
+{
+	.wip := 1;
+};
+
+ast_blkinit_parse_state : enum
 {
 	.wip := 1;
 };
@@ -853,6 +869,26 @@ ast_init_get_tag : func(n : ast mut? -> ast_init_tag mut?)
 ast_init_get_parse_state : func(n : ast mut? -> ast_init_parse_state mut?)
 {
 	return ref(n->d2)@ast_init_parse_state mut?;
+};
+
+ast_blkinit_get_parse_state : func(n : ast mut? -> ast_blkinit_parse_state mut?)
+{
+	return ref(n->d2)@ast_blkinit_parse_state mut?;
+};
+
+ast_blkinit_get_typename : func(n : ast mut? -> ast mut?)
+{
+	return n->children;
+};
+
+ast_blkinit_get_inits_count : func(n : ast mut? -> u32)
+{
+	return n->children_count - 1;
+};
+
+ast_blkinit_get_inits : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
 };
 
 // only valid if ast_init_get_tag(n) == ast_init_tag.integer
