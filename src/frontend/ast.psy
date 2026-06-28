@@ -36,7 +36,7 @@ ast_tag : enum
 	.decl := 4;
 	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N
 	.typename := 5;
-	// init (d1 = init_tag, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
+	// init (d1 = init_tag, d2 = init_parse_state, d3 = integer/symbol, d4 = symbol len, child0 = init-value expression
 	.init := 6;
 	// structure (d1 = name, d2 = name_len, d3 = structure_parse_state, child0... = decl-stmt data members)
 	.structure := 7;
@@ -86,7 +86,7 @@ ast_stmt_tag : enum
 	.ret := 11;
 	// unreachable statement (no data)
 	.unreach := 12;
-	// init statement (d1 = init_tag, d2 = integer/symbol, d3 = symbol len, child0 = init-value expression)
+	// init (d1 = init_tag, d2 = init_parse_state, d3 = integer/symbol, d4 = symbol len, child0 = init-value expression
 	.init := 13;
 };
 
@@ -289,8 +289,7 @@ tag_offset_call : func(-> u64 weak)
 	return tag_offset_stmt() + countof ast_stmt_tag + 1;
 };
 
-tag_offset_field : func(-> u64 weak)
-{
+tag_offset_field : func(-> u64 weak) {
 	return tag_offset_call() + countof ast_call_parse_state + 1;
 };
 
@@ -299,9 +298,14 @@ tag_offset_typename : func(-> u64 weak)
 	return tag_offset_field() + countof ast_field_parse_state + 1;
 };
 
-tag_offset_if : func(-> u64 weak)
+tag_offset_init : func(-> u64 weak)
 {
 	return tag_offset_typename() + countof ast_typename_parse_state + 1;
+};
+
+tag_offset_if : func(-> u64 weak)
+{
+	return tag_offset_init() + countof ast_init_parse_state + 1;
 };
 
 tag_offset_cast : func(-> u64 weak)
@@ -371,6 +375,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_typename() + [ast_typename_get_parse_state(n)]@s64;
 	}
+	if(t == ast_tag.init)
+	{
+		return tag_offset_init() + [ast_init_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.ifblk)
 	{
 		return tag_offset_if() + [ast_if_get_parse_state(n)]@s64;
@@ -427,6 +435,11 @@ ast_typename_parse_state : enum
 	.functionawaitparamorarrow := 3;
 	.functionawaitreturntype := 4;
 	.finalised := 5;
+};
+
+ast_init_parse_state : enum
+{
+	.wip := 1;
 };
 
 ast_if_parse_state : enum
@@ -837,22 +850,27 @@ ast_init_get_tag : func(n : ast mut? -> ast_init_tag mut?)
 	return ref(n->d1)@ast_init_tag mut?;
 };
 
+ast_init_get_parse_state : func(n : ast mut? -> ast_init_parse_state mut?)
+{
+	return ref(n->d2)@ast_init_parse_state mut?;
+};
+
 // only valid if ast_init_get_tag(n) == ast_init_tag.integer
 ast_init_get_integer : func(n : ast mut? -> s64 mut?)
 {
-	return ref(n->d2)@s64 mut?;
+	return ref(n->d3)@s64 mut?;
 };
 
 // only valid if ast_init_get_tag(n) == ast_init_tag.symbol
 ast_init_get_symbol : func(n : ast mut? -> u8 mut? mut?)
 {
-	return ref(n->d2)@u8 mut? mut?;
+	return ref(n->d3)@u8 mut? mut?;
 };
 
 // only valid if ast_init_get_tag(n) == ast_init_tag.symbol
 ast_init_get_symbol_len : func(n : ast mut? -> u64 mut?)
 {
-	return ref(n->d2)@u64 mut?;
+	return ref(n->d4)@u64 mut?;
 };
 
 ast_literal_get_tag : func(n : ast mut? -> ast_literal_tag mut?)
