@@ -36,6 +36,9 @@ grammar_install : func(-> v0)
 	grammar_func();
 	grammar_asm();
 
+	grammar_init();
+	foreach_expr(grammar_init_expr);
+
 	foreach_expr(grammar_field_expr);
 	grammar_field();
 
@@ -815,6 +818,44 @@ grammar_asm : func(-> v0)
 	state2(_assembly(ast_assembly_parse_state.finalised), _token(token_tag.semicol),
 		zero, zero);
 	grammar_associate(rule_assemblyfinalised_semicol2assemblystmt);
+};
+
+grammar_init : func(-> v0)
+{
+	state1(_token(token_tag.dot),
+		_token(token_tag.symbol), zero);
+	grammar_associate(rule_shift2);
+
+	state3(_token(token_tag.dot), _token(token_tag.symbol), _token(token_tag.init),
+			zero, zero);
+	grammar_associate(rule_dot_symbol_init2initwip);
+
+	state1(_token(token_tag.dot),
+		_token(token_tag.number), zero);
+	grammar_associate(rule_shift2);
+
+	state3(_token(token_tag.dot), _token(token_tag.symbol), _token(token_tag.init),
+			zero, zero);
+	grammar_associate(rule_dot_number_init2initwip);
+
+	state1(_init(ast_init_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+};
+
+grammar_init_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.semicol), _init(ast_init_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_init(ast_init_parse_state.wip), _expr(t),
+		_token(token_tag.semicol), zero);
+	grammar_associate(rule_shift1);
+
+	state3(_init(ast_init_parse_state.wip), _expr(t), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_initwip_exprx_semicol2initstmt);
 };
 
 grammar_field_expr : func(t : ast_expr_tag -> v0)
