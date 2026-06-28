@@ -54,6 +54,8 @@ ast_tag : enum
 	.field := 13;
 	// cast (d2 = cast_parse_state, child0 = castee expr, child1 = typename node)
 	.cast := 14;
+	// if (d1 = is_static, d2 = if_parse_state, child0 = condition expression, child1... = if-body statements)
+	.ifblk := 15;
 };
 
 ast_stmt_tag : enum
@@ -72,7 +74,7 @@ ast_stmt_tag : enum
 	.assembly := 5;
 	// region stmt (d1 = name, d2 = name_len, d3 = region_parse_state,  child0... = region body statements)
 	.region := 6;
-	// if stmt (d1 = is_static, child0 = condition expression, child1... = if-body statements)
+	// if stmt (d1 = is_static, d2 = if_parse_state, child0 = condition expression, child1... = if-body statements)
 	.if_blk := 7;
 	// else stmt (no data, child0... = else-body statements)
 	.else_blk := 8;
@@ -297,9 +299,14 @@ tag_offset_typename : func(-> u64 weak)
 	return tag_offset_field() + countof ast_field_parse_state + 1;
 };
 
-tag_offset_cast : func(-> u64 weak)
+tag_offset_if : func(-> u64 weak)
 {
 	return tag_offset_typename() + countof ast_typename_parse_state + 1;
+};
+
+tag_offset_cast : func(-> u64 weak)
+{
+	return tag_offset_if() + countof ast_if_parse_state + 1;
 };
 
 tag_offset_function : func(-> u64 weak)
@@ -364,6 +371,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_typename() + [ast_typename_get_parse_state(n)]@s64;
 	}
+	if(t == ast_tag.ifblk)
+	{
+		return tag_offset_if() + [ast_if_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.cast)
 	{
 		return tag_offset_cast() + [ast_cast_get_parse_state(n)]@s64;
@@ -416,6 +427,11 @@ ast_typename_parse_state : enum
 	.functionawaitparamorarrow := 3;
 	.functionawaitreturntype := 4;
 	.finalised := 5;
+};
+
+ast_if_parse_state : enum
+{
+	.wip := 1;
 };
 
 ast_cast_parse_state : enum
@@ -731,9 +747,15 @@ ast_region_get_parse_state : func(n : ast mut? -> ast_region_parse_state mut?)
 	return ref(n->d3)@ast_region_parse_state mut?;
 };
 
+
 ast_if_get_is_static : func(n : ast mut? -> bool mut?)
 {
 	return ref(n->d1)@bool mut?;
+};
+
+ast_if_get_parse_state : func(n : ast mut? -> ast_if_parse_state mut?)
+{
+	return ref(n->d2)@ast_if_parse_state mut?;
 };
 
 ast_if_get_condition_expression : func(n : ast mut? -> ast mut?)

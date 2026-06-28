@@ -38,6 +38,9 @@ grammar_install : func(-> v0)
 	foreach_expr(grammar_field_expr);
 	grammar_field();
 
+	grammar_if();
+	foreach_expr(grammar_if_expr);
+
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
 };
@@ -850,4 +853,38 @@ grammar_field : func(-> v0)
 	state2(_field(ast_field_parse_state.wiparrow), _expr(ast_expr_tag.call),
 		zero, zero);
 	grammar_associate(rule_fieldwiparrow_exprcall2fieldfinalisedarrowexpr);
+};
+
+grammar_if : func(-> v0)
+{
+	state1(_token(token_tag.keyword_if),
+		zero , zero);
+	grammar_associate(rule_stash);
+
+	state1(_if(ast_if_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_token(token_tag.cbrace),
+		zero, _if(ast_if_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_if(ast_if_parse_state.wip), _token(token_tag.cbrace),
+		zero, zero);
+	grammar_associate(rule_ifwip_cbrace2ifstmt);
+};
+
+grammar_if_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		_token(token_tag.obrace), _token(token_tag.keyword_if));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.keyword_if), _expr(t),
+		_token(token_tag.obrace), zero);
+	grammar_associate(rule_shift1);
+
+	state3(_token(token_tag.keyword_if), _expr(t), _token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_keywordif_exprx_obrace2ifwip);
 };
