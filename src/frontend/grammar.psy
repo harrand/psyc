@@ -33,11 +33,14 @@ grammar_install : func(-> v0)
 	foreach_expr(grammar_decl_init_expr);
 
 	grammar_enum();
+	grammar_struct();
 	grammar_func();
 	grammar_asm();
 
 	grammar_init();
 	foreach_expr(grammar_init_expr);
+
+	grammar_blkinit();
 
 	foreach_expr(grammar_field_expr);
 	grammar_field();
@@ -750,6 +753,37 @@ grammar_func : func(-> v0)
 	grammar_associate(rule_functionfinalised_semicol2functionstmt);
 };
 
+grammar_struct : func(-> v0)
+{
+	state2(_token(token_tag.symbol), _token(token_tag.col),
+		_token(token_tag.keyword_struct), zero);
+	grammar_associate(rule_shift2);
+
+	state4(_token(token_tag.symbol), _token(token_tag.col), _token(token_tag.keyword_struct), _token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_symbol_col_keywordstruct_obrace2structurewip);
+
+	state1(_structure(ast_structure_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_token(token_tag.cbrace),
+		zero, _structure(ast_structure_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_structure(ast_structure_parse_state.wip), _token(token_tag.cbrace),
+		zero, zero);
+	grammar_associate(rule_structurewip_cbrace2structurefinalised);
+
+	state1(_structure(ast_structure_parse_state.finalised),
+		_token(token_tag.semicol), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_structure(ast_structure_parse_state.finalised), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_structurefinalised_semicol2structurestmt);
+};
+
 grammar_asm : func(-> v0)
 {
 	state2(_token(token_tag.symbol), _token(token_tag.col),
@@ -856,6 +890,29 @@ grammar_init_expr : func(t : ast_expr_tag -> v0)
 	state3(_init(ast_init_parse_state.wip), _expr(t), _token(token_tag.semicol),
 		zero, zero);
 	grammar_associate(rule_initwip_exprx_semicol2initstmt);
+};
+
+grammar_blkinit : func(-> v0)
+{
+	state1(_typename(ast_typename_parse_state.finalised),
+		_token(token_tag.obrace), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_typename(ast_typename_parse_state.finalised), _token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_typenamefinalised_obrace2blkinitwip);
+
+	state1(_blkinit(ast_blkinit_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_token(token_tag.cbrace),
+		zero, _blkinit(ast_blkinit_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_blkinit(ast_blkinit_parse_state.wip), _token(token_tag.cbrace),
+		zero, zero);
+	grammar_associate(rule_blkinitwip_cbrace2blkinitexpr);
 };
 
 grammar_field_expr : func(t : ast_expr_tag -> v0)
