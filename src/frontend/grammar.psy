@@ -55,6 +55,9 @@ grammar_install : func(-> v0)
 	grammar_while();
 	foreach_expr(grammar_while_expr);
 
+	grammar_for();
+	foreach_expr(grammar_for_expr);
+
 	foreach_expr(grammar_stmtify_expr);
 	foreach_stmt(grammar_commit_stmt);
 };
@@ -1109,4 +1112,75 @@ grammar_while_expr : func(t : ast_expr_tag -> v0)
 	state3(_token(token_tag.keyword_while), _expr(t), _token(token_tag.obrace),
 		zero, zero);
 	grammar_associate(rule_keywordwhile_exprx_obrace2whilewip);
+};
+
+grammar_for : func(-> v0)
+{
+	state1(_token(token_tag.keyword_for),
+		zero, zero);
+	grammar_associate(rule_shift1);
+
+	state2(_token(token_tag.keyword_for), _token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_keywordfor_oparen2forawaitinit);
+
+	state1(_for(ast_for_parse_state.awaitinit),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_for(ast_for_parse_state.awaitcond),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_for(ast_for_parse_state.awaititer),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_for(ast_for_parse_state.wip),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_token(token_tag.cbrace),
+		zero, _for(ast_for_parse_state.wip));
+	grammar_associate(rule_unstash);
+
+	state2(_for(ast_for_parse_state.wip), _token(token_tag.cbrace),
+		zero, zero);
+	grammar_associate(rule_forwip_cbrace2forstmt);
+};
+
+grammar_for_expr : func(t : ast_expr_tag -> v0)
+{
+	state2(_expr(t), _token(token_tag.semicol),
+		zero, _for(ast_for_parse_state.awaitinit));
+	grammar_associate(rule_unstash);
+
+	state3(_for(ast_for_parse_state.awaitinit), _expr(t), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_forawaitinit_exprx_semicol2forawaitcond);
+
+	state2(_expr(t), _token(token_tag.semicol),
+		zero, _for(ast_for_parse_state.awaitcond));
+	grammar_associate(rule_unstash);
+
+	state3(_for(ast_for_parse_state.awaitcond), _expr(t), _token(token_tag.semicol),
+		zero, zero);
+	grammar_associate(rule_forawaitcond_exprx_semicol2forawaititer);
+
+	// hmm. todo: change stash to awaititer
+	state1(_expr(t),
+		_token(token_tag.cparen), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_expr(t), _token(token_tag.cparen),
+		zero, _for(ast_for_parse_state.awaititer));
+	grammar_associate(rule_unstash);
+
+	state3(_for(ast_for_parse_state.awaititer), _expr(t), _token(token_tag.cparen),
+		_token(token_tag.obrace), zero);
+	grammar_associate(rule_shift1);
+
+	state4(_for(ast_for_parse_state.awaititer), _expr(t), _token(token_tag.cparen), _token(token_tag.obrace),
+		zero, zero);
+	grammar_associate(rule_forawaititer_exprx_cparen_obrace2forwip);
 };
