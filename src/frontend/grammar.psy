@@ -14,6 +14,10 @@ grammar_install : func(-> v0)
 	grammar_deref();
 	foreach_expr(grammar_deref_expr);
 
+	grammar_sizeof();
+	grammar_alignof();
+	grammar_countof();
+
 	foreach_expr(grammar_cast_expr);
 	grammar_cast();
 
@@ -178,6 +182,51 @@ grammar_deref_expr : func(t : ast_expr_tag -> v0)
 	state3(_token(token_tag.obrack), _expr(t), _token(token_tag.cbrack),
 		zero, zero);
 	grammar_associate(rule_obrack_exprx_cbrack2dereferenceexpr);
+};
+
+grammar_sizeof : func(-> v0)
+{
+	state1(_token(token_tag.keyword_sizeof),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _token(token_tag.keyword_sizeof));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.keyword_sizeof), _typename(ast_typename_parse_state.finalised),
+	zero, zero);
+	grammar_associate(rule_keywordsizeof_typenamefinalised2sizeofexpr);
+};
+
+grammar_alignof : func(-> v0)
+{
+	state1(_token(token_tag.keyword_alignof),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _token(token_tag.keyword_alignof));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.keyword_alignof), _typename(ast_typename_parse_state.finalised),
+	zero, zero);
+	grammar_associate(rule_keywordalignof_typenamefinalised2alignofexpr);
+};
+
+grammar_countof : func(-> v0)
+{
+	state1(_token(token_tag.keyword_countof),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	state1(_typename(ast_typename_parse_state.finalised),
+		zero, _token(token_tag.keyword_countof));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.keyword_countof), _typename(ast_typename_parse_state.finalised),
+	zero, zero);
+	grammar_associate(rule_keywordcountof_typenamefinalised2countofexpr);
 };
 
 grammar_cast_expr : func(t : ast_expr_tag -> v0)
