@@ -17,6 +17,8 @@ grammar_install : func(-> v0)
 	grammar_sizeof();
 	grammar_alignof();
 	grammar_countof();
+	grammar_typeof();
+	foreach_expr(grammar_typeof_expr);
 
 	foreach_expr(grammar_cast_expr);
 	grammar_cast();
@@ -233,6 +235,24 @@ grammar_countof : func(-> v0)
 	state2(_token(token_tag.keyword_countof), _typename(ast_typename_parse_state.finalised),
 	zero, zero);
 	grammar_associate(rule_keywordcountof_typenamefinalised2countofexpr);
+};
+
+grammar_typeof : func(-> v0)
+{
+	state1(_token(token_tag.keyword_typeof),
+		zero, zero);
+	grammar_associate(rule_stash);
+};
+
+grammar_typeof_expr : func(t : ast_expr_tag -> v0)
+{
+	state1(_expr(t),
+		zero, _token(token_tag.keyword_typeof));
+	grammar_associate(rule_unstash);
+
+	state2(_token(token_tag.keyword_typeof), _expr(t),
+		zero, zero);
+	grammar_associate(rule_keywordtypeof_exprx2typenamewip);
 };
 
 grammar_cast_expr : func(t : ast_expr_tag -> v0)

@@ -34,7 +34,7 @@ ast_tag : enum
 	.stmt := 3;
 	// declaration stmt (d1 = name, d2 = name_len, d3 = decl_parse_state, child0 = typename, child1 = optional expr)
 	.decl := 4;
-	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N
+	// typename (d0 = typename_tag, d1 = quals, d2 = basename, d3 = basename_len, d4 = typename_parse_state, child0 = pointee typename node/array-element typename node/function-param-typename 0), child1... = function-param-typename1-N/array-length-expr
 	.typename := 5;
 	// init (d1 = init_tag, d2 = init_parse_state, d3 = integer/symbol, d4 = symbol len, child0 = init-value expression
 	.init := 6;
@@ -118,12 +118,14 @@ ast_expr_tag : enum
 	.cast := 8;
 	// field-access (d2 = field_parse_state, child0 = field lhs expression, child1 = field rhs symbol/typename)
 	.field := 9;
-	// sizeof-expression (no data, child0 = typename node)
+	// sizeof-typename (no data, child0 = typename node)
 	.sizeof_t := 10;
-	// alignof-expression (no data, child0 = typename node)
+	// alignof-typename (no data, child0 = typename node)
 	.alignof_t := 11;
-	// countof-expression (no data, child0 = typename node)
+	// countof-typename (no data, child0 = typename node)
 	.countof_t := 12;
+	// typeof-expression (no data, child0 = typename node)
+	.typeof_t := 13;
 };
 
 ast_typename_tag : enum
@@ -646,19 +648,34 @@ ast_typename_get_quals : func(n : ast mut? -> ty mut?)
 	return ref(n->d1)@ty mut?;
 };
 
-ast_typename_get_basename : func(n : ast mut? -> u8 mut? mut?)
+ast_typename_get_parse_state : func(n : ast mut? -> ast_typename_parse_state mut?)
+{
+	return ref(n->d4)@ast_typename_parse_state mut?;
+};
+
+ast_typename_base_get_basename : func(n : ast mut? -> u8 mut? mut?)
 {
 	return ref(n->d2)@u8 mut? mut?;
 };
 
-ast_typename_get_basename_len : func(n : ast mut? -> u64 mut?)
+ast_typename_base_get_basename_len : func(n : ast mut? -> u64 mut?)
 {
 	return ref(n->d3)@u64 mut?;
 };
 
-ast_typename_get_parse_state : func(n : ast mut? -> ast_typename_parse_state mut?)
+ast_typename_array_get_element_type : func(n : ast mut? -> ast mut?)
 {
-	return ref(n->d4)@ast_typename_parse_state mut?;
+	return n->children # 0;
+};
+
+ast_typename_array_get_length_expr : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 1;
+};
+
+ast_typename_pointer_get_pointee_type : func(n : ast mut? -> ast mut?)
+{
+	return n->children # 0;
 };
 
 ast_typename_function_get_params_count : func(n : ast mut? -> u32)
