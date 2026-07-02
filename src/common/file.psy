@@ -28,6 +28,19 @@ path : enum
 {
 };
 
+path_combine : func(lhs : path, rhs : path, ar : arena mut? -> path)
+{
+	lhsz ::= path2zstr(lhs);
+	rhsz ::= path2zstr(rhs);
+	lhslen ::= zstrlen(lhsz);
+	if([lhsz # (lhslen - 1)] == '/')
+	{
+		// no need for a combinator
+		return zstr2path(zstrcombz(lhsz, rhsz, zero, ar));
+	}
+	return zstr2path(zstrcombz(lhsz, rhsz, '/', ar));
+};
+
 path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
 {
 	linux_out : linux_stat_t mut;
@@ -77,6 +90,44 @@ path_open : func(p : path, relative_to : file, access : file_access -> file)
 		linux_dirfd = -100; // AT_FDCWD
 	}
 	return linux_openat(linux_dirfd, path2zstr(p), 0, access@s64)@s64@file;
+};
+
+directory_iterate_flags : enum
+{
+	// when invoking the callback, combine the child with the parent path
+	.combine_path := 1;
+};
+
+directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
+{
+	counter : u64 mut := 0;
+	buffer : u8[4096];
+	ret : s64 mut := ~0;
+	i : u64 mut;
+	while(ret != 0)
+	{
+		ret = linux_getdents(dir@s64@s32, (buffer # 0)@linux_dirent mut?, sizeof typeof(buffer));
+		if(ret == 0)
+		{
+			return counter;
+		}
+		if(ret < 0)
+		{
+			return zero;
+		}
+		while(i < ret@u64)
+		{
+			d ::= (buffer # i)@linux_dirent mut?;
+			child_zstr ::= d->d_name # 0;
+			if([child_zstr # 0] != '.')
+			{
+				callback(zstr2path(child_zstr), usrdata);
+				counter = counter + 1;
+			}
+			i = i + d->d_reclen@u64;
+		}
+	}
+	unreachable;
 };
 
 file_close : func(f : file -> err)
