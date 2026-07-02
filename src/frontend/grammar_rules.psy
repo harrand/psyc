@@ -874,6 +874,40 @@ rule_ifwip_cbrace2ifstmt : func(nodes : ast mut?, nodes_count : u64, out_result 
 	[ast_stmt_get_tag(out)] = ast_stmt_tag.if_blk;
 };
 
+rule_keywordelse_obrace2elsewip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = 
+	out->tag = ast_tag.elseblk;
+	[ast_else_get_parse_state(out)] = ast_else_parse_state.wip;
+};
+
+rule_elsewip_cbrace2elsestmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	out->tag = ast_tag.stmt;
+	[ast_stmt_get_tag(out)] = ast_stmt_tag.else_blk;
+};
+
+rule_ifstmt_elsestmt2ifstmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	elsenode ::= nodes # 1;
+	out ::= nodes # 0;
+	ast_add_child(out, elsenode);
+};
+
 rule_keywordwhile_exprx_obrace2whilewip : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;

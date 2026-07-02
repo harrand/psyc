@@ -56,12 +56,14 @@ ast_tag : enum
 	.cast := 14;
 	// if (d1 = is_static, d2 = if_parse_state, child0 = condition expression, child1... = if-body statements)
 	.ifblk := 15;
+	// else (d2 = else_parse_state, child0... = else-body statements)
+	.elseblk := 16;
 	// while (d1 = while_parse_state, child0 = condition expression, child1... = while-body statements)
-	.whileblk := 16;
+	.whileblk := 17;
 	// for (d1 = for_parse_state, child0 = initialiser expression, child1 = condition expression, child2 = iterate expresion, child3... = for-body statements)
-	.forblk := 17;
+	.forblk := 18;
 	// block initialiser (d2 = blkinit_parse_state, child0 = typename node, child1... = member init statements)
-	.blkinit := 18;
+	.blkinit := 19;
 };
 
 ast_stmt_tag : enum
@@ -82,7 +84,7 @@ ast_stmt_tag : enum
 	.region := 6;
 	// if stmt (d1 = is_static, d2 = if_parse_state, child0 = condition expression, child1... = if-body statements)
 	.if_blk := 7;
-	// else stmt (no data, child0... = else-body statements)
+	// else stmt (d2 = else_parse_state, child0... = else-body statements)
 	.else_blk := 8;
 	// while stmt (d1 = while_parse_state, child0 = condition expression, child1... = while-body statements)
 	.while_blk := 9;
@@ -321,9 +323,14 @@ tag_offset_if : func(-> u64 weak)
 	return tag_offset_blkinit() + countof ast_blkinit_parse_state + 1;
 };
 
-tag_offset_while : func(-> u64 weak)
+tag_offset_else : func(-> u64 weak)
 {
 	return tag_offset_if() + countof ast_if_parse_state + 1;
+};
+
+tag_offset_while : func(-> u64 weak)
+{
+	return tag_offset_else() + countof ast_else_parse_state + 1;
 };
 
 tag_offset_for : func(-> u64 weak)
@@ -410,6 +417,10 @@ ast_uid : func(n : ast mut? -> u64)
 	{
 		return tag_offset_if() + [ast_if_get_parse_state(n)]@s64;
 	}
+	if(t == ast_tag.elseblk)
+	{
+		return tag_offset_else() + [ast_else_get_parse_state(n)]@s64;
+	}
 	if(t == ast_tag.whileblk)
 	{
 		return tag_offset_while() + [ast_while_get_parse_state(n)]@s64;
@@ -483,6 +494,11 @@ ast_blkinit_parse_state : enum
 };
 
 ast_if_parse_state : enum
+{
+	.wip := 1;
+};
+
+ast_else_parse_state : enum
 {
 	.wip := 1;
 };
@@ -852,6 +868,11 @@ ast_if_get_body : func(n : ast mut? -> ast mut?)
 ast_if_get_body_count : func(n : ast mut? -> u32)
 {
 	return n->children_count - 1;
+};
+
+ast_else_get_parse_state : func(n : ast mut? -> ast_else_parse_state mut?)
+{
+	return ref(n->d2)@ast_else_parse_state mut?;
 };
 
 ast_else_get_body : func(n : ast mut? -> ast mut?)
