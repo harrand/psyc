@@ -92,18 +92,12 @@ path_open : func(p : path, relative_to : file, access : file_access -> file)
 	return linux_openat(linux_dirfd, path2zstr(p), 0, access@s64)@s64@file;
 };
 
-directory_iterate_flags : enum
-{
-	// when invoking the callback, combine the child with the parent path
-	.combine_path := 1;
-};
-
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
 {
 	counter : u64 mut := 0;
 	buffer : u8[4096];
 	ret : s64 mut := ~0;
-	i : u64 mut;
+	i : u64 mut := 0;
 	while(ret != 0)
 	{
 		ret = linux_getdents(dir@s64@s32, (buffer # 0)@linux_dirent mut?, sizeof typeof(buffer));
