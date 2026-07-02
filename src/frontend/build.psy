@@ -98,9 +98,19 @@ execute_build_builtin_add_source_file : func(params : ast mut?, params_count : u
 
 execute_build_builtin_add_source_directory : func(params : ast mut?, params_count : u32, src : source -> v0)
 {
-	warn_begin();
-	putzstr("add_source_directory NYI\n\0");
-	warn_end();
+	path_data ::= [ast_literal_get_string(params # 0)];
+	path_len ::= [ast_literal_get_string_len(params # 0)];
+	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
+	dir ::= path_open(zstr2path(path_zstr), file.cwd, file_access.read);
+	directory_iterate(dir, build_builtin_add_source_directory_callback, path_zstr);
+	file_close(dir);
+};
+
+build_builtin_add_source_directory_callback : func(child_path : path, usrdata : v0? weak -> bool)
+{
+	parent_path ::= zstr2path(usrdata@u8 mut?);
+	add_source_file(path_combine(parent_path, child_path, global_arena));
+	return true;
 };
 
 execute_build_builtin_entrypoint : func(params : ast mut?, params_count : u32, src : source -> v0)

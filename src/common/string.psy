@@ -80,3 +80,22 @@ streql : func(lhs : u8?, lhs_len : u64, rhs : u8?, rhs_len : u64 -> bool)
 	}
 	return true;
 };
+
+// combinator == zero: return zstr "lhsrhs"
+// else: return zstr "lhscombinatorrhs"
+zstrcombz : func(lhs : u8?, rhs : u8?, combinator : u8, ar : arena mut? -> u8 mut?)
+{
+	lhslen ::= zstrlen(lhs);
+	rhslen ::= zstrlen(rhs);
+	comblen : u64 mut := (combinator != 0)@u64;
+	retlen ::= lhslen + comblen + rhslen;
+	ret : u8 mut? := arena_alloc(ar, retlen + 1);
+	memcopy(ret # 0, lhs # 0, lhslen);
+	if(comblen != 0)
+	{
+		[ret # lhslen] = combinator;
+	}
+	memcopy(ret # (lhslen + comblen), rhs, rhslen);
+	[ret # retlen] = zero;
+	return ret;
+};
