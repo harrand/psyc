@@ -33,51 +33,6 @@ prog_t : struct
 
 	global_scope : scope_t;
 };
-
-scope_t : struct
-{
-	vars : variable_t mut?;
-	vars_count : u64;
-	vars_cap : u64;
-
-	funcs : function_t mut?;
-	funcs_count : u64;
-	funcs_cap : u64;
-
-	asms : assembly_t mut?;
-	asms_count : u64;
-	asms_cap : u64;
-};
-
-variable_t : struct
-{
-	node : ast mut?;
-	type : ty;
-	//runtime_storage : rval;
-	//compile_time_storage : sval;
-	local_param_idx : u8;
-};
-
-function_t : struct
-{
-	node : ast mut?;
-	type : ty;
-	scope : scope_t;
-	//fnref : irpos;
-};
-
-assembly_t : struct
-{
-	node : ast mut?;
-	type : ty;
-
-	code : u8?;
-	code_len : u64;
-	constraints : u8?;
-	constraints_len : u64;
-	//idx : u64;
-};
-
 // whole program state
 prog ::= prog_t mut
 {
@@ -130,4 +85,24 @@ prog_get_source : func(s : source -> source_file mut?)
 		panic_end();
 	}
 	return prog.source_files # (s@s64);
+};
+
+prog_find_function : func(name : u8?, name_len : u64 -> function_t mut?)
+{
+	return scope_find_function(ref prog.global_scope, name, name_len);
+};
+
+prog_add_function : func(fn : function_t mut? -> v0)
+{
+	scope_add_function(ref prog.global_scope, fn);
+};
+
+prog_find_global_variable : func(name : u8?, name_len : u64 -> variable_t mut?)
+{
+	return scope_find_variable(ref prog.global_scope, name, name_len);
+};
+
+prog_add_global_variable : func(var : variable_t mut? -> v0)
+{
+	scope_add_variable(ref prog.global_scope, var);
 };
