@@ -1,0 +1,151 @@
+scope_t : struct
+{
+	vars : variable_t mut?;
+	vars_count : u64;
+	vars_cap : u64;
+
+	funcs : function_t mut?;
+	funcs_count : u64;
+	funcs_cap : u64;
+
+	asms : assembly_t mut?;
+	asms_count : u64;
+	asms_cap : u64;
+};
+
+variable_t : struct
+{
+	node : ast mut?;
+	type : ty;
+	//runtime_storage : rval;
+	//compile_time_storage : sval;
+	local_param_idx : u8;
+};
+
+function_t : struct
+{
+	node : ast mut?;
+	type : ty;
+	scope : scope_t;
+	//fnref : irpos;
+};
+
+assembly_t : struct
+{
+	node : ast mut?;
+	type : ty;
+
+	code : u8?;
+	code_len : u64;
+	constraints : u8?;
+	constraints_len : u64;
+	//idx : u64;
+};
+
+scope_find_variable : func(s : scope_t mut?, name : u8?, name_len : u64 -> variable_t mut?)
+{
+	i : u64 mut;
+	for(i = 0; i < s->vars_count; i = i + 1)
+	{
+		var ::= s->vars # i;
+		node ::= var->node;
+		name ::= [ast_decl_get_name(node)];
+		name_len ::= [ast_decl_get_name_len(node)];
+		if(streql(name, name_len, [ast_decl_get_name(node)], [ast_decl_get_name_len(node)]))
+		{
+			return var;
+		}
+	}
+	return zero;
+};
+
+scope_add_variable : func(scope : scope_t mut?, var : variable_t mut? -> v0)
+{
+	if(scope->vars == zero)
+	{
+		scope->vars_cap = 8;
+		scope->vars = arena_alloc(global_arena, scope->vars_cap * sizeof typeof([scope->vars]));
+	}
+	while(scope->vars_count >= scope->vars_cap)
+	{
+		olddata ::= scope->vars;
+		oldcap ::= scope->vars_cap;
+		scope->vars_cap = scope->vars_cap * 2;
+		scope->vars = arena_alloc(global_arena, scope->vars_cap * sizeof typeof([scope->vars]));
+		memcopy(scope->vars, olddata, oldcap * sizeof typeof([scope->vars]));
+	}
+	[scope->vars # scope->vars_count] = [var];
+	scope->vars_count = scope->vars_count + 1;
+};
+
+scope_find_function : func(s : scope_t mut?, name : u8?, name_len : u64 -> function_t mut?)
+{
+	i : u64 mut;
+	for(i = 0; i < s->funcs_count; i = i + 1)
+	{
+		fn ::= s->funcs # i;
+		node ::= fn->node;
+		name ::= [ast_function_get_name(node)];
+		name_len ::= [ast_function_get_name_len(node)];
+		if(streql(name, name_len, [ast_function_get_name(node)], [ast_function_get_name_len(node)]))
+		{
+			return fn;
+		}
+	}
+	return zero;
+};
+
+scope_add_function : func(scope : scope_t mut?, fn : function_t mut? -> v0)
+{
+	if(scope->funcs == zero)
+	{
+		scope->funcs_cap = 8;
+		scope->funcs = arena_alloc(global_arena, scope->funcs_cap * sizeof typeof([scope->funcs]));
+	}
+	while(scope->funcs_count >= scope->funcs_cap)
+	{
+		olddata ::= scope->funcs;
+		oldcap ::= scope->funcs_cap;
+		scope->funcs_cap = scope->funcs_cap * 2;
+		scope->funcs = arena_alloc(global_arena, scope->funcs_cap * sizeof typeof([scope->funcs]));
+		memcopy(scope->funcs, olddata, oldcap * sizeof typeof([scope->funcs]));
+	}
+	[scope->funcs # scope->funcs_count] = [fn];
+	scope->funcs_count = scope->funcs_count + 1;
+};
+
+scope_find_assembly : func(s : scope_t mut?, name : u8?, name_len : u64 -> assembly_t mut?)
+{
+	i : u64 mut;
+	for(i = 0; i < s->asms_count; i = i + 1)
+	{
+		as ::= s->asms # i;
+		node ::= as->node;
+		name ::= [ast_assembly_get_name(node)];
+		name_len ::= [ast_assembly_get_name_len(node)];
+		if(streql(name, name_len, [ast_assembly_get_name(node)], [ast_assembly_get_name_len(node)]))
+		{
+			return as;
+		}
+	}
+	return zero;
+};
+
+scope_add_assembly : func(scope : scope_t mut?, as : assembly_t mut? -> v0)
+{
+	if(scope->asms == zero)
+	{
+		scope->asms_cap = 8;
+		scope->asms = arena_alloc(global_arena, scope->asms_cap * sizeof typeof([scope->asms]));
+	}
+	while(scope->asms_count >= scope->asms_cap)
+	{
+		olddata ::= scope->asms;
+		oldcap ::= scope->asms_cap;
+		scope->asms_cap = scope->asms_cap * 2;
+		scope->asms = arena_alloc(global_arena, scope->asms_cap * sizeof typeof([scope->asms]));
+		memcopy(scope->asms, olddata, oldcap * sizeof typeof([scope->asms]));
+	}
+	[scope->asms # scope->asms_count] = [as];
+	scope->asms_count = scope->asms_count + 1;
+};
