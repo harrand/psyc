@@ -10,3 +10,45 @@ x64prog : struct
 
 	entrypoint_func_index : u64;
 };
+
+x64prog_add_func : func(p : x64prog mut?, fn : x64func mut? -> u64)
+{
+	if(p->funcs == zero)
+	{
+		p->funcs_cap = 8;
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof x64func);
+	}
+	while(p->funcs_count >= p->funcs_cap)
+	{
+		oldcap ::= p->funcs_cap;
+		old ::= p->funcs;
+		p->funcs_cap = (p->funcs_cap * 2);
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof x64func);
+		memcopy(p->funcs, old, oldcap * sizeof x64func);
+	}
+	idx ::= p->funcs_count;
+	p->funcs_count = (p->funcs_count + 1);
+	[p->funcs # idx] = [fn];
+	return idx;
+};
+
+x64prog_add_glob : func(p : x64prog mut?, glob : x64glob mut? -> u64)
+{
+	if(p->globs == zero)
+	{
+		p->globs_cap = 8;
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof x64glob);
+	}
+	while(p->globs_count >= p->globs_cap)
+	{
+		oldcap ::= p->globs_cap;
+		old ::= p->globs;
+		p->globs_cap = (p->globs_cap * 2);
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof x64glob);
+		memcopy(p->globs, old, oldcap * sizeof x64glob);
+	}
+	idx ::= p->globs_count;
+	p->globs_count = (p->globs_count + 1);
+	[p->globs # idx] = [glob];
+	return idx;
+};
