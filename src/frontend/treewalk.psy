@@ -26,7 +26,7 @@ treewalk_stmt_decl : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_decl_get_name(stmt)];
 	name_len ::= [ast_decl_get_name_len(stmt)];
-	// todo: prog_add_global(...)
+
 	var : variable_t mut;
 	var.node = stmt;
 	var.type = zero;
@@ -38,19 +38,13 @@ treewalk_stmt_structure : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_structure_get_name(stmt)];
 	name_len ::= [ast_structure_get_name_len(stmt)];
-	putzstr("structure: \0");
-	putchars(name, name_len);
-	putchar('\n');
-	// todo: add struct type
+	// todo: make type, add to ty_storage
 };
 
 treewalk_stmt_function : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_function_get_name(stmt)];
 	name_len ::= [ast_function_get_name_len(stmt)];
-	putzstr("function: \0");
-	putchars(name, name_len);
-	putchar('\n');
 
 	fn : function_t mut;
 	fn.node = stmt;
@@ -63,20 +57,24 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_enumeration_get_name(stmt)];
 	name_len ::= [ast_enumeration_get_name_len(stmt)];
-	putzstr("enum: \0");
-	putchars(name, name_len);
-	putchar('\n');
-	// todo: prog_add_func(...)
+	// todo: make type, add to ty_storage
 };
 
 treewalk_stmt_assembly : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_assembly_get_name(stmt)];
 	name_len ::= [ast_assembly_get_name_len(stmt)];
-	putzstr("assembly: \0");
-	putchars(name, name_len);
-	putchar('\n');
-	// todo: prog_add_asm(...)
+	code_symbol ::= ast_assembly_get_code_symbol(stmt);
+
+	as : assembly_t mut;
+	as.node = stmt;
+	as.type = zero;
+	as.constraints = [ast_assembly_get_constraints(stmt)];
+	as.constraints_len = [ast_assembly_get_constraints_len(stmt)];
+	as.code = [ast_token_get_data(code_symbol)];
+	as.code_len = [ast_token_get_data_len(code_symbol)];
+
+	prog_add_assembly(ref as);
 };
 
 treewalk_stmt_tbl ::= func(stmt : ast mut?, s : source -> v0)[countof ast_stmt_tag]
