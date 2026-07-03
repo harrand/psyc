@@ -26,7 +26,7 @@ ast : struct
 ast_tag : enum
 {
 	// zero represents the root/empty node (d0 = source)
-	// represents a single token (d0 = token_tag, d1 = begin, d2 = end)
+	// represents a single token (d0 = token_tag, d1 = data, d2 = data_len)
 	.token := 1;
 	// expression (d1 = expr_tag)
 	.expr := 2;
@@ -615,6 +615,16 @@ ast_token_get_tag : func(n : ast mut? -> token_tag mut?)
 	return ref(n->d0)@token_tag mut?;
 };
 
+ast_token_get_data : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d1)@u8 mut? mut?;
+};
+
+ast_token_get_data_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d2)@u64 mut?;
+};
+
 ast_expr_get_tag : func(n : ast mut? -> ast_expr_tag mut?)
 {
 	return ref(n->d1)@ast_expr_tag mut?;
@@ -1174,6 +1184,8 @@ token2ast : func(in_tok : token mut?, out_ast : ast mut? -> v0)
 	out_ast->children_cap = 0;
 	out_ast->src_beg = in_tok->begin@u32;
 	out_ast->src_end = in_tok->end@u32;
+	[ast_token_get_data(out_ast)] = parse_state.src->src # (in_tok->begin);
+	[ast_token_get_data_len(out_ast)] = (in_tok->end - in_tok->begin);
 };
 
 // DUMPING TO STDOUT
