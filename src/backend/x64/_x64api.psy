@@ -31,3 +31,54 @@ x64_add_glob : func(out : x64val mut?, g : x64glob mut? -> v0)
 	out->tag = x64val_tag.globref;
 	[x64val_globref_get_index(out)] = idx;
 };
+
+x64_set_entrypoint : func(fnref : x64val mut? -> v0)
+{
+	x64api.prog.entrypoint_func_index = [x64val_fnref_get_index(fnref)];
+};
+
+x64_current_func_index : func(-> u64)
+{
+	return x64api.funcpos;
+};
+
+x64_current_func : func(-> x64func mut?)
+{
+	return x64api.prog.funcs # x64api.funcpos;
+};
+
+x64_get_position : func(-> u64)
+{
+	return x64api.instpos;
+};
+
+x64_position_before_inst : func(inst_id : u64 -> v0)
+{
+	x64api.instpos = inst_id;
+};
+
+x64_position_after_inst : func(inst_id : u64 -> v0)
+{
+	x64api.instpos = inst_id + 1;
+};
+
+x64_position_start_func : func(func_index : u64 -> v0)
+{
+	x64api.funcpos = func_index;
+	x64api.instpos = 0;
+};
+
+x64_add_instruction : func(inst : x64inst mut? -> v0)
+{
+	fn ::= x64_current_func();
+	x64func_add_inst_at(fn, inst, x64api.instpos);
+};
+
+x64_delete_instruction : func(-> v0)
+{
+	fn ::= x64_current_func();
+	cpydst ::= fn->insts # x64api.instpos;
+	count ::= fn->insts_count - (x64api.instpos + 1);
+	memcopy(cpydst, cpydst # 1, sizeof x64inst * count);
+	fn->insts_count = fn->insts_count - 1;
+};
