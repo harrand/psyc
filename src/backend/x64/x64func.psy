@@ -6,3 +6,30 @@ x64func : struct
 
 	enc_byte_offset_begin : u64;
 };
+
+x64func_add_inst_at : func(fn : x64func mut?, inst : x64inst mut?, idx : u64 -> v0)
+{
+	if(fn->insts == zero)
+	{
+		fn->insts_cap = 8;
+		fn->insts = arena_alloc(global_arena, fn->insts_cap * sizeof x64inst);
+	}
+	while(fn->insts_count >= fn->insts_cap)
+	{
+		oldcap ::= fn->insts_cap;
+		old ::= fn->insts;
+		fn->insts_cap = (fn->insts_cap * 2);
+		fn->insts = arena_alloc(global_arena, fn->insts_cap * sizeof x64inst);
+		memcopy(fn->insts, old, oldcap * sizeof x64inst);
+	}
+	idx ::= x64api.instpos;
+	if(idx < fn->insts_count)
+	{
+		// move all insts right by one otherwise we will overwrite
+		cpysrc ::= fn->insts # idx;
+		memcopy_backwards(cpysrc # 1, cpysrc, sizeof x64inst * (1 + fn->insts_count - idx));
+	}
+	x64api.instpos = x64api.instpos + 1;
+	fn->insts_count = (fn->insts_count + 1);
+	[fn->insts # idx] = [inst];
+};
