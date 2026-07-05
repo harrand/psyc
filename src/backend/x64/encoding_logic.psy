@@ -1,9 +1,9 @@
-x64inst_encode_base : func(w : bwriter mut?, inst : x64inst mut? -> v0)
+x64inst_encode_base : func(w : bwriter mut?, inst : x64inst mut?, out : x64enc_table_entry mut? -> v0)
 {
-	[x64inst_encode_base_tbl # (inst->tag@s64)](w, inst);
+	[x64inst_encode_base_tbl # (inst->tag@s64)](w, inst, out);
 };
 
-x64inst_encode_nyi : func(w : bwriter mut?, inst : x64inst mut? -> v0)
+x64inst_encode_nyi : func(w : bwriter mut?, inst : x64inst mut?, out : x64enc_table_entry mut? -> v0)
 {
 	err_begin();
 	putzstr("encoding for x64 instruction \0");
@@ -16,7 +16,12 @@ x64inst_encode_nyi : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 
 // specific encodings (dispatch function at the bottom of the file)
 
-x64inst_encode_mov : func(w : bwriter mut?, inst : x64inst mut? -> v0)
+x64inst_encode_nop : func(w : bwriter mut?, inst : x64inst mut?, out : x64enc_table_entry mut? -> v0)
+{
+	[out] = encoding_nop;
+};
+
+x64inst_encode_mov : func(w : bwriter mut?, inst : x64inst mut?, out : x64enc_table_entry mut? -> v0)
 {
 	// do the correct stuff using the encoding table...
 	err_begin();
@@ -24,9 +29,9 @@ x64inst_encode_mov : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 	err_end();
 };
 
-x64inst_encode_base_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> v0)[countof x64inst_tag]
+x64inst_encode_base_tbl ::= func(w : bwriter mut?, inst : x64inst mut?, out : x64enc_table_entry mut? -> v0)[countof x64inst_tag]
 {
-	.0 := x64inst_encode_nyi;
+	.0 := x64inst_encode_nop;
 	.1 := x64inst_encode_mov;
 	.2 := x64inst_encode_nyi;
 	.3 := x64inst_encode_nyi;
