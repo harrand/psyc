@@ -29,5 +29,17 @@ test : func(-> v0)
 	[inst.operands # 1] = zero;
 	x64_add_instruction(ref inst);
 
-	x64_dump();
+	// shared stream
+	stream : bwriter mut;
+	w ::= ref stream;
+	bwriter_create_native(w, 1024, scratch_arena);
+
+	// dump assembly
+	x64prog_dump_to(w, ref(x64api.prog));
+	putchars(w->buf, w->cursor);
+
+	// dump encoding
+	w->cursor = 0;
+	x64prog_encode_to(w, ref(x64api.prog));
+	putchars(w->buf, w->cursor);
 };
