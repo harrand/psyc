@@ -19,6 +19,9 @@ x64val_reg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 
 x64val_memreg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
+	memsz ::= log2([x64val_memreg_get_size(v)]) - 3;
+	bwrite_zstr(w, [x64memreg_size_name # memsz]);
+	bwrite_zstr(w, " PTR \0");
 	bwrite8(w, '[');
 	base_idx : u64 mut := [x64val_memreg_get_base_size(v)];
 	if(base_idx != 0)
@@ -82,12 +85,14 @@ x64val_ripreli_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 
 x64val_fnref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	bwrite_zstr(w, "fnref\0");
+	bwrite8(w, '$');
+	bwrite_uint(w, [x64val_fnref_get_index(v)]);
 };
 
 x64val_globref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	bwrite_zstr(w, "globref\0");
+	bwrite8(w, '@');
+	bwrite_uint(w, [x64val_globref_get_index(v)]);
 };
 
 x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
