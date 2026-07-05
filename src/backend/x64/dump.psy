@@ -1,6 +1,98 @@
+x64val_unknown_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite8(w, '?');
+};
+
+x64val_imm_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "imm\0");
+	bwrite_uint(w, [x64val_imm_get_size(v)]);
+	bwrite8(w, ' ');
+	bwrite_sint(w, [x64val_imm_get_value(v)]);
+};
+
+x64val_reg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	offset ::= log2([x64val_reg_get_size(v)]) - 3;
+	r : u64 := [x64val_reg_get_reg(v)]@s64@u64;
+	idx : u64 := 1 + ([x64val_reg_get_reg(v)]@s64@u64 * 7) + offset;
+	bwrite_zstr(w, [x64reg_name # idx]);
+};
+
+x64val_memreg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "memreg\0");
+};
+
+x64val_ripreli_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "ripreli\0");
+};
+
+x64val_fnref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "fnref\0");
+};
+
+x64val_globref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "globref\0");
+};
+
+x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	bwrite_zstr(w, "?\0");
+};
+
+x64val_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? -> v0)[countof x64val_tag]
+{
+	.0 := x64val_unknown_dump_to;
+	.1 := x64val_imm_dump_to;
+	.2 := x64val_reg_dump_to;
+	.3 := x64val_memreg_dump_to;
+	.4 := x64val_ripreli_dump_to;
+	.5 := x64val_fnref_dump_to;
+	.6 := x64val_globref_dump_to;
+	.7 := x64val_custom_dump_to;
+};
+
+x64val_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	[x64val_dump_to_tbl # v->tag@s64](w, v);
+};
+
+x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
+{
+	tag ::= inst->tag;
+	if(x64inst_is_any_custom(inst))
+	{
+		bwrite_zstr(w, ".custom\0");
+	}
+	else
+	{
+		bwrite_zstr(w, [x64inst_name # tag@s64]);
+	}
+	i : u64 mut;
+	count ::= x64inst_operands_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		bwrite8(w, ' ');
+		x64val_dump_to(w, inst->operands # i);
+		if(i < (count - 1))
+		{
+			bwrite_zstr(w, ",\0");
+		}
+	}
+	bwrite8(w, '\n');
+};
+
 x64func_dump_to : func(w : bwriter mut?, fn : x64func mut? -> v0)
 {
-	bwrite_zstr(w, "hello test\0");
+	i : u64 mut;
+	for(i = 0; i < fn->insts_count; i = i + 1)
+	{
+		x64inst_dump_to(w, fn->insts # i);
+	}
 };
 
 x64prog_dump_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
@@ -23,4 +115,5 @@ x64prog_dump : func(p : x64prog mut? -> v0)
 	//putchar('\n');
 	putchars(w->buf, w->cursor);
 	//putchar('\n');
+	arena_clear(scratch_arena);
 };
