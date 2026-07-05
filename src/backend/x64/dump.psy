@@ -69,7 +69,15 @@ x64val_memreg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 
 x64val_ripreli_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	bwrite_zstr(w, "ripreli\0");
+	bwrite_zstr(w, "[ripreli \0");
+	delta : s64 mut := [x64val_ripreli_get_delta(v)]@s64;
+	// hack to workaround compiler bug where s32 -> s64 wrongly does a zext. check 32-bit sign-bit and sign-extend manually
+	if((delta & 0x80000000) > 0)
+	{
+		delta = delta | 0xffffffff00000000;
+	}
+	bwrite_sint(w, delta);
+	bwrite8(w, ']');
 };
 
 x64val_fnref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
