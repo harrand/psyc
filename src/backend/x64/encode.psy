@@ -1,0 +1,77 @@
+// relocs are normally a link-time thing, but we dont have a separate linker stage so our relocs are not quite the same thing
+// imagine you are encoding and you see a ripreli +2, i.e 'jump 2 instructions ahead'. you need to know what the address '2 instructions from now is' which you dont immediately know because you are only encoding this instruction, not the next 2 (haha x64 variable length instructions)
+// (note: a ripreli - 2 does not require a reloc, because you know the encoding offsets of previous instructions so you can patch it immediately)
+// so you use a reloc that says 'at this offset future-me needs to write in the rip-relative byte offset from 'enc_offset' to the 'enc_byte_offset_end' of instruction[this + 2]'
+// relocs are generated ad-hoc during encoding of a single function, and are resolved once the function is otherwise fully encoded.
+x64enc_reloc : struct
+{
+	// which instruction within the function is responsible for this relocation?
+	source_inst_id : u64;
+	// offset in the encoder that you need to overwrite
+	enc_offset : u64;
+	// context which you need to use to decide what to write in there
+	context : x64val mut?;
+};
+
+x64enc_meta : struct
+{
+	// absolute virtual address where the code starts
+	begin_code_vaddr : u64;
+	// absolute virtual address where the readonly global data (.rodata) starts
+	begin_readonly_glob_vaddr : u64;
+	// absolute virtual address where the mutable global data (.data) starts
+	begin_mutable_glob_vaddr : u64;
+	// absolute virtual address where the mutable zeroed global data (.bss) starts
+	begin_mutablezero_glob_vaddr : u64;
+
+	// list of relocations which need to be patched.
+	relocs : x64enc_reloc mut?;
+	relocs_count : u64;
+	relocs_cap : u64;
+};
+
+x64enc_add_reloc : func(meta : x64enc_meta mut?, reloc : x64enc_reloc mut? -> v0)
+{
+	if(meta->relocs == zero)
+	{
+		meta->relocs_cap = 32;
+		meta->relocs = arena_alloc(scratch_arena, meta->relocs_cap * sizeof typeof([meta->relocs]));
+	}
+	while(meta->relocs_count >= meta->relocs_cap)
+	{
+		olddata ::= meta->relocs;
+		oldcap ::= meta->relocs_cap;
+		meta->relocs_cap = meta->relocs_cap * 2;
+		meta->relocs = arena_alloc(scratch_arena, meta->relocs_cap * sizeof typeof([meta->relocs]));
+		memcopy(meta->relocs, olddata, oldcap * sizeof typeof([meta->relocs]));
+	}
+	[meta->relocs # meta->relocs_count] = [reloc];
+	meta->relocs_count = meta->relocs_count + 1;
+};
+
+x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
+{
+	inst->enc_byte_offset_begin = w->cursor;
+	// complex
+	// todo: impl
+	inst->enc_byte_offset_end = w->cursor;
+};
+
+x64func_encode_to : func(w : bwriter mut?, fn : x64func mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
+{
+	fn->enc_byte_offset_begin = w->cursor;
+	i : u64 mut;
+	for(i = 0; i < fn->insts_count; i = i + 1)
+	{
+		x64inst_encode_to(w, fn->insts # i, fn, p, m);
+	}
+};
+
+x64prog_encode_to : func(w : bwriter mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		x64func_encode_to(w, p->funcs # i, p, m);
+	}
+};
