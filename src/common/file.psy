@@ -89,7 +89,7 @@ path_open : func(p : path, relative_to : file, access : file_access -> file)
 	{
 		linux_dirfd = -100; // AT_FDCWD
 	}
-	return linux_openat(linux_dirfd, path2zstr(p), 0, access@s64)@s64@file;
+	return linux_openat(linux_dirfd, path2zstr(p), access@s64, 0)@s64@file;
 };
 
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
@@ -151,6 +151,16 @@ file_is_valid : func(f : file -> bool)
 file_read : func(f : file, out : u8 mut?, out_size : u64 -> err)
 {
 	ret : s32 := linux_read(f@s64@s32, out, out_size)@s32;
+	if(ret >= 0)
+	{
+		return zero;
+	}
+	return err.unknown;
+};
+
+file_write : func(f : file, in : u8 mut?, in_size  : u64 -> err)
+{
+	ret : s32 := linux_write(f@s64@s32, in, in_size)@s32;
 	if(ret >= 0)
 	{
 		return zero;

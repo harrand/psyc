@@ -33,15 +33,19 @@ x64enc_opmode : enum
 {
 	.reg      := 1; // /r
 	.plus_reg := 3; // + rb
-	.opcode_plus_n   := 2; // /0
+	.plus_0   := 2; // /0
+	.plus_1   := 3; // /1
+	.plus_2   := 4; // /2
+	.plus_3   := 5; // /3
+	.plus_4   := 6; // /4
+	.plus_5   := 7; // /5
+	.plus_6   := 8; // /6
+	.plus_7   := 9; // /7
 	// 3 => /1
 	// 4 => /2
 	// etc...
 	.invalid_sentinel := 69420;
 };
-
-// i.e x64enc_opmode_plus + 2 => /2
-x64enc_opmode_plus ::= 2;
 
 x64enc_operand_type : enum
 {
@@ -82,12 +86,299 @@ x64enc_table_entry : struct
 	needs_modrm : bool;
 };
 
-encoding_nop ::= x64enc_table_entry // 1 byte nop
+encoding_tbl_nop ::= x64enc_table_entry[1] // 1 byte nop
 {
-	.opcode := 0x90;
-	.legacy_prefixes := zero;
-	.rex_prefix := zero;
-	.ext := zero;
-	.operand_types := zero;
-	.clobbers := zero;
+	.0 := x64enc_table_entry
+	{
+		.opcode := 0x90;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := zero;
+		.operand_types := zero;
+		.clobbers := zero;
+	};
+};
+
+encoding_tbl_mov ::= x64enc_table_entry[13]
+{
+	// MOV r/m8, r8
+	.0 := x64enc_table_entry
+	{
+		.opcode := 0x88;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.r;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m16, r16
+	.1 := x64enc_table_entry
+	{
+		.opcode := 0x89;
+		.legacy_prefixes := x64enc_legacy_prefix[4]
+		{
+			.0 := x64enc_legacy_prefix.operand_size_override;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.r;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m32, r32
+	.2 := x64enc_table_entry
+	{
+		.opcode := 0x89;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.r;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m64, r64
+	.3 := x64enc_table_entry
+	{
+		.opcode := 0x89;
+		.legacy_prefixes := zero;
+		.rex_prefix := x64enc_rex_prefix.rex_w;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.r;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r8, r/m8
+	.4 := x64enc_table_entry
+	{
+		.opcode := 0x8a;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.r;
+			.1 := x64enc_operand_type.rm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r16, r/m16
+	.5 := x64enc_table_entry
+	{
+		.opcode := 0x8b;
+		.legacy_prefixes := x64enc_legacy_prefix[4]
+		{
+			.0 := x64enc_legacy_prefix.operand_size_override;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.r;
+			.1 := x64enc_operand_type.rm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r32, r/m32
+	.6 := x64enc_table_entry
+	{
+		.opcode := 0x8b;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.r;
+			.1 := x64enc_operand_type.rm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r64, r/m64
+	.7 := x64enc_table_entry
+	{
+		.opcode := 0x8b;
+		.legacy_prefixes := zero;
+		.rex_prefix := x64enc_rex_prefix.rex_w;
+		.ext := x64enc_opmode.reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.r;
+			.1 := x64enc_operand_type.rm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := x64enc_clobber.op1;
+			.2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m8, imm8
+	.8 := x64enc_table_entry
+	{
+		.opcode := 0xc6;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.plus_0;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.imm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m16, imm16
+	.9 := x64enc_table_entry
+	{
+		.opcode := 0xc7;
+		.legacy_prefixes := x64enc_legacy_prefix[4]
+		{
+			.0 := x64enc_legacy_prefix.operand_size_override;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.plus_0;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.imm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m32, imm32
+	.10 := x64enc_table_entry
+	{
+		.opcode := 0xc7;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := x64enc_opmode.plus_0;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.imm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+	};
+	// MOV r/m64, imm32
+	.11 := x64enc_table_entry
+	{
+		.opcode := 0xc7;
+		.legacy_prefixes := zero;
+		.rex_prefix := x64enc_rex_prefix.rex_w;
+		.ext := x64enc_opmode.plus_0;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.rm;
+			.1 := x64enc_operand_type.imm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+	};
+	// MOV r64, imm64 (aka MOVABS)
+	.12 := x64enc_table_entry
+	{
+		.opcode := 0xb8;
+		.legacy_prefixes := zero;
+		.rex_prefix := x64enc_rex_prefix.rex_w;
+		.ext := x64enc_opmode.plus_reg;
+		.operand_types := x64enc_operand_type[4]
+		{
+			.0 := x64enc_operand_type.r;
+			.1 := x64enc_operand_type.imm;
+			.2 := zero; .3 := zero;
+		};
+		.clobbers := x64enc_clobber[4]
+		{
+			.0 := x64enc_clobber.op0;
+			.1 := zero; .2 := zero; .3 := zero;
+		};
+	};
+};
+
+encoding_tbl_syscall ::= x64enc_table_entry[1] // syscall
+{
+	.0 := x64enc_table_entry
+	{
+		.opcode := 0x050f;
+		.legacy_prefixes := zero;
+		.rex_prefix := zero;
+		.ext := zero;
+		.operand_types := zero;
+		.clobbers := zero;
+	};
 };

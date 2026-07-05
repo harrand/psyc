@@ -3,6 +3,27 @@ x64inst_encode_base : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table
 	return [x64inst_encode_base_tbl # (inst->tag@s64)](w, inst);
 };
 
+// given a standard 2-operand instruction that vaguely matches mov, return the index into the encoding table based upon the instruction (this is to prevent code duplication for common instructions)
+x64enc_access_encoding_tbl_2op : func(inst : x64inst mut? -> u64)
+{
+	op0 ::= inst->operands # 0;
+	op1 ::= inst->operands # 1;
+	// two operands that are both the same size
+	idx ::= log2(x64val_get_size(op0)) - 3;
+	// rm/r => add 0
+	// r/rm => add 4
+	if((op0->tag == x64val_tag.reg) && (op1->tag == x64val_tag.memreg))
+	{
+		return idx + 4;
+	}
+	// rm/imm => add 8
+	if(op1->tag == x64val_tag.imm)
+	{
+		return idx + 8;
+	}
+	return idx;
+};
+
 x64inst_encode_nyi : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	err_begin();
@@ -19,16 +40,18 @@ x64inst_encode_nyi : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 
 x64inst_encode_nop : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
 {
-	return ref encoding_nop;
+	return encoding_tbl_nop # 0;
 };
 
 x64inst_encode_mov : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
 {
-	// do the correct stuff using the encoding table...
-	err_begin();
-	putzstr("todo: mov encoding\0");
-	err_end();
-	return zero;
+	// todo: movabs special case
+	return encoding_tbl_mov # x64enc_access_encoding_tbl_2op(inst);
+};
+
+x64inst_encode_syscall : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	return encoding_tbl_syscall # 0;
 };
 
 x64inst_encode_base_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)[countof x64inst_tag]
@@ -114,7 +137,7 @@ x64inst_encode_base_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc
 	.78 := x64inst_encode_nyi;
 	.79 := x64inst_encode_nyi;
 	.80 := x64inst_encode_nyi;
-	.81 := x64inst_encode_nyi;
+	.81 := x64inst_encode_syscall;
 	.82 := x64inst_encode_nyi;
 	.83 := x64inst_encode_nyi;
 };
