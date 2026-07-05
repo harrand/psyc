@@ -1,0 +1,84 @@
+x64enc_legacy_prefix : enum
+{
+	// group 1
+	.lock := 0xf0;
+	.repnz := 0xf2;
+	.repz := 0xf3;
+	// group 2
+	.cs_seg_override := 0x2e;
+	.ss_seg_override := 0x36;
+	.ds_seg_override := 0x3e;
+	.es_seg_override := 0x26;
+	.fs_seg_override := 0x64;
+	.gs_seg_override := 0x65;
+	.branch_not_taken := 0x2e;
+	// group 3
+	.operand_size_override := 0x66;
+	// group 4
+	.address_size_override := 0x67;
+};
+
+x64enc_rex_prefix : enum
+{
+	.rex   := 0b01000000;
+	.rex_w := 0b01001000;// 0: operand size determined by CS.D; 1: 64-bit operand size
+	.rex_r := 0b01000100;// extension of ModR/M reg
+	.rex_x := 0b01000010;// extension of SIB index
+	.rex_b := 0b01000001;// extension of ModR/M rm, SIB base, or Opcode reg
+	.all_but_w := 0b01000111;// REX RXB, no W
+	.all := 0b01001111;// REX WRXB, all high
+};
+
+x64enc_opmode : enum
+{
+	.reg      := 1; // /r
+	.plus_reg := 3; // + rb
+	.opcode_plus_n   := 2; // /0
+	// 3 => /1
+	// 4 => /2
+	// etc...
+	.invalid_sentinel := 69420;
+};
+
+// i.e x64enc_opmode_plus + 2 => /2
+x64enc_opmode_plus ::= 2;
+
+x64enc_operand_type : enum
+{
+	.r := 1;
+	.rm := 2;
+	.m := 3;
+	.imm := 4;
+};
+
+x64enc_clobber : enum
+{
+	.op0 := 1;
+	.op1 := 2;
+	.rax := 5;
+	.eax := 6;
+	.ax := 7;
+	.al := 8;
+	.rdx := 9;
+	.edx := 10;
+	.dx := 11;
+	.dl := 12;
+	.rcx := 13;
+	.ecx := 14;
+	.cx := 15;
+	.cl := 16;
+	.rsp := 17;
+	.mem := 18;
+};
+
+x64enc_table_entry : struct
+{
+	legacy_prefixes : x64enc_legacy_prefix mut[4];
+	rex_prefix : x64enc_rex_prefix;
+	opcode : u16;
+	ext : x64enc_opmode weak;
+	operand_types : x64enc_operand_type[4];
+	clobbers : x64enc_clobber[4];
+	needs_modrm : bool;
+};
+
