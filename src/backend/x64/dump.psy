@@ -13,16 +13,58 @@ x64val_imm_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 
 x64val_reg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	offset ::= log2([x64val_reg_get_size(v)]) - 3;
-	r : u64 := [x64val_reg_get_reg(v)]@s64@u64;
-	idx : u64 := 1 + (r * 7) + offset;
+	idx : u64 := 1 + ([x64val_reg_get_reg(v)]@s64@u64 * 7) + log2([x64val_reg_get_size(v)]) - 3;
 	bwrite_zstr(w, [x64reg_name # idx]);
 };
 
 x64val_memreg_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
 	bwrite8(w, '[');
-	bwrite_zstr(w, "memreg\0");
+	base_idx : u64 mut := [x64val_memreg_get_base_size(v)];
+	if(base_idx != 0)
+	{
+		base_idx = 1 + ([x64val_memreg_get_base(v)]@s64@u64 * 7) + log2(base_idx) - 3;
+		bwrite_zstr(w, [x64reg_name # base_idx]);
+	}
+	index_idx : u64 mut := [x64val_memreg_get_index_size(v)];
+	if(index_idx != 0)
+	{
+		index_idx = 1 + ([x64val_memreg_get_index(v)]@s64@u64 * 7) + log2(index_idx) - 3;
+		scale : u64 mut := [x64val_memreg_get_scale(v)];
+		if(scale != 0)
+		{
+			if(base_idx != 0)
+			{
+				bwrite_zstr(w, " + \0");
+			}
+			if(scale > 1)
+			{
+				bwrite8(w, '(');
+			}
+			bwrite_zstr(w, [x64reg_name # index_idx]);
+			if(scale > 1)
+			{
+				bwrite8(w, '*');
+				bwrite_uint(w, scale);
+				bwrite8(w, ')');
+			}
+		}
+	}
+	
+	disp ::= [x64val_memreg_get_displacement(v)];
+	dispsz ::= [x64val_memreg_get_displacement_size(v)];
+	if((disp != 0) && (dispsz != 0))
+	{
+		if((index_idx != 0) || (base_idx != 0))
+		{
+			bwrite_zstr(w, " + \0");
+		}
+		bwrite_zstr(w, "imm\0");
+		bwrite_uint(w, dispsz);
+		bwrite8(w, ' ');
+		bwrite_sint(w, disp);
+	}
+	bwrite8(w, ']');
 };
 
 x64val_ripreli_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
