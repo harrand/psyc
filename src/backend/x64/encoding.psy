@@ -49,11 +49,41 @@ x64enc_add_reloc : func(meta : x64enc_meta mut?, reloc : x64enc_reloc mut? -> v0
 	meta->relocs_count = meta->relocs_count + 1;
 };
 
+x64enc_update_prefixes : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64 -> v0)
+{
+	// given some encoding entry
+	// update prefixes depending on operands.
+	// this tends to be:
+	// rex: b/x/r
+	// legacy: address-size-override for 32-bit addressing mode (0x66)
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		type ::= [enc->operand_types # i];
+		if(((type == x64enc_operand_type.r) || (type == x64enc_operand_type.rm)) && ((operands # i)->tag == x64val_tag.reg))
+		{
+			// get the reg
+			reg ::= [x64val_reg_get_reg(operands # i)];
+			putchar('\n');
+			putsint(reg@s64);
+			putchar('\n');
+			if(reg@s64 > 0b111)
+			{
+				// rex_r
+				debugbreak();
+				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_r);
+			}
+		}
+	}
+};
+
 x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
 {
 	inst->enc_byte_offset_begin = w->cursor;
 	// complex
 	enc ::= x64enc_fetch(w, inst);
+	//enc : x64enc_table_entry mut := [x64enc_fetch(w, inst)];
+	x64enc_update_prefixes(enc, inst->operands # 0, x64inst_operands_count(inst));
 	// first write out legacy prefixes (todo)
 	// then the opcode
 	if(enc->opcode > 0xff)
