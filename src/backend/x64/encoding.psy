@@ -49,42 +49,248 @@ x64enc_add_reloc : func(meta : x64enc_meta mut?, reloc : x64enc_reloc mut? -> v0
 	meta->relocs_count = meta->relocs_count + 1;
 };
 
-x64enc_update_prefixes : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64 -> v0)
+x64enc_catch_edge_cases : func(operands : x64val mut?, operands_count : u64 -> v0)
 {
-	// given some encoding entry
-	// update prefixes depending on operands.
-	// this tends to be:
-	// rex: b/x/r
-	// legacy: address-size-override for 32-bit addressing mode (0x66)
 	i : u64 mut;
 	for(i = 0; i < operands_count; i = i + 1)
 	{
-		type ::= [enc->operand_types # i];
-		if(((type == x64enc_operand_type.r) || (type == x64enc_operand_type.rm)) && ((operands # i)->tag == x64val_tag.reg))
+		op ::= operands # i;
+		if(op->tag == x64val_tag.memreg)
 		{
-			// get the reg
-			reg ::= [x64val_reg_get_reg(operands # i)];
-			putchar('\n');
-			putsint(reg@s64);
-			putchar('\n');
-			if(reg@s64 > 0b111)
+			// if the base-reg is rbp/r13 and there is no displacement, set one
+			base ::= [x64val_memreg_get_base(op)];
+			disp_sz ::= [x64val_memreg_get_displacement_size(op)];
+			if(disp_sz == 0)
 			{
-				// rex_r
-				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_r);
+				[x64val_memreg_get_displacement_size(op)] = 1;
+				[x64val_memreg_get_displacement(op)] = 0;
 			}
 		}
+	}
+};
+
+x64enc_pre_encode_plus_reg : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
+{
+	// easy peasy. find the register
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		if(([enc->operand_types # i] == x64enc_operand_type.r))
+		{
+			// this is our register
+			regbits ::= [x64val_reg_get_reg(operands # i)];
+			if(regbits@s64 > 0b111)
+			{
+				// rex_b to extend opcode
+				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
+			}
+			
+			enc->opcode = (enc->opcode + ((regbits@s64 & 0b111)@u16));
+		}
+	}
+	[modrm_out] = zero;
+	[sib_out] = zero;
+	return;
+};
+
+x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
+{
+	i : u64 mut;
+	mod_bits : u8 mut := 0;
+	reg_bits : u8 mut := 0;
+	rm_bits : u8 mut := 0;
+
+	scale_bits : u8 mut := 0;
+	index_bits : u8 mut := 0;
+	base_bits : u8 mut := 0;
+	// modrm.reg is the register operand
+	op : x64val mut? mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		op = operands # i;
+		if(([enc->operand_types # i] == x64enc_operand_type.r))
+		{
+			// this is our register
+			regbits ::= [x64val_reg_get_reg(op)];
+			if(regbits@s64 > 0b111)
+			{
+				// rex_r to extend modrm.reg
+				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_r);
+			}
+			
+			reg_bits = (regbits@s64 & 0b111)@u8;
+		}
+	}
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		op = operands # i;
+		if(([enc->operand_types # i] == x64enc_operand_type.rm))
+		{
+			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out, reg_bits);
+		}
+	}
+};
+
+x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x64val mut?, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut?, reg_bits : u8 -> v0)
+{
+	i : u64 mut;
+	mod_bits : u8 mut := 0;
+	rm_bits : u8 mut := 0;
+
+	scale_bits : u8 mut := 0;
+	index_bits : u8 mut := 0;
+	base_bits : u8 mut := 0;
+	// we need to see if the rm_operand is a reg or a memreg
+	if(rm_operand->tag == x64val_tag.reg)
+	{
+		// rm is a register
+		mod_bits = 0b11;
+		rm_regbits ::= [x64val_reg_get_reg(rm_operand)];
+		rm_bits = (rm_regbits@s64 & 0b111)@u8;
+		if(rm_regbits@s64 > 0b111)
+		{
+			// extend rm via rex.b
+			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
+		}
+	}
+	else
+	{
+		// rm is a memory rm_operand
+		rm_baseregbits ::= [x64val_memreg_get_base(rm_operand)];
+		rm_bits = (rm_baseregbits@s64 & 0b111)@u8;
+		if(rm_baseregbits@s64 > 0b111)
+		{
+			// extend rm via rex.b
+			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
+		}
+		// check if we have a displacement
+		disp_sz ::= [x64val_memreg_get_displacement_size(rm_operand)];
+		if(disp_sz != 0)
+		{
+			if(disp_sz == 8)
+			{
+				mod_bits = 0b01;
+			}
+			else
+			{
+				if(disp_sz != 32)
+				{
+					panic_begin();
+					putzstr("dodgy rm operand displacement size of \0");
+					putuint(disp_sz);
+					panic_end();
+				}
+				mod_bits = 0b10;
+			}
+		}
+		else
+		{
+			mod_bits = 0;
+		}
+
+		// do we need a sib?
+		if(([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
+		{
+			[sib_out] = zero;
+			[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+			return;
+		}
+		base_bits = rm_bits;
+		rm_bits = 0b100;
+		[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+		// we do need a sib
+		scale_bits = log2([x64val_memreg_get_scale(rm_operand)])@u8;
+		rm_idxregbits ::= [x64val_memreg_get_index(rm_operand)];
+		if(rm_idxregbits@s64 > 0b111)
+		{
+			// rex_x
+			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_x);
+		}
+		index_bits = (rm_idxregbits@s64 & 0b111)@u8;
+		[[sib_out]] = (scale_bits << 6) | (index_bits << 3) | base_bits;
+	}
+};
+
+x64enc_pre_encode_plus_n : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
+{
+	i : u64 mut;
+	mod_bits : u8 mut := 0;
+	reg_bits : u8 mut := 0;
+	rm_bits : u8 mut := 0;
+
+	scale_bits : u8 mut := 0;
+	index_bits : u8 mut := 0;
+	base_bits : u8 mut := 0;
+
+	// modrm.reg is the register operand
+	// this is our register
+	base : x64enc_opmode := x64enc_opmode.plus_0;
+	reg_bits = (enc->ext@s64 - base@s64)@u8;
+
+	mod_bits = 0b11;
+
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		op ::= operands # i;
+		if(([enc->operand_types # i] == x64enc_operand_type.rm))
+		{
+			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out, reg_bits);
+		}
+	}
+
+	[sib_out] = zero;
+	[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+};
+
+x64enc_pre_encode : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
+{
+	if(enc->ext == zero)
+	{
+		[modrm_out] = zero;
+		[sib_out] = zero;
+	}
+	if(enc->ext == x64enc_opmode.plus_reg)
+	{
+		x64enc_pre_encode_plus_reg(enc, operands, operands_count, modrm_out, sib_out);
+	}
+	if(enc->ext == x64enc_opmode.reg)
+	{
+		x64enc_pre_encode_reg(enc, operands, operands_count, modrm_out, sib_out);
+	}
+	if(enc->ext@s64 >= x64enc_opmode.plus_0@s64)
+	{
+		x64enc_pre_encode_plus_n(enc, operands, operands_count, modrm_out, sib_out);
 	}
 };
 
 x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
 {
 	inst->enc_byte_offset_begin = w->cursor;
+	count ::= x64inst_operands_count(inst);
+	x64enc_catch_edge_cases(inst->operands # 0, count);
 	// complex
 	enc : x64enc_table_entry mut := [x64enc_fetch(w, inst)];
-	x64enc_update_prefixes(ref enc, inst->operands # 0, x64inst_operands_count(inst));
+	modrm_val : u8 mut := 0;
+	modrm : u8 mut? mut := ref modrm_val;
+	sib_val : u8 mut := 0;
+	sib : u8 mut? mut := ref sib_val;
+	x64enc_pre_encode(ref enc, inst->operands # 0, count, ref modrm, ref sib);
 	// first write out legacy prefixes (todo)
+	i : u64 mut;
+	for(i = 0; i < countof typeof(enc.legacy_prefixes); i = i + 1)
+	{
+		curprefix ::= [enc.legacy_prefixes # i];
+		if(curprefix != zero)
+		{
+			bwrite8(w, curprefix@s64@u8);
+		}
+	}
+	if(enc.rex_prefix != zero)
+	{
+		bwrite8(w, enc.rex_prefix@s64);
+	}
 	// then the opcode
-	if(enc.opcode > 0xff)
+	if(enc.opcode@s64 > 0xff)
 	{
 		// 2 byte opcode!
 		bwrite16(w, enc.opcode);
@@ -94,8 +300,55 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 		// 1 byte opcode
 		bwrite8(w, enc.opcode);
 	}
-	// todo: impl
+	if(modrm != zero)
+	{
+		bwrite8(w, modrm_val);
+		if(sib != zero)
+		{
+			bwrite8(w, sib_val);
+		}
+	}
+	for(i = 0; i < count; i = i + 1)
+	{
+		op ::= inst->operands # i;
+		if(op->tag == x64val_tag.memreg)
+		{
+			disp_sz ::= [x64val_memreg_get_displacement_size(op)];
+			if(disp_sz == 8)
+			{
+				bwrite8(w, [x64val_memreg_get_displacement(op)]);
+			}
+			if(disp_sz == 32)
+			{
+				bwrite32(w, [x64val_memreg_get_displacement(op)]);
+			}
+		}
+		if(op->tag == x64val_tag.imm)
+		{
+			immval ::= [x64val_imm_get_value(op)];
+			immsz ::= [x64val_imm_get_size(op)];
+			if(immsz == 8)
+			{
+				bwrite8(w, immval);
+			}
+			if(immsz == 16)
+			{
+				bwrite16(w, immval);
+			}
+			if(immsz == 32)
+			{
+				bwrite32(w, immval);
+			}
+			if(immsz == 64)
+			{
+				bwrite64(w, immval);
+			}
+		}
+	}
 	inst->enc_byte_offset_end = w->cursor;
+	putchar('\n');
+	putuint(inst->enc_byte_offset_end - inst->enc_byte_offset_begin);
+	putchar('\n');
 };
 
 x64func_encode_to : func(w : bwriter mut?, fn : x64func mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
