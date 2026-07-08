@@ -54,12 +54,23 @@ codegen_global_variable : func(var : variable mut? -> v0)
 	}
 	glob_patches : irpatch mut? mut := zero;
 	glob_patches_count : u64 mut := 0;
+	before ::= w->cursor;
 	serialise_success ::= datalayout_serialise_compile_time_val(w, init_val, ref glob_patches, ref glob_patches_count);
+	after ::= w->cursor;
 	if(!serialise_success)
 	{
 		psyc_panic_begin(var->node);
 		putzstr("failed to serialise compile-time val - reached end of codegen_global_variable");
 		psyc_panic_end(var->node);
+	}
+	if((after - before) != datalayout_sizeof_ty(var->type))
+	{
+		psyc_warning_begin(var->node);
+		putzstr("when serialising compile-time value, wrote out ");
+		putuint(after - before);
+		putzstr(" bytes, but sizeof(type) was ");
+		putuint(datalayout_sizeof_ty(var->type));
+		psyc_warning_end(var->node);
 	}
 
 	globref ::= ir_add_glob(w->buf, w->cursor, ty_has_qual(var->type, tyqual.qual_mut), ty_is_ptr(var->type));
