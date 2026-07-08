@@ -98,7 +98,6 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 	i : u64 mut;
 	mod_bits : u8 mut := 0;
 	reg_bits : u8 mut := 0;
-	rm_bits : u8 mut := 0;
 
 	scale_bits : u8 mut := 0;
 	index_bits : u8 mut := 0;
@@ -126,16 +125,14 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 		op = operands # i;
 		if(([enc->operand_types # i] == x64enc_operand_type.rm))
 		{
-			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out, reg_bits);
+			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out);
 		}
 	}
 };
 
-x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x64val mut?, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut?, reg_bits : u8 -> v0)
+x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x64val mut?, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
 {
 	i : u64 mut;
-	mod_bits : u8 mut := 0;
-	rm_bits : u8 mut := 0;
 
 	scale_bits : u8 mut := 0;
 	index_bits : u8 mut := 0;
@@ -144,20 +141,22 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 	if(rm_operand->tag == x64val_tag.reg)
 	{
 		// rm is a register
-		mod_bits = 0b11;
 		rm_regbits ::= [x64val_reg_get_reg(rm_operand)];
-		rm_bits = (rm_regbits@s64 & 0b111)@u8;
+		modrm_set_mod([modrm_out], 0b11);
+		modrm_set_rm([modrm_out], (rm_regbits@s64 & 0b111)@u8);
 		if(rm_regbits@s64 > 0b111)
 		{
 			// extend rm via rex.b
 			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
 		}
+		[sib_out] = zero;
+		return;
 	}
 	else
 	{
 		// rm is a memory rm_operand
 		rm_baseregbits ::= [x64val_memreg_get_base(rm_operand)];
-		rm_bits = (rm_baseregbits@s64 & 0b111)@u8;
+		modrm_set_rm([modrm_out], (rm_baseregbits@s64 & 0b111)@u8);
 		if(rm_baseregbits@s64 > 0b111)
 		{
 			// extend rm via rex.b
@@ -169,7 +168,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		{
 			if(disp_sz == 8)
 			{
-				mod_bits = 0b01;
+				modrm_set_mod([modrm_out], 0b01);
 			}
 			else
 			{
@@ -180,24 +179,22 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 					putuint(disp_sz);
 					panic_end();
 				}
-				mod_bits = 0b10;
+				modrm_set_mod([modrm_out], 0b10);
 			}
 		}
 		else
 		{
-			mod_bits = 0;
+			modrm_set_mod([modrm_out], 0b00);
 		}
 
 		// do we need a sib?
 		if(([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
 		{
 			[sib_out] = zero;
-			[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
 			return;
 		}
-		base_bits = rm_bits;
-		rm_bits = 0b100;
-		[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
+		base_bits = [[modrm_out]] & 0b00000111;
+		modrm_set_rm([modrm_out], 0b100);
 		// we do need a sib
 		scale_bits = log2([x64val_memreg_get_scale(rm_operand)])@u8;
 		rm_idxregbits ::= [x64val_memreg_get_index(rm_operand)];
@@ -211,35 +208,41 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 	}
 };
 
+modrm_set_mod : func(modrm : u8 mut?, mod : u8 -> v0)
+{
+	[modrm] = [modrm] & 0b00111111;
+	[modrm] = [modrm] | (mod << 6);
+};
+
+modrm_set_reg : func(modrm : u8 mut?, reg : u8 -> v0)
+{
+	[modrm] = [modrm] & 0b11000111;
+	[modrm] = [modrm] | (reg << 3);
+};
+
+modrm_set_rm : func(modrm : u8 mut?, rm : u8 -> v0)
+{
+	[modrm] = [modrm] & 0b11111000;
+	[modrm] = [modrm] | rm;
+};
+
 x64enc_pre_encode_plus_n : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
 {
 	i : u64 mut;
-	mod_bits : u8 mut := 0;
-	reg_bits : u8 mut := 0;
-	rm_bits : u8 mut := 0;
-
-	scale_bits : u8 mut := 0;
-	index_bits : u8 mut := 0;
-	base_bits : u8 mut := 0;
-
-	// modrm.reg is the register operand
-	// this is our register
-	base : x64enc_opmode := x64enc_opmode.plus_0;
-	reg_bits = (enc->ext@s64 - base@s64)@u8;
-
-	mod_bits = 0b11;
 
 	for(i = 0; i < operands_count; i = i + 1)
 	{
 		op ::= operands # i;
 		if(([enc->operand_types # i] == x64enc_operand_type.rm))
 		{
-			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out, reg_bits);
+			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out);
 		}
 	}
 
+	modrm_set_mod([modrm_out], 0b11);
+	base : x64enc_opmode := x64enc_opmode.plus_0;
+	modrm_set_reg([modrm_out], (enc->ext@s64 - base@s64)@u8);
 	[sib_out] = zero;
-	[[modrm_out]] = (mod_bits << 6) | (reg_bits << 3) | rm_bits;
 };
 
 x64enc_pre_encode : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
