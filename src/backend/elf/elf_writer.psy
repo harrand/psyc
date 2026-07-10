@@ -1,32 +1,32 @@
-elf_magic : u32 static := 0x464c457f;
-elf_ident_type_little_endian : u8 static := 1;
-elf_ident_type_big_endian : u8 static := 1;
-elf_ident_32_bit : u8 static := 1;
-elf_ident_64_bit : u8 static := 2;
-elf_hdr_size ::= 64;
+elf_magic : u64 := 0x464c457f;
+elf_ident_type_little_endian : u64 := 1;
+elf_ident_type_big_endian : u64 := 1;
+elf_ident_32_bit : u64 := 1;
+elf_ident_64_bit : u64 := 2;
+elf_hdr_size : u64 := 64;
 
-elf_type_relocatable : u16 static := 1;
-elf_type_executable : u16 static := 2;
-elf_type_shared : u16 static := 3;
-elf_type_core : u16 static := 4;
+elf_type_relocatable : u64 := 1;
+elf_type_executable : u64 := 2;
+elf_type_shared : u64 := 3;
+elf_type_core : u64 := 4;
 
-elf_instruction_set_x86 : u16 static := 0x03;
-elf_instruction_set_x64 : u16 static := 0x3e;
-elf_instruction_set_arm32 : u16 static := 0x28;
-elf_instruction_set_arm64 : u16 static := 0xb7;
+elf_instruction_set_x86 : u64 := 0x03;
+elf_instruction_set_x64 : u64 := 0x3e;
+elf_instruction_set_arm32 : u64 := 0x28;
+elf_instruction_set_arm64 : u64 := 0xb7;
 
-elf_osabi_sysv : u8 static := 0;
-//elf_osabi_linux : u8 static := 3;
+elf_osabi_sysv : u64 := 0;
+//elf_osabi_linux : u64 := 3;
 
-elf_proghdr_type_null : u32 static := 0; // ignore this entry
-elf_proghdr_type_load : u32 static := 1; // clear p_memsz bytes at p_vaddr to 0, then copy p_filesz bytes from p_offset to p_vaddr
-elf_proghdr_type_dynamic : u32 static := 2; // requires dynamic linking
-elf_proghdr_type_interp : u32 static := 3; // contains a file path to an executable to use as an interpreter for the following segment
-elf_proghdr_type_note : u32 static := 4; // note section
+elf_proghdr_type_null : u64 := 0; // ignore this entry
+elf_proghdr_type_load : u64 := 1; // clear p_memsz bytes at p_vaddr to 0, then copy p_filesz bytes from p_offset to p_vaddr
+elf_proghdr_type_dynamic : u64 := 2; // requires dynamic linking
+elf_proghdr_type_interp : u64 := 3; // contains a file path to an executable to use as an interpreter for the following segment
+elf_proghdr_type_note : u64 := 4; // note section
 
-elf_proghdr_flag_executable : u32 static := 1; // PROT_EXEC
-elf_proghdr_flag_writable : u32 static := 2; // PROT_WRITE
-elf_proghdr_flag_readable : u32 static := 4; // PROT_READ
+elf_proghdr_flag_executable : u64 := 1; // PROT_EXEC
+elf_proghdr_flag_writable : u64 := 2; // PROT_WRITE
+elf_proghdr_flag_readable : u64 := 4; // PROT_READ
 
 elf_proghdr : struct
 {
@@ -50,9 +50,22 @@ align_up : func(input : u64, align : u64 -> u64)
 	return input + alignment_padding_req(input, align);
 };
 
-elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
+elf_data : struct
 {
-	page_size ::= 0x1000;
+	code : u8?;
+	code_len : u64;
+	entrypoint : u64;
+
+	rodata : u8?;
+	rodata_len : u64;
+	data : u8?;
+	data_len : u64;
+	bss_len : u64;
+};
+
+elf_write : func(w : bwriter mut?, e : elf_data mut? -> v0)
+{
+	page_size : u64 := 0x1000;
 	// elf header
 	bwrite32(w, elf_magic);
 	bwrite8(w, elf_ident_64_bit);
@@ -70,19 +83,16 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 	bwrite8(w, 0);
 	i : u64 mut;
 	// calculate section sizes
-	rodata_sz : u64 mut := 0;
-	data_sz : u64 mut := 0;
-	bss_sz : u64 mut := 0;
 
 	// 3 program headers (rodata, data + bss, code)
-	proghdr_count ::= 3;
-	proghdr_size ::= 56; // always 56 bytes each
+	proghdr_count : u64 := 3;
+	proghdr_size : u64 := 56; // always 56 bytes each
 	// byte offset from start of elf to code segment
 	rodata_segment_begin ::= align_up(elf_hdr_size + (proghdr_count * proghdr_size), page_size);
-	data_and_bss_segment_begin ::= align_up(rodata_segment_begin + rodata_sz, page_size);
-	code_segment_begin ::= align_up(data_and_bss_segment_begin + data_sz + bss_sz, page_size);
+	data_and_bss_segment_begin ::= align_up(rodata_segment_begin + e->rodata_len, page_size);
+	code_segment_begin ::= align_up(data_and_bss_segment_begin + e->data_len + e->bss_len, page_size);
 	// entrypoint vaddr
-	base_vaddr ::= 0x400000;
+	base_vaddr : u64 := 0x400000;
 	rodata_begin_addr ::= align_up(base_vaddr + rodata_segment_begin, page_size);
 	data_and_bss_begin_addr ::= align_up(base_vaddr + data_and_bss_segment_begin, page_size);
 	code_begin_addr ::= align_up(base_vaddr + code_segment_begin, page_size);
@@ -90,8 +100,12 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 	bwrite16(w, elf_type_executable);
 	bwrite16(w, elf_instruction_set_x64);
 	bwrite32(w, 1);
-	entrypoint_offset_bytes ::= (p->funcs # (p->entrypoint_func_index))->enc_byte_offset_begin;
-	bwrite64(w, code_begin_addr + entrypoint_offset_bytes);
+	bwrite64(w, code_begin_addr + e->entrypoint);
+	putzstr("entrypoint: \0");
+	putuint(code_begin_addr);
+	putzstr(" + \0");
+	putuint(e->entrypoint);
+	putchar('\n');
 	bwrite64(w, 64); // program header offset bytes
 	bwrite64(w, zero); // section header offset in bytes
 	bwrite32(w, 0); // flags
@@ -103,25 +117,25 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 	bwrite16(w, zero); // section header table index associated with the section name string table
 
 	// program headers
-	PF_X ::= 0x1;
-	PF_W ::= 0x2;
-	PF_R ::= 0x4;
-	PT_NULL ::= 0;
-	PT_LOAD ::= 1;
-	PT_DYNAMIC ::= 2;
-	PT_INTERP ::= 3;
-	PT_NOTE ::= 4;
-	PT_SHLIB ::= 5;
-	PT_PHDR ::= 6;
-	PT_TLS ::= 7;
+	PF_X : u64 := 0x1;
+	PF_W : u64 := 0x2;
+	PF_R : u64 := 0x4;
+	PT_NULL : u64 := 0;
+	PT_LOAD : u64 := 1;
+	PT_DYNAMIC : u64 := 2;
+	PT_INTERP : u64 := 3;
+	PT_NOTE : u64 := 4;
+	PT_SHLIB : u64 := 5;
+	PT_PHDR : u64 := 6;
+	PT_TLS : u64 := 7;
 	// rodata
 	bwrite32(w, PT_LOAD);
 	bwrite32(w, PF_R);
 	bwrite64(w, rodata_segment_begin);
 	bwrite64(w, rodata_begin_addr);
 	bwrite64(w, rodata_begin_addr);
-	bwrite64(w, rodata_sz);
-	bwrite64(w, rodata_sz);
+	bwrite64(w, e->rodata_len);
+	bwrite64(w, e->rodata_len);
 	bwrite64(w, page_size);
 	// data + bss
 	bwrite32(w, PT_LOAD);
@@ -129,8 +143,8 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 	bwrite64(w, data_and_bss_segment_begin);
 	bwrite64(w, data_and_bss_begin_addr);
 	bwrite64(w, data_and_bss_begin_addr);
-	bwrite64(w, data_sz);
-	bwrite64(w, data_sz + bss_sz);
+	bwrite64(w, e->data_len);
+	bwrite64(w, e->data_len + e->bss_len);
 	bwrite64(w, page_size);
 	// code
 	bwrite32(w, PT_LOAD);
@@ -138,9 +152,8 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 	bwrite64(w, code_segment_begin);
 	bwrite64(w, code_begin_addr);
 	bwrite64(w, code_begin_addr);
-	code_sz_to_write_twice ::= w->cursor;
-	bwrite64(w, 0); // p_filesz (code)
-	bwrite64(w, 0); // p_memsz (code)
+	bwrite64(w, e->code_len); // p_filesz (code)
+	bwrite64(w, e->code_len); // p_memsz (code)
 	bwrite64(w, page_size);
 
 	// write rodata
@@ -154,7 +167,7 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 		putzstr("rodata_segment_begin seems to be off\0");
 		panic_end();
 	}
-	// todo: write rodata bytes
+	bwrite_bytes(w, e->rodata, e->rodata_len);
 
 	// write data+bss
 	while(alignment_padding_req(w->cursor, page_size) != 0)
@@ -167,9 +180,9 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 		putzstr("data_and_bss_segment_begin seems to be off\0");
 		panic_end();
 	}
-	// todo: write data bytes
+	bwrite_bytes(w, e->data, e->data_len);
 	// note: writing bss out like this really shouldnt be necessary and completely defeats the point
-	for(i = 0; i < bss_sz; i = i + 1)
+	for(i = 0; i < e->bss_len; i = i + 1)
 	{
 		bwrite8(w, 0);
 	}
@@ -185,8 +198,9 @@ elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
 		putzstr("code_segment_begin seems to be off\0");
 		panic_end();
 	}
-	// todo: write code bytes
+	bwrite_bytes(w, e->code, e->code_len);
+};
 
-	// todo: patch code_sz_to_write_twice
-	// we're done
+elf_encode_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
+{
 };
