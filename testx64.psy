@@ -51,14 +51,24 @@ test : func(-> v0)
 	x64prog_encode_to(w, ref(x64api.prog), ref meta);
 	putchars(w->buf, w->cursor);
 	// dump encoding to file
-	f ::= path_open(zstr2path("build/test.bin\0"), file.cwd, file_access.write);
+	f ::= path_open(zstr2path("build/test.elf\0"), file.cwd, file_access.write);
+
+	edata : elf_data mut;
+	edata.code = w->buf;
+	edata.code_len = w->cursor;
+	edata.rodata = zero;
+	edata.rodata_len = zero;
+	edata.data = zero;
+	edata.data_len = zero;
+	edata.bss_len = zero;
+	//edata.entrypoint = (x64api.prog.funcs # (x64api.prog.entrypoint_func_index))->enc_byte_offset_begin;
+	edata.entrypoint = zero;
+
+	w->cursor = 0;
+	w->len = 0;
+	w->buf = zero;
+	elf_write(w, ref edata);
+
 	file_write(f, w->buf, w->cursor);
 	file_close(f);
-
-	// write out the actual elf
-	w->cursor = 0;
-	elf_encode_to(w, ref(x64api.prog));
-	f2 ::= path_open(zstr2path("build/test.elf\0"), file.cwd, file_access.write);
-	file_write(f2, w->buf, w->cursor);
-	file_close(f2);
 };
