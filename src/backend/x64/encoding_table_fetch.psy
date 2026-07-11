@@ -53,6 +53,93 @@ x64enc_fetch_mov : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_mov # x64enc_access_encoding_tbl_2op(inst);
 };
 
+x64enc_fetch_movsx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	sz0 ::= x64val_get_size(inst->operands # 0);
+	sz1 ::= x64val_get_size(inst->operands # 1);
+	if((sz0 == 16) && (sz1 == 8))
+	{
+		return encoding_tbl_movsx # 0;
+	}
+	if((sz0 == 32) && (sz1 == 8))
+	{
+		return encoding_tbl_movsx # 1;
+	}
+	if((sz0 == 64) && (sz1 == 8))
+	{
+		return encoding_tbl_movsx # 2;
+	}
+	if((sz0 == 32) && (sz1 == 16))
+	{
+		return encoding_tbl_movsx # 3;
+	}
+	if((sz0 == 64) && (sz1 == 16))
+	{
+		return encoding_tbl_movsx # 4;
+	}
+	if((sz0 == 64) && (sz1 == 32))
+	{
+		return encoding_tbl_movsx # 5;
+	}
+	return zero;
+};
+
+x64enc_fetch_movzx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	sz0 ::= x64val_get_size(inst->operands # 0);
+	sz1 ::= x64val_get_size(inst->operands # 1);
+	if((sz0 == 16) && (sz1 == 8))
+	{
+		return encoding_tbl_movzx # 0;
+	}
+	if((sz0 == 32) && (sz1 == 8))
+	{
+		return encoding_tbl_movzx # 1;
+	}
+	if((sz0 == 64) && (sz1 == 8))
+	{
+		return encoding_tbl_movzx # 2;
+	}
+	if((sz0 == 32) && (sz1 == 16))
+	{
+		return encoding_tbl_movzx # 3;
+	}
+	if((sz0 == 64) && (sz1 == 16))
+	{
+		return encoding_tbl_movzx # 4;
+	}
+	if((sz0 == 64) && (sz1 == 32))
+	{
+		panic_begin();
+		putzstr("noticed 'movzx r64 r/m32' which is unencodeable - should've been turned into 'mov r32, r/m32' via x64enc_catch_edge_cases");
+		panic_end();
+		return encoding_tbl_movzx # 5;
+	}
+	return zero;
+};
+
+x64enc_fetch_movd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	sz0 ::= x64val_get_size(inst->operands # 0);
+	if(sz0 >= 128)
+	{
+		// operand 0 is xmm/ymm/zmm
+		return encoding_tbl_movd # 0;
+	}
+	return encoding_tbl_movd # 1;
+};
+
+x64enc_fetch_movq : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	sz0 ::= x64val_get_size(inst->operands # 0);
+	if(sz0 >= 128)
+	{
+		// operand 0 is xmm/ymm/zmm
+		return encoding_tbl_movq # 0;
+	}
+	return encoding_tbl_movd # 1;
+};
+
 x64enc_fetch_syscall : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_syscall # 0;
@@ -62,10 +149,10 @@ x64enc_fetch_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 {
 	.0 := x64enc_fetch_nop;
 	.1 := x64enc_fetch_mov;
-	.2 := x64enc_fetch_nyi;
-	.3 := x64enc_fetch_nyi;
-	.4 := x64enc_fetch_nyi;
-	.5 := x64enc_fetch_nyi;
+	.2 := x64enc_fetch_movsx;
+	.3 := x64enc_fetch_movzx;
+	.4 := x64enc_fetch_movd;
+	.5 := x64enc_fetch_movq;
 	.6 := x64enc_fetch_nyi;
 	.7 := x64enc_fetch_nyi;
 	.8 := x64enc_fetch_nyi;
