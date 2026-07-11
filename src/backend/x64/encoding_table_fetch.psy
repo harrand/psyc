@@ -247,6 +247,18 @@ x64enc_fetch_add : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_add # x64enc_access_encoding_tbl_2op(inst);
 };
 
+x64enc_fetch_sub : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op1 ::= inst->operands # 1;
+	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
+	{
+		panic_begin();
+		putzstr("immediate operand to SUB is 64-bit, which is unencodeable\0");
+		panic_end();
+	}
+	return encoding_tbl_sub # x64enc_access_encoding_tbl_2op(inst);
+};
+
 x64enc_fetch_syscall : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_syscall # 0;
@@ -276,7 +288,7 @@ x64enc_fetch_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	.19 := x64enc_fetch_not;
 	.20 := x64enc_fetch_lea;
 	.21 := x64enc_fetch_add;
-	.22 := x64enc_fetch_nyi;
+	.22 := x64enc_fetch_sub;
 	.23 := x64enc_fetch_nyi;
 	.24 := x64enc_fetch_nyi;
 	.25 := x64enc_fetch_nyi;
