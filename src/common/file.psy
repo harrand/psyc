@@ -82,14 +82,38 @@ path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> e
 	return err.unknown;
 };
 
-path_open : func(p : path, relative_to : file, access : file_access -> file)
+path_open_flag : enum
+{
+	// if the file already has content, truncate it so that it is empty
+	.truncate := 0x0200;
+	// if the file does not exist, create it
+	.create_if_notfound := 0x40;
+	// if we are creating the file, make it executable
+	.create_executable := 0x01;
+};
+
+path_open : func(p : path, relative_to : file, access : file_access, flags : path_open_flag -> file)
 {
 	linux_dirfd : s32 mut := relative_to@s64@s32;
 	if(relative_to == file.cwd)
 	{
 		linux_dirfd = -100; // AT_FDCWD
 	}
-	return linux_openat(linux_dirfd, path2zstr(p), access@s64, 0)@s64@file;
+	flagbits : s64 mut := flags@s64;
+	mode : s32 mut := 0x1a4;
+	if((flags & path_open_flag.create_if_notfound) != zero)
+	{
+		// rw-rw-r--
+		mode = 0x1a4;
+	}
+	if((flags & path_open_flag.create_executable) != zero)
+	{
+		// rwxr-xr-x
+		mode = 0x1ed;
+		// remove path_open_flag.create_executable from flagbits because it should only affect mode and not flags
+		flagbits = flagbits & ~(0x1);
+	}
+	return linux_openat(linux_dirfd, path2zstr(p), access@s64 | flagbits, mode)@s64@file;
 };
 
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
