@@ -16,6 +16,7 @@ ty : enum
 	.f64  := 9;
 	.f32  := 10;
 	.bool := 11;
+	.custom_begin := 12;
 	.invalid := ~0;
 };
 
@@ -96,7 +97,70 @@ tydata_tag : enum
 tydata : struct
 {
 	tag : tydata_tag;
-	name : sstr;
+	name : u8?;
+	name_len : u64;
+};
+
+ty_wrap : func(d : tydata mut? -> ty)
+{
+	already ::= ty_find(d->name, d->name_len);
+	if(already != ty.invalid)
+	{
+		return already;
+	}
+	
+	idx ::= ty_storage_new_id();
+	[ty_storage.data # idx] = [d];
+	base : ty := ty.custom_begin;
+	return (idx@s64 + base@s64)@ty;
+};
+
+ty_unwrap : func(type : ty -> tydata mut?)
+{
+	base : ty := ty.custom_begin;
+	id : s64 mut := ty_strip(type)@s64;
+	if(id < base@s64)
+	{
+		panic_begin();
+		putzstr("attempt to ty_unwrap primitive type\0");
+		panic_end();
+	}
+	return ty_storage.data # (id - base@s64);
+};
+
+ty_find : func(name : u8?, name_len : u64 -> ty)
+{
+	i : u64 mut;
+	count ::= ty_storage.data_count;
+	base : ty := ty.custom_begin;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= ty_storage.data # i;
+		if(streql(cur->name, cur->name_len, name, name_len))
+		{
+			return (i@s64 + base@s64)@ty;
+		}
+	}
+	return ty.invalid;
+};
+
+ty_storage_new_id : func(-> u64)
+{
+	if(ty_storage.data == zero)
+	{
+		ty_storage.data_cap = 512;
+		ty_storage.data = arena_alloc(global_arena, ty_storage.data_cap * sizeof typeof([ty_storage.data]));
+	}
+	while(ty_storage.data_count >= ty_storage.data_cap)
+	{
+		olddata ::= ty_storage.data;
+		oldcap ::= ty_storage.data_cap;
+		ty_storage.data_cap = ty_storage.data_cap * 2;
+		ty_storage.data = arena_alloc(global_arena, ty_storage.data_cap * sizeof typeof([ty_storage.data]));
+		memcopy(ty_storage.data, olddata, oldcap * sizeof typeof([ty_storage.data]));
+	}
+	ty_storage.data_count = ty_storage.data_count + 1;
+	return ty_storage.data_count - 1;
 };
 
 ty_storage_t : struct
