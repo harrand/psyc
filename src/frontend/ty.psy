@@ -206,6 +206,11 @@ ty_is_function : func(type : ty -> bool)
 	return ty_unwrap(type)->tag == tydata_tag.function;
 };
 
+// if ptr, return type of pointee
+// if array, return type of element
+// if enumeration, return underling type
+// if function, return the type of the function return type
+// else, return ty.invalid
 ty_underlying : func(type : ty -> ty)
 {
 	if(ty_is_primitive(type))
@@ -213,13 +218,16 @@ ty_underlying : func(type : ty -> ty)
 		return ty.invalid;
 	}
 	u ::= ty_unwrap(type);
-	if((u->tag == tydata_tag.ptr) || (u->tag == tydata_tag.array) || (u->tag == tydata_tag.enumeration))
+	if((u->tag == tydata_tag.ptr) || (u->tag == tydata_tag.array) || (u->tag == tydata_tag.enumeration) || (u->tag == tydata_tag.function))
 	{
 		return u->underlying;
 	}
 	return ty.invalid;
 };
 
+// if struct, return type of data member at idx 
+// if function, return type of param at idx
+// else, return ty.invalid
 ty_at : func(type : ty, idx : u64 -> ty)
 {
 	if(ty_is_primitive(type))
@@ -227,7 +235,7 @@ ty_at : func(type : ty, idx : u64 -> ty)
 		return ty.invalid;
 	}
 	u ::= ty_unwrap(type);
-	if(u->tag == tydata_tag.structure)
+	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.function))
 	{
 		if(u->members_count <= idx)
 		{
