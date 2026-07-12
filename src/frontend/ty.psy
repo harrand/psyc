@@ -85,6 +85,58 @@ ty_eq : func(lhs : ty, rhs : ty -> bool)
 	return ty_strip(lhs) == ty_strip(rhs);
 };
 
+ty_is_primitive : func(type : ty -> bool)
+{
+	base : ty := ty.custom_begin;
+	return ty_strip(type)@s64 < base@s64;
+};
+
+ty_is_v0 : func(type : ty -> bool)
+{
+	return ty_strip(type) == ty.v0;
+};
+
+ty_is_bool : func(type : ty -> bool)
+{
+	return ty_strip(type) == ty.bool;
+};
+
+ty_integral_size : func(type : ty -> u64)
+{
+	t ::= ty_strip(type);
+	if((t == ty.u64) || (t == ty.s64))
+	{
+		return 8;
+	}
+	if((t == ty.u32) || (t == ty.s32))
+	{
+		return 4;
+	}
+	if((t == ty.u16) || (t == ty.s16))
+	{
+		return 2;
+	}
+	if((t == ty.u8) || (t == ty.s8) || (t == ty.bool))
+	{
+		return 1;
+	}
+	return 0;
+};
+
+ty_floating_size : func(type : ty -> u64)
+{
+	t ::= ty_strip(type);
+	if(t == ty.f64)
+	{
+		return 8;
+	}
+	if(t == ty.f32)
+	{
+		return 4;
+	}
+	return 0;
+};
+
 tydata_tag : enum
 {
 	.ptr := 0;
@@ -99,6 +151,110 @@ tydata : struct
 	tag : tydata_tag;
 	name : u8?;
 	name_len : u64;
+	underlying : ty;
+	// if structure, these are the types of the data members
+	// if enumeration, these are the values of the entries (interpret members[n] as a s64 instead of a ty)
+	// otherwise this is ignored
+	members : ty mut?;
+	members_count : u64;
+	array_len : u64;
+	reference : ast mut?;
+};
+
+ty_is_ptr : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.ptr;
+};
+
+ty_is_array : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.array;
+};
+
+ty_is_enum : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.enumeration;
+};
+
+ty_is_structure : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.structure;
+};
+
+ty_is_function : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.function;
+};
+
+ty_underlying : func(type : ty -> ty)
+{
+	if(ty_is_primitive(type))
+	{
+		return ty.invalid;
+	}
+	u ::= ty_unwrap(type);
+	if((u->tag == tydata_tag.ptr) || (u->tag == tydata_tag.array) || (u->tag == tydata_tag.enumeration))
+	{
+		return u->underlying;
+	}
+	return ty.invalid;
+};
+
+ty_at : func(type : ty, idx : u64 -> ty)
+{
+	if(ty_is_primitive(type))
+	{
+		return ty.invalid;
+	}
+	u ::= ty_unwrap(type);
+	if(u->tag == tydata_tag.structure)
+	{
+		if(u->members_count <= idx)
+		{
+			panic_begin();
+			putzstr("todo: better panic messaeg for ty_at(type, idx)-out-of-bounds\0");
+			panic_end();
+		}
+		return [u->members # idx];
+	}
+	return ty.invalid;
+};
+
+// if enum - return number of entries
+// if structure - return number of data members
+// otherwise return 0
+ty_countof : func(type : ty -> u64)
+{
+	if(ty_is_primitive(type))
+	{
+		return 0;
+	}
+	u ::= ty_unwrap(type);
+	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.enumeration))
+	{
+		return u->members_count;
+	}
+	return 0;
 };
 
 ty_wrap : func(d : tydata mut? -> ty)
