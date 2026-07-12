@@ -74,9 +74,28 @@ treewalk_stmt_function : func(stmt : ast mut?, s : source -> v0)
 
 treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 {
-	name ::= [ast_enumeration_get_name(stmt)];
-	name_len ::= [ast_enumeration_get_name_len(stmt)];
-	// todo: make type, add to ty_storage
+	enumty : tydata mut;
+	enumty.tag = tydata_tag.enumeration;
+	enumty.name = [ast_enumeration_get_name(stmt)];
+	enumty.name_len = [ast_enumeration_get_name_len(stmt)];
+	enumty.members_count = ast_enumeration_get_entries_count(stmt)@u64;
+	// note: members array is of indeterminate value. to be populated during semantic analysis
+	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof ty);
+	enumty.reference = stmt;
+	already ::= ty_find(enumty.name, enumty.name_len);
+	if(already != ty.invalid)
+	{
+		already_node ::= ty_unwrap(already);
+		err_begin();
+		putzstr("redefinition of type '\0");
+		putchars(enumty.name, enumty.name_len);
+		putzstr("' at \0");
+		putsrc(s, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
+		putzstr("\npreviously defined at \0");
+		putsrc(s, already_node->reference->src_beg@u64, already_node->reference->src_end@u64, putcol.blue_underline);
+		err_end();
+	}
+	ty_wrap(ref enumty);
 };
 
 treewalk_stmt_assembly : func(stmt : ast mut?, s : source -> v0)
