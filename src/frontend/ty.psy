@@ -20,6 +20,22 @@ ty : enum
 	.invalid := ~0;
 };
 
+ty_name_tbl ::= u8?[12]
+{
+	.0 := "v0\0";
+	.1 := "u64\0";
+	.2 := "u32\0";
+	.3 := "u16\0";
+	.4 := "u8\0";
+	.5 := "s64\0";
+	.6 := "s32\0";
+	.7 := "s16\0";
+	.8 := "s8\0";
+	.9 := "f64\0";
+	.10 := "f32\0";
+	.11 := "bool\0";
+};
+
 tytag : enum
 {
 	.prim := 1;
@@ -161,7 +177,7 @@ tydata : struct
 	reference : ast mut?;
 };
 
-ty_is_ptr : func(type : ty -> bool)
+ty_is_pointer : func(type : ty -> bool)
 {
 	if(ty_is_primitive(type))
 	{
@@ -250,6 +266,7 @@ ty_at : func(type : ty, idx : u64 -> ty)
 
 // if enum - return number of entries
 // if structure - return number of data members
+// if array - return number of elements
 // otherwise return 0
 ty_countof : func(type : ty -> u64)
 {
@@ -261,6 +278,10 @@ ty_countof : func(type : ty -> u64)
 	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.enumeration))
 	{
 		return u->members_count;
+	}
+	if(u->tag == tydata_tag.array)
+	{
+		return u->array_len;
 	}
 	return 0;
 };
@@ -327,6 +348,13 @@ ty_storage_new_id : func(-> u64)
 	return ty_storage.data_count - 1;
 };
 
+ty_new_empty : func(-> ty)
+{
+	idx ::= ty_storage_new_id();
+	base : ty := ty.custom_begin;
+	return (idx@s64 + base@s64)@ty;
+};
+
 ty_storage_t : struct
 {
 	data : tydata mut?;
@@ -379,4 +407,72 @@ ty_from_typename_node_tbl ::= func(n : ast mut? -> ty)[countof ast_typename_tag]
 	.3 := ty_from_typename_node_function;
 	.4 := ty_from_typename_node_type_of;
 	.5 := ty_from_typename_node_deduced;
+};
+
+bwrite_ty_primitive : func(w : bwriter mut?, type : ty -> v0)
+{
+	bwrite_zstr(w, [ty_name_tbl # type@s64]);
+};
+
+bwrite_ty : func(w : bwriter mut?, type : ty -> v0)
+{
+	if(type == ty.invalid)
+	{
+		bwrite_zstr(w, "<invalid type>\0");
+		return;
+	}
+	if(ty_is_primitive(type))
+	{
+		bwrite_ty_primitive(w, ty_strip(type));
+	}
+	else
+	{
+		count ::= ty_countof(type);
+		i : u64 mut;
+		if(ty_is_pointer(type))
+		{
+			bwrite_ty(w, ty_underlying(type));
+			bwrite8(w, '?');
+		}
+		if(ty_is_array(type))
+		{
+			bwrite_ty(w, ty_underlying(type));
+			bwrite8(w, '[');
+			bwrite_uint(w, ty_countof(type));
+			bwrite8(w, ']');
+		}
+		if(ty_is_function(type))
+		{
+			bwrite_zstr(w, "func(\0");
+			for(i = 0; i < count; i = i + 1)
+			{
+				bwrite_ty(w, ty_at(type, i));
+				if(i < (count - 1))
+				{
+					bwrite_zstr(w, ", \0");
+				}
+			}
+			bwrite_zstr(w, " -> \0");
+			bwrite_ty(w, ty_underlying(type));
+			bwrite8(w, ')');
+		}
+		if(ty_is_enum(type) || ty_is_structure(type))
+		{
+			u ::= ty_unwrap(type);
+			bwrite_bytes(w, u->name, u->name_len);
+		}
+	}
+	// dont forget the quals!
+	if(ty_is_mut(type))
+	{
+		bwrite_zstr(w, " mut\0");
+	}
+	if(ty_is_weak(type))
+	{
+		bwrite_zstr(w, " weak\0");
+	}
+	if(ty_is_static(type))
+	{
+		bwrite_zstr(w, " static\0");
+	}
 };
