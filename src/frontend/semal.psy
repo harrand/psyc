@@ -1,0 +1,48 @@
+populate_types : func(-> v0)
+{
+	i : u64 mut;
+	count ::= ty_storage.data_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= ty_storage.data # i;
+		// structs and functions need to be populated now
+		if(cur->tag == tydata_tag.structure)
+		{
+			populate_structure_type(cur);
+		}
+		if(cur->tag == tydata_tag.function)
+		{
+			populate_function_type(cur);
+		}
+	}
+};
+
+populate_structure_type : func(d : tydata mut? -> v0)
+{
+	// we have a bunch of decls as children
+	i : u64 mut;
+	member_decl_nodes ::= ast_structure_get_data_members(d->reference);
+	for(i = 0; i < d->members_count; i = i + 1)
+	{
+		typename_node ::= ast_decl_get_typename(member_decl_nodes # i);
+		[d->members # i] = ty_from_typename_node(typename_node);
+	}
+};
+
+populate_function_type : func(d : tydata mut? -> v0)
+{
+	// children include our parameters aswell as the function body so we use the typename node for the function instead
+	i : u64 mut;
+	typename_node ::= ast_function_get_typename(d->reference);
+	d->underlying = ty_from_typename_node(ast_typename_function_get_return_typename(typename_node));
+	param_typename_nodes ::= ast_typename_function_get_params(typename_node);
+	for(i = 0; i < d->members_count; i = i + 1)
+	{
+		[d->members # i] = ty_from_typename_node(ast_decl_get_typename(param_typename_nodes # i));
+	}
+};
+
+semal : func(-> v0)
+{
+	populate_types();
+};
