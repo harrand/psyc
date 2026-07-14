@@ -316,6 +316,14 @@ ty_unwrap : func(type : ty -> tydata mut?)
 ty_find : func(name : u8?, name_len : u64 -> ty)
 {
 	i : u64 mut;
+	for(i = 0; i < countof typeof(ty_name_tbl); i = i + 1)
+	{
+		curprimname ::= [ty_name_tbl # i];
+		if(streql(name, name_len, curprimname, zstrlen(curprimname)))
+		{
+			return i@s64@ty;
+		}
+	}
 	count ::= ty_storage.data_count;
 	base : ty := ty.custom_begin;
 	for(i = 0; i < count; i = i + 1)
@@ -371,7 +379,7 @@ ty_from_typename_node : func(n : ast mut? -> ty)
 
 ty_from_typename_node_base : func(n : ast mut? -> ty)
 {
-	return ty.invalid;
+	return ty_find([ast_typename_base_get_basename(n)], [ast_typename_base_get_basename_len(n)]) | [ast_typename_get_quals(n)];
 };
 
 ty_from_typename_node_array : func(n : ast mut? -> ty)
