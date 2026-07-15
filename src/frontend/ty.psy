@@ -155,7 +155,7 @@ ty_floating_size : func(type : ty -> u64)
 
 tydata_tag : enum
 {
-	.ptr := 0;
+	.pointer := 0;
 	.array := 1;
 	.enumeration := 2;
 	.structure := 3;
@@ -183,7 +183,7 @@ ty_is_pointer : func(type : ty -> bool)
 	{
 		return false;
 	}
-	return ty_unwrap(type)->tag == tydata_tag.ptr;
+	return ty_unwrap(type)->tag == tydata_tag.pointer;
 };
 
 ty_is_array : func(type : ty -> bool)
@@ -234,7 +234,7 @@ ty_underlying : func(type : ty -> ty)
 		return ty.invalid;
 	}
 	u ::= ty_unwrap(type);
-	if((u->tag == tydata_tag.ptr) || (u->tag == tydata_tag.array) || (u->tag == tydata_tag.enumeration) || (u->tag == tydata_tag.function))
+	if((u->tag == tydata_tag.pointer) || (u->tag == tydata_tag.array) || (u->tag == tydata_tag.enumeration) || (u->tag == tydata_tag.function))
 	{
 		return u->underlying;
 	}
@@ -275,7 +275,7 @@ ty_countof : func(type : ty -> u64)
 		return 0;
 	}
 	u ::= ty_unwrap(type);
-	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.enumeration))
+	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.enumeration) || (u->tag == tydata_tag.function))
 	{
 		return u->members_count;
 	}
@@ -384,17 +384,68 @@ ty_from_typename_node_base : func(n : ast mut? -> ty)
 
 ty_from_typename_node_array : func(n : ast mut? -> ty)
 {
-	return ty.invalid;
+	underlying ::= ty_from_typename_node(ast_typename_array_get_element_type(n));
+	len_expr_node ::= ast_typename_array_get_length_expr(n);
+	if([ast_expr_get_tag(len_expr_node)] != ast_expr_tag.literal)
+	{
+		panic_begin();
+		putzstr("array type can only have a literal-expression for its length\0");
+		panic_end();
+	}
+	ret ::= ty_new_empty();
+	u ::= ty_unwrap(ret);
+	u->tag = tydata_tag.array;
+	u->name = zero;
+	u->name_len = zero;
+	u->underlying = underlying;
+	u->members = zero;
+	u->members_count = zero;
+	u->array_len = [ast_literal_get_integer(len_expr_node)]@u64;
+	u->reference = n;
+
+	return ret;
 };
 
 ty_from_typename_node_pointer : func(n : ast mut? -> ty)
 {
-	return ty.invalid;
+	underlying ::= ty_from_typename_node(ast_typename_pointer_get_pointee_type(n));
+	ret ::= ty_new_empty();
+	
+	u ::= ty_unwrap(ret);
+	u->tag = tydata_tag.pointer;
+	u->name = zero;
+	u->name_len = zero;
+	u->underlying = underlying;
+	u->members = zero;
+	u->members_count = zero;
+	u->array_len = 0;
+	u->reference = n;
+
+	return ret;
 };
 
 ty_from_typename_node_function : func(n : ast mut? -> ty)
 {
-	return ty.invalid;
+	retty ::= ty_from_typename_node(ast_typename_function_get_return_typename(n));
+	ret ::= ty_new_empty();
+	
+	u ::= ty_unwrap(ret);
+	u->tag = tydata_tag.function;
+	u->name = zero;
+	u->name = zero;
+	u->underlying = retty;
+	u->members_count = ast_typename_function_get_params_count(n)@u64;
+	u->members = arena_alloc(global_arena, u->members_count * sizeof ty);
+	member_decl_nodes ::= ast_typename_function_get_param_decls(n);
+	i : u64 mut;
+	for(i = 0; i < u->members_count; i = i + 1)
+	{
+		[u->members # i] = ty_from_typename_node(ast_decl_get_typename(member_decl_nodes # i));
+	}
+	u->array_len = 0;
+	u->reference = n;
+
+	return ret;
 };
 
 ty_from_typename_node_type_of : func(n : ast mut? -> ty)
