@@ -1,0 +1,116 @@
+proc : enum
+{
+	.invalid := ~0;
+};
+
+proc_create_flag : enum
+{
+	// the new process inherits the environment of the caller
+	.inherit_environment := 0x0000000000000001;
+	.stdout_file := 0x0000000000000000;
+};
+
+proc_create : func(executable_name : path, arg_zstrs : u8??, args_count : u64, stdout : file, stdin : file, stderr : file, ar : arena mut? -> proc)
+{
+	i : u64 mut;
+	// make null-terminated argv
+	argv : u8? mut? := arena_alloc(ar, (args_count + 2) * sizeof u8?);
+	[argv # 0] = path2zstr(executable_name);
+	for(i = 0; i < args_count; i = i + 1)
+	{
+		[argv # (i + 1)] = [arg_zstrs # i];
+	}
+	[argv # (i + 1)] = zero;
+
+	ret ::= linux_fork();
+	if(ret == 0)
+	{
+		// child
+		null_file ::= path_open(zstr2path("/dev/null\0"), file.none, file_access.write, zero);
+		// handle stdout redirections
+		if(stdout == file.none)
+		{
+			// redirect to /dev/null
+			linux_dup2(null_file@s64@s32, 1);
+		}
+		else
+		{
+			if(stdout != file.cwd)
+			{
+				// it must just be a valid file then
+				linux_dup2(stdout@s64@s32, 1);
+			}
+		}
+
+		// handle stdin redirections
+		if(stdin == file.none)
+		{
+			// redirect to /dev/null
+			linux_dup2(null_file@s64@s32, 0);
+		}
+		else
+		{
+			if(stdin != file.cwd)
+			{
+				// it must just be a valid file then
+				linux_dup2(stdin@s64@s32, 0);
+			}
+		}
+
+		// handle stderr redirections
+		if(stderr == file.none)
+		{
+			// redirect to /dev/null
+			linux_dup2(null_file@s64@s32, 2);
+		}
+		else
+		{
+			if(stderr != file.cwd)
+			{
+				// it must just be a valid file then
+				linux_dup2(stderr@s64@s32, 2);
+			}
+		}
+
+
+		// todo: respect flag.inherit_environment
+		empty_envp : u8? := zero;
+		file_close(null_file);
+		linux_execve(path2zstr(executable_name), argv, ref empty_envp);
+		// if execve fails then control will reach this point on the child
+		// exit with an error
+		linux_exit(-1);
+		unreachable;
+	}
+	return ret@s64@proc;
+};
+
+// wait for a process to exit, and get its return code
+proc_wait_for_exit : func(p : proc -> s32)
+{
+	pid ::= p@s64@s32;
+	status : s32 mut := zero;
+	linux_wait4(pid, ref status, 0, zero);
+	if(WIFEXITED(status))
+	{
+		return WEXITSTATUS(status);
+	}
+	// signalled or somethin' else?
+	return -1;
+};
+
+WIFEXITED : func(status : s32 -> bool)
+{
+	return (status & 0x7F) == zero;
+};
+
+WEXITSTATUS : func(status : s32 -> s32)
+{
+	return (status >> 8) & 0xFF;
+};
+
+WIFSIGNALLED : func(status : s32 -> bool)
+{
+	st ::= status & 0x7F;
+	return (st != zero) || (((st + 1) >> 1) > 0);
+};
