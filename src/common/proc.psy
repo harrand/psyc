@@ -10,7 +10,7 @@ proc_create_flag : enum
 	.stdout_file := 0x0000000000000000;
 };
 
-proc_create : func(executable_name : path, arg_zstrs : u8??, args_count : u64, stdout : file, stdin : file, stderr : file, ar : arena mut? -> proc)
+proc_create : func(executable_name : path, relative_to : file, arg_zstrs : u8??, args_count : u64, stdout : file, stdin : file, stderr : file, ar : arena mut? -> proc)
 {
 	i : u64 mut;
 	// make null-terminated argv
@@ -21,6 +21,12 @@ proc_create : func(executable_name : path, arg_zstrs : u8??, args_count : u64, s
 		[argv # (i + 1)] = [arg_zstrs # i];
 	}
 	[argv # (i + 1)] = zero;
+
+	linux_dirfd : s32 mut := relative_to@s64@s32;
+	if(relative_to == file.cwd)
+	{
+		linux_dirfd = -100; // AT_FDCWD
+	}
 
 	ret ::= linux_fork();
 	if(ret == 0)
@@ -76,7 +82,7 @@ proc_create : func(executable_name : path, arg_zstrs : u8??, args_count : u64, s
 		// todo: respect flag.inherit_environment
 		empty_envp : u8? := zero;
 		file_close(null_file);
-		linux_execve(path2zstr(executable_name), argv, ref empty_envp);
+		linux_execveat(linux_dirfd, path2zstr(executable_name), argv, ref empty_envp, 0);
 		// if execve fails then control will reach this point on the child
 		// exit with an error
 		linux_exit(-1);
