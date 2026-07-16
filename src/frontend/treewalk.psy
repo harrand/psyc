@@ -29,6 +29,7 @@ treewalk_stmt_decl : func(stmt : ast mut?, s : source -> v0)
 
 	var : variable_t mut;
 	var.node = stmt;
+	var.src = s;
 	var.type = zero;
 	var.local_param_idx = ~0;
 	prog_add_global_variable(ref var);
@@ -44,6 +45,7 @@ treewalk_stmt_structure : func(stmt : ast mut?, s : source -> v0)
 	// note: members array is of indeterminate value. to be populated during semantic analysis
 	structty.members = arena_alloc(global_arena, structty.members_count * sizeof ty);
 	structty.reference = stmt;
+	structty.src = s;
 	already ::= ty_find(structty.name, structty.name_len);
 	if(already != ty.invalid)
 	{
@@ -54,7 +56,7 @@ treewalk_stmt_structure : func(stmt : ast mut?, s : source -> v0)
 		putzstr("' at \0");
 		putsrc(s, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
 		putzstr("\npreviously defined at \0");
-		putsrc(s, already_node->reference->src_beg@u64, already_node->reference->src_end@u64, putcol.blue_underline);
+		putsrc(already_node->src, already_node->reference->src_beg@u64, already_node->reference->src_end@u64, putcol.blue_underline);
 		err_end();
 	}
 	ty_wrap(ref structty);
@@ -64,6 +66,7 @@ treewalk_stmt_function : func(stmt : ast mut?, s : source -> v0)
 {
 	fn : function_t mut;
 	fn.node = stmt;
+	fn.src = s;
 	fn.type = ty.invalid;
 	fn.scope = zero;
 	prog_add_function(ref fn);
@@ -79,6 +82,7 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 	// note: members array is of indeterminate value. to be populated during semantic analysis
 	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof ty);
 	enumty.reference = stmt;
+	enumty.src = s;
 	already ::= ty_find(enumty.name, enumty.name_len);
 	if(already != ty.invalid)
 	{
@@ -89,7 +93,7 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 		putzstr("' at \0");
 		putsrc(s, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
 		putzstr("\npreviously defined at \0");
-		putsrc(s, already_node->reference->src_beg@u64, already_node->reference->src_end@u64, putcol.blue_underline);
+		putsrc(already_node->src, already_node->reference->src_beg@u64, already_node->reference->src_end@u64, putcol.blue_underline);
 		err_end();
 	}
 	ty_wrap(ref enumty);
