@@ -29,10 +29,55 @@ populate_structure_type : func(d : tydata mut? -> v0)
 	}
 };
 
+populate_globals : func(-> v0)
+{
+	i : u64 mut;
+	count ::= prog.global_scope.vars_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		var ::= prog.global_scope.vars # i;
+		typename_node ::= ast_decl_get_typename(var->node);
+		if([ast_typename_get_tag(typename_node)] == ast_typename_tag.deduced)
+		{
+			// must have an initialiser
+			init ::= ast_decl_maybe_get_init_node(var->node);
+			if(init == zero)
+			{
+				err_begin();
+				putzstr("deduced declaration \0");
+				putchar('"');
+				putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+				putchar('"');
+				putzstr(" did not have an initialiser. all deduced declarations *must* have an initialiser\0");
+				err_end();
+			}
+			warn_begin();
+			putzstr("deduced-decls do not currently set their type correctly (\0");
+			putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+			putzstr(")\n\0");
+			warn_end();
+		}
+		else
+		{
+			var->type = ty_from_typename_node(typename_node);
+			// todo: delete once we're happy with it
+			putty(var->type);
+
+			if(var->type == ty.invalid)
+			{
+				putzstr(", fugg \0");
+				putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+				putzstr(" \0");
+				putsint([ast_typename_get_tag(ast_decl_get_typename(var->node))]@s64);
+			}
+			putchar('\n');
+		}
+	}
+};
+
 populate_functions : func(-> v0)
 {
 	i : u64 mut;
-
 	count ::= prog.global_scope.funcs_count;
 	for(i = 0; i < count; i = i + 1)
 	{
@@ -47,5 +92,6 @@ populate_functions : func(-> v0)
 semal : func(-> v0)
 {
 	populate_structures();
+	populate_globals();
 	populate_functions();
 };
