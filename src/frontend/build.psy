@@ -121,6 +121,15 @@ execute_build_builtin_entrypoint : func(params : ast mut?, params_count : u32, s
 	warn_end();
 };
 
+execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	cmd_data ::= [ast_literal_get_string(params # 0)];
+	cmd_len ::= [ast_literal_get_string_len(params # 0)];
+	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, scratch_arena);
+	// todo: return output code
+	shell_command(cmd_zstr);
+};
+
 execute_build_builtin : func(name : u8?, name_len : u32, params : ast mut?, params_count : u32, src : source, node : ast mut? -> v0)
 {
 	if(streql(name, name_len@u64, "add_source_file", 15))
@@ -138,6 +147,12 @@ execute_build_builtin : func(name : u8?, name_len : u32, params : ast mut?, para
 		execute_build_builtin_entrypoint(params, params_count, src);
 		return;
 	}
+	if(streql(name, name_len@u64, "prebuild_command", 16))
+	{
+		execute_build_builtin_prebuild_command(params, params_count, src);
+		return;
+	}
+	
 	err_begin();
 	putzstr("unrecognised build builtin '\0");
 	putchars(name, name_len@u64);
