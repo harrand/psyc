@@ -339,7 +339,7 @@ x64enc_fetch_shl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	if(x64val_get_size(op1) != 8)
 	{
 		panic_begin();
-		putzstr("rhs operand to SHL must always be 8-bit");
+		putzstr("rhs operand to SHL must always be 8-bit\0");
 		panic_end();
 	}
 	if(op1->tag == x64val_tag.reg)
@@ -347,7 +347,7 @@ x64enc_fetch_shl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
 		{
 			panic_begin();
-			putzstr("register rhs operand to SHL must always be CL");
+			putzstr("register rhs operand to SHL must always be CL\0");
 			panic_end();
 		}
 	}
@@ -360,7 +360,7 @@ x64enc_fetch_sar : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	if(x64val_get_size(op1) != 8)
 	{
 		panic_begin();
-		putzstr("rhs operand to SAR must always be 8-bit");
+		putzstr("rhs operand to SAR must always be 8-bit\0");
 		panic_end();
 	}
 	if(op1->tag == x64val_tag.reg)
@@ -368,7 +368,7 @@ x64enc_fetch_sar : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
 		{
 			panic_begin();
-			putzstr("register rhs operand to SAR must always be CL");
+			putzstr("register rhs operand to SAR must always be CL\0");
 			panic_end();
 		}
 	}
@@ -381,7 +381,7 @@ x64enc_fetch_shr : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	if(x64val_get_size(op1) != 8)
 	{
 		panic_begin();
-		putzstr("rhs operand to SHR must always be 8-bit");
+		putzstr("rhs operand to SHR must always be 8-bit\0");
 		panic_end();
 	}
 	if(op1->tag == x64val_tag.reg)
@@ -389,11 +389,36 @@ x64enc_fetch_shr : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
 		{
 			panic_begin();
-			putzstr("register rhs operand to SHR must always be CL");
+			putzstr("register rhs operand to SHR must always be CL\0");
 			panic_end();
 		}
 	}
 	return encoding_tbl_shr # x64enc_access_encoding_tbl_bitshift(inst);
+};
+
+x64enc_fetch_call : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op0 ::= inst->operands # 0;
+	if(op0->tag == x64val_tag.memreg)
+	{
+		if([x64val_memreg_get_base(op0)] == x64_reg.rip)
+		{
+			if(x64val_get_size(op0) != 32)
+			{
+				panic_begin();
+				putzstr("riprel operand to CALL must be 32-bit\0");
+				panic_end();
+			}
+			return encoding_tbl_call # 0;
+		}
+	}
+	if(x64val_get_size(op0) != 64)
+	{
+		panic_begin();
+		putzstr("r/m operand to CALL must be 64-bit");
+		panic_end();
+	}
+	return encoding_tbl_call # 1;
 };
 
 x64enc_fetch_syscall : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
@@ -436,7 +461,7 @@ x64enc_fetch_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	.30 := x64enc_fetch_shl;
 	.31 := x64enc_fetch_sar;
 	.32 := x64enc_fetch_shr;
-	.33 := x64enc_fetch_nyi;
+	.33 := x64enc_fetch_call;
 	.34 := x64enc_fetch_nyi;
 	.35 := x64enc_fetch_nyi;
 	.36 := x64enc_fetch_nyi;
