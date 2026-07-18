@@ -118,6 +118,24 @@ x64inst_is_any_custom : func(inst : x64inst mut? -> bool)
 	return inst->tag@s64 >= x64inst_tag.custom@s64;
 };
 
+x64inst_is_encodeable : func(inst : x64inst mut? -> bool)
+{
+	if(x64inst_is_any_custom(inst))
+	{
+		return false;
+	}
+	i : u64 mut;
+	count ::= x64inst_operands_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		if(!x64val_is_encodeable(inst->operands # i))
+		{
+			return false;
+		}
+	}
+	return true;
+};
+
 x64inst_name ::= u8?[countof x64inst_tag]
 {
 	.0 := "nop\0";
