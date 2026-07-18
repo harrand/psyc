@@ -117,6 +117,15 @@ x64val_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 	[x64val_dump_to_tbl # v->tag@s64](w, v);
 };
 
+x64val_dump : func(v : x64val mut? -> v0)
+{
+	tmp : bwriter mut;
+	w ::= ref tmp;
+	bwriter_create_native(w, 16, scratch_arena);
+	x64val_dump_to(w, v);
+	putchars(w->buf, w->cursor);
+};
+
 x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 {
 	tag ::= inst->tag;
@@ -142,6 +151,15 @@ x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 	bwrite8(w, '\n');
 };
 
+x64inst_dump : func(inst : x64inst mut? -> v0)
+{
+	tmp : bwriter mut;
+	w ::= ref tmp;
+	bwriter_create_native(w, 32, scratch_arena);
+	x64inst_dump_to(w, inst);
+	putchars(w->buf, w->cursor);
+};
+
 x64func_dump_to : func(w : bwriter mut?, fn : x64func mut? -> v0)
 {
 	i : u64 mut;
@@ -149,6 +167,15 @@ x64func_dump_to : func(w : bwriter mut?, fn : x64func mut? -> v0)
 	{
 		x64inst_dump_to(w, fn->insts # i);
 	}
+};
+
+x64func_dump : func(fn : x64func mut? -> v0)
+{
+	tmp : bwriter mut;
+	w ::= ref tmp;
+	bwriter_create_native(w, 1024, scratch_arena);
+	x64func_dump_to(w, fn);
+	putchars(w->buf, w->cursor);
 };
 
 x64prog_dump_to : func(w : bwriter mut?, p : x64prog mut? -> v0)
@@ -168,8 +195,5 @@ x64prog_dump : func(p : x64prog mut? -> v0)
 	w ::= ref tmp;
 	bwriter_create_native(w, 1024, scratch_arena);
 	x64prog_dump_to(w, p);
-	//putchar('\n');
 	putchars(w->buf, w->cursor);
-	//putchar('\n');
-	arena_clear(scratch_arena);
 };
