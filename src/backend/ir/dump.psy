@@ -1,0 +1,114 @@
+irval_dump_to_nyi : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: dumping of irval_tag.\0");
+	putsint(v->tag@s64);
+	panic_end();
+};
+
+irval_dump_to_invalid : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite_zstr(w, "<invalid>\0");
+};
+
+irval_dump_to_imm : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite_zstr(w, [irsz_names # ([irval_imm_get_sz(v)]@s64)]);
+	bwrite_zstr(w, "imm \0");
+	bwrite_sint(w, [irval_imm_get_value(v)]);
+};
+
+irval_dump_to_reg : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite8(w, '%');
+	bwrite_zstr(w, [irsz_names # [irval_reg_get_sz(v)]@s64]);
+	bwrite_uint(w, [irval_reg_get_idx(v)]);
+};
+
+irval_dump_to_tbl ::= func(w : bwriter mut?, v : irval mut? -> v0)[countof irval_tag]
+{
+	.0 := irval_dump_to_invalid;
+	.1 := irval_dump_to_imm;
+	.2 := irval_dump_to_reg;
+	.3 := irval_dump_to_nyi;
+	.4 := irval_dump_to_nyi;
+	.5 := irval_dump_to_nyi;
+	.6 := irval_dump_to_nyi;
+};
+
+irval_dump_to : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	[irval_dump_to_tbl # (v->tag@s64)](w, v);
+};
+
+irfunc_dump_to : func(w : bwriter mut?, fn : irfunc mut? -> v0)
+{
+	bwrite8(w, '$');
+	bwrite_uint(w, fn->idx);
+	bwrite_zstr(w, " : func(\0");
+	i : u64 mut;
+	for(i = 0; i < fn->params_count; i = i + 1)
+	{
+		v : irval mut;
+		v.tag = irval_tag.reg;
+		[irval_reg_get_sz(ref v)] = [fn->params # i];
+		[irval_reg_get_idx(ref v)] = i;
+		irval_dump_to(w, ref v);
+		if(i < (fn->params_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	bwrite_zstr(w, ") -> \0");
+	for(i = 0; i < fn->returns_count; i = i + 1)
+	{
+		bwrite_zstr(w, [irsz_names # [fn->returns # i]]);
+		if(i < (fn->params_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	if(fn->returns_count == 0)
+	{
+		bwrite_zstr(w, "none\0");
+	}
+	// todo: blks
+};
+
+irasm_dump_to : func(w : bwriter mut?, as : irasm mut? -> v0)
+{
+	bwrite_zstr(w, "asm...\0");
+};
+
+irglob_dump_to : func(w : bwriter mut?, g : irglob mut? -> v0)
+{
+	bwrite_zstr(w, "glob...\0");
+};
+
+irprog_dump_to : func(w : bwriter mut?, p : irprog mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		irfunc_dump_to(w, p->funcs # i);
+	}
+
+	for(i = 0; i < p->asms_count; i = i + 1)
+	{
+		irasm_dump_to(w, p->asms # i);
+	}
+
+	for(i = 0; i < p->globs_count; i = i + 1)
+	{
+		irglob_dump_to(w, p->globs # i);
+	}
+};
+
+irprog_dump : func(p : irprog mut? -> v0)
+{
+	tmp : bwriter mut;
+	w ::= ref tmp;
+	bwriter_create_native(w, 1024, scratch_arena);
+	irprog_dump_to(w, p);
+	putchars(w->buf, w->cursor);
+};
