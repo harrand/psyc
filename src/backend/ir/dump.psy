@@ -25,20 +25,76 @@ irval_dump_to_reg : func(w : bwriter mut?, v : irval mut? -> v0)
 	bwrite_uint(w, [irval_reg_get_idx(v)]);
 };
 
+irval_dump_to_globref : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite8(w, '@');
+	bwrite_uint(w, [irval_globref_get_idx(v)]);
+};
+
+irval_dump_to_funcref : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite8(w, '$');
+	bwrite_uint(w, [irval_funcref_get_idx(v)]);
+};
+
+irval_dump_to_blkref : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite8(w, '_');
+	bwrite_uint(w, [irval_blkref_get_idx(v)]);
+};
+
+irval_dump_to_asmref : func(w : bwriter mut?, v : irval mut? -> v0)
+{
+	bwrite8(w, '#');
+	bwrite_uint(w, [irval_asmref_get_idx(v)]);
+};
+
 irval_dump_to_tbl ::= func(w : bwriter mut?, v : irval mut? -> v0)[countof irval_tag]
 {
 	.0 := irval_dump_to_invalid;
 	.1 := irval_dump_to_imm;
 	.2 := irval_dump_to_reg;
-	.3 := irval_dump_to_nyi;
-	.4 := irval_dump_to_nyi;
-	.5 := irval_dump_to_nyi;
-	.6 := irval_dump_to_nyi;
+	.3 := irval_dump_to_globref;
+	.4 := irval_dump_to_funcref;
+	.5 := irval_dump_to_blkref;
+	.6 := irval_dump_to_asmref;
 };
 
 irval_dump_to : func(w : bwriter mut?, v : irval mut? -> v0)
 {
 	[irval_dump_to_tbl # (v->tag@s64)](w, v);
+};
+
+irinst_dump_to : func(w : bwriter mut?, inst : irinst mut? -> v0)
+{
+	bwrite8(w, '\t');
+	bwrite_zstr(w, [irinst_names # (inst->tag@s64)]);
+	if(inst->operands_count > 0)
+	{
+		bwrite8(w, ' ');
+	}
+	i : u64 mut;
+	for(i = 0; i < inst->operands_count; i = i + 1)
+	{
+		irval_dump_to(w, inst->operands # i);
+		if(i < (inst->operands_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	bwrite8(w, '\n');
+};
+
+irblk_dump_to : func(w : bwriter mut?, blk : irblk mut? -> v0)
+{
+	bwrite8(w, '_');
+	bwrite_uint(w, blk->idx);
+	bwrite_zstr(w, ":\n\0");
+	i : u64 mut;
+	for(i = 0; i < blk->insts_count; i = i + 1)
+	{
+		irinst_dump_to(w, blk->insts # i);
+	}
 };
 
 irfunc_dump_to : func(w : bwriter mut?, fn : irfunc mut? -> v0)
@@ -73,11 +129,33 @@ irfunc_dump_to : func(w : bwriter mut?, fn : irfunc mut? -> v0)
 		bwrite_zstr(w, "none\0");
 	}
 	// todo: blks
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		irblk_dump_to(w, fn->blks # i);
+	}
 };
 
 irasm_dump_to : func(w : bwriter mut?, as : irasm mut? -> v0)
 {
-	bwrite_zstr(w, "asm...\0");
+	bwrite8(w, '#');
+	bwrite_uint(w, as->idx);
+	bwrite_zstr(w, " : asm(\0");
+	i : u64 mut;
+	for(i = 0; i < as->params_count; i = i + 1)
+	{
+		bwrite_zstr(w, [irsz_names # [as->params # i]@s64]);
+		if(i < (as->params_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	bwrite_zstr(w, ") -> \0");
+	bwrite_zstr(w, [irsz_names # (as->ret@s64)]);
+	bwrite_zstr(w, " '");
+	bwrite_bytes(w, as->constraint, as->constraint_len);
+	bwrite_zstr(w, "'\n{\n\0");
+	bwrite_bytes(w, as->code, as->code_len);
+	bwrite_zstr(w, "\n}\n\0");
 };
 
 irglob_dump_to : func(w : bwriter mut?, g : irglob mut? -> v0)
