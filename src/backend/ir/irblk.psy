@@ -8,3 +8,44 @@ irblk : struct
 	successors : u64 mut[2];
 	successors_count : u64;
 };
+
+irblk_add_inst_at : func(blk : irblk mut?, inst : irinst mut?, pos : u64 -> v0)
+{
+	if(blk->insts == zero)
+	{
+		blk->insts_cap = 8;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+	}
+	while(blk->insts_count >= blk->insts_cap)
+	{
+		oldcap ::= blk->insts_cap;
+		olddata ::= blk->insts;
+		blk->insts_cap = blk->insts_cap * 2;
+		blk->insts = arena_alloc(global_arena, blk->insts_cap * sizeof typeof([blk->insts]));
+		memcopy(blk->insts, olddata, oldcap * sizeof typeof([blk->insts]));
+	}
+	idx ::= irapi.instpos;
+	if(idx < blk->insts_count)
+	{
+		// move all insts right by one otherwise we will overwrite
+		cpysrc ::= blk->insts # idx;
+		memcopy_backwards(cpysrc # 1, cpysrc, sizeof irinst * (1 + blk->insts_count - idx));
+	}
+	irapi.instpos = irapi.instpos + 1;
+	blk->insts_count = (blk->insts_count + 1);
+	[blk->insts # idx] = [inst];
+	
+	// update successors
+	blk->successors_count = 0;
+	if(inst->tag == irinst_tag.jmp)
+	{
+		[blk->successors # 0] = [irval_blkref_get_idx(inst->operands # 0)];
+		blk->successors_count = 1;
+	}
+	if(inst->tag == irinst_tag.jmpif)
+	{
+		[blk->successors # 0] = [irval_blkref_get_idx(inst->operands # 1)];
+		[blk->successors # 1] = [irval_blkref_get_idx(inst->operands # 2)];
+		blk->successors_count = 2;
+	}
+};

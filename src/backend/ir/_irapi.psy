@@ -17,17 +17,22 @@ irapi ::= irapi_t mut
 ir_add_func : func(out : irval mut? -> irfunc mut?)
 {
 	ret ::= irprog_add_func(ref(irapi.prog));
-	out->tag = irval_tag.fnref;
-	[irval_fnref_get_idx(out)] = ret->idx;
 	irapi.funcpos = ret->idx;
 	irapi.blkpos = 0;
 	irapi.instpos = 0;
+
+	ir_add_blk(out);
 	return ret;
 };
 
 ir_current_func : func(-> irfunc mut?)
 {
 	return irapi.prog.funcs # irapi.funcpos;
+};
+
+ir_current_blk : func(-> irblk mut?)
+{
+	return ir_current_func()->blks # irapi.blkpos;
 };
 
 ir_add_param : func(sz : irsz, out : irval mut? -> v0)
@@ -46,4 +51,9 @@ ir_add_blk : func(out : irval mut? -> irblk mut?)
 	irapi.blkpos = ret->idx;
 	irapi.instpos = 0;
 	return ret;
+};
+
+ir_add_instruction : func(inst : irinst mut? -> v0)
+{
+	irblk_add_inst_at(ir_current_blk(), inst, irapi.instpos);
 };
