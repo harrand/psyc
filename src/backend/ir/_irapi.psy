@@ -1,0 +1,49 @@
+irapi_t : struct
+{
+	prog : irprog;
+	funcpos : u64;
+	blkpos : u64;
+	instpos : u64;
+};
+
+irapi ::= irapi_t mut
+{
+	.prog := zero;
+	.funcpos := zero;
+	.blkpos := zero;
+	.instpos := zero;
+};
+
+ir_add_func : func(out : irval mut? -> irfunc mut?)
+{
+	ret ::= irprog_add_func(ref(irapi.prog));
+	out->tag = irval_tag.fnref;
+	[irval_fnref_get_idx(out)] = ret->idx;
+	irapi.funcpos = ret->idx;
+	irapi.blkpos = 0;
+	irapi.instpos = 0;
+	return ret;
+};
+
+ir_current_func : func(-> irfunc mut?)
+{
+	return irapi.prog.funcs # irapi.funcpos;
+};
+
+ir_add_param : func(sz : irsz, out : irval mut? -> v0)
+{
+	irfunc_add_param(ir_current_func(), sz, out);
+};
+
+ir_add_return : func(sz : irsz -> v0)
+{
+	irfunc_add_return(ir_current_func(), sz);
+};
+
+ir_add_blk : func(out : irval mut? -> irblk mut?)
+{
+	ret ::= irfunc_add_blk(irapi.prog.funcs # (irapi.funcpos));
+	irapi.blkpos = ret->idx;
+	irapi.instpos = 0;
+	return ret;
+};

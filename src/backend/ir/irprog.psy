@@ -14,3 +14,38 @@ irprog : struct
 
 	//entrypoint : irpos;
 };
+
+irprog_add_func : func(p : irprog mut? -> irfunc mut?)
+{
+	if(p->funcs == zero)
+	{
+		p->funcs_cap = 8;
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof irfunc);
+	}
+	while(p->funcs_count >= p->funcs_cap)
+	{
+		oldcap ::= p->funcs_cap;
+		old ::= p->funcs;
+		p->funcs_cap = (p->funcs_cap * 2);
+		p->funcs = arena_alloc(global_arena, p->funcs_cap * sizeof irfunc);
+		memcopy(p->funcs, old, oldcap * sizeof irfunc);
+	}
+	idx ::= p->funcs_count;
+	p->funcs_count = (p->funcs_count + 1);
+	ptr ::= p->funcs # idx;
+	ptr->idx = idx;
+	ptr->blks = zero;
+	ptr->blks_count = 0;
+	ptr->blks_cap = 0;
+
+	ptr->params = zero;
+	ptr->params_count = 0;
+	ptr->params_cap = 0;
+
+	ptr->returns = zero;
+	ptr->returns_count = 0;
+	ptr->returns_cap = 0;
+
+	ptr->counter = 0;
+	return ptr;
+};

@@ -15,3 +15,75 @@ irfunc : struct
 
 	counter : u64;
 };
+
+irfunc_add_param : func(fn : irfunc mut?, sz : irsz, out : irval mut? -> v0)
+{
+	if(fn->params == zero)
+	{
+		fn->params_cap = 8;
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof typeof([fn->params]));
+	}
+	while(fn->params_count >= fn->params_cap)
+	{
+		oldcap ::= fn->params_cap;
+		olddata ::= fn->params;
+		fn->params_cap = fn->params_cap * 2;
+		fn->params = arena_alloc(global_arena, fn->params_cap * sizeof typeof([fn->params]));
+		memcopy(fn->params, olddata, oldcap * sizeof typeof([fn->params]));
+	}
+	idx ::= fn->params_count;
+	fn->params_count = (fn->params_count + 1);
+	fn->counter = fn->counter + 1;
+
+	[fn->params # idx] = sz;
+	out->tag = irval_tag.reg;
+	[irval_reg_get_sz(out)] = sz;
+	[irval_reg_get_idx(out)] = idx;
+};
+
+irfunc_add_return : func(fn : irfunc mut?, sz : irsz -> v0)
+{
+	if(fn->returns == zero)
+	{
+		fn->returns_cap = 8;
+		fn->returns = arena_alloc(global_arena, fn->returns_cap * sizeof typeof([fn->returns]));
+	}
+	while(fn->returns_count >= fn->returns_cap)
+	{
+		oldcap ::= fn->returns_cap;
+		olddata ::= fn->returns;
+		fn->returns_cap = fn->returns_cap * 2;
+		fn->returns = arena_alloc(global_arena, fn->returns_cap * sizeof typeof([fn->returns]));
+		memcopy(fn->returns, olddata, oldcap * sizeof typeof([fn->returns]));
+	}
+	idx ::= fn->returns_count;
+	[fn->returns # idx] = sz;
+	fn->returns_count = (fn->returns_count + 1);
+};
+
+irfunc_add_blk : func(fn : irfunc mut? -> irblk mut?)
+{
+	if(fn->blks == zero)
+	{
+		fn->blks_cap = 8;
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof typeof([fn->blks]));
+	}
+	while(fn->blks_count >= fn->blks_cap)
+	{
+		oldcap ::= fn->blks_cap;
+		olddata ::= fn->blks;
+		fn->blks_cap = fn->blks_cap * 2;
+		fn->blks = arena_alloc(global_arena, fn->blks_cap * sizeof typeof([fn->blks]));
+		memcopy(fn->blks, olddata, oldcap * sizeof typeof([fn->blks]));
+	}
+	idx ::= fn->blks_count;
+	fn->blks_count = (fn->blks_count + 1);
+
+	ptr ::= fn->blks # idx;
+	ptr->idx = idx;
+	ptr->insts = zero;
+	ptr->insts_count = 0;
+	ptr->insts_cap = 0;
+	ptr->successors_count = 0;
+	return ptr;
+};
