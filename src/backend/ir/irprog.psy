@@ -49,3 +49,31 @@ irprog_add_func : func(p : irprog mut? -> irfunc mut?)
 	ptr->counter = 0;
 	return ptr;
 };
+
+irprog_add_glob : func(p : irprog mut?, data : u8 mut? weak, size : u64, is_mut : bool, out : irval mut? -> irglob mut?)
+{
+	if(p->globs == zero)
+	{
+		p->globs_cap = 8;
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof irglob);
+	}
+	while(p->globs_count >= p->globs_cap)
+	{
+		oldcap ::= p->globs_cap;
+		old ::= p->globs;
+		p->globs_cap = (p->globs_cap * 2);
+		p->globs = arena_alloc(global_arena, p->globs_cap * sizeof irglob);
+		memcopy(p->globs, old, oldcap * sizeof irglob);
+	}
+	idx ::= p->globs_count;
+	p->globs_count = (p->globs_count + 1);
+	ptr ::= p->globs # idx;
+	ptr->idx = idx;
+	ptr->data = data;
+	ptr->data_size = size;
+	ptr->is_mut = is_mut;
+
+	out->tag = irval_tag.globref;
+	[irval_globref_get_idx(out)] = idx;
+	return ptr;
+};
