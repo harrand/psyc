@@ -210,7 +210,41 @@ irasm_dump : func(as : irasm mut? -> v0)
 
 irglob_dump_to : func(w : bwriter mut?, g : irglob mut? -> v0)
 {
-	bwrite_zstr(w, "glob...\0");
+	bwrite8(w, '@');
+	bwrite_uint(w, g->idx);
+	if(g->is_mut)
+	{
+		bwrite_zstr(w, " mut\n{\n  \0");
+	}
+	else
+	{
+		bwrite_zstr(w, " const\n{\n  \0");
+	}
+	i : u64 mut;
+	iter_max : u64 mut := g->data_size;
+	if(iter_max > 32)
+	{
+		iter_max = 32;
+	}
+	for(i = 0; i < iter_max; i = i + 1)
+	{
+		bwrite_uint8x(w, [g->data # i]);
+		if((((i + 1) % 8) == 0) && (i < (iter_max - 1)))
+		{
+			bwrite_zstr(w, "\n  \0");
+		}
+		else
+		{
+			bwrite8(w, ' ');
+		}
+	}
+	if(iter_max != g->data_size)
+	{
+		bwrite_zstr(w, "...\0");
+	}
+	bwrite_zstr(w, "\n} (size: \0");
+	bwrite_uint(w, g->data_size);
+	bwrite_zstr(w, ")\n\0");
 };
 
 irglob_dump : func(g : irglob mut? -> v0)
