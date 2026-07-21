@@ -5,6 +5,68 @@ compile : func(-> v0)
 	putzstr("finalising...                                 \0");
 	putchar('\n');
 	semal();
+	codegen();
+	ir_lower_x64();
+	write_output_x64();
+};
+
+codegen : func(-> v0)
+{
+	// todo: generate ir
+	if(args_should_dump_ir())
+	{
+		irprog_dump(ref(irapi.prog));
+	}
+};
+
+ir_lower_x64 : func(-> v0)
+{
+	// todo: lower irapi.prog to x64api.prog
+	if(args_should_dump_asm())
+	{
+		x64prog_dump(ref(x64api.prog));
+	}
+};
+
+write_output_x64 : func(-> v0)
+{
+	f ::= path_open(zstr2path("build/test.elf\0"), file.cwd, file_access.write, path_open_flag.truncate | path_open_flag.create_if_notfound | path_open_flag.create_executable);
+
+	stream : bwriter mut;
+	w ::= ref stream;
+	bwriter_create_native(w, 1024, scratch_arena);
+
+	meta : x64enc_meta mut;
+	meta.begin_code_vaddr = 0;
+	meta.begin_readonly_glob_vaddr = 0;
+	meta.begin_mutable_glob_vaddr = 0;
+	meta.begin_mutablezero_glob_vaddr = 0;
+	x64prog_encode_to(w, ref(x64api.prog), ref meta);
+
+	edata : elf_data mut;
+	edata.code = w->buf;
+	edata.code_len = w->cursor;
+	edata.rodata = zero;
+	edata.rodata_len = zero;
+	edata.data = zero;
+	edata.data_len = zero;
+	edata.bss_len = zero;
+	if(x64api.prog.funcs_count == 0)
+	{
+		edata.entrypoint = 0;
+	}
+	else
+	{
+		edata.entrypoint = (x64api.prog.funcs # (x64api.prog.entrypoint_func_index))->enc_byte_offset_begin;
+	}
+
+	w->cursor = 0;
+	w->len = 0;
+	w->buf = zero;
+	elf_write(w, ref edata);
+
+	file_write(f, w->buf, w->cursor);
+	file_close(f);
 };
 
 add_build_file : func(p : path, target : u8?, target_len : u64 -> v0)
