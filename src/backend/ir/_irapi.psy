@@ -62,3 +62,21 @@ ir_add_instruction : func(inst : irinst mut? -> v0)
 {
 	irblk_add_inst_at(ir_current_blk(), inst, irapi.instpos);
 };
+
+ir_delete_instruction : func(-> v0)
+{
+	blk ::= ir_current_blk();
+	cpydst ::= blk->insts # x64api.instpos;
+	count ::= blk->insts_count - (irapi.instpos + 1);
+	memcopy(cpydst, cpydst # 1, sizeof x64inst * count);
+	blk->insts_count = blk->insts_count - 1;
+	if(irapi.instpos > 0)
+	{
+		irapi.instpos = irapi.instpos - 1;
+	}
+};
+
+ir_current_instruction : func(-> irinst mut?)
+{
+	return ir_current_blk()->insts # irapi.instpos;
+};
