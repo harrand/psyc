@@ -1,0 +1,121 @@
+val_tag : enum
+{
+	// not a valid value (no data)
+	.invalid := 0;
+	// a type with no value (d0 = type)
+	.typeonly := 1;
+	// a value of 'zero' with no type (no data)
+	.zerovalue := 2;
+	// a scalar literal known at compile time (d0 = type, d1 = integer/floating-point)
+	.scalar_literal := 3;
+	// a string literal (d0 = data u8?, d1 = len)
+	.string_literal := 4;
+	// an aggregate (struct/array) literal known at compile time (d0 = type, d1 = pointer to val? members, must be size == ty_countof(type))
+	.aggregate_literal := 5;
+	// a pointer literal known at compile time (d0 = pointer type, d1 = address)
+	.pointer_literal := 6;
+	// a reference to a function (d0 = function_t mut?)
+	.function_reference := 7;
+	// a reference to a variable (d0 = variable_t mut?)
+	.variable_reference := 8;
+	// a reference to an assembly (d0 = assembly_t mut?)
+	.assembly_reference := 9;
+	// a runtime scalar value (d0 = type d1 = irval (d1, d2, d3 etc... are a part of the irval object and the rest of the val struct is assumed to be large enough to store the whole thing))
+	.scalar := 10;
+	// similar to scalar, but the irval stores a pointer to the value instead of the value directly (d0 = type (not as a pointer), d1 = irval (d1, d2, d3 etc... are a part of the irval object and the rest of the val struct is assumed to be large enough to store the whole thing))
+	.pointer := 11;
+	// a bunch of irvals representing a complex value such as a struct value (d0 = type, d1 = member irvals?, d2 = count of members. remember this isnt necessarily the number of members of the struct)
+	.aggregate := 12;
+};
+
+val : struct
+{
+	tag : val_tag;
+	// datapoint 0 - use depends on tag
+	d0 : u64;
+	// datapoint 1 - use depends on tag
+	d1 : u64;
+	// datapoint 2 - use depends on tag
+	d2 : u64;
+	// datapoint 3 - use depends on tag
+	d3 : u64;
+	// datapoint 4 - use depends on tag
+	d4 : u64;
+};
+
+val_typeonly_get_type : func(v : val mut? -> ty mut?)
+{
+	return ref(v->d0)@ty mut?;
+};
+
+val_scalar_literal_get_type : func(v : val mut? -> ty mut?)
+{
+	return ref(v->d0)@ty mut?;
+};
+
+val_scalar_literal_get_integer : func(v : val mut? -> s64 mut?)
+{
+	return ref(v->d1)@s64 mut?;
+};
+
+val_string_literal_get_data : func(v : val mut? -> u8 mut? mut?)
+{
+	return ref(v->d0)@u8 mut? mut?;
+};
+
+val_string_literal_get_length : func(v : val mut? -> u64 mut?)
+{
+	return ref(v->d1)@u64 mut?;
+};
+
+val_aggregate_literal_get_type : func(v : val mut? -> ty mut?)
+{
+	return ref(v->d0)@ty mut?;
+};
+
+val_aggregate_literal_get_members : func(v : val mut? -> val mut?)
+{
+	return ref(v->d0)@val mut?;
+};
+
+// remember the members count is decided by the type and is thus *not* stored separately
+val_aggregate_literal_get_members_count : func(v : val mut? -> u64)
+{
+	return ty_countof([val_aggregate_literal_get_type(v)]);
+};
+
+val_pointer_literal_get_type : func(v : val mut? -> ty mut?)
+{
+	return ref(v->d0)@ty mut?;
+};
+
+val_pointer_literal_get_address : func(v : val mut? -> u64 mut?)
+{
+	return ref(v->d0)@u64 mut?;
+};
+
+val_function_reference_get_function : func(v : val mut? -> function_t mut? mut?)
+{
+	return ref(v->d0)@function_t mut? mut?;
+};
+
+val_variable_reference_get_variable : func(v : val mut? -> variable_t mut? mut?)
+{
+	return ref(v->d0)@variable_t mut? mut?;
+};
+
+val_assembly_reference_get_assembly : func(v : val mut? -> assembly_t mut? mut?)
+{
+	return ref(v->d0)@assembly_t mut? mut?;
+};
+
+val_scalar_get_type : func(v : val mut? -> ty mut?)
+{
+	return ref(v->d0)@ty mut?;
+};
+
+// note HH: sizeof(val.d1->end) must be >= sizeof(irval) otherwise this will buffer overrun
+val_scalar_get_irval : func(v : val mut? -> irval mut?)
+{
+	return ref(v->d1)@irval mut?;
+};
