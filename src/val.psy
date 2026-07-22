@@ -184,6 +184,29 @@ val_from_node_expr_nyi : func(node : ast mut?, out : val mut?, resolve : val_res
 	panic_end();
 };
 
+val_from_node_expr_literal : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	[val_from_node_expr_literal_tbl # [ast_literal_get_tag(node)]@s64](node, out, resolve, src);
+};
+
+val_from_node_expr_literal_integer : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	out->tag = val_tag.scalar_literal;
+	[val_scalar_literal_get_integer(out)] = [ast_literal_get_integer(node)];
+	out->type = ty_integer_literal();
+};
+
+val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	panic_begin();
+	putzstr("val_from_node_expr_literal NYI for codepath: \0");
+	putchar('\n');
+	ast_dump_one(node, zero, zero, 1);
+	putzstr("from source \0");
+	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	panic_end();
+};
+
 val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
 	typename_node ::= ast_blkinit_get_typename(node);
@@ -234,7 +257,7 @@ val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]
 val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 {
 	.0 := val_from_node_expr_nyi;
-	.1 := val_from_node_expr_nyi;
+	.1 := val_from_node_expr_literal;
 	.2 := val_from_node_expr_nyi;
 	.3 := val_from_node_expr_nyi;
 	.4 := val_from_node_expr_nyi;
@@ -248,3 +271,13 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.12 := val_from_node_expr_nyi;
 	.13 := val_from_node_expr_nyi;
 };
+
+val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag]
+{
+	.0 := val_from_node_expr_literal_integer;
+	.1 := val_from_node_expr_literal_nyi;
+	.2 := val_from_node_expr_literal_nyi;
+	.3 := val_from_node_expr_literal_nyi;
+	.4 := val_from_node_expr_literal_nyi;
+};
+
