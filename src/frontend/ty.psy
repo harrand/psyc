@@ -158,6 +158,11 @@ ty_integer_literal : func(-> ty)
 	return ty.s64 | ty.qual_weak | ty.qual_static;
 };
 
+ty_floating_point_literal : func(-> ty)
+{
+	return ty.f64 | ty.qual_weak | ty.qual_static;
+};
+
 tydata_tag : enum
 {
 	.pointer := 0;
@@ -394,13 +399,26 @@ ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 	len_expr_node ::= ast_typename_array_get_length_expr(n);
 
 	len_val : val mut;
-	val_from_node(len_expr_node, ref len_val, val_resolve.type_only, src);
-	if([ast_expr_get_tag(len_expr_node)] != ast_expr_tag.literal)
+	val_from_node(len_expr_node, ref len_val, val_resolve.compiletime_only, src);
+	if((len_val.tag != val_tag.scalar_literal))
 	{
-		panic_begin();
-		putzstr("array type can only have a literal-expression for its length\0");
-		panic_end();
+		err_begin();
+		putzstr("array length did not yield an integer literal\n\0");
+		putsrc(src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
+		err_end();
 	}
+	if(ty_integral_size(len_val.type) == 0)
+	{
+		err_begin();
+		putzstr("array length yielded non-integral-type \0");
+		putchar('"');
+		putty(len_val.type);
+		putchar('"');
+		putchar('\n');
+		putsrc(src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
 	ret ::= ty_new_empty();
 	u ::= ty_unwrap(ret);
 	u->tag = tydata_tag.array;
@@ -409,7 +427,7 @@ ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 	u->underlying = underlying;
 	u->members = zero;
 	u->members_count = zero;
-	u->array_len = [ast_literal_get_integer(len_expr_node)]@u64;
+	u->array_len = [val_scalar_literal_get_integer(ref len_val)]@u64;
 	u->reference = n;
 
 	return ret;

@@ -69,10 +69,10 @@ val_scalar_literal_get_integer : func(v : val mut? -> s64 mut?)
 	return ref(v->d0)@s64 mut?;
 };
 
-//val_scalar_literal_get_floating_point : func(v : val mut? -> f64 mut?)
-//{
-//	return ref(v->d0)@f64 mut?;
-//};
+val_scalar_literal_get_floating_point : func(v : val mut? -> f64 mut?)
+{
+	return ref(v->d0)@f64 mut?;
+};
 
 val_string_literal_get_data : func(v : val mut? -> u8 mut? mut?)
 {
@@ -189,11 +189,30 @@ val_from_node_expr_literal : func(node : ast mut?, out : val mut?, resolve : val
 	[val_from_node_expr_literal_tbl # [ast_literal_get_tag(node)]@s64](node, out, resolve, src);
 };
 
-val_from_node_expr_literal_integer : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_integer_literal : func(int : s64 weak, out : val mut? -> v0)
 {
 	out->tag = val_tag.scalar_literal;
-	[val_scalar_literal_get_integer(out)] = [ast_literal_get_integer(node)];
 	out->type = ty_integer_literal();
+	[val_scalar_literal_get_integer(out)] = int;
+};
+
+val_from_node_expr_literal_integer : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	val_from_integer_literal([ast_literal_get_integer(node)], out);
+};
+
+val_from_node_expr_literal_floating_point : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	out->tag = val_tag.scalar_literal;
+	[val_scalar_literal_get_floating_point(out)] = [ast_literal_get_floating_point(node)];
+	out->type = ty_floating_point_literal();
+};
+
+val_from_node_expr_literal_char : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	out->tag = val_tag.scalar_literal;
+	[val_scalar_literal_get_integer(out)] = [ast_literal_get_char(node)]@s64;
+	out->type = ty_floating_point_literal();
 };
 
 val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
@@ -228,6 +247,18 @@ val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val
 	putty(type);
 	putzstr(")\0");
 	panic_end();
+};
+
+val_from_node_expr_countof : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	typename_node ::= ast_countof_get_operand(node);
+	val_from_integer_literal(ty_countof(ty_from_typename_node(typename_node, src)), out);
+};
+
+val_from_node_expr_typeof : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	expr_node ::= ast_countof_get_operand(node);
+	val_from_node(expr_node, out, val_resolve.type_only, src);
 };
 
 val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]
@@ -268,15 +299,15 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.9 := val_from_node_expr_nyi;
 	.10 := val_from_node_expr_nyi;
 	.11 := val_from_node_expr_nyi;
-	.12 := val_from_node_expr_nyi;
-	.13 := val_from_node_expr_nyi;
+	.12 := val_from_node_expr_countof;
+	.13 := val_from_node_expr_typeof;
 };
 
 val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag]
 {
 	.0 := val_from_node_expr_literal_integer;
-	.1 := val_from_node_expr_literal_nyi;
-	.2 := val_from_node_expr_literal_nyi;
+	.1 := val_from_node_expr_literal_floating_point;
+	.2 := val_from_node_expr_literal_char;
 	.3 := val_from_node_expr_literal_nyi;
 	.4 := val_from_node_expr_literal_nyi;
 };
