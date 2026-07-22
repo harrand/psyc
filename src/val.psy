@@ -146,6 +146,12 @@ val_resolve : enum
 
 // val operations
 
+val_from_type : func(type : ty, out : val mut? -> v0)
+{
+	out->tag = val_tag.typeonly;
+	[val_get_type(out)] = type;
+};
+
 val_from_node : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
 	[val_from_node_tbl # (node->tag@s64)](node, out, resolve, src);
@@ -175,6 +181,29 @@ val_from_node_expr_nyi : func(node : ast mut?, out : val mut?, resolve : val_res
 	ast_dump_one(node, zero, zero, 1);
 	putzstr("from source \0");
 	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	panic_end();
+};
+
+val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	typename_node ::= ast_blkinit_get_typename(node);
+	type ::= ty_from_typename_node(typename_node, src);
+	if(type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot decipher type of block-initialiser \0");
+		putsrc(src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		val_from_type(type, out);
+		return;
+	}
+	panic_begin();
+	putzstr("todo: val_from_node_expr_blkinit (type: \0");
+	putty(type);
+	putzstr(")\0");
 	panic_end();
 };
 
@@ -210,7 +239,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.3 := val_from_node_expr_nyi;
 	.4 := val_from_node_expr_nyi;
 	.5 := val_from_node_expr_nyi;
-	.6 := val_from_node_expr_nyi;
+	.6 := val_from_node_expr_blkinit;
 	.7 := val_from_node_expr_nyi;
 	.8 := val_from_node_expr_nyi;
 	.9 := val_from_node_expr_nyi;

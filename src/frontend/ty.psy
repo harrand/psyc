@@ -373,20 +373,23 @@ ty_storage_t : struct
 
 ty_storage : ty_storage_t mut := zero;
 
-ty_from_typename_node : func(n : ast mut? -> ty)
+ty_from_typename_node : func(n : ast mut?, src : source -> ty)
 {
-	return [ty_from_typename_node_tbl # [ast_typename_get_tag(n)]@s64](n);
+	return [ty_from_typename_node_tbl # [ast_typename_get_tag(n)]@s64](n, src);
 };
 
-ty_from_typename_node_base : func(n : ast mut? -> ty)
+ty_from_typename_node_base : func(n : ast mut?, src : source -> ty)
 {
 	return ty_find([ast_typename_base_get_basename(n)], [ast_typename_base_get_basename_len(n)]) | [ast_typename_get_quals(n)];
 };
 
-ty_from_typename_node_array : func(n : ast mut? -> ty)
+ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 {
-	underlying ::= ty_from_typename_node(ast_typename_array_get_element_type(n));
+	underlying ::= ty_from_typename_node(ast_typename_array_get_element_type(n), src);
 	len_expr_node ::= ast_typename_array_get_length_expr(n);
+
+	len_val : val mut;
+	val_from_node(len_expr_node, ref len_val, val_resolve.type_only, src);
 	if([ast_expr_get_tag(len_expr_node)] != ast_expr_tag.literal)
 	{
 		panic_begin();
@@ -407,9 +410,9 @@ ty_from_typename_node_array : func(n : ast mut? -> ty)
 	return ret;
 };
 
-ty_from_typename_node_pointer : func(n : ast mut? -> ty)
+ty_from_typename_node_pointer : func(n : ast mut?, src : source -> ty)
 {
-	underlying ::= ty_from_typename_node(ast_typename_pointer_get_pointee_type(n));
+	underlying ::= ty_from_typename_node(ast_typename_pointer_get_pointee_type(n), src);
 	ret ::= ty_new_empty();
 	
 	u ::= ty_unwrap(ret);
@@ -425,9 +428,9 @@ ty_from_typename_node_pointer : func(n : ast mut? -> ty)
 	return ret;
 };
 
-ty_from_typename_node_function : func(n : ast mut? -> ty)
+ty_from_typename_node_function : func(n : ast mut?, src : source -> ty)
 {
-	retty ::= ty_from_typename_node(ast_typename_function_get_return_typename(n));
+	retty ::= ty_from_typename_node(ast_typename_function_get_return_typename(n), src);
 	ret ::= ty_new_empty();
 	
 	u ::= ty_unwrap(ret);
@@ -441,7 +444,7 @@ ty_from_typename_node_function : func(n : ast mut? -> ty)
 	i : u64 mut;
 	for(i = 0; i < u->members_count; i = i + 1)
 	{
-		[u->members # i] = ty_from_typename_node(ast_decl_get_typename(member_decl_nodes # i));
+		[u->members # i] = ty_from_typename_node(ast_decl_get_typename(member_decl_nodes # i), src);
 	}
 	u->array_len = 0;
 	u->reference = n;
@@ -449,17 +452,17 @@ ty_from_typename_node_function : func(n : ast mut? -> ty)
 	return ret;
 };
 
-ty_from_typename_node_type_of : func(n : ast mut? -> ty)
+ty_from_typename_node_type_of : func(n : ast mut?, src : source -> ty)
 {
 	return ty.invalid;
 };
 
-ty_from_typename_node_deduced : func(n : ast mut? -> ty)
+ty_from_typename_node_deduced : func(n : ast mut?, src : source -> ty)
 {
 	return ty.invalid;
 };
 
-ty_from_typename_node_tbl ::= func(n : ast mut? -> ty)[countof ast_typename_tag]
+ty_from_typename_node_tbl ::= func(n : ast mut?, src : source -> ty)[countof ast_typename_tag]
 {
 	.0 := ty_from_typename_node_base;
 	.1 := ty_from_typename_node_array;
