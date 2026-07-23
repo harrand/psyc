@@ -16,7 +16,27 @@ codegen_ir_func : func(fn : function_t mut? -> v0)
 {
 	myself : irval mut;
 	irfn ::= ir_add_func(ref myself);
-	// todo: chunking for ir_add_param and ir_add_return calls
+
+	fnty ::= ty_unwrap(fn->type);
+
+	param_chunks : irchunk mut? mut;
+	param_chunks_count : u64 mut;
+	irabi_chunk(fn->abi, fnty->members # 0, fnty->members_count, ref param_chunks, ref param_chunks_count);
+
+	return_chunks : irchunk mut? mut;
+	return_chunks_count : u64 mut;
+	irabi_chunk(fn->abi, ref(fnty->underlying), 1, ref return_chunks, ref return_chunks_count);
+
+	i : u64 mut;
+	dummy : irval mut;
+	for(i = 0; i < param_chunks_count; i = i + 1)
+	{
+		ir_add_param(irchunk_as_irsz(param_chunks # i), ref dummy);
+	}
+	for(i = 0; i < return_chunks_count; i = i + 1)
+	{
+		ir_add_return(irchunk_as_irsz(return_chunks # i));
+	}
 
 	fn->irfunc_idx = irfn->idx;
 };
