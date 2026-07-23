@@ -11,9 +11,9 @@ populate_structures : func(-> v0)
 			populate_structure_type(cur);
 		}
 		// todo: delete once we're happy with it
-		base : ty := ty.custom_begin;
-		putty((i@s64 + base@s64)@ty);
-		putchar('\n');
+		//base : ty := ty.custom_begin;
+		//putty((i@s64 + base@s64)@ty);
+		//putchar('\n');
 	}
 };
 
@@ -54,30 +54,19 @@ populate_globals : func(-> v0)
 			init_val : val mut;
 			val_from_node(init, ref init_val, val_resolve.type_only, var->src);
 			var->type = [val_get_type(ref init_val)];
-			if(var->type == ty.invalid)
-			{
-				err_begin();
-				putzstr("could not decipher type of initialiser of deduced-decl \0");
-				putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
-				putzstr("\n\0");
-				putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.red_underline);
-				err_end();
-			}
 		}
 		else
 		{
 			var->type = ty_from_typename_node(typename_node, var->src);
-			// todo: delete once we're happy with it
-			putty(var->type);
-
-			if(var->type == ty.invalid)
-			{
-				putzstr(", fugg \0");
-				putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
-				putzstr(" \0");
-				putsint([ast_typename_get_tag(ast_decl_get_typename(var->node))]@s64);
-			}
-			putchar('\n');
+		}
+		if(var->type == ty.invalid)
+		{
+			err_begin();
+			putzstr("could not decipher type of global variable \0");
+			putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+			putzstr("\n\0");
+			putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.red_underline);
+			err_end();
 		}
 	}
 };
@@ -90,9 +79,6 @@ populate_functions : func(-> v0)
 	{
 		fn ::= prog.global_scope.funcs # i;
 		fn->type = ty_from_typename_node(ast_function_get_typename(fn->node), fn->src);
-		// todo: delete once we're happy with it
-		putty(fn->type);
-		putchar('\n');
 	}
 };
 
