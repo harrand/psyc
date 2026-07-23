@@ -116,9 +116,8 @@ build_builtin_add_source_directory_callback : func(child_path : path, usrdata : 
 
 execute_build_builtin_entrypoint : func(params : ast mut?, params_count : u32, src : source -> v0)
 {
-	warn_begin();
-	putzstr("entrypoint NYI\n\0");
-	warn_end();
+	prog.entrypoint.data = [ast_literal_get_string(params # 0)];
+	prog.entrypoint.len = [ast_literal_get_string_len(params # 0)];
 };
 
 execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : u32, src : source -> v0)
@@ -128,6 +127,13 @@ execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : 
 	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, scratch_arena);
 	// todo: return output code
 	shell_command(cmd_zstr);
+};
+
+execute_build_builtin_set_optimization : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	opt_val : val mut;
+	val_from_node(params # 0, ref opt_val, val_resolve.compiletime_only, src);
+	prog.opt = [val_scalar_literal_get_integer(ref opt_val)]@program_optimisation;
 };
 
 execute_build_builtin : func(name : u8?, name_len : u32, params : ast mut?, params_count : u32, src : source, node : ast mut? -> v0)
@@ -150,6 +156,11 @@ execute_build_builtin : func(name : u8?, name_len : u32, params : ast mut?, para
 	if(streql(name, name_len@u64, "prebuild_command", 16))
 	{
 		execute_build_builtin_prebuild_command(params, params_count, src);
+		return;
+	}
+	if(streql(name, name_len@u64, "set_optimization", 16))
+	{
+		execute_build_builtin_set_optimization(params, params_count, src);
 		return;
 	}
 	

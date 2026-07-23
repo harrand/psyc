@@ -191,18 +191,24 @@ val_from_node_expr_literal : func(node : ast mut?, out : val mut?, resolve : val
 
 val_from_node_expr_symbol : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
-	maybe_var ::= scope_find_variable(ref(prog.global_scope), [ast_symbol_get_data(node)], [ast_symbol_get_data_len(node)]);
+	sym ::= [ast_symbol_get_data(node)];
+	symlen ::= [ast_symbol_get_data_len(node)];
+	maybe_var ::= scope_find_variable(ref(prog.global_scope), sym, symlen);
 	if(maybe_var != zero)
 	{
-		// todo: do something with var
-		panic_begin();
-		putzstr("val_from_node_expr_symbol NYI for codepath variable-name \0");
-		putchar('"');
-		putchars([ast_symbol_get_data(node)], [ast_symbol_get_data_len(node)]);
-		putchar('"');
-		putzstr("from source \0");
-		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
-		panic_end();
+		out->tag = val_tag.variable_reference;
+		[val_variable_reference_get_variable(out)] = maybe_var;
+		[val_get_type(out)] = maybe_var->type;
+		return;
+	}
+
+	maybe_func ::= scope_find_function(ref(prog.global_scope), sym, symlen);
+	if(maybe_func != zero)
+	{
+		out->tag = val_tag.function_reference;
+		[val_function_reference_get_function(out)] = maybe_func;
+		[val_get_type(out)] = maybe_func->type;
+		return;
 	}
 	panic_begin();
 	putzstr("val_from_node_expr_symbol NYI for codepath: \0");
