@@ -33,6 +33,9 @@ rule_symbol2symbolexpr : func(nodes : ast mut?, nodes_count : u64, out_result : 
 
 	out ::= nodes # 0;
 	out->tag = ast_tag.expr;
+	// must write in this directory because token_get_data_len aliases symbol_get_data
+	[ast_symbol_get_data_len(out)] = [ast_token_get_data_len(out)];
+	[ast_symbol_get_data(out)] = [ast_token_get_data(out)];
 	[ast_expr_get_tag(out)] = ast_expr_tag.symbol;
 };
 
@@ -89,10 +92,12 @@ rule_oparen_exprx_cparen2expr : func(nodes : ast mut?, nodes_count : u64, out_re
 {
 	out_result->type = grammar_result_type.reduce;
 	out_result->shift_or_delete_count = 2;
-	out_result->delete_offset = 1;
+	out_result->delete_offset = 0;
 
+	// in order to prevent src-beg/end from auto-including the cparen
+	// we actually overwrite the cparen with the result
 	expr_node ::= nodes # 1;
-	out ::= nodes # 0;
+	out ::= nodes # 2;
 	[out] = [expr_node];
 	if([ast_expr_get_tag(out)] == ast_expr_tag.biop)
 	{
