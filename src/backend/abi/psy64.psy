@@ -17,7 +17,7 @@ _chunkhelper_append : func(chunks : irchunk mut? mut?, count : u64 mut?, cap : u
 	[count] = [count] + 1;
 };
 
-irabi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
+abi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
 {
 	[out_chunks] = zero;
 	[out_chunks_count] = 0;
@@ -32,7 +32,7 @@ irabi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? m
 	for(i = 0; i < tys_count; i = i + 1)
 	{
 		curty ::= [tys # i];
-		curty_sz ::= irabi_sizeof_psy64(curty);
+		curty_sz ::= abi_sizeof_psy64(curty);
 		if(curty_sz > 0)
 		{
 			if(ty_is_structure(curty) || ty_is_array(curty))
@@ -40,11 +40,11 @@ irabi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? m
 				agg ::= ty_unwrap(curty);
 				subchunks : irchunk mut? mut;
 				subchunks_count : u64 mut := 0;
-				irabi_chunk_psy64(agg->members, agg->members_count, ref subchunks, ref subchunks_count, scratch_arena);
+				abi_chunk_psy64(agg->members, agg->members_count, ref subchunks, ref subchunks_count, scratch_arena);
 				for(j = 0; j < subchunks_count; j = j + 1)
 				{
 					ptr ::= subchunks # j;
-					ptr->src_byte_offset = ptr->src_byte_offset + irabi_offsetof_struct_psy64(curty, ptr->src_idx_begin);
+					ptr->src_byte_offset = ptr->src_byte_offset + abi_offsetof_struct_psy64(curty, ptr->src_idx_begin);
 					ptr->src_idx_begin = i;
 					ptr->src_idx_end = i;
 					_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, ptr, ar);
@@ -74,7 +74,7 @@ irabi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? m
 	}
 };
 
-irabi_sizeof_psy64 : func(type : ty -> u64)
+abi_sizeof_psy64 : func(type : ty -> u64)
 {
 	if(ty_is_v0(type))
 	{
@@ -92,30 +92,30 @@ irabi_sizeof_psy64 : func(type : ty -> u64)
 	}
 	if(ty_is_bool(type))
 	{
-		return irabi_sizeof_psy64(ty.u8);
+		return abi_sizeof_psy64(ty.u8);
 	}
 	if(ty_is_pointer(type))
 	{
-		return irabi_sizeof_psy64(ty.u64);
+		return abi_sizeof_psy64(ty.u64);
 	}
 	if(ty_is_enum(type))
 	{
-		return irabi_sizeof_psy64(ty.s64);
+		return abi_sizeof_psy64(ty.s64);
 	}
 	if(ty_is_array(type))
 	{
-		return irabi_sizeof_psy64(ty_underlying(type)) * ty_countof(type);
+		return abi_sizeof_psy64(ty_underlying(type)) * ty_countof(type);
 	}
 	if(ty_is_function(type))
 	{
-		return irabi_sizeof_psy64(ty.u64);
+		return abi_sizeof_psy64(ty.u64);
 	}
 	if(ty_is_structure(type))
 	{
-		return irabi_sizeof_struct_psy64(type);
+		return abi_sizeof_struct_psy64(type);
 	}
 	panic_begin();
-	putzstr("reached end of irabi_sizeof_psy64 for type \0");
+	putzstr("reached end of abi_sizeof_psy64 for type \0");
 	putchar('"');
 	putty(type);
 	putchar('"');
@@ -123,16 +123,16 @@ irabi_sizeof_psy64 : func(type : ty -> u64)
 	return zero;
 };
 
-irabi_sizeof_struct_psy64 : func(type : ty -> u64)
+abi_sizeof_struct_psy64 : func(type : ty -> u64)
 {
-	align ::= irabi_alignof_struct_psy64(type);
+	align ::= abi_alignof_struct_psy64(type);
 	strct ::= ty_unwrap(type);
 	i : u64 mut;
 	cursor : u64 mut := 0;
 	for(i = 0; i < strct->members_count; i = i + 1)
 	{
-		curalign ::= irabi_alignof(irabi.psy64, [strct->members # i]);
-		cursz ::= irabi_sizeof(irabi.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi.psy64, [strct->members # i]);
+		cursz ::= abi_sizeof(abi.psy64, [strct->members # i]);
 		padding ::= (-cursor) & (curalign - 1);
 		cursor = cursor + padding;
 		cursor = cursor + cursz;
@@ -141,7 +141,7 @@ irabi_sizeof_struct_psy64 : func(type : ty -> u64)
 	return cursor + ((-cursor) & (align - 1));
 };
 
-irabi_alignof_psy64 : func(type : ty -> u64)
+abi_alignof_psy64 : func(type : ty -> u64)
 {
 	if(ty_is_v0(type))
 	{
@@ -159,43 +159,43 @@ irabi_alignof_psy64 : func(type : ty -> u64)
 	}
 	if(ty_is_bool(type))
 	{
-		return irabi_alignof_psy64(ty.u8);
+		return abi_alignof_psy64(ty.u8);
 	}
     if(ty_is_pointer(type))
 	{
-		return irabi_alignof_psy64(ty.u64);
+		return abi_alignof_psy64(ty.u64);
 	}
 	if(ty_is_enum(type))
 	{
-		return irabi_alignof_psy64(ty.s64);
+		return abi_alignof_psy64(ty.s64);
 	}
 	if(ty_is_array(type))
 	{
-		return irabi_alignof_psy64(ty_underlying(type));
+		return abi_alignof_psy64(ty_underlying(type));
 	}
 	if(ty_is_function(type))
 	{
-		return irabi_alignof_psy64(ty.u64);
+		return abi_alignof_psy64(ty.u64);
 	}
 	if(ty_is_structure(type))
 	{
-		return irabi_alignof_struct_psy64(type);
+		return abi_alignof_struct_psy64(type);
 	}
-	putzstr("reached end of irabi_alignof_psy64 for type \0");
+	putzstr("reached end of abi_alignof_psy64 for type \0");
 	putchar('"');
 	putty(type);
 	putchar('"');
 	return zero;
 };
 
-irabi_alignof_struct_psy64 : func(type : ty -> u64)
+abi_alignof_struct_psy64 : func(type : ty -> u64)
 {
 	strct ::= ty_unwrap(type);
 	i : u64 mut;
 	max_align : u64 mut := 1;
 	for(i = 0; i < strct->members_count; i = i + 1)
 	{
-		curalign ::= irabi_alignof(irabi.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi.psy64, [strct->members # i]);
 		if(curalign > max_align)
 		{
 			max_align = curalign;
@@ -204,19 +204,19 @@ irabi_alignof_struct_psy64 : func(type : ty -> u64)
 	return max_align;
 };
 
-irabi_offsetof_struct_psy64 : func(type : ty, idx : u64 -> u64)
+abi_offsetof_struct_psy64 : func(type : ty, idx : u64 -> u64)
 {
 	strct ::= ty_unwrap(type);
 	cursor : u64 mut := 0;
 	i : u64 mut;
 	for(i = 0; i < idx; i = i + 1)
 	{
-		curalign ::= irabi_alignof(irabi.psy64, [strct->members # i]);
-		cursz ::= irabi_sizeof(irabi.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi.psy64, [strct->members # i]);
+		cursz ::= abi_sizeof(abi.psy64, [strct->members # i]);
 		padding ::= (-cursor) & (curalign - 1);
 		cursor = cursor + padding;
 		cursor = cursor + cursz;
 	}
-	final_align ::= irabi_alignof(irabi.psy64, [strct->members # i]);
+	final_align ::= abi_alignof(abi.psy64, [strct->members # i]);
 	return cursor + ((-cursor) & (final_align - 1));
 };
