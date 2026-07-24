@@ -1,23 +1,23 @@
-_chunkhelper_append : func(chunks : irchunk mut? mut?, count : u64 mut?, cap : u64 mut?, new : irchunk mut?, ar : arena mut? -> v0)
+_chunkhelper_append : func(chunks : abi_chunk mut? mut?, count : u64 mut?, cap : u64 mut?, new : abi_chunk mut?, ar : arena mut? -> v0)
 {
 	if([chunks] == zero)
 	{
 		[cap] = 8;
-		[chunks] = arena_alloc(ar, [cap] * sizeof irchunk);
+		[chunks] = arena_alloc(ar, [cap] * sizeof abi_chunk);
 	}
 	while([cap] <= [count])
 	{
 		old ::= [chunks];
 		oldcap ::= [cap];
 		[cap] = [cap] * 2;
-		[chunks] = arena_alloc(ar, [cap] * sizeof irchunk);
-		memcopy([chunks], old, oldcap * sizeof irchunk);
+		[chunks] = arena_alloc(ar, [cap] * sizeof abi_chunk);
+		memcopy([chunks], old, oldcap * sizeof abi_chunk);
 	}
 	[[chunks] # [count]] = [new];
 	[count] = [count] + 1;
 };
 
-abi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
+abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
 {
 	[out_chunks] = zero;
 	[out_chunks_count] = 0;
@@ -26,7 +26,7 @@ abi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut
 		return;
 	}
 	chunks_cap : u64 mut := tys_count;
-	[out_chunks] = arena_alloc(ar, chunks_cap * sizeof irchunk);
+	[out_chunks] = arena_alloc(ar, chunks_cap * sizeof abi_chunk);
 	i : u64 mut;
 	j : u64 mut;
 	for(i = 0; i < tys_count; i = i + 1)
@@ -38,9 +38,9 @@ abi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut
 			if(ty_is_structure(curty) || ty_is_array(curty))
 			{
 				agg ::= ty_unwrap(curty);
-				subchunks : irchunk mut? mut;
+				subchunks : abi_chunk mut? mut;
 				subchunks_count : u64 mut := 0;
-				abi_chunk_psy64(agg->members, agg->members_count, ref subchunks, ref subchunks_count, scratch_arena);
+				abi_chunk_tys_psy64(agg->members, agg->members_count, ref subchunks, ref subchunks_count, scratch_arena);
 				for(j = 0; j < subchunks_count; j = j + 1)
 				{
 					ptr ::= subchunks # j;
@@ -52,16 +52,16 @@ abi_chunk_psy64 : func(tys : ty?, tys_count : u64, out_chunks : irchunk mut? mut
 			}
 			else
 			{
-				new : irchunk mut;
+				new : abi_chunk mut;
 				if(ty_floating_point_size(curty) > 0)
 				{
 					// fp
-					new.tag = irchunk_tag.fp;
+					new.tag = abi_chunk_tag.fp;
 				}
 				else
 				{
 					// non fp
-					new.tag = irchunk_tag.nonfp;
+					new.tag = abi_chunk_tag.nonfp;
 				}
 				// scalar
 				new.src_idx_begin = i;
