@@ -31,30 +31,73 @@ codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 
 	abi_chunk_tys(fn->abi, ref(fnty->underlying), 1, ref(fn->return_chunks), ref(fn->return_chunks_count), global_arena);
 
-	i : u64 mut;
-	dummy : irval mut;
 	sz : irsz mut;
-	for(i = 0; i < fn->param_chunks_count; i = i + 1)
+	i : u64 mut;
+	j : u64 mut;
+
+	params_count ::= ty_countof(fn->type);
+	param_nodes ::= ast_typename_function_get_param_decls(fn_typename_node);
+	for(i = 0; i < params_count; i = i + 1)
 	{
-		chnk ::= fn->param_chunks # i;
-		param_node ::= ast_typename_function_get_param_decls(fn_typename_node) # chnk->src_idx_begin;
-		sz = abi_chunk_as_irsz(chnk);
-		if(sz == irsz.none)
+		param_var ::= fn->scope.vars # i;
+		param_storage ::= ref(param_var->storage);
+		// calculate abi chunks again but only for this particular parameter
+		chunks_for_this_param : abi_chunk mut? mut := zero;
+		chunks_for_this_param_count : u64 mut := 0;
+		abi_chunk_tys(fn->abi, fnty->members # i, 1, ref chunks_for_this_param, ref chunks_for_this_param_count, scratch_arena);
+		if(chunks_for_this_param_count == 0)
 		{
-			panic_begin();
-			putzstr("abi: parameter \0");
-			putuint(chnk->src_idx_begin);
-			putzstr(" to function \0");
-			putchar('"');
-			putchars(irfn->custom_name, irfn->custom_name_len);
-			putchar('"');
-			putzstr(" was not partitioned properly into valid chunk(s) at \0");
-			putsrc(fn->src, param_node->src_beg@u64, param_node->src_end@u64, putcol.red_underline);
-			panic_end();
+			// this param yielded zero chunks
+			// it is either v0 (which is user-error) or something else, which is a compiler bug
+			if(ty_strip(ty_at(fn->type, i)) == ty.v0)
+			{
+				err_begin();
+				putzstr("parameter \0");
+				putuint(i);
+				putzstr(" of function \0");
+				putchar('"');
+				putchars(irfn->custom_name, irfn->custom_name_len);
+				putchar('"');
+				putzstr(" was 'v0', which is specifically not-allowed as a parameter type at \0");
+				putsrc(fn->src, (param_nodes # i)->src_beg@u64, (param_nodes # i)->src_end@u64, putcol.red_underline);
+				
+				err_end();
+			}
+			else
+			{
+				panic_begin();
+				putzstr("abi: parameter \0");
+				putuint(i);
+				putzstr(" of function \0");
+				putchar('"');
+				putchars(irfn->custom_name, irfn->custom_name_len);
+				putchar('"');
+				putzstr(" yielded zero chunks at \0");
+				putsrc(fn->src, (param_nodes # i)->src_beg@u64, (param_nodes # i)->src_end@u64, putcol.red_underline);
+				panic_end();
+			}
 		}
-		ir_add_param(sz, ref dummy);
+		if(chunks_for_this_param_count == 1)
+		{
+			param_storage->tag = val_tag.scalar;
+			sz = abi_chunk_as_irsz(chunks_for_this_param # 0);
+			ir_add_param(sz, val_scalar_get_irval(param_storage));
+		}
+		else
+		{
+			// aggregate
+			param_storage->tag = val_tag.aggregate;
+			[val_aggregate_get_members_count(param_storage)] = chunks_for_this_param_count;
+			members_ptr : val mut? := arena_alloc(global_arena, chunks_for_this_param_count * sizeof val);
+			[val_aggregate_get_members(param_storage)] = members_ptr;
+			for(j = 0; j < chunks_for_this_param_count; j = j + 1)
+			{
+				sz = abi_chunk_as_irsz(chunks_for_this_param # j);
+				ir_add_param(sz, val_scalar_get_irval(members_ptr # i));
+			}
+		}
 	}
-	// todo: set aggregates for all params
+
 	return_node ::= ast_typename_function_get_return_typename(fn_typename_node);
 	for(i = 0; i < fn->return_chunks_count; i = i + 1)
 	{
