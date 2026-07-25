@@ -29,49 +29,53 @@ populate_structure_type : func(d : tydata mut? -> v0)
 	}
 };
 
+semal_variable : func(var : variable_t mut? -> v0)
+{
+	typename_node ::= ast_decl_get_typename(var->node);
+	if([ast_typename_get_tag(typename_node)] == ast_typename_tag.deduced)
+	{
+		// must have an initialiser
+		init ::= ast_decl_maybe_get_init_node(var->node);
+		if(init == zero)
+		{
+			err_begin();
+			putzstr("deduced declaration \0");
+			putchar('"');
+			putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+			putchar('"');
+			putzstr(" did not have an initialiser. all deduced declarations *must* have an initialiser\0");
+			err_end();
+		}
+		init_val : val mut;
+		val_from_node(init, ref init_val, val_resolve.type_only, var->src);
+		var->type = [val_get_type(ref init_val)];
+	}
+	else
+	{
+		var->type = ty_from_typename_node(typename_node, var->src);
+	}
+	if(var->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("could not decipher type of global variable \0");
+		putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+		putzstr("\n\0");
+		putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+};
+
 populate_globals : func(-> v0)
 {
 	i : u64 mut;
 	count ::= prog.global_scope.vars_count;
 	for(i = 0; i < count; i = i + 1)
 	{
-		var ::= prog.global_scope.vars # i;
-		typename_node ::= ast_decl_get_typename(var->node);
-		if([ast_typename_get_tag(typename_node)] == ast_typename_tag.deduced)
-		{
-			// must have an initialiser
-			init ::= ast_decl_maybe_get_init_node(var->node);
-			if(init == zero)
-			{
-				err_begin();
-				putzstr("deduced declaration \0");
-				putchar('"');
-				putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
-				putchar('"');
-				putzstr(" did not have an initialiser. all deduced declarations *must* have an initialiser\0");
-				err_end();
-			}
-			init_val : val mut;
-			val_from_node(init, ref init_val, val_resolve.type_only, var->src);
-			var->type = [val_get_type(ref init_val)];
-		}
-		else
-		{
-			var->type = ty_from_typename_node(typename_node, var->src);
-		}
-		if(var->type == ty.invalid)
-		{
-			err_begin();
-			putzstr("could not decipher type of global variable \0");
-			putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
-			putzstr("\n\0");
-			putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.red_underline);
-			err_end();
-		}
+		semal_variable(prog.global_scope.vars # i);
 	}
 };
 
-populate_functions : func(-> v0)
+populate_function_declarations : func(-> v0)
 {
 	i : u64 mut;
 	j : u64 mut;
@@ -96,9 +100,72 @@ populate_functions : func(-> v0)
 	}
 };
 
+populate_function_definitions : func(-> v0)
+{
+	i : u64 mut;
+	j : u64 mut;
+	count ::= prog.global_scope.funcs_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		semal_func_collect_locals(prog.global_scope.funcs # i);
+	}
+};
+
 semal : func(-> v0)
 {
 	populate_structures();
+	populate_function_declarations();
 	populate_globals();
-	populate_functions();
+	populate_function_definitions();
+};
+
+semal_func_collect_locals_usrdata : struct
+{
+	scope : scope_t mut?;
+	src : source;
+};
+
+semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
+{
+	u ::= usrdata@semal_func_collect_locals_usrdata mut?;
+	t ::= [ast_stmt_get_tag(node)];
+	if((t == ast_stmt_tag.if_blk))
+	{
+		semal_node_collect_locals(node, 1, node->children_count@u64, u);
+	}
+	if((t == ast_stmt_tag.while_blk))
+	{
+		semal_node_collect_locals(node, 1, node->children_count@u64, u);
+	}
+	if((t == ast_stmt_tag.for_blk))
+	{
+		semal_node_collect_locals(node, 3, node->children_count@u64, u);
+	}
+	if((t == ast_stmt_tag.else_blk))
+	{
+		semal_node_collect_locals(node, 0, node->children_count@u64, u);
+	}
+	if((t == ast_stmt_tag.decl))
+	{
+		var : variable_t mut;	
+		var.node = node;
+		var.src = u->src;
+		var.type = zero;
+		var.local_param_idx = ~0;
+		semal_variable(ref var);
+		scope_add_variable(u->scope, ref var);
+	}
+};
+
+semal_node_collect_locals : func(node : ast mut?, begin : u64, end : u64, u : semal_func_collect_locals_usrdata mut? -> v0)
+{
+	ast_walk(node, begin, end, semal_func_collect_locals_callback, u);
+};
+
+semal_func_collect_locals : func(fn : function_t mut? -> v0)
+{
+	usrdata : semal_func_collect_locals_usrdata mut;
+	usrdata.scope = ref(fn->scope);
+	usrdata.src = fn->src;
+	semal_node_collect_locals(fn->node, 1, fn->node->children_count@u64, ref usrdata);
 };
