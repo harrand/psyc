@@ -127,6 +127,16 @@ codegen_ir_funcdef : func(fn : function_t mut? -> v0)
 	i : u64 mut;
 	for(i = param_count; i < fn->scope.vars_count; i = i + 1)
 	{
-		// todo: set variable->storage
+		var ::= fn->scope.vars # i;
+		storage ::= ref(var->storage);
+		storage->tag = val_tag.pointer;
+
+		size_irval : irval mut;
+		irval_dimm(abi_sizeof(fn->abi, var->type), ref size_irval);
+		
+		align_irval : irval mut;
+		irval_dimm(abi_alignof(fn->abi, var->type), ref align_irval);
+
+		ir_stack(ref size_irval, ref align_irval, val_pointer_get_irval(storage));
 	}
 };

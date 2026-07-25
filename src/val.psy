@@ -146,7 +146,16 @@ val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, resolve : val_reso
 	panic_begin();
 	putzstr("val_convert NYI for val_tag.\0");
 	putsint(v->tag@s64);
-	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.blue_underline);
+	putzstr(" at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_convert_invalid : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
+{
+	panic_begin();
+	putzstr("val_convert called on an invalid value at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
@@ -155,18 +164,48 @@ val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, resolve : va
 	val_zero_as(to, out);
 };
 
+val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
+{
+	if(resolve == val_resolve.compiletime_only)
+	{
+		// we're at compile-time so we can just keep the string literal
+		[out] = [v];
+		out->type = to;
+		return;
+	}
+	if(ty_is_pointer(to))
+	{
+		// assume we are converting to any pointer
+		// add a global variable containing the string data
+		globref_ptr ::= val_pointer_get_irval(out);
+		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, globref_ptr);
+		out->type = to;
+		out->tag = val_tag.pointer;
+		return;
+	}
+	panic_begin();
+	putzstr("val_convert_string_literal NYI for non-pointer type \0");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putzstr(" at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
 {
+	// todo: ensure that 'v->type' is convertible to 'to'
 	[val_convert_tbl # (v->tag@s64)](v, to, out, resolve, src, ctx);
 };
 
 val_convert_tbl ::= typeof(val_convert)[countof val_tag]
 {
-	.0 := val_convert_nyi;
+	.0 := val_convert_invalid;
 	.1 := val_convert_nyi;
 	.2 := val_convert_zerovalue;
 	.3 := val_convert_nyi;
-	.4 := val_convert_nyi;
+	.4 := val_convert_string_literal;
 	.5 := val_convert_nyi;
 	.6 := val_convert_nyi;
 	.7 := val_convert_nyi;
@@ -230,7 +269,6 @@ val_resolve : enum
 	.type_only := 0;
 	.compiletime_only := 1;
 	.runtime_only := 2;
-	.any := 3;
 };
 
 // val operations
@@ -351,6 +389,29 @@ val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve :
 	putzstr("from source \0");
 	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
 	panic_end();
+};
+
+// if ptr_val is a val_tag.pointer, then 'out' will become either an aggregate or scalar value (depending on the type of 'ptr_val') containing the loaded value of the pointer. it will have the same type
+val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source, ctx : ast mut? -> v0)
+{
+	if(ptr_val->tag != val_tag.pointer)
+	{
+		return;
+	}
+	out->type = ptr_val->type;
+	load_chunks : abi_chunk mut? mut;
+	load_chunks_count : u64 mut;
+	abi_chunk_tys(abi, ref(ptr_val->type), 1, ref load_chunks, ref load_chunks_count, scratch_arena);
+	// easier codepath for scalars
+	if(load_chunks_count == 1)
+	{
+		out->tag = val_tag.scalar;
+		// todo: emit an ir_load on val_pointer_get_irval(ptr_val). result irval register should be written to val_scalar_get_irval(out)
+		panic_begin();
+		putzstr("nyi: ir_load call in val_load\0");
+		panic_end();
+		return;
+	}
 };
 
 val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
