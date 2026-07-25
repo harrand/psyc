@@ -141,23 +141,40 @@ val_aggregate_get_members_count : func(v : val mut? -> u64 mut?)
 	return ref(v->d1)@u64 mut?;
 };
 
-val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
 {
-	if(v->tag == val_tag.zerovalue)
-	{
-		val_zero_as(to, out);
-		return;
-	}
 	panic_begin();
-	putzstr("reached end of val_convert for \0");
-	putchar('"');
-	putty(v->type);
-	putchar('"');
-	putzstr(" -> \0");
-	putchar('"');
-	putty(to);
-	putchar('"');
+	putzstr("val_convert NYI for val_tag.\0");
+	putsint(v->tag@s64);
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.blue_underline);
 	panic_end();
+};
+
+val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
+{
+	val_zero_as(to, out);
+};
+
+val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
+{
+	[val_convert_tbl # (v->tag@s64)](v, to, out, resolve, src, ctx);
+};
+
+val_convert_tbl ::= typeof(val_convert)[countof val_tag]
+{
+	.0 := val_convert_nyi;
+	.1 := val_convert_nyi;
+	.2 := val_convert_zerovalue;
+	.3 := val_convert_nyi;
+	.4 := val_convert_nyi;
+	.5 := val_convert_nyi;
+	.6 := val_convert_nyi;
+	.7 := val_convert_nyi;
+	.8 := val_convert_nyi;
+	.9 := val_convert_nyi;
+	.10 := val_convert_nyi;
+	.11 := val_convert_nyi;
+	.12 := val_convert_nyi;
 };
 
 val_zero_as : func(to : ty, out : val mut? -> v0)
@@ -352,8 +369,7 @@ val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_re
 	{
 		cur_param_val : val mut;
 		val_from_node(param_nodes # i, ref cur_param_val, resolve, src);
-		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, src);
-		// todo: convert param_vals # i to ty_at(callee_fnty, i)
+		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, src, param_nodes # i);
 	}
 
 	// todo runtime: create a non-scratch array of irvals containing all the chunked parameters for the call
