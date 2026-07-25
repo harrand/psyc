@@ -17,6 +17,7 @@ codegen_ir_func : func(fn : function_t mut? -> v0)
 	myself : irval mut;
 	irfn ::= ir_add_func(ref myself);
 	fn_node ::= fn->node;
+	fn_typename_node ::= ast_function_get_typename(fn_node);
 	irfn->custom_name = [ast_function_get_name(fn_node)];
 	irfn->custom_name_len = [ast_function_get_name_len(fn_node)];
 
@@ -28,13 +29,43 @@ codegen_ir_func : func(fn : function_t mut? -> v0)
 
 	i : u64 mut;
 	dummy : irval mut;
+	sz : irsz mut;
 	for(i = 0; i < fn->param_chunks_count; i = i + 1)
 	{
-		ir_add_param(abi_chunk_as_irsz(fn->param_chunks # i), ref dummy);
+		chnk ::= fn->param_chunks # i;
+		param_node ::= ast_typename_function_get_param_decls(fn_typename_node) # chnk->src_idx_begin;
+		sz = abi_chunk_as_irsz(chnk);
+		if(sz == irsz.none)
+		{
+			panic_begin();
+			putzstr("abi: parameter \0");
+			putuint(chnk->src_idx_begin);
+			putzstr(" to function \0");
+			putchar('"');
+			putchars(irfn->custom_name, irfn->custom_name_len);
+			putchar('"');
+			putzstr(" was not partitioned properly into valid chunk(s) at \0");
+			putsrc(fn->src, param_node->src_beg@u64, param_node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		ir_add_param(sz, ref dummy);
 	}
+	return_node ::= ast_typename_function_get_return_typename(fn_typename_node);
 	for(i = 0; i < fn->return_chunks_count; i = i + 1)
 	{
-		ir_add_return(abi_chunk_as_irsz(fn->return_chunks # i));
+		sz = abi_chunk_as_irsz(fn->return_chunks # i);
+		if(sz == irsz.none)
+		{
+			panic_begin();
+			putzstr("abi: return value of function \0");
+			putchar('"');
+			putchars(irfn->custom_name, irfn->custom_name_len);
+			putchar('"');
+			putzstr(" was not partitioned properly into valid chunk(s) at \0");
+			putsrc(fn->src, return_node->src_beg@u64, return_node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		ir_add_return(sz);
 	}
 
 	fn->irfunc_idx = irfn->idx;
