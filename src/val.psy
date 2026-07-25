@@ -6,7 +6,7 @@ val_tag : enum
 	.typeonly := 1;
 	// a value of 'zero' with no type (no data)
 	.zerovalue := 2;
-	// a scalar literal known at compile time (d0 = integer/floating-point)
+	// a scalar literal known at compile time (d0 = integer/floating-point/bool)
 	.scalar_literal := 3;
 	// a string literal (d0 = data u8?, d1 = len)
 	.string_literal := 4;
@@ -74,6 +74,11 @@ val_scalar_literal_get_floating_point : func(v : val mut? -> f64 mut?)
 	return ref(v->d0)@f64 mut?;
 };
 
+val_scalar_literal_get_bool : func(v : val mut? -> bool mut?)
+{
+	return ref(v->d0)@bool mut?;
+};
+
 val_string_literal_get_data : func(v : val mut? -> u8 mut? mut?)
 {
 	return ref(v->d0)@u8 mut? mut?;
@@ -84,9 +89,9 @@ val_string_literal_get_length : func(v : val mut? -> u64 mut?)
 	return ref(v->d1)@u64 mut?;
 };
 
-val_aggregate_literal_get_members : func(v : val mut? -> val mut?)
+val_aggregate_literal_get_members : func(v : val mut? -> val mut? mut?)
 {
-	return ref(v->d0)@val mut?;
+	return ref(v->d0)@val mut? mut?;
 };
 
 // remember the members count is decided by the type and is thus *not* stored separately
@@ -134,6 +139,73 @@ val_aggregate_get_members : func(v : val mut? -> val mut? mut?)
 val_aggregate_get_members_count : func(v : val mut? -> u64 mut?)
 {
 	return ref(v->d1)@u64 mut?;
+};
+
+val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	if(v->tag == val_tag.zerovalue)
+	{
+		val_zero_as(to, out);
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_convert for \0");
+	putchar('"');
+	putty(v->type);
+	putchar('"');
+	putzstr(" -> \0");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	panic_end();
+};
+
+val_zero_as : func(to : ty, out : val mut? -> v0)
+{
+	i : u64 mut;
+	out->type = to;
+	if((ty_integral_size(to) != 0) || ty_is_enumeration(to))
+	{
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = 0;
+		return;
+	}
+	if(ty_is_pointer(to))
+	{
+		out->tag = val_tag.pointer_literal;
+		[val_pointer_literal_get_address(out)] = 0;
+		return;
+	}
+	if(ty_is_function(to))
+	{
+		out->tag = val_tag.function_reference;
+		[val_function_reference_get_function(out)] = zero;
+		return;
+	}
+	if(ty_is_bool(to))
+	{
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_bool(out)] = false;
+		return;
+	}
+	if(ty_is_array(to) || ty_is_structure(to))
+	{
+		out->tag = val_tag.aggregate_literal;
+		members_count ::= ty_countof(to);
+		members_ptr : val mut? := arena_alloc(global_arena, members_count * sizeof val);
+		for(i = 0; i < members_count; i = i + 1)
+		{
+			val_zero_as(ty_at(to, i), members_ptr # i);
+		}
+		[val_aggregate_literal_get_members(out)] = members_ptr;
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_zero_as for type \0");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	panic_end();
 };
 
 val_resolve : enum
@@ -273,11 +345,15 @@ val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_re
 
 	i : u64 mut;
 
+	callee_fnty ::= callee_val.type;
 	// gather a scratch array of vals representing the parameters
 	param_vals : val mut? := arena_alloc(scratch_arena, param_nodes_count * sizeof val);
 	for(i = 0; i < param_nodes_count; i = i + 1)
 	{
-		val_from_node(param_nodes # i, param_vals # i, resolve, src);
+		cur_param_val : val mut;
+		val_from_node(param_nodes # i, ref cur_param_val, resolve, src);
+		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, src);
+		// todo: convert param_vals # i to ty_at(callee_fnty, i)
 	}
 
 	// todo runtime: create a non-scratch array of irvals containing all the chunked parameters for the call

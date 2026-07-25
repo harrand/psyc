@@ -219,7 +219,7 @@ ty_is_array : func(type : ty -> bool)
 	return ty_unwrap(type)->tag == tydata_tag.array;
 };
 
-ty_is_enum : func(type : ty -> bool)
+ty_is_enumeration : func(type : ty -> bool)
 {
 	if(ty_is_primitive(type))
 	{
@@ -273,6 +273,10 @@ ty_at : func(type : ty, idx : u64 -> ty)
 	if(ty_is_primitive(type))
 	{
 		return ty.invalid;
+	}
+	if(ty_is_array(type))
+	{
+		return ty_underlying(type);
 	}
 	u ::= ty_unwrap(type);
 	if((u->tag == tydata_tag.structure) || (u->tag == tydata_tag.function))
@@ -560,7 +564,7 @@ bwrite_ty : func(w : bwriter mut?, type : ty -> v0)
 			bwrite_ty(w, ty_underlying(type));
 			bwrite8(w, ')');
 		}
-		if(ty_is_enum(type) || ty_is_structure(type))
+		if(ty_is_enumeration(type) || ty_is_structure(type))
 		{
 			u ::= ty_unwrap(type);
 			bwrite_bytes(w, u->name, u->name_len);
