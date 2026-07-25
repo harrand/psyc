@@ -3,7 +3,11 @@ codegen_ir : func(-> v0)
 	i : u64 mut;
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
-		codegen_ir_func(prog.global_scope.funcs # i);
+		codegen_ir_funcsig(prog.global_scope.funcs # i);
+	}
+	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
+	{
+		codegen_ir_funcdef(prog.global_scope.funcs # i);
 	}
 
 	if(args_should_dump_ir())
@@ -12,7 +16,7 @@ codegen_ir : func(-> v0)
 	}
 };
 
-codegen_ir_func : func(fn : function_t mut? -> v0)
+codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 {
 	myself : irval mut;
 	irfn ::= ir_add_func(ref myself);
@@ -69,4 +73,11 @@ codegen_ir_func : func(fn : function_t mut? -> v0)
 	}
 
 	fn->irfunc_idx = irfn->idx;
+};
+
+codegen_ir_funcdef : func(fn : function_t mut? -> v0)
+{
+	// set irpos
+	ir_position_end_of(fn->irfunc_idx, 0);
+	// todo: generate local variables with ir_stack
 };

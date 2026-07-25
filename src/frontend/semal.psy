@@ -74,11 +74,25 @@ populate_globals : func(-> v0)
 populate_functions : func(-> v0)
 {
 	i : u64 mut;
+	j : u64 mut;
 	count ::= prog.global_scope.funcs_count;
 	for(i = 0; i < count; i = i + 1)
 	{
 		fn ::= prog.global_scope.funcs # i;
-		fn->type = ty_from_typename_node(ast_function_get_typename(fn->node), fn->src);
+		fn_typename_node ::= ast_function_get_typename(fn->node);
+		fn->type = ty_from_typename_node(fn_typename_node, fn->src);
+		param_count ::= ty_countof(fn->type);
+		param_decls ::= ast_typename_function_get_param_decls(fn_typename_node);
+		for(j = 0; j < param_count; j = j + 1)
+		{
+			param_node ::= param_decls # j;
+			var : variable_t mut;
+			var.node = param_node;
+			var.src = fn->src;
+			var.type = ty_from_typename_node(ast_decl_get_typename(param_node), fn->src);
+			var.local_param_idx = j@u8;
+			scope_add_variable(ref(fn->scope), ref var);
+		}
 	}
 };
 
