@@ -245,6 +245,14 @@ val_from_node_expr_literal_char : func(node : ast mut?, out : val mut?, resolve 
 	out->type = ty_floating_point_literal();
 };
 
+val_from_node_expr_literal_string : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	out->tag = val_tag.string_literal;
+	[val_string_literal_get_data(out)] = [ast_literal_get_string(node)];
+	[val_string_literal_get_length(out)] = [ast_literal_get_string_len(node)];
+	out->type = ty_string_literal();
+};
+
 val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
 	panic_begin();
@@ -253,6 +261,30 @@ val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve :
 	ast_dump_one(node, zero, zero, 1);
 	putzstr("from source \0");
 	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	panic_end();
+};
+
+val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	callee_val : val mut;
+	val_from_node(ast_call_get_callee(node), ref callee_val, resolve, src);
+	param_nodes ::= ast_call_get_params(node);
+	param_nodes_count ::= ast_call_get_params_count(node)@u64;
+
+	i : u64 mut;
+
+	// gather a scratch array of vals representing the parameters
+	param_vals : val mut? := arena_alloc(scratch_arena, param_nodes_count * sizeof val);
+	for(i = 0; i < param_nodes_count; i = i + 1)
+	{
+		val_from_node(param_nodes # i, param_vals # i, resolve, src);
+	}
+
+	// todo runtime: create a non-scratch array of irvals containing all the chunked parameters for the call
+	// todo runtime: emit the call
+	// todo runtime: return the result?
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_call\0");
 	panic_end();
 };
 
@@ -322,7 +354,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.2 := val_from_node_expr_nyi;
 	.3 := val_from_node_expr_nyi;
 	.4 := val_from_node_expr_nyi;
-	.5 := val_from_node_expr_nyi;
+	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
 	.7 := val_from_node_expr_nyi;
 	.8 := val_from_node_expr_nyi;
@@ -338,7 +370,7 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 	.0 := val_from_node_expr_literal_integer;
 	.1 := val_from_node_expr_literal_floating_point;
 	.2 := val_from_node_expr_literal_char;
-	.3 := val_from_node_expr_literal_nyi;
+	.3 := val_from_node_expr_literal_string;
 	.4 := val_from_node_expr_literal_nyi;
 };
 
