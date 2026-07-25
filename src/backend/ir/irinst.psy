@@ -58,6 +58,28 @@ irinst : struct
 	operands_cap : u64;
 };
 
+// workaround for compiler bug
+//irinst_zero : irinst := zero;
+
+irinst_add_operand : func(inst : irinst mut?, op : irval mut? -> v0)
+{
+	if(inst->operands == zero)
+	{
+		inst->operands_cap = 6;
+		inst->operands = arena_alloc(global_arena, inst->operands_cap * sizeof irval);
+	}
+	while(inst->operands_cap <= inst->operands_count)
+	{
+		oldcap ::= inst->operands_cap;
+		old ::= inst->operands;
+		inst->operands_cap = inst->operands_cap * 2;
+		inst->operands = arena_alloc(global_arena, inst->operands_cap * sizeof irval);
+		memcopy(inst->operands, old, oldcap * sizeof irval);
+	}
+	[inst->operands # (inst->operands_count)] = [op];
+	inst->operands_count = inst->operands_count + 1;
+};
+
 irinst_names ::= u8?[countof irinst_tag]
 {
 	.0 := "stack\0";
