@@ -165,6 +165,64 @@ val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, resolve : va
 	val_zero_as(to, out);
 };
 
+val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
+{
+	// same thing
+	out->type = to;
+	if(resolve == val_resolve.compiletime_only)
+	{
+		return;
+	}
+	// need to turn this into a runtime scalar
+	out->tag = val_tag.scalar;
+	// workaround enum types being a bit awkward
+	real_type : ty mut := to;
+	if(ty_is_enumeration(to))
+	{
+		real_type = ty_underlying(to);
+	}
+	isz ::= ty_integral_size(real_type);
+	fsz ::= ty_floating_point_size(real_type);
+	if(isz == 8)
+	{
+		irval_qimm([val_scalar_literal_get_integer(v)], val_scalar_get_irval(out));
+		return;
+	}
+	if(isz == 4)
+	{
+		irval_dimm([val_scalar_literal_get_integer(v)], val_scalar_get_irval(out));
+		return;
+	}
+	if(isz == 2)
+	{
+		irval_wimm([val_scalar_literal_get_integer(v)], val_scalar_get_irval(out));
+		return;
+	}
+	if(isz == 1)
+	{
+		irval_bimm([val_scalar_literal_get_integer(v)], val_scalar_get_irval(out));
+		return;
+	}
+	if(fsz == 8)
+	{
+		irval_gimm([val_scalar_literal_get_floating_point(v)], val_scalar_get_irval(out));
+		return;
+	}
+	if(fsz == 4)
+	{
+		irval_fimm([val_scalar_literal_get_floating_point(v)], val_scalar_get_irval(out));
+		return;
+	}
+	panic_begin();
+	putzstr("val_convert_scalar_literal to runtime value for type \0");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	putzstr(" at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, src : source, ctx : ast mut? -> v0)
 {
 	if(resolve == val_resolve.compiletime_only)
@@ -205,7 +263,7 @@ val_convert_tbl ::= typeof(val_convert)[countof val_tag]
 	.0 := val_convert_invalid;
 	.1 := val_convert_typeonly;
 	.2 := val_convert_zerovalue;
-	.3 := val_convert_nyi;
+	.3 := val_convert_scalar_literal;
 	.4 := val_convert_string_literal;
 	.5 := val_convert_nyi;
 	.6 := val_convert_nyi;
@@ -600,10 +658,33 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 		// is enum type. we have the rhs symbol node so lets find the enum entry
 		// todo: search through the entries of lhs_val.type and match rhs_symbol_node data to it. if we find it, then write that entry as a enum value scalar literal into 'out'. if we dont find it, then error out
 		// todo: also if resolve == typeonly, write 'typeonly' of the enum type into 'out' and discard the enum value (but still make sure we check its validity on this code path)
-		panic_begin();
-		putzstr("todo: enum.entry checking at \0");
-		putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
-		panic_end();
+		the_entry ::= ty_enum_find_entry_by_name(lhs_val.type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+		if(the_entry == zero)
+		{
+			err_begin();
+			putzstr("enum type \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" has no entry named \0");
+			putchar('"');
+			putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+			putchar('"');
+			putzstr(" at \0");
+			putsrc(src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
+			err_end();
+			return;
+		}
+		out->type = lhs_val.type;
+		// extremely scary compiler bug prevents me from having this if-statement. but it is wrong to comment it out.
+		//if(resolve == val_resolve.type_only)
+		//{
+		//	out->tag = val_tag.typeonly;
+		//	return;
+		//}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = the_entry->val;
+		return;
 	}
 	panic_begin();
 	putzstr("todo: val_from_node_expr_field at \0");
