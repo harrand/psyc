@@ -173,6 +173,8 @@ ty_make_pointer : func(underlying : ty, quals : ty -> ty)
 	data : tydata mut;
 	data.tag = tydata_tag.pointer;
 	data.underlying = underlying;
+	data.name = zero;
+	data.name_len = 0;
 	return ty_wrap(ref data) | quals;
 };
 
@@ -316,11 +318,11 @@ ty_countof : func(type : ty -> u64)
 
 ty_wrap : func(d : tydata mut? -> ty)
 {
-	//already ::= ty_find(d->name, d->name_len);
-	//if(already != ty.invalid)
-	//{
-	//	return already;
-	//}
+	already ::= ty_find(d);
+	if(already != ty.invalid)
+	{
+		return already;
+	}
 	
 	idx ::= ty_storage_new_id();
 	[ty_storage.data # idx] = [d];
@@ -341,7 +343,16 @@ ty_unwrap : func(type : ty -> tydata mut?)
 	return ty_storage.data # (id - base@s64);
 };
 
-ty_find : func(name : u8?, name_len : u64 -> ty)
+ty_find : func(d : tydata mut? -> ty)
+{
+	if((d->tag == tydata_tag.enumeration) || (d->tag == tydata_tag.structure))
+	{
+		return ty_find_by_name(d->name, d->name_len);
+	}
+	return ty.invalid;
+};
+
+ty_find_by_name : func(name : u8?, name_len : u64 -> ty)
 {
 	i : u64 mut;
 	for(i = 0; i < countof typeof(ty_name_tbl); i = i + 1)
@@ -407,7 +418,7 @@ ty_from_typename_node : func(n : ast mut?, src : source -> ty)
 
 ty_from_typename_node_base : func(n : ast mut?, src : source -> ty)
 {
-	return ty_find([ast_typename_base_get_basename(n)], [ast_typename_base_get_basename_len(n)]) | [ast_typename_get_quals(n)];
+	return ty_find_by_name([ast_typename_base_get_basename(n)], [ast_typename_base_get_basename_len(n)]) | [ast_typename_get_quals(n)];
 };
 
 ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
