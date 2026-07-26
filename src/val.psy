@@ -416,6 +416,8 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source,
 
 val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
+	abi : abi_tag := abi_tag.psy64;
+
 	callee_val : val mut;
 	val_from_node(ast_call_get_callee(node), ref callee_val, resolve, src);
 	param_nodes ::= ast_call_get_params(node);
@@ -424,16 +426,46 @@ val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_re
 	i : u64 mut;
 
 	callee_fnty ::= callee_val.type;
+	callee_u ::= ty_unwrap(callee_fnty);
 	// gather a scratch array of vals representing the parameters
 	param_vals : val mut? := arena_alloc(scratch_arena, param_nodes_count * sizeof val);
 	for(i = 0; i < param_nodes_count; i = i + 1)
 	{
 		cur_param_val : val mut;
 		val_from_node(param_nodes # i, ref cur_param_val, resolve, src);
-		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, src, param_nodes # i);
+		val_convert(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, resolve, src, param_nodes # i);
+		val_load(abi, ref cur_param_val, param_vals # i, src, param_nodes # i);
 	}
 
-	// todo runtime: create a non-scratch array of irvals containing all the chunked parameters for the call
+	// chunk the params
+	// then we can calculate our irval array count and then finally compute the array
+	param_chunks : abi_chunk mut? mut;
+	param_chunks_count : u64 mut;
+	abi_chunk_tys(abi, callee_u->members # 0, callee_u->members_count, ref param_chunks, ref param_chunks_count, scratch_arena);
+
+	param_irvals : irval mut? := arena_alloc(global_arena, param_chunks_count * sizeof irval);
+	j : u64 mut;
+	for(i = 0; i < param_nodes_count; i = i + 1)
+	{
+		cur ::= param_vals # i;
+		if(cur->tag == val_tag.aggregate)
+		{
+			cur_agg_count ::= [val_aggregate_get_members_count(cur)];
+			cur_agg_vals ::= [val_aggregate_get_members(cur)];
+			for(j = 0; j < cur_agg_count; j = j + 1)
+			{
+				[param_irvals # (i + j)] = [val_scalar_get_irval(cur_agg_vals # j)];
+			}
+			// add the size of the agg to i (but remember we're about to increment it, so add size-1 and assume we never have a 0-size-agg)
+			i = i + (j - 1);
+		}
+		else
+		{
+			[param_irvals # i] = [val_scalar_get_irval(cur)];
+		}
+	}
+	// todo: passing references to stack memory incase of chunk_tag.mem (sysv + winx64) would need some code here.
+	// todo: error out if param_chunks_count > abi.params_count_max (doesnt exist yet)
 	// todo runtime: emit the call
 	// todo runtime: return the result?
 	panic_begin();
