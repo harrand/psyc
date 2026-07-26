@@ -59,11 +59,6 @@ val_is_known_at_compile_time : func(v : val mut? -> bool)
 		|| (t == val_tag.assembly_reference);
 };
 
-val_get_type : func(v : val mut? -> ty mut?)
-{
-	return ref(v->type);
-};
-
 val_scalar_literal_get_integer : func(v : val mut? -> s64 mut?)
 {
 	return ref(v->d0)@s64 mut?;
@@ -97,7 +92,7 @@ val_aggregate_literal_get_members : func(v : val mut? -> val mut? mut?)
 // remember the members count is decided by the type and is thus *not* stored separately
 val_aggregate_literal_get_members_count : func(v : val mut? -> u64)
 {
-	return ty_countof([val_get_type(v)]);
+	return ty_countof(v->type);
 };
 
 val_pointer_literal_get_address : func(v : val mut? -> u64 mut?)
@@ -282,7 +277,7 @@ val_resolve : enum
 val_from_type : func(type : ty, out : val mut? -> v0)
 {
 	out->tag = val_tag.typeonly;
-	[val_get_type(out)] = type;
+	out->type = type;
 };
 
 val_from_node : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
@@ -331,7 +326,7 @@ val_from_node_expr_symbol : func(node : ast mut?, out : val mut?, resolve : val_
 	{
 		out->tag = val_tag.variable_reference;
 		[val_variable_reference_get_variable(out)] = maybe_var;
-		[val_get_type(out)] = maybe_var->type;
+		out->type = maybe_var->type;
 		return;
 	}
 
@@ -340,7 +335,15 @@ val_from_node_expr_symbol : func(node : ast mut?, out : val mut?, resolve : val_
 	{
 		out->tag = val_tag.function_reference;
 		[val_function_reference_get_function(out)] = maybe_func;
-		[val_get_type(out)] = maybe_func->type;
+		out->type = maybe_func->type;
+		return;
+	}
+
+	maybe_ty ::= ty_find_by_name(sym, symlen);
+	if(maybe_ty != zero)
+	{
+		out->tag = val_tag.typeonly;
+		out->type = maybe_ty;
 		return;
 	}
 	panic_begin();
@@ -598,7 +601,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 		// todo: search through the entries of lhs_val.type and match rhs_symbol_node data to it. if we find it, then write that entry as a enum value scalar literal into 'out'. if we dont find it, then error out
 		// todo: also if resolve == typeonly, write 'typeonly' of the enum type into 'out' and discard the enum value (but still make sure we check its validity on this code path)
 		panic_begin();
-		putzstr("todo: enum.entry checking\0");
+		putzstr("todo: enum.entry checking at \0");
 		putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
