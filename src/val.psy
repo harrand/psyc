@@ -537,6 +537,77 @@ val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val
 	panic_end();
 };
 
+val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	is_ptr_field ::= [ast_field_get_parse_state(node)] == ast_field_parse_state.finalisedarrow;
+	lhs_node : ast mut? := ast_field_get_lhs(node);
+	rhs_node : ast mut? := ast_field_get_rhs(node);
+
+	lhs_val : val mut := zero;
+	// fun fact: moving this down to just before we use it trips a very weird compiler bug causing the generated compiler to crash near startup due to a dodgy ripreli. let's keep it here as that somehow stops it from reproducing.
+	val_from_node(lhs_node, ref lhs_val, resolve, src);
+
+	// rhs must be either a symbol expression, or a call where the callee is a symbol expression
+	// examples that satisfy this:
+	// lhs.some_symbol
+	// lhs.some_symbol_that_is_called()
+	// examples that do not satisfy this:
+	// lhs.2
+	// lhs.123()
+	rhs_symbol_node : ast mut? mut := zero;
+	rhs_is_call ::= ast_is_expr(rhs_node, ast_expr_tag.call);
+	if(rhs_is_call)
+	{
+		rhs_symbol_node = ast_call_get_callee(rhs_node);
+		if(!ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol))
+		{
+			err_begin();
+			putzstr("if the right-hand-side of a field expression is a call, then the callee must itself be a symbol expression, but it is not in this case at \0");
+			putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+	else
+	{
+		rhs_symbol_node = rhs_node;
+		if(!ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol))
+		{
+			err_begin();
+			putzstr("the right-hand-side of a field expression must be a symbol expression or a call on a symbol expression, but it is neither at \0");
+			putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+
+	if(lhs_val.tag == val_tag.typeonly)
+	{
+		if(!ty_is_enumeration(lhs_val.type))
+		{
+			// non-enum typename as lhs of field???
+			err_begin();
+			putzstr("non-enum type-only value \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" passed as left-hand-side of field expression. must either be an enumeration typename or an aggregate value at \0");
+			putsrc(src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+			err_end();
+			return;
+		}
+		// is enum type. we have the rhs symbol node so lets find the enum entry
+		// todo: search through the entries of lhs_val.type and match rhs_symbol_node data to it. if we find it, then write that entry as a enum value scalar literal into 'out'. if we dont find it, then error out
+		// todo: also if resolve == typeonly, write 'typeonly' of the enum type into 'out' and discard the enum value (but still make sure we check its validity on this code path)
+		panic_begin();
+		putzstr("todo: enum.entry checking\0");
+		putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	panic_begin();
+	putzstr("todo: val_from_node_expr_field at \0");
+	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_countof : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
 	typename_node ::= ast_countof_get_operand(node);
@@ -584,7 +655,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.6 := val_from_node_expr_blkinit;
 	.7 := val_from_node_expr_nyi;
 	.8 := val_from_node_expr_nyi;
-	.9 := val_from_node_expr_nyi;
+	.9 := val_from_node_expr_field;
 	.10 := val_from_node_expr_nyi;
 	.11 := val_from_node_expr_nyi;
 	.12 := val_from_node_expr_countof;
