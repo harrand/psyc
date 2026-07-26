@@ -81,9 +81,21 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 	enumty.tag = tydata_tag.enumeration;
 	enumty.name = [ast_enumeration_get_name(stmt)];
 	enumty.name_len = [ast_enumeration_get_name_len(stmt)];
+	enumty.underlying = ty.s64;
 	enumty.members_count = ast_enumeration_get_entries_count(stmt)@u64;
-	// note: members array is of indeterminate value. to be populated during semantic analysis
-	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof ty);
+	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof tydata_enum_entry);
+	i : u64 mut;
+
+	enumty_entries ::= (enumty.members # 0)@tydata_enum_entry mut?;
+	enumty_entry_nodes ::= ast_enumeration_get_entries(stmt);
+	for(i = 0; i < enumty.members_count; i = i + 1)
+	{
+		ptr ::= enumty_entries # i;
+		cur_entry_node ::= enumty_entry_nodes # i;
+		ptr->val = [ast_literal_get_integer(ast_init_get_expr(cur_entry_node))];
+		ptr->name = [ast_init_get_symbol(cur_entry_node)];
+		ptr->name_len = [ast_init_get_symbol_len(cur_entry_node)];
+	}
 	enumty.reference = stmt;
 	enumty.src = s;
 	already ::= ty_find_by_name(enumty.name, enumty.name_len);

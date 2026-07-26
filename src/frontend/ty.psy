@@ -187,6 +187,13 @@ tydata_tag : enum
 	.function := 4;
 };
 
+tydata_enum_entry : struct
+{
+	val : s64;
+	name : u8?;
+	name_len : u64;
+};
+
 tydata : struct
 {
 	tag : tydata_tag;
@@ -292,6 +299,35 @@ ty_at : func(type : ty, idx : u64 -> ty)
 		return [u->members # idx];
 	}
 	return ty.invalid;
+};
+
+ty_enum_at : func(type : ty, idx : u64 -> tydata_enum_entry mut?)
+{
+	if(!ty_is_enumeration(type))
+	{
+		return zero;
+	}
+	u ::= ty_unwrap(type);
+	return (u->members@tydata_enum_entry mut?) # idx;
+};
+
+ty_enum_find_entry_by_name : func(type : ty, name : u8?, name_len : u64 -> tydata_enum_entry mut?)
+{
+	if(!ty_is_enumeration(type))
+	{
+		return zero;
+	}
+	i : u64 mut;
+	count ::= ty_countof(type);
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur ::= ty_enum_at(type, i);
+		if(streql(name, name_len, cur->name, cur->name_len))
+		{
+			return cur;
+		}
+	}
+	return zero;
 };
 
 // if enum - return number of entries
