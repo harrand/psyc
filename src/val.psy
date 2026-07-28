@@ -734,7 +734,6 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	rhs_node : ast mut? := ast_field_get_rhs(node);
 
 	lhs_val : val mut := zero;
-	// fun fact: moving this down to just before we use it trips a very weird compiler bug causing the generated compiler to crash near startup due to a dodgy ripreli. let's keep it here as that somehow stops it from reproducing.
 	val_from_node(lhs_node, ref lhs_val, resolve, src);
 	if(is_ptr_field == false)
 	{
@@ -818,7 +817,6 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	{
 		if(ty_is_enumeration(lhs_val.type) == false)
 		{
-			// compiler bug again ffs, shit shifts around weirdly
 			if(resolve == val_resolve.type_only)
 			{
 				panic_begin();
@@ -858,12 +856,11 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			return;
 		}
 		out->type = lhs_val.type;
-		// extremely scary compiler bug prevents me from having this if-statement. but it is wrong to comment it out.
-		//if(resolve == val_resolve.type_only)
-		//{
-		//	out->tag = val_tag.typeonly;
-		//	return;
-		//}
+		if(resolve == val_resolve.type_only)
+		{
+			out->tag = val_tag.typeonly;
+			return;
+		}
 		out->tag = val_tag.scalar_literal;
 		[val_scalar_literal_get_integer(out)] = the_entry->val;
 		return;
