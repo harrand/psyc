@@ -509,6 +509,14 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source,
 	panic_end();
 };
 
+val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+{
+	panic_begin();
+	putzstr("val_from_node_expr_biop NYI for bitwise_or at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_biop_nyi : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
 {
 	panic_begin();
@@ -530,7 +538,15 @@ val_from_node_expr_biop : func(node : ast mut?, out : val mut?, resolve : val_re
 	rhs_val : val mut;
 	val_from_node(rhs_node, ref rhs_val, resolve, src);
 
-	[val_from_node_expr_biop_tbl # ([ast_biop_get_tag(node)]@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, node, src);
+	tag ::= [ast_biop_get_tag(node)];
+	if(tag@s64 == ~0)
+	{
+		panic_begin();
+		putzstr("invalid/unrecognised binary operator (should be impossible as parser wouldnt allow it) at \0");
+		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, node, src);
 };
 
 val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
@@ -792,7 +808,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.8 := val_from_node_expr_biop_nyi;
 	.9 := val_from_node_expr_biop_nyi;
 	.10 := val_from_node_expr_biop_nyi;
-	.11 := val_from_node_expr_biop_nyi;
+	.11 := val_from_node_expr_biop_bitwise_or;
 	.12 := val_from_node_expr_biop_nyi;
 	.13 := val_from_node_expr_biop_nyi;
 	.14 := val_from_node_expr_biop_nyi;

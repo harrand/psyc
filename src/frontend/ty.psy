@@ -76,6 +76,15 @@ ty_strip_static : func(in : ty -> ty)
 	return in & (~ty.qual_static);
 };
 
+ty_strip_static_unless : func(in : ty, cond : bool -> ty)
+{
+	if(cond)
+	{
+		return in;
+	}
+	return ty_strip_static(in);
+};
+
 ty_strip : func(in : ty -> ty)
 {
 	return in & (~(ty.qual_mut | ty.qual_weak | ty.qual_static));
@@ -115,6 +124,12 @@ ty_is_v0 : func(type : ty -> bool)
 ty_is_bool : func(type : ty -> bool)
 {
 	return ty_strip(type) == ty.bool;
+};
+
+ty_is_signed : func(type : ty -> bool)
+{
+	t ::= ty_strip(type);
+	return ((t == ty.s64) || (t == ty.s32) || (t == ty.s16) || (t == ty.s8));
 };
 
 ty_integral_size : func(type : ty -> u64)
@@ -630,4 +645,90 @@ bwrite_ty : func(w : bwriter mut?, type : ty -> v0)
 	{
 		bwrite_zstr(w, " static\0");
 	}
+};
+
+tyconv : enum
+{
+	.yes := 0;
+	.yes_needs_convert := 1;
+	.no := 2;
+	.no_cant_add_staticness := 3;
+	.no_but_yes_with_weak := 4;
+};
+
+ty_converts_to : func(from : ty, to : ty -> tyconv)
+{
+	panic_begin();
+	putzstr("ty_converts_to NYI for type \0");
+	putty(from);
+	putzstr(" to \0");
+	putty(to);
+	panic_end();
+	return tyconv.no;
+};
+
+ty_of_arithmetic : func(lhs : ty, rhs : ty -> ty)
+{
+	// cannot do arithmetic on voids (or non-primitives but compiler bug prevents me from checking that)
+	if(ty_is_v0(lhs) || ty_is_v0(rhs))
+	//if(ty_is_v0(lhs) || ty_is_v0(rhs) || (!ty_is_primitive(lhs)) || (!ty_is_primitive(rhs)))
+	{
+		return ty.invalid;
+	}
+		
+	both_are_static ::= ty_is_static(lhs) && ty_is_static(rhs);
+	if(ty_is_bool(lhs) || ty_is_bool(rhs))
+	{
+		if(ty_is_bool(lhs) && ty_is_bool(rhs))
+		{
+			return ty_strip_static_unless(ty.bool, both_are_static);
+		}
+		return ty.invalid;
+	}
+	lhs_i ::= ty_integral_size(lhs);
+	lhs_f ::= ty_floating_point_size(lhs);
+	lhs_arith ::= lhs_i + lhs_f;
+	lhs_is_signed ::= ty_is_signed(lhs);
+	rhs_i ::= ty_integral_size(rhs);
+	rhs_f ::= ty_floating_point_size(rhs);
+	rhs_arith ::= rhs_i + rhs_f;
+	rhs_is_signed ::= ty_is_signed(rhs);
+	// floating point and integral => lhs
+	if((lhs_f > 0) && (rhs_i > 0))
+	{
+		return ty_strip_static_unless(lhs, both_are_static);
+	}
+	// integral and floating point => rhs
+	if((lhs_i > 0) && (rhs_f > 0))
+	{
+		return ty_strip_static_unless(rhs, both_are_static);
+	}
+	// both are integral or both are floating point
+	if(((lhs_i > 0) && (rhs_i > 0)) || ((lhs_f > 0) && (rhs_f > 0)))
+	{
+		// lhs_sz < rhs_sz => rhs
+		if(lhs_arith < rhs_arith)
+		{
+			return ty_strip_static_unless(rhs, both_are_static);
+		}
+		// lhs_sz > rhs_sz => lhs
+		if(lhs_arith > rhs_arith)
+		{
+			return ty_strip_static_unless(lhs, both_are_static);
+		}
+		// same size, prefer unsigned
+		if(lhs_is_signed != rhs_is_signed)
+		{
+			if(lhs_is_signed)
+			{
+				// rhs is unsigned
+				return ty_strip_static_unless(rhs, both_are_static);
+			}
+			// lhs is unsigned
+			return ty_strip_static_unless(lhs, both_are_static);
+		}
+		// same size same signedness. prefer lhs
+		return ty_strip_static_unless(lhs, both_are_static);
+	}
+	return zero;
 };
