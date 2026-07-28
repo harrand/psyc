@@ -587,6 +587,57 @@ val_from_node_expr_biop : func(node : ast mut?, out : val mut?, resolve : val_re
 	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, node, src);
 };
 
+val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+{
+	out->type = ty_make_pointer(operand->type, zero);
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(operand->tag != val_tag.pointer)
+	{
+		panic_begin();
+		putzstr("dont know how to ref a val_tag that isnt val_tag.pointer. this one is val_tag.\0");
+		putsint(operand->tag@s64);
+		putzstr(" at \0");
+		putsrc(src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	out->tag = val_tag.scalar;
+	[val_pointer_get_irval(out)] = [val_scalar_get_irval(operand)];
+	[out] = [operand];
+};
+
+val_from_node_expr_unop_nyi : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+{
+	panic_begin();
+	putzstr("val_from_node_expr_unop NYI for ast_unop_tag.\0");
+	putsint([ast_unop_get_tag(ctx)]@s64);
+	putzstr(" at \0");
+	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_unop : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+{
+	abi : abi_tag := abi_tag.psy64;
+	operand_node ::= ast_unop_get_operand(node);
+
+	operand_val : val mut;
+	val_from_node(operand_node, ref operand_val, resolve, src);
+
+	tag ::= [ast_unop_get_tag(node)];
+	if(tag@s64 == ~0)
+	{
+		panic_begin();
+		putzstr("invalid/unrecognised binary operator (should be impossible as parser wouldnt allow it) at \0");
+		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	[val_from_node_expr_unop_tbl # (tag@s64)](ref operand_val, operand_node, out, resolve, node, src);
+};
+
 val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
 {
 	abi : abi_tag := abi_tag.psy64;
@@ -685,6 +736,51 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	lhs_val : val mut := zero;
 	// fun fact: moving this down to just before we use it trips a very weird compiler bug causing the generated compiler to crash near startup due to a dodgy ripreli. let's keep it here as that somehow stops it from reproducing.
 	val_from_node(lhs_node, ref lhs_val, resolve, src);
+	if(is_ptr_field == false)
+	{
+		if((ty_is_enumeration(lhs_val.type) == false) && (ty_is_structure(lhs_val.type) == false))
+		{
+			err_begin();
+			putzstr("field-access on type \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" is invalid - only structs and enum typenames are allowed to be the left-hand-side of a field-access at \0");
+			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+	else
+	{
+		if(ty_is_pointer(lhs_val.type) == false)
+		{
+			err_begin();
+			putzstr("pointer-field-access on type \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" is invalid - only pointer types are allowed to be the left-hand-side of a pointer-field-access at \0");
+			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		// also the pointee must be a struct type
+		if(ty_is_structure(ty_underlying(lhs_val.type)) == false)
+		{
+			err_begin();
+			putzstr("pointer-field-access on type \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" is invalid - while the left-hand-side of the pointer-field-access is indeed a pointer, the pointee type is not a structure type, it is of type \0");
+			putchar('"');
+			putty(ty_underlying(lhs_val.type));
+			putchar('"');
+			putzstr(" at \0");
+	
+			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
 
 	// rhs must be either a symbol expression, or a call where the callee is a symbol expression
 	// examples that satisfy this:
@@ -698,7 +794,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	if(rhs_is_call)
 	{
 		rhs_symbol_node = ast_call_get_callee(rhs_node);
-		if(!ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol))
+		if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
 		{
 			err_begin();
 			putzstr("if the right-hand-side of a field expression is a call, then the callee must itself be a symbol expression, but it is not in this case at \0");
@@ -709,7 +805,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	else
 	{
 		rhs_symbol_node = rhs_node;
-		if(!ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol))
+		if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
 		{
 			err_begin();
 			putzstr("the right-hand-side of a field expression must be a symbol expression or a call on a symbol expression, but it is neither at \0");
@@ -720,9 +816,17 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 
 	if(lhs_val.tag == val_tag.typeonly)
 	{
-		if(!ty_is_enumeration(lhs_val.type))
+		if(ty_is_enumeration(lhs_val.type) == false)
 		{
-			// non-enum typename as lhs of field???
+			// compiler bug again ffs, shit shifts around weirdly
+			if(resolve == val_resolve.type_only)
+			{
+				panic_begin();
+				putzstr("todo: struct member type picking based upon field-expression rhs at \0");
+				putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+				panic_end();
+			}
+			// must be a struct then
 			err_begin();
 			putzstr("non-enum type-only value \0");
 			putchar('"');
@@ -811,7 +915,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.0 := val_from_node_expr_symbol;
 	.1 := val_from_node_expr_literal;
 	.2 := val_from_node_expr_nyi;
-	.3 := val_from_node_expr_nyi;
+	.3 := val_from_node_expr_unop;
 	.4 := val_from_node_expr_biop;
 	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
@@ -831,6 +935,14 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 	.2 := val_from_node_expr_literal_char;
 	.3 := val_from_node_expr_literal_string;
 	.4 := val_from_node_expr_literal_nyi;
+};
+
+val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_unop_tag]
+{
+	.0 := val_from_node_expr_unop_nyi;
+	.1 := val_from_node_expr_unop_nyi;
+	.2 := val_from_node_expr_unop_nyi;
+	.3 := val_from_node_expr_unop_ref;
 };
 
 val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_biop_tag]
