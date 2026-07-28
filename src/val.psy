@@ -511,6 +511,44 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source,
 
 val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
 {
+	out->type = ty_of_bitwise(lhs->type, rhs->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operator '|' is not valid on operands \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
+		{
+			panic_begin();
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '|'. they were tags  \0");
+			putsint(lhs->tag@s64);
+			putzstr(" and \0");
+			putsint(rhs->tag@s64);
+			putzstr(" at \0");
+			putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
+		return;
+	}
 	panic_begin();
 	putzstr("val_from_node_expr_biop NYI for bitwise_or at \0");
 	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
