@@ -667,11 +667,19 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 	return tyconv.no;
 };
 
+
 ty_of_arithmetic : func(lhs : ty, rhs : ty -> ty)
 {
-	// cannot do arithmetic on voids (or non-primitives but compiler bug prevents me from checking that)
+	if(ty_is_v0(lhs) || ty_is_v0(rhs) || (ty_is_primitive(lhs) == false) || (ty_is_primitive(rhs) == false))
+	{
+		return ty.invalid;
+	}
+	return ty_of_arithmetic_base(lhs, rhs);
+};
+
+ty_of_arithmetic_base : func(lhs : ty, rhs : ty -> ty)
+{
 	if(ty_is_v0(lhs) || ty_is_v0(rhs))
-	//if(ty_is_v0(lhs) || ty_is_v0(rhs) || (!ty_is_primitive(lhs)) || (!ty_is_primitive(rhs)))
 	{
 		return ty.invalid;
 	}
@@ -739,5 +747,5 @@ ty_of_arithmetic : func(lhs : ty, rhs : ty -> ty)
 
 ty_of_bitwise : func(lhs : ty, rhs : ty -> ty)
 {
-	return ty_of_arithmetic(lhs, rhs);
+	return ty_of_arithmetic_base(lhs, rhs);
 };
