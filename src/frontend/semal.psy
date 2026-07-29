@@ -33,7 +33,7 @@ populate_structure_type : func(d : tydata mut? -> v0)
 	}
 };
 
-semal_variable : func(var : variable_t mut? -> v0)
+semal_variable : func(var : variable_t mut?, ctx : val_context mut? -> v0)
 {
 	typename_node ::= ast_decl_get_typename(var->node);
 	if([ast_typename_get_tag(typename_node)] == ast_typename_tag.deduced)
@@ -51,20 +51,15 @@ semal_variable : func(var : variable_t mut? -> v0)
 			err_end();
 		}
 		init_val : val mut;
-		init_val_ctx : val_context mut;
+		init_val_ctx : val_context mut := [ctx];
 		init_val_ctx.node = init;
-		init_val_ctx.parent_fn = zero;
-		init_val_ctx.src = var->src;
 		val_from_node(ref init_val_ctx, ref init_val, val_resolve.type_only);
 		var->type = init_val.type;
 	}
 	else
 	{
-		typename_ctx : val_context mut;
+		typename_ctx : val_context mut := [ctx];
 		typename_ctx.node = typename_node;
-		// todo: get this as param
-		typename_ctx.parent_fn = zero;
-		typename_ctx.src = var->src;
 		var->type = ty_from_typename_node(ref typename_ctx);
 	}
 	if(var->type == ty.invalid)
@@ -82,9 +77,15 @@ populate_globals : func(-> v0)
 {
 	i : u64 mut;
 	count ::= prog.global_scope.vars_count;
+
 	for(i = 0; i < count; i = i + 1)
 	{
-		semal_variable(prog.global_scope.vars # i);
+		var ::= prog.global_scope.vars # i;
+		global_variable_ctx : val_context mut;
+		global_variable_ctx.node = var->node;
+		global_variable_ctx.parent_fn = zero;
+		global_variable_ctx.src = var->src;
+		semal_variable(var, ref global_variable_ctx);
 	}
 };
 
@@ -142,6 +143,7 @@ semal : func(-> v0)
 
 semal_func_collect_locals_usrdata : struct
 {
+	fn : function_t mut?;
 	scope : scope_t mut?;
 	src : source;
 };
@@ -173,7 +175,12 @@ semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak ->
 		var.src = u->src;
 		var.type = zero;
 		var.local_param_idx = ~0;
-		semal_variable(ref var);
+
+		var_ctx : val_context mut;
+		var_ctx.node = node;
+		var_ctx.parent_fn = u->fn;
+		var_ctx.src = u->src;
+		semal_variable(ref var, ref var_ctx);
 		scope_add_variable(u->scope, ref var);
 	}
 };
@@ -186,6 +193,7 @@ semal_node_collect_locals : func(node : ast mut?, begin : u64, end : u64, u : se
 semal_func_collect_locals : func(fn : function_t mut? -> v0)
 {
 	usrdata : semal_func_collect_locals_usrdata mut;
+	usrdata.fn = fn;
 	usrdata.scope = ref(fn->scope);
 	usrdata.src = fn->src;
 	semal_node_collect_locals(fn->node, 1, fn->node->children_count@u64, ref usrdata);
