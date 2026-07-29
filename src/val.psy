@@ -259,27 +259,41 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve
 	panic_end();
 };
 
-val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	// todo: ensure that 'v->type' is convertible to 'to'
-	[val_convert_tbl # (v->tag@s64)](v, to, out, resolve, ctx);
+	panic_begin();
+	putzstr("reached end of val_convert_variable_reference at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
 };
 
-val_convert_tbl ::= typeof(val_convert)[countof val_tag]
+val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	.0 := val_convert_invalid;
-	.1 := val_convert_typeonly;
-	.2 := val_convert_zerovalue;
-	.3 := val_convert_scalar_literal;
-	.4 := val_convert_string_literal;
-	.5 := val_convert_nyi;
-	.6 := val_convert_nyi;
-	.7 := val_convert_nyi;
-	.8 := val_convert_nyi;
-	.9 := val_convert_nyi;
-	.10 := val_convert_nyi;
-	.11 := val_convert_nyi;
-	.12 := val_convert_nyi;
+	conv ::= ty_converts_to(v->type, to);
+	if((conv == tyconv.no) || (conv == tyconv.no_cant_add_staticness) || (conv == tyconv.no_but_yes_with_weak))
+	{
+		err_begin();
+		putzstr("cannot convert value of type \0");
+		putchar('"');
+		putty(v->type);
+		putchar('"');
+		putzstr(" to type \0");
+		putchar('"');
+		putty(to);
+		putchar('"');
+		if(conv == tyconv.no_cant_add_staticness)
+		{
+			putzstr(" (because doing so would add staticness)\0");
+		}
+		if(conv == tyconv.no_but_yes_with_weak)
+		{
+			putzstr(" (but could if one were marked 'weak')\0");
+		}
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}	
+	[val_convert_tbl # (v->tag@s64)](v, to, out, resolve, ctx);
 };
 
 val_zero_as : func(to : ty, out : val mut? -> v0)
@@ -412,7 +426,7 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 	}
 
 	maybe_ty ::= ty_find_by_name(sym, symlen);
-	if(maybe_ty != zero)
+	if(maybe_ty != ty.invalid)
 	{
 		out->tag = val_tag.typeonly;
 		out->type = maybe_ty;
@@ -425,6 +439,7 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 		top_level_ctx : val_context mut := [ctx];
 		top_level_ctx.parent_fn = zero;
 		val_from_node_expr_symbol(ref top_level_ctx, out, resolve);
+		return;
 	}
 	panic_begin();
 	putzstr("val_from_node_expr_symbol NYI for codepath: \0");
@@ -680,6 +695,7 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	i : u64 mut;
 
 	callee_fnty ::= callee_val.type;
+
 	callee_u ::= ty_unwrap(callee_fnty);
 	// gather a scratch array of vals representing the parameters
 	param_vals : val mut? := arena_alloc(scratch_arena, param_nodes_count * sizeof val);
@@ -1044,3 +1060,19 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.19 := val_from_node_expr_biop_nyi;
 };
 
+val_convert_tbl ::= typeof(val_convert)[countof val_tag]
+{
+	.0 := val_convert_invalid;
+	.1 := val_convert_typeonly;
+	.2 := val_convert_zerovalue;
+	.3 := val_convert_scalar_literal;
+	.4 := val_convert_string_literal;
+	.5 := val_convert_nyi;
+	.6 := val_convert_nyi;
+	.7 := val_convert_nyi;
+	.8 := val_convert_variable_reference;
+	.9 := val_convert_nyi;
+	.10 := val_convert_nyi;
+	.11 := val_convert_nyi;
+	.12 := val_convert_nyi;
+};
