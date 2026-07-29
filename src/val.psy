@@ -386,7 +386,14 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 {
 	sym ::= [ast_symbol_get_data(ctx->node)];
 	symlen ::= [ast_symbol_get_data_len(ctx->node)];
-	maybe_var ::= scope_find_variable(ref(prog.global_scope), sym, symlen);
+
+	scope : scope_t mut? mut := ref(prog.global_scope);
+	if(ctx->parent_fn != zero)
+	{
+		scope = ref(ctx->parent_fn->scope);
+	}
+
+	maybe_var ::= scope_find_variable(scope, sym, symlen);
 	if(maybe_var != zero)
 	{
 		out->tag = val_tag.variable_reference;
@@ -395,7 +402,7 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 		return;
 	}
 
-	maybe_func ::= scope_find_function(ref(prog.global_scope), sym, symlen);
+	maybe_func ::= scope_find_function(scope, sym, symlen);
 	if(maybe_func != zero)
 	{
 		out->tag = val_tag.function_reference;
@@ -410,6 +417,14 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 		out->tag = val_tag.typeonly;
 		out->type = maybe_ty;
 		return;
+	}
+
+	if(ctx->parent_fn != zero)
+	{
+		// we checked the parent-fn and got nothing. let's check the global_scope instead
+		top_level_ctx : val_context mut := [ctx];
+		top_level_ctx.parent_fn = zero;
+		val_from_node_expr_symbol(ref top_level_ctx, out, resolve);
 	}
 	panic_begin();
 	putzstr("val_from_node_expr_symbol NYI for codepath: \0");
