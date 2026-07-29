@@ -45,6 +45,13 @@ val : struct
 	type : ty;
 };
 
+val_context : struct
+{
+	node : ast mut?;
+	parent_fn : function_t mut?;
+	src : source;
+};
+
 val_is_known_at_compile_time : func(v : val mut? -> bool)
 {
 	t ::= v->tag;
@@ -338,47 +345,47 @@ val_from_type : func(type : ty, out : val mut? -> v0)
 	out->type = type;
 };
 
-val_from_node : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	[val_from_node_tbl # (node->tag@s64)](node, out, resolve, src);
+	[val_from_node_tbl # (ctx->node->tag@s64)](ctx, out, resolve);
 };
 
-val_from_node_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node NYI for codepath: \0");
 	putchar('\n');
-	ast_dump_one(node, zero, zero, 1);
+	ast_dump_one(ctx->node, zero, zero, 1);
 	putzstr("from source \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.blue_underline);
 	panic_end();
 };
 
-val_from_node_expr : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	[val_from_node_expr_tbl # ([ast_expr_get_tag(node)])@s64](node, out, resolve, src);
+	[val_from_node_expr_tbl # ([ast_expr_get_tag(ctx->node)])@s64](ctx, out, resolve);
 };
 
-val_from_node_expr_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node_expr NYI for codepath: \0");
 	putchar('\n');
-	ast_dump_one(node, zero, zero, 1);
+	ast_dump_one(ctx->node, zero, zero, 1);
 	putzstr("from source \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.blue_underline);
 	panic_end();
 };
 
-val_from_node_expr_literal : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	[val_from_node_expr_literal_tbl # [ast_literal_get_tag(node)]@s64](node, out, resolve, src);
+	[val_from_node_expr_literal_tbl # [ast_literal_get_tag(ctx->node)]@s64](ctx, out, resolve);
 };
 
-val_from_node_expr_symbol : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	sym ::= [ast_symbol_get_data(node)];
-	symlen ::= [ast_symbol_get_data_len(node)];
+	sym ::= [ast_symbol_get_data(ctx->node)];
+	symlen ::= [ast_symbol_get_data_len(ctx->node)];
 	maybe_var ::= scope_find_variable(ref(prog.global_scope), sym, symlen);
 	if(maybe_var != zero)
 	{
@@ -407,9 +414,9 @@ val_from_node_expr_symbol : func(node : ast mut?, out : val mut?, resolve : val_
 	panic_begin();
 	putzstr("val_from_node_expr_symbol NYI for codepath: \0");
 	putchar('\n');
-	ast_dump_one(node, zero, zero, 1);
+	ast_dump_one(ctx->node, zero, zero, 1);
 	putzstr("from source \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.blue_underline);
 	panic_end();
 };
 
@@ -420,7 +427,7 @@ val_from_integer_literal : func(int : s64 weak, out : val mut? -> v0)
 	[val_scalar_literal_get_integer(out)] = int;
 };
 
-val_from_node_expr_literal_integer : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal_integer : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	out->type = ty_integer_literal();
 	if(resolve == val_resolve.type_only)
@@ -429,10 +436,10 @@ val_from_node_expr_literal_integer : func(node : ast mut?, out : val mut?, resol
 		return;
 	}
 	out->tag = val_tag.scalar_literal;
-	[val_scalar_literal_get_integer(out)] = [ast_literal_get_integer(node)];
+	[val_scalar_literal_get_integer(out)] = [ast_literal_get_integer(ctx->node)];
 };
 
-val_from_node_expr_literal_floating_point : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal_floating_point : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	out->type = ty_floating_point_literal();
 	if(resolve == val_resolve.type_only)
@@ -441,10 +448,10 @@ val_from_node_expr_literal_floating_point : func(node : ast mut?, out : val mut?
 		return;
 	}
 	out->tag = val_tag.scalar_literal;
-	[val_scalar_literal_get_floating_point(out)] = [ast_literal_get_floating_point(node)];
+	[val_scalar_literal_get_floating_point(out)] = [ast_literal_get_floating_point(ctx->node)];
 };
 
-val_from_node_expr_literal_char : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal_char : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	out->type = ty_floating_point_literal();
 	if(resolve == val_resolve.type_only)
@@ -453,10 +460,10 @@ val_from_node_expr_literal_char : func(node : ast mut?, out : val mut?, resolve 
 		return;
 	}
 	out->tag = val_tag.scalar_literal;
-	[val_scalar_literal_get_integer(out)] = [ast_literal_get_char(node)]@s64;
+	[val_scalar_literal_get_integer(out)] = [ast_literal_get_char(ctx->node)]@s64;
 };
 
-val_from_node_expr_literal_string : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal_string : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	out->type = ty_string_literal();
 	if(resolve == val_resolve.type_only)
@@ -465,23 +472,23 @@ val_from_node_expr_literal_string : func(node : ast mut?, out : val mut?, resolv
 		return;
 	}
 	out->tag = val_tag.string_literal;
-	[val_string_literal_get_data(out)] = [ast_literal_get_string(node)];
-	[val_string_literal_get_length(out)] = [ast_literal_get_string_len(node)];
+	[val_string_literal_get_data(out)] = [ast_literal_get_string(ctx->node)];
+	[val_string_literal_get_length(out)] = [ast_literal_get_string_len(ctx->node)];
 };
 
-val_from_node_expr_literal_nyi : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_literal_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node_expr_literal NYI for codepath: \0");
 	putchar('\n');
-	ast_dump_one(node, zero, zero, 1);
+	ast_dump_one(ctx->node, zero, zero, 1);
 	putzstr("from source \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.blue_underline);
 	panic_end();
 };
 
 // if ptr_val is a val_tag.pointer, then 'out' will become either an aggregate or scalar value (depending on the type of 'ptr_val') containing the loaded value of the pointer. it will have the same type
-val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source, ctx : ast mut? -> v0)
+val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_context mut? -> v0)
 {
 	if(ptr_val->tag != val_tag.pointer)
 	{
@@ -499,7 +506,7 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source,
 		// todo: emit an ir_load on val_pointer_get_irval(ptr_val). result irval register should be written to val_scalar_get_irval(out)
 		panic_begin();
 		putzstr("nyi: ir_load call in val_load at \0");
-		putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 		return;
 	}
@@ -509,7 +516,7 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, src : source,
 	panic_end();
 };
 
-val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = ty_of_bitwise(lhs->type, rhs->type);
 	if(out->type == ty.invalid)
@@ -524,7 +531,7 @@ val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rh
 		putty(lhs->type);
 		putchar('"');
 		putzstr(" at \0");
-		putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	if(resolve == val_resolve.type_only)
@@ -542,7 +549,7 @@ val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rh
 			putzstr(" and \0");
 			putsint(rhs->tag@s64);
 			putzstr(" at \0");
-			putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			panic_end();
 		}
 		out->tag = val_tag.scalar_literal;
@@ -551,43 +558,47 @@ val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rh
 	}
 	panic_begin();
 	putzstr("val_from_node_expr_biop NYI for bitwise_or at \0");
-	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-val_from_node_expr_biop_nyi : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+val_from_node_expr_biop_nyi : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node_expr_biop NYI for ast_biop_tag.\0");
-	putsint([ast_biop_get_tag(ctx)]@s64);
+	putsint([ast_biop_get_tag(ctx->node)]@s64);
 	putzstr(" at \0");
-	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-val_from_node_expr_biop : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	abi : abi_tag := abi_tag.psy64;
-	lhs_node ::= ast_biop_get_lhs(node);
-	rhs_node ::= ast_biop_get_rhs(node);
+	lhs_node ::= ast_biop_get_lhs(ctx->node);
+	rhs_node ::= ast_biop_get_rhs(ctx->node);
 
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
 	lhs_val : val mut;
-	val_from_node(lhs_node, ref lhs_val, resolve, src);
+	val_from_node(ref lhs_ctx, ref lhs_val, resolve);
 	rhs_val : val mut;
-	val_from_node(rhs_node, ref rhs_val, resolve, src);
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	val_from_node(ref rhs_ctx, ref rhs_val, resolve);
 
-	tag ::= [ast_biop_get_tag(node)];
+	tag ::= [ast_biop_get_tag(ctx->node)];
 	if(tag@s64 == ~0)
 	{
 		panic_begin();
 		putzstr("invalid/unrecognised binary operator (should be impossible as parser wouldnt allow it) at \0");
-		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, node, src);
+	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, ctx);
 };
 
-val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = ty_make_pointer(operand->type, zero);
 	if(resolve == val_resolve.type_only)
@@ -601,7 +612,7 @@ val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, 
 		putzstr("dont know how to ref a val_tag that isnt val_tag.pointer. this one is val_tag.\0");
 		putsint(operand->tag@s64);
 		putzstr(" at \0");
-		putsrc(src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
 	out->tag = val_tag.scalar;
@@ -609,43 +620,47 @@ val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, 
 	[out] = [operand];
 };
 
-val_from_node_expr_unop_nyi : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : ast mut?, src : source -> v0)
+val_from_node_expr_unop_nyi : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node_expr_unop NYI for ast_unop_tag.\0");
-	putsint([ast_unop_get_tag(ctx)]@s64);
+	putsint([ast_unop_get_tag(ctx->node)]@s64);
 	putzstr(" at \0");
-	putsrc(src, ctx->src_beg@u64, ctx->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-val_from_node_expr_unop : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_unop : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	abi : abi_tag := abi_tag.psy64;
-	operand_node ::= ast_unop_get_operand(node);
+	operand_node ::= ast_unop_get_operand(ctx->node);
 
 	operand_val : val mut;
-	val_from_node(operand_node, ref operand_val, resolve, src);
+	operand_ctx : val_context mut := [ctx];
+	operand_ctx.node = operand_node;
+	val_from_node(ref operand_ctx, ref operand_val, resolve);
 
-	tag ::= [ast_unop_get_tag(node)];
+	tag ::= [ast_unop_get_tag(ctx->node)];
 	if(tag@s64 == ~0)
 	{
 		panic_begin();
 		putzstr("invalid/unrecognised binary operator (should be impossible as parser wouldnt allow it) at \0");
-		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	[val_from_node_expr_unop_tbl # (tag@s64)](ref operand_val, operand_node, out, resolve, node, src);
+	[val_from_node_expr_unop_tbl # (tag@s64)](ref operand_val, operand_node, out, resolve, ctx);
 };
 
-val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	abi : abi_tag := abi_tag.psy64;
 
 	callee_val : val mut;
-	val_from_node(ast_call_get_callee(node), ref callee_val, resolve, src);
-	param_nodes ::= ast_call_get_params(node);
-	param_nodes_count ::= ast_call_get_params_count(node)@u64;
+	callee_ctx : val_context mut := [ctx];
+	callee_ctx.node = ast_call_get_callee(ctx->node);
+	val_from_node(ref callee_ctx, ref callee_val, resolve);
+	param_nodes ::= ast_call_get_params(ctx->node);
+	param_nodes_count ::= ast_call_get_params_count(ctx->node)@u64;
 
 	i : u64 mut;
 
@@ -656,9 +671,11 @@ val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_re
 	for(i = 0; i < param_nodes_count; i = i + 1)
 	{
 		cur_param_val : val mut;
-		val_from_node(param_nodes # i, ref cur_param_val, resolve, src);
-		val_convert(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, resolve, src, param_nodes # i);
-		val_load(abi, ref cur_param_val, param_vals # i, src, param_nodes # i);
+		cur_param_ctx : val_context mut := [ctx];
+		cur_param_ctx.node = param_nodes # i;
+		val_from_node(ref cur_param_ctx, ref cur_param_val, resolve);
+		val_convert(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, resolve, ctx->src, param_nodes # i);
+		val_load(abi, ref cur_param_val, param_vals # i, ref cur_param_ctx);
 	}
 
 	if(resolve == val_resolve.type_only)
@@ -700,19 +717,19 @@ val_from_node_expr_call : func(node : ast mut?, out : val mut?, resolve : val_re
 	// todo runtime: return the result?
 	panic_begin();
 	putzstr("reached end of val_from_node_expr_call for \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	typename_node ::= ast_blkinit_get_typename(node);
-	type ::= ty_from_typename_node(typename_node, src);
+	typename_node ::= ast_blkinit_get_typename(ctx->node);
+	type ::= ty_from_typename_node(typename_node, ctx->src);
 	if(type == ty.invalid)
 	{
 		err_begin();
 		putzstr("cannot decipher type of block-initialiser \0");
-		putsrc(src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	if(resolve == val_resolve.type_only)
@@ -727,14 +744,16 @@ val_from_node_expr_blkinit : func(node : ast mut?, out : val mut?, resolve : val
 	panic_end();
 };
 
-val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	is_ptr_field ::= [ast_field_get_parse_state(node)] == ast_field_parse_state.finalisedarrow;
-	lhs_node : ast mut? := ast_field_get_lhs(node);
-	rhs_node : ast mut? := ast_field_get_rhs(node);
+	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
+	lhs_node : ast mut? := ast_field_get_lhs(ctx->node);
+	rhs_node : ast mut? := ast_field_get_rhs(ctx->node);
 
 	lhs_val : val mut := zero;
-	val_from_node(lhs_node, ref lhs_val, resolve, src);
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	val_from_node(ref lhs_ctx, ref lhs_val, resolve);
 	if(is_ptr_field == false)
 	{
 		if((ty_is_enumeration(lhs_val.type) == false) && (ty_is_structure(lhs_val.type) == false))
@@ -745,7 +764,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			putty(lhs_val.type);
 			putchar('"');
 			putzstr(" is invalid - only structs and enum typenames are allowed to be the left-hand-side of a field-access at \0");
-			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
 	}
@@ -759,7 +778,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			putty(lhs_val.type);
 			putchar('"');
 			putzstr(" is invalid - only pointer types are allowed to be the left-hand-side of a pointer-field-access at \0");
-			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
 		// also the pointee must be a struct type
@@ -776,7 +795,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			putchar('"');
 			putzstr(" at \0");
 	
-			putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
 	}
@@ -797,7 +816,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 		{
 			err_begin();
 			putzstr("if the right-hand-side of a field expression is a call, then the callee must itself be a symbol expression, but it is not in this case at \0");
-			putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
 	}
@@ -808,7 +827,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 		{
 			err_begin();
 			putzstr("the right-hand-side of a field expression must be a symbol expression or a call on a symbol expression, but it is neither at \0");
-			putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
 	}
@@ -833,7 +852,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 					putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
 					putchar('"');
 					putzstr(" at \0");
-					putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+					putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 					err_end();
 				}
 				out->type = ty_at(lhs_val.type, struct_memidx);
@@ -846,7 +865,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			putty(lhs_val.type);
 			putchar('"');
 			putzstr(" passed as left-hand-side of field expression. must either be an enumeration typename or an aggregate value at \0");
-			putsrc(src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
 			err_end();
 			return;
 		}
@@ -866,7 +885,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 			putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
 			putchar('"');
 			putzstr(" at \0");
-			putsrc(src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
 			err_end();
 			return;
 		}
@@ -893,7 +912,7 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 		putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
 		putchar('"');
 		putzstr(" at \0");
-		putsrc(src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	out->type = ty_at(lhs_val.type, struct_memidx);
@@ -905,20 +924,22 @@ val_from_node_expr_field : func(node : ast mut?, out : val mut?, resolve : val_r
 	
 	panic_begin();
 	putzstr("todo: val_from_node_expr_field at \0");
-	putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-val_from_node_expr_countof : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_countof : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	typename_node ::= ast_countof_get_operand(node);
-	val_from_integer_literal(ty_countof(ty_from_typename_node(typename_node, src)), out);
+	typename_node ::= ast_countof_get_operand(ctx->node);
+	val_from_integer_literal(ty_countof(ty_from_typename_node(typename_node, ctx->src)), out);
 };
 
-val_from_node_expr_typeof : func(node : ast mut?, out : val mut?, resolve : val_resolve, src : source -> v0)
+val_from_node_expr_typeof : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	expr_node ::= ast_typeof_get_operand(node);
-	val_from_node(expr_node, out, val_resolve.type_only, src);
+	expr_node ::= ast_typeof_get_operand(ctx->node);
+	expr_context : val_context mut := [ctx];
+	expr_context.node = ast_typeof_get_operand(ctx->node);
+	val_from_node(ref expr_context, out, val_resolve.type_only);
 };
 
 val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]

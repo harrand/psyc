@@ -502,7 +502,12 @@ ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 	len_expr_node ::= ast_typename_array_get_length_expr(n);
 
 	len_val : val mut;
-	val_from_node(len_expr_node, ref len_val, val_resolve.compiletime_only, src);
+	len_ctx : val_context mut;
+	len_ctx.node = len_expr_node;
+	// todo: take this in as a param
+	len_ctx.parent_fn = zero;
+	len_ctx.src = src;
+	val_from_node(ref len_ctx, ref len_val, val_resolve.compiletime_only);
 	if((len_val.tag != val_tag.scalar_literal))
 	{
 		err_begin();
@@ -581,7 +586,12 @@ ty_from_typename_node_function : func(n : ast mut?, src : source -> ty)
 ty_from_typename_node_type_of : func(n : ast mut?, src : source -> ty)
 {
 	tyval : val mut;
-	val_from_node(ast_typeof_get_operand(n), ref tyval, val_resolve.type_only, src);
+	tyctx : val_context mut;
+	tyctx.node = ast_typeof_get_operand(n);
+	// todo: get this in as param
+	tyctx.parent_fn = zero;
+	tyctx.src = src;
+	val_from_node(ref tyctx, ref tyval, val_resolve.type_only);
 	return tyval.type;
 };
 
