@@ -316,33 +316,57 @@ ty_at : func(type : ty, idx : u64 -> ty)
 	return ty.invalid;
 };
 
-ty_enum_at : func(type : ty, idx : u64 -> tydata_enum_entry mut?)
+ty_enum_at : func(type : ty, idx : u64 -> s64 mut?)
 {
 	if(!ty_is_enumeration(type))
 	{
 		return zero;
 	}
 	u ::= ty_unwrap(type);
-	return (u->members@tydata_enum_entry mut?) # idx;
+	return (u->members@s64 mut?) # idx;
 };
 
-ty_enum_find_entry_by_name : func(type : ty, name : u8?, name_len : u64 -> tydata_enum_entry mut?)
+ty_enum_find : func(type : ty, name : u8?, name_len : u64 -> s64 mut?)
 {
-	if(!ty_is_enumeration(type))
+	if(ty_is_enumeration(type) == false)
 	{
 		return zero;
 	}
+	u ::= ty_unwrap(type);
 	i : u64 mut;
-	count ::= ty_countof(type);
+	count ::= ast_enumeration_get_entries_count(u->reference)@u64;
+	entry_nodes ::= ast_enumeration_get_entries(u->reference);
+	
 	for(i = 0; i < count; i = i + 1)
 	{
-		cur ::= ty_enum_at(type, i);
-		if(streql(name, name_len, cur->name, cur->name_len))
+		if(streql(name, name_len, [ast_init_get_symbol(entry_nodes # i)], [ast_init_get_symbol_len(entry_nodes # i)]))
 		{
-			return cur;
+			return (u->members)@s64 mut? # i;
 		}
 	}
 	return zero;
+};
+
+// if the structure type has a member of that name, return the index to it
+// if not, return ~0
+ty_struct_find : func(type : ty, name : u8?, name_len : u64 -> u64)
+{
+	if(ty_is_structure(type) == false)
+	{
+		return zero;
+	}
+	u ::= ty_unwrap(type);
+	member_nodes ::= ast_structure_get_data_members(u->reference);
+	count ::= ast_structure_get_data_members_count(u->reference)@u64;
+	i : u64 mut;
+	for(i = 0; i < count; i = i + 1)
+	{
+		if(streql(name, name_len, [ast_decl_get_name(member_nodes # i)], [ast_decl_get_name_len(member_nodes # i)]))
+		{
+			return i;
+		}
+	}
+	return ~0;
 };
 
 // if enum - return number of entries

@@ -83,18 +83,14 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 	enumty.name_len = [ast_enumeration_get_name_len(stmt)];
 	enumty.underlying = ty.s64;
 	enumty.members_count = ast_enumeration_get_entries_count(stmt)@u64;
-	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof tydata_enum_entry);
+	enumty.members = arena_alloc(global_arena, enumty.members_count * sizeof ty);
 	i : u64 mut;
 
-	enumty_entries ::= (enumty.members # 0)@tydata_enum_entry mut?;
 	enumty_entry_nodes ::= ast_enumeration_get_entries(stmt);
 	for(i = 0; i < enumty.members_count; i = i + 1)
 	{
-		ptr ::= enumty_entries # i;
-		cur_entry_node ::= enumty_entry_nodes # i;
-		ptr->val = [ast_literal_get_integer(ast_init_get_expr(cur_entry_node))];
-		ptr->name = [ast_init_get_symbol(cur_entry_node)];
-		ptr->name_len = [ast_init_get_symbol_len(cur_entry_node)];
+		// members # i stores a ty but it is actually a s64 containing the entry value for an enum type
+		[enumty.members # i] = [ast_literal_get_integer(ast_init_get_expr(enumty_entry_nodes # i))]@ty;
 	}
 	enumty.reference = stmt;
 	enumty.src = s;
