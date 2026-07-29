@@ -486,33 +486,32 @@ ty_storage_t : struct
 
 ty_storage : ty_storage_t mut := zero;
 
-ty_from_typename_node : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node : func(ctx : val_context mut? -> ty)
 {
-	return [ty_from_typename_node_tbl # [ast_typename_get_tag(n)]@s64](n, src);
+	return [ty_from_typename_node_tbl # [ast_typename_get_tag(ctx->node)]@s64](ctx);
 };
 
-ty_from_typename_node_base : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_base : func(ctx : val_context mut? -> ty)
 {
-	return ty_find_by_name([ast_typename_base_get_basename(n)], [ast_typename_base_get_basename_len(n)]) | [ast_typename_get_quals(n)];
+	return ty_find_by_name([ast_typename_base_get_basename(ctx->node)], [ast_typename_base_get_basename_len(ctx->node)]) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_array : func(ctx : val_context mut? -> ty)
 {
-	underlying ::= ty_from_typename_node(ast_typename_array_get_element_type(n), src);
-	len_expr_node ::= ast_typename_array_get_length_expr(n);
+	underlying_ctx : val_context mut := [ctx];
+	underlying_ctx.node = ast_typename_array_get_element_type(ctx->node);
+	underlying ::= ty_from_typename_node(ref underlying_ctx);
+	len_expr_node ::= ast_typename_array_get_length_expr(ctx->node);
 
 	len_val : val mut;
-	len_ctx : val_context mut;
+	len_ctx : val_context mut := [ctx];
 	len_ctx.node = len_expr_node;
-	// todo: take this in as a param
-	len_ctx.parent_fn = zero;
-	len_ctx.src = src;
 	val_from_node(ref len_ctx, ref len_val, val_resolve.compiletime_only);
 	if((len_val.tag != val_tag.scalar_literal))
 	{
 		err_begin();
 		putzstr("array length did not yield an integer literal\n\0");
-		putsrc(src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	if(ty_integral_size(len_val.type) == 0)
@@ -523,7 +522,7 @@ ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 		putty(len_val.type);
 		putchar('"');
 		putchar('\n');
-		putsrc(src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 
@@ -536,14 +535,16 @@ ty_from_typename_node_array : func(n : ast mut?, src : source -> ty)
 	u->members = zero;
 	u->members_count = zero;
 	u->array_len = [val_scalar_literal_get_integer(ref len_val)]@u64;
-	u->reference = n;
+	u->reference = ctx->node;
 
 	return ret;
 };
 
-ty_from_typename_node_pointer : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_pointer : func(ctx : val_context mut? -> ty)
 {
-	underlying ::= ty_from_typename_node(ast_typename_pointer_get_pointee_type(n), src);
+	underlying_ctx : val_context mut := [ctx];
+	underlying_ctx.node = ast_typename_pointer_get_pointee_type(ctx->node);
+	underlying ::= ty_from_typename_node(ref underlying_ctx);
 	ret ::= ty_new_empty();
 	
 	u ::= ty_unwrap(ret);
@@ -554,14 +555,16 @@ ty_from_typename_node_pointer : func(n : ast mut?, src : source -> ty)
 	u->members = zero;
 	u->members_count = zero;
 	u->array_len = 0;
-	u->reference = n;
+	u->reference = ctx->node;
 
 	return ret;
 };
 
-ty_from_typename_node_function : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
 {
-	retty ::= ty_from_typename_node(ast_typename_function_get_return_typename(n), src);
+	ret_ctx : val_context mut := [ctx];
+	ret_ctx.node = ast_typename_function_get_return_typename(ctx->node);
+	retty ::= ty_from_typename_node(ref ret_ctx);
 	ret ::= ty_new_empty();
 	
 	u ::= ty_unwrap(ret);
@@ -569,33 +572,32 @@ ty_from_typename_node_function : func(n : ast mut?, src : source -> ty)
 	u->name = zero;
 	u->name = zero;
 	u->underlying = retty;
-	u->members_count = ast_typename_function_get_params_count(n)@u64;
+	u->members_count = ast_typename_function_get_params_count(ctx->node)@u64;
 	u->members = arena_alloc(global_arena, u->members_count * sizeof ty);
-	member_decl_nodes ::= ast_typename_function_get_param_decls(n);
+	member_decl_nodes ::= ast_typename_function_get_param_decls(ctx->node);
 	i : u64 mut;
 	for(i = 0; i < u->members_count; i = i + 1)
 	{
-		[u->members # i] = ty_from_typename_node(ast_decl_get_typename(member_decl_nodes # i), src);
+		member_decl_ctx : val_context mut := [ctx];
+		member_decl_ctx.node = ast_decl_get_typename(member_decl_nodes # i);
+		[u->members # i] = ty_from_typename_node(ref member_decl_ctx);
 	}
 	u->array_len = 0;
-	u->reference = n;
+	u->reference = ctx->node;
 
 	return ret;
 };
 
-ty_from_typename_node_type_of : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_type_of : func(ctx : val_context mut? -> ty)
 {
 	tyval : val mut;
-	tyctx : val_context mut;
-	tyctx.node = ast_typeof_get_operand(n);
-	// todo: get this in as param
-	tyctx.parent_fn = zero;
-	tyctx.src = src;
+	tyctx : val_context mut := [ctx];
+	tyctx.node = ast_typeof_get_operand(ctx->node);
 	val_from_node(ref tyctx, ref tyval, val_resolve.type_only);
 	return tyval.type;
 };
 
-ty_from_typename_node_deduced : func(n : ast mut?, src : source -> ty)
+ty_from_typename_node_deduced : func(ctx : val_context mut? -> ty)
 {
 	panic_begin();
 	putzstr("getting the type from a deduced-typename-node is impossible\0");
@@ -603,7 +605,7 @@ ty_from_typename_node_deduced : func(n : ast mut?, src : source -> ty)
 	return ty.invalid;
 };
 
-ty_from_typename_node_tbl ::= func(n : ast mut?, src : source -> ty)[countof ast_typename_tag]
+ty_from_typename_node_tbl ::= typeof(ty_from_typename_node)[countof ast_typename_tag]
 {
 	.0 := ty_from_typename_node_base;
 	.1 := ty_from_typename_node_array;
