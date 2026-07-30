@@ -71,6 +71,8 @@ semal_variable : func(var : variable_t mut?, ctx : val_context mut? -> v0)
 		putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	var->storage.tag = val_tag.typeonly;
+	var->storage.type = var->type;
 };
 
 populate_globals : func(-> v0)
@@ -112,11 +114,14 @@ populate_function_declarations : func(-> v0)
 			param_ctx.node = ast_decl_get_typename(param_node);
 			param_ctx.parent_fn = fn;
 			param_ctx.src = fn->src;
+
 			var : variable_t mut;
 			var.node = param_node;
 			var.src = fn->src;
 			var.type = ty_from_typename_node(ref param_ctx);
 			var.local_param_idx = j@u8;
+			var.storage.tag = val_tag.typeonly;
+			var.storage.type = var.type;
 			scope_add_variable(ref(fn->scope), ref var);
 		}
 	}
