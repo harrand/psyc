@@ -180,7 +180,7 @@ ty_floating_point_literal : func(-> ty)
 
 ty_string_literal : func(-> ty)
 {
-	return ty_make_pointer(ty.u8, ty.qual_static);
+	return ty_make_pointer(ty.u8, zero);
 };
 
 ty_make_pointer : func(underlying : ty, quals : ty -> ty)
@@ -399,10 +399,9 @@ ty_wrap : func(d : tydata mut? -> ty)
 		return already;
 	}
 	
-	idx ::= ty_storage_new_id();
-	[ty_storage.data # idx] = [d];
-	base : ty := ty.custom_begin;
-	return (idx@s64 + base@s64)@ty;
+	ret ::= ty_new_empty();
+	[ty_unwrap(ret)] = [d];
+	return ret;
 };
 
 ty_unwrap : func(type : ty -> tydata mut?)
@@ -423,6 +422,55 @@ ty_find : func(d : tydata mut? -> ty)
 	if((d->tag == tydata_tag.enumeration) || (d->tag == tydata_tag.structure))
 	{
 		return ty_find_by_name(d->name, d->name_len);
+	}
+	base : ty := ty.custom_begin;
+
+	i : u64 mut;
+	for(i = 0; i < ty_storage.data_count; i = i + 1)
+	{
+		cur ::= ty_storage.data # i;
+		if(cur->tag == d->tag)
+		{
+			if((cur->tag == tydata_tag.enumeration) || (cur->tag == tydata_tag.structure))
+			{
+				if(streql(d->name, d->name_len, cur->name, cur->name_len))
+				{
+					return (i@s64 + base@s64)@ty;
+				}
+			}
+			if((cur->tag == tydata_tag.pointer))
+			{
+				if(cur->underlying == d->underlying)
+				{
+					return (i@s64 + base@s64)@ty;
+				}
+			}
+			if((cur->tag == tydata_tag.array))
+			{
+				if((cur->underlying == d->underlying) && (cur->array_len == d->array_len))
+				{
+					return (i@s64 + base@s64)@ty;
+				}
+			}
+			if((cur->tag == tydata_tag.function))
+			{
+				if((cur->underlying == d->underlying) && (cur->members_count == d->members_count))
+				{
+					if(cur->members_count == 0)
+					{
+						return (i@s64 + base@s64)@ty;
+					}
+					j : u64 mut;
+					for(j = 0; j < cur->members_count; j = j + 1)
+					{
+						if(ty_strip([d->members # j]) == ty_strip([cur->members # j]))
+						{
+							return (i@s64 + base@s64)@ty;
+						}
+					}
+				}
+			}
+		}
 	}
 	return ty.invalid;
 };
@@ -526,18 +574,17 @@ ty_from_typename_node_array : func(ctx : val_context mut? -> ty)
 		err_end();
 	}
 
-	ret ::= ty_new_empty();
-	u ::= ty_unwrap(ret);
-	u->tag = tydata_tag.array;
-	u->name = zero;
-	u->name_len = zero;
-	u->underlying = underlying;
-	u->members = zero;
-	u->members_count = zero;
-	u->array_len = [val_scalar_literal_get_integer(ref len_val)]@u64;
-	u->reference = ctx->node;
+	u : tydata mut;
+	u.tag = tydata_tag.array;
+	u.name = zero;
+	u.name_len = zero;
+	u.underlying = underlying;
+	u.members = zero;
+	u.members_count = zero;
+	u.array_len = [val_scalar_literal_get_integer(ref len_val)]@u64;
+	u.reference = ctx->node;
 
-	return ret;
+	return ty_wrap(ref u);
 };
 
 ty_from_typename_node_pointer : func(ctx : val_context mut? -> ty)
@@ -545,19 +592,18 @@ ty_from_typename_node_pointer : func(ctx : val_context mut? -> ty)
 	underlying_ctx : val_context mut := [ctx];
 	underlying_ctx.node = ast_typename_pointer_get_pointee_type(ctx->node);
 	underlying ::= ty_from_typename_node(ref underlying_ctx);
-	ret ::= ty_new_empty();
 	
-	u ::= ty_unwrap(ret);
-	u->tag = tydata_tag.pointer;
-	u->name = zero;
-	u->name_len = zero;
-	u->underlying = underlying;
-	u->members = zero;
-	u->members_count = zero;
-	u->array_len = 0;
-	u->reference = ctx->node;
+	u : tydata mut;
+	u.tag = tydata_tag.pointer;
+	u.name = zero;
+	u.name_len = zero;
+	u.underlying = underlying;
+	u.members = zero;
+	u.members_count = zero;
+	u.array_len = 0;
+	u.reference = ctx->node;
 
-	return ret;
+	return ty_wrap(ref u);
 };
 
 ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
@@ -565,27 +611,26 @@ ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
 	ret_ctx : val_context mut := [ctx];
 	ret_ctx.node = ast_typename_function_get_return_typename(ctx->node);
 	retty ::= ty_from_typename_node(ref ret_ctx);
-	ret ::= ty_new_empty();
 	
-	u ::= ty_unwrap(ret);
-	u->tag = tydata_tag.function;
-	u->name = zero;
-	u->name_len = zero;
-	u->underlying = retty;
-	u->members_count = ast_typename_function_get_params_count(ctx->node)@u64;
-	u->members = arena_alloc(global_arena, u->members_count * sizeof ty);
+	u : tydata mut;
+	u.tag = tydata_tag.function;
+	u.name = zero;
+	u.name_len = zero;
+	u.underlying = retty;
+	u.members_count = ast_typename_function_get_params_count(ctx->node)@u64;
+	u.members = arena_alloc(global_arena, u.members_count * sizeof ty);
 	member_decl_nodes ::= ast_typename_function_get_param_decls(ctx->node);
 	i : u64 mut;
-	for(i = 0; i < u->members_count; i = i + 1)
+	for(i = 0; i < u.members_count; i = i + 1)
 	{
 		member_decl_ctx : val_context mut := [ctx];
 		member_decl_ctx.node = ast_decl_get_typename(member_decl_nodes # i);
-		[u->members # i] = ty_from_typename_node(ref member_decl_ctx);
+		[u.members # i] = ty_from_typename_node(ref member_decl_ctx);
 	}
-	u->array_len = 0;
-	u->reference = ctx->node;
+	u.array_len = 0;
+	u.reference = ctx->node;
 
-	return ret;
+	return ty_wrap(ref u);
 };
 
 ty_from_typename_node_type_of : func(ctx : val_context mut? -> ty)
@@ -694,6 +739,25 @@ tyconv : enum
 
 ty_converts_to : func(from : ty, to : ty -> tyconv)
 {
+	from_is_mut ::= ty_is_mut(from);
+	from_is_weak ::= ty_is_weak(from);
+	from_is_static ::= ty_is_static(from);
+	from_underlying ::= ty_underlying(from);
+
+	to_is_mut ::= ty_is_mut(to);
+	to_is_weak ::= ty_is_weak(to);
+	to_is_static ::= ty_is_static(to);
+	to_underlying ::= ty_underlying(to);
+
+	either_is_weak ::= from_is_weak || to_is_weak;
+	if(ty_strip(from) == ty_strip(to))
+	{
+		if((!from_is_static) && to_is_static)
+		{
+			return tyconv.no_cant_add_staticness;
+		}
+		return tyconv.yes;
+	}
 	warn_begin();
 	putzstr("ty_converts_to NYI for type \0");
 	putty(from);
