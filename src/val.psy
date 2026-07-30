@@ -258,10 +258,7 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve
 
 val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	panic_begin();
-	putzstr("reached end of val_convert_variable_reference at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	val_convert(ref([val_variable_reference_get_variable(v)]->storage), to, out, resolve, ctx);
 };
 
 val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -628,6 +625,13 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 
 val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
+	if(operand->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("operand of unary 'ref' operator did not yield a valid type at \0");
+		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
 	out->type = ty_make_pointer(operand->type, zero);
 	if(resolve == val_resolve.type_only)
 	{
@@ -693,6 +697,17 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	i : u64 mut;
 
 	callee_fnty ::= callee_val.type;
+	if(ty_is_function(callee_val.type) == false)
+	{
+		err_begin();
+		putzstr("function callee did not yield a function-type, instead yielded a \0");
+		putchar('"');
+		putty(callee_val.type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, callee_ctx.node->src_beg@u64, callee_ctx.node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
 
 	callee_u ::= ty_unwrap(callee_fnty);
 	// gather a scratch array of vals representing the parameters
@@ -785,6 +800,7 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	val_from_node(ref lhs_ctx, ref lhs_val, resolve);
+
 	if(is_ptr_field == false)
 	{
 		if((ty_is_enumeration(lhs_val.type) == false) && (ty_is_structure(lhs_val.type) == false))
@@ -864,45 +880,8 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 	}
 	struct_memidx ::= ty_struct_find(lhs_val.type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
 
-	if(lhs_val.tag == val_tag.typeonly)
+	if(ty_is_enumeration(lhs_val.type))
 	{
-		if(ty_is_enumeration(lhs_val.type) == false)
-		{
-			if(resolve == val_resolve.type_only)
-			{
-				out->tag = val_tag.typeonly;
-				if(struct_memidx == ~0)
-				{
-					err_begin();
-					putzstr("structure type \0");
-					putchar('"');
-					putty(lhs_val.type);
-					putchar('"');
-					putzstr(" has no member named \0");
-					putchar('"');
-					putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
-					putchar('"');
-					putzstr(" at \0");
-					putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
-					err_end();
-				}
-				out->type = ty_at(lhs_val.type, struct_memidx);
-				return;
-			}
-			// must be a struct then
-			err_begin();
-			putzstr("non-enum type-only value \0");
-			putchar('"');
-			putty(lhs_val.type);
-			putchar('"');
-			putzstr(" passed as left-hand-side of field expression. must either be an enumeration typename or an aggregate value at \0");
-			putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
-			err_end();
-			return;
-		}
-		// is enum type. we have the rhs symbol node so lets find the enum entry
-		// todo: search through the entries of lhs_val.type and match rhs_symbol_node data to it. if we find it, then write that entry as a enum value scalar literal into 'out'. if we dont find it, then error out
-		// todo: also if resolve == typeonly, write 'typeonly' of the enum type into 'out' and discard the enum value (but still make sure we check its validity on this code path)
 		the_entry ::= ty_enum_find(lhs_val.type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
 		if(the_entry == zero)
 		{
@@ -930,7 +909,53 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		[val_scalar_literal_get_integer(out)] = [the_entry];
 		return;
 	}
-	// todo: struct-value member access
+
+	if(lhs_val.tag == val_tag.typeonly)
+	{
+		// a lhs can be typeonly and a struct if we are early in on codegen (i.e deciphering types of semal)
+		if(ty_is_enumeration(lhs_val.type) == false)
+		{
+			if(resolve == val_resolve.type_only)
+			{
+				out->tag = val_tag.typeonly;
+				if(struct_memidx == ~0)
+				{
+					err_begin();
+					putzstr("structure type \0");
+					putchar('"');
+					putty(lhs_val.type);
+					putchar('"');
+					putzstr(" has no member named \0");
+					putchar('"');
+					putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+					putchar('"');
+					putzstr(" at \0");
+					putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
+					err_end();
+				}
+				if(is_ptr_field)
+				{
+					out->type = ty_at(ty_underlying(lhs_val.type), struct_memidx);
+				}
+				else
+				{
+					out->type = ty_at(lhs_val.type, struct_memidx);
+				}
+				return;
+			}
+			// todo: non-typeonly-struct field access
+			err_begin();
+			putzstr("non-enum type-only value \0");
+			putchar('"');
+			putty(lhs_val.type);
+			putchar('"');
+			putzstr(" passed as left-hand-side of field expression. must either be an enumeration typename or an aggregate value at \0");
+			putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+			err_end();
+			return;
+		}
+	}
+	// lhs is not not typeonly (which means its a struct and we are not typeonly)
 	if(struct_memidx == ~0)
 	{
 		err_begin();
@@ -946,11 +971,13 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	out->type = ty_at(lhs_val.type, struct_memidx);
-	if(resolve == val_resolve.type_only)
+	if(is_ptr_field)
 	{
-		out->tag = val_tag.typeonly;
-		return;
+		out->type = ty_at(ty_underlying(lhs_val.type), struct_memidx);
+	}
+	else
+	{
+		out->type = ty_at(lhs_val.type, struct_memidx);
 	}
 	
 	panic_begin();
