@@ -915,52 +915,7 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		return;
 	}
 
-	if(lhs_val.tag == val_tag.typeonly)
-	{
-		// a lhs can be typeonly and a struct if we are early in on codegen (i.e deciphering types of semal)
-		if(ty_is_enumeration(lhs_val.type) == false)
-		{
-			if(resolve == val_resolve.type_only)
-			{
-				out->tag = val_tag.typeonly;
-				if(struct_memidx == ~0)
-				{
-					err_begin();
-					putzstr("structure type \0");
-					putchar('"');
-					putty(lhs_val.type);
-					putchar('"');
-					putzstr(" has no member named \0");
-					putchar('"');
-					putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
-					putchar('"');
-					putzstr(" at \0");
-					putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
-					err_end();
-				}
-				if(is_ptr_field)
-				{
-					out->type = ty_at(ty_underlying(lhs_val.type), struct_memidx);
-				}
-				else
-				{
-					out->type = ty_at(lhs_val.type, struct_memidx);
-				}
-				return;
-			}
-			// todo: non-typeonly-struct field access
-			err_begin();
-			putzstr("non-enum type-only value \0");
-			putchar('"');
-			putty(lhs_val.type);
-			putchar('"');
-			putzstr(" passed as left-hand-side of field expression. must either be an enumeration typename or an aggregate value at \0");
-			putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
-			err_end();
-			return;
-		}
-	}
-	// lhs is not not typeonly (which means its a struct and we are not typeonly)
+	// its a struct
 	if(struct_memidx == ~0)
 	{
 		err_begin();
@@ -983,6 +938,11 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 	else
 	{
 		out->type = ty_at(lhs_val.type, struct_memidx);
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
 	}
 	
 	panic_begin();
