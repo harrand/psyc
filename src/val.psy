@@ -875,6 +875,25 @@ val_from_node_expr_dereference : func(ctx : val_context mut?, out : val mut?, re
 	panic_end();
 };
 
+val_from_node_expr_cast : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
+{
+	castee_expr ::= ast_cast_get_castee(ctx->node);
+	castee : val mut;
+
+	castee_ctx : val_context mut := [ctx];
+	castee_ctx.node = castee_expr;
+	val_from_node(ref castee_ctx, ref castee, resolve);
+
+	castee.type = ty_add_weak(castee.type);
+
+	cast_target_node ::= ast_cast_get_cast_typename(ctx->node);
+	cast_target_ctx : val_context mut := [ctx];
+	cast_target_ctx.node = cast_target_node;
+	cast_target ::= ty_from_typename_node(ref cast_target_ctx);
+
+	val_convert(ref castee, cast_target, out, resolve, ctx);
+};
+
 val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
@@ -1089,7 +1108,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
 	.7 := val_from_node_expr_dereference;
-	.8 := val_from_node_expr_nyi;
+	.8 := val_from_node_expr_cast;
 	.9 := val_from_node_expr_field;
 	.10 := val_from_node_expr_nyi;
 	.11 := val_from_node_expr_nyi;
