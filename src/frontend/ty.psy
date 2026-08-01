@@ -744,24 +744,26 @@ tyconv : enum
 	.ptr2fn := 5;
 	// function -> pointer conversion
 	.fn2ptr := 6;
+	// integer -> integer conversion (same size)
+	.i2i := 7;
 	// sign-extend (sX -> sY) where Y > X
-	.sext := 7;
+	.sext := 8;
 	// zero-extend (uX -> uY) where Y > X
-	.zext := 8;
+	.zext := 9;
 	// integral truncate (iX -> iY) where X > Y
-	.trunc := 9;
+	.trunc := 10;
 	// floating-point-extend (f32 -> f64)
-	.fpext := 10;
+	.fpext := 11;
 	// floating-point-truncate (f64 -> f32)
-	.fptrunc := 11;
+	.fptrunc := 12;
 	// integral to floating-point (iX -> fY)
-	.i2fp := 12;
+	.i2fp := 13;
 	// floating-point to integral (fX -> iY)
-	.fp2i := 13;
-	.noop := 14;
-	.no := 15;
-	.no_cant_add_staticness := 16;
-	.no_but_yes_with_weak := 17;
+	.fp2i := 14;
+	.noop := 15;
+	.no := 16;
+	.no_cant_add_staticness := 17;
+	.no_but_yes_with_weak := 18;
 };
 
 tyconv_is_valid : func(c : tyconv -> bool)
@@ -776,11 +778,16 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 	from_is_weak ::= ty_is_weak(from);
 	from_is_static ::= ty_is_static(from);
 	from_underlying ::= ty_underlying(from);
+	from_isz ::= ty_integral_size(from);
+	from_fsz ::= ty_floating_point_size(from);
+	from_is_signed ::= ty_is_signed(from);
 
 	to_is_mut ::= ty_is_mut(to);
 	to_is_weak ::= ty_is_weak(to);
 	to_is_static ::= ty_is_static(to);
 	to_underlying ::= ty_underlying(to);
+	to_isz ::= ty_integral_size(to);
+	to_fsz ::= ty_floating_point_size(to);
 
 	either_is_weak ::= from_is_weak || to_is_weak;
 
@@ -797,6 +804,29 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 		// todo stricter types: return yes_if_weak
 		return tyconv.ptr2ptr;
 	}
+	if((from_isz > 0) && (to_isz > 0))
+	{
+		// integrals
+		if(either_is_weak)
+		{
+			if(from_isz > to_isz)
+			{
+				// decreasing size
+				return tyconv.trunc;
+			}
+			if(from_isz < to_isz)
+			{
+				// increasing size
+				if(from_is_signed)
+				{
+					return tyconv.sext;
+				}
+				return tyconv.zext;
+			}
+			return tyconv.i2i;
+		}
+	}
+	
 	warn_begin();
 	putzstr("ty_converts_to NYI for type \0");
 	putty(from);
