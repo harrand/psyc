@@ -845,6 +845,36 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 	panic_end();
 };
 
+val_from_node_expr_dereference : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
+{
+	operand_node ::= ast_dereference_get_operand(ctx->node);
+	operand_ctx : val_context mut := [ctx];
+	operand_ctx.node = operand_node;
+	val_from_node(ref operand_ctx, out, resolve);
+
+	if(ty_is_pointer(out->type) == false)
+	{
+		err_begin();
+		putzstr("cannot dereference non-pointer-type \0");
+		putchar('"');
+		putty(out->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->type = ty_underlying(out->type);
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_dereference at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
@@ -1058,7 +1088,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.4 := val_from_node_expr_biop;
 	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
-	.7 := val_from_node_expr_nyi;
+	.7 := val_from_node_expr_dereference;
 	.8 := val_from_node_expr_nyi;
 	.9 := val_from_node_expr_field;
 	.10 := val_from_node_expr_nyi;
