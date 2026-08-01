@@ -730,11 +730,44 @@ bwrite_ty : func(w : bwriter mut?, type : ty -> v0)
 
 tyconv : enum
 {
-	.yes := 0;
-	.yes_needs_convert := 1;
-	.no := 2;
-	.no_cant_add_staticness := 3;
-	.no_but_yes_with_weak := 4;
+	// pointer -> pointer conversion
+	.ptr2ptr := 0;
+	// pointer -> u64 conversion
+	.ptr2u64 := 1;
+	// u64 -> pointer conversion
+	.u642ptr := 2;
+	// enum -> s64 conversion
+	.enum2s64 := 3;
+	// s64 -> enum conversion
+	.s642enum := 4;
+	// pointer -> function conversion
+	.ptr2fn := 5;
+	// function -> pointer conversion
+	.fn2ptr := 6;
+	// sign-extend (sX -> sY) where Y > X
+	.sext := 7;
+	// zero-extend (uX -> uY) where Y > X
+	.zext := 8;
+	// integral truncate (iX -> iY) where X > Y
+	.trunc := 9;
+	// floating-point-extend (f32 -> f64)
+	.fpext := 10;
+	// floating-point-truncate (f64 -> f32)
+	.fptrunc := 11;
+	// integral to floating-point (iX -> fY)
+	.i2fp := 12;
+	// floating-point to integral (fX -> iY)
+	.fp2i := 13;
+	.noop := 14;
+	.no := 15;
+	.no_cant_add_staticness := 16;
+	.no_but_yes_with_weak := 17;
+};
+
+tyconv_is_valid : func(c : tyconv -> bool)
+{
+	fail_base : tyconv := tyconv.no;
+	return c@s64 < fail_base@s64;
 };
 
 ty_converts_to : func(from : ty, to : ty -> tyconv)
@@ -751,24 +784,18 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 
 	either_is_weak ::= from_is_weak || to_is_weak;
 
-	yes_if_weak : tyconv mut := tyconv.no_but_yes_with_weak;
-	if(either_is_weak)
-	{
-		yes_if_weak = tyconv.yes;
-	}
-
 	if((!from_is_static) && to_is_static)
 	{
 		return tyconv.no_cant_add_staticness;
 	}
 	if(ty_strip(from) == ty_strip(to))
 	{
-		return tyconv.yes;
+		return tyconv.noop;
 	}
 	if(ty_is_pointer(from) && ty_is_pointer(to))
 	{
 		// todo stricter types: return yes_if_weak
-		return tyconv.yes;
+		return tyconv.ptr2ptr;
 	}
 	warn_begin();
 	putzstr("ty_converts_to NYI for type \0");
