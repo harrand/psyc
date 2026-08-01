@@ -592,6 +592,56 @@ val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rh
 	panic_end();
 };
 
+val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->type = lhs->type;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_at_pointer at \0");
+	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->type = lhs->type;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_at_array at \0");
+	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_at : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	if(ty_is_pointer(lhs->type))
+	{
+		val_from_node_expr_biop_at_pointer(lhs, lhs_node, rhs, rhs_node, out, resolve, ctx);
+		return;
+	}
+	if(ty_is_array(lhs->type))
+	{
+		val_from_node_expr_biop_at_array(lhs, lhs_node, rhs, rhs_node, out, resolve, ctx);
+		return;
+	}
+	err_begin();
+	putzstr("lhs operand of 'at' (#) operator must be a pointer or array type, but you have provided a \0");
+	putchar('"');
+	putty(lhs->type);
+	putchar('"');
+	putzstr(" at \0");
+	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+	err_end();
+};
+
 val_from_node_expr_biop_nyi : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
@@ -883,7 +933,15 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 			err_end();
 		}
 	}
-	struct_memidx ::= ty_struct_find(lhs_val.type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+	struct_memidx : u64 mut;
+	if(is_ptr_field)
+	{
+		struct_memidx = ty_struct_find(ty_underlying(lhs_val.type), [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+	}
+	else
+	{
+		struct_memidx = ty_struct_find(lhs_val.type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+	}
 
 	if(ty_is_enumeration(lhs_val.type))
 	{
@@ -1047,7 +1105,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.16 := val_from_node_expr_biop_nyi;
 	.17 := val_from_node_expr_biop_nyi;
 	.18 := val_from_node_expr_biop_nyi;
-	.19 := val_from_node_expr_biop_nyi;
+	.19 := val_from_node_expr_biop_at;
 };
 
 val_convert_tbl ::= typeof(val_convert)[countof val_tag]
