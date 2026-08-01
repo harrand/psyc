@@ -143,7 +143,7 @@ val_aggregate_get_members_count : func(v : val mut? -> u64 mut?)
 	return ref(v->d1)@u64 mut?;
 };
 
-val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
 	putzstr("val_convert NYI for val_tag.\0");
@@ -153,7 +153,7 @@ val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, resolve : val_reso
 	panic_end();
 };
 
-val_convert_invalid : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_invalid : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
 	putzstr("val_convert called on an invalid value at \0");
@@ -161,17 +161,17 @@ val_convert_invalid : func(v : val mut?, to : ty, out : val mut?, resolve : val_
 	panic_end();
 };
 
-val_convert_typeonly : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_typeonly : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->tag = val_tag.typeonly;
 };
 
-val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	val_zero_as(to, out);
 };
 
-val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	// same thing
 	if(resolve == val_resolve.compiletime_only)
@@ -228,7 +228,7 @@ val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, resolve
 	panic_end();
 };
 
-val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	if(resolve == val_resolve.compiletime_only)
 	{
@@ -256,7 +256,7 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, resolve
 	panic_end();
 };
 
-val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	val_convert(ref([val_variable_reference_get_variable(v)]->storage), to, out, resolve, ctx);
 };
@@ -293,7 +293,7 @@ val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve,
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	[val_convert_tbl # (v->tag@s64)](v, to, out, resolve, ctx);
+	[val_convert_tbl # (v->tag@s64)](v, to, out, conv, resolve, ctx);
 };
 
 val_zero_as : func(to : ty, out : val mut? -> v0)
@@ -1157,7 +1157,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.19 := val_from_node_expr_biop_at;
 };
 
-val_convert_tbl ::= typeof(val_convert)[countof val_tag]
+val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 {
 	.0 := val_convert_invalid;
 	.1 := val_convert_typeonly;
