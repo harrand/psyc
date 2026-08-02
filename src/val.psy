@@ -546,7 +546,27 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 	panic_end();
 };
 
-val_from_node_expr_biop_compare_equal: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	rhs_conv : val mut;
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	val_convert(rhs, lhs->type, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = lhs->type;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	// todo: store rhs_conv into lhs
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_assign at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = ty.bool;
 	if(ty_equality_comparable_to(lhs->type, rhs->type) == false)
@@ -571,7 +591,91 @@ val_from_node_expr_biop_compare_equal: func(lhs : val mut?, lhs_node : ast mut?,
 	}
 };
 
-val_from_node_expr_biop_bitwise_or: func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+val_from_node_expr_biop_add : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operation invalid because you cannot add types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = arith;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	// todo: add lhs_conv and rhs_conv and store the result in out
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_add at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_sub : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operation invalid because you cannot sub types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = arith;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	// todo: sub lhs_conv and rhs_conv and store the result in out
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_sub at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = ty_of_bitwise(lhs->type, rhs->type);
 	if(out->type == ty.invalid)
@@ -1160,15 +1264,15 @@ val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_
 
 val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_biop_tag]
 {
-	.0 := val_from_node_expr_biop_nyi;
+	.0 := val_from_node_expr_biop_assign;
 	.1 := val_from_node_expr_biop_compare_equal;
 	.2 := val_from_node_expr_biop_nyi;
 	.3 := val_from_node_expr_biop_nyi;
 	.4 := val_from_node_expr_biop_nyi;
 	.5 := val_from_node_expr_biop_nyi;
 	.6 := val_from_node_expr_biop_nyi;
-	.7 := val_from_node_expr_biop_nyi;
-	.8 := val_from_node_expr_biop_nyi;
+	.7 := val_from_node_expr_biop_add;
+	.8 := val_from_node_expr_biop_sub;
 	.9 := val_from_node_expr_biop_nyi;
 	.10 := val_from_node_expr_biop_nyi;
 	.11 := val_from_node_expr_biop_bitwise_or;
