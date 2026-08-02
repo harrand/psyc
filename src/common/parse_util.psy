@@ -83,10 +83,85 @@ parseutil_parse_number : func(str : u8?, len : u64, out : parseutil_number mut? 
 
 parseutil_escape_char : func(str : u8?, str_len : u64 -> u8)
 {
-	warn_begin();
-	putzstr("nyi: parseutil_escape_char NYI, just returning the first char without escaping properly\0");
-	warn_end();
-	return [str # 0];
+	if(str_len == 0)
+	{
+		panic_begin();
+		putzstr("zero-sized char literal\0");
+		panic_end();
+	}
+	ch ::= [str # 0]@s64 weak;
+	if(ch != 92) // '\'
+	{
+		if(str_len > 1)
+		{
+			panic_begin();
+			putzstr("char-literal had more than 1 character inside: '\0");
+			putchars(str, str_len);
+			putzstr("'\n\0");
+			panic_end();
+		}
+		return ch;
+	}
+	// \<stuff>
+	nxt ::= [str # 1];
+	if(nxt == 'x')
+	{
+		v : u8 mut := 0;
+		i : u64 mut;
+		for(i = 2; i < str_len; i = i + 1)
+		{
+			digit ::= [str # i];
+			digit_val : u8 mut;
+			if((digit >= '0') && (digit <= '9'))
+			{
+				digit_val = digit - '0';
+			}
+			if((digit >= 'a') && (digit <= 'f'))
+			{
+				digit_val = digit - 'a';
+			}
+			if((digit >= 'A') && (digit <= 'F'))
+			{
+				digit_val = digit - 'A';
+			}
+			v = (v * 16) + (digit_val);
+		}
+		return v;
+	}
+	if(str_len != 2)
+	{
+		panic_begin();
+		putzstr("malformed char literal");
+		putchars(str, str_len);
+		putzstr("'\n\0");
+		panic_end();
+	}
+	if(nxt == 'n')
+	{
+		return '\n';
+	}
+	if(nxt == 'r')
+	{
+		return '\r';
+	}
+	if(nxt == 't')
+	{
+		return '\t';
+	}
+	if(nxt == '0')
+	{
+		return '\0';
+	}
+	if(nxt == 92)
+	{
+		return 92;
+	}
+	panic_begin();
+	putzstr("malformed char literal");
+	putchars(str, str_len);
+	putzstr("'\n\0");
+	panic_end();
+	unreachable;
 };
 
 parseutil_escape_string : func(str : u8?, str_len : u64, out_str : u8 mut? mut?, out_len : u64 mut? -> v0)

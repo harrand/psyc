@@ -152,7 +152,7 @@ rule_charlit2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result 
 	out->tag = ast_tag.expr;
 	[ast_expr_get_tag(out)] = ast_expr_tag.literal;
 	[ast_literal_get_tag(out)] = ast_literal_tag.char;
-	[ast_literal_get_char(out)] = parseutil_escape_char(parse_state.src->src # (out->src_beg), (out->src_end - out->src_beg)@u64);
+	[ast_literal_get_char(out)] = parseutil_escape_char(parse_state.src->src # (out->src_beg + 1), (out->src_end - out->src_beg - 2)@u64);
 };
 
 rule_number2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
@@ -951,8 +951,10 @@ rule_tokenx_exprx2unop : func(nodes : ast mut?, nodes_count : u64, out_result : 
 	expr_node ::= nodes # 1;
 
 	out ::= nodes # 0;
+	toktag ::= [ast_token_get_tag(out)];
 	out->tag = ast_tag.expr;
 	[ast_expr_get_tag(out)] = ast_expr_tag.unop;
+	[ast_unop_get_tag(out)] = token_tag2unop_tag(toktag);
 	ast_add_child(out, expr_node);
 };
 
