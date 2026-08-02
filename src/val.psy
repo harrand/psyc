@@ -675,6 +675,90 @@ val_from_node_expr_biop_sub : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	panic_end();
 };
 
+val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operation invalid because you cannot mul types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = arith;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	// todo: mul lhs_conv and rhs_conv and store the result in out
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_mul at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operation invalid because you cannot div types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = arith;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	// todo: div lhs_conv and rhs_conv and store the result in out
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_div at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = ty_of_bitwise(lhs->type, rhs->type);
@@ -717,6 +801,52 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 	}
 	panic_begin();
 	putzstr("val_from_node_expr_biop NYI for bitwise_or at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->type = ty_of_bitwise(lhs->type, rhs->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operator '|' is not valid on operands \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
+		{
+			panic_begin();
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '|'. they were tags  \0");
+			putsint(lhs->tag@s64);
+			putzstr(" and \0");
+			putsint(rhs->tag@s64);
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
+		return;
+	}
+	panic_begin();
+	putzstr("val_from_node_expr_biop NYI for bitwise_and at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
@@ -1273,10 +1403,10 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.6 := val_from_node_expr_biop_nyi;
 	.7 := val_from_node_expr_biop_add;
 	.8 := val_from_node_expr_biop_sub;
-	.9 := val_from_node_expr_biop_nyi;
-	.10 := val_from_node_expr_biop_nyi;
+	.9 := val_from_node_expr_biop_mul;
+	.10 := val_from_node_expr_biop_div;
 	.11 := val_from_node_expr_biop_bitwise_or;
-	.12 := val_from_node_expr_biop_nyi;
+	.12 := val_from_node_expr_biop_bitwise_and;
 	.13 := val_from_node_expr_biop_nyi;
 	.14 := val_from_node_expr_biop_nyi;
 	.15 := val_from_node_expr_biop_nyi;
