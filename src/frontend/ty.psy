@@ -827,8 +827,11 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 	}
 	if(ty_is_pointer(from) && ty_is_pointer(to))
 	{
-		// todo stricter types: return yes_if_weak
-		return tyconv.ptr2ptr;
+		// todo: remove the underlying comparisons? should 'ast?' not require a cast to 'ast mut?'
+		if((ty_strip(ty_underlying(from)) == ty_strip(ty_underlying(to))) || either_is_weak)
+		{
+			return tyconv.ptr2ptr;
+		}
 	}
 	if((from_isz > 0) && (to_isz > 0))
 	{
@@ -851,6 +854,27 @@ ty_converts_to : func(from : ty, to : ty -> tyconv)
 			}
 			return tyconv.i2i;
 		}
+	}
+
+	// enum -> s64
+	if(ty_is_enumeration(from) && (ty_strip(to) == ty.s64) && either_is_weak)
+	{
+		return tyconv.enum2s64;
+	}
+	// s64 -> enum
+	if((ty_strip(from) == ty.s64) && ty_is_enumeration(to) && either_is_weak)
+	{
+		return tyconv.s642enum;
+	}
+
+	// pointer -> u64
+	if(ty_is_pointer(from) && (ty_strip(to) == ty.u64) && either_is_weak)
+	{
+		return tyconv.ptr2u64;
+	}
+	if((ty_strip(from) == ty.u64) && ty_is_pointer(to) && either_is_weak)
+	{
+		return tyconv.u642ptr;
 	}
 	
 	warn_begin();
