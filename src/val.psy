@@ -851,6 +851,98 @@ val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, 
 	panic_end();
 };
 
+val_from_node_expr_biop_bitshift_left : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->type = ty_of_bitwise(lhs->type, rhs->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operator '|' is not valid on operands \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
+		{
+			panic_begin();
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '|'. they were tags  \0");
+			putsint(lhs->tag@s64);
+			putzstr(" and \0");
+			putsint(rhs->tag@s64);
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
+		return;
+	}
+	panic_begin();
+	putzstr("val_from_node_expr_biop NYI for bitshift_left at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_bitshift_right : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->type = ty_of_bitwise(lhs->type, rhs->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operator '|' is not valid on operands \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
+		{
+			panic_begin();
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '|'. they were tags  \0");
+			putsint(lhs->tag@s64);
+			putzstr(" and \0");
+			putsint(rhs->tag@s64);
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
+		return;
+	}
+	panic_begin();
+	putzstr("val_from_node_expr_biop NYI for bitshift_right at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = lhs->type;
@@ -867,7 +959,7 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 
 val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	out->type = lhs->type;
+	out->type = ty_make_pointer(ty_underlying(lhs->type), zero);
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
@@ -1410,8 +1502,8 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.13 := val_from_node_expr_biop_nyi;
 	.14 := val_from_node_expr_biop_nyi;
 	.15 := val_from_node_expr_biop_nyi;
-	.16 := val_from_node_expr_biop_nyi;
-	.17 := val_from_node_expr_biop_nyi;
+	.16 := val_from_node_expr_biop_bitshift_left;
+	.17 := val_from_node_expr_biop_bitshift_right;
 	.18 := val_from_node_expr_biop_nyi;
 	.19 := val_from_node_expr_biop_at;
 };
