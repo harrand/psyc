@@ -3,6 +3,9 @@ args_t : struct
 	build_file : path;
 	dump_flag : u8;
 	target : sstr;
+
+	ir_dump_specific : sstr;
+	asm_dump_specific : sstr;
 };
 
 args ::= args_t mut
@@ -10,6 +13,8 @@ args ::= args_t mut
 	.build_file := zero;
 	.dump_flag := 0;
 	.target := sstr{.data := "default"; .len := 7;};
+	.ir_dump_specific := sstr{.data := zero; .len := 0;};
+	.asm_dump_specific := sstr{.data := zero; .len := 0;};
 };
 
 args_should_dump_tokens : func(-> bool)
@@ -32,6 +37,16 @@ args_should_dump_asm : func(-> bool)
 	return (args.dump_flag & 0b00010000) != 0;
 };
 
+args_has_irdump_specific : func(-> bool)
+{
+	return args.ir_dump_specific.len > 0;
+};
+
+args_has_asmdump_specific : func(-> bool)
+{
+	return args.asm_dump_specific.len > 0;
+};
+
 debugbreak : asm("" -> v0)
 {
 	int3
@@ -41,29 +56,39 @@ handle_arg : func(arg : u8??, dst : u64 -> u64)
 {
 	if(zstrbegin([arg], '-'))
 	{
-		if(zstreql([arg], "-b\0"))
+		if(zstrstartswith([arg], "-b\0"))
 		{
 			args.target = zstr2sstr([arg # 1]);
 			return 1;
 		}
-		if(zstreql([arg], "--dump-tokens\0"))
+		if(zstrstartswith([arg], "--dump-tokens\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b10000000);
 			return 0;
 		}
-		if(zstreql([arg], "--dump-ast\0"))
+		if(zstrstartswith([arg], "--dump-ast\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b01000000);
 			return 0;
 		}
-		if(zstreql([arg], "--dump-ir\0"))
+		if(zstrstartswith([arg], "--dump-ir\0"))
 		{
+			if(zstrstartswith([arg], "--dump-ir=\0"))
+			{
+				args.ir_dump_specific.data = [arg] # 10;
+				args.ir_dump_specific.len = zstrlen([arg]) - 10;
+			}
 			args.dump_flag = (args.dump_flag | 0b00100000);
 			return 0;
 		}
-		if(zstreql([arg], "--dump-asm\0"))
+		if(zstrstartswith([arg], "--dump-asm\0"))
 		{
 			args.dump_flag = (args.dump_flag | 0b00010000);
+			if(zstrstartswith([arg], "--dump-asm=\0"))
+			{
+				args.asm_dump_specific.data = [arg] # 11;
+				args.asm_dump_specific.len = zstrlen([arg]) - 11;
+			}
 			return 0;
 		}
 		// todo: if none of these, error out?

@@ -12,7 +12,25 @@ codegen_ir : func(-> v0)
 
 	if(args_should_dump_ir())
 	{
-		irprog_dump(ref(irapi.prog));
+		if(args_has_irdump_specific())
+		{
+			dump_fn ::= prog_find_function(args.ir_dump_specific.data, args.ir_dump_specific.len); 
+			if(dump_fn == zero)
+			{
+				err_begin();
+				putzstr("requested to dump-ir for function \0");
+				putchar('"');
+				putchars(args.ir_dump_specific.data, args.ir_dump_specific.len);
+				putchar('"');
+				putzstr(" but no function exists with this name\0");
+				err_end();
+			}
+			irfunc_dump(irapi.prog.funcs # dump_fn->irfunc_idx);
+		}
+		else
+		{
+			irprog_dump(ref(irapi.prog));
+		}
 	}
 };
 
