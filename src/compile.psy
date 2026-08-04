@@ -1,13 +1,64 @@
 compile : func(-> v0)
 {
+	t : u64 mut := nanotime();
+	old : u64 mut := t;
+
 	add_build_file(args.build_file, args.target.data, args.target.len);
+	t = nanotime();
+	compile_timings.frontend = t - old;
+	old = t;
+
 	putchar('\r');
 	putzstr("finalising...                                 \0");
 	putchar('\n');
+
 	semal();
+	t = nanotime();
+	compile_timings.pre_codegen = t - old;
+	old = t;
+
 	codegen_ir();
+	t = nanotime();
+	compile_timings.codegen = t - old;
+	old = t;
+
 	ir_lower_x64();
+	t = nanotime();
+	compile_timings.assembly = t - old;
+	old = t;
+
 	write_output_x64();
+	t = nanotime();
+	compile_timings.object_write = t - old;
+	old = t;
+
+	dump_timings();
+};
+
+compile_timings_t : struct
+{
+	frontend : u64;
+	pre_codegen : u64;
+	codegen : u64;
+	assembly : u64;
+	object_write : u64;
+};
+
+compile_timings : compile_timings_t mut := zero;
+
+dump_timings : func(-> v0)
+{
+	putzstr("frontend: \0");
+	putuint(compile_timings.frontend / 1000000);
+	putzstr(" ms\npre codegen: \0");
+	putuint(compile_timings.pre_codegen / 1000000);
+	putzstr(" ms\ncodegen: \0");
+	putuint(compile_timings.codegen / 1000000);
+	putzstr(" ms\nassembly: \0");
+	putuint(compile_timings.assembly / 1000000);
+	putzstr(" ms\nobject write: \0");
+	putuint(compile_timings.object_write / 1000000);
+	putzstr(" ms\n\0");
 };
 
 ir_lower_x64 : func(-> v0)
