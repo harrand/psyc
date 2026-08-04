@@ -13,6 +13,7 @@
 	entrypoint("_start");
 
 	//prebuild_command("echo prebuild command test");
+	//prebuild_command("sleep 1");
 };
 
 global_arena_value : arena mut;
@@ -38,20 +39,31 @@ teardown_arenas : func(-> v0)
 
 dump_timings : func(-> v0)
 {
-	putzstr("parse   => ASTs: \0");
-	putuint(compile_timings.frontend / 1000000);
-	putzstr(" ms\nASTs    => wps:  \0");
+	putzstr("tokenisation:  \0");
+	putuint(compile_timings.tokenise / 1000000);
+	putzstr(" ms\nparse tokens:  \0");
+	putuint(compile_timings.parse / 1000000);
+	putzstr(" ms\nbuild regions: \0");
+	if(compile_timings.build_regions_plus_tokenise_and_parse < (compile_timings.tokenise + compile_timings.parse))
+	{
+		putuint(0);
+	}
+	else
+	{
+		putuint(((compile_timings.build_regions_plus_tokenise_and_parse - (compile_timings.tokenise + compile_timings.parse))) / 1000000);
+	}
+	putzstr(" ms\ntype-checking: \0");
 	putuint(compile_timings.pre_codegen / 1000000);
-	putzstr(" ms\ncodegen => ir:   \0");
+	putzstr(" ms\ngenerate ir:   \0");
 	putuint(compile_timings.codegen / 1000000);
-	putzstr(" ms\nlower   => asm:  \0");
+	putzstr(" ms\nlower to asm:  \0");
 	putuint(compile_timings.assembly / 1000000);
-	putzstr(" ms\nwrite   => \0");
+	putzstr(" ms\nwrite \0");
 	putchars(prog.output.data, prog.output.len);
 	putzstr(": \0");
 	putuint(compile_timings.object_write / 1000000);
-	putzstr(" ms\n=> \0");
-	putuint(((compile_timings.frontend) + (compile_timings.pre_codegen) + (compile_timings.codegen) + (compile_timings.assembly) + (compile_timings.object_write)) / 1000000);
+	putzstr(" ms\n\t=> \0");
+	putuint(((compile_timings.build_regions_plus_tokenise_and_parse) + (compile_timings.pre_codegen) + (compile_timings.codegen) + (compile_timings.assembly) + (compile_timings.object_write)) / 1000000);
 	putzstr(" ms (\0");
 	putuint(global_arena->cur / 1024);
 	putzstr(" KiB global, \0");
