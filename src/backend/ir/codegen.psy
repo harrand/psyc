@@ -5,6 +5,10 @@ codegen_ir : func(-> v0)
 	{
 		codegen_ir_funcsig(prog.global_scope.funcs # i);
 	}
+	for(i = 0; i < prog.global_scope.vars_count; i = i + 1)
+	{
+		codegen_ir_global(prog.global_scope.vars # i);
+	}
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
 		codegen_ir_funcdef(prog.global_scope.funcs # i);
@@ -32,6 +36,23 @@ codegen_ir : func(-> v0)
 			irprog_dump(ref(irapi.prog));
 		}
 	}
+};
+
+codegen_ir_global : func(var : variable_t mut? -> v0)
+{
+	is_mut ::= ty_is_mut(var->type);
+	storage_ref ::= ref(var->storage);
+	storage_ref->tag = val_tag.pointer;
+	// todo: serialise the value to a buffer
+	warn_begin();
+	putzstr("globref associated with global variable \0");
+	putchar('"');
+	putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+	putchar('"');
+	putzstr(" has a zero data buffer because serialisation of vals is not yet implemented at \0");
+	warn_end();
+	putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.yellow_underline);
+	glob ::= ir_add_glob(zero, zero, is_mut, val_pointer_get_irval(storage_ref));
 };
 
 codegen_ir_funcsig : func(fn : function_t mut? -> v0)
