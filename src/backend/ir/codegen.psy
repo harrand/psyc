@@ -40,19 +40,32 @@ codegen_ir : func(-> v0)
 
 codegen_ir_global : func(var : variable_t mut? -> v0)
 {
-	is_mut ::= ty_is_mut(var->type);
+	abi : abi_tag := abi_tag.psy64;
+	stream : bwriter mut;
+	w ::= ref stream;
+	bwriter_create_native(w, abi_sizeof(abi, var->type), global_arena);
+	ctx : val_context mut;
+	ctx.node = var->node;
+	ctx.parent_fn = zero;
+	ctx.src = var->src;
+
+	v : val mut;
+	decl_init ::= ast_decl_maybe_get_init_node(var->node);
+	if(decl_init == zero)
+	{
+		val_zero_as(var->type, ref v);
+	}
+	else
+	{
+		init_ctx : val_context mut := ctx;
+		init_ctx.node = decl_init;
+		val_from_node(ref init_ctx, ref v, val_resolve.compiletime_only);
+	}
+	abi_serialise_val_to(abi, w, zero, ref ctx);
+
 	storage_ref ::= ref(var->storage);
 	storage_ref->tag = val_tag.pointer;
-	// todo: serialise the value to a buffer
-	warn_begin();
-	putzstr("globref associated with global variable \0");
-	putchar('"');
-	putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
-	putchar('"');
-	putzstr(" has a zero data buffer because serialisation of vals is not yet implemented at \0");
-	warn_end();
-	putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.yellow_underline);
-	glob ::= ir_add_glob(zero, zero, is_mut, val_pointer_get_irval(storage_ref));
+	glob ::= ir_add_glob(stream.buf, stream.cursor, ty_is_mut(var->type), val_pointer_get_irval(storage_ref));
 };
 
 codegen_ir_funcsig : func(fn : function_t mut? -> v0)
