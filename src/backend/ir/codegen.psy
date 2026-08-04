@@ -157,4 +157,19 @@ codegen_ir_funcdef : func(fn : function_t mut? -> v0)
 
 		ir_stack(ref size_irval, ref align_irval, val_pointer_get_irval(storage));
 	}
+
+	usrdata : val_context mut;
+	usrdata.node = zero;
+	usrdata.parent_fn = fn;
+	usrdata.src = fn->src;
+	ast_walk(fn->node, 1, fn->node->children_count@u64, codegen_node_callback, ref usrdata);
+};
+
+codegen_node_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
+{
+	ctx ::= usrdata@val_context mut?;
+	ctx->node = node;
+
+	dummy : val mut;
+	val_from_node(ctx, ref dummy, val_resolve.runtime_only);
 };
