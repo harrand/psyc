@@ -1,16 +1,13 @@
 compile : func(-> v0)
 {
-	t : u64 mut := nanotime();
-	old : u64 mut := t;
-
 	add_build_file(args.build_file, args.target.data, args.target.len);
-	t = nanotime();
-	compile_timings.frontend = t - old;
-	old = t;
 
 	putchar('\r');
 	putzstr("finalising...                                 \0");
 	putchar('\n');
+
+	t : u64 mut := nanotime();
+	old : u64 mut := t;
 
 	semal();
 	t = nanotime();
@@ -37,7 +34,9 @@ compile : func(-> v0)
 
 compile_timings_t : struct
 {
-	frontend : u64;
+	tokenise : u64;
+	parse : u64;
+	build_regions_plus_tokenise_and_parse : u64;
 	pre_codegen : u64;
 	codegen : u64;
 	assembly : u64;
@@ -135,7 +134,9 @@ add_build_file : func(p : path, target : u8?, target_len : u64 -> v0)
 		
 		err_end();
 	}
+	t : u64 mut := nanotime();
 	execute_build_region(src, region_node);
+	compile_timings.build_regions_plus_tokenise_and_parse = compile_timings.build_regions_plus_tokenise_and_parse + (nanotime() - t);
 };
 
 add_source_file : func(p : path -> source)
@@ -194,8 +195,12 @@ add_source_file : func(p : path -> source)
 
 	retfile ::= prog_add_source_file(ref src);
 	
+	t : u64 mut := nanotime();
 	tokenise(ref toks, retfile);
+	compile_timings.tokenise = compile_timings.tokenise + (nanotime() - t);
+	t = nanotime();
 	parse(retfile, ref toks);
+	compile_timings.parse = compile_timings.parse + (nanotime() - t);
 	treewalk(retfile);
 	scratch_reset();
 
