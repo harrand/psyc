@@ -261,6 +261,12 @@ val_convert_aggregate_literal : func(v : val mut?, to : ty, out : val mut?, conv
 	// aggregate conversions only happen if the conversion is a noop
 };
 
+val_convert_function_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	// what if we are val_resolve.runtime_only?
+	[out] = [v];
+};
+
 val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	val_convert(ref([val_variable_reference_get_variable(v)]->storage), to, out, resolve, ctx);
@@ -324,8 +330,8 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 	}
 	if(ty_is_function(to))
 	{
-		out->tag = val_tag.function_reference;
-		[val_function_reference_get_function(out)] = zero;
+		out->tag = val_tag.pointer_literal;
+		[val_pointer_literal_get_address(out)] = 0;
 		return;
 	}
 	if(ty_is_bool(to))
@@ -1436,6 +1442,7 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 		out->tag = val_tag.typeonly;
 		return;
 	}
+
 	if(resolve == val_resolve.compiletime_only)
 	{
 		for(i = 0; i < ty_countof(type); i = i + 1)
@@ -1808,7 +1815,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 	.4 := val_convert_string_literal;
 	.5 := val_convert_aggregate_literal;
 	.6 := val_convert_nyi;
-	.7 := val_convert_nyi;
+	.7 := val_convert_function_reference;
 	.8 := val_convert_variable_reference;
 	.9 := val_convert_nyi;
 	.10 := val_convert_nyi;
