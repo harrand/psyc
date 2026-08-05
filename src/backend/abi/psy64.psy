@@ -318,11 +318,14 @@ abi_serialise_val_to_psy64_aggregate_literal : func(w : bwriter mut?, v : val mu
 	for(i = 0; i < count; i = i + 1)
 	{
 		offset_from_start ::= w->cursor - data_begin;
-		desired_offset_from_start ::= abi_offsetof_struct_psy64(v->type, i);
-		// write padding bytes
-		for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
+		// if our aggregate is a struct then we could have padding bytes
+		if(ty_is_structure(v->type))
 		{
-			bwrite8(w, zero);
+			desired_offset_from_start ::= abi_offsetof_struct_psy64(v->type, i);
+			for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
+			{
+				bwrite8(w, zero);
+			}
 		}
 		abi_serialise_val_to_psy64(w, members # i, ctx);
 	}
@@ -331,6 +334,20 @@ abi_serialise_val_to_psy64_aggregate_literal : func(w : bwriter mut?, v : val mu
 abi_serialise_val_to_psy64_pointer_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
 {
 	bwrite64(w, [val_pointer_literal_get_address(v)]);
+};
+
+abi_serialise_val_to_psy64_function_reference : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
+{
+	fn ::= [val_function_reference_get_function(v)];
+	// write nullptr
+	// save the offset to what we wrote into the buffer
+	reloc : irreloc mut;
+	reloc.tag = irreloc_tag.fn;
+	reloc.data_offset = w->cursor;
+	reloc.idx = fn->irfunc_idx;
+	bwrite64(w, 0);
+
+	ir_add_reloc(ref reloc);
 };
 
 abi_serialise_val_to_psy64_assembly_reference : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
@@ -350,7 +367,7 @@ abi_serialise_val_to_psy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : va
 	.4 := abi_serialise_val_to_psy64_string_literal;
 	.5 := abi_serialise_val_to_psy64_aggregate_literal;
 	.6 := abi_serialise_val_to_psy64_pointer_literal;
-	.7 := abi_serialise_val_to_psy64_nyi;
+	.7 := abi_serialise_val_to_psy64_function_reference;
 	.8 := abi_serialise_val_to_psy64_nyi;
 	.9 := abi_serialise_val_to_psy64_assembly_reference;
 	.10 := abi_serialise_val_to_psy64_invalid;
