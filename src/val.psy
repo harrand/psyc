@@ -256,6 +256,11 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 	panic_end();
 };
 
+val_convert_aggregate_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	// aggregate conversions only happen if the conversion is a noop
+};
+
 val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	val_convert(ref([val_variable_reference_get_variable(v)]->storage), to, out, resolve, ctx);
@@ -1339,6 +1344,7 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 	{
 		out->tag = val_tag.aggregate_literal;
 		members = arena_alloc(global_arena, ty_countof(type) * sizeof val);
+		[val_aggregate_literal_get_members(out)] = members;
 	}
 	runtime_chunks : abi_chunk mut? mut;
 	runtime_chunks_count : u64 mut;
@@ -1347,6 +1353,7 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 		out->tag = val_tag.aggregate;
 		abi_chunk_tys(abi_tag.psy64, ref type, 1, ref runtime_chunks, ref runtime_chunks_count, global_arena);
 		members = arena_alloc(global_arena, runtime_chunks_count * sizeof val);
+		[val_aggregate_get_members(out)] = members;
 	}
 
 	init_vals : val mut? := arena_alloc(scratch_arena, ty_countof(type) * sizeof val);
@@ -1431,8 +1438,29 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 	}
 	if(resolve == val_resolve.compiletime_only)
 	{
-		// init_vals is scratch and in blkinit order, members is global and in type-defined order. they don't necessarily have the same count
-		// just copy them 
+		for(i = 0; i < ty_countof(type); i = i + 1)
+		{
+			cur ::= init_vals # i;
+			if(cur->tag == val_tag.invalid)
+			{
+				val_zero_as(ty_at(type, i), members # i);
+				warn_begin();
+				putzstr("member \0");
+				putuint(i);
+				putzstr(" of aggregate type \0");
+				putchar('"');
+				putty(type);
+				putchar('"');
+				putzstr(" was not initialialised by the block-initialiser at \0");
+				putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.yellow_underline);
+				warn_end();
+			}
+			else
+			{
+				[members # i] = [cur];
+			}
+		}
+		return;
 	}
 	panic_begin();
 	putzstr("todo: val_from_node_expr_blkinit (type: \0");
@@ -1778,7 +1806,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 	.2 := val_convert_zerovalue;
 	.3 := val_convert_scalar_literal;
 	.4 := val_convert_string_literal;
-	.5 := val_convert_nyi;
+	.5 := val_convert_aggregate_literal;
 	.6 := val_convert_nyi;
 	.7 := val_convert_nyi;
 	.8 := val_convert_variable_reference;
