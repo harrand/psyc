@@ -13,6 +13,28 @@ irprog : struct
 	globs_cap : u64;
 
 	//entrypoint : irpos;
+	relocs : irreloc mut?;
+	relocs_count : u64;
+	relocs_cap : u64;
+};
+
+irprog_add_reloc : func(p : irprog mut?, reloc : irreloc mut? -> v0)
+{
+	if(p->relocs == zero)
+	{
+		p->relocs_cap = 64;
+		p->relocs = arena_alloc(global_arena, p->relocs_cap * sizeof irreloc);
+	}
+	while(p->relocs_count >= p->relocs_cap)
+	{
+		old ::= p->relocs;
+		oldcap ::= p->relocs_cap;
+		p->relocs_cap = p->relocs_cap * 2;
+		p->relocs = arena_alloc(global_arena, p->relocs_cap * sizeof irreloc);
+		memcopy(p->relocs, old, oldcap * sizeof irreloc);
+	}
+	[p->relocs # p->relocs_count] = [reloc];
+	p->relocs_count = p->relocs_count + 1;
 };
 
 irprog_add_func : func(p : irprog mut? -> irfunc mut?)
