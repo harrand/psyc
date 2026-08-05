@@ -533,6 +533,18 @@ val_from_node_expr_literal_string : func(ctx : val_context mut?, out : val mut?,
 	[val_string_literal_get_length(out)] = [ast_literal_get_string_len(ctx->node)];
 };
 
+val_from_node_expr_literal_boolean : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
+{
+	out->type = ty_boolean_literal();
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	out->tag = val_tag.scalar_literal;
+	[val_scalar_literal_get_integer(out)] = [ast_literal_get_bool(ctx->node)]@s64;
+};
+
 val_from_node_expr_literal_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
 	panic_begin();
@@ -1338,11 +1350,11 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 	}
 
 	init_vals : val mut? := arena_alloc(scratch_arena, ty_countof(type) * sizeof val);
+	inits_count ::= ast_blkinit_get_inits_count(ctx->node)@u64;
 	for(i = 0; i < inits_count; i = i + 1)
 	{
 		(init_vals # i)->tag = val_tag.invalid;
 	}
-	inits_count ::= ast_blkinit_get_inits_count(ctx->node)@u64;
 	inits ::= ast_blkinit_get_inits(ctx->node);
 	for(i = 0; i < inits_count; i = i + 1)
 	{
@@ -1398,6 +1410,10 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 			warn_begin();
 			putzstr("duplicate initialiser - member index \0");
 			putuint(idx);
+			putzstr(" of aggregate-type \0");
+			putchar('"');
+			putty(type);
+			putchar('"');
 			putzstr(" has already been initialised previously within this block-initialiser at \0");
 			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.yellow_underline);
 			warn_end();
@@ -1702,7 +1718,7 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 	.1 := val_from_node_expr_literal_floating_point;
 	.2 := val_from_node_expr_literal_char;
 	.3 := val_from_node_expr_literal_string;
-	.4 := val_from_node_expr_literal_nyi;
+	.4 := val_from_node_expr_literal_boolean;
 };
 
 val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_unop_tag]
