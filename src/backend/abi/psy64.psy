@@ -293,10 +293,18 @@ abi_serialise_val_to_psy64_scalar_literal : func(w : bwriter mut?, v : val mut?,
 
 abi_serialise_val_to_psy64_string_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
 {
-	warn_begin();
-	putzstr("todo: implement abi_serialise_val_to_psy64_string_literal (have just written out a nullptr for now) at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.yellow_underline);
-	warn_end();
+	// write nullptr
+	// save the offset to what we wrote into the buffer
+	reloc : irreloc mut;
+	reloc.tag = irreloc_tag.glob;
+	reloc.data_offset = w->cursor;
+	bwrite64(w, 0);
+
+	dummy : irval mut;
+	glob ::= ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, ref dummy);
+	reloc.idx = glob->idx;
+
+	ir_add_reloc(ref reloc);
 };
 
 abi_serialise_val_to_psy64_aggregate_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
