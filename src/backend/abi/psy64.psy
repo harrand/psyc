@@ -252,6 +252,71 @@ abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx 
 	err_end();
 };
 
+abi_serialise_val_to_psy64_scalar_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
+{
+	if(ty_floating_point_size(v->type) > 0)
+	{
+		panic_begin();
+		putzstr("serialising floating point data is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	sz ::= abi_sizeof_psy64(v->type);
+	int ::= [val_scalar_literal_get_integer(v)];
+	if(sz == 1)
+	{
+		bwrite8(w, int);
+		return;
+	}
+	if(sz == 2)
+	{
+		bwrite16(w, int);
+		return;
+	}
+	if(sz == 4)
+	{
+		bwrite32(w, int);
+		return;
+	}
+	if(sz == 8)
+	{
+		bwrite64(w, int);
+		return;
+	}
+	panic_begin();
+	putzstr("abi.psy64: don't know how to serialise integral scalar_literal of size \0");
+	putuint(sz);
+	putzstr(" at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+abi_serialise_val_to_psy64_pointer_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
+{
+	bwrite64(w, [val_pointer_literal_get_address(v)]);
+};
+
+abi_serialise_val_to_psy64_aggregate_literal : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
+{
+	data_begin ::= w->cursor;
+
+	count ::= val_aggregate_literal_get_members_count(v);
+	members ::= [val_aggregate_literal_get_members(v)];
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < count; i = i + 1)
+	{
+		offset_from_start ::= w->cursor - data_begin;
+		desired_offset_from_start ::= abi_offsetof_struct_psy64(v->type, i);
+		// write padding bytes
+		for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
+		{
+			bwrite8(w, zero);
+		}
+		abi_serialise_val_to_psy64(w, members # i, ctx);
+	}
+};
+
 abi_serialise_val_to_psy64_assembly_reference : func(w : bwriter mut?, v : val mut?, ctx : val_context mut? -> v0)
 {
 	err_begin();
@@ -265,10 +330,10 @@ abi_serialise_val_to_psy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : va
 	.0 := abi_serialise_val_to_psy64_invalid;
 	.1 := abi_serialise_val_to_psy64_invalid;
 	.2 := abi_serialise_val_to_psy64_zerovalue;
-	.3 := abi_serialise_val_to_psy64_nyi;
+	.3 := abi_serialise_val_to_psy64_scalar_literal;
 	.4 := abi_serialise_val_to_psy64_nyi;
-	.5 := abi_serialise_val_to_psy64_nyi;
-	.6 := abi_serialise_val_to_psy64_nyi;
+	.5 := abi_serialise_val_to_psy64_aggregate_literal;
+	.6 := abi_serialise_val_to_psy64_pointer_literal;
 	.7 := abi_serialise_val_to_psy64_nyi;
 	.8 := abi_serialise_val_to_psy64_nyi;
 	.9 := abi_serialise_val_to_psy64_assembly_reference;

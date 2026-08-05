@@ -1320,10 +1320,103 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 		putsrc(ctx->src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	i : u64 mut;
+	out->type = type;
+	members : val mut? mut;
+	if(resolve == val_resolve.compiletime_only)
+	{
+		out->tag = val_tag.aggregate_literal;
+		members = arena_alloc(global_arena, ty_countof(type) * sizeof val);
+	}
+	runtime_chunks : abi_chunk mut? mut;
+	runtime_chunks_count : u64 mut;
+	if(resolve == val_resolve.runtime_only)
+	{
+		out->tag = val_tag.aggregate;
+		abi_chunk_tys(abi_tag.psy64, ref type, 1, ref runtime_chunks, ref runtime_chunks_count, global_arena);
+		members = arena_alloc(global_arena, runtime_chunks_count * sizeof val);
+	}
+
+	init_vals : val mut? := arena_alloc(scratch_arena, ty_countof(type) * sizeof val);
+	for(i = 0; i < inits_count; i = i + 1)
+	{
+		(init_vals # i)->tag = val_tag.invalid;
+	}
+	inits_count ::= ast_blkinit_get_inits_count(ctx->node)@u64;
+	inits ::= ast_blkinit_get_inits(ctx->node);
+	for(i = 0; i < inits_count; i = i + 1)
+	{
+		init_node ::= inits # i;
+		init_ctx : val_context mut := [ctx];
+		init_ctx.node = ast_init_get_expr(init_node);
+
+		init_tag ::= [ast_init_get_tag(init_node)];
+		idx : u64 mut := ~0;
+		if(init_tag == ast_init_tag.ellipsis)
+		{
+			panic_begin();
+			putzstr("ellipsis syntax in initialisers is NYI at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		if(init_tag == ast_init_tag.integer)
+		{
+			idx = [ast_init_get_integer(init_node)]@u64;
+		}
+		if(init_tag == ast_init_tag.symbol)
+		{
+			if(ty_is_structure(type) == false)
+			{
+				err_begin();
+				putzstr("initialiser with symbol-designator doesn't make sense for array-type \0");
+				putchar('"');
+				putty(type);
+				putchar('"');
+				putzstr(", only integer-designators (the index of the array) makes sense at \0");
+				putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+				err_end();
+			}
+			idx = ty_struct_find(type, [ast_init_get_symbol(init_node)], [ast_init_get_symbol_len(init_node)]);
+		}
+
+		// if the index doesnt look kosher then we need to tell the user their designator is wrong
+		if(idx >= ty_countof(type))
+		{
+			err_begin();
+			putzstr("block-initialiser did not correspond to a valid member of the aggregate-type \0");
+			putchar('"');
+			putty(type);
+			putchar('"');
+			putzstr(" at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+
+		// warn if the same member has been initialised previously (this is almost certainly unintended)
+		if((init_vals # idx)->tag != val_tag.invalid)
+		{
+			warn_begin();
+			putzstr("duplicate initialiser - member index \0");
+			putuint(idx);
+			putzstr(" has already been initialised previously within this block-initialiser at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.yellow_underline);
+			warn_end();
+		}
+
+		// get the initialiser expression as a val and convert it to whatever the member type expects
+		val_from_node(ref init_ctx, init_vals # idx, resolve);
+		val_convert(init_vals # idx, ty_at(type, idx), init_vals # idx, resolve, ref init_ctx);
+	}
+
 	if(resolve == val_resolve.type_only)
 	{
-		val_from_type(type, out);
+		out->tag = val_tag.typeonly;
 		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		// init_vals is scratch and in blkinit order, members is global and in type-defined order. they don't necessarily have the same count
+		// just copy them 
 	}
 	panic_begin();
 	putzstr("todo: val_from_node_expr_blkinit (type: \0");
