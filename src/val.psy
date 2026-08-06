@@ -143,6 +143,11 @@ val_aggregate_get_members_count : func(v : val mut? -> u64 mut?)
 	return ref(v->d1)@u64 mut?;
 };
 
+val_aggregate_get_chunks : func(v : val mut? -> abi_chunk mut? mut?)
+{
+	return ref(v->d2)@abi_chunk mut? mut?;
+};
+
 val_convert_nyi : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	panic_begin();
@@ -651,11 +656,10 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 	i : u64 mut;
 	count ::= [val_aggregate_get_members_count(ref rhs_conv)];
 	agg_members ::= [val_aggregate_get_members(ref rhs_conv)];
+	agg_chunks ::= [val_aggregate_get_chunks(ref rhs_conv)];
 	for(i = 0; i < count; i = i + 1)
 	{
-		// todo: replace this with the actual byte distance of this chunked aggregate member from the start of the agg. ideally we store the chunks in the aggregate aswell tbh
-		byte_offset : s32 mut := 0;
-		ir_store(val_scalar_get_irval(agg_members # i), val_pointer_get_irval(lhs), byte_offset);
+		ir_store(val_scalar_get_irval(agg_members # i), val_pointer_get_irval(lhs), (agg_chunks # i)->src_byte_offset@s32);
 	}
 };
 
@@ -1426,6 +1430,7 @@ val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolv
 		abi_chunk_tys(abi_tag.psy64, ref type, 1, ref runtime_chunks, ref runtime_chunks_count, global_arena);
 		members = arena_alloc(global_arena, runtime_chunks_count * sizeof val);
 		[val_aggregate_get_members(out)] = members;
+		[val_aggregate_get_chunks(out)] = runtime_chunks;
 	}
 
 	init_vals : val mut? := arena_alloc(scratch_arena, ty_countof(type) * sizeof val);
