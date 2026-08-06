@@ -1149,6 +1149,29 @@ val_from_node_expr_unop_minus : func(operand : val mut?, operand_node : ast mut?
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if(operand->tag == val_tag.scalar_literal)
+		{
+			out->tag = val_tag.scalar_literal;
+			out->type = out->type;
+			if(ty_floating_point_size(operand->type) > 0)
+			{
+				[val_scalar_literal_get_floating_point(out)] = -[val_scalar_literal_get_floating_point(operand)];
+			}
+			else
+			{
+				[val_scalar_literal_get_integer(out)] = -[val_scalar_literal_get_integer(operand)];
+			}
+			return;
+		}
+		panic_begin();
+		putzstr("val_from_node_expr_unop_minus compiletime_only, don't know how to negate val_tag.\0");
+		putsint(operand->tag@s64);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
 	panic_begin();
 	putzstr("reached end of val_from_node_expr_unop_minus for \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
