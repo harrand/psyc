@@ -629,11 +629,34 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	// todo: store rhs_conv into lhs
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_assign at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compile-time assignment is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	rhs_conv : val mut;
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	val_load(abi_tag.psy64, rhs, ref rhs_conv, ref rhs_ctx);
+	val_convert(ref rhs_conv, lhs->type, ref rhs_conv, resolve, ref rhs_ctx);
+	if(rhs_conv.tag == val_tag.scalar)
+	{
+		ir_store(val_scalar_get_irval(ref rhs_conv), val_pointer_get_irval(lhs), 0);
+		return;
+	}
+	// must be an aggregate then
+	i : u64 mut;
+	count ::= [val_aggregate_get_members_count(ref rhs_conv)];
+	agg_members ::= [val_aggregate_get_members(ref rhs_conv)];
+	for(i = 0; i < count; i = i + 1)
+	{
+		// todo: replace this with the actual byte distance of this chunked aggregate member from the start of the agg. ideally we store the chunks in the aggregate aswell tbh
+		byte_offset : s32 mut := 0;
+		ir_store(val_scalar_get_irval(agg_members # i), val_pointer_get_irval(lhs), byte_offset);
+	}
 };
 
 val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
