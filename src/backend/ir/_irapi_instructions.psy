@@ -1,4 +1,4 @@
-ir_stack : func(size : irval mut?, align : irval mut?, out : irval mut? -> v0)
+ir_stack : func(out : irval mut?, size : irval mut?, align : irval mut? -> v0)
 {
 	inst : irinst mut := zero;
 	inst.tag = irinst_tag.stack;
@@ -25,7 +25,7 @@ ir_stack_get_align : func(inst : irinst mut? -> irval mut?)
 	return inst->operands # 2;
 };
 
-ir_load : func(sz : irsz, base : irval mut?, disp : s32, out : irval mut? -> v0)
+ir_load : func(out : irval mut?, sz : irsz, base : irval mut?, disp : s32 -> v0)
 {
 	inst : irinst mut := zero;
 	inst.tag = irinst_tag.load;
@@ -56,7 +56,7 @@ ir_load_get_disp : func(inst : irinst mut? -> u32 mut?)
 	return irval_imm_get_integer(inst->operands # 2)@u32 mut?;
 };
 
-ir_loadat : func(sz : irsz, base : irval mut?, index : irval mut?, scale : u8, disp : s32, out : irval mut? -> v0)
+ir_loadat : func(out : irval mut?, sz : irsz, base : irval mut?, index : irval mut?, scale : u8, disp : s32 -> v0)
 {
 	inst : irinst mut := zero;
 	inst.tag = irinst_tag.loadat;
@@ -175,4 +175,31 @@ ir_storeat_get_scale : func(inst : irinst mut? -> u8 mut?)
 ir_storeat_get_disp : func(inst : irinst mut? -> s32 mut?)
 {
 	return irval_imm_get_integer(inst->operands # 4)@s32 mut?;
+};
+
+ir_smul : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.smul;
+
+	ir_new_reg_of(irval_get_sz(lhs), out);
+	irinst_add_operand(ref inst, out);
+	irinst_add_operand(ref inst, lhs);
+	irinst_add_operand(ref inst, rhs);
+	ir_add_instruction(ref inst);
+};
+
+ir_smul_get_out : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_smul_get_lhs : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 1;
+};
+
+ir_smul_get_rhs : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 2;
 };
