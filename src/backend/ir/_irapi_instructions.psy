@@ -51,9 +51,9 @@ ir_load_get_base : func(inst : irinst mut? -> irval mut?)
 	return inst->operands # 1;
 };
 
-ir_load_get_disp : func(inst : irinst mut? -> u32 mut?)
+ir_load_get_disp : func(inst : irinst mut? -> s32 mut?)
 {
-	return irval_imm_get_integer(inst->operands # 2)@u32 mut?;
+	return irval_imm_get_integer(inst->operands # 2)@s32 mut?;
 };
 
 ir_loadat : func(out : irval mut?, sz : irsz, base : irval mut?, index : irval mut?, scale : u8, disp : s32 -> v0)
@@ -202,4 +202,58 @@ ir_smul_get_lhs : func(inst : irinst mut? -> irval mut?)
 ir_smul_get_rhs : func(inst : irinst mut? -> irval mut?)
 {
 	return inst->operands # 2;
+};
+
+ir_call : func(szs : irsz mut?, szs_count : u64, callable : irval mut?, params : irval mut?, params_count : u64, outs : irval mut? -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.call;
+
+	// first param is the number of returns
+	count_imm : irval mut;
+	irval_dimm(szs_count, ref count_imm);
+	irinst_add_operand(ref inst, ref count_imm);
+
+	// then its the out registers
+	i : u64 mut;
+	for(i = 0; i < szs_count; i = i + 1)
+	{
+		ir_new_reg_of([szs # i], outs # i);
+		irinst_add_operand(ref inst, outs # i);
+	}
+
+	// then the callable
+	irinst_add_operand(ref inst, callable);
+
+	// finally the params
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		irinst_add_operand(ref inst, params # i);
+	}
+	ir_add_instruction(ref inst);
+};
+
+ir_call_get_returns_count : func(inst : irinst mut? -> u32)
+{
+	return [irval_imm_get_integer(inst->operands # 0)]@u32;
+};
+
+ir_call_get_returns : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 1;
+};
+
+ir_call_get_callable : func(inst : irinst mut? -> irval mut?)
+{
+	return ir_call_get_returns(inst) # ir_call_get_returns_count(inst);
+};
+
+ir_call_get_params : func(inst : irinst mut? -> irval mut?)
+{
+	return ir_call_get_callable(inst) # 1;
+};
+
+ir_call_get_params_count : func(inst : irinst mut? -> u32)
+{
+	return inst->operands_count@u32 - (ir_call_get_returns_count(inst) + 2);
 };
