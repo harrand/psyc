@@ -181,6 +181,7 @@ val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 	// same thing
 	if(resolve == val_resolve.compiletime_only)
 	{
+		[out] = [v];
 		return;
 	}
 	// need to turn this into a runtime scalar
@@ -287,9 +288,26 @@ val_convert_scalar_nyi : func(v : val mut?, to : ty, out : val mut?, conv : tyco
 	panic_end();
 };
 
+val_convert_scalar_i2i : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
+val_convert_scalar_noop : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
 val_convert_scalar : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[val_convert_scalar_tbl # conv@s64](v, to, out, conv, resolve, ctx);
+};
+
+val_convert_pointer : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	// load and convert again
+	val_load(abi_tag.psy64, v, out, ctx);
+	val_convert(out, to, out, resolve, ctx);
 };
 
 
@@ -330,11 +348,8 @@ val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve,
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	if(conv == tyconv.noop)
-	{
-		return;
-	}
 	[val_convert_tbl # (v->tag@s64)](v, to, out, conv, resolve, ctx);
+	out->type = to;
 };
 
 val_zero_as : func(to : ty, out : val mut? -> v0)
@@ -603,22 +618,26 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 	out->type = ptr_val->type;
 	load_chunks : abi_chunk mut? mut;
 	load_chunks_count : u64 mut;
-	abi_chunk_tys(abi, ref(ptr_val->type), 1, ref load_chunks, ref load_chunks_count, scratch_arena);
+	abi_chunk_tys(abi, ref(ptr_val->type), 1, ref load_chunks, ref load_chunks_count, global_arena);
 	// easier codepath for scalars
 	if(load_chunks_count == 1)
 	{
 		out->tag = val_tag.scalar;
-		// todo: emit an ir_load on val_pointer_get_irval(ptr_val). result irval register should be written to val_scalar_get_irval(out)
-		panic_begin();
-		putzstr("nyi: ir_load call in val_load at \0");
-		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-		panic_end();
+		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), val_pointer_get_irval(ptr_val), 0);
 		return;
 	}
-	// todo: return agg for 2+ chunks
-	panic_begin();
-	putzstr("reached end of val_load (load_chunks_count != 1, should be an agg)");
-	panic_end();
+	i : u64 mut;
+	out->tag = val_tag.aggregate;
+	[val_aggregate_get_members_count(out)] = load_chunks_count;
+	agg_members : val mut? := arena_alloc(global_arena, load_chunks_count * sizeof val);
+	[val_aggregate_get_members(out)] = agg_members;
+	[val_aggregate_get_chunks(out)] = load_chunks;
+	for(i = 0; i < load_chunks_count; i = i + 1)
+	{
+		cur ::= agg_members # i;
+		cur->tag = val_tag.scalar;
+		ir_load(val_scalar_get_irval(cur), abi_chunk_as_irsz(load_chunks # i), val_pointer_get_irval(ptr_val), (load_chunks # i)->src_byte_offset@s32);
+	}
 };
 
 val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -645,7 +664,6 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
-	val_load(abi_tag.psy64, rhs, ref rhs_conv, ref rhs_ctx);
 	val_convert(ref rhs_conv, lhs->type, ref rhs_conv, resolve, ref rhs_ctx);
 	if(rhs_conv.tag == val_tag.scalar)
 	{
@@ -774,7 +792,8 @@ val_from_node_expr_biop_sub : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 
 val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	abi ::= abi_tag.psy64;
+	arith : ty mut := ty_of_arithmetic(lhs->type, rhs->type);
 	if(arith == ty.invalid)
 	{
 		err_begin();
@@ -791,6 +810,7 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		err_end();
 	}
 
+	// we dont manually load these - its the job of val_convert to do that
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
@@ -805,6 +825,21 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: fmul invocation in val_from_node_expr_mul");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		out->tag = val_tag.scalar;
+		ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 		return;
 	}
 	// todo: mul lhs_conv and rhs_conv and store the result in out
@@ -1354,7 +1389,6 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 		cur_param_ctx.node = param_nodes # i;
 		val_from_node(ref cur_param_ctx, ref cur_param_val, resolve);
 		val_convert(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, resolve, ref cur_param_ctx);
-		val_load(abi, ref cur_param_val, param_vals # i, ref cur_param_ctx);
 	}
 
 	if(resolve == val_resolve.type_only)
@@ -1890,7 +1924,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 	.8 := val_convert_variable_reference;
 	.9 := val_convert_nyi;
 	.10 := val_convert_scalar;
-	.11 := val_convert_nyi;
+	.11 := val_convert_pointer;
 	.12 := val_convert_nyi;
 };
 
@@ -1903,7 +1937,7 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 	.4 := val_convert_scalar_nyi;
 	.5 := val_convert_scalar_nyi;
 	.6 := val_convert_scalar_nyi;
-	.7 := val_convert_scalar_nyi;
+	.7 := val_convert_scalar_i2i;
 	.8 := val_convert_scalar_nyi;
 	.9 := val_convert_scalar_nyi;
 	.10 := val_convert_scalar_nyi;
@@ -1911,7 +1945,7 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 	.12 := val_convert_scalar_nyi;
 	.13 := val_convert_scalar_nyi;
 	.14 := val_convert_scalar_nyi;
-	.15 := val_convert_scalar_nyi;
+	.15 := val_convert_scalar_noop;
 	.16 := val_convert_scalar_nyi;
 	.17 := val_convert_scalar_nyi;
 	.18 := val_convert_scalar_nyi;
