@@ -12,7 +12,7 @@ val_tag : enum
 	.string_literal := 4;
 	// an aggregate (struct/array) literal known at compile time (d0 = pointer to val? members, must be size == ty_countof(type))
 	.aggregate_literal := 5;
-	// a pointer literal known at compile time (d0 = address)
+	// a pointer literal known at compile time (d0 = address, d1 = displacement)
 	.pointer_literal := 6;
 	// a reference to a function (d0 = function_t mut?)
 	.function_reference := 7;
@@ -133,6 +133,11 @@ val_pointer_get_irval : func(v : val mut? -> irval mut?)
 	return ref(v->d0)@irval mut?;
 };
 
+val_pointer_get_displacement : func(v : val mut? -> s32 mut?)
+{
+	return ref(v->d1)@s32 mut?;
+};
+
 val_aggregate_get_members : func(v : val mut? -> val mut? mut?)
 {
 	return ref(v->d0)@val mut? mut?;
@@ -250,6 +255,7 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 		globref_ptr ::= val_pointer_get_irval(out);
 		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, globref_ptr);
 		out->tag = val_tag.pointer;
+		[val_pointer_get_displacement(out)] = 0;
 		return;
 	}
 	panic_begin();
@@ -447,6 +453,7 @@ val_from_node_stmt : func(ctx : val_context mut?, out : val mut?, resolve : val_
 
 val_from_node_stmt_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
+	irfunc_dump(ir_current_func());
 	panic_begin();
 	putzstr("val_from_node_stmt NYI for codepath: \0");
 	putchar('\n');
@@ -627,7 +634,7 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 	if(load_chunks_count == 1)
 	{
 		out->tag = val_tag.scalar;
-		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), val_pointer_get_irval(ptr_val), 0);
+		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), val_pointer_get_irval(ptr_val), [val_pointer_get_displacement(ptr_val)]);
 		return;
 	}
 	i : u64 mut;
@@ -640,7 +647,7 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 	{
 		cur ::= agg_members # i;
 		cur->tag = val_tag.scalar;
-		ir_load(val_scalar_get_irval(cur), abi_chunk_as_irsz(load_chunks # i), val_pointer_get_irval(ptr_val), (load_chunks # i)->src_byte_offset@s32);
+		ir_load(val_scalar_get_irval(cur), abi_chunk_as_irsz(load_chunks # i), val_pointer_get_irval(ptr_val), [val_pointer_get_displacement(ptr_val)] + (load_chunks # i)->src_byte_offset@s32);
 	}
 };
 
@@ -681,7 +688,7 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 	}
 	if(rhs_conv.tag == val_tag.scalar)
 	{
-		ir_store(val_scalar_get_irval(ref rhs_conv), val_pointer_get_irval(lhs), 0);
+		ir_store(val_scalar_get_irval(ref rhs_conv), val_pointer_get_irval(lhs), [val_pointer_get_displacement(lhs)]);
 		return;
 	}
 	// must be an aggregate then
@@ -691,7 +698,7 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 	agg_chunks ::= [val_aggregate_get_chunks(ref rhs_conv)];
 	for(i = 0; i < count; i = i + 1)
 	{
-		ir_store(val_scalar_get_irval(agg_members # i), val_pointer_get_irval(lhs), (agg_chunks # i)->src_byte_offset@s32);
+		ir_store(val_scalar_get_irval(agg_members # i), val_pointer_get_irval(lhs), [val_pointer_get_displacement(lhs)] + (agg_chunks # i)->src_byte_offset@s32);
 	}
 };
 
@@ -842,6 +849,7 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		return;
 	}
 
+	out->tag = val_tag.scalar;
 	if(ty_floating_point_size(arith) > 0)
 	{
 		panic_begin();
@@ -852,15 +860,10 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	}
 	if(ty_is_signed(arith))
 	{
-		out->tag = val_tag.scalar;
 		ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 		return;
 	}
-	// todo: mul lhs_conv and rhs_conv and store the result in out
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_mul at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	ir_umul(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -898,6 +901,7 @@ val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	out->tag = val_tag.scalar;
 
 	if(ty_floating_point_size(arith) > 0)
 	{
@@ -909,11 +913,9 @@ val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	}
 	if(ty_is_signed(arith))
 	{
-		out->tag = val_tag.scalar;
 		ir_sdiv(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 		return;
 	}
-	out->tag = val_tag.scalar;
 	ir_udiv(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
@@ -1304,7 +1306,17 @@ val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, 
 	if(operand->tag == val_tag.pointer)
 	{
 		out->tag = val_tag.scalar;
-		[val_scalar_get_irval(out)] = [val_pointer_get_irval(operand)];
+		disp ::= [val_pointer_get_displacement(operand)];
+		if(disp == 0)
+		{
+			[val_scalar_get_irval(out)] = [val_pointer_get_irval(operand)];
+		}
+		else
+		{
+			disp_imm : irval mut;
+			irval_dimm(disp, ref disp_imm);
+			ir_add(val_scalar_get_irval(out), val_pointer_get_irval(operand), ref disp_imm);
+		}
 		return;
 	}
 	if(operand->tag == val_tag.variable_reference)
@@ -1839,8 +1851,6 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 	}
 	out->tag = val_tag.pointer;
 
-	offset_imm : irval mut;
-	irval_dimm(offset, ref offset_imm);
 	if(lhs_val.tag != val_tag.pointer)
 	{
 		panic_begin();
@@ -1850,14 +1860,8 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	if(offset == 0)
-	{
-		[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs_val)];
-	}
-	else
-	{
-		ir_add(val_pointer_get_irval(out), val_pointer_get_irval(ref lhs_val), ref offset_imm);
-	}	
+	[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs_val)];
+	[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs_val)] + offset@s32;
 };
 
 val_from_node_expr_countof : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
