@@ -70,6 +70,7 @@ ir_add_glob : func(data : u8 mut? weak, size : u64, is_mut : bool, out : irval m
 ir_add_instruction : func(inst : irinst mut? -> v0)
 {
 	irblk_add_inst_at(ir_current_blk(), inst, irapi.instpos);
+	irapi.instpos = irapi.instpos + 1;
 };
 
 ir_delete_instruction : func(-> v0)
@@ -87,7 +88,11 @@ ir_delete_instruction : func(-> v0)
 
 ir_current_instruction : func(-> irinst mut?)
 {
-	return ir_current_blk()->insts # irapi.instpos;
+	if(irapi.instpos == 0)
+	{
+		return zero;
+	}
+	return ir_current_blk()->insts # (irapi.instpos - 1);
 };
 
 ir_position_beginning_of : func(funcidx : u64, blkidx : u64 -> v0)
