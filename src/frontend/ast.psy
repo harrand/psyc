@@ -902,14 +902,33 @@ ast_if_get_condition_expression : func(n : ast mut? -> ast mut?)
 	return n->children # 0;
 };
 
+ast_if_get_offset_to_body : func(n : ast mut? -> u64)
+{
+	return 1;
+};
+
 ast_if_get_body : func(n : ast mut? -> ast mut?)
 {
-	return n->children # 1;
+	return n->children # ast_if_get_offset_to_body(n);
 };
 
 ast_if_get_body_count : func(n : ast mut? -> u32)
 {
 	return n->children_count - 1;
+};
+
+ast_if_get_else : func(n : ast mut? -> ast mut?)
+{
+	i : u32 mut;
+	for(i = 1; i < n->children_count; i = i + 1)
+	{
+		cur ::= n->children # i;
+		if([ast_stmt_get_tag(cur)] == ast_stmt_tag.else_blk)
+		{
+			return cur;
+		}
+	}
+	return zero;
 };
 
 ast_else_get_parse_state : func(n : ast mut? -> ast_else_parse_state mut?)
