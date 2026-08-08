@@ -462,6 +462,7 @@ val_from_node_stmt_if_blk : func(ctx : val_context mut?, out : val mut?, resolve
 	val_from_node(ref cond_ctx, ref cond_val, resolve);
 	val_convert(ref cond_val, ty.bool, ref cond_val, resolve, ref cond_ctx);
 
+	irfunc_dump(ir_current_func());
 	panic_begin();
 	putzstr("reached end of val_from_node_stmt_if_blk at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
@@ -714,8 +715,20 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 
 val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	// we dont manually load these - its the job of val_convert to do that
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
 	out->type = ty.bool;
-	if(ty_equality_comparable_to(lhs->type, rhs->type) == false)
+	if((arith == ty.invalid) || (ty_equality_comparable_to(lhs->type, rhs->type) == false))
 	{
 		err_begin();
 		putzstr("compare is invalid because operand types \0");
@@ -735,6 +748,104 @@ val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_compare_equal at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_compare_not_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	// we dont manually load these - its the job of val_convert to do that
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = ty.bool;
+	if((arith == ty.invalid) || (ty_equality_comparable_to(lhs->type, rhs->type) == false))
+	{
+		err_begin();
+		putzstr("compare is invalid because operand types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" are not equality-comparable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	panic_begin();
+	putzstr("reached end of val_from_node_expr_biop_compare_not_equal at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_biop_compare_less : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	// we dont manually load these - its the job of val_convert to do that
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = ty.bool;
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("compare is invalid because operand types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" are not inequality-comparable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: flt invocation in val_from_node_expr_biop_compare_less");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		ir_cmp_slt(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+		return;
+	}
+	ir_cmp_ult(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_add : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -772,11 +883,16 @@ val_from_node_expr_biop_add : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	// todo: add lhs_conv and rhs_conv and store the result in out
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_add at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: fadd invocation in val_from_node_expr_add");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_sub : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1952,8 +2068,8 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 {
 	.0 := val_from_node_expr_biop_assign;
 	.1 := val_from_node_expr_biop_compare_equal;
-	.2 := val_from_node_expr_biop_nyi;
-	.3 := val_from_node_expr_biop_nyi;
+	.2 := val_from_node_expr_biop_compare_not_equal;
+	.3 := val_from_node_expr_biop_compare_less;
 	.4 := val_from_node_expr_biop_nyi;
 	.5 := val_from_node_expr_biop_nyi;
 	.6 := val_from_node_expr_biop_nyi;
