@@ -180,6 +180,78 @@ ir_storeat_get_disp : func(inst : irinst mut? -> s32 mut?)
 	return irval_imm_get_integer(inst->operands # 4)@s32 mut?;
 };
 
+ir_ret : func(return_vals : irval mut?, return_vals_count : u64 -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.ret;
+
+	i : u64 mut;
+	for(i = 0; i < return_vals_count; i = i + 1)
+	{
+		irinst_add_operand(ref inst, return_vals # i);
+	}
+	ir_add_instruction(ref inst);
+};
+
+ir_ret_get_vals : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_ret_get_vals_count : func(inst : irinst mut? -> u64)
+{
+	return inst->operands_count;
+};
+
+ir_jmp : func(blkidx : u64 -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.jmp;
+
+	blkref : irval mut;
+	irval_blkref(blkidx, ref blkref);
+
+	irinst_add_operand(ref inst, ref blkref);
+	ir_add_instruction(ref inst);
+};
+
+ir_jmp_get_blkidx : func(inst : irinst mut? -> u64 mut?)
+{
+	return irval_blkref_get_idx(inst->operands # 0);
+};
+
+ir_jmpif : func(cond : irval mut?, blkidx_true : u64, blkidx_false : u64 -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.jmpif;
+
+	true_blkref : irval mut;
+	irval_blkref(blkidx_true, ref true_blkref);
+
+	false_blkref : irval mut;
+	irval_blkref(blkidx_false, ref false_blkref);
+
+	irinst_add_operand(ref inst, cond);
+	irinst_add_operand(ref inst, ref true_blkref);
+	irinst_add_operand(ref inst, ref false_blkref);
+	ir_add_instruction(ref inst);
+};
+
+ir_jmpif_get_cond : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_jmpif_get_true_blkidx : func(inst : irinst mut? -> u64 mut?)
+{
+	return irval_blkref_get_idx(inst->operands # 1);
+};
+
+ir_jmpif_get_false_blkidx : func(inst : irinst mut? -> u64 mut?)
+{
+	return irval_blkref_get_idx(inst->operands # 2);
+};
+
 ir_add : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 {
 	inst : irinst mut := zero;
