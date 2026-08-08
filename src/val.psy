@@ -1798,24 +1798,54 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		putsrc(ctx->src, rhs_symbol_node->src_beg@u64, rhs_symbol_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	offset : u64 mut;
 	if(is_ptr_field)
 	{
 		out->type = ty_at(ty_underlying(lhs_val.type), struct_memidx);
+		offset = abi_offsetof_struct(abi_tag.psy64, ty_underlying(lhs_val.type), struct_memidx);
 	}
 	else
 	{
 		out->type = ty_at(lhs_val.type, struct_memidx);
+		offset = abi_offsetof_struct(abi_tag.psy64, lhs_val.type, struct_memidx);
 	}
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
 		return;
 	}
+
+	if(lhs_val.tag == val_tag.variable_reference)
+	{
+		lhs_val = [val_variable_reference_get_variable(ref lhs_val)]->storage;
+	}
 	
-	panic_begin();
-	putzstr("todo: val_from_node_expr_field at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	if(is_ptr_field)
+	{
+		val_load(abi_tag.psy64, ref lhs_val, ref lhs_val, ref lhs_ctx);
+		lhs_val.tag = val_tag.pointer;
+	}
+	out->tag = val_tag.pointer;
+
+	offset_imm : irval mut;
+	irval_dimm(offset, ref offset_imm);
+	if(lhs_val.tag != val_tag.pointer)
+	{
+		panic_begin();
+		putzstr("expected lhs of field to be val_tag.pointer, but it is val_tag.\0");
+		putsint(lhs_val.tag);
+		putzstr(" at \0");
+		putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	if(offset == 0)
+	{
+		[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs_val)];
+	}
+	else
+	{
+		ir_add(val_pointer_get_irval(out), val_pointer_get_irval(ref lhs_val), ref offset_imm);
+	}	
 };
 
 val_from_node_expr_countof : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
