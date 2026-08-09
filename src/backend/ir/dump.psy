@@ -63,7 +63,16 @@ irval_dump_to_blkref : func(w : bwriter mut?, v : irval mut? -> v0)
 irval_dump_to_asmref : func(w : bwriter mut?, v : irval mut? -> v0)
 {
 	bwrite8(w, '#');
-	bwrite_uint(w, [irval_asmref_get_idx(v)]);
+	idx ::= [irval_asmref_get_idx(v)];
+	as ::= irapi.prog.asms # idx;
+	if(as->custom_name != zero)
+	{
+		bwrite_bytes(w, as->custom_name, as->custom_name_len);
+	}
+	else
+	{
+		bwrite_uint(w, idx);
+	}
 };
 
 irval_dump_to_tbl ::= func(w : bwriter mut?, v : irval mut? -> v0)[countof irval_tag]
@@ -226,7 +235,14 @@ irfunc_dump : func(fn : irfunc mut? -> v0)
 irasm_dump_to : func(w : bwriter mut?, as : irasm mut? -> v0)
 {
 	bwrite8(w, '#');
-	bwrite_uint(w, as->idx);
+	if(as->custom_name != zero)
+	{
+		bwrite_bytes(w, as->custom_name, as->custom_name_len);
+	}
+	else
+	{
+		bwrite_uint(w, as->idx);
+	}
 	bwrite_zstr(w, " : asm(\0");
 	i : u64 mut;
 	for(i = 0; i < as->params_count; i = i + 1)
