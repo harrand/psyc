@@ -577,6 +577,15 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 		return;
 	}
 
+	maybe_asm ::= scope_find_assembly(scope, sym, symlen);
+	if(maybe_asm != zero)
+	{
+		out->tag = val_tag.assembly_reference;
+		[val_assembly_reference_get_assembly(out)] = maybe_asm;
+		out->type = maybe_asm->type;
+		return;
+	}
+
 	maybe_ty ::= ty_find_by_name(sym, symlen);
 	if(maybe_ty != ty.invalid)
 	{
@@ -593,6 +602,7 @@ val_from_node_expr_symbol : func(ctx : val_context mut?, out : val mut?, resolve
 		val_from_node_expr_symbol(ref top_level_ctx, out, resolve);
 		return;
 	}
+
 	panic_begin();
 	putzstr("reached end of val_from_node_expr_symbol at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
