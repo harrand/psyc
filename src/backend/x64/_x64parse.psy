@@ -1,7 +1,177 @@
+x64_constraints_data : struct
+{
+	outputs : x64val mut?;
+	outputs_count : u64;
+	outputs_cap : u64;
+	inputs : x64val mut?;
+	inputs_count : u64;
+	inputs_cap : u64;
+	clobbers : x64val mut?;
+	clobbers_count : u64;
+	clobbers_cap : u64;
+};
+
+x64_constraints_data_add_output : func(data : x64_constraints_data mut? -> x64val mut?)
+{
+	if(data->outputs == zero)
+	{
+		data->outputs_cap = 4;
+		data->outputs = arena_alloc(global_arena, data->outputs_cap * sizeof x64val);
+	}
+	while(data->outputs_cap <= data->outputs_count)
+	{
+		old ::= data->outputs;
+		oldcap ::= data->outputs_cap;
+		data->outputs_cap = data->outputs_cap * 2;
+		data->outputs = arena_alloc(global_arena, data->outputs_cap * sizeof x64val);
+		memcopy(data->outputs, old, oldcap * sizeof x64val);
+	}
+	ptr ::= data->outputs # (data->outputs_count);
+	data->outputs_count = data->outputs_count + 1;
+	return ptr;
+};
+
+x64_constraints_data_add_input : func(data : x64_constraints_data mut? -> x64val mut?)
+{
+	if(data->inputs == zero)
+	{
+		data->inputs_cap = 4;
+		data->inputs = arena_alloc(global_arena, data->inputs_cap * sizeof x64val);
+	}
+	while(data->inputs_cap <= data->inputs_count)
+	{
+		old ::= data->inputs;
+		oldcap ::= data->inputs_cap;
+		data->inputs_cap = data->inputs_cap * 2;
+		data->inputs = arena_alloc(global_arena, data->inputs_cap * sizeof x64val);
+		memcopy(data->inputs, old, oldcap * sizeof x64val);
+	}
+	ptr ::= data->inputs # (data->inputs_count);
+	data->inputs_count = data->inputs_count + 1;
+	return ptr;
+};
+
+x64_constraints_data_add_clobber : func(data : x64_constraints_data mut? -> x64val mut?)
+{
+	if(data->clobbers == zero)
+	{
+		data->clobbers_cap = 4;
+		data->clobbers = arena_alloc(global_arena, data->clobbers_cap * sizeof x64val);
+	}
+	while(data->clobbers_cap <= data->clobbers_count)
+	{
+		old ::= data->clobbers;
+		oldcap ::= data->clobbers_cap;
+		data->clobbers_cap = data->clobbers_cap * 2;
+		data->clobbers = arena_alloc(global_arena, data->clobbers_cap * sizeof x64val);
+		memcopy(data->clobbers, old, oldcap * sizeof x64val);
+	}
+	ptr ::= data->clobbers # (data->clobbers_count);
+	data->clobbers_count = data->clobbers_count + 1;
+	return ptr;
+};
+
+x64_parse_a_constraint : func(constraints : u8?, constraints_len : u64, out : x64_constraints_data mut? -> u64)
+{
+	// constraints points to a valid constraint
+	// it may be much shorter than constraints_len, so we return how much we parsed
+	front ::= [constraints # 0];
+
+	off : u64 mut := 0;
+	con : x64val mut? mut := zero;
+	if(front == '{')
+	{
+		off = 1;
+		con = x64_constraints_data_add_input(out);
+	}
+	if(front == '=')
+	{
+		off = 2;
+		con = x64_constraints_data_add_output(out);
+	}
+	if(front == '~')
+	{
+		off = 2;
+		con = x64_constraints_data_add_clobber(out);
+	}
+	if((front >= '0') && (front <= '9'))
+	{
+		// N'th output becomes also an input
+		number : parseutil_number mut;
+		parse_dst ::= parseutil_parse_number(ref front, 1, ref number);
+		[x64_constraints_data_add_input(out)] = [out->outputs # number.i];
+		return parse_dst;
+	}
+	content ::= constraints # off;
+	len ::= constraints_len - off;
+	// todo: check if 'memory'?
+	i : u64 mut;
+	for(i = 0; i < countof typeof x64reg_name; i = i + 1)
+	{
+		cur ::= [x64reg_name # i];
+		cur_len ::= zstrlen(cur);
+		if(strstartswith(content, len, cur, cur_len))
+		{
+			// its this register
+			// i == regidx * 7 + (log2(sz) - 3)
+			// we want to get the regidx and sz
+			// size is easy - (i mod 7) == 1 if 8 bit
+			// 2 if 16 bit, and so on...
+			mod ::= i % 7;
+			j : u64 mut;
+			sz : u64 mut := 1;
+			for(j = 0; j < mod; j = j + 1)
+			{
+				sz = sz * 2;
+			}
+			// reggroup = (i - 1) / 7
+			[x64val_reg_get_size(con)] = sz;
+			[x64val_reg_get_reg(con)] = (i / 7)@s64@x64_reg;
+			return cur_len + 1;
+		}
+	}
+	return 0;
+};
+
+x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64_constraints_data mut? -> v0)
+{
+	ptr : u8? mut := constraints;
+	len : u64 mut := constraints_len;
+	while(len > 0)
+	{
+		curparse : u64 mut := 0;
+		if(parseutil_is_whitespace([ptr]) || ([ptr] == ','))
+		{
+			curparse = 1;
+		}
+		else
+		{
+			curparse = x64_parse_a_constraint(ptr, len, out);
+			if(curparse == 0)
+			{
+				warn_begin();
+				putzstr("failed to parse constraint string \0");
+				putchar('"');
+				putchars(constraints, constraints_len);
+				putchar('"');
+				putzstr(" properly. got stuck \0");
+				putuint(constraints_len - len);
+				putzstr(" bytes in\0");
+				warn_end();
+			}
+		}
+		ptr = ptr # curparse;
+		len = len - curparse;
+	}
+};
 // given a constraint string e.g '={rax},0,{rdi},~{rcx}'
 // convert to a matching function type, e.g 'func(u64, u64 -> u64)'
 x64_constraints_to_ty : func(constraints : u8?, constraints_len : u64 -> ty)
 {
+	u : tydata mut;
+	u.tag = tydata_tag.function;
+	u.name = zero;
+	u.name_len = zero;
 	warn_begin();
 	putzstr("parsing of assembly constraint string:\n\0");
 	colour_yellow();
