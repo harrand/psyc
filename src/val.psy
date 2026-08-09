@@ -330,6 +330,31 @@ val_convert_scalar_i2i : func(v : val mut?, to : ty, out : val mut?, conv : tyco
 	[out] = [v];
 };
 
+val_convert_scalar_sext : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->tag = val_tag.scalar;
+	out->type = to;
+	size_bytes ::= ty_integral_size(to);
+	sz : irsz mut := irsz.none;
+	if(size_bytes == 1)
+	{
+		sz = irsz.b;
+	}
+	if(size_bytes == 2)
+	{
+		sz = irsz.w;
+	}
+	if(size_bytes == 4)
+	{
+		sz = irsz.d;
+	}
+	if(size_bytes == 8)
+	{
+		sz = irsz.q;
+	}
+	ir_sex(val_scalar_get_irval(out), sz, val_scalar_get_irval(v));
+};
+
 val_convert_scalar_noop : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[out] = [v];
@@ -541,6 +566,7 @@ val_from_node_stmt_if_blk : func(ctx : val_context mut?, out : val mut?, resolve
 
 val_from_node_stmt_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
+	irfunc_dump(ir_current_func());
 	panic_begin();
 	putzstr("val_from_node_stmt NYI for ast_stmt_tag.\0");
 	putsint([ast_stmt_get_tag(ctx->node)]@s64);
@@ -2312,7 +2338,7 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 	.5 := val_convert_scalar_nyi;
 	.6 := val_convert_scalar_nyi;
 	.7 := val_convert_scalar_i2i;
-	.8 := val_convert_scalar_nyi;
+	.8 := val_convert_scalar_sext;
 	.9 := val_convert_scalar_nyi;
 	.10 := val_convert_scalar_nyi;
 	.11 := val_convert_scalar_nyi;
