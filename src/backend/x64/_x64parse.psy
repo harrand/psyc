@@ -105,6 +105,13 @@ x64_parse_a_constraint : func(constraints : u8?, constraints_len : u64, out : x6
 	content ::= constraints # off;
 	len ::= constraints_len - off;
 	// todo: check if 'memory'?
+	if(strstartswith(content, len, "memory", 6))
+	{
+		warn_begin();
+		putzstr("memory constraints are not yet implemented, constraint of 'memory' is ignored\0");
+		warn_end();
+		return 6 + 1 + off;
+	}
 	i : u64 mut;
 	for(i = 0; i < countof typeof x64reg_name; i = i + 1)
 	{
@@ -120,14 +127,14 @@ x64_parse_a_constraint : func(constraints : u8?, constraints_len : u64, out : x6
 			mod ::= i % 7;
 			j : u64 mut;
 			sz : u64 mut := 1;
-			for(j = 0; j < mod; j = j + 1)
+			for(j = 1; j < mod; j = j + 1)
 			{
 				sz = sz * 2;
 			}
 			// reggroup = (i - 1) / 7
-			[x64val_reg_get_size(con)] = sz;
+			[x64val_reg_get_size(con)] = sz * 8;
 			[x64val_reg_get_reg(con)] = (i / 7)@s64@x64_reg;
-			return cur_len + 1;
+			return cur_len + 1 + off;
 		}
 	}
 	return 0;
@@ -149,7 +156,7 @@ x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64
 			curparse = x64_parse_a_constraint(ptr, len, out);
 			if(curparse == 0)
 			{
-				warn_begin();
+				err_begin();
 				putzstr("failed to parse constraint string \0");
 				putchar('"');
 				putchars(constraints, constraints_len);
@@ -157,7 +164,7 @@ x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64
 				putzstr(" properly. got stuck \0");
 				putuint(constraints_len - len);
 				putzstr(" bytes in\0");
-				warn_end();
+				err_end();
 			}
 		}
 		ptr = ptr # curparse;
@@ -168,18 +175,86 @@ x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64
 // convert to a matching function type, e.g 'func(u64, u64 -> u64)'
 x64_constraints_to_ty : func(constraints : u8?, constraints_len : u64 -> ty)
 {
+	constraint_data : x64_constraints_data mut := zero;
+	x64_parse_constraints(constraints, constraints_len, ref constraint_data);
 	u : tydata mut;
 	u.tag = tydata_tag.function;
 	u.name = zero;
 	u.name_len = zero;
-	warn_begin();
-	putzstr("parsing of assembly constraint string:\n\0");
-	colour_yellow();
-	putchars(constraints, constraints_len);
-	colour_reset();
-	putzstr("\n is not yet implemented. yielding ty.invalid.\0");
-	warn_end();
-	return ty.invalid;
+	u.underlying = ty.invalid;
+	if(constraint_data.outputs_count == 0)
+	{
+		u.underlying = ty.v0;
+	}
+	else
+	{
+		if(constraint_data.outputs_count > 1)
+		{
+			err_begin();
+			putzstr("constraint string \0");
+			putchar('"');
+			putchars(constraints, constraints_len);
+			putchar('"');
+			putzstr(" had \0");
+			putuint(constraint_data.outputs_count);
+			putzstr(" outputs, but constraint strings can only have 0 or 1 outputs.");
+			err_end();
+		}
+		outsz ::= [x64val_reg_get_size(constraint_data.outputs # 0)];
+		if(outsz == 8)
+		{
+			u.underlying = ty_add_weak(ty.s8);
+		}
+		if(outsz == 16)
+		{
+			u.underlying = ty_add_weak(ty.s16);
+		}
+		if(outsz == 32)
+		{
+			u.underlying = ty_add_weak(ty.s32);
+		}
+		if(outsz == 64)
+		{
+			u.underlying = ty_add_weak(ty.s64);
+		}
+	}
+
+	u.members_count = constraint_data.inputs_count;
+	u.members = arena_alloc(global_arena, u.members_count * sizeof ty);
+	i : u64 mut;
+	for(i = 0; i < u.members_count; i = i + 1)
+	{
+		insz ::= [x64val_reg_get_size(constraint_data.inputs # i)];
+		curty : ty mut := ty.invalid;
+		if(insz == 8)
+		{
+			curty = ty_add_weak(ty.s8);
+		}
+		if(insz == 16)
+		{
+			curty = ty_add_weak(ty.s16);
+		}
+		if(insz == 32)
+		{
+			curty = ty_add_weak(ty.s32);
+		}
+		if(insz == 64)
+		{
+			curty = ty_add_weak(ty.s64);
+		}
+		[u.members # i] = curty;
+	}
+	u.array_len = 0;
+	u.reference = zero;
+
+	//putzstr("constraint string \0");
+	//putchar('"');
+	//putchars(constraints, constraints_len);
+	//putchar('"');
+	//putzstr(" yields type: \0");
+	//putty(ret);
+	//putchar('\n');
+	return ty_wrap(ref u);
 };
 
 x64_parse_asm : func(code : u8?, code_len : u64, out_insts : x64inst mut? mut?, out_insts_count : u64 mut? -> v0)
