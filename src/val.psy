@@ -570,7 +570,70 @@ val_from_node_stmt_unreachable : func(ctx : val_context mut?, out : val mut?, re
 	{
 		ir_unreach();
 	}
-	irfunc_dump(ir_current_func());
+};
+
+val_from_node_stmt_return : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
+{
+	fn_retty ::= ty_underlying(ctx->parent_fn->type);
+
+	ret_expr_node ::= ast_ret_get_expr(ctx->node);
+	if(ret_expr_node == zero)
+	{
+		if(fn_retty != ty.invalid)
+		{
+			err_begin();
+			putzstr("return statement in function \0");
+			putchar('"');
+			putchars([ast_function_get_name(ctx->parent_fn->node)], [ast_function_get_name_len(ctx->parent_fn->node)]);
+			putchar('"');
+			putzstr(" must return a value (specifically of type \0");
+			putty(fn_retty);
+			putzstr(") at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		if(resolve == val_resolve.runtime_only)
+		{
+			ir_ret(zero, zero);
+		}
+		return;
+	}
+
+	if(fn_retty == ty.invalid)
+	{
+		err_begin();
+		putzstr("return statement in function \0");
+		putchar('"');
+		putchars([ast_function_get_name(ctx->parent_fn->node)], [ast_function_get_name_len(ctx->parent_fn->node)]);
+		putchar('"');
+		putzstr(" incorrectly returns a value - do an empty return or add a return type to the function at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	retval : val mut;
+	ret_ctx : val_context mut := [ctx];
+	ret_ctx.node = ret_expr_node;
+	val_from_node(ref ret_ctx, ref retval, resolve);
+	val_convert(ref retval, fn_retty, ref retval, resolve, ref ret_ctx);
+	
+	if(resolve != val_resolve.runtime_only)
+	{
+		return;
+	}
+	if(retval.tag == val_tag.scalar)
+	{
+		ir_ret(val_scalar_get_irval(ref retval), 1);
+		return;
+	}
+	members ::= [val_aggregate_get_members(ref retval)];
+	memcount ::= [val_aggregate_get_members_count(ref retval)];
+	member_irvals : irval mut? := arena_alloc(scratch_arena, memcount * sizeof irval);
+	i : u64 mut;
+	for(i = 0; i < memcount; i = i + 1)
+	{
+		[member_irvals # i] = [val_scalar_get_irval(members # i)];
+	}
+	ir_ret(member_irvals, memcount);
 };
 
 val_from_node_stmt_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
@@ -2314,7 +2377,7 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.8 := val_from_node_stmt_nyi;
 	.9 := val_from_node_stmt_nyi;
 	.10 := val_from_node_stmt_nyi;
-	.11 := val_from_node_stmt_nyi;
+	.11 := val_from_node_stmt_return;
 	.12 := val_from_node_stmt_unreachable;
 	.13 := val_from_node_stmt_nyi;
 };
