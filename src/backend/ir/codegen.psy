@@ -1,6 +1,10 @@
 codegen_ir : func(-> v0)
 {
 	i : u64 mut;
+	for(i = 0; i < prog.global_scope.asms_count; i = i + 1)
+	{
+		codegen_ir_asm(prog.global_scope.asms # i);
+	}
 	for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 	{
 		codegen_ir_funcsig(prog.global_scope.funcs # i);
@@ -71,6 +75,46 @@ codegen_ir_global : func(var : variable_t mut? -> v0)
 	storage_ref->tag = val_tag.pointer;
 	glob ::= ir_add_glob(stream.buf, stream.cursor, ty_is_mut(var->type), val_pointer_get_irval(storage_ref));
 	[val_pointer_get_displacement(storage_ref)] = 0;
+};
+
+codegen_ir_asm : func(as : assembly_t mut? -> v0)
+{
+	myself : irval mut;
+
+	u ::= ty_unwrap(as->type);
+	
+	chunks : abi_chunk mut? mut;
+	chunks_count : u64 mut;
+	abi_chunk_tys(abi_tag.psy64, u->members, u->members_count@u64, ref chunks, ref chunks_count, scratch_arena);
+
+	params_count ::= chunks_count;
+	params : irsz mut? := arena_alloc(global_arena, params_count * sizeof irsz);
+
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		[params # i] = abi_chunk_as_irsz(chunks # i);
+	}
+
+	// now for return(s)
+	ret : irsz mut := irsz.none;
+	chunks = zero;
+	chunks_count = 0;
+	abi_chunk_tys(abi_tag.psy64, ref(u->underlying), 1, ref chunks, ref chunks_count, scratch_arena);
+	if(chunks_count > 0)
+	{
+		ret = abi_chunk_as_irsz(chunks # 0);
+		if(chunks_count > 1)
+		{
+			panic_begin();
+			putzstr("abi: assembly is not allowed more than 1 return chunks. todo: better error checking before we get this far for assembly return types at \0");
+			putsrc(as->src, as->node->src_beg@u64, as->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+	}
+
+	iras ::= ir_add_asm(ref myself, params, params_count, ret, as->constraints, as->constraints_len, as->code, as->code_len);
+	as->irasm_idx = iras->idx;
 };
 
 codegen_ir_funcsig : func(fn : function_t mut? -> v0)
