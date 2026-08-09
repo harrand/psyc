@@ -1342,6 +1342,58 @@ val_from_node_expr_biop_bitshift_right : func(lhs : val mut?, lhs_node : ast mut
 	panic_end();
 };
 
+val_from_node_expr_biop_modulo : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic(lhs->type, rhs->type);
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operation invalid because you cannot modulo types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = arith;
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: fmod invocation in val_from_node_expr_add");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		ir_smod(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+		return;
+	}
+	ir_umod(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+};
+
 val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	out->type = lhs->type;
@@ -2147,7 +2199,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.15 := val_from_node_expr_biop_nyi;
 	.16 := val_from_node_expr_biop_bitshift_left;
 	.17 := val_from_node_expr_biop_bitshift_right;
-	.18 := val_from_node_expr_biop_nyi;
+	.18 := val_from_node_expr_biop_modulo;
 	.19 := val_from_node_expr_biop_at;
 };
 
