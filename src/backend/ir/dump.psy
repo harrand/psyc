@@ -94,18 +94,21 @@ irval_dump : func(v : irval mut? -> v0)
 irinst_dump_to : func(w : bwriter mut?, inst : irinst mut? -> v0)
 {
 	outcount : s8 mut := [irinst_outcounts # (inst->tag@s64)];
+	return_offset : u64 mut;
 	param_offset : u64 mut;
 	if(outcount == -1)
 	{
 		outcount = [irval_imm_get_integer(inst->operands # 0)]@s8;
+		return_offset = outcount@u64;
 		param_offset = outcount@u64 + 1;
 	}
 	else
 	{
+		return_offset = 0;
 		param_offset = outcount@u64;
 	}
 	i : u64 mut;
-	for(i = 0; i < outcount@u64; i = i + 1)
+	for(i = return_offset; i < (outcount@u64 + return_offset); i = i + 1)
 	{
 		irval_dump_to(w, inst->operands # i);
 		if(i < (outcount@u64 - 1))
