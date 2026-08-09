@@ -41,6 +41,8 @@ val : struct
 	d3 : u64;
 	// datapoint 4 - use depends on tag
 	d4 : u64;
+	// datapoint 5 - use depends on tag
+	d5 : u64;
 	// type
 	type : ty;
 };
@@ -130,12 +132,12 @@ val_scalar_get_irval : func(v : val mut? -> irval mut?)
 
 val_pointer_get_irval : func(v : val mut? -> irval mut?)
 {
-	return ref(v->d0)@irval mut?;
+	return ref(v->d1)@irval mut?;
 };
 
 val_pointer_get_displacement : func(v : val mut? -> s32 mut?)
 {
-	return ref(v->d1)@s32 mut?;
+	return ref(v->d0)@s32 mut?;
 };
 
 val_aggregate_get_members : func(v : val mut? -> val mut? mut?)
@@ -309,6 +311,16 @@ val_convert_scalar_nyi : func(v : val mut?, to : ty, out : val mut?, conv : tyco
 };
 
 val_convert_scalar_ptr2ptr : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
+val_convert_scalar_ptr2u64 : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
+val_convert_scalar_u642ptr : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[out] = [v];
 };
@@ -705,15 +717,28 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 		[out] = [ptr_val];
 		return;
 	}
+	val_do_load(abi, ptr_val, out, ctx);
+};
+
+val_do_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_context mut? -> v0)
+{
 	out->type = ptr_val->type;
 	load_chunks : abi_chunk mut? mut;
 	load_chunks_count : u64 mut;
 	abi_chunk_tys(abi, ref(ptr_val->type), 1, ref load_chunks, ref load_chunks_count, global_arena);
+	ptrv : irval mut? mut := val_pointer_get_irval(ptr_val);
+	disp : s32 mut := [val_pointer_get_displacement(ptr_val)];
+	if(ptr_val->tag == val_tag.scalar)
+	{
+		ptrv = val_scalar_get_irval(ptr_val);
+		disp = 0;
+	}
+	
 	// easier codepath for scalars
 	if(load_chunks_count == 1)
 	{
 		out->tag = val_tag.scalar;
-		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), val_pointer_get_irval(ptr_val), [val_pointer_get_displacement(ptr_val)]);
+		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), ptrv, disp);
 		return;
 	}
 	i : u64 mut;
@@ -726,7 +751,7 @@ val_load : func(abi : abi_tag, ptr_val : val mut?, out : val mut?, ctx : val_con
 	{
 		cur ::= agg_members # i;
 		cur->tag = val_tag.scalar;
-		ir_load(val_scalar_get_irval(cur), abi_chunk_as_irsz(load_chunks # i), val_pointer_get_irval(ptr_val), [val_pointer_get_displacement(ptr_val)] + (load_chunks # i)->src_byte_offset@s32);
+		ir_load(val_scalar_get_irval(cur), abi_chunk_as_irsz(load_chunks # i), ptrv, disp + (load_chunks # i)->src_byte_offset@s32);
 	}
 };
 
@@ -1722,14 +1747,32 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	abi_chunk_tys(abi, ref(callee_u->underlying), 1, ref return_chunks, ref return_chunks_count, global_arena);
 
 	return_sizes : irsz mut? := arena_alloc(scratch_arena, return_chunks_count * sizeof irsz);
-	return_irvals : irval mut? := arena_alloc(global_arena, return_chunks_count * sizeof irval);
+	return_irvals : irval mut? := arena_alloc(scratch_arena, return_chunks_count * sizeof irval);
 	for(i = 0; i < return_chunks_count; i = i + 1)
 	{
 		[return_sizes # i] = abi_chunk_as_irsz(return_chunks # i);
 	}
 	ir_call(return_sizes, return_chunks_count, val_scalar_get_irval(ref callee_val), param_irvals, param_chunks_count, return_irvals);
+	// we need to put return_irvals back into a real return value
 	// todo: passing references to stack memory incase of chunk_tag.mem (sysv + winx64) would need some code here.
 	// todo: error out if param_chunks_count > abi.params_count_max (doesnt exist yet)
+	out->type = callee_u->underlying;
+	if(return_chunks_count == 1)
+	{
+		out->tag = val_tag.scalar;
+		[val_scalar_get_irval(out)] = [return_irvals # 0];
+		return;
+	}
+	out->tag = val_tag.aggregate;
+	aggvals : val mut? := arena_alloc(global_arena, return_chunks_count * sizeof val);
+	[val_aggregate_get_members(out)] = aggvals;
+	for(i = 0; i < return_chunks_count; i = i + 1)
+	{
+		cur ::= aggvals # i;
+		cur->tag = val_tag.scalar;
+		cur->type = ty_at(ty_underlying(callee_fnty), (return_chunks # i)->src_idx_begin);
+		[val_scalar_get_irval(aggvals # i)] = [return_irvals # i];
+	}
 };
 
 val_from_node_expr_blkinit : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
@@ -1884,29 +1927,37 @@ val_from_node_expr_dereference : func(ctx : val_context mut?, out : val mut?, re
 	operand_node ::= ast_dereference_get_operand(ctx->node);
 	operand_ctx : val_context mut := [ctx];
 	operand_ctx.node = operand_node;
-	val_from_node(ref operand_ctx, out, resolve);
+	operand_val : val mut;
+	val_from_node(ref operand_ctx, ref operand_val, resolve);
 
-	if(ty_is_pointer(out->type) == false)
+	if(operand_val.tag == val_tag.variable_reference)
+	{
+		operand_val = [val_variable_reference_get_variable(ref operand_val)]->storage;
+	}
+
+	if(ty_is_pointer(operand_val.type) == false)
 	{
 		err_begin();
 		putzstr("cannot dereference non-pointer-type \0");
 		putchar('"');
-		putty(out->type);
+		putty(operand_val.type);
 		putchar('"');
 		putzstr(" at \0");
 		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	out->type = ty_underlying(out->type);
+	out->type = ty_underlying(operand_val.type);
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_dereference at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	// we have something that must be either scalar or pointer
+	val_do_load(abi_tag.psy64, ref operand_val, out, ref operand_ctx);
+	out->type = ty_underlying(operand_val.type);
+	out->tag = val_tag.pointer;
+	[val_pointer_get_irval(out)] = [val_scalar_get_irval(out)];
+	[val_pointer_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_cast : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
@@ -2094,24 +2145,27 @@ val_from_node_expr_field : func(ctx : val_context mut?, out : val mut?, resolve 
 		lhs_val = [val_variable_reference_get_variable(ref lhs_val)]->storage;
 	}
 	
+	lhs_conv : val mut := lhs_val;
 	if(is_ptr_field)
 	{
-		val_load(abi_tag.psy64, ref lhs_val, ref lhs_val, ref lhs_ctx);
-		lhs_val.tag = val_tag.pointer;
+		val_do_load(abi_tag.psy64, ref lhs_val, ref lhs_conv, ref lhs_ctx);
+		lhs_conv.tag = val_tag.pointer;
+		[val_pointer_get_irval(ref lhs_conv)] = [val_scalar_get_irval(ref lhs_conv)];
+		[val_pointer_get_displacement(ref lhs_conv)] = 0;
 	}
 	out->tag = val_tag.pointer;
 
-	if(lhs_val.tag != val_tag.pointer)
+	if(lhs_conv.tag != val_tag.pointer)
 	{
 		panic_begin();
 		putzstr("expected lhs of field to be val_tag.pointer, but it is val_tag.\0");
-		putsint(lhs_val.tag);
+		putsint(lhs_conv.tag);
 		putzstr(" at \0");
 		putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs_val)];
-	[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs_val)] + offset@s32;
+	[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs_conv)];
+	[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs_conv)] + offset@s32;
 };
 
 val_from_node_expr_countof : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
@@ -2251,7 +2305,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 {
 	.0 := val_convert_scalar_ptr2ptr;
-	.1 := val_convert_scalar_nyi;
+	.1 := val_convert_scalar_ptr2u64;
 	.2 := val_convert_scalar_nyi;
 	.3 := val_convert_scalar_nyi;
 	.4 := val_convert_scalar_nyi;
