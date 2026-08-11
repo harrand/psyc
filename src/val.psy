@@ -274,6 +274,18 @@ val_convert_aggregate_literal : func(v : val mut?, to : ty, out : val mut?, conv
 	// aggregate conversions only happen if the conversion is a noop
 };
 
+val_convert_pointer_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	if(resolve == val_resolve.compiletime_only)
+	{
+		return;
+	}
+	// turn it into a scalar
+	out->tag = val_tag.scalar;
+	out->type = to;
+	irval_qimm([val_pointer_literal_get_address(v)], val_scalar_get_irval(out));
+};
+
 val_convert_function_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[out] = [v];
@@ -979,10 +991,24 @@ val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_compare_equal at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_equal at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: cmp_eq invocation in val_from_node_expr_biop_compare_equal");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	ir_cmp_eq(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_compare_not_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1061,6 +1087,14 @@ val_from_node_expr_biop_compare_less : func(lhs : val mut?, lhs_node : ast mut?,
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_less at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
 
 	out->tag = val_tag.scalar;
 	if(ty_floating_point_size(arith) > 0)
@@ -1114,6 +1148,14 @@ val_from_node_expr_biop_add : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("add at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
 	out->tag = val_tag.scalar;
 	if(ty_floating_point_size(arith) > 0)
 	{
@@ -1159,6 +1201,14 @@ val_from_node_expr_biop_sub : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("sub at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 		return;
 	}
 	out->tag = val_tag.scalar;
@@ -1208,6 +1258,14 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("mul at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 		return;
 	}
 
@@ -1261,6 +1319,14 @@ val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("div at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 		return;
 	}
 	out->tag = val_tag.scalar;
@@ -1391,6 +1457,14 @@ val_from_node_expr_biop_logical_or : func(lhs : val mut?, lhs_node : ast mut?, r
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("logical_or at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
 
 	panic_begin();
 	putzstr("reached end of val_from_node_expr_biop_logical_or at \0");
@@ -1414,6 +1488,14 @@ val_from_node_expr_biop_logical_and : func(lhs : val mut?, lhs_node : ast mut?, 
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("logical_and at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 		return;
 	}
 
@@ -1550,6 +1632,14 @@ val_from_node_expr_biop_modulo : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("modulo at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
 	out->tag = val_tag.scalar;
 	if(ty_floating_point_size(arith) > 0)
 	{
@@ -1575,6 +1665,14 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("'at' operator (pointer) at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
 	panic_begin();
 	putzstr("reached end of val_from_node_expr_biop_at_pointer at \0");
 	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
@@ -1587,6 +1685,14 @@ val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("'at' operator (array) at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 		return;
 	}
 	panic_begin();
@@ -1641,6 +1747,10 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	val_from_node(ref rhs_ctx, ref rhs_val, resolve);
+	if(rhs_val.tag == val_tag.zerovalue)
+	{
+		val_zero_as(lhs_val.type, ref rhs_val);
+	}
 
 	tag ::= [ast_biop_get_tag(ctx->node)];
 	if(tag@s64 == ~0)
@@ -2431,7 +2541,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 	.3 := val_convert_scalar_literal;
 	.4 := val_convert_string_literal;
 	.5 := val_convert_aggregate_literal;
-	.6 := val_convert_nyi;
+	.6 := val_convert_pointer_literal;
 	.7 := val_convert_function_reference;
 	.8 := val_convert_variable_reference;
 	.9 := val_convert_assembly_reference;
