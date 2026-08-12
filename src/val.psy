@@ -1673,10 +1673,31 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		panic_end();
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_at_pointer at \0");
-	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
-	panic_end();
+	lhs_conv : val mut;
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	val_load(abi_tag.psy64, lhs, ref lhs_conv, ref lhs_ctx);
+
+	rhs_conv : val mut;
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	val_load(abi_tag.psy64, rhs, ref rhs_conv, ref rhs_ctx);
+	
+	lhs_sz ::= abi_sizeof(abi_tag.psy64, lhs->type);
+	idxval : irval mut;
+	if(lhs_sz > 1)
+	{
+		immsz : irval mut;
+		irval_qimm(lhs_sz, ref immsz);
+		ir_umul(ref idxval, val_scalar_get_irval(ref rhs_conv), ref immsz);
+	}
+	else
+	{
+		idxval = [val_scalar_get_irval(ref rhs_conv)];
+	}
+	out->tag = val_tag.scalar;
+	out->type = lhs->type;
+	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), ref idxval);
 };
 
 val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1703,6 +1724,17 @@ val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs
 
 val_from_node_expr_biop_at : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
+	if(ty_integral_size(rhs->type) == 0)
+	{
+		err_begin();
+		putzstr("rhs of 'at' operator is of non-integral-type \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
 	if(ty_is_pointer(lhs->type))
 	{
 		val_from_node_expr_biop_at_pointer(lhs, lhs_node, rhs, rhs_node, out, resolve, ctx);
@@ -1830,7 +1862,7 @@ val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, 
 	if(operand->tag == val_tag.pointer)
 	{
 		out->tag = val_tag.scalar;
-		disp ::= [val_pointer_get_displacement(operand)];
+		disp ::= [val_pointer_get_displacement(operand)]@s64;
 		if(disp == 0)
 		{
 			[val_scalar_get_irval(out)] = [val_pointer_get_irval(operand)];
