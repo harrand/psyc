@@ -254,8 +254,8 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 	{
 		// assume we are converting to any pointer
 		// add a global variable containing the string data
-		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, val_pointer_get_irval(out));
 		out->tag = val_tag.pointer;
+		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, val_pointer_get_irval(out));
 		[val_pointer_get_displacement(out)] = 0;
 		return;
 	}
@@ -1349,8 +1349,8 @@ val_from_node_expr_biop_div : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 
 val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	out->type = ty_of_bitwise(lhs->type, rhs->type);
-	if(out->type == ty.invalid)
+	bitwise_ty ::= ty_of_bitwise(lhs->type, rhs->type);
+	if(bitwise_ty == ty.invalid)
 	{
 		err_begin();
 		putzstr("binary operator '|' is not valid on operands \0");
@@ -1365,6 +1365,19 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, bitwise_ty, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, bitwise_ty, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = bitwise_ty;
+
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
@@ -1387,10 +1400,10 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
 		return;
 	}
-	panic_begin();
-	putzstr("val_from_node_expr_biop NYI for bitwise_or at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+
+	out->tag = val_tag.scalar;
+	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+	irfunc_dump(ir_current_func());
 };
 
 val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1956,6 +1969,7 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	callee_ctx.node = ast_call_get_callee(ctx->node);
 	val_from_node(ref callee_ctx, ref callee_val, resolve);
 	val_convert(ref callee_val, callee_val.type, ref callee_val, resolve, ref callee_ctx);
+	val_load(abi_tag.psy64, ref callee_val, ref callee_val, ref callee_ctx);
 	param_nodes ::= ast_call_get_params(ctx->node);
 	param_nodes_count ::= ast_call_get_params_count(ctx->node)@u64;
 
@@ -1984,6 +1998,7 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 		cur_param_ctx.node = param_nodes # i;
 		val_from_node(ref cur_param_ctx, ref cur_param_val, resolve);
 		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, ref cur_param_ctx);
+		val_load(abi_tag.psy64, ref cur_param_val, ref cur_param_val, ref cur_param_ctx);
 	}
 
 	if(resolve == val_resolve.type_only)
