@@ -257,6 +257,8 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 		out->tag = val_tag.pointer;
 		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, val_pointer_get_irval(out));
 		[val_pointer_get_displacement(out)] = 0;
+		// we immediately load because val_convert always does a load
+		val_load(abi_tag.psy64, out, out, ctx);
 		return;
 	}
 	panic_begin();
@@ -1998,7 +2000,6 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 		cur_param_ctx.node = param_nodes # i;
 		val_from_node(ref cur_param_ctx, ref cur_param_val, resolve);
 		val_convert(ref cur_param_val, ty_at(callee_fnty, i), param_vals # i, resolve, ref cur_param_ctx);
-		val_load(abi_tag.psy64, ref cur_param_val, ref cur_param_val, ref cur_param_ctx);
 	}
 
 	if(resolve == val_resolve.type_only)
