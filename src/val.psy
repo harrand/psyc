@@ -307,7 +307,10 @@ val_convert_assembly_reference : func(v : val mut?, to : ty, out : val mut?, con
 
 val_convert_variable_reference : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	val_convert(ref([val_variable_reference_get_variable(v)]->storage), to, out, resolve, ctx);
+	// inherit qualifiers from val type (incase we have applied weakness for example we want it to also apply to the storage)
+	storage_cpy : val mut := [val_variable_reference_get_variable(v)]->storage;
+	storage_cpy.type = ty_copy_quals(v->type, storage_cpy.type);
+	val_convert(ref storage_cpy, to, out, resolve, ctx);
 };
 
 val_convert_scalar_nyi : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1001,7 +1004,7 @@ val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?
 	if(ty_floating_point_size(arith) > 0)
 	{
 		panic_begin();
-		putzstr("todo: cmp_eq invocation in val_from_node_expr_biop_compare_equal");
+		putzstr("todo: cmp_eq floating-point invocation in val_from_node_expr_biop_compare_equal");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 		return;
@@ -1044,10 +1047,24 @@ val_from_node_expr_biop_compare_not_equal : func(lhs : val mut?, lhs_node : ast 
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_compare_not_equal at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_not_equal at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: cmp_ne floating-point invocation in val_from_node_expr_biop_compare_equal");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	ir_cmp_ne(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_compare_less : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2259,7 +2276,6 @@ val_from_node_expr_cast : func(ctx : val_context mut?, out : val mut?, resolve :
 	castee_ctx : val_context mut := [ctx];
 	castee_ctx.node = castee_expr;
 	val_from_node(ref castee_ctx, ref castee, resolve);
-
 	castee.type = ty_add_weak(castee.type);
 
 	cast_target_node ::= ast_cast_get_cast_typename(ctx->node);
