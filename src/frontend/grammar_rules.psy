@@ -103,6 +103,8 @@ rule_oparen_exprx_cparen2expr : func(nodes : ast mut?, nodes_count : u64, out_re
 	{
 		[ast_biop_get_precedence(out)] = ~0;
 	}
+	out->src_beg = (out->src_beg - 1);
+	out->src_end = (out->src_end + 1);
 };
 
 rule_keywordtrue2literalexpr : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
@@ -978,7 +980,9 @@ rule_exprx_tokenx_exprx2biop : func(nodes : ast mut?, nodes_count : u64, out_res
 	}
 
 	end ::= rhsnode->src_end;
-	if((lhs_precedence > our_precedence) && (our_precedence != ~0))
+	// lhs is a biop but our biop takes precedence
+	// and thus we take their rhs as our lhs
+	if((lhs_precedence > 0) && (lhs_precedence < our_precedence))
 	{
 		// lhs = biop_x(a, b)
 		// our_biop_tag = y
@@ -989,6 +993,7 @@ rule_exprx_tokenx_exprx2biop : func(nodes : ast mut?, nodes_count : u64, out_res
 		lhschild1->tag = ast_tag.expr;
 		[ast_expr_get_tag(lhschild1)] = ast_expr_tag.biop;
 		[ast_biop_get_tag(lhschild1)] = our_biop_tag;
+		[ast_biop_get_precedence(lhschild1)] = our_precedence;
 		lhschild1->children = zero;
 		lhschild1->children_count = 0;
 		lhschild1->children_cap = 0;
@@ -1006,6 +1011,7 @@ rule_exprx_tokenx_exprx2biop : func(nodes : ast mut?, nodes_count : u64, out_res
 		lhsnode->tag = ast_tag.expr;
 		[ast_expr_get_tag(lhsnode)] = ast_expr_tag.biop;
 		[ast_biop_get_tag(lhsnode)] = our_biop_tag;
+		[ast_biop_get_precedence(lhsnode)] = our_precedence;
 		lhsnode->children = zero;
 		lhsnode->children_count = 0;
 		lhsnode->children_cap = 0;
