@@ -254,11 +254,8 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 	{
 		// assume we are converting to any pointer
 		// add a global variable containing the string data
-		out->tag = val_tag.pointer;
-		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, val_pointer_get_irval(out));
-		[val_pointer_get_displacement(out)] = 0;
-		// we immediately load because val_convert always does a load
-		val_load(abi_tag.psy64, out, out, ctx);
+		out->tag = val_tag.scalar;
+		ir_add_glob([val_string_literal_get_data(v)], [val_string_literal_get_length(v)], false, val_scalar_get_irval(out));
 		return;
 	}
 	panic_begin();
@@ -694,7 +691,6 @@ val_from_node_stmt_decl : func(ctx : val_context mut?, out : val mut?, resolve :
 	val_from_node(ref init_ctx, ref init_val, resolve);
 	val_convert(ref init_val, var->type, ref init_conv, resolve, ref init_ctx);
 	val_do_store(ref(var->storage), ref init_conv);
-	irfunc_dump(ir_current_func());
 };
 
 val_from_node_expr_nyi : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
@@ -1405,7 +1401,6 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 
 	out->tag = val_tag.scalar;
 	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
-	irfunc_dump(ir_current_func());
 };
 
 val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
