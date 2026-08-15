@@ -963,22 +963,56 @@ rule_exprx_tokenx_exprx2biop : func(nodes : ast mut?, nodes_count : u64, out_res
 	out_result->shift_or_delete_count = 2;
 	out_result->delete_offset = 1;
 
-	lhsnode ::= nodes # 0;
+	lhsnode : ast mut? := nodes # 0;
 	toknode ::= nodes # 1;
 	rhsnode ::= nodes # 2;
 
-	toktag ::= [ast_token_get_tag(toknode)];
+	our_biop_tag ::= token_tag2biop_tag([ast_token_get_tag(toknode)]);
+	our_precedence ::= [ast_biop_default_precedence # our_biop_tag@s64];
+	lhs_biop_tag ::= [ast_biop_get_tag(lhsnode)];
+	lhs_precedence : u64 mut := 0;
 
-	beg ::= lhsnode->src_beg;
-	out ::= lhsnode;
-	lhscpy ::= [lhsnode];
-	[out] = [toknode];
-	out->src_beg = beg;
-	out->tag = ast_tag.expr;
-	[ast_expr_get_tag(out)] = ast_expr_tag.biop;
-	[ast_biop_get_tag(out)] = token_tag2biop_tag(toktag);
-	ast_add_child(out, ref lhscpy);
-	ast_add_child(out, rhsnode);
+	if(ast_is_expr(lhsnode, ast_expr_tag.biop))
+	{
+		lhs_precedence = [ast_biop_get_precedence(lhsnode)];
+	}
+
+	end ::= rhsnode->src_end;
+	if((lhs_precedence > our_precedence) && (our_precedence != ~0))
+	{
+		// lhs = biop_x(a, b)
+		// our_biop_tag = y
+		// rhs = c
+		// yield biop_x(a, biop_y(b, c))
+		b ::= [lhsnode->children # 1];
+		lhschild1 ::= lhsnode->children # 1;
+		lhschild1->tag = ast_tag.expr;
+		[ast_expr_get_tag(lhschild1)] = ast_expr_tag.biop;
+		[ast_biop_get_tag(lhschild1)] = our_biop_tag;
+		lhschild1->children = zero;
+		lhschild1->children_count = 0;
+		lhschild1->children_cap = 0;
+		ast_add_child(lhschild1, ref b);
+		ast_add_child(lhschild1, rhsnode);
+		lhsnode->src_end = end;
+	}
+	else
+	{
+		// lhs = a
+		// our_biop_tag = y
+		// rhs = b
+		// yield biop_y(a, b)
+		a ::= [lhsnode];
+		lhsnode->tag = ast_tag.expr;
+		[ast_expr_get_tag(lhsnode)] = ast_expr_tag.biop;
+		[ast_biop_get_tag(lhsnode)] = our_biop_tag;
+		lhsnode->children = zero;
+		lhsnode->children_count = 0;
+		lhsnode->children_cap = 0;
+		ast_add_child(lhsnode, ref a);
+		ast_add_child(lhsnode, rhsnode);
+		lhsnode->src_end = end;
+	}
 };
 
 rule_exprx_semicol2exprstmt : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
