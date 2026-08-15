@@ -271,6 +271,14 @@ val_convert_string_literal : func(v : val mut?, to : ty, out : val mut?, conv : 
 val_convert_aggregate_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	// aggregate conversions only happen if the conversion is a noop
+	if(resolve == val_resolve.compiletime_only)
+	{
+		return;
+	}
+	panic_begin();
+	putzstr("val_convert_aggregate_literal at runtime is NYI at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
 };
 
 val_convert_pointer_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -329,6 +337,16 @@ val_convert_scalar_ptr2ptr : func(v : val mut?, to : ty, out : val mut?, conv : 
 };
 
 val_convert_scalar_ptr2u64 : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
+val_convert_scalar_enum2s64 : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	[out] = [v];
+};
+
+val_convert_scalar_s642enum : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[out] = [v];
 };
@@ -2064,7 +2082,7 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	// we need to put return_irvals back into a real return value
 	// todo: passing references to stack memory incase of chunk_tag.mem (sysv + winx64) would need some code here.
 	// todo: error out if param_chunks_count > abi.params_count_max (doesnt exist yet)
-	out->type = callee_u->underlying;
+	out->type = ty_underlying(callee_fnty);
 	if(return_chunks_count == 1)
 	{
 		out->tag = val_tag.scalar;
@@ -2613,8 +2631,8 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 {
 	.0 := val_convert_scalar_ptr2ptr;
 	.1 := val_convert_scalar_ptr2u64;
-	.2 := val_convert_scalar_nyi;
-	.3 := val_convert_scalar_nyi;
+	.2 := val_convert_scalar_enum2s64;
+	.3 := val_convert_scalar_s642enum;
 	.4 := val_convert_scalar_nyi;
 	.5 := val_convert_scalar_nyi;
 	.6 := val_convert_scalar_nyi;
