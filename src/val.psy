@@ -180,7 +180,10 @@ val_convert_typeonly : func(v : val mut?, to : ty, out : val mut?, conv : tyconv
 
 val_convert_zerovalue : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	val_zero_as(to, out);
+	intermediate : val mut;
+	val_zero_as(to, ref intermediate);
+	//val_convert(ref intermediate, to, out, resolve, ctx);
+	[out] = intermediate;
 };
 
 val_convert_scalar_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -690,7 +693,6 @@ val_from_node_stmt_for_blk : func(ctx : val_context mut?, out : val mut?, resolv
 	val_from_node(ref cond_ctx, ref cond_val, resolve);
 	val_convert(ref cond_val, ty.bool, ref cond_val, resolve, ref cond_ctx);
 
-	putchar('a');
 	iter_ctx : val_context mut := [ctx];
 	iter_ctx.node = iter_node;
 
@@ -701,12 +703,10 @@ val_from_node_stmt_for_blk : func(ctx : val_context mut?, out : val mut?, resolv
 	true_blk ::= ir_add_blk(ref true_blkref);
 	cont_blkref : irval mut;
 	cont_blk ::= ir_add_blk(ref cont_blkref);
-	putchar('b');
 
 	// go back to previous blk
 	ir_position_end_of_blk(cur_blk->idx);
 	ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
-	putchar('c');
 
 	// true blk: do everything inside the body
 	ir_position_end_of_blk(true_blk->idx);
@@ -726,7 +726,6 @@ val_from_node_stmt_for_blk : func(ctx : val_context mut?, out : val mut?, resolv
 		ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
 	}
 
-	putchar('j');
 	// cont_blk is where we continue on from...
 	ir_position_end_of_blk(cont_blk->idx);
 	irfunc_dump(ir_current_func());
@@ -782,12 +781,18 @@ val_from_node_stmt_return : func(ctx : val_context mut?, out : val mut?, resolve
 	ret_ctx : val_context mut := [ctx];
 	ret_ctx.node = ret_expr_node;
 	val_from_node(ref ret_ctx, ref retval, resolve);
+	if(retval.tag == val_tag.zerovalue)
+	{
+		val_zero_as(fn_retty, ref retval);
+	}
 	val_convert(ref retval, fn_retty, ref retval, resolve, ref ret_ctx);
+	val_load(abi_tag.psy64, ref retval, ref retval, ref ret_ctx);
 	
 	if(resolve != val_resolve.runtime_only)
 	{
 		return;
 	}
+	putsint(retval.tag@s64);
 	if(retval.tag == val_tag.scalar)
 	{
 		ir_ret(val_scalar_get_irval(ref retval), 1);
@@ -1076,18 +1081,15 @@ val_do_store : func(ptr : val mut?, v : val mut? -> v0)
 
 val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	putchar('1');
 	if(lhs->tag == val_tag.variable_reference)
 	{
 		[lhs] = [val_variable_reference_get_variable(lhs)]->storage;
 	}
-	putchar('2');
 
 	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	val_convert(rhs, lhs->type, ref rhs_conv, resolve, ref rhs_ctx);
-	putchar('3');
 
 	out->type = lhs->type;
 	if(resolve == val_resolve.type_only)
