@@ -1049,16 +1049,17 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
-	// we dont manually load these - its the job of val_convert to do that
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
 	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_conv : val mut;
 	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if((arith == ty.invalid) || (ty_equality_comparable_to(lhs->type, rhs->type) == false))
@@ -1104,16 +1105,17 @@ val_from_node_expr_biop_compare_equal : func(lhs : val mut?, lhs_node : ast mut?
 val_from_node_expr_biop_compare_not_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
-	// we dont manually load these - its the job of val_convert to do that
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
 	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_conv : val mut;
 	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if((arith == ty.invalid) || (ty_equality_comparable_to(lhs->type, rhs->type) == false))
@@ -1159,16 +1161,17 @@ val_from_node_expr_biop_compare_not_equal : func(lhs : val mut?, lhs_node : ast 
 val_from_node_expr_biop_compare_less : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
-	// we dont manually load these - its the job of val_convert to do that
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
 	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_conv : val mut;
 	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if(arith == ty.invalid)
@@ -1215,6 +1218,192 @@ val_from_node_expr_biop_compare_less : func(lhs : val mut?, lhs_node : ast mut?,
 		return;
 	}
 	ir_cmp_ult(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+};
+
+val_from_node_expr_biop_compare_less_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+
+	out->type = ty.bool;
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("compare is invalid because operand types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" are not inequality-comparable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_less_equal at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: flt invocation in val_from_node_expr_biop_compare_less_equal");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		ir_cmp_sle(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+		return;
+	}
+	ir_cmp_ule(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+};
+
+val_from_node_expr_biop_compare_greater : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+
+	out->type = ty.bool;
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("compare is invalid because operand types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" are not inequality-comparable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_greater at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: flt invocation in val_from_node_expr_biop_compare_greater");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		ir_cmp_sgt(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+		return;
+	}
+	ir_cmp_ugt(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+};
+
+val_from_node_expr_biop_compare_greater_equal : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	arith ::= ty_of_arithmetic_base(lhs->type, rhs->type);
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+
+	out->type = ty.bool;
+	if(arith == ty.invalid)
+	{
+		err_begin();
+		putzstr("compare is invalid because operand types \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs->type);
+		putchar('"');
+		putzstr(" are not inequality-comparable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		panic_begin();
+		putzstr("compare_greater_equal at compile-time is NYI at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_floating_point_size(arith) > 0)
+	{
+		panic_begin();
+		putzstr("todo: flt invocation in val_from_node_expr_biop_compare_greater_equal");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+		return;
+	}
+	if(ty_is_signed(arith))
+	{
+		ir_cmp_sge(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
+		return;
+	}
+	ir_cmp_uge(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_add : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1347,16 +1536,17 @@ val_from_node_expr_biop_mul : func(lhs : val mut?, lhs_node : ast mut?, rhs : va
 		err_end();
 	}
 
-	// we dont manually load these - its the job of val_convert to do that
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
 	val_convert(lhs, arith, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_conv : val mut;
 	val_convert(rhs, arith, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = arith;
 	if(resolve == val_resolve.type_only)
@@ -1474,11 +1664,13 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 	lhs_ctx.node = lhs_node;
 	lhs_conv : val mut;
 	val_convert(lhs, bitwise_ty, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_conv : val mut;
 	val_convert(rhs, bitwise_ty, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = bitwise_ty;
 
@@ -1511,11 +1703,11 @@ val_from_node_expr_biop_bitwise_or : func(lhs : val mut?, lhs_node : ast mut?, r
 
 val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	out->type = ty_of_bitwise(lhs->type, rhs->type);
-	if(out->type == ty.invalid)
+	bitwise_ty ::= ty_of_bitwise(lhs->type, rhs->type);
+	if(bitwise_ty == ty.invalid)
 	{
 		err_begin();
-		putzstr("binary operator '|' is not valid on operands \0");
+		putzstr("binary operator '&' is not valid on operands \0");
 		putchar('"');
 		putty(lhs->type);
 		putchar('"');
@@ -1527,6 +1719,21 @@ val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, 
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, bitwise_ty, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, bitwise_ty, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+
+	out->type = bitwise_ty;
+
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
@@ -1537,7 +1744,7 @@ val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, 
 		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
 		{
 			panic_begin();
-			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '|'. they were tags  \0");
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '&'. they were tags  \0");
 			putsint(lhs->tag@s64);
 			putzstr(" and \0");
 			putsint(rhs->tag@s64);
@@ -1546,13 +1753,12 @@ val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, 
 			panic_end();
 		}
 		out->tag = val_tag.scalar_literal;
-		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] | [val_scalar_literal_get_integer(rhs)]);
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] & [val_scalar_literal_get_integer(rhs)]);
 		return;
 	}
-	panic_begin();
-	putzstr("val_from_node_expr_biop NYI for bitwise_and at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+
+	out->tag = val_tag.scalar;
+	ir_and(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_logical_or : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -1561,11 +1767,13 @@ val_from_node_expr_biop_logical_or : func(lhs : val mut?, lhs_node : ast mut?, r
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	val_convert(lhs, ty.bool, ref lhsconv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhsconv, ref lhsconv, ref lhs_ctx);
 
 	rhsconv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	val_convert(rhs, ty.bool, ref rhsconv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhsconv, ref rhsconv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if(resolve == val_resolve.type_only)
@@ -1594,11 +1802,13 @@ val_from_node_expr_biop_logical_and : func(lhs : val mut?, lhs_node : ast mut?, 
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	val_convert(lhs, ty.bool, ref lhsconv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhsconv, ref lhsconv, ref lhs_ctx);
 
 	rhsconv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	val_convert(rhs, ty.bool, ref rhsconv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhsconv, ref rhsconv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if(resolve == val_resolve.type_only)
@@ -1619,6 +1829,64 @@ val_from_node_expr_biop_logical_and : func(lhs : val mut?, lhs_node : ast mut?, 
 	putzstr("reached end of val_from_node_expr_biop_logical_and at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
+};
+
+val_from_node_expr_biop_xor : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	bitwise_ty ::= ty_of_bitwise(lhs->type, rhs->type);
+	if(bitwise_ty == ty.invalid)
+	{
+		err_begin();
+		putzstr("binary operator '^' is not valid on operands \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(lhs->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_conv : val mut;
+	val_convert(lhs, bitwise_ty, ref lhs_conv, resolve, ref lhs_ctx);
+
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_conv : val mut;
+	val_convert(rhs, bitwise_ty, ref rhs_conv, resolve, ref rhs_ctx);
+
+	out->type = bitwise_ty;
+
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if((lhs->tag != val_tag.scalar_literal) || (rhs->tag != val_tag.scalar_literal))
+		{
+			panic_begin();
+			putzstr("lhs and rhs operands were not both val_tag.scalar_literal when doing a compile-time '^'. they were tags  \0");
+			putsint(lhs->tag@s64);
+			putzstr(" and \0");
+			putsint(rhs->tag@s64);
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		out->tag = val_tag.scalar_literal;
+		[val_scalar_literal_get_integer(out)] = ([val_scalar_literal_get_integer(lhs)] ^ [val_scalar_literal_get_integer(rhs)]);
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_xor(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_bitshift_left : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2661,9 +2929,9 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.1 := val_from_node_expr_biop_compare_equal;
 	.2 := val_from_node_expr_biop_compare_not_equal;
 	.3 := val_from_node_expr_biop_compare_less;
-	.4 := val_from_node_expr_biop_nyi;
-	.5 := val_from_node_expr_biop_nyi;
-	.6 := val_from_node_expr_biop_nyi;
+	.4 := val_from_node_expr_biop_compare_less_equal;
+	.5 := val_from_node_expr_biop_compare_greater;
+	.6 := val_from_node_expr_biop_compare_greater_equal;
 	.7 := val_from_node_expr_biop_add;
 	.8 := val_from_node_expr_biop_sub;
 	.9 := val_from_node_expr_biop_mul;
@@ -2672,7 +2940,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.12 := val_from_node_expr_biop_bitwise_and;
 	.13 := val_from_node_expr_biop_logical_or;
 	.14 := val_from_node_expr_biop_logical_and;
-	.15 := val_from_node_expr_biop_nyi;
+	.15 := val_from_node_expr_biop_xor;
 	.16 := val_from_node_expr_biop_bitshift_left;
 	.17 := val_from_node_expr_biop_bitshift_right;
 	.18 := val_from_node_expr_biop_modulo;
