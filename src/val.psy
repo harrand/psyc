@@ -2112,14 +2112,12 @@ val_from_node_expr_biop_modulo : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 
 val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	putchar('a');
 	out->type = lhs->type;
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
 		return;
 	}
-	putchar('b');
 	if(resolve == val_resolve.compiletime_only)
 	{
 		panic_begin();
@@ -2128,7 +2126,6 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		panic_end();
 		return;
 	}
-	putchar('c');
 	lhs_conv : val mut;
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
@@ -2141,7 +2138,6 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		lhs_conv = [lhs];
 	}
 	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
-	putchar('d');
 
 	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
@@ -2155,36 +2151,24 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		rhs_conv = [rhs];
 	}
 	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
-	putchar('e');
 	
 	lhs_sz ::= abi_sizeof(abi_tag.psy64, lhs->type);
 	idxval : irval mut;
-	putchar('f');
 	if(lhs_sz > 1)
 	{
-		putchar('G');
 		immsz : irval mut;
-		putchar('H');
 		irval_qimm(lhs_sz, ref immsz);
-		putchar('I');
 		putsint(rhs_conv.tag@s64);
 		ir_umul(ref idxval, val_scalar_get_irval(ref rhs_conv), ref immsz);
-		putchar('J');
 	}
 	else
 	{
-		putchar('g');
 		idxval = [val_scalar_get_irval(ref rhs_conv)];
-		putchar('h');
-		putchar('i');
-		putchar('j');
 	}
 	out->tag = val_tag.scalar;
 	out->type = lhs->type;
-	putchar('K');
 	putsint(lhs_conv.tag@s64);
 	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), ref idxval);
-	putchar('L');
 };
 
 val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2257,24 +2241,20 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 	abi : abi_tag := abi_tag.psy64;
 	lhs_node ::= ast_biop_get_lhs(ctx->node);
 	rhs_node ::= ast_biop_get_rhs(ctx->node);
-	putchar('A');
 
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_val : val mut;
-	putchar('B');
 	val_from_node(ref lhs_ctx, ref lhs_val, resolve);
 	rhs_val : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
-	putchar('C');
 	val_from_node(ref rhs_ctx, ref rhs_val, resolve);
 	if(rhs_val.tag == val_tag.zerovalue)
 	{
 		val_zero_as(lhs_val.type, ref rhs_val);
 	}
 
-	putchar('D');
 	tag ::= [ast_biop_get_tag(ctx->node)];
 	if(tag@s64 == ~0)
 	{
@@ -2283,10 +2263,8 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	putchar('E');
 	putsint(tag@s64);
 	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, ctx);
-	putchar('F');
 };
 
 val_from_node_expr_unop_minus : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -3096,9 +3074,9 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 {
 	.0 := val_convert_scalar_ptr2ptr;
 	.1 := val_convert_scalar_ptr2u64;
-	.2 := val_convert_scalar_enum2s64;
-	.3 := val_convert_scalar_s642enum;
-	.4 := val_convert_scalar_nyi;
+	.2 := val_convert_scalar_u642ptr;
+	.3 := val_convert_scalar_enum2s64;
+	.4 := val_convert_scalar_s642enum;
 	.5 := val_convert_scalar_nyi;
 	.6 := val_convert_scalar_nyi;
 	.7 := val_convert_scalar_i2i;
