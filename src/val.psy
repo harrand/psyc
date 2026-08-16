@@ -275,10 +275,37 @@ val_convert_aggregate_literal : func(v : val mut?, to : ty, out : val mut?, conv
 	{
 		return;
 	}
-	panic_begin();
-	putzstr("val_convert_aggregate_literal at runtime is NYI at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	lit_members ::= [val_aggregate_literal_get_members(v)];
+	lit_members_count ::= val_aggregate_literal_get_members_count(v);
+	chunks : abi_chunk mut? mut;
+	chunks_count : u64 mut;
+
+	out->tag = val_tag.aggregate;
+	abi_chunk_tys(abi_tag.psy64, ref(v->type), 1, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+	members : val mut? := arena_alloc(global_arena, chunks_count * sizeof val);
+	[val_aggregate_get_members(out)] = members;
+	[val_aggregate_get_members_count(out)] = chunks_count;
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < chunks_count; i = i + 1)
+	{
+		cur : val mut;
+		val_convert(lit_members # i, (lit_members # i)->type, ref cur, resolve, ctx);
+		if(cur.tag == val_tag.aggregate)
+		{
+			count ::= [val_aggregate_get_members_count(ref cur)];
+			mems ::= [val_aggregate_get_members(ref cur)];
+			for(j = 0; j < count; j = j + 1)
+			{
+				[members # (i + j)] = [mems # j];
+			}
+			i = i + (count - 1);
+		}
+		else
+		{
+			[members # i] = cur;
+		}
+	}
 };
 
 val_convert_pointer_literal : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
