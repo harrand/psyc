@@ -430,6 +430,11 @@ val_convert_pointer : func(v : val mut?, to : ty, out : val mut?, conv : tyconv,
 	val_convert(out, to, out, resolve, ctx);
 };
 
+val_convert_aggregate : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	// can only convert runtime aggregates to itself, so this is a noop
+	[out] = [v];
+};
 
 val_convert : func(v : val mut?, to : ty, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
@@ -624,9 +629,9 @@ val_from_node_stmt_if_blk : func(ctx : val_context mut?, out : val mut?, resolve
 
 val_from_node_stmt_while_blk : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
 {
-	cond_node ::= ast_if_get_condition_expression(ctx->node);
-	body ::= ast_if_get_body(ctx->node);
-	body_count : u32 mut := ast_if_get_body_count(ctx->node);
+	cond_node ::= ast_while_get_condition_expression(ctx->node);
+	body ::= ast_while_get_body(ctx->node);
+	body_count : u32 mut := ast_while_get_body_count(ctx->node);
 
 	cond_ctx : val_context mut := [ctx];
 	cond_ctx.node = cond_node;
@@ -651,7 +656,7 @@ val_from_node_stmt_while_blk : func(ctx : val_context mut?, out : val mut?, reso
 
 	true_ctx : val_context mut := [ctx];
 	true_ctx.node = zero;
-	true_off ::= ast_if_get_offset_to_body(ctx->node);
+	true_off ::= ast_while_get_offset_to_body(ctx->node);
 	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
 	if(irblk_has_terminator(true_blk) == false)
 	{
@@ -661,6 +666,67 @@ val_from_node_stmt_while_blk : func(ctx : val_context mut?, out : val mut?, reso
 	}
 
 
+	// cont_blk is where we continue on from...
+	ir_position_end_of_blk(cont_blk->idx);
+	irfunc_dump(ir_current_func());
+};
+
+val_from_node_stmt_for_blk : func(ctx : val_context mut?, out : val mut?, resolve : val_resolve -> v0)
+{
+	init_node ::= ast_for_get_initialiser_expression(ctx->node);
+	cond_node ::= ast_for_get_condition_expression(ctx->node);
+	iter_node ::= ast_for_get_iterate_expression(ctx->node);
+	body ::= ast_for_get_body(ctx->node);
+	body_count : u32 mut := ast_for_get_body_count(ctx->node);
+
+	init_ctx : val_context mut := [ctx];
+	init_ctx.node = init_node;
+	dummy : val mut;
+	val_from_node(ref init_ctx, ref dummy, resolve);
+
+	cond_ctx : val_context mut := [ctx];
+	cond_ctx.node = cond_node;
+	cond_val : val mut;
+	val_from_node(ref cond_ctx, ref cond_val, resolve);
+	val_convert(ref cond_val, ty.bool, ref cond_val, resolve, ref cond_ctx);
+
+	putchar('a');
+	iter_ctx : val_context mut := [ctx];
+	iter_ctx.node = iter_node;
+
+	cur_blk ::= ir_current_blk();
+
+	// add new blocks
+	true_blkref : irval mut;
+	true_blk ::= ir_add_blk(ref true_blkref);
+	cont_blkref : irval mut;
+	cont_blk ::= ir_add_blk(ref cont_blkref);
+	putchar('b');
+
+	// go back to previous blk
+	ir_position_end_of_blk(cur_blk->idx);
+	ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
+	putchar('c');
+
+	// true blk: do everything inside the body
+	ir_position_end_of_blk(true_blk->idx);
+
+	true_ctx : val_context mut := [ctx];
+	true_ctx.node = zero;
+	true_off ::= ast_for_get_offset_to_body(ctx->node);
+	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
+	// and then the cond if there is one
+	if(irblk_has_terminator(true_blk) == false)
+	{
+		// do the iter
+		val_from_node(ref iter_ctx, ref dummy, resolve);
+		// and the cond again
+		val_from_node(ref cond_ctx, ref cond_val, resolve);
+		val_convert(ref cond_val, ty.bool, ref cond_val, resolve, ref cond_ctx);
+		ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
+	}
+
+	putchar('j');
 	// cont_blk is where we continue on from...
 	ir_position_end_of_blk(cont_blk->idx);
 	irfunc_dump(ir_current_func());
@@ -1010,15 +1076,18 @@ val_do_store : func(ptr : val mut?, v : val mut? -> v0)
 
 val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
+	putchar('1');
 	if(lhs->tag == val_tag.variable_reference)
 	{
 		[lhs] = [val_variable_reference_get_variable(lhs)]->storage;
 	}
+	putchar('2');
 
 	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	val_convert(rhs, lhs->type, ref rhs_conv, resolve, ref rhs_ctx);
+	putchar('3');
 
 	out->type = lhs->type;
 	if(resolve == val_resolve.type_only)
@@ -2043,12 +2112,14 @@ val_from_node_expr_biop_modulo : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 
 val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
+	putchar('a');
 	out->type = lhs->type;
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
 		return;
 	}
+	putchar('b');
 	if(resolve == val_resolve.compiletime_only)
 	{
 		panic_begin();
@@ -2057,31 +2128,63 @@ val_from_node_expr_biop_at_pointer : func(lhs : val mut?, lhs_node : ast mut?, r
 		panic_end();
 		return;
 	}
+	putchar('c');
 	lhs_conv : val mut;
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
-	val_load(abi_tag.psy64, lhs, ref lhs_conv, ref lhs_ctx);
+	if(lhs->tag == val_tag.variable_reference)
+	{
+		lhs_conv = [val_variable_reference_get_variable(lhs)]->storage;
+	}
+	else
+	{
+		lhs_conv = [lhs];
+	}
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
+	putchar('d');
 
 	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
-	val_load(abi_tag.psy64, rhs, ref rhs_conv, ref rhs_ctx);
-	
-	lhs_sz ::= abi_sizeof(abi_tag.psy64, lhs->type);
-	idxval : irval mut;
-	if(lhs_sz > 1)
+	if(rhs->tag == val_tag.variable_reference)
 	{
-		immsz : irval mut;
-		irval_qimm(lhs_sz, ref immsz);
-		ir_umul(ref idxval, val_scalar_get_irval(ref rhs_conv), ref immsz);
+		rhs_conv = [val_variable_reference_get_variable(rhs)]->storage;
 	}
 	else
 	{
+		rhs_conv = [rhs];
+	}
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+	putchar('e');
+	
+	lhs_sz ::= abi_sizeof(abi_tag.psy64, lhs->type);
+	idxval : irval mut;
+	putchar('f');
+	if(lhs_sz > 1)
+	{
+		putchar('G');
+		immsz : irval mut;
+		putchar('H');
+		irval_qimm(lhs_sz, ref immsz);
+		putchar('I');
+		putsint(rhs_conv.tag@s64);
+		ir_umul(ref idxval, val_scalar_get_irval(ref rhs_conv), ref immsz);
+		putchar('J');
+	}
+	else
+	{
+		putchar('g');
 		idxval = [val_scalar_get_irval(ref rhs_conv)];
+		putchar('h');
+		putchar('i');
+		putchar('j');
 	}
 	out->tag = val_tag.scalar;
 	out->type = lhs->type;
+	putchar('K');
+	putsint(lhs_conv.tag@s64);
 	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), ref idxval);
+	putchar('L');
 };
 
 val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2154,20 +2257,24 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 	abi : abi_tag := abi_tag.psy64;
 	lhs_node ::= ast_biop_get_lhs(ctx->node);
 	rhs_node ::= ast_biop_get_rhs(ctx->node);
+	putchar('A');
 
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs_val : val mut;
+	putchar('B');
 	val_from_node(ref lhs_ctx, ref lhs_val, resolve);
 	rhs_val : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
+	putchar('C');
 	val_from_node(ref rhs_ctx, ref rhs_val, resolve);
 	if(rhs_val.tag == val_tag.zerovalue)
 	{
 		val_zero_as(lhs_val.type, ref rhs_val);
 	}
 
+	putchar('D');
 	tag ::= [ast_biop_get_tag(ctx->node)];
 	if(tag@s64 == ~0)
 	{
@@ -2176,7 +2283,10 @@ val_from_node_expr_biop : func(ctx : val_context mut?, out : val mut?, resolve :
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
+	putchar('E');
+	putsint(tag@s64);
 	[val_from_node_expr_biop_tbl # (tag@s64)](ref lhs_val, lhs_node, ref rhs_val, rhs_node, out, resolve, ctx);
+	putchar('F');
 };
 
 val_from_node_expr_unop_minus : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2959,7 +3069,7 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.7 := val_from_node_stmt_if_blk;
 	.8 := val_from_node_stmt_nyi;
 	.9 := val_from_node_stmt_while_blk;
-	.10 := val_from_node_stmt_nyi;
+	.10 := val_from_node_stmt_for_blk;
 	.11 := val_from_node_stmt_return;
 	.12 := val_from_node_stmt_unreachable;
 	.13 := val_from_node_stmt_nyi;
@@ -2979,7 +3089,7 @@ val_convert_tbl ::= typeof(val_convert_nyi)[countof val_tag]
 	.9 := val_convert_assembly_reference;
 	.10 := val_convert_scalar;
 	.11 := val_convert_pointer;
-	.12 := val_convert_nyi;
+	.12 := val_convert_aggregate;
 };
 
 val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
