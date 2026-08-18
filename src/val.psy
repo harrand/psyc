@@ -1831,17 +1831,17 @@ val_from_node_expr_biop_bitwise_and : func(lhs : val mut?, lhs_node : ast mut?, 
 
 val_from_node_expr_biop_logical_or : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
-	lhsconv : val mut;
+	lhs_conv : val mut;
 	lhs_ctx : val_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
-	val_convert(lhs, ty.bool, ref lhsconv, resolve, ref lhs_ctx);
-	val_load(abi_tag.psy64, ref lhsconv, ref lhsconv, ref lhs_ctx);
+	val_convert(lhs, ty.bool, ref lhs_conv, resolve, ref lhs_ctx);
+	val_load(abi_tag.psy64, ref lhs_conv, ref lhs_conv, ref lhs_ctx);
 
-	rhsconv : val mut;
+	rhs_conv : val mut;
 	rhs_ctx : val_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
-	val_convert(rhs, ty.bool, ref rhsconv, resolve, ref rhs_ctx);
-	val_load(abi_tag.psy64, ref rhsconv, ref rhsconv, ref rhs_ctx);
+	val_convert(rhs, ty.bool, ref rhs_conv, resolve, ref rhs_ctx);
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
 
 	out->type = ty.bool;
 	if(resolve == val_resolve.type_only)
@@ -1858,10 +1858,8 @@ val_from_node_expr_biop_logical_or : func(lhs : val mut?, lhs_node : ast mut?, r
 		return;
 	}
 
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_logical_or at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	out->tag = val_tag.scalar;
+	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), val_scalar_get_irval(ref rhs_conv));
 };
 
 val_from_node_expr_biop_logical_and : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
