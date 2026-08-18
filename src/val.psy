@@ -416,6 +416,31 @@ val_convert_scalar_sext : func(v : val mut?, to : ty, out : val mut?, conv : tyc
 	ir_sex(val_scalar_get_irval(out), sz, val_scalar_get_irval(v));
 };
 
+val_convert_scalar_zext : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	out->tag = val_tag.scalar;
+	out->type = to;
+	size_bytes ::= ty_integral_size(to);
+	sz : irsz mut := irsz.none;
+	if(size_bytes == 1)
+	{
+		sz = irsz.b;
+	}
+	if(size_bytes == 2)
+	{
+		sz = irsz.w;
+	}
+	if(size_bytes == 4)
+	{
+		sz = irsz.d;
+	}
+	if(size_bytes == 8)
+	{
+		sz = irsz.q;
+	}
+	ir_zex(val_scalar_get_irval(out), sz, val_scalar_get_irval(v));
+};
+
 val_convert_scalar_noop : func(v : val mut?, to : ty, out : val mut?, conv : tyconv, resolve : val_resolve, ctx : val_context mut? -> v0)
 {
 	[out] = [v];
@@ -744,7 +769,7 @@ val_from_node_stmt_return : func(ctx : val_context mut?, out : val mut?, resolve
 	ret_expr_node ::= ast_ret_get_expr(ctx->node);
 	if(ret_expr_node == zero)
 	{
-		if(fn_retty != ty.invalid)
+		if(fn_retty != ty.v0)
 		{
 			err_begin();
 			putzstr("return statement in function \0");
@@ -3075,7 +3100,7 @@ val_convert_scalar_tbl ::= typeof(val_convert_scalar)[countof tyconv]
 	.6 := val_convert_scalar_nyi;
 	.7 := val_convert_scalar_i2i;
 	.8 := val_convert_scalar_sext;
-	.9 := val_convert_scalar_nyi;
+	.9 := val_convert_scalar_zext;
 	.10 := val_convert_scalar_nyi;
 	.11 := val_convert_scalar_nyi;
 	.12 := val_convert_scalar_nyi;
