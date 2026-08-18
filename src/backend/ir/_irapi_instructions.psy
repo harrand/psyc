@@ -257,9 +257,11 @@ ir_sex : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
 	inst : irinst mut := zero;
 	inst.tag = irinst_tag.sex;
 
+	// catch incase out and operand alias (and we overwrite our own operand)
+	opcpy ::= [operand];
 	ir_new_reg_of(sz, out);
 	irinst_add_operand(ref inst, out);
-	irinst_add_operand(ref inst, operand);
+	irinst_add_operand(ref inst, ref opcpy);
 	ir_add_instruction(ref inst);
 };
 
@@ -278,9 +280,11 @@ ir_zex : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
 	inst : irinst mut := zero;
 	inst.tag = irinst_tag.zex;
 
+	// catch incase out and operand alias (and we overwrite our own operand)
+	opcpy ::= [operand];
 	ir_new_reg_of(sz, out);
 	irinst_add_operand(ref inst, out);
-	irinst_add_operand(ref inst, operand);
+	irinst_add_operand(ref inst, ref opcpy);
 	ir_add_instruction(ref inst);
 };
 
@@ -290,6 +294,29 @@ ir_zex_get_out : func(inst : irinst mut? -> irval mut?)
 };
 
 ir_zex_get_operand : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 1;
+};
+
+ir_trunc : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.trunc;
+
+	// catch incase out and operand alias (and we overwrite our own operand)
+	opcpy ::= [operand];
+	ir_new_reg_of(sz, out);
+	irinst_add_operand(ref inst, out);
+	irinst_add_operand(ref inst, ref opcpy);
+	ir_add_instruction(ref inst);
+};
+
+ir_trunc_get_out : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_trunc_get_operand : func(inst : irinst mut? -> irval mut?)
 {
 	return inst->operands # 1;
 };
