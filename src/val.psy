@@ -2207,10 +2207,61 @@ val_from_node_expr_biop_at_array : func(lhs : val mut?, lhs_node : ast mut?, rhs
 		panic_end();
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_biop_at_array at \0");
-	putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
-	panic_end();
+	lhs_conv : val mut;
+	lhs_ctx : val_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	if(lhs->tag == val_tag.variable_reference)
+	{
+		lhs_conv = [val_variable_reference_get_variable(lhs)]->storage;
+	}
+	else
+	{
+		lhs_conv = [lhs];
+	}
+
+	rhs_conv : val mut;
+	rhs_ctx : val_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	if(rhs->tag == val_tag.variable_reference)
+	{
+		rhs_conv = [val_variable_reference_get_variable(rhs)]->storage;
+	}
+	else
+	{
+		rhs_conv = [rhs];
+	}
+	val_load(abi_tag.psy64, ref rhs_conv, ref rhs_conv, ref rhs_ctx);
+	
+	lhs_elem_sz ::= abi_sizeof(abi_tag.psy64, ty_underlying(lhs->type));
+	idxval : irval mut;
+	if(lhs_elem_sz > 1)
+	{
+		immsz : irval mut;
+		irval_qimm(lhs_elem_sz, ref immsz);
+		ir_umul(ref idxval, val_scalar_get_irval(ref rhs_conv), ref immsz);
+	}
+	else
+	{
+		idxval = [val_scalar_get_irval(ref rhs_conv)];
+	}
+	out->tag = val_tag.scalar;
+	out->type = ty_make_pointer(ty_underlying(lhs->type), zero);
+	if(lhs_conv.tag == val_tag.scalar)
+	{
+		ir_add(val_scalar_get_irval(out), val_scalar_get_irval(ref lhs_conv), ref idxval);
+	}
+	else
+	{
+		// assume lhs_conv must be a pointer
+		if([val_pointer_get_displacement(ref lhs_conv)] != 0)
+		{
+			tmp : irval mut := idxval;
+			disp_qimm : irval mut;
+			irval_qimm([val_pointer_get_displacement(ref lhs_conv)], ref disp_qimm);
+			ir_add(ref idxval, ref tmp, ref disp_qimm);
+		}
+		ir_add(val_scalar_get_irval(out), val_pointer_get_irval(ref lhs_conv), ref idxval);
+	}
 };
 
 val_from_node_expr_biop_at : func(lhs : val mut?, lhs_node : ast mut?, rhs : val mut?, rhs_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2445,6 +2496,7 @@ val_from_node_expr_call : func(ctx : val_context mut?, out : val mut?, resolve :
 	callee_val : val mut;
 	callee_ctx : val_context mut := [ctx];
 	callee_ctx.node = ast_call_get_callee(ctx->node);
+
 	val_from_node(ref callee_ctx, ref callee_val, resolve);
 	val_convert(ref callee_val, callee_val.type, ref callee_val, resolve, ref callee_ctx);
 	val_load(abi_tag.psy64, ref callee_val, ref callee_val, ref callee_ctx);
