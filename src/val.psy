@@ -668,7 +668,7 @@ val_from_node_stmt_if_blk : func(ctx : val_context mut?, out : val mut?, resolve
 	{
 		// do the else here
 		false_ctx : val_context mut := [ctx];
-		false_ctx.node = zero;
+		false_ctx.node = maybe_else;
 		ast_walk(maybe_else, 0, maybe_else->children_count@u64, codegen_node_callback, ref false_ctx);
 	}
 	if(irblk_has_terminator(false_blk) == false)
@@ -1144,6 +1144,7 @@ val_from_node_expr_biop_assign : func(lhs : val mut?, lhs_node : ast mut?, rhs :
 		out->tag = val_tag.typeonly;
 		return;
 	}
+
 	if(resolve == val_resolve.compiletime_only)
 	{
 		panic_begin();
@@ -2377,6 +2378,11 @@ val_from_node_expr_unop_minus : func(operand : val mut?, operand_node : ast mut?
 		err_end();
 	}
 	out->type = operand->type;
+
+	operand_ctx : val_context mut := [ctx];
+	operand_ctx.node = operand_node;
+	operand_conv : val mut;
+	val_load(abi_tag.psy64, operand, ref operand_conv, ref operand_ctx);
 	if(resolve == val_resolve.type_only)
 	{
 		out->tag = val_tag.typeonly;
@@ -2405,10 +2411,63 @@ val_from_node_expr_unop_minus : func(operand : val mut?, operand_node : ast mut?
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_unop_minus for \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	out->tag = val_tag.scalar;
+	qimm0 : irval mut;
+	irval_qimm(0, ref qimm0);
+	ir_sub(val_scalar_get_irval(out), ref qimm0, val_scalar_get_irval(ref operand_conv));
+};
+
+val_from_node_expr_unop_bitwise_invert : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
+{
+	// only integral and floating-point types can be negated
+	if((ty_integral_size(operand->type) + ty_floating_point_size(operand->type)) == 0)
+	{
+		err_begin();
+		putzstr("unary operator '&' is only valid on integral or floating-point types. you have provided a \0");
+		putchar('"');
+		putty(operand->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->type = operand->type;
+
+	operand_ctx : val_context mut := [ctx];
+	operand_ctx.node = operand_node;
+	operand_conv : val mut;
+	val_load(abi_tag.psy64, operand, ref operand_conv, ref operand_ctx);
+
+	if(resolve == val_resolve.type_only)
+	{
+		out->tag = val_tag.typeonly;
+		return;
+	}
+	if(resolve == val_resolve.compiletime_only)
+	{
+		if(operand->tag == val_tag.scalar_literal)
+		{
+			out->tag = val_tag.scalar_literal;
+			out->type = out->type;
+			if(ty_floating_point_size(operand->type) > 0)
+			{
+				[val_scalar_literal_get_floating_point(out)] = ~[val_scalar_literal_get_floating_point(operand)];
+			}
+			else
+			{
+				[val_scalar_literal_get_integer(out)] = ~[val_scalar_literal_get_integer(operand)];
+			}
+			return;
+		}
+		panic_begin();
+		putzstr("val_from_node_expr_unop_bitwise_invert compiletime_only, don't know how to negate val_tag.\0");
+		putsint(operand->tag@s64);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	out->tag = val_tag.scalar;
+	ir_not(val_scalar_get_irval(out), val_scalar_get_irval(ref operand_conv));
 };
 
 val_from_node_expr_unop_ref : func(operand : val mut?, operand_node : ast mut?, out : val mut?, resolve : val_resolve, ctx : val_context mut? -> v0)
@@ -2802,7 +2861,7 @@ val_from_node_expr_dereference : func(ctx : val_context mut?, out : val mut?, re
 		return;
 	}
 	// we have something that must be either scalar or pointer
-	val_do_load(abi_tag.psy64, ref operand_val, out, ref operand_ctx);
+	val_load(abi_tag.psy64, ref operand_val, out, ref operand_ctx);
 	out->type = ty_underlying(operand_val.type);
 	out->tag = val_tag.pointer;
 	[val_pointer_get_irval(out)] = [val_scalar_get_irval(out)];
@@ -3102,7 +3161,7 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_unop_tag]
 {
 	.0 := val_from_node_expr_unop_minus;
-	.1 := val_from_node_expr_unop_nyi;
+	.1 := val_from_node_expr_unop_bitwise_invert;
 	.2 := val_from_node_expr_unop_nyi;
 	.3 := val_from_node_expr_unop_ref;
 };
