@@ -74,9 +74,8 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 	}
 	if(ty_is_pointer(to))
 	{
-		out->tag = val_tag.pointer;
-		irval_qimm(0, val_pointer_get_irval(out));
-		[val_pointer_get_displacement(out)] = 0;
+		out->tag = val_tag.scalar;
+		irval_qimm(0, val_scalar_get_irval(out));
 		return;
 	}
 	if(ty_is_function(to))
@@ -279,9 +278,9 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	members_count ::= ty_countof(out->type);
 	chunks_count : u64 mut;
 	// populate the output as an aggregate
-	abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+	abi_chunk_tys(abi_tag.psy64, ty_unwrap(out->type)->members, ty_countof(out->type), val_aggregate_get_chunks(out), ref chunks_count, global_arena);
 	[val_aggregate_get_members_count(out)] = chunks_count;
-	chunk_vals : val mut? := arena_alloc(global_arena, sizeof typeof(val));
+	chunk_vals : val mut? := arena_alloc(global_arena, chunks_count * sizeof typeof(val));
 	[val_aggregate_get_members(out)] = chunk_vals;
 
 	// the output is already ready, but chunk_vals is a pointer to its aggregate values, which we need to populate.
@@ -328,15 +327,6 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
-		if((chunk_vals # i)->tag != val_tag.invalid)
-		{
-			warn_begin();
-			putzstr("member \0");
-			putuint(i);
-			putzstr(" within block-initialiser is initialised more than once at \0");
-			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
-			warn_end();
-		}
 		// our member value will correspond to one (scalar) or more (aggregate) members of chunk_vals
 		// let's find the offset to the correct chunk(s) and set member_idx_as_chunk_idx to it
 		member_idx_as_chunk_idx : u64 mut := ~0;
@@ -347,16 +337,33 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 			if(cur_chunk->src_idx_begin == member_idx)
 			{
 				member_idx_as_chunk_idx = j;
+				j = chunks_count;
 			}
+		}
+		if((chunk_vals # member_idx_as_chunk_idx)->tag != val_tag.invalid)
+		{
+			warn_begin();
+			putzstr("chunk \0");
+			putuint(member_idx_as_chunk_idx);
+			putzstr(" within block-initialiser is initialised more than once at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.yellow_underline);
+			warn_end();
 		}
 		// finally get the val for the initialised member and convert it to the type
 		cur_member_val : val mut;
 
 		init_expr_ctx : source_context mut := [ctx];
 		init_expr_ctx.node = ast_init_get_expr(init_node);
-		val_from_node(ref init_expr_ctx, ref cur_member_val);
-		val_load_if_pointer(ref cur_member_val, ref cur_member_val);
-		val_conv(ref cur_member_val, ty_at(out->type, member_idx), ref cur_member_val, ref init_expr_ctx);
+		if(ast_is_expr(init_expr_ctx.node, ast_expr_tag.zero_value))
+		{
+			// handle zero value
+			val_zero_as(ty_at(out->type, member_idx), ref cur_member_val);
+		}
+		else
+		{
+			val_from_node(ref init_expr_ctx, ref cur_member_val);
+			val_conv(ref cur_member_val, ty_at(out->type, member_idx), ref cur_member_val, ref init_expr_ctx);
+		}
 		// if we are a scalar we just write to chunk_vals[member_idx_as_chunk_idx]
 		// if we are an aggregate then we siomply write to chunk_vals[member_idx_as_chunk_idx...val_aggregate_get_members_count]
 		if(cur_member_val.tag == val_tag.scalar)
@@ -371,6 +378,15 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 			{
 				[chunk_vals # (member_idx_as_chunk_idx + j)] = [cur_agg_chunks # j];
 			}
+		}
+		if((cur_member_val.tag != val_tag.scalar) && (cur_member_val.tag != val_tag.aggregate))
+		{
+			panic_begin();
+			putzstr("unexpected val_tag.\0");
+			putsint(cur_member_val.tag@s64);
+			putzstr(", expected scalar/aggregate at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			panic_end();
 		}
 	}
 
@@ -423,6 +439,10 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 
 val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
+	// we are dealing with a field expression, but the lhs was a symbol that corresponded to an enum type (provided here via the 'type' parameter)
+	// in this case, we assume it is not a struct-access and assert that the rhs is a symbol corresponding to an enum entry
+	// if it is, 'out' becomes a scalar immediate corresponding to the entry.
+	// if it isn't, error out.
 	if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
 	{
 		err_begin();
@@ -475,6 +495,7 @@ val_conv : func(in : val mut?, to : ty, out : val mut?, ctx : source_context mut
 	conv ::= ty_converts_to(in->type, to);
 	if(tyconv_is_valid(conv))
 	{
+		val_load_if_pointer(in, in);
 		[val_conv_tbl # (in->tag@s64)](in, to, out, conv, ctx);
 		return;
 	}
@@ -523,13 +544,6 @@ val_conv_scalar_nyi : func(in : val mut?, to : ty, out : val mut?, conv : tyconv
 	panic_end();
 };
 
-val_conv_scalar_i2i : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
-{
-	// noop
-	[out] = [in];
-	out->type = to;
-};
-
 val_conv_scalar_noop : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
 	// noop
@@ -547,10 +561,20 @@ val_conv_pointer : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, c
 
 val_conv_aggregate : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
-	panic_begin();
-	putzstr("todo: val_conv_aggregate at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	if(ty_strip(in->type) != ty_strip(to))
+	{
+		panic_begin();
+		putzstr("requested to convert aggregate value of type \0");
+		putty(in->type);
+		putzstr(" to dissimilar type \0");
+		putty(to);
+		putzstr(" - this should've been caught and error'd properly earlier at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	// noop
+	[out] = [in];
+	out->type = to;
 };
 
 val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]
@@ -649,14 +673,14 @@ val_conv_tbl ::= typeof(val_conv_invalid)[countof val_tag]
 
 val_conv_scalar_tbl ::= typeof(val_conv_invalid)[countof tyconv]
 {
-	.0 := val_conv_scalar_nyi;
-	.1 := val_conv_scalar_nyi;
-	.2 := val_conv_scalar_nyi;
+	.0 := val_conv_scalar_noop;
+	.1 := val_conv_scalar_noop;
+	.2 := val_conv_scalar_noop;
 	.3 := val_conv_scalar_nyi;
 	.4 := val_conv_scalar_nyi;
 	.5 := val_conv_scalar_nyi;
 	.6 := val_conv_scalar_nyi;
-	.7 := val_conv_scalar_i2i;
+	.7 := val_conv_scalar_noop;
 	.8 := val_conv_scalar_nyi;
 	.9 := val_conv_scalar_nyi;
 	.10 := val_conv_scalar_nyi;
