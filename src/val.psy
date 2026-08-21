@@ -355,6 +355,7 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 		init_expr_ctx : source_context mut := [ctx];
 		init_expr_ctx.node = ast_init_get_expr(init_node);
 		val_from_node(ref init_expr_ctx, ref cur_member_val);
+		val_load_if_pointer(ref cur_member_val, ref cur_member_val);
 		val_conv(ref cur_member_val, ty_at(out->type, member_idx), ref cur_member_val, ref init_expr_ctx);
 		// if we are a scalar we just write to chunk_vals[member_idx_as_chunk_idx]
 		// if we are an aggregate then we siomply write to chunk_vals[member_idx_as_chunk_idx...val_aggregate_get_members_count]
@@ -394,6 +395,64 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 			err_end();
 		}
 	}
+};
+
+val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	// check if lhs is a symbol that matches an enum name
+	lhs_node ::= ast_field_get_lhs(ctx->node);
+	rhs_node ::= ast_field_get_rhs(ctx->node);
+	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
+	if(ast_is_expr(lhs_node, ast_expr_tag.symbol) && (is_ptr_field == false))
+	{
+		lhs_as_type ::= ty_find_by_name([ast_symbol_get_data(lhs_node)], [ast_symbol_get_data_len(lhs_node)]);
+		if(lhs_as_type != ty.invalid)
+		{
+			if(ty_is_enumeration(lhs_as_type))
+			{
+				val_from_node_expr_enum_field(lhs_as_type, rhs_node, ctx, out);
+				return;
+			}
+		}
+	}
+	panic_begin();
+	putzstr("todo: val_from_node_expr_field at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
+	{
+		err_begin();
+		putzstr("lhs of field-expression was enum type \0");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		putzstr(", but the rhs was not a symbol expression. it should be a symbol corresponding to an entry name of the enum type at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	entry_value ::= ty_enum_find(type, [ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+	if(entry_value == zero)
+	{
+		err_begin();
+		putzstr("enum type \0");
+		putchar('"');
+		putty(type);
+		putchar('"');
+		putzstr(" had no entry named \0");
+		putchar('"');
+		putchars([ast_symbol_get_data(rhs_symbol_node)], [ast_symbol_get_data_len(rhs_symbol_node)]);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->type = type;
+	out->tag = val_tag.scalar;
+	irval_qimm([entry_value], val_scalar_get_irval(out));
 };
 
 val_from_node_stmt : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -535,8 +594,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.7 := val_from_node_expr_nyi;
 	//.8 := val_from_node_expr_cast;
 	.8 := val_from_node_expr_nyi;
-	//.9 := val_from_node_expr_field;
-	.9 := val_from_node_expr_nyi;
+	.9 := val_from_node_expr_field;
 	//.10 := val_from_node_expr_sizeof;
 	.10 := val_from_node_expr_nyi;
 	//.11 := val_from_node_expr_alignof;
