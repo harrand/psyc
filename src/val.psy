@@ -205,6 +205,145 @@ val_from_node_expr_zero_value : func(ctx : source_context mut?, out : val mut? -
 	panic_end();
 };
 
+val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> v0)
+{
+	out->tag = val_tag.aggregate;
+	typename_ctx : source_context mut := [ctx];
+	typename_ctx.node = ast_blkinit_get_typename(ctx->node);
+	out->type = ty_from_typename_node(ref typename_ctx);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("block initialiser of unknown type at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	members_count ::= ty_countof(out->type);
+	chunks_count : u64 mut;
+	// populate the output as an aggregate
+	abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+	[val_aggregate_get_members_count(out)] = chunks_count;
+	chunk_vals : val mut? := arena_alloc(global_arena, sizeof typeof(val));
+	[val_aggregate_get_members(out)] = chunk_vals;
+
+	// the output is already ready, but chunk_vals is a pointer to its aggregate values, which we need to populate.
+	// fill them all with val_tag.invalid for now and overwrite them later (that lets us check if the user did not initialise everything by checking for invalid-ness)
+	i : u64 mut;
+	for(i = 0; i < chunks_count; i = i + 1)
+	{
+		(chunk_vals # i)->tag = val_tag.invalid;
+	}
+	init_nodes ::= ast_blkinit_get_inits(ctx->node);
+	inits_count ::= ast_blkinit_get_inits_count(ctx->node)@u64;
+	member_idx : u64 mut;
+	cur_chunk : abi_chunk mut? mut;
+
+	for(i = 0; i < inits_count; i = i + 1)
+	{
+		init_node ::= init_nodes # i;
+		// find out our member idx
+		init_tag ::= [ast_init_get_tag(init_node)];
+		if(init_tag == ast_init_tag.ellipsis)
+		{
+			panic_begin();
+			putzstr("ellipsis syntax in initialisers is NYI at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		if(init_tag == ast_init_tag.integer)
+		{
+			member_idx = [ast_init_get_integer(init_node)]@u64;
+		}
+		if(init_tag == ast_init_tag.symbol)
+		{
+			// todo: assert out->type is a structure and not an array
+			member_idx = ty_struct_find(out->type, [ast_init_get_symbol(init_node)], [ast_init_get_symbol_len(init_node)]);
+		}
+		if(member_idx >= ty_countof(out->type))
+		{
+			err_begin();
+			putzstr("initialiser did not correspond to a valid member of the aggregate-type \0");
+			putchar('"');
+			putty(out->type);
+			putchar('"');
+			putzstr(" at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		if((chunk_vals # i)->tag != val_tag.invalid)
+		{
+			warn_begin();
+			putzstr("member \0");
+			putuint(i);
+			putzstr(" within block-initialiser is initialised more than once at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			warn_end();
+		}
+		// our member value will correspond to one (scalar) or more (aggregate) members of chunk_vals
+		// let's find the offset to the correct chunk(s) and set member_idx_as_chunk_idx to it
+		member_idx_as_chunk_idx : u64 mut := ~0;
+		j : u64 mut := 0;
+		for(j = 0; j < chunks_count; j = j + 1)
+		{
+			cur_chunk = [val_aggregate_get_chunks(out)] # j;
+			if(cur_chunk->src_idx_begin == member_idx)
+			{
+				member_idx_as_chunk_idx = j;
+			}
+		}
+		// finally get the val for the initialised member and convert it to the type
+		cur_member_val : val mut;
+
+		init_expr_ctx : source_context mut := [ctx];
+		init_expr_ctx.node = ast_init_get_expr(init_node);
+		val_from_node(ref init_expr_ctx, ref cur_member_val);
+		val_conv(ref cur_member_val, ty_at(out->type, member_idx), ref cur_member_val, ref init_expr_ctx);
+		// if we are a scalar we just write to chunk_vals[member_idx_as_chunk_idx]
+		// if we are an aggregate then we siomply write to chunk_vals[member_idx_as_chunk_idx...val_aggregate_get_members_count]
+		if(cur_member_val.tag == val_tag.scalar)
+		{
+			[chunk_vals # member_idx_as_chunk_idx] = cur_member_val;
+		}
+		if(cur_member_val.tag == val_tag.aggregate)
+		{
+			cur_agg_count ::= [val_aggregate_get_members_count(ref cur_member_val)];
+			cur_agg_chunks ::= [val_aggregate_get_members(ref cur_member_val)];
+			for(j = 0; j < cur_agg_count; j = j + 1)
+			{
+				[chunk_vals # (member_idx_as_chunk_idx + j)] = [cur_agg_chunks # j];
+			}
+		}
+	}
+
+	// iterate again and error out if we didnt initialise any of the chunks
+	for(i = 0; i < chunks_count; i = i + 1)
+	{
+		cur_chunk = [val_aggregate_get_chunks(out)] # i;
+		if((chunk_vals # i)->tag == val_tag.invalid)
+		{
+			err_begin();
+			putzstr("block initialiser failed to initialise member \0");
+			putuint(cur_chunk->src_idx_begin);
+			if(ty_is_structure(out->type))
+			{
+				struct_member_decl ::= ast_structure_get_data_members(ty_unwrap(out->type)->reference) # i;
+				putzstr(" ('\0");
+				putchars([ast_decl_get_name(struct_member_decl)], [ast_decl_get_name_len(struct_member_decl)]);
+				putzstr("')");
+			}
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+	// todo: delete. i think ive done it now.
+	putzstr("val_from_node_expr_blkinit NYI for ast_expr_tag.\0");
+	putsint([ast_expr_get_tag(ctx->node)]@s64);
+	putzstr(" at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_stmt : func(ctx : source_context mut?, out : val mut? -> v0)
 {
 	[val_from_node_stmt_tbl # ([ast_stmt_get_tag(ctx->node)]@s64)](ctx, out);
@@ -260,10 +399,31 @@ val_conv_invalid : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, c
 
 val_conv_scalar : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
+	[val_conv_scalar_tbl # (conv@s64)](in, to, out, conv, ctx);
+};
+
+val_conv_scalar_nyi : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
 	panic_begin();
-	putzstr("todo: val_conv_scalar at \0");
+	putzstr("reached val_conv_scalar_nyi for tyconv.\0");
+	putsint(conv@s64);
+	putzstr(" at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
+};
+
+val_conv_scalar_i2i : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	// noop
+	[out] = [in];
+	out->type = to;
+};
+
+val_conv_scalar_noop : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	// noop
+	[out] = [in];
+	out->type = to;
 };
 
 val_conv_pointer : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
@@ -318,8 +478,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.4 := val_from_node_expr_nyi;
 	//.5 := val_from_node_expr_call;
 	.5 := val_from_node_expr_nyi;
-	//.6 := val_from_node_expr_blkinit;
-	.6 := val_from_node_expr_nyi;
+	.6 := val_from_node_expr_blkinit;
 	//.7 := val_from_node_expr_dereference;
 	.7 := val_from_node_expr_nyi;
 	//.8 := val_from_node_expr_cast;
@@ -376,4 +535,27 @@ val_conv_tbl ::= typeof(val_conv_invalid)[countof val_tag]
 	.2 := val_conv_scalar;
 	.3 := val_conv_pointer;
 	.4 := val_conv_aggregate;
+};
+
+val_conv_scalar_tbl ::= typeof(val_conv_invalid)[countof tyconv]
+{
+	.0 := val_conv_scalar_nyi;
+	.1 := val_conv_scalar_nyi;
+	.2 := val_conv_scalar_nyi;
+	.3 := val_conv_scalar_nyi;
+	.4 := val_conv_scalar_nyi;
+	.5 := val_conv_scalar_nyi;
+	.6 := val_conv_scalar_nyi;
+	.7 := val_conv_scalar_i2i;
+	.8 := val_conv_scalar_nyi;
+	.9 := val_conv_scalar_nyi;
+	.10 := val_conv_scalar_nyi;
+	.11 := val_conv_scalar_nyi;
+	.12 := val_conv_scalar_nyi;
+	.13 := val_conv_scalar_nyi;
+	.14 := val_conv_scalar_nyi;
+	.15 := val_conv_scalar_noop;
+	.16 := val_conv_scalar_nyi;
+	.17 := val_conv_scalar_nyi;
+	.18 := val_conv_scalar_nyi;
 };
