@@ -220,6 +220,68 @@ val_from_node_stmt_nyi : func(ctx : source_context mut?, out : val mut? -> v0)
 	panic_end();
 };
 
+val_conv : func(in : val mut?, to : ty, out : val mut?, ctx : source_context mut? -> v0)
+{
+	conv ::= ty_converts_to(in->type, to);
+	if(tyconv_is_valid(conv))
+	{
+		[val_conv_tbl # (in->tag@s64)](in, to, out, conv, ctx);
+		return;
+	}
+	err_begin();
+	putzstr("cannot convert value of type \0");
+	putchar('"');
+	putty(in->type);
+	putchar('"');
+	putzstr(" to type \0");
+	putchar('"');
+	putty(to);
+	putchar('"');
+	if(conv == tyconv.no_cant_add_staticness)
+	{
+		putzstr(" (because doing so would add staticness)\0");
+	}
+	if(conv == tyconv.no_but_yes_with_weak)
+	{
+		putzstr(" (but could if one were marked 'weak')\0");
+	}
+	putzstr(" at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	err_end();
+};
+
+val_conv_invalid : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	panic_begin();
+	putzstr("reached val_conv_invalid at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_conv_scalar : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: val_conv_scalar at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_conv_pointer : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: val_conv_pointer at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_conv_aggregate : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: val_conv_aggregate at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]
 {
 	.0 := val_from_node_nyi;
@@ -305,4 +367,13 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	//.12 := val_from_node_stmt_unreachable;
 	.12 := val_from_node_stmt_nyi;
 	.13 := val_from_node_stmt_nyi;
+};
+
+val_conv_tbl ::= typeof(val_conv_invalid)[countof val_tag]
+{
+	.0 := val_conv_invalid;
+	.1 := val_conv_invalid;
+	.2 := val_conv_scalar;
+	.3 := val_conv_pointer;
+	.4 := val_conv_aggregate;
 };
