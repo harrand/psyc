@@ -555,31 +555,31 @@ ty_storage_t : struct
 
 ty_storage : ty_storage_t mut := zero;
 
-ty_from_typename_node : func(ctx : val_context mut? -> ty)
+ty_from_typename_node : func(ctx : source_context mut? -> ty)
 {
 	return [ty_from_typename_node_tbl # [ast_typename_get_tag(ctx->node)]@s64](ctx);
 };
 
-ty_from_typename_node_base : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_base : func(ctx : source_context mut? -> ty)
 {
 	return ty_find_by_name([ast_typename_base_get_basename(ctx->node)], [ast_typename_base_get_basename_len(ctx->node)]) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_array : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_array : func(ctx : source_context mut? -> ty)
 {
-	underlying_ctx : val_context mut := [ctx];
+	underlying_ctx : source_context mut := [ctx];
 	underlying_ctx.node = ast_typename_array_get_element_type(ctx->node);
 	underlying ::= ty_from_typename_node(ref underlying_ctx);
 	len_expr_node ::= ast_typename_array_get_length_expr(ctx->node);
 
 	len_val : val mut;
-	len_ctx : val_context mut := [ctx];
+	len_ctx : source_context mut := [ctx];
 	len_ctx.node = len_expr_node;
-	val_from_node(ref len_ctx, ref len_val, val_resolve.compiletime_only);
-	if((len_val.tag != val_tag.scalar_literal))
+	val_from_node(ref len_ctx, ref len_val);
+	if((len_val.tag != val_tag.scalar))
 	{
 		err_begin();
-		putzstr("array length did not yield an integer literal\n\0");
+		putzstr("array length did not yield a scalar\n\0");
 		putsrc(ctx->src, len_expr_node->src_beg@u64, len_expr_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
@@ -602,15 +602,16 @@ ty_from_typename_node_array : func(ctx : val_context mut? -> ty)
 	u.underlying = underlying;
 	u.members = zero;
 	u.members_count = zero;
-	u.array_len = [val_scalar_literal_get_integer(ref len_val)]@u64;
+	len_imm ::= val_scalar_get_irval(ref len_val);
+	u.array_len = [irval_imm_get_integer(len_imm)]@u64;
 	u.reference = ctx->node;
 
 	return ty_wrap(ref u) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_pointer : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_pointer : func(ctx : source_context mut? -> ty)
 {
-	underlying_ctx : val_context mut := [ctx];
+	underlying_ctx : source_context mut := [ctx];
 	underlying_ctx.node = ast_typename_pointer_get_pointee_type(ctx->node);
 	underlying ::= ty_from_typename_node(ref underlying_ctx);
 	
@@ -627,9 +628,9 @@ ty_from_typename_node_pointer : func(ctx : val_context mut? -> ty)
 	return ty_wrap(ref u) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_function : func(ctx : source_context mut? -> ty)
 {
-	ret_ctx : val_context mut := [ctx];
+	ret_ctx : source_context mut := [ctx];
 	ret_ctx.node = ast_typename_function_get_return_typename(ctx->node);
 	retty ::= ty_from_typename_node(ref ret_ctx);
 
@@ -644,7 +645,7 @@ ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
 	i : u64 mut;
 	for(i = 0; i < u.members_count; i = i + 1)
 	{
-		member_decl_ctx : val_context mut := [ctx];
+		member_decl_ctx : source_context mut := [ctx];
 		member_decl_ctx.node = ast_decl_get_typename(member_decl_nodes # i);
 		[u.members # i] = ty_from_typename_node(ref member_decl_ctx);
 	}
@@ -654,16 +655,15 @@ ty_from_typename_node_function : func(ctx : val_context mut? -> ty)
 	return ty_wrap(ref u) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_type_of : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_type_of : func(ctx : source_context mut? -> ty)
 {
 	tyval : val mut;
-	tyctx : val_context mut := [ctx];
+	tyctx : source_context mut := [ctx];
 	tyctx.node = ast_typeof_get_operand(ctx->node);
-	val_from_node(ref tyctx, ref tyval, val_resolve.type_only);
-	return tyval.type | [ast_typename_get_quals(ctx->node)];
+	return type_from_node(ref tyctx) | [ast_typename_get_quals(ctx->node)];
 };
 
-ty_from_typename_node_deduced : func(ctx : val_context mut? -> ty)
+ty_from_typename_node_deduced : func(ctx : source_context mut? -> ty)
 {
 	panic_begin();
 	putzstr("getting the type from a deduced-typename-node is impossible\0");

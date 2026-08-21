@@ -48,7 +48,7 @@ codegen_ir_global : func(var : variable_t mut? -> v0)
 	stream : bwriter mut;
 	w ::= ref stream;
 	bwriter_create_native(w, abi_sizeof(abi, var->type), global_arena);
-	ctx : val_context mut;
+	ctx : source_context mut;
 	ctx.node = var->node;
 	ctx.parent_fn = zero;
 	ctx.src = var->src;
@@ -61,13 +61,9 @@ codegen_ir_global : func(var : variable_t mut? -> v0)
 	}
 	else
 	{
-		init_ctx : val_context mut := ctx;
+		init_ctx : source_context mut := ctx;
 		init_ctx.node = decl_init;
-		val_from_node(ref init_ctx, ref v, val_resolve.compiletime_only);
-		if(v.tag == val_tag.zerovalue)
-		{
-			val_zero_as(var->type, ref v);
-		}
+		val_from_node(ref init_ctx, ref v);
 	}
 	abi_serialise_val_to(abi, w, ref v, ref ctx);
 
@@ -245,7 +241,7 @@ codegen_ir_funcdef : func(fn : function_t mut? -> v0)
 		[val_pointer_get_displacement(storage)] = 0;
 	}
 
-	usrdata : val_context mut;
+	usrdata : source_context mut;
 	usrdata.node = zero;
 	usrdata.parent_fn = fn;
 	usrdata.src = fn->src;
@@ -254,12 +250,12 @@ codegen_ir_funcdef : func(fn : function_t mut? -> v0)
 
 codegen_node_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
 {
-	ctx ::= usrdata@val_context mut?;
+	ctx ::= usrdata@source_context mut?;
 	ctx->node = node;
 
 	dummy : val mut;
 	irfunc_dump(ir_current_func());
 	putsrc(ctx->src, node->src_beg@u64, node->src_end@u64, putcol.blue_underline);
-	val_from_node(ctx, ref dummy, val_resolve.runtime_only);
+	val_from_node(ctx, ref dummy);
 	putsrc(ctx->src, node->src_beg@u64, node->src_end@u64, putcol.yellow_underline);
 };
