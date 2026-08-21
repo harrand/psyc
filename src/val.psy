@@ -115,6 +115,64 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 	panic_end();
 };
 
+val_load_if_pointer : func(in : val mut?, out : val mut? -> v0)
+{
+	if(in->tag == val_tag.pointer)
+	{
+		val_force_load(in, out);
+		return;
+	}
+	if(out != in)
+	{
+		[out] = [in];
+	}
+};
+
+val_force_load : func(in : val mut?, out : val mut? -> v0)
+{
+	// we can load a pointer (expected) or even a scalar by pretending it was a pointer with no offset
+	load_chunks : abi_chunk mut? mut;
+	load_chunks_count : u64 mut;
+	abi_chunk_tys(abi_tag.psy64, ref(in->type), 1, ref load_chunks, ref load_chunks_count, global_arena);
+
+	// prepare the load(s)
+	ptr : irval mut? mut;
+	disp : s32 mut;
+
+	if(in->tag == val_tag.pointer)
+	{
+		ptr = val_pointer_get_irval(in);
+		disp = [val_pointer_get_displacement(in)];
+	}
+	else
+	{
+		ptr = val_scalar_get_irval(in);
+		disp = 0;
+	}
+
+	// do one load per chunk
+	// if there's only one chunk then we output a scalar
+	if(load_chunks_count == 1)
+	{
+		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), ptr, disp);
+		out->tag = val_tag.scalar;
+		return;
+	}
+	// load all chunks at their expected offsets
+	i : u64 mut;
+	out_members : val mut? := arena_alloc(global_arena, load_chunks_count * sizeof val);
+	for(i = 0; i < load_chunks_count; i = i + 1)
+	{
+		cur_out_member ::= out_members # i;
+		cur_out_member->tag = val_tag.scalar;
+		ir_load(val_scalar_get_irval(cur_out_member), abi_chunk_as_irsz(load_chunks # i), ptr, disp + (load_chunks # i)->src_byte_offset@s32);
+	}
+	out->tag = val_tag.aggregate;
+	[val_aggregate_get_members(out)] = out_members;
+	[val_aggregate_get_chunks(out)] = load_chunks;
+	[val_aggregate_get_members_count(out)] = load_chunks_count;
+};
+
 type_from_node : func(ctx : source_context mut? -> ty)
 {
 	// string literal will create a global in the ir, which we would like to avoid outside of codegen
