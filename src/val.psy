@@ -660,10 +660,82 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 		return;
 	}
 	// finally, access lhs using the struct_memidx
-	// lhs can be a few things
+	// lhs can be a few things (note: could be bugs in any of these havent really tested yet)
 	// pointer - add a displacement to it corresponding to struct_memidx
+	if(lhs.tag == val_tag.pointer)
+	{
+		out->tag = val_tag.pointer;
+		[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs)];
+		[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs)] + abi_offsetof_struct(abi_tag.psy64, lhs_access_type, struct_memidx)@s32;
+		return;
+	}
+	i : u64 mut;
 	// aggregate - just grab the relevant values
+	if(lhs.tag == val_tag.aggregate)
+	{
+		chunk_offset_begin : u64 mut := ~0;
+		agg_count ::= [val_aggregate_get_members_count(ref lhs)];
+		agg_vals ::= [val_aggregate_get_members(ref lhs)];
+		agg_chunks ::= [val_aggregate_get_chunks(ref lhs)];
+		for(i = 0; i < agg_count; i = i + 1)
+		{
+			cur_agg_chunk ::= agg_chunks # i;
+			if(cur_agg_chunk->src_idx_begin == struct_memidx)
+			{
+				// this is our chunk
+				chunk_offset_begin = i;
+				i = agg_count;
+			}
+		}
+		if(chunk_offset_begin == ~0)
+		{
+			panic_begin();
+			putzstr("in field-expr access of aggregate value, failed to match member \0");
+			putuint(struct_memidx);
+			putzstr(" of struct-type \0");
+			putty(lhs_access_type);
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			panic_end();
+		}
+		// chunk out the output type and see if we are also going to be an aggregate or a scalar
+		field_chunks : abi_chunk mut? mut;
+		field_chunks_count : u64 mut;
+		abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, ref field_chunks, ref field_chunks_count, global_arena);
+		if(field_chunks_count == 1)
+		{
+			out->tag = val_tag.scalar;
+			[val_scalar_get_irval(out)] = [val_scalar_get_irval(agg_vals # chunk_offset_begin)];
+			[val_scalar_get_displacement(out)] = 0;
+			return;
+		}
+		// more than 1, so its an aggregate aswell
+		out->tag = val_tag.aggregate;
+		[val_aggregate_get_members_count(out)] = field_chunks_count;
+		[val_aggregate_get_chunks(out)] = field_chunks;
+		// create members ptr and populate them for the output
+		out_agg_members : val mut? := arena_alloc(global_arena, field_chunks_count * sizeof val);
+		[val_aggregate_get_members(out)] = out_agg_members;
+		for(i = 0; i < field_chunks_count; i = i + 1)
+		{
+			// gets a little bit nasty but we're almost there.
+			out_cur_agg_member ::= out_agg_members # i;
+			out_cur_agg_member->type = ty_at(out->type, (field_chunks # i)->src_idx_begin);
+			out_cur_agg_member->tag = val_tag.scalar;
+			[val_scalar_get_irval(out_cur_agg_member)] = [val_scalar_get_irval(agg_vals # (chunk_offset_begin + i))];
+			[val_scalar_get_displacement(out_cur_agg_member)] = 0;
+		}
+		return;
+	}
 	// scalar - convert to a pointer and add a displacement to it
+	// (we expect to see this if we are a pointer-field and we've just loaded our pointer)
+	if(lhs.tag == val_tag.scalar)
+	{
+		out->tag = val_tag.pointer;
+		[val_pointer_get_irval(out)] = [val_scalar_get_irval(ref lhs)];
+		[val_pointer_get_displacement(out)] = [val_scalar_get_displacement(ref lhs)] + abi_offsetof_struct(abi_tag.psy64, lhs_access_type, struct_memidx)@s32;
+		return;
+	}
 
 	panic_begin();
 	putzstr("todo: val_from_node_expr_field at \0");
