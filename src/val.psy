@@ -411,6 +411,36 @@ val_from_node_expr_biop_nyi : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 	panic_end();
 };
 
+val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	if(ty_equality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	{
+		err_begin();
+		putzstr("canot compare types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->type = ty.bool;
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_cmp_eq(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
 val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	// rhs needs to be some integral value so we need to load it if its not a scalar
@@ -1152,7 +1182,7 @@ val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_
 val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_biop_tag]
 {
 	.0 := val_from_node_expr_biop_nyi;
-	.1 := val_from_node_expr_biop_nyi;
+	.1 := val_from_node_expr_biop_compare_equal;
 	.2 := val_from_node_expr_biop_nyi;
 	.3 := val_from_node_expr_biop_nyi;
 	.4 := val_from_node_expr_biop_nyi;
