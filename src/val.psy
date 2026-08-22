@@ -179,6 +179,12 @@ type_from_node : func(ctx : source_context mut? -> ty)
 	{
 		return ty_string_literal();
 	}
+	if(ast_is_expr(ctx->node, ast_expr_tag.blkinit))
+	{
+		typename_ctx : source_context mut := [ctx];
+		typename_ctx.node = ast_blkinit_get_typename(ctx->node);
+		return ty_from_typename_node(ref typename_ctx);
+	}
 	v : val mut;
 	val_from_node(ctx, ref v);
 	return v.type;
@@ -210,6 +216,25 @@ val_from_node_expr_nyi : func(ctx : source_context mut?, out : val mut?  -> v0)
 	putzstr("val_from_node_expr NYI for ast_expr_tag.\0");
 	putsint([ast_expr_get_tag(ctx->node)]@s64);
 	putzstr(" at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	sym ::= [ast_symbol_get_data(ctx->node)];
+	len ::= [ast_symbol_get_data_len(ctx->node)];
+
+	maybe_fn ::= prog_find_function(sym, len);
+	if(maybe_fn != zero)
+	{
+		out->tag = val_tag.scalar;
+		out->type = maybe_fn->type;
+		irval_fnref(maybe_fn->irfunc_idx, val_scalar_get_irval(out));
+		return;
+	}
+	panic_begin();
+	putzstr("val_from_node_expr_symbol NYI at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
@@ -475,6 +500,17 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 	irval_qimm([entry_value], val_scalar_get_irval(out));
 };
 
+val_from_node_expr_countof : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	countof_typename_ctx : source_context mut := [ctx];
+	countof_typename_ctx.node = ast_countof_get_operand(ctx->node);
+	type ::= ty_from_typename_node(ref countof_typename_ctx);
+
+	out->type = ty_integer_literal();
+	out->tag = val_tag.scalar;
+	irval_qimm(ty_countof(type), val_scalar_get_irval(out));
+};
+
 val_from_node_stmt : func(ctx : source_context mut?, out : val mut? -> v0)
 {
 	[val_from_node_stmt_tbl # ([ast_stmt_get_tag(ctx->node)]@s64)](ctx, out);
@@ -603,8 +639,7 @@ val_from_node_tbl ::= typeof(val_from_node)[countof ast_tag]
 
 val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 {
-	//.0 := val_from_node_expr_symbol;
-	.0 := val_from_node_expr_nyi;
+	.0 := val_from_node_expr_symbol;
 	.1 := val_from_node_expr_literal;
 	.2 := val_from_node_expr_zero_value;
 	//.3 := val_from_node_expr_unop;
@@ -623,8 +658,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.10 := val_from_node_expr_nyi;
 	//.11 := val_from_node_expr_alignof;
 	.11 := val_from_node_expr_nyi;
-	//.12 := val_from_node_expr_countof;
-	.12 := val_from_node_expr_nyi;
+	.12 := val_from_node_expr_countof;
 	//.13 := val_from_node_expr_typeof;
 	.13 := val_from_node_expr_nyi;
 };
