@@ -29,6 +29,7 @@ populate_structure_type : func(d : tydata mut? -> v0)
 		typename_ctx.node = typename_node;
 		typename_ctx.parent_fn = zero;
 		typename_ctx.src = d->src;
+		typename_ctx.type_only = true;
 		[d->members # i] = ty_from_typename_node(ref typename_ctx);
 	}
 };
@@ -53,12 +54,14 @@ semal_variable : func(var : variable_t mut?, ctx : source_context mut? -> v0)
 		init_val : val mut;
 		init_ctx : source_context mut := [ctx];
 		init_ctx.node = init;
+		init_ctx.type_only = true;
 		var->type = type_from_node(ref init_ctx);
 	}
 	else
 	{
 		typename_ctx : source_context mut := [ctx];
 		typename_ctx.node = typename_node;
+		typename_ctx.type_only = true;
 		var->type = ty_from_typename_node(ref typename_ctx);
 	}
 	if(var->type == ty.invalid)
@@ -85,6 +88,7 @@ populate_globals : func(-> v0)
 		global_variable_ctx.node = var->node;
 		global_variable_ctx.parent_fn = zero;
 		global_variable_ctx.src = var->src;
+		global_variable_ctx.type_only = true;
 		semal_variable(var, ref global_variable_ctx);
 	}
 };
@@ -102,6 +106,7 @@ populate_function_declarations : func(-> v0)
 		fn_typename_ctx.node = fn_typename_node;
 		fn_typename_ctx.parent_fn = zero;
 		fn_typename_ctx.src = fn->src;
+		fn_typename_ctx.type_only = true;
 		fn->type = ty_from_typename_node(ref fn_typename_ctx);
 
 		param_count ::= ty_countof(fn->type);
@@ -113,6 +118,7 @@ populate_function_declarations : func(-> v0)
 			param_ctx.node = ast_decl_get_typename(param_node);
 			param_ctx.parent_fn = fn;
 			param_ctx.src = fn->src;
+			param_ctx.type_only = true;
 
 			var : variable_t mut;
 			var.node = param_node;
@@ -184,6 +190,7 @@ semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak ->
 		var_ctx.node = node;
 		var_ctx.parent_fn = u->fn;
 		var_ctx.src = u->src;
+		var_ctx.type_only = true;
 		semal_variable(ref var, ref var_ctx);
 		scope_add_variable(u->scope, ref var);
 	}

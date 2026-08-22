@@ -2,14 +2,12 @@ val_tag : enum
 {
 	// not a valid value (no data)
 	.invalid := 0;
-	// a type with no value (d0 = type)
-	.typeonly := 1;
 	// a runtime scalar value (d0 = irval (d1, d2, d3 etc... are a part of the irval object and the rest of the val struct is assumed to be large enough to store the whole thing))
-	.scalar := 2;
+	.scalar := 1;
 	// similar to scalar, but the irval stores a pointer to the value instead of the value directly (d0 = irval (d1, d2, d3 etc... are a part of the irval object and the rest of the val struct is assumed to be large enough to store the whole thing))
-	.pointer := 3;
+	.pointer := 2;
 	// a bunch of irvals representing a complex value such as a struct value (d0 = member irvals?, d1 = count of members. remember this isnt necessarily the number of members of the struct)
-	.aggregate := 4;
+	.aggregate := 3;
 };
 
 val : struct
@@ -174,19 +172,10 @@ val_force_load : func(in : val mut?, out : val mut? -> v0)
 
 type_from_node : func(ctx : source_context mut? -> ty)
 {
-	// string literal will create a global in the ir, which we would like to avoid outside of codegen
-	if(ast_is_expr(ctx->node, ast_expr_tag.literal) && ([ast_literal_get_tag(ctx->node)] == ast_literal_tag.string))
-	{
-		return ty_string_literal();
-	}
-	if(ast_is_expr(ctx->node, ast_expr_tag.blkinit))
-	{
-		typename_ctx : source_context mut := [ctx];
-		typename_ctx.node = ast_blkinit_get_typename(ctx->node);
-		return ty_from_typename_node(ref typename_ctx);
-	}
+	ctxcpy : source_context mut := [ctx];
+	ctxcpy.type_only = true;
 	v : val mut;
-	val_from_node(ctx, ref v);
+	val_from_node(ref ctxcpy, ref v);
 	return v.type;
 };
 
@@ -248,6 +237,11 @@ val_from_node_expr_literal_integer : func(ctx : source_context mut?, out : val m
 {
 	out->tag = val_tag.scalar;
 	out->type = ty_integer_literal();
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
+	}
 	irval_qimm([ast_literal_get_integer(ctx->node)], val_scalar_get_irval(out));
 };
 
@@ -255,6 +249,11 @@ val_from_node_expr_literal_floating_point : func(ctx : source_context mut?, out 
 {
 	out->tag = val_tag.scalar;
 	out->type = ty_floating_point_literal();
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
+	}
 	irval_gimm([ast_literal_get_floating_point(ctx->node)], val_scalar_get_irval(out));
 };
 
@@ -262,6 +261,11 @@ val_from_node_expr_literal_char : func(ctx : source_context mut?, out : val mut?
 {
 	out->tag = val_tag.scalar;
 	out->type = ty_char_literal();
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
+	}
 	irval_bimm([ast_literal_get_char(ctx->node)], val_scalar_get_irval(out));
 };
 
@@ -269,6 +273,11 @@ val_from_node_expr_literal_string : func(ctx : source_context mut?, out : val mu
 {
 	out->tag = val_tag.scalar;
 	out->type = ty_string_literal();
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
+	}
 	ir_add_glob([ast_literal_get_string(ctx->node)], [ast_literal_get_string_len(ctx->node)], false, val_scalar_get_irval(out));
 };
 
@@ -276,6 +285,11 @@ val_from_node_expr_literal_boolean : func(ctx : source_context mut?, out : val m
 {
 	out->tag = val_tag.scalar;
 	out->type = ty_boolean_literal();
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
+	}
 	irval_bimm([ast_literal_get_bool(ctx->node)], val_scalar_get_irval(out));
 };
 
@@ -299,6 +313,11 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 		putzstr("block initialiser of unknown type at \0");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
+	}
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		return;
 	}
 	members_count ::= ty_countof(out->type);
 	chunks_count : u64 mut;
@@ -468,6 +487,12 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 	// in this case, we assume it is not a struct-access and assert that the rhs is a symbol corresponding to an enum entry
 	// if it is, 'out' becomes a scalar immediate corresponding to the entry.
 	// if it isn't, error out.
+	// if we are type only do not do ir stuff.
+	if(ctx->type_only)
+	{
+		out->type = type;
+		return;
+	}
 	if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
 	{
 		err_begin();
@@ -505,9 +530,14 @@ val_from_node_expr_countof : func(ctx : source_context mut?, out : val mut? -> v
 	countof_typename_ctx : source_context mut := [ctx];
 	countof_typename_ctx.node = ast_countof_get_operand(ctx->node);
 	type ::= ty_from_typename_node(ref countof_typename_ctx);
+	// if we are type only do not do ir stuff.
 
 	out->type = ty_integer_literal();
 	out->tag = val_tag.scalar;
+	if(ctx->type_only)
+	{
+		return;
+	}
 	irval_qimm(ty_countof(type), val_scalar_get_irval(out));
 };
 
@@ -531,6 +561,11 @@ val_conv : func(in : val mut?, to : ty, out : val mut?, ctx : source_context mut
 	conv ::= ty_converts_to(in->type, to);
 	if(tyconv_is_valid(conv))
 	{
+		if(ctx->type_only)
+		{
+			out->type = to;
+			return;
+		}
 		val_load_if_pointer(in, in);
 		[val_conv_tbl # (in->tag@s64)](in, to, out, conv, ctx);
 		return;
@@ -699,10 +734,9 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 val_conv_tbl ::= typeof(val_conv_invalid)[countof val_tag]
 {
 	.0 := val_conv_invalid;
-	.1 := val_conv_invalid;
-	.2 := val_conv_scalar;
-	.3 := val_conv_pointer;
-	.4 := val_conv_aggregate;
+	.1 := val_conv_scalar;
+	.2 := val_conv_pointer;
+	.3 := val_conv_aggregate;
 };
 
 val_conv_scalar_tbl ::= typeof(val_conv_invalid)[countof tyconv]
