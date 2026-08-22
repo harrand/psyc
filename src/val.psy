@@ -301,6 +301,28 @@ val_from_node_expr_zero_value : func(ctx : source_context mut?, out : val mut? -
 	panic_end();
 };
 
+val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
+{
+	// we expect callee scalar
+	callee_node ::= ast_call_get_callee(ctx->node);
+
+	callee_ctx : source_context mut := [ctx];
+	callee_ctx.node = callee_node;
+
+	callee_val : val mut;
+	val_from_node(ref callee_ctx, ref callee_val);
+	val_load_if_pointer(ref callee_val, ref callee_val);
+	if(ctx->type_only)
+	{
+		out->type = callee_val.type;
+		return;
+	}
+	panic_begin();
+	putzstr("val_from_node_expr_call NYI at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> v0)
 {
 	out->tag = val_tag.aggregate;
@@ -681,8 +703,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.3 := val_from_node_expr_nyi;
 	//.4 := val_from_node_expr_biop;
 	.4 := val_from_node_expr_nyi;
-	//.5 := val_from_node_expr_call;
-	.5 := val_from_node_expr_nyi;
+	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
 	//.7 := val_from_node_expr_dereference;
 	.7 := val_from_node_expr_nyi;
