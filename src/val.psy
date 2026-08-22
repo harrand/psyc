@@ -161,6 +161,7 @@ val_force_load : func(in : val mut?, out : val mut? -> v0)
 	if(load_chunks_count == 1)
 	{
 		ir_load(val_scalar_get_irval(out), abi_chunk_as_irsz(load_chunks # 0), ptr, disp);
+		[val_scalar_get_displacement(out)] = 0;
 		out->tag = val_tag.scalar;
 		return;
 	}
@@ -172,6 +173,7 @@ val_force_load : func(in : val mut?, out : val mut? -> v0)
 		cur_out_member ::= out_members # i;
 		cur_out_member->tag = val_tag.scalar;
 		ir_load(val_scalar_get_irval(cur_out_member), abi_chunk_as_irsz(load_chunks # i), ptr, disp + (load_chunks # i)->src_byte_offset@s32);
+		[val_scalar_get_displacement(cur_out_member)] = 0;
 	}
 	out->tag = val_tag.aggregate;
 	[val_aggregate_get_members(out)] = out_members;
@@ -664,6 +666,39 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	}
 };
 
+val_from_node_expr_dereference : func(ctx : source_context mut?, out : val mut?  -> v0)
+{
+	operand_node ::= ast_dereference_get_operand(ctx->node);
+
+	operand_ctx : source_context mut := [ctx];
+	operand_ctx.node = operand_node;
+	operand_val : val mut;
+	val_from_node(ref operand_ctx, ref operand_val);
+	val_load_if_pointer(ref operand_val, ref operand_val);
+	
+	if(ty_is_pointer(operand_val.type) == false)
+	{
+		err_begin();
+		putzstr("cannot dereference non-pointer-type \0");
+		putchar('"');
+		putty(operand_val.type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, operand_node->src_beg@u64, operand_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->type = ty_underlying(operand_val.type);
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	// operand_val is always a scalar
+	out->tag = val_tag.pointer;
+	[val_pointer_get_irval(out)] = [val_scalar_get_irval(ref operand_val)];
+	[val_pointer_get_displacement(out)] = [val_scalar_get_displacement(ref operand_val)];
+};
+
 val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 {
 	// check if lhs is a symbol that matches an enum name
@@ -1048,8 +1083,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.4 := val_from_node_expr_biop;
 	.5 := val_from_node_expr_call;
 	.6 := val_from_node_expr_blkinit;
-	//.7 := val_from_node_expr_dereference;
-	.7 := val_from_node_expr_nyi;
+	.7 := val_from_node_expr_dereference;
 	//.8 := val_from_node_expr_cast;
 	.8 := val_from_node_expr_nyi;
 	.9 := val_from_node_expr_field;
