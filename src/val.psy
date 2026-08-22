@@ -223,7 +223,22 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 	sym ::= [ast_symbol_get_data(ctx->node)];
 	len ::= [ast_symbol_get_data_len(ctx->node)];
 
-	maybe_fn ::= prog_find_function(sym, len);
+	// if we are within a function then use its scope
+	// otherwise, we are in the global scope.
+	scope : scope_t mut? mut := ref(prog.global_scope);
+	if(ctx->parent_fn != zero)
+	{
+		scope = ref(ctx->parent_fn->scope);
+	}
+
+	maybe_var ::= scope_find_variable(scope, sym, len);
+	if(maybe_var != zero)
+	{
+		[out] = maybe_var->storage;
+		return;
+	}
+
+	maybe_fn ::= scope_find_function(scope, sym, len);
 	if(maybe_fn != zero)
 	{
 		out->tag = val_tag.scalar;
@@ -232,8 +247,18 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 		[val_scalar_get_displacement(out)] = 0;
 		return;
 	}
+
+	if(ctx->parent_fn != zero)
+	{
+		// we checked the parent-fn and didnt get anything
+		// recurse but with no parent_fn (so we get global scope)
+		top_level_ctx : source_context mut := [ctx];
+		top_level_ctx.parent_fn = zero;
+		val_from_node_expr_symbol(ref top_level_ctx, out);
+		return;
+	}
 	panic_begin();
-	putzstr("val_from_node_expr_symbol NYI at \0");
+	putzstr("reached end of val_from_node_expr_symbol at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
