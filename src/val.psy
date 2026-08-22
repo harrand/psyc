@@ -32,7 +32,12 @@ val : struct
 // note HH: sizeof(val.d1->end) must be >= sizeof(irval) otherwise this will buffer overrun
 val_scalar_get_irval : func(v : val mut? -> irval mut?)
 {
-	return ref(v->d0)@irval mut?;
+	return ref(v->d1)@irval mut?;
+};
+
+val_scalar_get_displacement : func(v : val mut? -> s32 mut?)
+{
+	return ref(v->d0)@s32 mut?;
 };
 
 val_pointer_get_irval : func(v : val mut? -> irval mut?)
@@ -68,24 +73,28 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 	{
 		out->tag = val_tag.scalar;
 		irval_qimm(0, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_pointer(to))
 	{
 		out->tag = val_tag.scalar;
 		irval_qimm(0, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_function(to))
 	{
 		out->tag = val_tag.scalar;
 		irval_qimm(0, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_bool(to))
 	{
 		out->tag = val_tag.scalar;
 		irval_bimm(0, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_array(to) || ty_is_structure(to))
@@ -144,7 +153,7 @@ val_force_load : func(in : val mut?, out : val mut? -> v0)
 	else
 	{
 		ptr = val_scalar_get_irval(in);
-		disp = 0;
+		disp = [val_scalar_get_displacement(in)];
 	}
 
 	// do one load per chunk
@@ -220,6 +229,7 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 		out->tag = val_tag.scalar;
 		out->type = maybe_fn->type;
 		irval_fnref(maybe_fn->irfunc_idx, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = 0;
 		return;
 	}
 	panic_begin();
@@ -243,6 +253,7 @@ val_from_node_expr_literal_integer : func(ctx : source_context mut?, out : val m
 		return;
 	}
 	irval_qimm([ast_literal_get_integer(ctx->node)], val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_literal_floating_point : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -255,6 +266,7 @@ val_from_node_expr_literal_floating_point : func(ctx : source_context mut?, out 
 		return;
 	}
 	irval_gimm([ast_literal_get_floating_point(ctx->node)], val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_literal_char : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -267,6 +279,7 @@ val_from_node_expr_literal_char : func(ctx : source_context mut?, out : val mut?
 		return;
 	}
 	irval_bimm([ast_literal_get_char(ctx->node)], val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_literal_string : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -279,6 +292,7 @@ val_from_node_expr_literal_string : func(ctx : source_context mut?, out : val mu
 		return;
 	}
 	ir_add_glob([ast_literal_get_string(ctx->node)], [ast_literal_get_string_len(ctx->node)], false, val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_literal_boolean : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -291,6 +305,7 @@ val_from_node_expr_literal_boolean : func(ctx : source_context mut?, out : val m
 		return;
 	}
 	irval_bimm([ast_literal_get_bool(ctx->node)], val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_zero_value : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -299,6 +314,51 @@ val_from_node_expr_zero_value : func(ctx : source_context mut?, out : val mut? -
 	putzstr("val_from_node_expr_zero_value ought to be unreachable at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
+};
+
+val_from_node_expr_unop : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	operand_ctx : source_context mut := [ctx];
+	operand_ctx.node = ast_unop_get_operand(ctx->node);
+	operand_val : val mut;
+	val_from_node(ref operand_ctx, ref operand_val);
+
+	[val_from_node_expr_unop_tbl # [ast_unop_get_tag(ctx->node)]@s64](ref operand_val, ctx, out);
+	panic_begin();
+	putzstr("val_from_node_expr_unop NYI at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_unop_nyi : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	panic_begin();
+	putzstr("val_from_node_expr_unop NYI for unop_tag.\0");
+	putsint([ast_unop_get_tag(ctx->node)]@s64);
+	putzstr(" at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
+val_from_node_expr_unop_reference : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	out->type = ty_make_pointer(operand->type, zero);
+	if(ctx->type_only)
+	{
+		return;
+	}
+	// operand must be a pointer
+	// we just take it and pretend its a scalar instead haha
+	if(operand->tag != val_tag.pointer)
+	{
+		err_begin();
+		putzstr("invalid 'ref' of non-lvalue operand at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	out->tag = val_tag.scalar;
+	[val_scalar_get_irval(out)] = [val_pointer_get_irval(operand)];
+	[val_scalar_get_displacement(out)] = [val_pointer_get_displacement(operand)];
 };
 
 val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
@@ -545,6 +605,7 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 	out->type = type;
 	out->tag = val_tag.scalar;
 	irval_qimm([entry_value], val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_expr_countof : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -561,6 +622,7 @@ val_from_node_expr_countof : func(ctx : source_context mut?, out : val mut? -> v
 		return;
 	}
 	irval_qimm(ty_countof(type), val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
 };
 
 val_from_node_stmt : func(ctx : source_context mut?, out : val mut? -> v0)
@@ -699,8 +761,7 @@ val_from_node_expr_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.0 := val_from_node_expr_symbol;
 	.1 := val_from_node_expr_literal;
 	.2 := val_from_node_expr_zero_value;
-	//.3 := val_from_node_expr_unop;
-	.3 := val_from_node_expr_nyi;
+	.3 := val_from_node_expr_unop;
 	//.4 := val_from_node_expr_biop;
 	.4 := val_from_node_expr_nyi;
 	.5 := val_from_node_expr_call;
@@ -726,6 +787,14 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 	.2 := val_from_node_expr_literal_char;
 	.3 := val_from_node_expr_literal_string;
 	.4 := val_from_node_expr_literal_boolean;
+};
+
+val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_unop_tag]
+{
+	.0 := val_from_node_expr_unop_nyi;
+	.1 := val_from_node_expr_unop_nyi;
+	.2 := val_from_node_expr_unop_nyi;
+	.3 := val_from_node_expr_unop_reference;
 };
 
 val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
