@@ -385,10 +385,23 @@ val_from_node_expr_unop_reference : func(operand : val mut?, ctx : source_contex
 
 val_from_node_expr_biop : func(ctx : source_context mut?, out : val mut? -> v0)
 {
-	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(ctx->node)]@s64](ast_biop_get_lhs(ctx->node), ast_biop_get_rhs(ctx->node), ctx, out);
+	// create lhs and rhs vals but don't load them - let the specific biop types do that if they need to
+	// but all of them need this so we might aswell just provide it for them instead of them all duping the below code.
+	lhs_node ::= ast_biop_get_lhs(ctx->node);
+	lhs_ctx : source_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs_val : val mut;
+	val_from_node(ref lhs_ctx, ref lhs_val);
+
+	rhs_node ::= ast_biop_get_rhs(ctx->node);
+	rhs_ctx : source_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	rhs_val : val mut;
+	val_from_node(ref rhs_ctx, ref rhs_val);
+	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(ctx->node)]@s64](lhs_node, rhs_node, ref lhs_val, ref rhs_val, ctx, out);
 };
 
-val_from_node_expr_biop_nyi : func(lhs_node : ast mut?, rhs_node : ast mut?, ctx : source_context mut?, out : val mut? -> v0)
+val_from_node_expr_biop_nyi : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	panic_begin();
 	putzstr("val_from_node_expr_biop NYI for biop_tag.\0");
@@ -398,43 +411,35 @@ val_from_node_expr_biop_nyi : func(lhs_node : ast mut?, rhs_node : ast mut?, ctx
 	panic_end();
 };
 
-val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, ctx : source_context mut?, out : val mut? -> v0)
+val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
-	lhs_ctx : source_context mut := [ctx];
-	lhs_ctx.node = lhs_node;
-	lhs_val : val mut;
-	val_from_node(ref lhs_ctx, ref lhs_val);
+	// rhs needs to be some integral value so we need to load it if its not a scalar
+	val_load_if_pointer(rhs_val, rhs_val);
 
-	rhs_ctx : source_context mut := [ctx];
-	rhs_ctx.node = rhs_node;
-	rhs_val : val mut;
-	val_from_node(ref rhs_ctx, ref rhs_val);
-	val_load_if_pointer(ref rhs_val, ref rhs_val);
-
-	if(ty_integral_size(rhs_val.type) == 0)
+	if(ty_integral_size(rhs_val->type) == 0)
 	{
 		err_begin();
 		putzstr("rhs of 'at' (#) expression must be an integral value, you have provided a \0");
 		putchar('"');
-		putty(rhs_val.type);
+		putty(rhs_val->type);
 		putchar('"');
 		putzstr(" at \0");
 		putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	if((ty_is_pointer(lhs_val.type) == false) && (ty_is_array(lhs_val.type) == false))
+	if((ty_is_pointer(lhs_val->type) == false) && (ty_is_array(lhs_val->type) == false))
 	{
 		err_begin();
 		putzstr("lhs of 'at' (#) expression must be either an array or a pointer, you have provided a \0");
 		putchar('"');
-		putty(rhs_val.type);
+		putty(lhs_val->type);
 		putchar('"');
 		putzstr(" at \0");
-		putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 
-	out->type = ty_make_pointer(ty_underlying(lhs_val.type), zero);
+	out->type = ty_make_pointer(ty_underlying(lhs_val->type), zero);
 	if(ctx->type_only)
 	{
 		return;
@@ -442,28 +447,28 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, ctx 
 
 	// rhs is always a scalar and must be an integral value
 	// lhs can be a few things
-	lhs_underlying ::= ty_underlying(lhs_val.type);
+	lhs_underlying ::= ty_underlying(lhs_val->type);
 	// pointer - add displacement 'sizeof(underlying(lhs)) * rhs_scalar'
 	// scalar - add displacement 'sizeof(underlying(lhs)) * rhs_scalar'
 	// because they are similar we converge quickly into a common codepath
 	the_irval : irval mut? mut;
 	the_disp : s32 mut? mut;
-	if(lhs_val.tag == val_tag.pointer)
+	if(lhs_val->tag == val_tag.pointer)
 	{
-		the_irval = val_pointer_get_irval(ref lhs_val);
-		the_disp = val_pointer_get_displacement(ref lhs_val);
+		the_irval = val_pointer_get_irval(lhs_val);
+		the_disp = val_pointer_get_displacement(lhs_val);
 	}
-	if(lhs_val.tag == val_tag.scalar)
+	if(lhs_val->tag == val_tag.scalar)
 	{
-		the_irval = val_scalar_get_irval(ref lhs_val);
-		the_disp = val_scalar_get_displacement(ref lhs_val);
+		the_irval = val_scalar_get_irval(lhs_val);
+		the_disp = val_scalar_get_displacement(lhs_val);
 	}
 
-	sizeof_element ::= abi_sizeof(abi_tag.psy64, ty_underlying(lhs_val.type));
+	sizeof_element ::= abi_sizeof(abi_tag.psy64, ty_underlying(lhs_val->type));
 	// offset our output (which is always a scalar)
 	out->tag = val_tag.scalar;
 	// if we know rhs' value at compile-time this gets very simple
-	rhs_irval ::= val_scalar_get_irval(ref rhs_val);
+	rhs_irval ::= val_scalar_get_irval(rhs_val);
 	[val_scalar_get_irval(out)] = [the_irval];
 	if(rhs_irval->tag == irval_tag.imm)
 	{
