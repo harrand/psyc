@@ -349,10 +349,6 @@ val_from_node_expr_unop : func(ctx : source_context mut?, out : val mut? -> v0)
 	val_from_node(ref operand_ctx, ref operand_val);
 
 	[val_from_node_expr_unop_tbl # [ast_unop_get_tag(ctx->node)]@s64](ref operand_val, ctx, out);
-	panic_begin();
-	putzstr("val_from_node_expr_unop NYI at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
 };
 
 val_from_node_expr_unop_nyi : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
@@ -399,7 +395,8 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 	val_load_if_pointer(ref callee_val, ref callee_val);
 	if(ctx->type_only)
 	{
-		out->type = callee_val.type;
+		// return type of the function-type callable
+		out->type = ty_underlying(callee_val.type);
 		return;
 	}
 	panic_begin();
@@ -582,6 +579,92 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			}
 		}
 	}
+	lhs_ctx : source_context mut := [ctx];
+	lhs_ctx.node = lhs_node;
+	lhs : val mut;
+	val_from_node(ref lhs_ctx, ref lhs);
+
+	// check if the lhs type is kosher
+	lhs_access_type : ty mut := lhs.type;
+	if(is_ptr_field)
+	{
+		lhs_access_type = ty_underlying(lhs.type);
+	}
+
+	if(ty_is_structure(lhs_access_type) == false)
+	{
+		err_begin();
+		putzstr("invalid aggregate access field expression of non-struct-type \0");
+		putchar('"');
+		putty(lhs_access_type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, lhs_node->src_beg@u64, lhs_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	// e.g global.foo
+	// global is a val_tag.pointer and we want to just offset it
+	// so we add a displacement to the pointer and thats it
+	// but global could also be an aggregate
+
+	// what about global->foo
+	// well if its a pointer, we need to load it to get the pointer-scalar
+	if(is_ptr_field)
+	{
+		val_load_if_pointer(ref lhs, ref lhs);
+	}
+
+	rhs_sym_node : ast mut? mut;
+	// now the rhs is either a symbol or call. lets get the symbol node
+	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
+	{
+		rhs_sym_node = rhs_node;
+	}
+	else
+	{
+		if(ast_is_expr(rhs_node, ast_expr_tag.call))
+		{
+			rhs_sym_node = ast_call_get_callee(rhs_node);
+		}
+		else
+		{
+			err_begin();
+			putzstr("an aggregate lhs field expression must have a rhs expression that is either a symbol or call, but you have provided neither at \0");
+			putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+
+	// now find the member associated with the symbol
+	struct_memidx ::= ty_struct_find(lhs_access_type, [ast_symbol_get_data(rhs_sym_node)], [ast_symbol_get_data_len(rhs_sym_node)]);
+	if(struct_memidx == ~0)
+	{
+		err_begin();
+		putzstr("structure type \0");
+		putchar('"');
+		putty(lhs_access_type);
+		putchar('"');
+		putzstr(" has no member named \0");
+		putchar('"');
+		putchars([ast_symbol_get_data(rhs_sym_node)], [ast_symbol_get_data_len(rhs_sym_node)]);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, rhs_sym_node->src_beg@u64, rhs_sym_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	// remember we inherit mutness etc from the lhs type
+	out->type = ty_copy_quals(lhs_access_type, ty_at(lhs_access_type, struct_memidx));
+	if(ctx->type_only)
+	{
+		return;
+	}
+	// finally, access lhs using the struct_memidx
+	// lhs can be a few things
+	// pointer - add a displacement to it corresponding to struct_memidx
+	// aggregate - just grab the relevant values
+	// scalar - convert to a pointer and add a displacement to it
+
 	panic_begin();
 	putzstr("todo: val_from_node_expr_field at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
