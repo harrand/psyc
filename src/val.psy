@@ -706,10 +706,32 @@ val_from_node_expr_dereference : func(ctx : source_context mut?, out : val mut? 
 
 val_from_node_expr_cast : func(ctx : source_context mut?, out : val mut?  -> v0)
 {
-	panic_begin();
-	putzstr("val_from_node_expr_cast NYI at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	castee_node ::= ast_cast_get_castee(ctx->node);
+	castee_ctx : source_context mut := [ctx];
+	castee_ctx.node = castee_node;
+	castee_val : val mut;
+	val_from_node(ref castee_ctx, ref castee_val);
+	val_load_if_pointer(ref castee_val, ref castee_val);
+
+	cast_to_node ::= ast_cast_get_cast_typename(ctx->node);
+	cast_to_ctx : source_context mut := [ctx];
+	cast_to_ctx.node = cast_to_node;
+
+	to ::= ty_from_typename_node(ref cast_to_ctx);
+	if(to == ty.invalid)
+	{
+		err_begin();
+		putzstr("cast target is not a valid type at \0");
+		putsrc(ctx->src, cast_to_node->src_beg@u64, cast_to_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	if(ctx->type_only)
+	{
+		out->type = to;
+		return;
+	}
+	val_conv(ref castee_val, to, out, ctx);
 };
 
 val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
