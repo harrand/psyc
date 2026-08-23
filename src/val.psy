@@ -69,6 +69,9 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 {
 	i : u64 mut;
 	out->type = to;
+	putzstr("zero-ing \0");
+	putty(to);
+	putzstr("...\n\0");
 	if((ty_integral_size(to) != 0) || ty_is_enumeration(to))
 	{
 		out->tag = val_tag.scalar;
@@ -101,18 +104,37 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 	{
 		out->tag = val_tag.aggregate;
 		toty ::= to;
-		members_count : u64 mut;
-		array_chunks : abi_chunk mut? mut;
-		abi_chunk_tys(abi_tag.psy64, ref toty, 1, ref array_chunks, ref members_count, global_arena);
-		members_ptr : val mut? := arena_alloc(global_arena, members_count * sizeof val);
-		for(i = 0; i < members_count; i = i + 1)
+		member_chunks_count : u64 mut;
+		agg_chunks : abi_chunk mut? mut;
+		abi_chunk_tys(abi_tag.psy64, ref toty, 1, ref agg_chunks, ref member_chunks_count, global_arena);
+		member_chunks_ptr : val mut? := arena_alloc(global_arena, member_chunks_count * sizeof val);
+		chunk_counter : u64 mut := 0;
+		for(i = 0; i < ty_countof(to); i = i + 1)
 		{
-			val_zero_as(ty_at(to, (array_chunks # i)->src_idx_begin), members_ptr # i);
+			// remember, each member might also be an aggregate
+			// but we want our top-level aggregate to only hold scalars
+			single_member_val : val mut;
+			val_zero_as(ty_at(to, i), ref single_member_val);
+			if(single_member_val.tag == val_tag.scalar)
+			{
+				[member_chunks_ptr # chunk_counter] = single_member_val;
+				chunk_counter = chunk_counter + 1;
+			}
+			if(single_member_val.tag == val_tag.aggregate)
+			{
+				j : u64 mut;
+				aggcount ::= [val_aggregate_get_members_count(ref single_member_val)];
+				aggmems ::= [val_aggregate_get_members(ref single_member_val)];
+				for(j = 0; j < aggcount; j = j + 1)
+				{
+					[member_chunks_ptr # (chunk_counter + j)] = [aggmems # j];
+				}
+				chunk_counter = chunk_counter + aggcount;
+			}
 		}
-		
-		[val_aggregate_get_members_count(out)] = members_count;
-		[val_aggregate_get_members(out)] = members_ptr;
-		[val_aggregate_get_chunks(out)] = array_chunks;
+		[val_aggregate_get_members_count(out)] = member_chunks_count;
+		[val_aggregate_get_members(out)] = member_chunks_ptr;
+		[val_aggregate_get_chunks(out)] = agg_chunks;
 		return;
 	}
 	panic_begin();
@@ -949,15 +971,50 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	}
 	members_count ::= ty_countof(out->type);
 	chunks_count : u64 mut;
+	i : u64 mut;
+	j : u64 mut;
 	// populate the output as an aggregate
-	abi_chunk_tys(abi_tag.psy64, ty_unwrap(out->type)->members, ty_countof(out->type), val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+	if(ty_is_structure(out->type))
+	{
+		// struct - chunk the type itself (so the chunker knows we are a struct and respects our alignments/offsets etc)
+		abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+		// because we only chunked 1 type (the struct), all the src_idx_begins are 0
+		// let's manually patch them to what they should be
+		for(i = 0; i < members_count; i = i + 1)
+		{
+			off ::= abi_offsetof_struct(abi_tag.psy64, out->type, i);
+			for(j = 0; j < chunks_count; j = j + 1)
+			{
+				curchunk ::= [val_aggregate_get_chunks(out)] # j;
+				if(curchunk->src_byte_offset >= off)
+				{
+					curchunk->src_idx_begin = i;
+					curchunk->src_idx_end = i;
+				}
+			}
+		}
+	}
+	else
+	{
+		// array.
+		cumulative_array_types : ty mut? := arena_alloc(scratch_arena, members_count * sizeof ty);
+		for(i = 0; i < members_count; i = i + 1)
+		{
+			[cumulative_array_types # i] = ty_underlying(out->type);
+		}
+		abi_chunk_tys(abi_tag.psy64, cumulative_array_types # 0, members_count, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
+	}
 	[val_aggregate_get_members_count(out)] = chunks_count;
 	chunk_vals : val mut? := arena_alloc(global_arena, chunks_count * sizeof typeof(val));
 	[val_aggregate_get_members(out)] = chunk_vals;
+	putzstr("blkinit: type \0");
+	putty(out->type);
+	putzstr(" yielded \0");
+	putuint(chunks_count);
+	putzstr(" chunks...\n\0");
 
 	// the output is already ready, but chunk_vals is a pointer to its aggregate values, which we need to populate.
 	// fill them all with val_tag.invalid for now and overwrite them later (that lets us check if the user did not initialise everything by checking for invalid-ness)
-	i : u64 mut;
 	for(i = 0; i < chunks_count; i = i + 1)
 	{
 		(chunk_vals # i)->tag = val_tag.invalid;
@@ -1002,15 +1059,32 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 		// our member value will correspond to one (scalar) or more (aggregate) members of chunk_vals
 		// let's find the offset to the correct chunk(s) and set member_idx_as_chunk_idx to it
 		member_idx_as_chunk_idx : u64 mut := ~0;
-		j : u64 mut := 0;
 		for(j = 0; j < chunks_count; j = j + 1)
 		{
 			cur_chunk = [val_aggregate_get_chunks(out)] # j;
+			putzstr("chunk \0");
+			putuint(j);
+			putzstr(" has src_idx_begin == \0");
+			putuint(cur_chunk->src_idx_begin);
+			putchar('\n');
 			if(cur_chunk->src_idx_begin == member_idx)
 			{
 				member_idx_as_chunk_idx = j;
 				j = chunks_count;
 			}
+		}
+		if(member_idx_as_chunk_idx == ~0)
+		{
+			panic_begin();
+			putzstr("for type \0");
+			putty(out->type);
+			putzstr(", unable to convert member-idx \0");
+			putuint(member_idx);
+			putzstr(" to a chunk-idx (there are \0");
+			putuint(chunks_count);
+			putzstr(" chunks) at \0");
+			putsrc(ctx->src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+			panic_end();
 		}
 		if((chunk_vals # member_idx_as_chunk_idx)->tag != val_tag.invalid)
 		{

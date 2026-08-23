@@ -27,6 +27,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 	}
 	chunks_cap : u64 mut := tys_count;
 	[out_chunks] = arena_alloc(ar, chunks_cap * sizeof abi_chunk);
+	byte_counter : u64 mut := 0;
 	i : u64 mut;
 	j : u64 mut;
 	for(i = 0; i < tys_count; i = i + 1)
@@ -37,17 +38,52 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 		{
 			if(ty_is_structure(curty) || ty_is_array(curty))
 			{
-				agg ::= ty_unwrap(curty);
-				subchunks : abi_chunk mut? mut;
-				subchunks_count : u64 mut := 0;
-				abi_chunk_tys_psy64(agg->members, agg->members_count, ref subchunks, ref subchunks_count, scratch_arena);
-				for(j = 0; j < subchunks_count; j = j + 1)
+				if(ty_is_structure(curty))
 				{
-					ptr ::= subchunks # j;
-					ptr->src_byte_offset = ptr->src_byte_offset + abi_offsetof_struct_psy64(curty, ptr->src_idx_begin);
-					ptr->src_idx_begin = i;
-					ptr->src_idx_end = i;
-					_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, ptr, ar);
+					// chunk all the data members of the struct and then append them
+					agg ::= ty_unwrap(curty);
+					subchunks : abi_chunk mut? mut;
+					subchunks_count : u64 mut := 0;
+					abi_chunk_tys_psy64(agg->members, ty_countof(curty), ref subchunks, ref subchunks_count, scratch_arena);
+					cumulative_chunk_byte_counter : u64 mut := 0;
+					current_subchunk_idx : u64 mut := 0;
+					for(j = 0; j < subchunks_count; j = j + 1)
+					{
+						// number of bytes from the very start = byte_counter (to get to the beginning of this struct) + the offset of the chunk from the start of the struct + the cumulative chunk bytes for this chunk
+						memptr ::= subchunks # j;
+						if(memptr->src_idx_begin != current_subchunk_idx)
+						{
+							current_subchunk_idx = memptr->src_idx_begin;
+							cumulative_chunk_byte_counter = 0;
+						}
+						memptr->src_byte_offset = byte_counter + abi_offsetof_struct_psy64(curty, memptr->src_idx_begin) + cumulative_chunk_byte_counter;
+						memptr->src_idx_begin = i;
+						memptr->src_idx_end = i;
+						// number of bytes from the very start = byte_counter (to get to the beginning of this struct) + the offset of the chunk from the start of the struct + the cumulative chunk bytes for this chunk
+						_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, memptr, ar);
+						cumulative_chunk_byte_counter = cumulative_chunk_byte_counter + memptr->sz;
+					}
+				}
+				else
+				{
+					// chunk the underlying type and then append them N times, where N is the number of elements in the array
+					array_element_ty ::= ty_underlying(curty);
+					array_len ::= ty_countof(curty);
+					array_element_chunks : abi_chunk mut? mut;
+					array_element_chunks_count : u64 mut;
+					abi_chunk_tys_psy64(ref array_element_ty, 1, ref array_element_chunks, ref array_element_chunks_count, scratch_arena);
+					k : u64 mut;
+					for(j = 0; j < array_len; j = j + 1)
+					{
+						for(k = 0; k < array_element_chunks_count; k = k + 1)
+						{
+							eleptr ::= array_element_chunks # k;
+							eleptr->src_byte_offset = (eleptr->src_byte_offset * j) + abi_offsetof_struct_psy64(curty, eleptr->src_idx_begin);
+							eleptr->src_idx_begin = i;
+							eleptr->src_idx_end = i;
+							_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, eleptr, ar);
+						}
+					}
 				}
 			}
 			else
@@ -66,10 +102,11 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 				// scalar
 				new.src_idx_begin = i;
 				new.src_idx_end = i;
-				new.src_byte_offset = 0;
+				new.src_byte_offset = byte_counter;
 				new.sz = curty_sz;
 				_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, ref new, ar);
 			}
+			byte_counter = byte_counter + curty_sz;
 		}
 	}
 };
@@ -150,7 +187,7 @@ abi_alignof_psy64 : func(type : ty -> u64)
 	isz ::= ty_integral_size(type);
 	if(isz > 0)
 	{
-	 return isz;
+		return isz;
 	}
 	fsz ::= ty_floating_point_size(type);
 	if(fsz > 0)
@@ -298,6 +335,7 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 
 	count ::= [val_aggregate_get_members_count(v)];
 	members ::= [val_aggregate_get_members(v)];
+	chunks ::= [val_aggregate_get_chunks(v)];
 	i : u64 mut;
 	j : u64 mut;
 	for(i = 0; i < count; i = i + 1)
@@ -306,13 +344,26 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 		// if our aggregate is a struct then we could have padding bytes
 		if(ty_is_structure(v->type))
 		{
-			desired_offset_from_start ::= abi_offsetof_struct_psy64(v->type, i);
+			desired_offset_from_start ::= (chunks # i)->src_byte_offset;
 			for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
 			{
 				bwrite8(w, zero);
 			}
 		}
 		abi_serialise_val_to_psy64(w, members # i, ctx);
+	}
+	if((w->cursor - data_begin) != abi_sizeof(abi_tag.psy64, v->type))
+	{
+		panic_begin();
+		putzstr("failed to serialise value properly for type \0");
+		putty(v->type);
+		putzstr(" expected to serialise \0");
+		putuint(abi_sizeof(abi_tag.psy64, v->type));
+		putzstr(" bytes, but only did \0");
+		putuint(w->cursor - data_begin);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 	}
 };
 
