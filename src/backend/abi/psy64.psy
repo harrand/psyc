@@ -376,16 +376,14 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 	j : u64 mut;
 	for(i = 0; i < count; i = i + 1)
 	{
+		// do padding as necessary (tends to happen if we are a struct or are an aggregate which contains a struct)
 		offset_from_start ::= w->cursor - data_begin;
-		// if our aggregate is a struct then we could have padding bytes
-		if(ty_is_structure(v->type))
+		desired_offset_from_start ::= (chunks # i)->src_byte_offset;
+		for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
 		{
-			desired_offset_from_start ::= (chunks # i)->src_byte_offset;
-			for(j = offset_from_start; j < desired_offset_from_start; j = j + 1)
-			{
-				bwrite8(w, zero);
-			}
+			bwrite8(w, zero);
 		}
+		// write the chunk
 		abi_serialise_val_to_psy64(w, members # i, ctx);
 	}
 	if((w->cursor - data_begin) != abi_sizeof(abi_tag.psy64, v->type))
