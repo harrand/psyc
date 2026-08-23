@@ -264,6 +264,13 @@ ir_sex : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
 
 	// catch incase out and operand alias (and we overwrite our own operand)
 	opcpy ::= [operand];
+	if(operand->tag == irval_tag.imm)
+	{
+		// if its an imm then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_sz(out)] = sz;
+		return;
+	}
 	ir_new_reg_of(sz, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref opcpy);
@@ -287,6 +294,13 @@ ir_zex : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
 
 	// catch incase out and operand alias (and we overwrite our own operand)
 	opcpy ::= [operand];
+	if(operand->tag == irval_tag.imm)
+	{
+		// if its an imm then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_sz(out)] = sz;
+		return;
+	}
 	ir_new_reg_of(sz, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref opcpy);
@@ -310,6 +324,29 @@ ir_trunc : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
 
 	// catch incase out and operand alias (and we overwrite our own operand)
 	opcpy ::= [operand];
+	if(operand->tag == irval_tag.imm)
+	{
+		// if its an imm then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_sz(out)] = sz;
+		if(sz == irsz.b)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xff;
+		}
+		if(sz == irsz.w)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffff;
+		}
+		if(sz == irsz.d)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffffffff;
+		}
+		if(sz == irsz.q)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffffffffffffffff;
+		}
+		return;
+	}
 	ir_new_reg_of(sz, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref opcpy);
@@ -334,6 +371,13 @@ ir_add : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 	// copy lhs/rhs just incase they alias the output (which is perfectly allowed)
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] + [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -363,6 +407,13 @@ ir_sub : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] - [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -392,6 +443,13 @@ ir_smul : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] * [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -421,6 +479,13 @@ ir_umul : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] * [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -450,6 +515,13 @@ ir_sdiv : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] / [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -479,6 +551,13 @@ ir_udiv : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] / [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -508,6 +587,13 @@ ir_smod : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] % [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -537,6 +623,13 @@ ir_umod : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] % [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -566,6 +659,13 @@ ir_xor : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] ^ [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -595,6 +695,13 @@ ir_or : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] | [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -624,6 +731,13 @@ ir_and : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] & [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -653,6 +767,13 @@ ir_shl : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] << [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -682,6 +803,13 @@ ir_ushr : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] >> [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -711,6 +839,13 @@ ir_sshr : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = lhscpy;
+		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] >> [irval_imm_get_integer(rhs)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -739,6 +874,31 @@ ir_not : func(out : irval mut?, op : irval mut? -> v0)
 	inst.tag = irinst_tag.not;
 
 	opcpy : irval mut := [op];
+	if(op->tag == irval_tag.imm)
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_integer(out)] = ~[irval_imm_get_integer(ref opcpy)];
+		sz ::= [irval_imm_get_sz(out)];
+		// mask just incase we negate too many bits
+		if(sz == irsz.b)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xff;
+		}
+		if(sz == irsz.w)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffff;
+		}
+		if(sz == irsz.d)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffffffff;
+		}
+		if(sz == irsz.q)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_integer(out)] & 0xffffffffffffffff;
+		}
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(op), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref opcpy);
@@ -761,6 +921,13 @@ ir_neg : func(out : irval mut?, op : irval mut? -> v0)
 	inst.tag = irinst_tag.neg;
 
 	opcpy : irval mut := [op];
+	if(op->tag == irval_tag.imm)
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_integer(out)] = -[irval_imm_get_integer(ref opcpy)];
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(op), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref opcpy);
@@ -784,6 +951,14 @@ ir_cmp_eq : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] == [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -815,6 +990,14 @@ ir_cmp_ne : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] != [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -846,6 +1029,14 @@ ir_cmp_slt : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] < [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -877,6 +1068,14 @@ ir_cmp_sle : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] <= [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -908,6 +1107,14 @@ ir_cmp_sgt : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] > [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -939,6 +1146,14 @@ ir_cmp_sge : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] >= [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -970,6 +1185,14 @@ ir_cmp_ult : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] < [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -1001,6 +1224,14 @@ ir_cmp_ule : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] <= [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -1032,6 +1263,14 @@ ir_cmp_ugt : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] > [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -1063,6 +1302,14 @@ ir_cmp_uge : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 
 	lhscpy : irval mut := [lhs];
 	rhscpy : irval mut := [rhs];
+	if((lhs->tag == irval_tag.imm) && (rhs->tag == irval_tag.imm))
+	{
+		// if both operands are imms then we really dont need to emit an instruction
+		out->tag = irval_tag.imm;
+		[irval_imm_get_sz(out)] = irsz.b;
+		[irval_imm_get_integer(out)] = ([irval_imm_get_integer(ref lhscpy)] >= [irval_imm_get_integer(ref rhscpy)])@bool@s64;
+		return;
+	}
 	ir_new_reg_of(irsz.b, out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);

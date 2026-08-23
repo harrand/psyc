@@ -1546,6 +1546,32 @@ val_conv_scalar_noop : func(in : val mut?, to : ty, out : val mut?, conv : tycon
 	out->type = to;
 };
 
+val_conv_scalar_trunc : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	size_bytes ::= ty_integral_size(to);
+	sz : irsz mut := irsz.none;
+	if(size_bytes == 1)
+	{
+		sz = irsz.b;
+	}
+	if(size_bytes == 2)
+	{
+		sz = irsz.w;
+	}
+	if(size_bytes == 4)
+	{
+		sz = irsz.d;
+	}
+	if(size_bytes == 8)
+	{
+		sz = irsz.q;
+	}
+	out->tag = val_tag.scalar;
+	out->type = to;
+	ir_trunc(val_scalar_get_irval(out), sz, val_scalar_get_irval(in));
+	[val_scalar_get_displacement(out)] = 0;
+};
+
 val_conv_pointer : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
 	panic_begin();
@@ -1702,7 +1728,7 @@ val_conv_scalar_tbl ::= typeof(val_conv_invalid)[countof tyconv]
 	.7 := val_conv_scalar_noop;
 	.8 := val_conv_scalar_nyi;
 	.9 := val_conv_scalar_nyi;
-	.10 := val_conv_scalar_nyi;
+	.10 := val_conv_scalar_trunc;
 	.11 := val_conv_scalar_nyi;
 	.12 := val_conv_scalar_nyi;
 	.13 := val_conv_scalar_nyi;
