@@ -300,16 +300,42 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 		panic_end();
 	}
 	sz ::= abi_sizeof_psy64(v->type);
-	int_imm ::= val_scalar_get_irval(v);
-	if(int_imm->tag != irval_tag.imm)
+	scalar_irval ::= val_scalar_get_irval(v);
+	if(scalar_irval->tag != irval_tag.imm)
 	{
+		// non-imm implies its not known at compile-time, but thats not quite true.
+		// - globref, fnref, blkref and asmref are all known at compile time
+		// - however it makes no sense to reference a blkref and asmref so we only allow globref and fnref
+		reloc : irreloc mut;
+		if(scalar_irval->tag == irval_tag.globref)
+		{
+			// most likely a string literal
+			reloc.tag = irreloc_tag.glob;
+			reloc.data_offset = w->cursor;
+			bwrite64(w, 0);
+			reloc.idx = [irval_globref_get_idx(scalar_irval)];
+			ir_add_reloc(ref reloc);
+			return;
+		}
+		if(scalar_irval->tag == irval_tag.fnref)
+		{
+			reloc.tag = irreloc_tag.fn;
+			reloc.data_offset = w->cursor;
+			bwrite64(w, 0);
+			reloc.idx = [irval_fnref_get_idx(scalar_irval)];
+			ir_add_reloc(ref reloc);
+			return;
+		}
 		err_begin();
 		putzstr("cannot serialise this scalar value (or a particular scalar of type \0");
 		putty(v->type);
-		putzstr(" within an aggregate) to a compile-time buffer as it was not an immedaite - this probably means you have a global variable initialiser that is not statically-computable at \0");
+		putzstr(" within an aggregate) to a compile-time buffer as it was not an immediate value - this probably means you have a global variable initialiser that is not known at compile-time. the value was irval_tag.\0");
+		putsint(scalar_irval->tag@s64);
+		putzstr(" at \0");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	int_imm ::= scalar_irval;
 	int ::= [irval_imm_get_integer(int_imm)];
 	if(sz == 1)
 	{
