@@ -63,8 +63,18 @@ codegen_ir_global : func(var : variable_t mut? -> v0)
 	{
 		init_ctx : source_context mut := ctx;
 		init_ctx.node = decl_init;
-		val_from_node(ref init_ctx, ref v);
+		if(ast_is_expr(decl_init, ast_expr_tag.zero_value))
+		{
+			val_zero_as(var->type, ref v);
+		}
+		else
+		{
+			val_from_node(ref init_ctx, ref v);
+		}
 	}
+
+	putzstr("preparing to serialise at \0");
+	putsrc(var->src, var->node->src_beg@u64, var->node->src_end@u64, putcol.blue_underline);
 	abi_serialise_val_to(abi, w, ref v, ref ctx);
 
 	storage_ref ::= ref(var->storage);

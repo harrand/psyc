@@ -56,6 +56,17 @@ semal_variable : func(var : variable_t mut?, ctx : source_context mut? -> v0)
 		init_ctx : source_context mut := [ctx];
 		init_ctx.node = init;
 		init_ctx.type_only = true;
+		if(ast_is_expr(init, ast_expr_tag.zero_value))
+		{
+			err_begin();
+			putzstr("deduced declaration \0");
+			putchar('"');
+			putchars([ast_decl_get_name(var->node)], [ast_decl_get_name_len(var->node)]);
+			putchar('"');
+			putzstr(" had a 'zero' initialiser. if you want to zero-initialise a variable its type must be explicitly specificed at \0");
+			putsrc(var->src, init->src_beg@u64, init->src_end@u64, putcol.red_underline);
+			err_end();
+		}
 		var->type = type_from_node(ref init_ctx);
 	}
 	else

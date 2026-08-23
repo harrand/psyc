@@ -102,15 +102,17 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 		out->tag = val_tag.aggregate;
 		toty ::= to;
 		members_count : u64 mut;
-		abi_chunk_tys(abi_tag.psy64, ref toty, 1, val_aggregate_get_chunks(out), ref members_count, global_arena);
+		array_chunks : abi_chunk mut? mut;
+		abi_chunk_tys(abi_tag.psy64, ref toty, 1, ref array_chunks, ref members_count, global_arena);
 		members_ptr : val mut? := arena_alloc(global_arena, members_count * sizeof val);
 		for(i = 0; i < members_count; i = i + 1)
 		{
-			val_zero_as(ty_at(to, i), members_ptr # i);
+			val_zero_as(ty_at(to, (array_chunks # i)->src_idx_begin), members_ptr # i);
 		}
 		
 		[val_aggregate_get_members_count(out)] = members_count;
 		[val_aggregate_get_members(out)] = members_ptr;
+		[val_aggregate_get_chunks(out)] = array_chunks;
 		return;
 	}
 	panic_begin();
