@@ -71,6 +71,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 					array_len ::= ty_countof(curty);
 					array_element_chunks : abi_chunk mut? mut;
 					array_element_chunks_count : u64 mut;
+					array_element_sz ::= abi_sizeof_psy64(array_element_ty);
 					abi_chunk_tys_psy64(ref array_element_ty, 1, ref array_element_chunks, ref array_element_chunks_count, scratch_arena);
 					k : u64 mut;
 					for(j = 0; j < array_len; j = j + 1)
@@ -78,7 +79,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 						for(k = 0; k < array_element_chunks_count; k = k + 1)
 						{
 							eleptr ::= array_element_chunks # k;
-							eleptr->src_byte_offset = (eleptr->src_byte_offset * j) + abi_offsetof_struct_psy64(curty, eleptr->src_idx_begin);
+							eleptr->src_byte_offset = byte_counter + (j * array_element_sz) + eleptr->src_byte_offset;
 							eleptr->src_idx_begin = i;
 							eleptr->src_idx_end = i;
 							_chunkhelper_append(out_chunks, out_chunks_count, ref chunks_cap, eleptr, ar);
@@ -300,6 +301,15 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 	}
 	sz ::= abi_sizeof_psy64(v->type);
 	int_imm ::= val_scalar_get_irval(v);
+	if(int_imm->tag != irval_tag.imm)
+	{
+		err_begin();
+		putzstr("cannot serialise this scalar value (or a particular scalar of type \0");
+		putty(v->type);
+		putzstr(" within an aggregate) to a compile-time buffer as it was not an immedaite - this probably means you have a global variable initialiser that is not statically-computable at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
 	int ::= [irval_imm_get_integer(int_imm)];
 	if(sz == 1)
 	{

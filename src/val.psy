@@ -69,9 +69,6 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 {
 	i : u64 mut;
 	out->type = to;
-	putzstr("zero-ing \0");
-	putty(to);
-	putzstr("...\n\0");
 	if((ty_integral_size(to) != 0) || ty_is_enumeration(to))
 	{
 		out->tag = val_tag.scalar;
@@ -261,6 +258,10 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 	if(maybe_var != zero)
 	{
 		[out] = maybe_var->storage;
+		if(ctx->type_only)
+		{
+			out->tag = val_tag.invalid;
+		}
 		return;
 	}
 
@@ -389,6 +390,7 @@ val_from_node_expr_unop_nyi : func(operand : val mut?, ctx : source_context mut?
 val_from_node_expr_unop_minus : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	out->type = operand->type;
+	out->tag = val_tag.scalar;
 	if((ty_integral_size(operand->type) == 0) && (ty_floating_point_size(operand->type) == 0))
 	{
 		err_begin();
@@ -403,7 +405,6 @@ val_from_node_expr_unop_minus : func(operand : val mut?, ctx : source_context mu
 		return;
 	}
 	val_load_if_pointer(operand, operand);
-	out->tag = val_tag.scalar;
 	ir_neg(val_scalar_get_irval(out), val_scalar_get_irval(operand));
 	[val_scalar_get_displacement(out)] = [val_scalar_get_displacement(operand)];
 };
@@ -411,6 +412,7 @@ val_from_node_expr_unop_minus : func(operand : val mut?, ctx : source_context mu
 val_from_node_expr_unop_reference : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	out->type = ty_make_pointer(operand->type, zero);
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
@@ -424,7 +426,6 @@ val_from_node_expr_unop_reference : func(operand : val mut?, ctx : source_contex
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	out->tag = val_tag.scalar;
 	[val_scalar_get_irval(out)] = [val_pointer_get_irval(operand)];
 	[val_scalar_get_displacement(out)] = [val_pointer_get_displacement(operand)];
 };
@@ -478,12 +479,12 @@ val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast
 		err_end();
 	}
 	out->type = ty.bool;
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_cmp_eq(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -508,12 +509,12 @@ val_from_node_expr_biop_add : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -538,12 +539,12 @@ val_from_node_expr_biop_sub : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_sub(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -568,12 +569,12 @@ val_from_node_expr_biop_mul : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	if(ty_is_signed(out->type))
 	{
 		ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
@@ -605,12 +606,12 @@ val_from_node_expr_biop_div : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	if(ty_is_signed(out->type))
 	{
 		ir_sdiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
@@ -642,12 +643,12 @@ val_from_node_expr_biop_bitwise_or : func(lhs_node : ast mut?, rhs_node : ast mu
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -672,12 +673,12 @@ val_from_node_expr_biop_bitwise_and : func(lhs_node : ast mut?, rhs_node : ast m
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_and(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -688,12 +689,12 @@ val_from_node_expr_biop_logical_or : func(lhs_node : ast mut?, rhs_node : ast mu
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_conv(rhs_val, ty.bool, rhs_val, ctx);
 	out->type = ty.bool;
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -704,12 +705,12 @@ val_from_node_expr_biop_logical_and : func(lhs_node : ast mut?, rhs_node : ast m
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_conv(rhs_val, ty.bool, rhs_val, ctx);
 	out->type = ty.bool;
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_and(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -734,12 +735,12 @@ val_from_node_expr_biop_xor : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_xor(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -764,12 +765,12 @@ val_from_node_expr_biop_bitshift_left : func(lhs_node : ast mut?, rhs_node : ast
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	ir_shl(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 };
 
@@ -794,12 +795,12 @@ val_from_node_expr_biop_bitshift_right : func(lhs_node : ast mut?, rhs_node : as
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	if(ty_is_signed(out->type))
 	{
 		ir_sshr(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
@@ -831,12 +832,12 @@ val_from_node_expr_biop_modulo : func(lhs_node : ast mut?, rhs_node : ast mut?, 
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
 	}
 
-	out->tag = val_tag.scalar;
 	if(ty_is_signed(out->type))
 	{
 		ir_smod(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
@@ -876,6 +877,7 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 	}
 
 	out->type = ty_make_pointer(ty_underlying(lhs_val->type), zero);
+	out->tag = val_tag.scalar;
 	if(ctx->type_only)
 	{
 		return;
@@ -902,7 +904,6 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 
 	sizeof_element ::= abi_sizeof(abi_tag.psy64, ty_underlying(lhs_val->type));
 	// offset our output (which is always a scalar)
-	out->tag = val_tag.scalar;
 	// if we know rhs' value at compile-time this gets very simple
 	rhs_irval ::= val_scalar_get_irval(rhs_val);
 	[val_scalar_get_irval(out)] = [the_irval];
@@ -942,6 +943,7 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 	if(ctx->type_only)
 	{
 		// return type of the function-type callable
+		out->tag = val_tag.invalid;
 		out->type = ty_underlying(callee_val.type);
 		return;
 	}
@@ -967,6 +969,7 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	// if we are type only do not do ir stuff.
 	if(ctx->type_only)
 	{
+		out->tag = val_tag.invalid;
 		return;
 	}
 	members_count ::= ty_countof(out->type);
@@ -1007,11 +1010,6 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	[val_aggregate_get_members_count(out)] = chunks_count;
 	chunk_vals : val mut? := arena_alloc(global_arena, chunks_count * sizeof typeof(val));
 	[val_aggregate_get_members(out)] = chunk_vals;
-	putzstr("blkinit: type \0");
-	putty(out->type);
-	putzstr(" yielded \0");
-	putuint(chunks_count);
-	putzstr(" chunks...\n\0");
 
 	// the output is already ready, but chunk_vals is a pointer to its aggregate values, which we need to populate.
 	// fill them all with val_tag.invalid for now and overwrite them later (that lets us check if the user did not initialise everything by checking for invalid-ness)
@@ -1062,11 +1060,6 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 		for(j = 0; j < chunks_count; j = j + 1)
 		{
 			cur_chunk = [val_aggregate_get_chunks(out)] # j;
-			putzstr("chunk \0");
-			putuint(j);
-			putzstr(" has src_idx_begin == \0");
-			putuint(cur_chunk->src_idx_begin);
-			putchar('\n');
 			if(cur_chunk->src_idx_begin == member_idx)
 			{
 				member_idx_as_chunk_idx = j;
@@ -1183,6 +1176,7 @@ val_from_node_expr_dereference : func(ctx : source_context mut?, out : val mut? 
 	out->type = ty_underlying(operand_val.type);
 	if(ctx->type_only)
 	{
+		out->tag = val_tag.invalid;
 		return;
 	}
 
@@ -1218,6 +1212,7 @@ val_from_node_expr_cast : func(ctx : source_context mut?, out : val mut?  -> v0)
 	if(ctx->type_only)
 	{
 		out->type = to;
+		out->tag = val_tag.invalid;
 		return;
 	}
 	// just convert it to the casted-to type (and the result goes into 'out')
@@ -1320,6 +1315,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	out->type = ty_copy_quals(lhs_access_type, ty_at(lhs_access_type, struct_memidx));
 	if(ctx->type_only)
 	{
+		out->tag = val_tag.invalid;
 		return;
 	}
 	// finally, access lhs using the struct_memidx
@@ -1413,6 +1409,8 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 	// if it is, 'out' becomes a scalar immediate corresponding to the entry.
 	// if it isn't, error out.
 	// if we are type only do not do ir stuff.
+	out->tag = val_tag.scalar;
+	out->type = type;
 	if(ctx->type_only)
 	{
 		out->type = type;
@@ -1445,8 +1443,6 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	out->type = type;
-	out->tag = val_tag.scalar;
 	irval_qimm([entry_value], val_scalar_get_irval(out));
 	[val_scalar_get_displacement(out)] = 0;
 };
@@ -1491,6 +1487,7 @@ val_conv : func(in : val mut?, to : ty, out : val mut?, ctx : source_context mut
 		if(ctx->type_only)
 		{
 			out->type = to;
+			out->tag = val_tag.scalar;
 			return;
 		}
 		val_load_if_pointer(in, in);
