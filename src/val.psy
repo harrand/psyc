@@ -419,7 +419,7 @@ val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast
 	if(ty_equality_comparable_to(lhs_val->type, rhs_val->type) == false)
 	{
 		err_begin();
-		putzstr("canot compare types \0");
+		putzstr("cannot compare types \0");
 		putchar('"');
 		putty(lhs_val->type);
 		putchar('"');
@@ -439,6 +439,297 @@ val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast
 
 	out->tag = val_tag.scalar;
 	ir_cmp_eq(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_add : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot add types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_sub : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot subtract types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_sub(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_mul : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot multiply types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_is_signed(out->type))
+	{
+		ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+	else
+	{
+		ir_umul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+};
+
+val_from_node_expr_biop_div : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot divide types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_is_signed(out->type))
+	{
+		ir_sdiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+	else
+	{
+		ir_udiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+};
+
+val_from_node_expr_biop_bitwise_or : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot bitwise-or types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_or(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_bitwise_and : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot bitwise-and types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_and(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_xor : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot xor types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_xor(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_bitshift_left : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot bitleft types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	ir_shl(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+};
+
+val_from_node_expr_biop_bitshift_right : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	val_load_if_pointer(lhs_val, lhs_val);
+	val_load_if_pointer(rhs_val, rhs_val);
+
+	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
+	if(out->type == ty.invalid)
+	{
+		err_begin();
+		putzstr("cannot bitright types \0");
+		putchar('"');
+		putty(lhs_val->type);
+		putchar('"');
+		putzstr(" and \0");
+		putchar('"');
+		putty(rhs_val->type);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	out->tag = val_tag.scalar;
+	if(ty_is_signed(out->type))
+	{
+		ir_sshr(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+	else
+	{
+		ir_ushr(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
 };
 
 val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
@@ -1188,17 +1479,17 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 	.4 := val_from_node_expr_biop_nyi;
 	.5 := val_from_node_expr_biop_nyi;
 	.6 := val_from_node_expr_biop_nyi;
-	.7 := val_from_node_expr_biop_nyi;
-	.8 := val_from_node_expr_biop_nyi;
-	.9 := val_from_node_expr_biop_nyi;
-	.10 := val_from_node_expr_biop_nyi;
-	.11 := val_from_node_expr_biop_nyi;
-	.12 := val_from_node_expr_biop_nyi;
+	.7 := val_from_node_expr_biop_add;
+	.8 := val_from_node_expr_biop_sub;
+	.9 := val_from_node_expr_biop_mul;
+	.10 := val_from_node_expr_biop_div;
+	.11 := val_from_node_expr_biop_bitwise_or;
+	.12 := val_from_node_expr_biop_bitwise_and;
 	.13 := val_from_node_expr_biop_nyi;
 	.14 := val_from_node_expr_biop_nyi;
-	.15 := val_from_node_expr_biop_nyi;
-	.16 := val_from_node_expr_biop_nyi;
-	.17 := val_from_node_expr_biop_nyi;
+	.15 := val_from_node_expr_biop_xor;
+	.16 := val_from_node_expr_biop_bitshift_left;
+	.17 := val_from_node_expr_biop_bitshift_right;
 	.18 := val_from_node_expr_biop_nyi;
 	.19 := val_from_node_expr_biop_at;
 };
