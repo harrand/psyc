@@ -458,6 +458,41 @@ val_from_node_expr_biop_nyi : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 	panic_end();
 };
 
+
+val_store_generic : func(ptr : val mut?, v : val mut?, ctx : source_context mut? -> v0)
+{
+	vcpy : val mut := [v];
+	val_load_if_pointer(ref vcpy, ref vcpy);
+	val_conv(ref vcpy, ptr->type, ref vcpy, ctx);
+	if(vcpy.tag == val_tag.scalar)
+	{
+		ir_store(val_scalar_get_irval(ref vcpy), val_pointer_get_irval(ptr), [val_pointer_get_displacement(ptr)] + [val_scalar_get_displacement(ref vcpy)]);
+		return;
+	}
+	if(vcpy.tag != val_tag.aggregate)
+	{
+		panic_begin();
+		putzstr("expected loaded + converted operand of val_store_generic to be val_tag.aggregate, but it is val_tag.\0");
+		putsint(vcpy.tag@s64);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+	i : u64 mut;
+	agg ::= [val_aggregate_get_members(ref vcpy)];
+	agg_chunks ::= [val_aggregate_get_chunks(ref vcpy)];
+	agg_count ::= [val_aggregate_get_members_count(ref vcpy)];
+	for(i = 0; i < agg_count; i = i + 1)
+	{
+		ir_store(val_scalar_get_irval(agg # i), val_pointer_get_irval(ptr), [val_pointer_get_displacement(ptr)] + [val_scalar_get_displacement(agg # i)] + (agg_chunks # i)->src_byte_offset@s32);
+	}
+};
+
+//val_from_node_expr_biop_assign : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+//{
+	//val_store_generic(lhs_val, rhs_val, ctx);
+//};
+
 val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
