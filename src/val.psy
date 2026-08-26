@@ -1044,10 +1044,37 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 	// now return chunks
 	return_chunks : abi_chunk mut? mut;
 	return_chunks_count : u64 mut;
-	panic_begin();
-	putzstr("val_from_node_expr_call NYI at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	abi_chunk_tys(abi_tag.psy64, ref(fnty_u->underlying), 1, ref return_chunks, ref return_chunks_count, global_arena);
+	return_irvals : irval mut? := arena_alloc(scratch_arena, return_chunks_count * sizeof irval);
+	return_szs : irsz mut? := arena_alloc(scratch_arena, return_chunks_count * sizeof irsz);
+	for(i = 0; i < return_chunks_count; i = i + 1)
+	{
+		[return_szs # i] = abi_chunk_as_irsz(return_chunks # i);
+	}
+	ir_call(return_szs, return_chunks_count, val_scalar_get_irval(ref callee_val), param_irvals, param_chunks_count, return_irvals);
+	if(return_chunks_count == 0)
+	{
+		return;
+	}
+	if(return_chunks_count == 1)
+	{
+		out->tag = val_tag.scalar;
+		[val_scalar_get_irval(out)] = [return_irvals # 0];
+		[val_scalar_get_displacement(out)] = 0;
+		return;
+	}
+	out->tag = val_tag.aggregate;
+	[val_aggregate_get_chunks(out)] = return_chunks;
+	[val_aggregate_get_members_count(out)] = return_chunks_count;
+	out_agg_vals : val mut? := arena_alloc(global_arena, return_chunks_count * sizeof val);
+	[val_aggregate_get_members(out)] = out_agg_vals;
+	for(i = 0; i < return_chunks_count; i = i + 1)
+	{
+		cur_out_agg_val ::= out_agg_vals # i;
+		cur_out_agg_val->tag = val_tag.scalar;
+		[val_scalar_get_irval(cur_out_agg_val)] = [return_irvals # i];
+		[val_scalar_get_displacement(cur_out_agg_val)] = 0;
+	}
 };
 
 val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> v0)
