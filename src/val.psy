@@ -975,13 +975,75 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 	callee_val : val mut;
 	val_from_node(ref callee_ctx, ref callee_val);
 	val_load_if_pointer(ref callee_val, ref callee_val);
+	callee_fnty ::= callee_val.type;
+	if(ty_is_function(callee_fnty) == false)
+	{
+		err_begin();
+		putzstr("call to non-callable type \0");
+		putchar('"');
+		putty(callee_fnty);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, callee_node->src_beg@u64, callee_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
 	if(ctx->type_only)
 	{
 		// return type of the function-type callable
 		out->tag = val_tag.invalid;
-		out->type = ty_underlying(callee_val.type);
+		out->type = ty_underlying(callee_fnty);
 		return;
 	}
+	fnty_u ::= ty_unwrap(callee_fnty);
+
+	param_chunks : abi_chunk mut? mut;
+	param_chunks_count : u64 mut;
+	param_chunks_cursor : u64 mut := 0;
+	abi_chunk_tys(abi_tag.psy64, fnty_u->members, fnty_u->members_count, ref param_chunks, ref param_chunks_count, scratch_arena);
+	param_irvals : irval mut? := arena_alloc(scratch_arena, param_chunks_count * sizeof irval);
+
+	param_count ::= ty_countof(callee_fnty);
+	param_nodes ::= ast_call_get_params(ctx->node);
+	i : u64 mut;
+	for(i = 0; i < param_count; i = i + 1)
+	{
+		cur_param_val : val mut;
+		cur_param_ctx : source_context mut := [ctx];
+		cur_param_ctx.node = param_nodes # i;
+		val_from_node(ref cur_param_ctx, ref cur_param_val);
+		val_load_if_pointer(ref cur_param_val, ref cur_param_val);
+		val_conv(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, ref cur_param_ctx);
+		
+		// place it into param_irvals
+		// should be able to safely assume cur_param_val is a scalar with 0 displacement? coz it was loaded? maybe not necessarily?
+		if(cur_param_val.tag == val_tag.scalar)
+		{
+			if([val_scalar_get_displacement(ref cur_param_val)]@u64 != 0)
+			{
+				panic_begin();
+				putzstr("detected scalar call param value with nonzero displacement... should realise the displacement via a fused-multiply-add at \0");
+				putsrc(ctx->src, cur_param_ctx.node->src_beg@u64, cur_param_ctx.node->src_end@u64, putcol.red_underline);
+				panic_end();
+			}
+			[param_irvals # param_chunks_cursor] = [val_scalar_get_irval(ref cur_param_val)];
+			param_chunks_cursor = param_chunks_cursor + 1;
+		}
+		if(cur_param_val.tag == val_tag.aggregate)
+		{
+			j : u64 mut;
+			agg_vals ::= [val_aggregate_get_members(ref cur_param_val)];
+			agg_vals_count ::= [val_aggregate_get_members_count(ref cur_param_val)];
+			for(j = 0; j < agg_vals_count; j = j + 1)
+			{
+				[param_irvals # (param_chunks_cursor + j)] = [val_scalar_get_irval(agg_vals # j)];
+			}
+			param_chunks_cursor = param_chunks_cursor + agg_vals_count;
+		}
+	}
+
+	// now return chunks
+	return_chunks : abi_chunk mut? mut;
+	return_chunks_count : u64 mut;
 	panic_begin();
 	putzstr("val_from_node_expr_call NYI at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
