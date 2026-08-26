@@ -887,6 +887,9 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 {
 	// rhs needs to be some integral value so we need to load it if its not a scalar
 	val_load_if_pointer(rhs_val, rhs_val);
+	rhs_ctx : source_context mut := [ctx];
+	rhs_ctx.node = rhs_node;
+	val_scalar_realise_displacement(rhs_val, rhs_val, ref rhs_ctx);
 
 	if(ty_integral_size(rhs_val->type) == 0)
 	{
@@ -1013,18 +1016,12 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 		val_from_node(ref cur_param_ctx, ref cur_param_val);
 		val_load_if_pointer(ref cur_param_val, ref cur_param_val);
 		val_conv(ref cur_param_val, ty_at(callee_fnty, i), ref cur_param_val, ref cur_param_ctx);
+		val_scalar_realise_displacement(ref cur_param_val, ref cur_param_val, ref cur_param_ctx);
 		
 		// place it into param_irvals
 		// should be able to safely assume cur_param_val is a scalar with 0 displacement? coz it was loaded? maybe not necessarily?
 		if(cur_param_val.tag == val_tag.scalar)
 		{
-			if([val_scalar_get_displacement(ref cur_param_val)]@u64 != 0)
-			{
-				panic_begin();
-				putzstr("detected scalar call param value with nonzero displacement... should realise the displacement via a fused-multiply-add at \0");
-				putsrc(ctx->src, cur_param_ctx.node->src_beg@u64, cur_param_ctx.node->src_end@u64, putcol.red_underline);
-				panic_end();
-			}
 			[param_irvals # param_chunks_cursor] = [val_scalar_get_irval(ref cur_param_val)];
 			param_chunks_cursor = param_chunks_cursor + 1;
 		}
@@ -1035,7 +1032,9 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 			agg_vals_count ::= [val_aggregate_get_members_count(ref cur_param_val)];
 			for(j = 0; j < agg_vals_count; j = j + 1)
 			{
-				[param_irvals # (param_chunks_cursor + j)] = [val_scalar_get_irval(agg_vals # j)];
+				our_agg_val : val mut := [agg_vals # j];
+				val_scalar_realise_displacement(ref our_agg_val, ref our_agg_val, ref cur_param_ctx);
+				[param_irvals # (param_chunks_cursor + j)] = [val_scalar_get_irval(ref our_agg_val)];
 			}
 			param_chunks_cursor = param_chunks_cursor + agg_vals_count;
 		}
@@ -1601,6 +1600,29 @@ val_from_node_stmt_nyi : func(ctx : source_context mut?, out : val mut? -> v0)
 	putzstr(" at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
+};
+
+val_scalar_realise_displacement : func(in : val mut?, out : val mut?, ctx : source_context mut? -> v0)
+{
+	[out] = [in];
+	if(ctx->type_only)
+	{
+		return;
+	}
+	// if a scalar is provided with a nonzero displacement
+	// generate a new scalar with that displacement applied (such that the displacement is now zero)
+	if(in->tag != val_tag.scalar)
+	{
+		return;
+	}
+	if([val_scalar_get_displacement(in)] == 0)
+	{
+		return;
+	}
+	
+	disp_qimm : irval mut;
+	irval_dimm([val_scalar_get_displacement(in)], ref disp_qimm);
+	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(in), ref disp_qimm);
 };
 
 val_conv : func(in : val mut?, to : ty, out : val mut?, ctx : source_context mut? -> v0)
