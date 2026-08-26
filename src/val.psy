@@ -405,6 +405,7 @@ val_from_node_expr_unop_minus : func(operand : val mut?, ctx : source_context mu
 		return;
 	}
 	val_load_if_pointer(operand, operand);
+	val_scalar_realise_displacement(operand, operand, ctx);
 	ir_neg(val_scalar_get_irval(out), val_scalar_get_irval(operand));
 	[val_scalar_get_displacement(out)] = [val_scalar_get_displacement(operand)];
 };
@@ -496,7 +497,9 @@ val_from_node_expr_biop_assign : func(lhs_node : ast mut?, rhs_node : ast mut?, 
 val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	if(ty_equality_comparable_to(lhs_val->type, rhs_val->type) == false)
 	{
@@ -526,7 +529,9 @@ val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast
 val_from_node_expr_biop_add : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -556,7 +561,9 @@ val_from_node_expr_biop_add : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 val_from_node_expr_biop_sub : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 
 	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -586,7 +593,9 @@ val_from_node_expr_biop_sub : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 val_from_node_expr_biop_mul : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -623,7 +632,9 @@ val_from_node_expr_biop_mul : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 val_from_node_expr_biop_div : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -660,7 +671,9 @@ val_from_node_expr_biop_div : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 val_from_node_expr_biop_bitwise_or : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -690,7 +703,9 @@ val_from_node_expr_biop_bitwise_or : func(lhs_node : ast mut?, rhs_node : ast mu
 val_from_node_expr_biop_bitwise_and : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -721,8 +736,10 @@ val_from_node_expr_biop_logical_or : func(lhs_node : ast mut?, rhs_node : ast mu
 {
 	val_load_if_pointer(lhs_val, lhs_val);
 	val_conv(lhs_val, ty.bool, lhs_val, ctx);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_conv(rhs_val, ty.bool, rhs_val, ctx);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 	out->type = ty.bool;
 	out->tag = val_tag.scalar;
 	if(ctx->type_only)
@@ -737,8 +754,10 @@ val_from_node_expr_biop_logical_and : func(lhs_node : ast mut?, rhs_node : ast m
 {
 	val_load_if_pointer(lhs_val, lhs_val);
 	val_conv(lhs_val, ty.bool, lhs_val, ctx);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_conv(rhs_val, ty.bool, rhs_val, ctx);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 	out->type = ty.bool;
 	out->tag = val_tag.scalar;
 	if(ctx->type_only)
@@ -752,7 +771,9 @@ val_from_node_expr_biop_logical_and : func(lhs_node : ast mut?, rhs_node : ast m
 val_from_node_expr_biop_xor : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -782,7 +803,9 @@ val_from_node_expr_biop_xor : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 val_from_node_expr_biop_bitshift_left : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -812,7 +835,9 @@ val_from_node_expr_biop_bitshift_left : func(lhs_node : ast mut?, rhs_node : ast
 val_from_node_expr_biop_bitshift_right : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_bitwise(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -849,7 +874,9 @@ val_from_node_expr_biop_bitshift_right : func(lhs_node : ast mut?, rhs_node : as
 val_from_node_expr_biop_modulo : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_val : val mut?, rhs_val : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	val_load_if_pointer(lhs_val, lhs_val);
+	val_scalar_realise_displacement(lhs_val, lhs_val, ctx);
 	val_load_if_pointer(rhs_val, rhs_val);
+	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
 	out->type = ty_of_arithmetic(lhs_val->type, rhs_val->type);
 	if(out->type == ty.invalid)
@@ -1672,7 +1699,8 @@ val_conv_invalid : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, c
 
 val_conv_scalar : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
-	[val_conv_scalar_tbl # (conv@s64)](in, to, out, conv, ctx);
+	val_scalar_realise_displacement(in, out, ctx);
+	[val_conv_scalar_tbl # (conv@s64)](out, to, out, conv, ctx);
 };
 
 val_conv_scalar_nyi : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
