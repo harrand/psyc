@@ -1698,12 +1698,58 @@ val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0
 	val_load_if_pointer(ref cond_val, ref cond_val);
 	val_conv(ref cond_val, ty.bool, ref cond_val, ref cond_ctx);
 	val_scalar_realise_displacement(ref cond_val, ref cond_val, ref cond_ctx);
-	// todo: rest.
-	irfunc_dump(ir_current_func());
-	panic_begin();
-	putzstr("val_from_node_stmt_if_blk NYI at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+
+	body ::= ast_if_get_body(ctx->node);
+	body_count : u32 mut := ast_if_get_body_count(ctx->node);
+
+	maybe_else ::= ast_if_get_else(ctx->node);
+	if(maybe_else != zero)
+	{
+		body_count = body_count - 1;
+	}
+
+	cur_blk ::= ir_current_blk();
+
+	// add new blocks
+	true_blkref : irval mut;
+	true_blk ::= ir_add_blk(ref true_blkref);
+	false_blkref : irval mut;
+	false_blk ::= ir_add_blk(ref false_blkref);
+	cont_blkref : irval mut;
+	cont_blk ::= ir_add_blk(ref cont_blkref);
+
+	// go back to previous blk
+	ir_position_end_of_blk(cur_blk->idx);
+	ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, false_blk->idx);
+
+	// true blk: do everything inside the body
+	ir_position_end_of_blk(true_blk->idx);
+
+	true_ctx : source_context mut := [ctx];
+	true_ctx.node = zero;
+	true_off ::= ast_if_get_offset_to_body(ctx->node);
+	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
+	if(irblk_has_terminator(true_blk) == false)
+	{
+		ir_jmp(cont_blk->idx);
+	}
+
+	// false blk: else-blk goes here if there is one. otherwise it jumps straight into the cont-blk
+	ir_position_end_of_blk(false_blk->idx);
+	if(maybe_else != zero)
+	{
+		// do the else here
+		false_ctx : source_context mut := [ctx];
+		false_ctx.node = maybe_else;
+		ast_walk(maybe_else, 0, maybe_else->children_count@u64, codegen_node_callback, ref false_ctx);
+	}
+	if(irblk_has_terminator(false_blk) == false)
+	{
+		ir_jmp(cont_blk->idx);
+	}
+
+	// cont_blk is where we continue on from...
+	ir_position_end_of_blk(cont_blk->idx);
 };
 
 val_from_node_stmt_unreachable : func(ctx : source_context mut?, out : val mut? -> v0)
