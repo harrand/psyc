@@ -275,6 +275,16 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 		return;
 	}
 
+	maybe_asm ::= scope_find_assembly(scope, sym, len);
+	if(maybe_asm != zero)
+	{
+		out->tag = val_tag.scalar;
+		out->type = maybe_asm->type;
+		irval_asmref(maybe_asm->irasm_idx, val_scalar_get_irval(out));
+		[val_scalar_get_displacement(out)] = 0;
+		return;
+	}
+
 	if(ctx->parent_fn != zero)
 	{
 		// we checked the parent-fn and didnt get anything
@@ -1076,11 +1086,11 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 		putsrc(ctx->src, callee_node->src_beg@u64, callee_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	out->type = ty_underlying(callee_fnty);
 	if(ctx->type_only)
 	{
 		// return type of the function-type callable
 		out->tag = val_tag.invalid;
-		out->type = ty_underlying(callee_fnty);
 		return;
 	}
 	fnty_u ::= ty_unwrap(callee_fnty);
@@ -1849,6 +1859,58 @@ val_conv_scalar_noop : func(in : val mut?, to : ty, out : val mut?, conv : tycon
 	out->type = to;
 };
 
+val_conv_scalar_sext : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	size_bytes ::= ty_integral_size(to);
+	sz : irsz mut := irsz.none;
+	if(size_bytes == 1)
+	{
+		sz = irsz.b;
+	}
+	if(size_bytes == 2)
+	{
+		sz = irsz.w;
+	}
+	if(size_bytes == 4)
+	{
+		sz = irsz.d;
+	}
+	if(size_bytes == 8)
+	{
+		sz = irsz.q;
+	}
+	out->tag = val_tag.scalar;
+	out->type = to;
+	ir_sex(val_scalar_get_irval(out), sz, val_scalar_get_irval(in));
+	[val_scalar_get_displacement(out)] = 0;
+};
+
+val_conv_scalar_zext : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
+{
+	size_bytes ::= ty_integral_size(to);
+	sz : irsz mut := irsz.none;
+	if(size_bytes == 1)
+	{
+		sz = irsz.b;
+	}
+	if(size_bytes == 2)
+	{
+		sz = irsz.w;
+	}
+	if(size_bytes == 4)
+	{
+		sz = irsz.d;
+	}
+	if(size_bytes == 8)
+	{
+		sz = irsz.q;
+	}
+	out->tag = val_tag.scalar;
+	out->type = to;
+	ir_zex(val_scalar_get_irval(out), sz, val_scalar_get_irval(in));
+	[val_scalar_get_displacement(out)] = 0;
+};
+
 val_conv_scalar_trunc : func(in : val mut?, to : ty, out : val mut?, conv : tyconv, ctx : source_context mut? -> v0)
 {
 	size_bytes ::= ty_integral_size(to);
@@ -2027,7 +2089,7 @@ val_conv_scalar_tbl ::= typeof(val_conv_invalid)[countof tyconv]
 	.5 := val_conv_scalar_nyi;
 	.6 := val_conv_scalar_nyi;
 	.7 := val_conv_scalar_noop;
-	.8 := val_conv_scalar_nyi;
+	.8 := val_conv_scalar_sext;
 	.9 := val_conv_scalar_nyi;
 	.10 := val_conv_scalar_trunc;
 	.11 := val_conv_scalar_nyi;
