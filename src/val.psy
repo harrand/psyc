@@ -1762,6 +1762,62 @@ val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0
 	ir_position_end_of_blk(cont_blk->idx);
 };
 
+val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	parent_fnty ::= ctx->parent_fn->type;
+	fn_retty ::= ty_underlying(parent_fnty);
+	ret_node ::= ast_ret_get_expr(ctx->node);
+	if(ret_node == zero)
+	{
+		// the parent fn better not have a return type
+		if(ty_strip(fn_retty) != ty.v0)
+		{
+			err_begin();
+			putzstr("empty return is invalid because function must return a \0");
+			putchar('"');
+			putty(fn_retty);
+			putchar('"');
+			putzstr(" at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		ir_ret(zero, zero);
+		return;
+	}
+	if(ty_strip(fn_retty) == ty.v0)
+	{
+		err_begin();
+		putzstr("non-empty return is invalid because function doesn't return anything at \0");
+		putsrc(ctx->src, ret_node->src_beg@u64, ret_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	ret_ctx : source_context mut := [ctx];
+	ret_ctx.node = ret_node;
+	ret_val : val mut;
+	val_from_node(ref ret_ctx, ref ret_val);
+	val_load_if_pointer(ref ret_val, ref ret_val);
+	val_scalar_realise_displacement(ref ret_val, ref ret_val, ctx);
+	val_conv(ref ret_val, fn_retty, ref ret_val, ref ret_ctx);
+	// ret value is expected to be scalar or agg at this point
+	// just pass it into ir_ret
+	if(ret_val.tag == val_tag.scalar)
+	{
+		ir_ret(val_scalar_get_irval(ref ret_val), 1);
+		return;
+	}
+	agg_ret_irvals : irval mut? := arena_alloc(global_arena, aggcount * sizeof irval);
+	aggcount ::= [val_aggregate_get_members_count(ref ret_val)];
+	aggvals ::= [val_aggregate_get_members(ref ret_val)];
+	i : u64 mut;
+	for(i = 0; i < aggcount; i = i + 1)
+	{
+		cur_aggval : val mut := [aggvals # i];
+		val_scalar_realise_displacement(ref cur_aggval, ref cur_aggval, ctx);
+		[agg_ret_irvals # i] = [val_scalar_get_irval(ref cur_aggval)];
+	}
+	ir_ret(agg_ret_irvals # 0, aggcount);
+};
+
 val_from_node_stmt_unreachable : func(ctx : source_context mut?, out : val mut? -> v0)
 {
 	ir_unreach();
@@ -2065,8 +2121,7 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.9 := val_from_node_stmt_nyi;
 	//.10 := val_from_node_stmt_for_blk;
 	.10 := val_from_node_stmt_nyi;
-	//.11 := val_from_node_stmt_return;
-	.11 := val_from_node_stmt_nyi;
+	.11 := val_from_node_stmt_return;
 	.12 := val_from_node_stmt_unreachable;
 	.13 := val_from_node_stmt_nyi;
 };
