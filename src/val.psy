@@ -69,31 +69,62 @@ val_zero_as : func(to : ty, out : val mut? -> v0)
 {
 	i : u64 mut;
 	out->type = to;
-	if((ty_integral_size(to) != 0) || ty_is_enumeration(to))
+	isz ::= ty_integral_size(to);
+	if(isz != 0)
 	{
 		out->tag = val_tag.scalar;
-		irval_qimm(0, val_scalar_get_irval(out));
+		if(isz == 1)
+		{
+			irval_bimm(zero, val_scalar_get_irval(out));
+		}
+		if(isz == 2)
+		{
+			irval_wimm(zero, val_scalar_get_irval(out));
+		}
+		if(isz == 4)
+		{
+			irval_dimm(zero, val_scalar_get_irval(out));
+		}
+		if(isz == 8)
+		{
+			irval_qimm(zero, val_scalar_get_irval(out));
+		}
 		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
-	if(ty_is_pointer(to))
+	fsz ::= ty_floating_point_size(to);
+	if(fsz != 0)
 	{
 		out->tag = val_tag.scalar;
-		irval_qimm(0, val_scalar_get_irval(out));
+		if(fsz == 4)
+		{
+			irval_fimm(zero, val_scalar_get_irval(out));
+		}
+		if(fsz == 8)
+		{
+			irval_gimm(zero, val_scalar_get_irval(out));
+		}
+		[val_scalar_get_displacement(out)] = zero;
+		return;
+	}
+	if(ty_is_pointer(to) || ty_is_enumeration(to))
+	{
+		out->tag = val_tag.scalar;
+		irval_qimm(zero, val_scalar_get_irval(out));
 		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_function(to))
 	{
 		out->tag = val_tag.scalar;
-		irval_qimm(0, val_scalar_get_irval(out));
+		irval_qimm(zero, val_scalar_get_irval(out));
 		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
 	if(ty_is_bool(to))
 	{
 		out->tag = val_tag.scalar;
-		irval_bimm(0, val_scalar_get_irval(out));
+		irval_bimm(zero, val_scalar_get_irval(out));
 		[val_scalar_get_displacement(out)] = zero;
 		return;
 	}
@@ -2024,7 +2055,14 @@ val_from_node_stmt_decl : func(ctx : source_context mut?, out : val mut? -> v0)
 	init_ctx : source_context mut := [ctx];
 	init_ctx.node = init_node;
 	init_val : val mut;
-	val_from_node(ref init_ctx, ref init_val);
+	if(ast_is_expr(init_node, ast_expr_tag.zero_value))
+	{
+		val_zero_as(var->type, ref init_val);
+	}
+	else
+	{
+		val_from_node(ref init_ctx, ref init_val);
+	}
 	val_store_generic(ref(var->storage), ref init_val, ref init_ctx);
 };
 
