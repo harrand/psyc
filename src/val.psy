@@ -428,6 +428,54 @@ val_from_node_expr_unop_minus : func(operand : val mut?, ctx : source_context mu
 	[val_scalar_get_displacement(out)] = [val_scalar_get_displacement(operand)];
 };
 
+val_from_node_expr_unop_bitwise_invert : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	out->type = operand->type;
+	out->tag = val_tag.scalar;
+	if((ty_integral_size(operand->type) == 0) && (ty_floating_point_size(operand->type) == 0))
+	{
+		err_begin();
+		putzstr("cannot negate non-numeric type \0");
+		putchar('"');
+		putty(operand->type);
+		putchar('"');
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+	val_load_if_pointer(operand, operand);
+	val_scalar_realise_displacement(operand, operand, ctx);
+	ir_not(val_scalar_get_irval(out), val_scalar_get_irval(operand));
+	[val_scalar_get_displacement(out)] = [val_scalar_get_displacement(operand)];
+};
+
+val_from_node_expr_unop_logical_invert : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
+{
+	out->type = operand->type;
+	out->tag = val_tag.scalar;
+	if(ty_is_bool(operand->type) == false)
+	{
+		err_begin();
+		putzstr("cannot logical-invert non-bool type \0");
+		putchar('"');
+		putty(operand->type);
+		putchar('"');
+		err_end();
+	}
+	if(ctx->type_only)
+	{
+		return;
+	}
+	val_load_if_pointer(operand, operand);
+	val_scalar_realise_displacement(operand, operand, ctx);
+	imm1 : irval mut;
+	irval_imm(1, irval_get_sz(val_scalar_get_irval(operand)), ref imm1);
+	ir_xor(val_scalar_get_irval(out), val_scalar_get_irval(operand), ref imm1);
+	[val_scalar_get_displacement(out)] = [val_scalar_get_displacement(operand)];
+};
+
 val_from_node_expr_unop_reference : func(operand : val mut?, ctx : source_context mut?, out : val mut? -> v0)
 {
 	out->type = ty_make_pointer(operand->type, zero);
@@ -1405,21 +1453,7 @@ val_from_node_expr_blkinit : func(ctx : source_context mut?, out : val mut?  -> 
 	{
 		// struct - chunk the type itself (so the chunker knows we are a struct and respects our alignments/offsets etc)
 		abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, val_aggregate_get_chunks(out), ref chunks_count, global_arena);
-		// because we only chunked 1 type (the struct), all the src_idx_begins are 0
-		// let's manually patch them to what they should be
-		for(i = 0; i < members_count; i = i + 1)
-		{
-			off ::= abi_offsetof_struct(abi_tag.psy64, out->type, i);
-			for(j = 0; j < chunks_count; j = j + 1)
-			{
-				curchunk ::= [val_aggregate_get_chunks(out)] # j;
-				if(curchunk->src_byte_offset >= off)
-				{
-					curchunk->src_idx_begin = i;
-					curchunk->src_idx_end = i;
-				}
-			}
-		}
+		abi_calibrate_structure_chunks(abi_tag.psy64, [val_aggregate_get_chunks(out)], chunks_count, out->type);
 	}
 	else
 	{
@@ -1646,10 +1680,13 @@ val_from_node_expr_cast : func(ctx : source_context mut?, out : val mut?  -> v0)
 
 val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 {
+	putchar('A');
 	// check if lhs is a symbol that matches an enum name
 	lhs_node ::= ast_field_get_lhs(ctx->node);
 	rhs_node ::= ast_field_get_rhs(ctx->node);
+	putchar('B');
 	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
+	putchar('C');
 	if(ast_is_expr(lhs_node, ast_expr_tag.symbol) && (is_ptr_field == false))
 	{
 		lhs_as_type ::= ty_find_by_name([ast_symbol_get_data(lhs_node)], [ast_symbol_get_data_len(lhs_node)]);
@@ -1662,18 +1699,22 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			}
 		}
 	}
+	putchar('D');
 	lhs_ctx : source_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs : val mut;
+	putchar('E');
 	val_from_node(ref lhs_ctx, ref lhs);
 
 	// check if the lhs type is kosher
+	putchar('F');
 	lhs_access_type : ty mut := lhs.type;
 	if(is_ptr_field)
 	{
 		lhs_access_type = ty_underlying(lhs.type);
 	}
 
+	putchar('G');
 	if(ty_is_structure(lhs_access_type) == false)
 	{
 		err_begin();
@@ -1692,6 +1733,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 
 	// what about global->foo
 	// well if its a pointer, we need to load it to get the pointer-scalar
+	putchar('H');
 	if(is_ptr_field)
 	{
 		val_load_if_pointer(ref lhs, ref lhs);
@@ -1699,9 +1741,11 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 
 	rhs_sym_node : ast mut? mut;
 	// now the rhs is either a symbol or call. lets get the symbol node
+	putchar('I');
 	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
 	{
 		rhs_sym_node = rhs_node;
+		putchar('J');
 	}
 	else
 	{
@@ -1717,9 +1761,11 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			err_end();
 		}
 	}
+	putchar('K');
 
 	// now find the member associated with the symbol
 	struct_memidx ::= ty_struct_find(lhs_access_type, [ast_symbol_get_data(rhs_sym_node)], [ast_symbol_get_data_len(rhs_sym_node)]);
+	putchar('L');
 	if(struct_memidx == ~0)
 	{
 		err_begin();
@@ -1737,6 +1783,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	}
 
 	// remember we inherit mutness etc from the lhs type
+	putchar('M');
 	out->type = ty_copy_quals(lhs_access_type, ty_at(lhs_access_type, struct_memidx));
 	if(ctx->type_only)
 	{
@@ -1746,24 +1793,37 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	// finally, access lhs using the struct_memidx
 	// lhs can be a few things (note: could be bugs in any of these havent really tested yet)
 	// pointer - add a displacement to it corresponding to struct_memidx
+	putchar('N');
 	if(lhs.tag == val_tag.pointer)
 	{
+		putchar('O');
 		out->tag = val_tag.pointer;
 		[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs)];
+		putchar('P');
 		[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs)] + abi_offsetof_struct(abi_tag.psy64, lhs_access_type, struct_memidx)@s32;
+		putchar('Q');
 		return;
 	}
+	putchar('R');
+	putsint(lhs.tag@s64);
 	i : u64 mut;
 	// aggregate - just grab the relevant values
 	if(lhs.tag == val_tag.aggregate)
 	{
+		putchar('1');
 		chunk_offset_begin : u64 mut := ~0;
 		agg_count ::= [val_aggregate_get_members_count(ref lhs)];
 		agg_vals ::= [val_aggregate_get_members(ref lhs)];
 		agg_chunks ::= [val_aggregate_get_chunks(ref lhs)];
+		putchar('2');
+		putzstr("agg count: \0");
+		putuint(agg_count);
+		putchar('\n');
 		for(i = 0; i < agg_count; i = i + 1)
 		{
 			cur_agg_chunk ::= agg_chunks # i;
+			putsint(cur_agg_chunk->src_idx_begin);
+			putchar('\n');
 			if(cur_agg_chunk->src_idx_begin == struct_memidx)
 			{
 				// this is our chunk
@@ -1771,6 +1831,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 				i = agg_count;
 			}
 		}
+		putchar('3');
 		if(chunk_offset_begin == ~0)
 		{
 			panic_begin();
@@ -1783,9 +1844,11 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			panic_end();
 		}
 		// chunk out the output type and see if we are also going to be an aggregate or a scalar
+		putchar('4');
 		field_chunks : abi_chunk mut? mut;
 		field_chunks_count : u64 mut;
 		abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, ref field_chunks, ref field_chunks_count, global_arena);
+		putchar('5');
 		if(field_chunks_count == 1)
 		{
 			out->tag = val_tag.scalar;
@@ -1794,20 +1857,26 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			return;
 		}
 		// more than 1, so its an aggregate aswell
+		putchar('6');
 		out->tag = val_tag.aggregate;
 		[val_aggregate_get_members_count(out)] = field_chunks_count;
 		[val_aggregate_get_chunks(out)] = field_chunks;
+		putchar('7');
 		// create members ptr and populate them for the output
 		out_agg_members : val mut? := arena_alloc(global_arena, field_chunks_count * sizeof val);
 		[val_aggregate_get_members(out)] = out_agg_members;
+		putchar('8');
 		for(i = 0; i < field_chunks_count; i = i + 1)
 		{
 			// gets a little bit nasty but we're almost there.
 			out_cur_agg_member ::= out_agg_members # i;
 			out_cur_agg_member->type = ty_at(out->type, (field_chunks # i)->src_idx_begin);
 			out_cur_agg_member->tag = val_tag.scalar;
+			putchar('9');
 			[val_scalar_get_irval(out_cur_agg_member)] = [val_scalar_get_irval(agg_vals # (chunk_offset_begin + i))];
+			putsint(10);
 			[val_scalar_get_displacement(out_cur_agg_member)] = 0;
+			putsint(11);
 		}
 		return;
 	}
@@ -2131,9 +2200,11 @@ val_from_node_stmt_for_blk : func(ctx : source_context mut?, out : val mut? -> v
 
 val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0)
 {
+	putchar('a');
 	parent_fnty ::= ctx->parent_fn->type;
 	fn_retty ::= ty_underlying(parent_fnty);
 	ret_node ::= ast_ret_get_expr(ctx->node);
+	putchar('b');
 	if(ret_node == zero)
 	{
 		// the parent fn better not have a return type
@@ -2151,6 +2222,7 @@ val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0
 		ir_ret(zero, zero);
 		return;
 	}
+	putchar('c');
 	if(ty_strip(fn_retty) == ty.v0)
 	{
 		err_begin();
@@ -2158,27 +2230,38 @@ val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0
 		putsrc(ctx->src, ret_node->src_beg@u64, ret_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	putchar('d');
 	ret_ctx : source_context mut := [ctx];
 	ret_ctx.node = ret_node;
 	ret_val : val mut;
 	if(ast_is_expr(ret_node, ast_expr_tag.zero_value))
 	{
 		val_zero_as(fn_retty, ref ret_val);
+		putchar('e');
 	}
 	else
 	{
+		putchar('f');
 		val_from_node(ref ret_ctx, ref ret_val);
+		putchar('g');
 	}
+	putchar('h');
 	val_load_if_pointer(ref ret_val, ref ret_val);
+	putchar('i');
 	val_scalar_realise_displacement(ref ret_val, ref ret_val, ctx);
+	putchar('j');
 	val_conv(ref ret_val, fn_retty, ref ret_val, ref ret_ctx);
+	putchar('k');
 	// ret value is expected to be scalar or agg at this point
 	// just pass it into ir_ret
+	putchar('l');
 	if(ret_val.tag == val_tag.scalar)
 	{
 		ir_ret(val_scalar_get_irval(ref ret_val), 1);
+		putchar('m');
 		return;
 	}
+	putchar('n');
 	agg_ret_irvals : irval mut? := arena_alloc(global_arena, aggcount * sizeof irval);
 	aggcount ::= [val_aggregate_get_members_count(ref ret_val)];
 	aggvals ::= [val_aggregate_get_members(ref ret_val)];
@@ -2448,8 +2531,8 @@ val_from_node_expr_literal_tbl ::= typeof(val_from_node)[countof ast_literal_tag
 val_from_node_expr_unop_tbl ::= typeof(val_from_node_expr_unop_nyi)[countof ast_unop_tag]
 {
 	.0 := val_from_node_expr_unop_minus;
-	.1 := val_from_node_expr_unop_nyi;
-	.2 := val_from_node_expr_unop_nyi;
+	.1 := val_from_node_expr_unop_bitwise_invert;
+	.2 := val_from_node_expr_unop_logical_invert;
 	.3 := val_from_node_expr_unop_reference;
 };
 

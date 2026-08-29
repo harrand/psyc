@@ -142,6 +142,7 @@ codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 	sz : irsz mut;
 	i : u64 mut;
 	j : u64 mut;
+	j : u64 mut;
 
 	params_count ::= ty_countof(fn->type);
 	param_nodes ::= ast_typename_function_get_param_decls(fn_typename_node);
@@ -152,7 +153,8 @@ codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 		// calculate abi chunks again but only for this particular parameter
 		chunks_for_this_param : abi_chunk mut? mut := zero;
 		chunks_for_this_param_count : u64 mut := 0;
-		abi_chunk_tys(fn->abi, fnty->members # i, 1, ref chunks_for_this_param, ref chunks_for_this_param_count, scratch_arena);
+		abi_chunk_tys(fn->abi, fnty->members # i, 1, ref chunks_for_this_param, ref chunks_for_this_param_count, global_arena);
+		abi_calibrate_structure_chunks(fn->abi, chunks_for_this_param, chunks_for_this_param_count, [fnty->members # i]);
 		if(chunks_for_this_param_count == 0)
 		{
 			// this param yielded zero chunks
@@ -197,6 +199,7 @@ codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 			// aggregate
 			param_storage->tag = val_tag.aggregate;
 			[val_aggregate_get_members_count(param_storage)] = chunks_for_this_param_count;
+			[val_aggregate_get_chunks(param_storage)] = chunks_for_this_param;
 			members_ptr : val mut? := arena_alloc(global_arena, chunks_for_this_param_count * sizeof val);
 			[val_aggregate_get_members(param_storage)] = members_ptr;
 			for(j = 0; j < chunks_for_this_param_count; j = j + 1)

@@ -112,6 +112,33 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 	}
 };
 
+abi_calibrate_structure_chunks_psy64 : func(chunks : abi_chunk mut?, chunks_count : u64, struct_type : ty -> v0)
+{
+	// given a list of chunks whose src_idx_begin and src_idx_end are 'not correct' in some way
+	// and a structure type that was used to generate those chunks
+	// patch up their src_idx_begin/src_idx_end to correspond to the *members* of the struct
+	if(ty_is_structure(struct_type) == false)
+	{
+		return;
+	}
+	i : u64 mut;
+	j : u64 mut;
+	count ::= ty_countof(struct_type);
+	for(i = 0; i < count; i = i + 1)
+	{
+		off ::= abi_offsetof_struct_psy64(struct_type, i);
+		for(j = 0; j < chunks_count; j = j + 1)
+		{
+			curchunk ::= chunks # j;
+			if(curchunk->src_byte_offset >= off)
+			{
+				curchunk->src_idx_begin = i;
+				curchunk->src_idx_end = i;
+			}
+		}
+	}
+};
+
 abi_sizeof_psy64 : func(type : ty -> u64)
 {
 	if(ty_is_v0(type))
