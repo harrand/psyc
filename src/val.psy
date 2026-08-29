@@ -455,7 +455,23 @@ val_from_node_expr_biop : func(ctx : source_context mut?, out : val mut? -> v0)
 	rhs_ctx : source_context mut := [ctx];
 	rhs_ctx.node = rhs_node;
 	rhs_val : val mut;
-	val_from_node(ref rhs_ctx, ref rhs_val);
+	if(ast_is_expr(rhs_node, ast_expr_tag.zero_value))
+	{
+		// special-case for biop.at
+		if([ast_biop_get_tag(ctx->node)] == ast_biop_tag.at)
+		{
+			val_zero_as(ty.s64, ref rhs_val);
+		}
+		else
+		{
+			// otherwise is zero@lhs.type
+			val_zero_as(lhs_val.type, ref rhs_val);
+		}
+	}
+	else
+	{
+		val_from_node(ref rhs_ctx, ref rhs_val);
+	}
 	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(ctx->node)]@s64](lhs_node, rhs_node, ref lhs_val, ref rhs_val, ctx, out);
 };
 
