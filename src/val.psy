@@ -2061,6 +2061,65 @@ val_from_node_stmt_while_blk : func(ctx : source_context mut?, out : val mut? ->
 	ir_position_end_of_blk(cont_blk->idx);
 };
 
+val_from_node_stmt_for_blk : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	init_node ::= ast_for_get_initialiser_expression(ctx->node);
+	cond_node ::= ast_for_get_condition_expression(ctx->node);
+	iter_node ::= ast_for_get_iterate_expression(ctx->node);
+	body ::= ast_for_get_body(ctx->node);
+	body_count : u32 mut := ast_for_get_body_count(ctx->node);
+
+	init_ctx : source_context mut := [ctx];
+	init_ctx.node = init_node;
+	dummy : val mut;
+	val_from_node(ref init_ctx, ref dummy);
+
+	cond_ctx : source_context mut := [ctx];
+	cond_ctx.node = cond_node;
+	cond_val : val mut;
+	val_from_node(ref cond_ctx, ref cond_val);
+	val_load_if_pointer(ref cond_val, ref cond_val);
+	val_conv(ref cond_val, ty.bool, ref cond_val, ref cond_ctx);
+	val_scalar_realise_displacement(ref cond_val, ref cond_val, ref cond_ctx);
+
+	iter_ctx : source_context mut := [ctx];
+	iter_ctx.node = iter_node;
+
+	cur_blk ::= ir_current_blk();
+
+	// add new blocks
+	true_blkref : irval mut;
+	true_blk ::= ir_add_blk(ref true_blkref);
+	cont_blkref : irval mut;
+	cont_blk ::= ir_add_blk(ref cont_blkref);
+
+	// go back to previous blk
+	ir_position_end_of_blk(cur_blk->idx);
+	ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
+
+	// true blk: do everything inside the body
+	ir_position_end_of_blk(true_blk->idx);
+
+	true_ctx : source_context mut := [ctx];
+	true_ctx.node = zero;
+	true_off ::= ast_for_get_offset_to_body(ctx->node);
+	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
+	// and then the cond if there is one
+	if(irblk_has_terminator(true_blk) == false)
+	{
+		// do the iter
+		val_from_node(ref iter_ctx, ref dummy);
+		// and the cond again
+		val_from_node(ref cond_ctx, ref cond_val);
+		val_load_if_pointer(ref cond_val, ref cond_val);
+		val_conv(ref cond_val, ty.bool, ref cond_val, ref cond_ctx);
+		val_scalar_realise_displacement(ref cond_val, ref cond_val, ref cond_ctx);
+		ir_jmpif(val_scalar_get_irval(ref cond_val), true_blk->idx, cont_blk->idx);
+	}
+
+	// cont_blk is where we continue on from...
+	ir_position_end_of_blk(cont_blk->idx);
+};
 
 val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0)
 {
@@ -2415,8 +2474,7 @@ val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 	.7 := val_from_node_stmt_if_blk;
 	.8 := val_from_node_stmt_nyi;
 	.9 := val_from_node_stmt_while_blk;
-	//.10 := val_from_node_stmt_for_blk;
-	.10 := val_from_node_stmt_nyi;
+	.10 := val_from_node_stmt_for_blk;
 	.11 := val_from_node_stmt_return;
 	.12 := val_from_node_stmt_unreachable;
 	.13 := val_from_node_stmt_nyi;
