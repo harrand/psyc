@@ -363,6 +363,90 @@ ir_trunc_get_operand : func(inst : irinst mut? -> irval mut?)
 	return inst->operands # 1;
 };
 
+ir_cvtf : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.cvtf;
+
+	// catch incase out and operand alias (and we overwrite our own operand)
+	opcpy ::= [operand];
+	if(operand->tag == irval_tag.imm)
+	{
+		// if its an imm then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_sz(out)] = sz;
+		if(sz == irsz.b)
+		{
+			[irval_imm_get_floating_point(out)] = ([irval_imm_get_integer(out)] & 0xff)@f64;
+		}
+		if(sz == irsz.w)
+		{
+			[irval_imm_get_floating_point(out)] = ([irval_imm_get_integer(out)] & 0xffff)@f64;
+		}
+		if(sz == irsz.d)
+		{
+			[irval_imm_get_floating_point(out)] = ([irval_imm_get_integer(out)] & 0xffffffff)@f64;
+		}
+		if(sz == irsz.q)
+		{
+			[irval_imm_get_floating_point(out)] = ([irval_imm_get_integer(out)] & 0xffffffffffffffff)@f64;
+		}
+		return;
+	}
+	ir_new_reg_of(sz, out);
+	irinst_add_operand(ref inst, out);
+	irinst_add_operand(ref inst, ref opcpy);
+	ir_add_instruction(ref inst);
+};
+
+ir_cvtf_get_out : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_cvtf_get_operand : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 1;
+};
+
+ir_cvti : func(out : irval mut?, sz : irsz, operand : irval mut? -> v0)
+{
+	inst : irinst mut := zero;
+	inst.tag = irinst_tag.cvti;
+
+	// catch incase out and operand alias (and we overwrite our own operand)
+	opcpy ::= [operand];
+	if(operand->tag == irval_tag.imm)
+	{
+		// if its an imm then we really dont need to emit an instruction
+		[out] = opcpy;
+		[irval_imm_get_sz(out)] = sz;
+		if(sz == irsz.f)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_floating_point(out)]@s64 & 0xffffffff;
+		}
+		if(sz == irsz.g)
+		{
+			[irval_imm_get_integer(out)] = [irval_imm_get_floating_point(out)]@s64 & 0xffffffffffffffff;
+		}
+		return;
+	}
+	ir_new_reg_of(sz, out);
+	irinst_add_operand(ref inst, out);
+	irinst_add_operand(ref inst, ref opcpy);
+	ir_add_instruction(ref inst);
+};
+
+ir_cvti_get_out : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 0;
+};
+
+ir_cvti_get_operand : func(inst : irinst mut? -> irval mut?)
+{
+	return inst->operands # 1;
+};
+
 ir_add : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 {
 	inst : irinst mut := zero;
