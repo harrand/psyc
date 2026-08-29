@@ -1698,6 +1698,39 @@ val_from_node_stmt_nyi : func(ctx : source_context mut?, out : val mut? -> v0)
 	panic_end();
 };
 
+val_from_node_stmt_decl : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	init_node ::= ast_decl_maybe_get_init_node(ctx->node);
+	if(init_node == zero)
+	{
+		return;
+	}
+	name ::= [ast_decl_get_name(ctx->node)];
+	name_len ::= [ast_decl_get_name_len(ctx->node)];
+	var : variable_t mut? mut := scope_find_variable(ref(ctx->parent_fn->scope), name, name_len);
+	if(var == zero)
+	{
+		var = prog_find_global_variable(name, name_len);
+	}
+	if(var == zero)
+	{
+		panic_begin();
+		putzstr("could not locate internal variable_t for decl named \0");
+		putchar('"');
+		putchars(name, name_len);
+		putchar('"');
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
+	}
+
+	init_ctx : source_context mut := [ctx];
+	init_ctx.node = init_node;
+	init_val : val mut;
+	val_from_node(ref init_ctx, ref init_val);
+	val_store_generic(ref(var->storage), ref init_val, ref init_ctx);
+};
+
 val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0)
 {
 	cond_node ::= ast_if_get_condition_expression(ctx->node);
@@ -2108,8 +2141,7 @@ val_from_node_expr_biop_tbl ::= typeof(val_from_node_expr_biop_nyi)[countof ast_
 val_from_node_stmt_tbl ::= typeof(val_from_node)[countof ast_expr_tag]
 {
 	.0 := val_from_node_expr;
-	//.1 := val_from_node_stmt_decl;
-	.1 := val_from_node_stmt_nyi;
+	.1 := val_from_node_stmt_decl;
 	.2 := val_from_node_stmt_nyi;
 	.3 := val_from_node_stmt_nyi;
 	.4 := val_from_node_stmt_nyi;
