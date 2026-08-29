@@ -1827,14 +1827,9 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 		agg_count ::= [val_aggregate_get_members_count(ref lhs)];
 		agg_vals ::= [val_aggregate_get_members(ref lhs)];
 		agg_chunks ::= [val_aggregate_get_chunks(ref lhs)];
-		putzstr("agg count: \0");
-		putuint(agg_count);
-		putchar('\n');
 		for(i = 0; i < agg_count; i = i + 1)
 		{
 			cur_agg_chunk ::= agg_chunks # i;
-			putsint(cur_agg_chunk->src_idx_begin);
-			putchar('\n');
 			if(cur_agg_chunk->src_idx_begin == struct_memidx)
 			{
 				// this is our chunk
@@ -2209,11 +2204,9 @@ val_from_node_stmt_for_blk : func(ctx : source_context mut?, out : val mut? -> v
 
 val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0)
 {
-	putchar('a');
 	parent_fnty ::= ctx->parent_fn->type;
 	fn_retty ::= ty_underlying(parent_fnty);
 	ret_node ::= ast_ret_get_expr(ctx->node);
-	putchar('b');
 	if(ret_node == zero)
 	{
 		// the parent fn better not have a return type
@@ -2231,7 +2224,6 @@ val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0
 		ir_ret(zero, zero);
 		return;
 	}
-	putchar('c');
 	if(ty_strip(fn_retty) == ty.v0)
 	{
 		err_begin();
@@ -2239,40 +2231,29 @@ val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0
 		putsrc(ctx->src, ret_node->src_beg@u64, ret_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	putchar('d');
 	ret_ctx : source_context mut := [ctx];
 	ret_ctx.node = ret_node;
 	ret_val : val mut;
 	if(ast_is_expr(ret_node, ast_expr_tag.zero_value))
 	{
 		val_zero_as(fn_retty, ref ret_val);
-		putchar('e');
 	}
 	else
 	{
-		putchar('f');
 		val_from_node(ref ret_ctx, ref ret_val);
-		putchar('g');
 	}
-	putchar('h');
 	val_load_if_pointer(ref ret_val, ref ret_val);
-	putchar('i');
 	val_scalar_realise_displacement(ref ret_val, ref ret_val, ctx);
-	putchar('j');
 	val_conv(ref ret_val, fn_retty, ref ret_val, ref ret_ctx);
-	putchar('k');
 	// ret value is expected to be scalar or agg at this point
 	// just pass it into ir_ret
-	putchar('l');
 	if(ret_val.tag == val_tag.scalar)
 	{
 		ir_ret(val_scalar_get_irval(ref ret_val), 1);
-		putchar('m');
 		return;
 	}
-	putchar('n');
-	agg_ret_irvals : irval mut? := arena_alloc(global_arena, aggcount * sizeof irval);
 	aggcount ::= [val_aggregate_get_members_count(ref ret_val)];
+	agg_ret_irvals : irval mut? := arena_alloc(global_arena, aggcount * sizeof irval);
 	aggvals ::= [val_aggregate_get_members(ref ret_val)];
 	i : u64 mut;
 	for(i = 0; i < aggcount; i = i + 1)
