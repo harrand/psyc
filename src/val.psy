@@ -1711,13 +1711,10 @@ val_from_node_expr_cast : func(ctx : source_context mut?, out : val mut?  -> v0)
 
 val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 {
-	putchar('A');
 	// check if lhs is a symbol that matches an enum name
 	lhs_node ::= ast_field_get_lhs(ctx->node);
 	rhs_node ::= ast_field_get_rhs(ctx->node);
-	putchar('B');
 	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
-	putchar('C');
 	if(ast_is_expr(lhs_node, ast_expr_tag.symbol) && (is_ptr_field == false))
 	{
 		lhs_as_type ::= ty_find_by_name([ast_symbol_get_data(lhs_node)], [ast_symbol_get_data_len(lhs_node)]);
@@ -1730,22 +1727,18 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			}
 		}
 	}
-	putchar('D');
 	lhs_ctx : source_context mut := [ctx];
 	lhs_ctx.node = lhs_node;
 	lhs : val mut;
-	putchar('E');
 	val_from_node(ref lhs_ctx, ref lhs);
 
 	// check if the lhs type is kosher
-	putchar('F');
 	lhs_access_type : ty mut := lhs.type;
 	if(is_ptr_field)
 	{
 		lhs_access_type = ty_underlying(lhs.type);
 	}
 
-	putchar('G');
 	if(ty_is_structure(lhs_access_type) == false)
 	{
 		err_begin();
@@ -1764,7 +1757,6 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 
 	// what about global->foo
 	// well if its a pointer, we need to load it to get the pointer-scalar
-	putchar('H');
 	if(is_ptr_field)
 	{
 		val_load_if_pointer(ref lhs, ref lhs);
@@ -1772,11 +1764,9 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 
 	rhs_sym_node : ast mut? mut;
 	// now the rhs is either a symbol or call. lets get the symbol node
-	putchar('I');
 	if(ast_is_expr(rhs_node, ast_expr_tag.symbol))
 	{
 		rhs_sym_node = rhs_node;
-		putchar('J');
 	}
 	else
 	{
@@ -1792,11 +1782,9 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			err_end();
 		}
 	}
-	putchar('K');
 
 	// now find the member associated with the symbol
 	struct_memidx ::= ty_struct_find(lhs_access_type, [ast_symbol_get_data(rhs_sym_node)], [ast_symbol_get_data_len(rhs_sym_node)]);
-	putchar('L');
 	if(struct_memidx == ~0)
 	{
 		err_begin();
@@ -1814,7 +1802,6 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	}
 
 	// remember we inherit mutness etc from the lhs type
-	putchar('M');
 	out->type = ty_copy_quals(lhs_access_type, ty_at(lhs_access_type, struct_memidx));
 	if(ctx->type_only)
 	{
@@ -1824,29 +1811,22 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	// finally, access lhs using the struct_memidx
 	// lhs can be a few things (note: could be bugs in any of these havent really tested yet)
 	// pointer - add a displacement to it corresponding to struct_memidx
-	putchar('N');
 	if(lhs.tag == val_tag.pointer)
 	{
-		putchar('O');
 		out->tag = val_tag.pointer;
 		[val_pointer_get_irval(out)] = [val_pointer_get_irval(ref lhs)];
-		putchar('P');
 		[val_pointer_get_displacement(out)] = [val_pointer_get_displacement(ref lhs)] + abi_offsetof_struct(abi_tag.psy64, lhs_access_type, struct_memidx)@s32;
-		putchar('Q');
 		return;
 	}
-	putchar('R');
 	putsint(lhs.tag@s64);
 	i : u64 mut;
 	// aggregate - just grab the relevant values
 	if(lhs.tag == val_tag.aggregate)
 	{
-		putchar('1');
 		chunk_offset_begin : u64 mut := ~0;
 		agg_count ::= [val_aggregate_get_members_count(ref lhs)];
 		agg_vals ::= [val_aggregate_get_members(ref lhs)];
 		agg_chunks ::= [val_aggregate_get_chunks(ref lhs)];
-		putchar('2');
 		putzstr("agg count: \0");
 		putuint(agg_count);
 		putchar('\n');
@@ -1862,7 +1842,6 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 				i = agg_count;
 			}
 		}
-		putchar('3');
 		if(chunk_offset_begin == ~0)
 		{
 			panic_begin();
@@ -1875,11 +1854,9 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			panic_end();
 		}
 		// chunk out the output type and see if we are also going to be an aggregate or a scalar
-		putchar('4');
 		field_chunks : abi_chunk mut? mut;
 		field_chunks_count : u64 mut;
 		abi_chunk_tys(abi_tag.psy64, ref(out->type), 1, ref field_chunks, ref field_chunks_count, global_arena);
-		putchar('5');
 		if(field_chunks_count == 1)
 		{
 			out->tag = val_tag.scalar;
@@ -1888,26 +1865,20 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			return;
 		}
 		// more than 1, so its an aggregate aswell
-		putchar('6');
 		out->tag = val_tag.aggregate;
 		[val_aggregate_get_members_count(out)] = field_chunks_count;
 		[val_aggregate_get_chunks(out)] = field_chunks;
-		putchar('7');
 		// create members ptr and populate them for the output
 		out_agg_members : val mut? := arena_alloc(global_arena, field_chunks_count * sizeof val);
 		[val_aggregate_get_members(out)] = out_agg_members;
-		putchar('8');
 		for(i = 0; i < field_chunks_count; i = i + 1)
 		{
 			// gets a little bit nasty but we're almost there.
 			out_cur_agg_member ::= out_agg_members # i;
 			out_cur_agg_member->type = ty_at(out->type, (field_chunks # i)->src_idx_begin);
 			out_cur_agg_member->tag = val_tag.scalar;
-			putchar('9');
 			[val_scalar_get_irval(out_cur_agg_member)] = [val_scalar_get_irval(agg_vals # (chunk_offset_begin + i))];
-			putsint(10);
 			[val_scalar_get_displacement(out_cur_agg_member)] = 0;
-			putsint(11);
 		}
 		return;
 	}
