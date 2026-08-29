@@ -93,17 +93,17 @@ ty_strip : func(in : ty -> ty)
 
 ty_is_mut : func(t : ty -> bool)
 {
-	return t & ty.qual_mut != 0;
+	return t & ty.qual_mut != zero;
 };
 
 ty_is_weak : func(t : ty -> bool)
 {
-	return t & ty.qual_weak != 0;
+	return t & ty.qual_weak != zero;
 };
 
 ty_is_static : func(t : ty -> bool)
 {
-	return t & ty.qual_static != 0;
+	return t & ty.qual_static != zero;
 };
 
 ty_eq : func(lhs : ty, rhs : ty -> bool)
@@ -1007,11 +1007,20 @@ ty_of_arithmetic_base : func(lhs : ty, rhs : ty -> ty)
 		// same size same signedness. prefer lhs
 		return ty_strip_static_unless(lhs, both_are_static);
 	}
+	// enum and s64 comparison (either way) => enum
+	if(ty_is_enumeration(lhs) && (ty_strip(rhs) == ty.s64))
+	{
+		return lhs;
+	}
+	if((ty_strip(lhs) == ty.s64) && ty_is_enumeration(rhs))
+	{
+		return rhs;
+	}
 	if(ty_strip(lhs) == ty_strip(rhs))
 	{
 		return ty_strip(lhs);
 	}
-	return zero;
+	return ty.invalid;
 };
 
 ty_of_bitwise : func(lhs : ty, rhs : ty -> ty)
