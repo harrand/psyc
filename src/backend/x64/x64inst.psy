@@ -103,7 +103,7 @@ x64inst : struct
 x64inst_operands_count : func(inst : x64inst mut? -> u64)
 {
 	i : u64 mut;
-	for(i = 0; i < sizeof typeof(inst->operands); i = i + 1)
+	for(i = 0; i < countof typeof(inst->operands); i = i + 1)
 	{
 		if(!x64val_is_valid(inst->operands # i))
 		{
@@ -111,6 +111,25 @@ x64inst_operands_count : func(inst : x64inst mut? -> u64)
 		}
 	}
 	return i;
+};
+
+x64inst_add_operand : func(inst : x64inst mut?, op : x64val mut? -> u64)
+{
+	idx ::= x64inst_operands_count(inst);
+	if(idx == countof typeof(inst->operands))
+	{
+		panic_begin();
+		putzstr("attempt to add another operand to instruction \0");
+		putchar('"');
+		x64inst_dump(inst);
+		putchar('"');
+		putzstr(" but it already has the maximum allowed number of operands (\0");
+		putuint(countof typeof(inst->operands));
+		putzstr(")\0");
+		panic_end();
+	}
+	[inst->operands # idx] = [op];
+	return idx;
 };
 
 x64inst_is_any_custom : func(inst : x64inst mut? -> bool)
