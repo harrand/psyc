@@ -1,5 +1,11 @@
+// ======================
+// ir -> x64 lowering top
+// ======================
 ir_lower_x64 : func(-> v0)
 {
+	// install custom handlers
+	x64val_custom_dump_to_handler = ir_lower_x64val_custom_dump_to;
+
 	i : u64 mut;
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
@@ -29,6 +35,10 @@ ir_lower_x64 : func(-> v0)
 		}
 	}
 };
+
+// ==========================
+// irfunc + irblks -> x64func lowering
+// ==========================
 
 ir_lower_prolog_x64 : func(-> v0)
 {
@@ -71,6 +81,10 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 	}
 	x64_ret();
 };
+
+// ==========================
+// irinst -> x64inst lowering
+// ==========================
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
@@ -141,6 +155,54 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.48 := irinst_lower_x64_nyi;
 	.49 := irinst_lower_x64_nyi;
 	.50 := irinst_lower_x64_nyi;
+};
+
+// ========================
+// irval -> x64val lowering
+// ========================
+
+// custom x64val begin
+ir_lower_x64val_tag : enum
+{
+	.vreg := 0; // irval_tag.reg (but stored in an x64val)
+	.vmemreg := 1; // x64val_tag.memreg, but the base/index registers are irval_tag.regs
+	.irblk := 2; // irval_tag.blkref (but stored in an x64val)
+};
+
+// x64val_dump_to handler for custom x64val tags (i.e irvals that have been converted to x64val_tag but are in some non-encodeable, intermediate state.
+ir_lower_x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx ::= v->tag@s64 - tagbase@s64;
+	[ir_lower_x64val_custom_dump_to_tbl # idx](w, v);
+};
+
+ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? -> v0)[countof ir_lower_x64val_tag]
+{
+	.0 := ir_lower_x64val_custom_dump_to_vreg;
+	.1 := ir_lower_x64val_custom_dump_to_vmemreg;
+	.2 := ir_lower_x64val_custom_dump_to_irblk;
+};
+
+ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: impl ir_lower_x64val_custom_dump_to_vreg\n\0");
+	panic_end();
+};
+
+ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: impl ir_lower_x64val_custom_dump_to_vmemreg\n\0");
+	panic_end();
+};
+
+ir_lower_x64val_custom_dump_to_irblk : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	panic_begin();
+	putzstr("todo: impl ir_lower_x64val_custom_dump_to_irblk\n\0");
+	panic_end();
 };
 
 irval_lower_x64_imm_policy : enum
