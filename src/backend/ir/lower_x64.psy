@@ -1,0 +1,40 @@
+ir_lower_x64 : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		irfunc_lower_x64(irapi.prog.funcs # i);
+	}
+	// todo: lower irapi.prog to x64api.prog
+	if(args_should_dump_asm())
+	{
+		if(args_has_asmdump_specific())
+		{
+			dump_fn ::= prog_find_function(args.asm_dump_specific.data, args.asm_dump_specific.len); 
+			if(dump_fn == zero)
+			{
+				err_begin();
+				putzstr("requested to dump-asm for function \0");
+				putchar('"');
+				putchars(args.asm_dump_specific.data, args.asm_dump_specific.len);
+				putchar('"');
+				putzstr(" but no function exists with this name\0");
+				err_end();
+			}
+			x64func_dump(x64api.prog.funcs # dump_fn->irfunc_idx);
+		}
+		else
+		{
+			x64prog_dump(ref(x64api.prog));
+		}
+	}
+};
+
+irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
+{
+	dummy : x64val mut;
+	fnx64 ::= x64_add_func(ref dummy);
+	fnx64->custom_name = fn->custom_name;
+	fnx64->custom_name_len = fn->custom_name_len;
+	x64_ret();
+};
