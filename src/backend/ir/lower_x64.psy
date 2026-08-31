@@ -104,17 +104,22 @@ irinst_lower_x64_nyi : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 
 irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
+	outx64 : x64val mut;
+	irval_lower_x64(ir_stack_get_out(inst), ref outx64);
 	sizex64 : x64val mut;
 	irval_lower_x64(ir_stack_get_size(inst), ref sizex64);
-
 	alignx64 : x64val mut;
 	irval_lower_x64(ir_stack_get_align(inst), ref alignx64);
 
-	outx64 : x64val mut;
-	irval_lower_x64(ir_stack_get_out(inst), ref outx64);
+	rsp : x64val mut;
+	rsp.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
+	[x64val_reg_get_size(ref rsp)] = 64;
 
 	// todo: care about align?
-	x64_mov(ref outx64, ref sizex64);
+	x64_sub(ref rsp, ref sizex64);
+
+	x64_mov(ref outx64, ref rsp);
 };
 
 irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)[countof irinst_tag]
@@ -230,6 +235,36 @@ x64val_vreg_get_sz : func(v : x64val mut? -> irsz mut?)
 x64val_vreg_get_idx : func(v : x64val mut? -> u64 mut?)
 {
 	return ref(v->v1);
+};
+
+x64val_vmemreg_get_base_sz : func(v : x64val mut? -> irsz mut?)
+{
+	return ref(v->r1)@irsz mut?;
+};
+
+x64val_vmemreg_get_base_idx : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v1);
+};
+
+x64val_vmemreg_get_index_sz : func(v : x64val mut? -> irsz mut?)
+{
+	return ref(v->r1)@irsz mut?;
+};
+
+x64val_vmemreg_get_index_idx : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v2);
+};
+
+x64val_vmemreg_get_scale : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v3);
+};
+
+x64val_vmemreg_get_displacement : func(v : x64val mut? -> s32 mut?)
+{
+	return ref(v->v4)@s32 mut?;
 };
 
 irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
