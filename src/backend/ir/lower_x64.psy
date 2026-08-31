@@ -205,16 +205,63 @@ ir_lower_x64val_custom_dump_to_irblk : func(w : bwriter mut?, v : x64val mut? ->
 	panic_end();
 };
 
-irval_lower_x64_imm_policy : enum
+x64val_vreg_get_sz : func(v : x64val mut? -> irsz mut?)
 {
-	.as_is := 0;
-	.imm64s_to_globals := 1;
-	.all_imms_to_globals := 2;
+	return ref(v->r1)@irsz mut?;
 };
 
-irval_lower_x64 : func(v : irval mut?, out : x64val mut?, imm_policy : irval_lower_x64_imm_policy -> v0)
+x64val_vreg_get_idx : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v1);
+};
+
+irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	[irval_lower_x64_tbl # (v->tag@s64)](v, out);
+};
+
+irval_lower_x64_invalid : func(v : irval mut?, out : x64val mut? -> v0)
 {
 	panic_begin();
-	putzstr("irval_lower_x64 NYI\n\0");
+	putzstr("irval_lower_x64_invalid for irval_tag.\0");
+	putsint(v->tag@s64);
 	panic_end();
+};
+
+irval_lower_x64_imm : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	sz ::= [irval_imm_get_sz(v)];
+
+	out->tag = x64val_tag.imm;
+	[x64val_imm_get_size(out)] = [irsz_sizes # (irval_get_sz(v)@s64)] * 8;
+	if((sz == irsz.f) || (sz == irsz.g))
+	{
+		[x64val_imm_get_value(out)@f64 mut?] = [irval_imm_get_floating_point(v)];
+	}
+	else
+	{
+		[x64val_imm_get_value(out)] = [irval_imm_get_integer(v)]@u64;
+	}
+};
+
+irval_lower_x64_reg : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	sz ::= [irval_imm_get_sz(v)];
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vreg;
+
+	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	[x64val_vreg_get_sz(out)] = [irval_reg_get_sz(v)];
+	[x64val_vreg_get_idx(out)] = [irval_reg_get_idx(v)];
+};
+
+irval_lower_x64_tbl ::= func(v : irval mut?, out : x64val mut? -> v0)[countof irval_tag]
+{
+	.0 := irval_lower_x64_invalid;
+	.1 := irval_lower_x64_imm;
+	.2 := irval_lower_x64_reg;
+	.3 := irval_lower_x64_invalid;
+	.4 := irval_lower_x64_invalid;
+	.5 := irval_lower_x64_invalid;
+	.6 := irval_lower_x64_invalid;
 };
