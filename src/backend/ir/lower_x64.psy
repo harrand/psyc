@@ -102,9 +102,24 @@ irinst_lower_x64_nyi : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	//warn_end();
 };
 
+irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	sizex64 : x64val mut;
+	irval_lower_x64(ir_stack_get_size(inst), ref sizex64);
+
+	alignx64 : x64val mut;
+	irval_lower_x64(ir_stack_get_align(inst), ref alignx64);
+
+	outx64 : x64val mut;
+	irval_lower_x64(ir_stack_get_out(inst), ref outx64);
+
+	// todo: care about align?
+	x64_mov(ref outx64, ref sizex64);
+};
+
 irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)[countof irinst_tag]
 {
-	.0 := irinst_lower_x64_nyi;
+	.0 := irinst_lower_x64_stack;
 	.1 := irinst_lower_x64_nyi;
 	.2 := irinst_lower_x64_nyi;
 	.3 := irinst_lower_x64_nyi;
@@ -172,9 +187,11 @@ ir_lower_x64val_tag : enum
 // x64val_dump_to handler for custom x64val tags (i.e irvals that have been converted to x64val_tag but are in some non-encodeable, intermediate state.
 ir_lower_x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
+	bwrite_colour_blue(w);
 	tagbase : x64val_tag := x64val_tag.custom;
 	idx ::= v->tag@s64 - tagbase@s64;
 	[ir_lower_x64val_custom_dump_to_tbl # idx](w, v);
+	bwrite_colour_reset(w);
 };
 
 ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? -> v0)[countof ir_lower_x64val_tag]
@@ -186,9 +203,9 @@ ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? ->
 
 ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	panic_begin();
-	putzstr("todo: impl ir_lower_x64val_custom_dump_to_vreg\n\0");
-	panic_end();
+	bwrite8(w, '%');
+	bwrite_zstr(w, [irsz_names # [x64val_vreg_get_sz(v)]@s64]);
+	bwrite_uint(w, [x64val_vreg_get_idx(v)]);
 };
 
 ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? -> v0)
