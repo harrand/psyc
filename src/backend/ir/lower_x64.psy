@@ -122,6 +122,37 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	x64_mov(ref outx64, ref rsp);
 };
 
+irinst_lower_x64_jmp : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	locx64 : x64val mut;
+	irval_lower_x64(ir_jmp_get_loc(inst), ref locx64);
+	x64_jmp(ref locx64);
+};
+
+irinst_lower_x64_jmpif : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	condx64 : x64val mut;
+	irval_lower_x64(ir_jmpif_get_cond(inst), ref condx64);
+	truex64 : x64val mut;
+	irval_lower_x64(ir_jmpif_get_true_loc(inst), ref truex64);
+	falsex64 : x64val mut;
+	irval_lower_x64(ir_jmpif_get_false_loc(inst), ref falsex64);
+
+	x64_test(ref condx64, ref condx64);
+	x64_jnz(ref truex64);
+	x64_jmp(ref falsex64);
+};
+
+irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	x64_int3();
+};
+
+irinst_lower_x64_unreach : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	x64_int3();
+};
+
 irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)[countof irinst_tag]
 {
 	.0 := irinst_lower_x64_stack;
@@ -130,8 +161,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.3 := irinst_lower_x64_nyi;
 	.4 := irinst_lower_x64_nyi;
 	.5 := irinst_lower_x64_nyi;
-	.6 := irinst_lower_x64_nyi;
-	.7 := irinst_lower_x64_nyi;
+	.6 := irinst_lower_x64_jmp;
+	.7 := irinst_lower_x64_jmpif;
 	.8 := irinst_lower_x64_nyi;
 	.9 := irinst_lower_x64_nyi;
 	.10 := irinst_lower_x64_nyi;
@@ -173,8 +204,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.46 := irinst_lower_x64_nyi;
 	.47 := irinst_lower_x64_nyi;
 	.48 := irinst_lower_x64_nyi;
-	.49 := irinst_lower_x64_nyi;
-	.50 := irinst_lower_x64_nyi;
+	.49 := irinst_lower_x64_brk;
+	.50 := irinst_lower_x64_unreach;
 };
 
 // ========================
