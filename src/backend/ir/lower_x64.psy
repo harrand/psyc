@@ -217,7 +217,7 @@ ir_lower_x64val_tag : enum
 {
 	.vreg := 0; // irval_tag.reg (but stored in an x64val)
 	.vmemreg := 1; // x64val_tag.memreg, but the base/index registers are irval_tag.regs
-	.irblk := 2; // irval_tag.blkref (but stored in an x64val)
+	.irblkref := 2; // irval_tag.blkref (but stored in an x64val)
 };
 
 // x64val_dump_to handler for custom x64val tags (i.e irvals that have been converted to x64val_tag but are in some non-encodeable, intermediate state.
@@ -234,7 +234,7 @@ ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? ->
 {
 	.0 := ir_lower_x64val_custom_dump_to_vreg;
 	.1 := ir_lower_x64val_custom_dump_to_vmemreg;
-	.2 := ir_lower_x64val_custom_dump_to_irblk;
+	.2 := ir_lower_x64val_custom_dump_to_irblkref;
 };
 
 ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> v0)
@@ -251,11 +251,10 @@ ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? 
 	panic_end();
 };
 
-ir_lower_x64val_custom_dump_to_irblk : func(w : bwriter mut?, v : x64val mut? -> v0)
+ir_lower_x64val_custom_dump_to_irblkref : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	panic_begin();
-	putzstr("todo: impl ir_lower_x64val_custom_dump_to_irblk\n\0");
-	panic_end();
+	bwrite8(w, '_');
+	bwrite_uint(w, [x64val_irblkref_get_idx(v)]);
 };
 
 x64val_vreg_get_sz : func(v : x64val mut? -> irsz mut?)
@@ -298,6 +297,11 @@ x64val_vmemreg_get_displacement : func(v : x64val mut? -> s32 mut?)
 	return ref(v->v4)@s32 mut?;
 };
 
+x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v1);
+};
+
 irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
 {
 	[irval_lower_x64_tbl # (v->tag@s64)](v, out);
@@ -338,6 +342,16 @@ irval_lower_x64_reg : func(v : irval mut?, out : x64val mut? -> v0)
 	[x64val_vreg_get_idx(out)] = [irval_reg_get_idx(v)];
 };
 
+irval_lower_x64_blkref : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	blkidx ::= [irval_blkref_get_idx(v)];
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.irblkref;
+
+	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	[x64val_irblkref_get_idx(out)] = [irval_blkref_get_idx(v)];
+};
+
 irval_lower_x64_tbl ::= func(v : irval mut?, out : x64val mut? -> v0)[countof irval_tag]
 {
 	.0 := irval_lower_x64_invalid;
@@ -345,6 +359,6 @@ irval_lower_x64_tbl ::= func(v : irval mut?, out : x64val mut? -> v0)[countof ir
 	.2 := irval_lower_x64_reg;
 	.3 := irval_lower_x64_invalid;
 	.4 := irval_lower_x64_invalid;
-	.5 := irval_lower_x64_invalid;
+	.5 := irval_lower_x64_blkref;
 	.6 := irval_lower_x64_invalid;
 };
