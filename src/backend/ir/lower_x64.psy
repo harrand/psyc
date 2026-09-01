@@ -82,6 +82,16 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 	x64_ret();
 };
 
+// ================
+// helper functions
+// ================
+
+ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
+{
+	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	x64_mov(dst, src);
+};
+
 // ==========================
 // irinst -> x64inst lowering
 // ==========================
@@ -169,10 +179,51 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	ir_lower_x64_generic_move(ref outx64, ref mem);
 };
 
-ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
+irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
-	// todo: movss if float, movsd if double. movups/movupd/movdqu?
-	x64_mov(dst, src);
+	valuex64 : x64val mut;
+	irval_lower_x64(ir_store_get_value(inst), ref valuex64);
+	sz ::= irval_get_sz(ir_store_get_value(inst));
+
+	base ::= ir_store_get_base(inst);
+	disp ::= [ir_store_get_disp(inst)];
+
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
+	customidx_vmemglob : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
+
+	mem : x64val mut;
+	if(base->tag == irval_tag.reg)
+	{
+		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
+		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
+		[x64val_vmemreg_get_base_sz(ref mem)] = [irval_reg_get_sz(base)];
+		[x64val_vmemreg_get_index_sz(ref mem)] = irsz.none;
+		[x64val_vmemreg_get_index_idx(ref mem)] = 0;
+		[x64val_vmemreg_get_displacement(ref mem)] = disp;
+		[x64val_vmemreg_get_sz(ref mem)] = sz;
+	}
+	else
+	{
+		if(base->tag == irval_tag.globref)
+		{
+			mem.tag = (tagbase@s64 + customidx_vmemglob@s64)@x64val_tag;
+			[x64val_vmemglob_get_globidx(ref mem)] = [irval_globref_get_idx(base)];
+			[x64val_vmemglob_get_displacement(ref mem)] = disp;
+			[x64val_vmemglob_get_sz(ref mem)] = sz;
+		}
+		else
+		{
+			// panic
+			panic_begin();
+			putzstr("ir.store base param is of irval_tag.\0");
+			putsint(base->tag@s64);
+			putzstr(", but expected either .reg or .globref...\n\0");
+			panic_end();
+		}
+	}
+
+	ir_lower_x64_generic_move(ref mem, ref valuex64);
 };
 
 irinst_lower_x64_jmp : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -211,7 +262,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.0 := irinst_lower_x64_stack;
 	.1 := irinst_lower_x64_load;
 	.2 := irinst_lower_x64_nyi;
-	.3 := irinst_lower_x64_nyi;
+	.3 := irinst_lower_x64_store;
 	.4 := irinst_lower_x64_nyi;
 	.5 := irinst_lower_x64_nyi;
 	.6 := irinst_lower_x64_jmp;
@@ -475,6 +526,27 @@ irval_lower_x64_reg : func(v : irval mut?, out : x64val mut? -> v0)
 	[x64val_vreg_get_idx(out)] = [irval_reg_get_idx(v)];
 };
 
+irval_lower_x64_globref : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	sz ::= [irval_imm_get_sz(v)];
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
+
+	// if we see lower a globref individually as a value (and isnt special-cased by some instruction lowering handle), then we treat it as a pointer-to-the-start-of-the-globdata.
+	// i.e irsz.q and no displacement
+	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	// pointer size
+	[x64val_vmemglob_get_sz(out)] = irsz.q;
+	[x64val_vmemglob_get_globidx(out)] = [irval_globref_get_idx(v)];
+	[x64val_vmemglob_get_displacement(out)] = 0;
+};
+
+irval_lower_x64_fnref : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	out->tag = x64val_tag.fnref;
+	[x64val_fnref_get_index(out)] = [irval_fnref_get_idx(v)];
+};
+
 irval_lower_x64_blkref : func(v : irval mut?, out : x64val mut? -> v0)
 {
 	blkidx ::= [irval_blkref_get_idx(v)];
@@ -490,8 +562,8 @@ irval_lower_x64_tbl ::= func(v : irval mut?, out : x64val mut? -> v0)[countof ir
 	.0 := irval_lower_x64_invalid;
 	.1 := irval_lower_x64_imm;
 	.2 := irval_lower_x64_reg;
-	.3 := irval_lower_x64_invalid;
-	.4 := irval_lower_x64_invalid;
+	.3 := irval_lower_x64_globref;
+	.4 := irval_lower_x64_fnref;
 	.5 := irval_lower_x64_blkref;
 	.6 := irval_lower_x64_invalid;
 };
