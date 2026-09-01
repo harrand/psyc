@@ -132,32 +132,34 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	disp ::= [ir_load_get_disp(inst)];
 
 	tagbase : x64val_tag := x64val_tag.custom;
-	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
+	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
+	customidx_vmemglob : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
 
 	mem : x64val mut;
-	mem.tag = (tagbase@s64 + customidx@s64)@x64val_tag;
-	// todo: confirm that base is a ssa reg. it could be a globref
-	[x64val_vmemreg_get_base_tag(ref mem)] = base->tag;
 	if(base->tag == irval_tag.reg)
 	{
+		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
 		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
 		[x64val_vmemreg_get_base_sz(ref mem)] = [irval_reg_get_sz(base)];
+		[x64val_vmemreg_get_index_sz(ref mem)] = irsz.none;
+		[x64val_vmemreg_get_index_idx(ref mem)] = 0;
+		[x64val_vmemreg_get_displacement(ref mem)] = disp;
+		[x64val_vmemreg_get_sz(ref mem)] = sz;
 	}
 	else
 	{
 		if(base->tag == irval_tag.globref)
 		{
-			[x64val_vmemreg_get_base_idx(ref mem)] = [irval_globref_get_idx(base)];
+			mem.tag = (tagbase@s64 + customidx_vmemglob@s64)@x64val_tag;
+			[x64val_vmemglob_get_globidx(ref mem)] = [irval_globref_get_idx(base)];
+			[x64val_vmemglob_get_displacement(ref mem)] = disp;
+			[x64val_vmemglob_get_sz(ref mem)] = sz;
 		}
 		else
 		{
 			// panic
 		}
 	}
-	[x64val_vmemreg_get_index_sz(ref mem)] = irsz.none;
-	[x64val_vmemreg_get_index_idx(ref mem)] = 0;
-	[x64val_vmemreg_get_displacement(ref mem)] = disp;
-	[x64val_vmemreg_get_sz(ref mem)] = sz;
 
 	// todo: generic move
 	x64_mov(ref outx64, ref mem);
@@ -257,8 +259,9 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 ir_lower_x64val_tag : enum
 {
 	.vreg := 0; // irval_tag.reg (but stored in an x64val)
-	.vmemreg := 1; // x64val_tag.memreg, but the base/index registers are irval_tag.regs
-	.irblkref := 2; // irval_tag.blkref (but stored in an x64val)
+	.vmemreg := 1; // x64val_tag.memreg, but the base/index registers are optional irval_tag.regs
+	.vmemglob := 2; // x64val_tag.memreg, but the base register is a ir globref and has a displacement (but no index + scale)
+	.irblkref := 3; // irval_tag.blkref (but stored in an x64val)
 };
 
 // x64val_dump_to handler for custom x64val tags (i.e irvals that have been converted to x64val_tag but are in some non-encodeable, intermediate state.
@@ -275,7 +278,8 @@ ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? ->
 {
 	.0 := ir_lower_x64val_custom_dump_to_vreg;
 	.1 := ir_lower_x64val_custom_dump_to_vmemreg;
-	.2 := ir_lower_x64val_custom_dump_to_irblkref;
+	.2 := ir_lower_x64val_custom_dump_to_vmemglob;
+	.3 := ir_lower_x64val_custom_dump_to_irblkref;
 };
 
 ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> v0)
@@ -291,20 +295,13 @@ ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? 
 	bwrite_zstr(w, [irsz_names # sz@s64]);
 	bwrite_zstr(w, "ptr [\0");
 
-	base_tag ::= [x64val_vmemreg_get_base_tag(v)];
+	base_sz ::= [x64val_vmemreg_get_base_sz(v)];
 	base_idx ::= [x64val_vmemreg_get_base_idx(v)];
-	if(base_tag == irval_tag.reg)
+	if(base_sz != irsz.none)
 	{
-		base_sz ::= [x64val_vmemreg_get_base_sz(v)];
 		// print base vreg
 		bwrite8(w, '%');
 		bwrite_zstr(w, [irsz_names # base_sz@s64]);
-		bwrite_uint(w, base_idx);
-	}
-	else
-	{
-		// globref
-		bwrite8(w, '@');
 		bwrite_uint(w, base_idx);
 	}
 
@@ -312,7 +309,7 @@ ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? 
 	index_idx ::= [x64val_vmemreg_get_index_idx(v)];
 	if(index_sz != irsz.none)
 	{
-		if(base_tag != irval_tag.invalid)
+		if(base_sz != irsz.none)
 		{
 			bwrite_zstr(w, " + \0");
 		}
@@ -330,11 +327,28 @@ ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? 
 	disp ::= [x64val_vmemreg_get_displacement(v)]@s64;
 	if(disp != 0)
 	{
-		if((base_tag != irval_tag.invalid) || (index_sz != irsz.none))
+		if((base_sz != irsz.none) || (index_sz != irsz.none))
 		{
 			bwrite_zstr(w, " + \0");
 		}
 		bwrite_zstr(w, "imm32 \0");
+		bwrite_sint(w, disp);
+	}
+	bwrite8(w, ']');
+};
+
+ir_lower_x64val_custom_dump_to_vmemglob : func(w : bwriter mut?, v : x64val mut? -> v0)
+{
+	sz ::= [x64val_vmemglob_get_sz(v)];
+	bwrite_zstr(w, [irsz_names # sz@s64]);
+	bwrite_zstr(w, "glob [\0");
+
+	bwrite8(w, '@');
+	bwrite_uint(w, [x64val_vmemglob_get_globidx(v)]);
+	disp ::= [x64val_vmemglob_get_displacement(v)]@s64;
+	if(disp != 0)
+	{
+		bwrite_zstr(w, " + imm32 \0");
 		bwrite_sint(w, disp);
 	}
 	bwrite8(w, ']');
@@ -391,9 +405,19 @@ x64val_vmemreg_get_sz : func(v : x64val mut? -> irsz mut?)
 	return ref(v->v5)@irsz mut?;
 };
 
-x64val_vmemreg_get_base_tag : func(v : x64val mut? -> irval_tag mut?)
+x64val_vmemglob_get_globidx : func(v : x64val mut? -> u64 mut?)
 {
-	return ref(v->v6)@irval_tag mut?;
+	return ref(v->v1);
+};
+
+x64val_vmemglob_get_displacement : func(v : x64val mut? -> s32 mut?)
+{
+	return ref(v->v2)@s32 mut?;
+};
+
+x64val_vmemglob_get_sz : func(v : x64val mut? -> irsz mut?)
+{
+	return ref(v->r1)@irsz mut?;
 };
 
 x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
