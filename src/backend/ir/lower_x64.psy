@@ -158,11 +158,21 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		else
 		{
 			// panic
+			panic_begin();
+			putzstr("ir.load base param is of irval_tag.\0");
+			putsint(base->tag@s64);
+			putzstr(", but expected either .reg or .globref...\n\0");
+			panic_end();
 		}
 	}
 
-	// todo: generic move
-	x64_mov(ref outx64, ref mem);
+	ir_lower_x64_generic_move(ref outx64, ref mem);
+};
+
+ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
+{
+	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	x64_mov(dst, src);
 };
 
 irinst_lower_x64_jmp : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
