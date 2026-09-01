@@ -122,6 +122,47 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	x64_mov(ref outx64, ref rsp);
 };
 
+irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_load_get_out(inst), ref outx64);
+	sz ::= irval_get_sz(ir_load_get_out(inst));
+
+	base ::= ir_load_get_base(inst);
+	disp ::= [ir_load_get_disp(inst)];
+
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
+
+	mem : x64val mut;
+	mem.tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	// todo: confirm that base is a ssa reg. it could be a globref
+	[x64val_vmemreg_get_base_tag(ref mem)] = base->tag;
+	if(base->tag == irval_tag.reg)
+	{
+		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
+		[x64val_vmemreg_get_base_sz(ref mem)] = [irval_reg_get_sz(base)];
+	}
+	else
+	{
+		if(base->tag == irval_tag.globref)
+		{
+			[x64val_vmemreg_get_base_idx(ref mem)] = [irval_globref_get_idx(base)];
+		}
+		else
+		{
+			// panic
+		}
+	}
+	[x64val_vmemreg_get_index_sz(ref mem)] = irsz.none;
+	[x64val_vmemreg_get_index_idx(ref mem)] = 0;
+	[x64val_vmemreg_get_displacement(ref mem)] = disp;
+	[x64val_vmemreg_get_sz(ref mem)] = sz;
+
+	// todo: generic move
+	x64_mov(ref outx64, ref mem);
+};
+
 irinst_lower_x64_jmp : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	locx64 : x64val mut;
@@ -156,7 +197,7 @@ irinst_lower_x64_unreach : func(fn : irfunc mut?, blk : irblk mut?, inst : irins
 irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)[countof irinst_tag]
 {
 	.0 := irinst_lower_x64_stack;
-	.1 := irinst_lower_x64_nyi;
+	.1 := irinst_lower_x64_load;
 	.2 := irinst_lower_x64_nyi;
 	.3 := irinst_lower_x64_nyi;
 	.4 := irinst_lower_x64_nyi;
@@ -246,9 +287,57 @@ ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> 
 
 ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
-	panic_begin();
-	putzstr("todo: impl ir_lower_x64val_custom_dump_to_vmemreg\n\0");
-	panic_end();
+	sz ::= [x64val_vmemreg_get_sz(v)];
+	bwrite_zstr(w, [irsz_names # sz@s64]);
+	bwrite_zstr(w, "ptr [\0");
+
+	base_tag ::= [x64val_vmemreg_get_base_tag(v)];
+	base_idx ::= [x64val_vmemreg_get_base_idx(v)];
+	if(base_tag == irval_tag.reg)
+	{
+		base_sz ::= [x64val_vmemreg_get_base_sz(v)];
+		// print base vreg
+		bwrite8(w, '%');
+		bwrite_zstr(w, [irsz_names # base_sz@s64]);
+		bwrite_uint(w, base_idx);
+	}
+	else
+	{
+		// globref
+		bwrite8(w, '@');
+		bwrite_uint(w, base_idx);
+	}
+
+	index_sz ::= [x64val_vmemreg_get_index_sz(v)];
+	index_idx ::= [x64val_vmemreg_get_index_idx(v)];
+	if(index_sz != irsz.none)
+	{
+		if(base_tag != irval_tag.invalid)
+		{
+			bwrite_zstr(w, " + \0");
+		}
+		scale ::= [x64val_vmemreg_get_scale(v)];
+		bwrite8(w, '(');
+		// print index vreg
+		bwrite8(w, '%');
+		bwrite_zstr(w, [irsz_names # index_sz@s64]);
+		bwrite_uint(w, index_idx);
+		// then scale
+		bwrite8(w, '*');
+		bwrite_uint(w, scale);
+		bwrite8(w, ')');
+	}
+	disp ::= [x64val_vmemreg_get_displacement(v)]@s64;
+	if(disp != 0)
+	{
+		if((base_tag != irval_tag.invalid) || (index_sz != irsz.none))
+		{
+			bwrite_zstr(w, " + \0");
+		}
+		bwrite_zstr(w, "imm32 \0");
+		bwrite_sint(w, disp);
+	}
+	bwrite8(w, ']');
 };
 
 ir_lower_x64val_custom_dump_to_irblkref : func(w : bwriter mut?, v : x64val mut? -> v0)
@@ -279,7 +368,7 @@ x64val_vmemreg_get_base_idx : func(v : x64val mut? -> u64 mut?)
 
 x64val_vmemreg_get_index_sz : func(v : x64val mut? -> irsz mut?)
 {
-	return ref(v->r1)@irsz mut?;
+	return ref(v->r2)@irsz mut?;
 };
 
 x64val_vmemreg_get_index_idx : func(v : x64val mut? -> u64 mut?)
@@ -295,6 +384,16 @@ x64val_vmemreg_get_scale : func(v : x64val mut? -> u64 mut?)
 x64val_vmemreg_get_displacement : func(v : x64val mut? -> s32 mut?)
 {
 	return ref(v->v4)@s32 mut?;
+};
+
+x64val_vmemreg_get_sz : func(v : x64val mut? -> irsz mut?)
+{
+	return ref(v->v5)@irsz mut?;
+};
+
+x64val_vmemreg_get_base_tag : func(v : x64val mut? -> irval_tag mut?)
+{
+	return ref(v->v6)@irval_tag mut?;
 };
 
 x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
