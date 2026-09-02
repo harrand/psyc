@@ -265,6 +265,49 @@ irinst_lower_x64_jmpif : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	x64_jmp(ref falsex64);
 };
 
+irinst_lower_x64_zex : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	in ::= ir_zex_get_operand(inst);
+	inx64 : x64val mut;
+	irval_lower_x64(in, ref inx64);
+
+	out : irval mut := [ir_zex_get_out(inst)];
+	outx64 : x64val mut;
+	
+	// if in is irsz.d then we use mov but to the 32-bit version of out
+	// in all other cases, movzx
+	if(irval_get_sz(in) == irsz.d)
+	{
+		if(irval_try_set_sz(ref out, irsz.d) == false)
+		{
+			panic_begin();
+			putzstr("when lowering instruction:\n\0");
+			irinst_dump(inst);
+			putzstr(", failed to set operand '\0");
+			irval_dump(ref out);
+			putzstr("' to be 32-bit\0");
+			panic_end();
+		}
+		irval_lower_x64(ref out, ref outx64);
+		x64_mov(ref outx64, ref inx64);
+	}
+	else
+	{
+		irval_lower_x64(ref out, ref outx64);
+		x64_movzx(ref outx64, ref inx64);
+	}
+};
+
+irinst_lower_x64_sex : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	inx64 : x64val mut;
+	irval_lower_x64(ir_sex_get_operand(inst), ref inx64);
+	outx64 : x64val mut;
+	irval_lower_x64(ir_sex_get_out(inst), ref outx64);
+	
+	x64_movsx(ref outx64, ref inx64);
+};
+
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	x64_int3();
@@ -285,8 +328,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.5 := irinst_lower_x64_ret;
 	.6 := irinst_lower_x64_jmp;
 	.7 := irinst_lower_x64_jmpif;
-	.8 := irinst_lower_x64_nyi;
-	.9 := irinst_lower_x64_nyi;
+	.8 := irinst_lower_x64_zex;
+	.9 := irinst_lower_x64_sex;
 	.10 := irinst_lower_x64_nyi;
 	.11 := irinst_lower_x64_nyi;
 	.12 := irinst_lower_x64_nyi;
