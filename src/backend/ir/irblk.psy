@@ -7,9 +7,41 @@ irblk : struct
 
 	successors : u64 mut[2];
 	successors_count : u64;
+	predecessors : u64 mut?;
+	predecessors_count : u64;
+	predecessors_cap : u64;
 };
 
-irblk_add_inst_at : func(blk : irblk mut?, inst : irinst mut?, pos : u64 -> v0)
+irblk_add_predecessor : func(blk : irblk mut?, pred_blk_idx : u64 -> v0)
+{
+	if(blk->predecessors == zero)
+	{
+		blk->predecessors_cap = 8;
+		blk->predecessors = arena_alloc(global_arena, blk->predecessors_cap * sizeof typeof([blk->predecessors]));
+	}
+	while(blk->predecessors_count >= blk->predecessors_cap)
+	{
+		old ::= blk->predecessors;
+		oldcap ::= blk->predecessors_cap;
+		blk->predecessors_cap = blk->predecessors_cap * 2;
+		blk->predecessors = arena_alloc(global_arena, blk->predecessors_cap * sizeof typeof([blk->predecessors]));
+		memcopy(blk->predecessors, old, oldcap * sizeof typeof([blk->predecessors]));
+	}
+	// its a set so careful of uniqueness
+	i : u64 mut;
+	for(i = 0; i < blk->predecessors_count; i = i + 1)
+	{
+		if([blk->predecessors # i] == pred_blk_idx)
+		{
+			// already knew this was a predecessor. early out
+			return;
+		}
+	}
+	[blk->predecessors # blk->predecessors_count] = pred_blk_idx;
+	blk->predecessors_count = blk->predecessors_count + 1;
+};
+
+irblk_add_inst_at : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut?, pos : u64 -> v0)
 {
 	if(blk->insts == zero)
 	{
@@ -37,14 +69,24 @@ irblk_add_inst_at : func(blk : irblk mut?, inst : irinst mut?, pos : u64 -> v0)
 	blk->successors_count = 0;
 	if(inst->tag == irinst_tag.jmp)
 	{
-		[blk->successors # 0] = [irval_blkref_get_idx(inst->operands # 0)];
+		// add the block as our successor
+		succ ::= [ir_jmp_get_blkidx(inst)];
+		[blk->successors # 0] = succ;
 		blk->successors_count = 1;
+
+		// add ourselves as the blocks predecessor
+		irblk_add_predecessor(fn->blks # succ, blk->idx);
 	}
 	if(inst->tag == irinst_tag.jmpif)
 	{
-		[blk->successors # 0] = [irval_blkref_get_idx(inst->operands # 1)];
-		[blk->successors # 1] = [irval_blkref_get_idx(inst->operands # 2)];
+		succ0 ::= [ir_jmpif_get_true_blkidx(inst)];
+		succ1 ::= [ir_jmpif_get_false_blkidx(inst)];
+		[blk->successors # 0] = succ0;
+		[blk->successors # 1] = succ1;
 		blk->successors_count = 2;
+
+		irblk_add_predecessor(fn->blks # succ0, blk->idx);
+		irblk_add_predecessor(fn->blks # succ1, blk->idx);
 	}
 };
 
