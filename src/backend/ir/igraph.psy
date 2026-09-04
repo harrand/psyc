@@ -1,0 +1,49 @@
+inode_tag : enum
+{
+	.ir_reg := 0;
+	.lower_reg := 1;
+};
+
+// a node in the igraph. typically represents a single value, either by an ir-ssa-register (e.g %q0) or a hardware-register (e.g x64val_tag.reg)
+inode : struct
+{
+	tag : inode_tag;
+	// arbitrary data (use depends on tag)
+	v1 : u64;
+	v2 : u64;
+	colour : icolour;
+};
+
+// each ivalue is assigned a colour.
+// a colour can either represent a specific hardware-register, or a region of the stack (spill-to-memory)
+icolour : enum
+{
+	.undefined := ~1;
+	.ignore := ~0;
+	// colours of value 0->scratch-1 represent parameters, so they should always be allocated to the 'param N' register of whatever ABI we're using
+	.param := 0;
+	// colours of value scratch->stackspill-1 represent scratch registers
+	.scratch := 8;
+	// colours between stackspill->undefined-1 are spilled onto the stack, N bytes. not in any particular order - it is the ABIs job to spill backwards if it needs to do so.
+	.stackspill := 0x7fffffffffffffff; // ~0 / 2
+};
+
+
+// represents an edge between two inodes. any two connected inodes are considered 'interfering' i.e their lifetimes overlap. this prevents them from being assigned the same hardware-register
+iedge : struct
+{
+	lidx : u32;
+	ridx : u32;
+};
+
+// interference graph. used for register allocation.
+igraph : struct
+{
+	nodes : inode mut?;
+	nodes_count : u64;
+	nodes_cap : u64;
+
+	edges : iedge mut?;
+	edges_count : u64;
+	edges_cap : u64;
+};
