@@ -1,3 +1,11 @@
+irblk_liveness : struct
+{
+	// which variable was touched (i.e used/defined)
+	reg_idx : u64;
+	// which instruction (relative to the start of the current block) did it happen
+	instruction_id : u64;
+};
+
 irblk : struct
 {
 	idx : u64;
@@ -15,17 +23,30 @@ irblk : struct
 	predecessors_cap : u64;
 
 	// list of all defs (register indices that are 'defined' in this block)
-	defs : u64 mut?;
+	defs : irblk_liveness mut?;
 	defs_count : u64;
 	defs_cap : u64;
 
 	// list of all uses (register indices that are 'used' in this block)
-	uses : u64 mut?;
+	uses : irblk_liveness mut?;
 	uses_count : u64;
 	uses_cap : u64;
 };
 
-irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
+irblk_add_params_as_defs : func(fn : irfunc mut?, blk : irblk mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < fn->params_count; i = i + 1)
+	{
+		param_reg : irval mut;
+		[irval_reg_get_idx(ref param_reg)] = i;
+		[irval_reg_get_sz(ref param_reg)] = [fn->params # i];
+		// note: ~0 is a special thing to mean (implicitly before the start of the blk), basically just for parameters for the entry blk.
+		irblk_add_def_if_register(blk, ref param_reg, ~0);
+	}
+};
+
+irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u64 -> bool)
 {
 	if(reg->tag != irval_tag.reg)
 	{
@@ -44,11 +65,13 @@ irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
 		blk->defs = arena_alloc(global_arena, blk->defs_cap * sizeof typeof([blk->defs]));
 		memcopy(blk->defs, old, oldcap * sizeof typeof([blk->defs]));
 	}
-	[blk->defs # blk->defs_count] = [irval_reg_get_idx(reg)];
+	ptr ::= blk->defs # blk->defs_count;
+	ptr->reg_idx = [irval_reg_get_idx(reg)];
+	ptr->instruction_id = instid;
 	return true;
 };
 
-irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
+irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u64 -> bool)
 {
 	if(reg->tag != irval_tag.reg)
 	{
@@ -67,7 +90,9 @@ irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
 		blk->uses = arena_alloc(global_arena, blk->uses_cap * sizeof typeof([blk->uses]));
 		memcopy(blk->uses, old, oldcap * sizeof typeof([blk->uses]));
 	}
-	[blk->uses # blk->uses_count] = [irval_reg_get_idx(reg)];
+	ptr ::= blk->uses # blk->uses_count;
+	ptr->reg_idx = [irval_reg_get_idx(reg)];
+	ptr->instruction_id = instid;
 	return true;
 };
 
@@ -121,6 +146,7 @@ irblk_add_inst_at : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut?,
 		cpysrc ::= blk->insts # pos;
 		memcopy_backwards(cpysrc # 1, cpysrc, sizeof irinst * (1 + blk->insts_count - pos));
 	}
+	instid ::= blk->insts_count;
 	blk->insts_count = (blk->insts_count + 1);
 	[blk->insts # pos] = [inst];
 	
@@ -158,13 +184,13 @@ irblk_add_inst_at : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut?,
 	for(i = 0; i < outs_count; i = i + 1)
 	{
 		cur_out ::= inst->operands # (outs_begin + i);
-		irblk_add_def_if_register(blk, cur_out);
+		irblk_add_def_if_register(blk, cur_out, instid);
 	}
 
 	for(i = 0; i < params_count; i = i + 1)
 	{
 		cur_param ::= inst->operands # (params_begin + i);
-		irblk_add_use_if_register(blk, cur_param);
+		irblk_add_use_if_register(blk, cur_param, instid);
 	}
 };
 
