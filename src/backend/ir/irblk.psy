@@ -22,15 +22,25 @@ irblk : struct
 	predecessors_count : u64;
 	predecessors_cap : u64;
 
-	// list of all defs (register indices that are 'defined' in this block)
+	// list of all defs (register indices that are 'defined' in this block + the instruction-id of the definition)
 	defs : irblk_liveness mut?;
 	defs_count : u64;
 	defs_cap : u64;
 
-	// list of all uses (register indices that are 'used' in this block)
+	// list of all uses (register indices that are 'used' in this block + the instruction-id of the usage)
 	uses : irblk_liveness mut?;
 	uses_count : u64;
 	uses_cap : u64;
+
+	// the following arent computed until irblk_finalise (when we are fully done generating the IR)
+	// list of all register indices that are live when entering the block
+	live_in : u64 mut?;
+	live_in_count : u64;
+	live_in_cap : u64;
+	// list of all register indices that are live when exiting the block
+	live_out : u64 mut?;
+	live_out_count : u64;
+	live_out_cap : u64;
 };
 
 irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u64 -> bool)
@@ -203,4 +213,9 @@ irblk_has_terminator : func(blk : irblk mut? -> bool)
 		return false;
 	}
 	return irinst_is_terminator(blk->insts # (blk->insts_count - 1));
+};
+
+irblk_finalise : func(fn : irfunc mut?, blk : irblk mut? -> v0)
+{
+	// calculate livein(B)/liveout(B) using dataflow analysis
 };
