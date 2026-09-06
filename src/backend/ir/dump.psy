@@ -100,44 +100,50 @@ irval_dump : func(v : irval mut? -> v0)
 	putchars(w->buf, w->cursor);
 };
 
+irinst_analyse : func(inst : irinst mut?, first_out_idx : u64 mut?, out_count : u64 mut?, first_param_idx : u64 mut?, param_count : u64 mut? -> v0)
+{
+	count : s8 mut weak := [irinst_outcounts # (inst->tag@s64)];
+	[first_out_idx] = 0;
+	[first_param_idx] = count;
+	if(count == -1)
+	{
+		count = [irval_imm_get_integer(inst->operands # 0)];
+		[first_out_idx] = 1;
+		[first_param_idx] = count + 1;
+	}
+	[out_count] = count@u64;
+	[param_count] = inst->operands_count - ([first_param_idx]);
+};
+
 irinst_dump_to : func(w : bwriter mut?, inst : irinst mut? -> v0)
 {
-	outcount : s8 mut := [irinst_outcounts # (inst->tag@s64)];
-	return_offset : u64 mut;
-	param_offset : u64 mut;
-	if(outcount == -1)
-	{
-		outcount = [irval_imm_get_integer(inst->operands # 0)]@s8;
-		return_offset = outcount@u64;
-		param_offset = outcount@u64 + 1;
-	}
-	else
-	{
-		return_offset = 0;
-		param_offset = outcount@u64;
-	}
+	outs_begin : u64 mut;
+	outs_count : u64 mut;
+	params_begin : u64 mut;
+	params_count : u64 mut;
+	irinst_analyse(inst, ref outs_begin, ref outs_count, ref params_begin, ref params_count);
 	i : u64 mut;
-	for(i = return_offset; i < (outcount@u64 + return_offset); i = i + 1)
+	for(i = 0; i < outs_count; i = i + 1)
 	{
-		irval_dump_to(w, inst->operands # i);
-		if(i < (outcount@u64 - 1))
+		irval_dump_to(w, inst->operands # (outs_begin + i));
+		if(i < (outs_count - 1))
 		{
 			bwrite_zstr(w, ", \0");
 		}
 	}
-	if(outcount@u64 > 0)
+	if(outs_count > 0)
 	{
 		bwrite_zstr(w, " = \0");
 	}
 	bwrite_zstr(w, [irinst_names # (inst->tag@s64)]);
-	if(inst->operands_count > 0)
+	if(params_count > 0)
 	{
 		bwrite8(w, ' ');
 	}
-	for(i = param_offset; i < inst->operands_count; i = i + 1)
+	for(i = 0; i < params_count; i = i + 1)
 	{
-		irval_dump_to(w, inst->operands # i);
-		if(i < (inst->operands_count - 1))
+		irval_dump_to(w, inst->operands # (params_begin + i));
+		if(i < (params_count - 1))
 		{
 			bwrite_zstr(w, ", \0");
 		}

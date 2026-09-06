@@ -25,6 +25,52 @@ irblk : struct
 	uses_cap : u64;
 };
 
+irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
+{
+	if(reg->tag != irval_tag.reg)
+	{
+		return false;
+	}
+	if(blk->defs == zero)
+	{
+		blk->defs_cap = 8;
+		blk->defs = arena_alloc(global_arena, blk->defs_cap * sizeof typeof([blk->defs]));
+	}
+	while(blk->defs_count >= blk->defs_cap)
+	{
+		old ::= blk->defs;
+		oldcap ::= blk->defs_cap;
+		blk->defs_cap = blk->defs_cap * 2;
+		blk->defs = arena_alloc(global_arena, blk->defs_cap * sizeof typeof([blk->defs]));
+		memcopy(blk->defs, old, oldcap * sizeof typeof([blk->defs]));
+	}
+	[blk->defs # blk->defs_count] = [irval_reg_get_idx(reg)];
+	return true;
+};
+
+irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut? -> bool)
+{
+	if(reg->tag != irval_tag.reg)
+	{
+		return false;
+	}
+	if(blk->uses == zero)
+	{
+		blk->uses_cap = 8;
+		blk->uses = arena_alloc(global_arena, blk->uses_cap * sizeof typeof([blk->uses]));
+	}
+	while(blk->uses_count >= blk->uses_cap)
+	{
+		old ::= blk->uses;
+		oldcap ::= blk->uses_cap;
+		blk->uses_cap = blk->uses_cap * 2;
+		blk->uses = arena_alloc(global_arena, blk->uses_cap * sizeof typeof([blk->uses]));
+		memcopy(blk->uses, old, oldcap * sizeof typeof([blk->uses]));
+	}
+	[blk->uses # blk->uses_count] = [irval_reg_get_idx(reg)];
+	return true;
+};
+
 irblk_add_predecessor : func(blk : irblk mut?, pred_blk_idx : u64 -> v0)
 {
 	if(blk->predecessors == zero)
@@ -100,6 +146,25 @@ irblk_add_inst_at : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut?,
 
 		irblk_add_predecessor(fn->blks # succ0, blk->idx);
 		irblk_add_predecessor(fn->blks # succ1, blk->idx);
+	}
+
+	// add uses/defs
+	outs_begin : u64 mut;
+	outs_count : u64 mut;
+	params_begin : u64 mut;
+	params_count : u64 mut;
+	irinst_analyse(inst, ref outs_begin, ref outs_count, ref params_begin, ref params_count);
+	i : u64 mut;
+	for(i = 0; i < outs_count; i = i + 1)
+	{
+		cur_out ::= inst->operands # (outs_begin + i);
+		irblk_add_def_if_register(blk, cur_out);
+	}
+
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		cur_param ::= inst->operands # (params_begin + i);
+		irblk_add_use_if_register(blk, cur_param);
 	}
 };
 
