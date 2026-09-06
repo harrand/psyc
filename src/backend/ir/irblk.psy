@@ -108,6 +108,44 @@ irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u6
 	return true;
 };
 
+irblk_add_live_in : func(blk : irblk mut?, regidx : u64 -> v0)
+{
+	if(blk->live_in == zero)
+	{
+		blk->live_in_cap = 8;
+		blk->live_in = arena_alloc(global_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
+	}
+	while(blk->live_in_count >= blk->live_in_cap)
+	{
+		old ::= blk->live_in;
+		oldcap ::= blk->live_in_cap;
+		blk->live_in_cap = blk->live_in_cap * 2;
+		blk->live_in = arena_alloc(global_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
+		memcopy(blk->live_in, old, oldcap * sizeof typeof([blk->live_in]));
+	}
+	[blk->live_in # blk->live_in_count] = regidx;
+	blk->live_in_count = blk->live_in_count + 1;
+};
+
+irblk_add_live_out : func(blk : irblk mut?, regidx : u64 -> v0)
+{
+	if(blk->live_out == zero)
+	{
+		blk->live_out_cap = 8;
+		blk->live_out = arena_alloc(global_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
+	}
+	while(blk->live_out_count >= blk->live_out_cap)
+	{
+		old ::= blk->live_out;
+		oldcap ::= blk->live_out_cap;
+		blk->live_out_cap = blk->live_out_cap * 2;
+		blk->live_out = arena_alloc(global_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
+		memcopy(blk->live_out, old, oldcap * sizeof typeof([blk->live_out]));
+	}
+	[blk->live_out # blk->live_out_count] = regidx;
+	blk->live_out_count = blk->live_out_count + 1;
+};
+
 irblk_add_predecessor : func(blk : irblk mut?, pred_blk_idx : u64 -> v0)
 {
 	if(blk->predecessors == zero)
