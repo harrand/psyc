@@ -110,9 +110,30 @@ irfunc_add_blk : func(fn : irfunc mut? -> irblk mut?)
 
 irfunc_finalise : func(fn : irfunc mut? -> v0)
 {
+	putzstr("finalising $\0");
+	putuint(fn->idx);
+	putzstr("...\n\0");	
+	irfunc_dump(ir_current_func());
+	// calculate live-in/live-out foreach block
+	// keep going until none of them changed
+	keep_going : bool mut := true;
 	i : u64 mut;
-	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	while(keep_going == true)
 	{
-		irblk_finalise(fn, fn->blks # i);
+		keep_going = false;
+		for(i = 0; i < fn->blks_count; i = i + 1)
+		{
+			// returns true if changes
+			// so if it ever returns false then we need to recurse
+			if(irblk_calc_live_inout(fn, fn->blks # i))
+			{
+				keep_going = true;
+			}
+		}
+	}
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		irblk_finalise_live_in(fn->blks # i);
+		irblk_finalise_live_out(fn->blks # i);
 	}
 };

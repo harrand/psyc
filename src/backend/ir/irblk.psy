@@ -113,18 +113,40 @@ irblk_add_live_in : func(blk : irblk mut?, regidx : u64 -> v0)
 	if(blk->live_in == zero)
 	{
 		blk->live_in_cap = 8;
-		blk->live_in = arena_alloc(global_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
+		blk->live_in = arena_alloc(scratch_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
 	}
 	while(blk->live_in_count >= blk->live_in_cap)
 	{
 		old ::= blk->live_in;
 		oldcap ::= blk->live_in_cap;
 		blk->live_in_cap = blk->live_in_cap * 2;
-		blk->live_in = arena_alloc(global_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
+		blk->live_in = arena_alloc(scratch_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
 		memcopy(blk->live_in, old, oldcap * sizeof typeof([blk->live_in]));
+	}
+	// its a set so careful of uniqueness
+	i : u64 mut;
+	for(i = 0; i < blk->live_in_count; i = i + 1)
+	{
+		if([blk->live_in # i] == regidx)
+		{
+			// already knew this was a live-in. early out
+			return;
+		}
 	}
 	[blk->live_in # blk->live_in_count] = regidx;
 	blk->live_in_count = blk->live_in_count + 1;
+};
+
+irblk_finalise_live_in : func(blk : irblk mut? -> v0)
+{
+	// just deep-copy live_in but using the global_arena
+	old ::= blk->live_in;
+	blk->live_in = arena_alloc(global_arena, blk->live_in_cap * sizeof typeof([blk->live_in]));
+	i : u64 mut;
+	for(i = 0; i < blk->live_in_count; i = i + 1)
+	{
+		[blk->live_in # i] = [old # i];
+	}
 };
 
 irblk_add_live_out : func(blk : irblk mut?, regidx : u64 -> v0)
@@ -132,18 +154,40 @@ irblk_add_live_out : func(blk : irblk mut?, regidx : u64 -> v0)
 	if(blk->live_out == zero)
 	{
 		blk->live_out_cap = 8;
-		blk->live_out = arena_alloc(global_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
+		blk->live_out = arena_alloc(scratch_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
 	}
 	while(blk->live_out_count >= blk->live_out_cap)
 	{
 		old ::= blk->live_out;
 		oldcap ::= blk->live_out_cap;
 		blk->live_out_cap = blk->live_out_cap * 2;
-		blk->live_out = arena_alloc(global_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
+		blk->live_out = arena_alloc(scratch_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
 		memcopy(blk->live_out, old, oldcap * sizeof typeof([blk->live_out]));
+	}
+	// its a set so careful of uniqueness
+	i : u64 mut;
+	for(i = 0; i < blk->live_out_count; i = i + 1)
+	{
+		if([blk->live_out # i] == regidx)
+		{
+			// already knew this was a live-in. early out
+			return;
+		}
 	}
 	[blk->live_out # blk->live_out_count] = regidx;
 	blk->live_out_count = blk->live_out_count + 1;
+};
+
+irblk_finalise_live_out : func(blk : irblk mut? -> v0)
+{
+	// just deep-copy live_out but using the global_arena
+	old ::= blk->live_out;
+	blk->live_out = arena_alloc(global_arena, blk->live_out_cap * sizeof typeof([blk->live_out]));
+	i : u64 mut;
+	for(i = 0; i < blk->live_out_count; i = i + 1)
+	{
+		[blk->live_out # i] = [old # i];
+	}
 };
 
 irblk_add_predecessor : func(blk : irblk mut?, pred_blk_idx : u64 -> v0)
@@ -253,7 +297,81 @@ irblk_has_terminator : func(blk : irblk mut? -> bool)
 	return irinst_is_terminator(blk->insts # (blk->insts_count - 1));
 };
 
-irblk_finalise : func(fn : irfunc mut?, blk : irblk mut? -> v0)
+// return true if there were changes, otherwise false
+irblk_calc_live_inout : func(fn : irfunc mut?, blk : irblk mut? -> bool)
 {
 	// calculate livein(B)/liveout(B) using dataflow analysis
+	// livein(B) = used(B) union (liveout(B) - def(B))
+	// liveout(B) = foreach X in successors(B): livein(X) union livein(X+1)
+	// these are mutually recursive. so we continually recurse on this until we converge to a fixed-point
+	// at the beginning livein(B) and liveout(B) are both empty
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	// firstly save the current live-out
+	old_live_out ::= blk->live_out;
+	old_live_out_count ::= blk->live_out_count;
+	blk->live_out = zero;
+	blk->live_out_count = 0;
+	blk->live_out_cap = 0;
+	// iterate over successors
+	for(i = 0; i < blk->successors_count; i = i + 1)
+	{
+		succ ::= fn->blks # [blk->successors # i];
+		// get the live-in for succ and add them all to blk->live_out
+		for(j = 0; j < succ->live_in_count; j = j + 1)
+		{
+			irblk_add_live_out(blk, [succ->live_in # j]);
+		}
+	}
+	// now save the old live-in and recalculate it.
+	old_live_in ::= blk->live_in;
+	old_live_in_count ::= blk->live_in_count;
+	blk->live_in = zero;
+	blk->live_in_count = 0;
+	blk->live_in_cap = 0;
+
+	// copy all of use(blk) to live_in(blk)
+	for(j = 0; j < blk->uses_count; j = j + 1)
+	{
+		irblk_add_live_in(blk, (blk->uses # j)->reg_idx);
+	}
+	// and also add everything in new-live_out but only if its not in defs
+	for(j = 0; j < blk->live_out_count; j = j + 1)
+	{
+		the_live_out ::= [blk->live_out # j];
+		the_live_out_is_in_defs : bool mut := false;
+		for(k = 0; k < blk->defs_count; k = k + 1)
+		{
+			cur_def ::= blk->defs # k;
+			if(cur_def->reg_idx == the_live_out)
+			{
+				the_live_out_is_in_defs = true;
+			}
+		}
+		if(the_live_out_is_in_defs == false)
+		{
+			irblk_add_live_in(blk, the_live_out);
+		}
+	}
+	// did we make any changes? if so, return true
+	if((old_live_in_count != blk->live_in_count) || (old_live_out_count != blk->live_out_count))
+	{
+		return true;
+	}
+	for(i = 0; i < old_live_in_count; i = i + 1)
+	{
+		if([old_live_in # i] != [blk->live_in # i])
+		{
+			return true;
+		}
+	}
+	for(i = 0; i < old_live_out_count; i = i + 1)
+	{
+		if([old_live_out # i] != [blk->live_out # i])
+		{
+			return true;
+		}
+	}
+	return false;
 };
