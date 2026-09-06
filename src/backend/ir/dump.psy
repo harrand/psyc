@@ -160,11 +160,53 @@ irinst_dump : func(inst : irinst mut? -> v0)
 	putchars(w->buf, w->cursor);
 };
 
+irblk_dump_verbosely_to : func(w : bwriter mut?, blk : irblk mut? -> v0)
+{
+	// defs
+	bwrite_colour_green(w);
+	i : u64 mut;
+	bwrite_zstr(w, "defs: \0");
+	for(i = 0; i < blk->defs_count; i = i + 1)
+	{
+		cur_def ::= blk->defs # i;
+		bwrite_zstr(w, "%\0");
+		bwrite_uint(w, cur_def->reg_idx);
+		bwrite8(w, ':');
+		bwrite_sint(w, cur_def->instruction_id);
+		if(i < (blk->defs_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	bwrite_colour_reset(w);
+	bwrite8(w, '\n');
+
+	// uses
+	bwrite_colour_yellow(w);
+	i : u64 mut;
+	bwrite_zstr(w, "uses: \0");
+	for(i = 0; i < blk->uses_count; i = i + 1)
+	{
+		cur_use ::= blk->uses # i;
+		bwrite_zstr(w, "%\0");
+		bwrite_uint(w, cur_use->reg_idx);
+		bwrite8(w, ':');
+		bwrite_uint(w, cur_use->instruction_id);
+		if(i < (blk->uses_count - 1))
+		{
+			bwrite_zstr(w, ", \0");
+		}
+	}
+	bwrite_colour_reset(w);
+	bwrite8(w, '\n');
+};
+
 irblk_dump_to : func(w : bwriter mut?, blk : irblk mut? -> v0)
 {
 	bwrite8(w, '_');
 	bwrite_uint(w, blk->idx);
 	bwrite_zstr(w, ":\n\0");
+	irblk_dump_verbosely_to(w, blk);
 	i : u64 mut;
 	for(i = 0; i < blk->insts_count; i = i + 1)
 	{

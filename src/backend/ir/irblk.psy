@@ -33,19 +33,6 @@ irblk : struct
 	uses_cap : u64;
 };
 
-irblk_add_params_as_defs : func(fn : irfunc mut?, blk : irblk mut? -> v0)
-{
-	i : u64 mut;
-	for(i = 0; i < fn->params_count; i = i + 1)
-	{
-		param_reg : irval mut;
-		[irval_reg_get_idx(ref param_reg)] = i;
-		[irval_reg_get_sz(ref param_reg)] = [fn->params # i];
-		// note: ~0 is a special thing to mean (implicitly before the start of the blk), basically just for parameters for the entry blk.
-		irblk_add_def_if_register(blk, ref param_reg, ~0);
-	}
-};
-
 irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u64 -> bool)
 {
 	if(reg->tag != irval_tag.reg)
@@ -68,11 +55,25 @@ irblk_add_def_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u6
 	ptr ::= blk->defs # blk->defs_count;
 	ptr->reg_idx = [irval_reg_get_idx(reg)];
 	ptr->instruction_id = instid;
+	blk->defs_count = blk->defs_count + 1;
 	return true;
 };
 
 irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u64 -> bool)
 {
+	regidx ::= [irval_reg_get_idx(reg)];
+	// note: remember, a use only counts if it is before a potential redefinition within the block
+	// in other words, if this register id is already defined previously, then we skip.
+	i : u64 mut;
+	for(i = 0; i < blk->defs_count; i = i + 1)
+	{
+		if((blk->defs # i)->reg_idx == regidx)
+		{
+			// already (re)defined previously. early-out.
+			return false;
+		}
+	}
+	
 	if(reg->tag != irval_tag.reg)
 	{
 		return false;
@@ -91,8 +92,9 @@ irblk_add_use_if_register : func(blk : irblk mut?, reg : irval mut?, instid : u6
 		memcopy(blk->uses, old, oldcap * sizeof typeof([blk->uses]));
 	}
 	ptr ::= blk->uses # blk->uses_count;
-	ptr->reg_idx = [irval_reg_get_idx(reg)];
+	ptr->reg_idx = regidx;
 	ptr->instruction_id = instid;
+	blk->uses_count = blk->uses_count + 1;
 	return true;
 };
 
