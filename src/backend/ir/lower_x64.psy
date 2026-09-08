@@ -108,7 +108,6 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 	{
 		irinst_lower_x64(fn, blk, blk->insts # i);
 	}
-	x64_ret();
 };
 
 // ================
@@ -258,6 +257,27 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	// todo: move return values to their abi-specific output register(s)
+	i : u64 mut;
+	count ::= ir_ret_get_vals_count(inst);
+	begin ::= ir_ret_get_vals(inst);
+	output_registers_begin ::= abi_output_registers_begin_x64(abi_tag.psy64);
+	output_registers_count ::= abi_output_registers_count_x64(abi_tag.psy64);
+	if(output_registers_count < count)
+	{
+		err_begin();
+		putzstr("abi only supports \0");
+		putuint(output_registers_count);
+		putzstr(" output registers, but the following instruction attempts to use \0");
+		putuint(count);
+		putzstr(":\n\0");
+		irinst_dump(inst);
+		err_end();
+	}
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur_out : x64val mut;
+		ir_lower_x64_generic_move(output_registers_begin # i, ref cur_out);
+	}
 	ir_lower_epilog_x64();
 	x64_ret();
 };
