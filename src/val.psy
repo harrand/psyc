@@ -1858,6 +1858,9 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 			[val_scalar_get_displacement(out)] = 0;
 			return;
 		}
+		putzstr("outputting an aggregate apparantly because field_chunks_count == \0");
+		putuint(field_chunks_count);
+		putchar('\n');
 		// more than 1, so its an aggregate aswell
 		out->tag = val_tag.aggregate;
 		[val_aggregate_get_members_count(out)] = field_chunks_count;
@@ -2250,6 +2253,15 @@ val_from_node_stmt_return : func(ctx : source_context mut?, out : val mut? -> v0
 	{
 		ir_ret(val_scalar_get_irval(ref ret_val), 1);
 		return;
+	}
+	if(ret_val.tag != val_tag.aggregate)
+	{
+		panic_begin();
+		putzstr("non-scalar, non-aggregate return value of val_tag.\0");
+		putsint(ret_val.tag@s64);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		panic_end();
 	}
 	aggcount ::= [val_aggregate_get_members_count(ref ret_val)];
 	agg_ret_irvals : irval mut? := arena_alloc(global_arena, aggcount * sizeof irval);
