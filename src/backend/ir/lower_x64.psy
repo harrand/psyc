@@ -384,6 +384,31 @@ irinst_lower_x64_sex : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	x64_movsx(ref outx64, ref inx64);
 };
 
+irinst_lower_x64_trunc : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	// literally just change the size of the input to the size of the output and do a generic move
+	in : irval mut := [ir_trunc_get_operand(inst)];
+	out ::= ir_trunc_get_out(inst);
+	outsz ::= irval_get_sz(out);
+	if(irval_try_set_sz(ref in, outsz) == false)
+	{
+		panic_begin();
+		putzstr("when lowering instruction:\n\0");
+		irinst_dump(inst);
+		putzstr(", failed to set operand '\0");
+		irval_dump(ref in);
+		putzstr("' to be irsz.\0");
+		putsint(outsz@s64);
+		panic_end();
+	}
+	inx64 : x64val mut;
+	irval_lower_x64(ref in, ref inx64);
+	outx64 : x64val mut;
+	irval_lower_x64(out, ref outx64);
+	
+	ir_lower_x64_generic_move(ref outx64, ref inx64);
+};
+
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	x64_int3();
@@ -406,7 +431,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.7 := irinst_lower_x64_jmpif;
 	.8 := irinst_lower_x64_zex;
 	.9 := irinst_lower_x64_sex;
-	.10 := irinst_lower_x64_nyi;
+	.10 := irinst_lower_x64_trunc;
 	.11 := irinst_lower_x64_nyi;
 	.12 := irinst_lower_x64_nyi;
 	.13 := irinst_lower_x64_nyi;
