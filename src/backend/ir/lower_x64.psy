@@ -4,6 +4,7 @@
 ir_lower_x64 : func(-> v0)
 {
 	// install custom handlers
+	x64inst_custom_dump_to_handler = ir_lower_x64inst_custom_dump_to;
 	x64val_custom_dump_to_handler = ir_lower_x64val_custom_dump_to;
 	if(args_should_skip_asm())
 	{
@@ -92,6 +93,7 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 
 irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 {
+	ir_lower_x64_blkbegin(blk);
 	//if((blk->idx > 0) && (blk->predecessors_count == 0))
 	//{
 		// we are not entry block but also have no predecessors
@@ -123,6 +125,41 @@ ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
 // ==========================
 // irinst -> x64inst lowering
 // ==========================
+
+// custom x64inst begin
+ir_lower_x64inst_tag : enum
+{
+	.blkbegin := 0; // meta-instruction marking the beginning of block N
+};
+ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
+{
+	.0 := "blkbegin\0";
+};
+
+// x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
+ir_lower_x64inst_custom_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
+{
+	bwrite_colour_green(w);
+	bwrite8(w, '.');
+	tagbase : x64inst_tag := x64inst_tag.custom;
+	idx ::= inst->tag@s64 - tagbase@s64;
+	bwrite_zstr(w, [ir_lower_x64inst_tag_named # idx]);
+	bwrite_colour_reset(w);
+};
+
+ir_lower_x64_blkbegin : func(blk : irblk mut? -> v0)
+{
+	blkval : x64val mut := zero;
+
+	tagbase : x64val_tag := x64val_tag.custom;
+	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.irblkref;
+
+	blkval.tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	[x64val_irblkref_get_idx(ref blkval)] = blk->idx;
+	
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.blkbegin;
+	x64_custom(tag, ref blkval, 1);
+};
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
