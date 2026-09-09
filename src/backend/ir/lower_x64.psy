@@ -6,6 +6,7 @@ ir_lower_x64 : func(-> v0)
 	// install custom handlers
 	x64inst_custom_dump_to_handler = ir_lower_x64inst_custom_dump_to;
 	x64val_custom_dump_to_handler = ir_lower_x64val_custom_dump_to;
+	x64val_custom_is_any_memory_handler = ir_lower_x64val_is_memory;
 	if(args_should_skip_asm())
 	{
 		return;
@@ -116,9 +117,29 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 // helper functions
 // ================
 
+ir_lower_x64val_is_memory : func(v : x64val mut? -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx : s64 weak := v->tag@s64 - tagbase@s64;
+	return (idx == ir_lower_x64val_tag.vmemreg) || (idx == ir_lower_x64val_tag.vmemglob) || (idx == ir_lower_x64val_tag.irblkref);
+};
+
+// if the src is a memory operand, a mov will occur, acting as a load
 ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
 {
 	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	x64_mov(dst, src);
+};
+
+// if the src is a memory operand, a lea will occur
+ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? -> v0)
+{
+	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	if((x64val_is_any_memory(dst) == false) && x64val_is_any_memory(src))
+	{
+		x64_lea(dst, src);
+		return;
+	}
 	x64_mov(dst, src);
 };
 
@@ -409,6 +430,19 @@ irinst_lower_x64_trunc : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	ir_lower_x64_generic_move(ref outx64, ref inx64);
 };
 
+irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_add_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_add_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_add_get_rhs(inst), ref rhsx64);
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_add(ref outx64, ref rhsx64);
+};
+
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	x64_int3();
@@ -434,7 +468,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.10 := irinst_lower_x64_trunc;
 	.11 := irinst_lower_x64_nyi;
 	.12 := irinst_lower_x64_nyi;
-	.13 := irinst_lower_x64_nyi;
+	.13 := irinst_lower_x64_add;
 	.14 := irinst_lower_x64_nyi;
 	.15 := irinst_lower_x64_nyi;
 	.16 := irinst_lower_x64_nyi;
