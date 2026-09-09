@@ -157,10 +157,24 @@ x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 	}
 	i : u64 mut;
 	count ::= x64inst_operands_count(inst);
+	enc ::= x64enc_fetch(inst);
 	for(i = 0; i < count; i = i + 1)
 	{
 		bwrite8(w, ' ');
+		satisfies : bool mut := true;
+		if(enc != zero)
+		{
+			satisfies = x64val_satisfies_optype(inst->operands # i, [enc->operand_types # i]);
+		}
+		if(satisfies == false)
+		{
+			bwrite_colour_red(w);
+		}
 		x64val_dump_to(w, inst->operands # i);
+		if(satisfies == false)
+		{
+			bwrite_colour_reset(w);
+		}
 		if(i < (count - 1))
 		{
 			bwrite_zstr(w, ",\0");

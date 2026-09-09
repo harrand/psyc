@@ -335,7 +335,7 @@ irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	{
 		cur_out : x64val mut;
 		irval_lower_x64(begin # i, ref cur_out);
-		ir_lower_x64_generic_move(output_registers_begin # i, ref cur_out);
+		ir_lower_x64_generic_move_no_load(output_registers_begin # i, ref cur_out);
 	}
 	ir_lower_epilog_x64();
 	x64_ret();
@@ -427,7 +427,7 @@ irinst_lower_x64_trunc : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	outx64 : x64val mut;
 	irval_lower_x64(out, ref outx64);
 	
-	ir_lower_x64_generic_move(ref outx64, ref inx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref inx64);
 };
 
 irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -441,6 +441,45 @@ irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
 	x64_add(ref outx64, ref rhsx64);
+};
+
+irinst_lower_x64_sub : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_sub_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_sub_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_sub_get_rhs(inst), ref rhsx64);
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_sub(ref outx64, ref rhsx64);
+};
+
+irinst_lower_x64_umul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_umul_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_umul_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_umul_get_rhs(inst), ref rhsx64);
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_imul(ref outx64, ref rhsx64);
+};
+
+irinst_lower_x64_smul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_smul_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_smul_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_smul_get_rhs(inst), ref rhsx64);
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_imul(ref outx64, ref rhsx64);
 };
 
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -469,9 +508,9 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.11 := irinst_lower_x64_nyi;
 	.12 := irinst_lower_x64_nyi;
 	.13 := irinst_lower_x64_add;
-	.14 := irinst_lower_x64_nyi;
-	.15 := irinst_lower_x64_nyi;
-	.16 := irinst_lower_x64_nyi;
+	.14 := irinst_lower_x64_sub;
+	.15 := irinst_lower_x64_umul;
+	.16 := irinst_lower_x64_smul;
 	.17 := irinst_lower_x64_nyi;
 	.18 := irinst_lower_x64_nyi;
 	.19 := irinst_lower_x64_nyi;
