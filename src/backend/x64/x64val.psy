@@ -149,6 +149,16 @@ x64val_is_any_custom : func(v : x64val mut? -> bool)
 	return v->tag@s64 >= (x64val_tag.custom@s64);
 };
 
+x64val_custom_is_any_register_handler : func(v : x64val mut? -> bool) mut := zero;
+x64val_is_any_register : func(v : x64val mut? -> bool)
+{
+	if(x64val_is_any_custom(v))
+	{
+		return x64val_custom_is_any_register_handler(v);
+	}
+	return (v->tag == x64val_tag.reg);
+};
+
 x64val_custom_is_any_memory_handler : func(v : x64val mut? -> bool) mut := zero;
 x64val_is_any_memory : func(v : x64val mut? -> bool)
 {
@@ -159,8 +169,13 @@ x64val_is_any_memory : func(v : x64val mut? -> bool)
 	return (v->tag == x64val_tag.memreg) || (v->tag == x64val_tag.ripreli) || (v->tag == x64val_tag.globref) || (v->tag == x64val_tag.fnref);
 };
 
+x64val_custom_get_size : func(v : x64val mut? -> u64) mut := zero;
 x64val_get_size : func(v : x64val mut? -> u64)
 {
+	if(x64val_is_any_custom(v))
+	{
+		return x64val_custom_get_size(v);
+	}
 	// given any val type, get the size. doesnt return ptr because some sizes are implicit for a x64val tag and cannot be changed
 	if(v->tag == x64val_tag.imm)
 	{
@@ -186,7 +201,6 @@ x64val_get_size : func(v : x64val mut? -> u64)
 	{
 		return 64;
 	}
-	// todo: custom size?
 	return 0;
 };
 
@@ -216,7 +230,7 @@ x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bo
 			return (type == x64enc_operand_type.rm128) || (type == x64enc_operand_type.m128);
 		}
 	}
-	if(v->tag == x64val_tag.reg)
+	if(x64val_is_any_register(v))
 	{
 		if(sz == 8)
 		{

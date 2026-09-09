@@ -7,6 +7,8 @@ ir_lower_x64 : func(-> v0)
 	x64inst_custom_dump_to_handler = ir_lower_x64inst_custom_dump_to;
 	x64val_custom_dump_to_handler = ir_lower_x64val_custom_dump_to;
 	x64val_custom_is_any_memory_handler = ir_lower_x64val_is_memory;
+	x64val_custom_is_any_register_handler = ir_lower_x64val_is_register;
+	x64val_custom_get_size = ir_lower_x64val_get_size;
 	if(args_should_skip_asm())
 	{
 		return;
@@ -122,6 +124,36 @@ ir_lower_x64val_is_memory : func(v : x64val mut? -> bool)
 	tagbase : x64val_tag := x64val_tag.custom;
 	idx : s64 weak := v->tag@s64 - tagbase@s64;
 	return (idx == ir_lower_x64val_tag.vmemreg) || (idx == ir_lower_x64val_tag.vmemglob) || (idx == ir_lower_x64val_tag.irblkref);
+};
+
+ir_lower_x64val_is_register : func(v : x64val mut? -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx : s64 weak := v->tag@s64 - tagbase@s64;
+	return (idx == ir_lower_x64val_tag.vreg);
+};
+
+ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx : s64 weak := v->tag@s64 - tagbase@s64;
+	if(idx == ir_lower_x64val_tag.vreg)
+	{
+		return [irsz_sizes # [x64val_vreg_get_sz(v)]@s64] * 8;
+	}
+	if(idx == ir_lower_x64val_tag.vmemreg)
+	{
+		return [irsz_sizes # [x64val_vmemreg_get_sz(v)]@s64] * 8;
+	}
+	if(idx == ir_lower_x64val_tag.vmemglob)
+	{
+		return [irsz_sizes # [x64val_vmemglob_get_sz(v)]@s64] * 8;
+	}
+	if(idx == ir_lower_x64val_tag.irblkref)
+	{
+		return 64;
+	}
+	return 0;
 };
 
 // if the src is a memory operand, a mov will occur, acting as a load
