@@ -152,7 +152,29 @@ x64inst_is_encodeable : func(inst : x64inst mut? -> bool)
 			return false;
 		}
 	}
-    //[x64enc_fetch(inst)];
+	return x64inst_is_legal(inst);
+};
+
+x64inst_is_legal : func(inst : x64inst mut? -> bool)
+{
+	if(x64inst_is_any_custom(inst))
+	{
+		return false;
+	}
+	enc ::= x64enc_fetch(inst);
+	i : u64 mut;
+	count ::= x64inst_operands_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		expected_cur_op_type ::= [enc->operand_types # i];
+		cur_op ::= inst->operands # i;
+		// if our op is memory but the type is r/imm, then its not legal
+		op_type_allows_memory ::= (expected_cur_op_type != x64enc_operand_type.r) && (expected_cur_op_type != x64enc_operand_type.imm);
+		if(x64val_is_any_memory(cur_op) && (op_type_allows_memory == false))
+		{
+			return false;
+		}
+	}
 	return true;
 };
 
