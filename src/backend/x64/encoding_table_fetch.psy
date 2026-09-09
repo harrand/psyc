@@ -1,6 +1,11 @@
-x64enc_fetch : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
-	return [x64enc_fetch_tbl # (inst->tag@s64)](w, inst);
+	if(x64inst_is_any_custom(inst))
+	{
+		return zero;
+	}
+	x64inst_dump(inst);
+	return [x64enc_fetch_tbl # (inst->tag@s64)](inst);
 };
 
 // given a standard 2-operand instruction that vaguely matches mov, return the index into the encoding table based upon the instruction (this is to prevent code duplication for common instructions)
@@ -45,7 +50,7 @@ x64enc_access_encoding_tbl_bitshift : func(inst : x64inst mut? -> u64)
 	return idx;
 };
 
-x64enc_fetch_nyi : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_nyi : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	err_begin();
 	putzstr("encoding for x64 instruction \0");
@@ -59,12 +64,12 @@ x64enc_fetch_nyi : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 
 // specific encodings (dispatch function at the bottom of the file)
 
-x64enc_fetch_nop : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_nop : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_nop # 0;
 };
 
-x64enc_fetch_mov : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_mov : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -74,7 +79,7 @@ x64enc_fetch_mov : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_mov # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_movsx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movsx : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	sz1 ::= x64val_get_size(inst->operands # 1);
@@ -105,7 +110,7 @@ x64enc_fetch_movsx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	return zero;
 };
 
-x64enc_fetch_movzx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movzx : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	sz1 ::= x64val_get_size(inst->operands # 1);
@@ -139,7 +144,7 @@ x64enc_fetch_movzx : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	return zero;
 };
 
-x64enc_fetch_movd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movd : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	if(sz0 >= 128)
@@ -150,7 +155,7 @@ x64enc_fetch_movd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_e
 	return encoding_tbl_movd # 1;
 };
 
-x64enc_fetch_movq : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movq : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	if(sz0 >= 128)
@@ -161,7 +166,7 @@ x64enc_fetch_movq : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_e
 	return encoding_tbl_movd # 1;
 };
 
-x64enc_fetch_movss : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movss : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	if((inst->operands # 0)->tag == x64val_tag.memreg)
@@ -171,7 +176,7 @@ x64enc_fetch_movss : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	return encoding_tbl_movss # 0;
 };
 
-x64enc_fetch_movsd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_movsd : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	sz0 ::= x64val_get_size(inst->operands # 0);
 	if((inst->operands # 0)->tag == x64val_tag.memreg)
@@ -181,72 +186,72 @@ x64enc_fetch_movsd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_
 	return encoding_tbl_movsd # 0;
 };
 
-x64enc_fetch_push : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_push : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_push # 0;
 };
 
-x64enc_fetch_pop : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_pop : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_pop # 0;
 };
 
-x64enc_fetch_cbw : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cbw : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cbw # 0;
 };
 
-x64enc_fetch_cwde : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cwde : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cwde # 0;
 };
 
-x64enc_fetch_cdqe : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cdqe : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cdqe # 0;
 };
 
-x64enc_fetch_cwd : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cwd : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cwd # 0;
 };
 
-x64enc_fetch_cdq : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cdq : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cdq # 0;
 };
 
-x64enc_fetch_cqo : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cqo : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cqo # 0;
 };
 
-x64enc_fetch_inc : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_inc : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_inc # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_dec : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_dec : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_dec # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_neg : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_neg : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_neg # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_not : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_not : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_not # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_lea : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_lea : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_lea # 0;
 };
 
-x64enc_fetch_add : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_add : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -258,7 +263,7 @@ x64enc_fetch_add : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_add # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_sub : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_sub : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -270,12 +275,12 @@ x64enc_fetch_sub : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_sub # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_mul : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_mul : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_mul # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_imul : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_imul : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op0 ::= inst->operands # 0;
 	if(x64val_get_size(op0) == 8)
@@ -287,17 +292,17 @@ x64enc_fetch_imul : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_e
 	return encoding_tbl_imul # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_div : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_div : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_div # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_idiv : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_idiv : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_idiv # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_xor : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_xor : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -309,7 +314,7 @@ x64enc_fetch_xor : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_xor # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_or : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_or : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -321,7 +326,7 @@ x64enc_fetch_or : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_or # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_and : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_and : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
@@ -333,7 +338,7 @@ x64enc_fetch_and : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_and # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_shl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_shl : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if(x64val_get_size(op1) != 8)
@@ -354,7 +359,7 @@ x64enc_fetch_shl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_shl # x64enc_access_encoding_tbl_bitshift(inst);
 };
 
-x64enc_fetch_sar : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_sar : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if(x64val_get_size(op1) != 8)
@@ -375,7 +380,7 @@ x64enc_fetch_sar : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_sar # x64enc_access_encoding_tbl_bitshift(inst);
 };
 
-x64enc_fetch_shr : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_shr : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
 	if(x64val_get_size(op1) != 8)
@@ -396,7 +401,7 @@ x64enc_fetch_shr : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_shr # x64enc_access_encoding_tbl_bitshift(inst);
 };
 
-x64enc_fetch_call : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_call : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op0 ::= inst->operands # 0;
 	if(op0->tag == x64val_tag.memreg)
@@ -421,7 +426,7 @@ x64enc_fetch_call : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_e
 	return encoding_tbl_call # 1;
 };
 
-x64enc_fetch_jmp : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jmp : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -430,7 +435,7 @@ x64enc_fetch_jmp : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jmp # 1;
 };
 
-x64enc_fetch_jz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jz : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -439,7 +444,7 @@ x64enc_fetch_jz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_jz # 1;
 };
 
-x64enc_fetch_jnz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jnz : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -448,7 +453,7 @@ x64enc_fetch_jnz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jnz # 1;
 };
 
-x64enc_fetch_jl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jl : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -457,7 +462,7 @@ x64enc_fetch_jl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_jl # 1;
 };
 
-x64enc_fetch_jle : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jle : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -466,7 +471,7 @@ x64enc_fetch_jle : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jle # 1;
 };
 
-x64enc_fetch_jg : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jg : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -475,7 +480,7 @@ x64enc_fetch_jg : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_jg # 1;
 };
 
-x64enc_fetch_jge : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jge : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -484,7 +489,7 @@ x64enc_fetch_jge : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jge # 1;
 };
 
-x64enc_fetch_jb : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jb : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -493,7 +498,7 @@ x64enc_fetch_jb : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_jb # 1;
 };
 
-x64enc_fetch_jbe : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jbe : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -502,7 +507,7 @@ x64enc_fetch_jbe : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jbe # 1;
 };
 
-x64enc_fetch_ja : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_ja : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -511,7 +516,7 @@ x64enc_fetch_ja : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_ja # 1;
 };
 
-x64enc_fetch_jae : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jae : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -520,7 +525,7 @@ x64enc_fetch_jae : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_en
 	return encoding_tbl_jae # 1;
 };
 
-x64enc_fetch_js : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_js : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -529,7 +534,7 @@ x64enc_fetch_js : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_js # 1;
 };
 
-x64enc_fetch_jo : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_jo : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	if(x64val_get_size(inst->operands # 0) == 8)
 	{
@@ -538,92 +543,92 @@ x64enc_fetch_jo : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_ent
 	return encoding_tbl_jo # 1;
 };
 
-x64enc_fetch_test : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_test : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_test # x64enc_access_encoding_tbl_1op(inst);
 };
 
-x64enc_fetch_cmp : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_cmp : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_cmp # x64enc_access_encoding_tbl_2op(inst);
 };
 
-x64enc_fetch_setz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setz : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setz # 0;
 };
 
-x64enc_fetch_setnz : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setnz : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setnz # 0;
 };
 
-x64enc_fetch_setl : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setl : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setl # 0;
 };
 
-x64enc_fetch_setle : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setle : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setle # 0;
 };
 
-x64enc_fetch_setg : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setg : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setg # 0;
 };
 
-x64enc_fetch_setge : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setge : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setge # 0;
 };
 
-x64enc_fetch_setb : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setb : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setb # 0;
 };
 
-x64enc_fetch_setbe : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setbe : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setbe # 0;
 };
 
-x64enc_fetch_seta : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_seta : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_seta # 0;
 };
 
-x64enc_fetch_setae : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_setae : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_setae # 0;
 };
 
-x64enc_fetch_sets : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_sets : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_sets # 0;
 };
 
-x64enc_fetch_seto : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_seto : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_seto # 0;
 };
 
-x64enc_fetch_ret : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_ret : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_ret # 0;
 };
 
-x64enc_fetch_syscall : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_syscall : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_syscall # 0;
 };
 
-x64enc_fetch_int3 : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_int3 : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_int3 # 0;
 };
 
-x64enc_fetch_custom : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)
+x64enc_fetch_custom : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	panic_begin();
 	putzstr("attempt to fetch x64inst_tag.custom");
@@ -631,7 +636,7 @@ x64enc_fetch_custom : func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table
 	unreachable;
 };
 
-x64enc_fetch_tbl ::= func(w : bwriter mut?, inst : x64inst mut? -> x64enc_table_entry mut?)[countof x64inst_tag]
+x64enc_fetch_tbl ::= func(inst : x64inst mut? -> x64enc_table_entry mut?)[countof x64inst_tag]
 {
 	.0 := x64enc_fetch_nop;
 	.1 := x64enc_fetch_mov;
