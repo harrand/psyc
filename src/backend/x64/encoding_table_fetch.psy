@@ -253,24 +253,12 @@ x64enc_fetch_lea : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_add : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
-	{
-		panic_begin();
-		putzstr("immediate operand to ADD is 64-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_add # x64enc_access_encoding_tbl_2op(inst);
 };
 
 x64enc_fetch_sub : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
-	{
-		panic_begin();
-		putzstr("immediate operand to SUB is 64-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_sub # x64enc_access_encoding_tbl_2op(inst);
 };
 
@@ -282,12 +270,6 @@ x64enc_fetch_mul : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_imul : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op0 ::= inst->operands # 0;
-	if(x64val_get_size(op0) == 8)
-	{
-		panic_begin();
-		putzstr("first operand to IMUL is 8-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_imul # x64enc_access_encoding_tbl_1op(inst);
 };
 
@@ -304,48 +286,24 @@ x64enc_fetch_idiv : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_xor : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
-	{
-		panic_begin();
-		putzstr("immediate operand to XOR is 64-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_xor # x64enc_access_encoding_tbl_2op(inst);
 };
 
 x64enc_fetch_or : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
-	{
-		panic_begin();
-		putzstr("immediate operand to OR is 64-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_or # x64enc_access_encoding_tbl_2op(inst);
 };
 
 x64enc_fetch_and : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_size(op1)] == 64))
-	{
-		panic_begin();
-		putzstr("immediate operand to AND is 64-bit, which is unencodeable\0");
-		panic_end();
-	}
 	return encoding_tbl_and # x64enc_access_encoding_tbl_2op(inst);
 };
 
 x64enc_fetch_shl : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if(x64val_get_size(op1) != 8)
-	{
-		panic_begin();
-		putzstr("rhs operand to SHL must always be 8-bit\0");
-		panic_end();
-	}
 	if(op1->tag == x64val_tag.reg)
 	{
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
@@ -361,12 +319,6 @@ x64enc_fetch_shl : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_sar : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if(x64val_get_size(op1) != 8)
-	{
-		panic_begin();
-		putzstr("rhs operand to SAR must always be 8-bit\0");
-		panic_end();
-	}
 	if(op1->tag == x64val_tag.reg)
 	{
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
@@ -382,12 +334,6 @@ x64enc_fetch_sar : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_shr : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op1 ::= inst->operands # 1;
-	if(x64val_get_size(op1) != 8)
-	{
-		panic_begin();
-		putzstr("rhs operand to SHR must always be 8-bit\0");
-		panic_end();
-	}
 	if(op1->tag == x64val_tag.reg)
 	{
 		if([x64val_reg_get_reg(op1)] != x64_reg.rcx)
@@ -403,24 +349,9 @@ x64enc_fetch_shr : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 x64enc_fetch_call : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	op0 ::= inst->operands # 0;
-	if(op0->tag == x64val_tag.memreg)
+	if(op0->tag == x64val_tag.imm)
 	{
-		if([x64val_memreg_get_base(op0)] == x64_reg.rip)
-		{
-			if(x64val_get_size(op0) != 32)
-			{
-				panic_begin();
-				putzstr("riprel operand to CALL must be 32-bit\0");
-				panic_end();
-			}
-			return encoding_tbl_call # 0;
-		}
-	}
-	if(x64val_get_size(op0) != 64)
-	{
-		panic_begin();
-		putzstr("r/m operand to CALL must be 64-bit");
-		panic_end();
+		return encoding_tbl_call # 0;
 	}
 	return encoding_tbl_call # 1;
 };
