@@ -74,6 +74,31 @@ x64val_imm_get_size : func(v : x64val mut? -> u64 mut?)
 	return ref(v->v2);
 };
 
+x64val_imm_try_truncate_integer : func(imm : x64val mut?, immsize : u64 -> bool)
+{
+	// we have an imm of some size whose value is an integer
+	// try to turn it into size 'immsize'
+	// returns true on success (written to imm)
+	// returns false on failure (the immediate value doesnt fit in the new size)
+	// whether the values 'fits' is conservative - if the top N size-immsize bits are all zeros or all ones, then it 'fits'. otherwise, it doesnt
+	cursz ::= [x64val_imm_get_size(imm)];
+	if(immsize >= cursz)
+	{
+		// dont set the size, we're a truncation not an extension
+		return true;
+	}
+	v ::= [x64val_imm_get_value(imm)];
+	shift_amt ::= cursz - immsize;
+	upper ::= v >> immsize;
+	if((upper != 0) && (upper != (1 << shift_amt) - 1))
+	{
+		return false;
+	}
+	[x64val_imm_get_size(imm)] = immsize;
+	[x64val_imm_get_value(imm)] = v & ((1 << immsize) - 1);
+	return true;
+};
+
 x64val_reg_get_reg : func(v : x64val mut? -> x64_reg mut?)
 {
 	return ref(v->r1);
