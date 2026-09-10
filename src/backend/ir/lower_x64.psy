@@ -498,12 +498,10 @@ irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	rhsx64 : x64val mut;
 	irval_lower_x64(ir_add_get_rhs(inst), ref rhsx64);
 
-	max_imm_sz : u64 mut := x64val_get_size(ref lhsx64);
-	if(max_imm_sz == 64)
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
 	{
-		max_imm_sz = 32;
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	}
-	x64val_imm_try_truncate_integer(ref rhsx64, max_imm_sz);
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
 	x64_add(ref outx64, ref rhsx64);
@@ -518,12 +516,10 @@ irinst_lower_x64_sub : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	rhsx64 : x64val mut;
 	irval_lower_x64(ir_sub_get_rhs(inst), ref rhsx64);
 
-	max_imm_sz : u64 mut := x64val_get_size(ref lhsx64);
-	if(max_imm_sz == 64)
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
 	{
-		max_imm_sz = 32;
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	}
-	x64val_imm_try_truncate_integer(ref rhsx64, max_imm_sz);
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
 	x64_sub(ref outx64, ref rhsx64);
@@ -624,7 +620,26 @@ irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
 };
 
-irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0) {
+irinst_lower_x64_cmp_ult : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_cmp_ult_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_cmp_ult_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_cmp_ult_get_rhs(inst), ref rhsx64);
+
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
+	{
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	}
+
+	x64_cmp(ref lhsx64, ref rhsx64);
+	x64_setb(ref outx64);
+};
+
+irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
 	ir_callee ::= ir_call_get_callee(inst);
 	if(ir_callee->tag == irval_tag.asmref)
 	{
@@ -746,7 +761,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.37 := irinst_lower_x64_nyi;
 	.38 := irinst_lower_x64_nyi;
 	.39 := irinst_lower_x64_nyi;
-	.40 := irinst_lower_x64_nyi;
+	.40 := irinst_lower_x64_cmp_ult;
 	.41 := irinst_lower_x64_nyi;
 	.42 := irinst_lower_x64_nyi;
 	.43 := irinst_lower_x64_nyi;
