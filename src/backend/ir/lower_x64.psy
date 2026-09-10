@@ -620,6 +620,60 @@ irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
 };
 
+irinst_lower_x64_xor : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_xor_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_xor_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_xor_get_rhs(inst), ref rhsx64);
+
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
+	{
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	}
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_xor(ref outx64, ref rhsx64);
+};
+
+irinst_lower_x64_or : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_or_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_or_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_or_get_rhs(inst), ref rhsx64);
+
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
+	{
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	}
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_or(ref outx64, ref rhsx64);
+};
+
+irinst_lower_x64_and : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_and_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_and_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_and_get_rhs(inst), ref rhsx64);
+
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
+	{
+		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	}
+
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64_and(ref outx64, ref rhsx64);
+};
+
 irinst_lower_x64_cmp_slt : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	outx64 : x64val mut;
@@ -797,9 +851,12 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	i : u64 mut;
 	for(i = 0; i < callcount; i = i + 1)
 	{
+		// resize abi_begin # i to be cur_param_sz to prevent e.g 'mov rbx, imm8 1', instead want 'mov bl, imm8 1'
+		cur_abi_param : x64val mut := [abi_begin # i];
 		cur_param : x64val mut;
 		irval_lower_x64(callbegin # i, ref cur_param);
-		ir_lower_x64_generic_move_no_load(abi_begin # i, ref cur_param);
+		[x64val_reg_get_size(ref cur_abi_param)] = x64val_get_size(ref cur_param);
+		ir_lower_x64_generic_move_no_load(ref cur_abi_param, ref cur_param);
 	}
 	x64_call(ref callee);
 
@@ -820,8 +877,10 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 
 	for(i = 0; i < retcount; i = i + 1)
 	{
+		cur_abi_ret : x64val mut := [abi_retbegin # i];
 		cur_ret : x64val mut;
 		irval_lower_x64(retbegin # i, ref cur_ret);
+		[x64val_reg_get_size(ref cur_abi_ret)] = x64val_get_size(ref cur_ret);
 		ir_lower_x64_generic_move_no_load(ref cur_ret, abi_retbegin # i);
 	}
 };
@@ -873,9 +932,9 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.23 := irinst_lower_x64_nyi;
 	.24 := irinst_lower_x64_nyi;
 	.25 := irinst_lower_x64_nyi;
-	.26 := irinst_lower_x64_nyi;
-	.27 := irinst_lower_x64_nyi;
-	.28 := irinst_lower_x64_nyi;
+	.26 := irinst_lower_x64_xor;
+	.27 := irinst_lower_x64_or;
+	.28 := irinst_lower_x64_and;
 	.29 := irinst_lower_x64_nyi;
 	.30 := irinst_lower_x64_nyi;
 	.31 := irinst_lower_x64_nyi;
