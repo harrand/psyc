@@ -183,10 +183,14 @@ ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? ->
 ir_lower_x64inst_tag : enum
 {
 	.blkbegin := 0; // meta-instruction marking the beginning of block N
+	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must be assigned the specific x64 register param1 during register allocation
+	.regcant := 2; // meta-instruction requiring that param0 (an ssa-register) must *NOT* be assigned the specific x64 register param1 during register allocation for correctness reasons
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
 	.0 := "blkbegin\0";
+	.1 := "regmust\0";
+	.2 := "regcant\0";
 };
 
 // x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
@@ -213,6 +217,27 @@ x64_custom_blkbegin : func(blk : irblk mut? -> v0)
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.blkbegin;
 	x64_custom(tag, ref blkval, 1);
 };
+
+x64_custom_regmust : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
+{
+	params : x64val mut[2];
+	[params # 0] = [ssa_reg];
+	[params # 1] = [hw_reg];
+
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regmust;
+	x64_custom(tag, params # 0, countof typeof(params));
+};
+
+x64_custom_regcant : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
+{
+	params : x64val mut[2];
+	[params # 0] = [ssa_reg];
+	[params # 1] = [hw_reg];
+
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regcant;
+	x64_custom(tag, params # 0, countof typeof(params));
+};
+
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
@@ -530,6 +555,73 @@ irinst_lower_x64_smul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	x64_imul(ref outx64, ref rhsx64);
 };
 
+irinst_lower_x64_udiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_rhs(inst), ref rhsx64);
+
+	// rdx is the top-half of the numerator
+	// and because we only support 64-bit numerators it must always be zero'd
+	rdx_sized : x64val mut;
+	rdx_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
+	x64_xor(ref rdx_sized, ref rdx_sized);
+
+	rax_sized : x64val mut;
+	rax_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
+	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
+
+	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	x64_div(ref rhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
+};
+
+irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_rhs(inst), ref rhsx64);
+	
+	rax_sized : x64val mut;
+	rax_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
+	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
+
+	// sign-extend rax to rdx
+	lhs_sz ::= x64val_get_size(ref lhsx64);
+	if(lhs_sz == 64)
+	{
+		x64_cqo();
+	}
+	if(lhs_sz == 32)
+	{
+		x64_cdq();
+	}
+	if(lhs_sz == 16)
+	{
+		x64_cwd();
+	}
+	if(lhs_sz == 8)
+	{
+		x64_cbw();
+	}
+
+	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	x64_idiv(ref rhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
+};
+
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	x64_int3();
@@ -559,8 +651,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.14 := irinst_lower_x64_sub;
 	.15 := irinst_lower_x64_umul;
 	.16 := irinst_lower_x64_smul;
-	.17 := irinst_lower_x64_nyi;
-	.18 := irinst_lower_x64_nyi;
+	.17 := irinst_lower_x64_udiv;
+	.18 := irinst_lower_x64_sdiv;
 	.19 := irinst_lower_x64_nyi;
 	.20 := irinst_lower_x64_nyi;
 	.21 := irinst_lower_x64_nyi;
