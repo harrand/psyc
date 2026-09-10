@@ -247,11 +247,13 @@ irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -
 irinst_lower_x64_nyi : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	//warn_begin();
+	//panic_begin();
 	//putzstr("lowering of irinst.\0");
 	//putsint(inst->tag@s64);
 	//putzstr(" (\0");
 	//putzstr([irinst_names # (inst->tag@s64)]);
 	//putzstr(") is NYI\n\0");
+	//panic_end();
 	//warn_end();
 };
 
@@ -622,6 +624,76 @@ irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
 };
 
+irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0) {
+	ir_callee ::= ir_call_get_callee(inst);
+	if(ir_callee->tag == irval_tag.asmref)
+	{
+		irinst_lower_x64_asmcall(fn, blk, inst);
+		return;
+	}
+
+	abi_begin ::= abi_param_registers_begin_x64(abi_tag.psy64);
+	abi_count ::= abi_param_registers_count_x64(abi_tag.psy64);
+	abi_retbegin ::= abi_output_registers_begin_x64(abi_tag.psy64);
+	abi_retcount ::= abi_output_registers_count_x64(abi_tag.psy64);
+
+	callcount ::= ir_call_get_params_count(inst)@u64;
+	callbegin ::= ir_call_get_params(inst);
+	if(callcount > abi_count)
+	{
+		panic_begin();
+		putzstr("too many parameters in ir_call (abi specifies a maximum of \0");
+		putuint(abi_count);
+		putzstr(", but \0");
+		putuint(callcount);
+		putzstr(" were passed:\n\0");
+		irinst_dump(inst);
+		panic_end();
+	}
+
+	callee : x64val mut;
+	irval_lower_x64(ir_callee, ref callee);
+	i : u64 mut;
+	for(i = 0; i < callcount; i = i + 1)
+	{
+		cur_param : x64val mut;
+		irval_lower_x64(callbegin # i, ref cur_param);
+		ir_lower_x64_generic_move_no_load(abi_begin # i, ref cur_param);
+	}
+	x64_call(ref callee);
+
+	retbegin ::= ir_call_get_returns(inst);
+	retcount ::= ir_call_get_returns_count(inst)@u64;
+
+	if(retcount > abi_retcount)
+	{
+		panic_begin();
+		putzstr("too many returns in ir_call (abi specifies a maximum of \0");
+		putuint(abi_retcount);
+		putzstr(", but \0");
+		putuint(retcount);
+		putzstr(" were passed:\n\0");
+		irinst_dump(inst);
+		panic_end();
+	}
+
+	for(i = 0; i < retcount; i = i + 1)
+	{
+		cur_ret : x64val mut;
+		irval_lower_x64(retbegin # i, ref cur_ret);
+		ir_lower_x64_generic_move_no_load(ref cur_ret, abi_retbegin # i);
+	}
+};
+
+irinst_lower_x64_asmcall : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	warn_begin();
+	putzstr("call to assembly at: \n\0");
+	irinst_dump(inst);
+	putzstr("\n is NYI so its being skipped for now...\n\0");
+	warn_end();
+};
+
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	x64_int3();
@@ -682,7 +754,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.45 := irinst_lower_x64_nyi;
 	.46 := irinst_lower_x64_nyi;
 	.47 := irinst_lower_x64_nyi;
-	.48 := irinst_lower_x64_nyi;
+	.48 := irinst_lower_x64_call;
 	.49 := irinst_lower_x64_brk;
 	.50 := irinst_lower_x64_unreach;
 };
