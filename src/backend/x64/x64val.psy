@@ -12,7 +12,7 @@ x64val_tag : enum
 	.ripreli := 4;
 	// function reference: v1 = function index in the program
 	.fnref := 5;
-	// global data reference: v1 = global index
+	// global data reference: v1 = global index, v2 = memory size (not necessarily the size of the global data)
 	.globref := 6;
 	// non-encodeable custom userdata: user-defined
 	.custom := 7;
@@ -169,6 +169,11 @@ x64val_globref_get_index : func(v : x64val mut? -> u64 mut?)
 	return ref(v->v1)@u64 mut?;
 };
 
+x64val_globref_get_size : func(v : x64val mut? -> u64 mut?)
+{
+	return ref(v->v2)@u64 mut?;
+};
+
 x64val_is_any_custom : func(v : x64val mut? -> bool)
 {
 	return v->tag@s64 >= (x64val_tag.custom@s64);
@@ -184,6 +189,11 @@ x64val_is_any_register : func(v : x64val mut? -> bool)
 	return (v->tag == x64val_tag.reg);
 };
 
+x64val_is_encodeable_register : func(v : x64val mut? -> bool)
+{
+	return v->tag == x64val_tag.reg;
+};
+
 x64val_custom_is_any_memory_handler : func(v : x64val mut? -> bool) mut := zero;
 x64val_is_any_memory : func(v : x64val mut? -> bool)
 {
@@ -192,6 +202,15 @@ x64val_is_any_memory : func(v : x64val mut? -> bool)
 		return x64val_custom_is_any_memory_handler(v);
 	}
 	return (v->tag == x64val_tag.memreg) || (v->tag == x64val_tag.ripreli) || (v->tag == x64val_tag.globref) || (v->tag == x64val_tag.fnref);
+};
+
+x64val_is_encodeable_memory : func(v : x64val mut? -> bool)
+{
+	if(x64val_is_any_custom(v))
+	{
+		return false;
+	}
+	return (v->tag == x64val_tag.memreg);
 };
 
 x64val_custom_get_size : func(v : x64val mut? -> u64) mut := zero;
@@ -229,6 +248,80 @@ x64val_get_size : func(v : x64val mut? -> u64)
 	return 0;
 };
 
+// the value satisfies the required operand type (and is encodeable)
+x64val_satisfies_optype_encodeably : func(v : x64val mut?, type : x64enc_operand_type -> bool)
+{
+	sz ::= x64val_get_size(v);
+	if(x64val_is_encodeable_memory(v))
+	{
+		if(sz == 8)
+		{
+			return (type == x64enc_operand_type.rm8) || (type == x64enc_operand_type.m8);
+		}
+		if(sz == 16)
+		{
+			return (type == x64enc_operand_type.rm16) || (type == x64enc_operand_type.m16);
+		}
+		if(sz == 32)
+		{
+			return (type == x64enc_operand_type.rm32) || (type == x64enc_operand_type.m32);
+		}
+		if(sz == 64)
+		{
+			return (type == x64enc_operand_type.rm64) || (type == x64enc_operand_type.m64);
+		}
+		if(sz == 128)
+		{
+			return (type == x64enc_operand_type.rm128) || (type == x64enc_operand_type.m128);
+		}
+	}
+	if(x64val_is_encodeable_register(v))
+	{
+		if(sz == 8)
+		{
+			return (type == x64enc_operand_type.r8) || (type == x64enc_operand_type.rm8);
+		}
+		if(sz == 16)
+		{
+			return (type == x64enc_operand_type.r16) || (type == x64enc_operand_type.rm16);
+		}
+		if(sz == 32)
+		{
+			return (type == x64enc_operand_type.r32) || (type == x64enc_operand_type.rm32);
+		}
+		if(sz == 64)
+		{
+			return (type == x64enc_operand_type.r64) || (type == x64enc_operand_type.rm64);
+		}
+		if(sz == 128)
+		{
+			return (type == x64enc_operand_type.r128) || (type == x64enc_operand_type.rm128);
+		}
+	}
+	if(v->tag == x64val_tag.imm)
+	{
+		immsz ::= [x64val_imm_get_size(v)];
+		if((immsz == 8) && (type == x64enc_operand_type.imm8))
+		{
+			return true;
+		}
+		if((immsz == 16) && (type == x64enc_operand_type.imm16))
+		{
+			return true;
+		}
+		if((immsz == 32) && (type == x64enc_operand_type.imm32))
+		{
+			return true;
+		}
+		if((immsz == 64) && (type == x64enc_operand_type.imm64))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+// the value satisfies the required operand type (but is not necessarily encodeable)
 x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bool)
 {
 	sz ::= x64val_get_size(v);

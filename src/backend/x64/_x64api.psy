@@ -29,11 +29,50 @@ x64_add_func : func(out : x64val mut? -> x64func mut?)
 	return x64api.prog.funcs # idx;
 };
 
-x64_add_glob : func(out : x64val mut?, g : x64glob mut? -> v0)
+x64_add_glob : func(out : x64val mut?, g : x64glob mut?, memory_size : u64 -> v0)
 {
 	idx ::= x64prog_add_glob(ref(x64api.prog), g);
 	out->tag = x64val_tag.globref;
 	[x64val_globref_get_index(out)] = idx;
+	[x64val_globref_get_size(out)] = memory_size;
+};
+
+x64_add_glob_no_memsize : func(out : x64val mut?, g : x64glob mut? -> v0)
+{
+	x64_add_glob(out, g, 64);
+};
+
+// if a readonly global exists with an exact copy of the provided data, set 'out' to reference that global and return true. if no such global exists, return false
+x64_find_const_glob_matching_bytes : func(data : u8?, data_count : u64, out : x64val mut? -> bool)
+{
+	i : u64 mut;
+	j : u64 mut;
+	count ::= x64api.prog.globs_count;
+	for(i = 0; i < count; i = i + 1)
+	{
+		cur_glob ::= x64api.prog.globs # i;
+		if(cur_glob->tag == x64glob_tag.readonly)
+		{
+			if(cur_glob->init_data_size == data_count)
+			{
+				for(j = 0; j < data_count; j = j + 1)
+				{
+					all_match : bool mut := true;
+					if([cur_glob->init_data # j] != [data # j])
+					{
+						all_match = false;
+					}
+					if(all_match)
+					{
+						out->tag = x64val_tag.globref;
+						[x64val_globref_get_index(out)] = i;
+						return true;
+					}
+				}
+			}
+		}
+	}
+	return false;
 };
 
 x64_set_entrypoint : func(fnref : x64val mut? -> v0)
@@ -94,6 +133,30 @@ x64_delete_instruction : func(-> v0)
 x64_current_instruction : func(-> x64inst mut?)
 {
 	return x64_current_func()->insts # x64api.instpos;
+};
+
+x64val_imm_as_globref : func(imm : x64val mut?, out : x64val mut? -> v0)
+{
+	if(imm->tag != x64val_tag.imm)
+	{
+		[out] = [imm];
+		return;
+	}
+	// create some global data containing an immediate value, and turn 'out' into a globref referencing that data
+	bytes ::= x64val_imm_get_value(imm)@u8?;
+	bytes_count ::= [x64val_imm_get_size(imm)];
+	if(x64_find_const_glob_matching_bytes(bytes, bytes_count, out))
+	{
+		return;
+	}
+	// didnt find such a thing. create the glob.
+	newglob : x64glob mut;
+	newglob.tag = x64glob_tag.readonly;
+	newglob.size = bytes_count;
+	newglob.init_data = arena_alloc(global_arena, bytes_count);
+	memcopy(newglob.init_data, bytes, bytes_count);
+	newglob.init_data_size = bytes_count;
+	x64_add_glob(out, ref newglob, bytes_count);
 };
 
 x64_dump : func(-> v0)

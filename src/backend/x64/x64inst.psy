@@ -137,6 +137,7 @@ x64inst_is_any_custom : func(inst : x64inst mut? -> bool)
 	return inst->tag@s64 >= x64inst_tag.custom@s64;
 };
 
+// true if the instruction is encodeable - meaning that the instruction is non-custom and its operands are both encodeable and match that of the operand-types
 x64inst_is_encodeable : func(inst : x64inst mut? -> bool)
 {
 	if(x64inst_is_any_custom(inst))
@@ -145,9 +146,10 @@ x64inst_is_encodeable : func(inst : x64inst mut? -> bool)
 	}
 	i : u64 mut;
 	count ::= x64inst_operands_count(inst);
+	enc ::= x64enc_fetch(inst);
 	for(i = 0; i < count; i = i + 1)
 	{
-		if(!x64val_is_encodeable(inst->operands # i))
+		if((x64val_is_encodeable(inst->operands # i) == false) || (x64val_satisfies_optype_encodeably(inst->operands # i, [enc->operand_types # i]) == false))
 		{
 			return false;
 		}
@@ -155,6 +157,7 @@ x64inst_is_encodeable : func(inst : x64inst mut? -> bool)
 	return x64inst_is_legal(inst);
 };
 
+// true if the instruction is non-custom and its operands match that of the operand-types (but are not necessarily encodeable)
 x64inst_is_legal : func(inst : x64inst mut? -> bool)
 {
 	if(x64inst_is_any_custom(inst))

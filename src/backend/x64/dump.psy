@@ -147,7 +147,14 @@ x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 	{
 		if(x64inst_is_encodeable(inst) == false)
 		{
-			bwrite_colour_red(w);
+			if(x64inst_is_legal(inst))
+			{
+				bwrite_colour_yellow(w);
+			}
+			else
+			{
+				bwrite_colour_red(w);
+			}
 		}
 		bwrite_zstr(w, [x64inst_name # tag@s64]);
 		if(x64inst_is_encodeable(inst) == false)
@@ -161,17 +168,31 @@ x64inst_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> v0)
 	for(i = 0; i < count; i = i + 1)
 	{
 		bwrite8(w, ' ');
+		// ok look i know this looks a bit complex but im just picking out a colour to print the operand as depending on how correct it currently is:
+		// normal colour = the value is encodeable and matches the operand type of the instruction \o/
+		// yellow colour = the value is not encodeable, but still matches the operand type of the instruction (this generally means it needs more processing, e.g ripreli -> memreg)
+		// red colour = this value does not match the operand type of the instruction (e.g passing an intermediate to imul)
+		// blue colour = x64val_dump_to can override the colour logic below, and custom values will be printed blue. those indicate values that have not been lowered to an actual x64 value (encodeable or not)
+		satisfies_encodeably : bool mut := true;
 		satisfies : bool mut := true;
 		if(enc != zero)
 		{
+			satisfies_encodeably = x64val_satisfies_optype_encodeably(inst->operands # i, [enc->operand_types # i]);
 			satisfies = x64val_satisfies_optype(inst->operands # i, [enc->operand_types # i]);
 		}
-		if(satisfies == false)
+		if(satisfies_encodeably == false)
 		{
-			bwrite_colour_red(w);
+			if(satisfies)
+			{
+				bwrite_colour_yellow(w);
+			}
+			else
+			{
+				bwrite_colour_red(w);
+			}
 		}
 		x64val_dump_to(w, inst->operands # i);
-		if(satisfies == false)
+		if(satisfies_encodeably == false)
 		{
 			bwrite_colour_reset(w);
 		}
