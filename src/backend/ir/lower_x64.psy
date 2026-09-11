@@ -226,12 +226,14 @@ ir_lower_x64inst_tag : enum
 	.blkbegin := 0; // meta-instruction marking the beginning of block N
 	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must be assigned the specific x64 register param1 during register allocation
 	.regcant := 2; // meta-instruction requiring that param0 (an ssa-register) must *NOT* be assigned the specific x64 register param1 during register allocation for correctness reasons
+	.clobber := 3; // meta-instruction to mark a hardware register as clobbered
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
 	.0 := "blkbegin\0";
 	.1 := "regmust\0";
 	.2 := "regcant\0";
+	.3 := "clobber\0";
 };
 
 // x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
@@ -279,6 +281,11 @@ x64_custom_regcant : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
 	x64_custom(tag, params # 0, countof typeof(params));
 };
 
+x64_custom_clobber : func(hw_reg : x64val mut? -> v0)
+{
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.clobber;
+	x64_custom(tag, hw_reg, 1);
+};
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
@@ -928,11 +935,45 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 
 irinst_lower_x64_asmcall : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
-	warn_begin();
-	putzstr("call to assembly at: \n\0");
-	irinst_dump(inst);
-	putzstr("is NYI so its being skipped for now...\n\0");
-	warn_end();
+	asmref ::= ir_call_get_callee(inst);
+	as ::= irapi.prog.asms # [irval_asmref_get_idx(asmref)];
+	constraints : x64_constraints_data mut := zero;
+	putchars(as->constraint, as->constraint_len);
+	x64_parse_constraints(as->constraint, as->constraint_len, ref constraints);
+	params_count ::= ir_call_get_params_count(inst)@u64;
+	params_begin ::= ir_call_get_params(inst);
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		// move the param values to the input registers as requested by the constraint string
+		// depending on lowering we could actually want to end up doing this in a different order. todo: emit a custom begin/end instruction to tell the legaliser to re-order these sensibly
+		cur_param : x64val mut;
+		irval_lower_x64(params_begin # i, ref cur_param);
+		ir_lower_x64_generic_move_no_load(constraints.inputs # i, ref cur_param);
+	}
+	instructions : x64inst mut? mut;
+	instructions_count : u64 mut;
+	x64_parse_asm(as->code, as->code_len, ref instructions, ref instructions_count);
+	for(i = 0; i < instructions_count; i = i + 1)
+	{
+		x64_add_instruction(instructions # i);
+	}
+	for(i = 0; i < constraints.clobbers_count; i = i + 1)
+	{
+		if(x64val_is_valid(constraints.clobbers # i))
+		{
+			x64_custom_clobber(constraints.clobbers # i);
+		}
+	}
+
+	returns_count ::= ir_call_get_returns_count(inst)@u64;
+	returns_begin ::= ir_call_get_returns(inst);
+	for(i = 0; i < returns_count; i = i + 1)
+	{
+		cur_return : x64val mut;
+		irval_lower_x64(returns_begin # i, ref cur_return);
+		ir_lower_x64_generic_move_no_load(ref cur_return, constraints.outputs # i);
+	}
 };
 
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
