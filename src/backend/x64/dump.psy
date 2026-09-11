@@ -100,8 +100,30 @@ x64val_fnref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 
 x64val_globref_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
+	memsz ::= log2([x64val_globref_get_size(v)]) - 3;
+	bwrite_zstr(w, [x64memreg_size_name # memsz]);
+	bwrite_zstr(w, " PTR \0");
+	bwrite8(w, '[');
 	bwrite8(w, '@');
 	bwrite_uint(w, [x64val_globref_get_index(v)]);
+	disp ::= [x64val_globref_get_displacement(v)];
+	if(disp != 0)
+	{
+		bwrite8(w, ' ');
+		ss ::= disp@s64 mut;
+		if(ss < 0)
+		{
+			ss = -ss;
+			bwrite8(w, '-');
+		}
+		else
+		{
+			bwrite8(w, '+');
+		}
+		bwrite8(w, ' ');
+		bwrite_uint(w, ss);
+	}
+	bwrite8(w, ']');
 };
 
 x64val_custom_dump_to_handler : func(w : bwriter mut?, v : x64val mut? -> v0) mut := zero;

@@ -12,7 +12,7 @@ x64val_tag : enum
 	.ripreli := 4;
 	// function reference: v1 = function index in the program
 	.fnref := 5;
-	// global data reference: v1 = global index, v2 = memory size (not necessarily the size of the global data)
+	// global data reference: v1 = global index, v2 = memory size (not necessarily the size of the global data), v3 = displacement (in bytes)
 	.globref := 6;
 	// non-encodeable custom userdata: user-defined
 	.custom := 7;
@@ -72,6 +72,28 @@ x64val_imm_get_value : func(v : x64val mut? -> u64 mut?)
 x64val_imm_get_size : func(v : x64val mut? -> u64 mut?)
 {
 	return ref(v->v2);
+};
+
+x64val_imm_try_match_integer : func(imm : x64val mut?, immsize : u64 -> bool)
+{
+	// same as x64val_imm_try_truncate_integer, but is allowed to increase the size of the mmediate
+	cursz ::= [x64val_imm_get_size(imm)];
+	v ::= [x64val_imm_get_value(imm)];
+	if(cursz < immsize)
+	{
+		// this is easy.
+		[x64val_imm_get_size(imm)] = immsize;
+		return true;
+	}
+	shift_amt ::= cursz - immsize;
+	upper ::= v >> immsize;
+	if((upper != 0) && (upper != (1 << shift_amt) - 1))
+	{
+		return false;
+	}
+	[x64val_imm_get_size(imm)] = immsize;
+	[x64val_imm_get_value(imm)] = v & ((1 << immsize) - 1);
+	return true;
 };
 
 x64val_imm_try_truncate_integer : func(imm : x64val mut?, immsize : u64 -> bool)
@@ -174,6 +196,11 @@ x64val_globref_get_size : func(v : x64val mut? -> u64 mut?)
 	return ref(v->v2)@u64 mut?;
 };
 
+x64val_globref_get_displacement : func(v : x64val mut? -> s32 mut?)
+{
+	return ref(v->v3)@s32 mut?;
+};
+
 x64val_is_any_custom : func(v : x64val mut? -> bool)
 {
 	return v->tag@s64 >= (x64val_tag.custom@s64);
@@ -243,7 +270,7 @@ x64val_get_size : func(v : x64val mut? -> u64)
 	}
 	if(v->tag == x64val_tag.globref)
 	{
-		return 64;
+		return [x64val_globref_get_size(v)];
 	}
 	return 0;
 };

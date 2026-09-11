@@ -18,6 +18,28 @@ ir_lower_x64 : func(-> v0)
 	warn_end();
 
 	i : u64 mut;
+	if(x64api.prog.globs_count != 0)
+	{
+		panic_begin();
+		putzstr("expected no x64globs to exist at the beginning of lowering, but \0");
+		putuint(x64api.prog.globs_count);
+		putzstr(" exist...\n\0");
+		panic_end();
+	}
+	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
+	{
+		irglob_lower_x64(irapi.prog.globs # i);
+	}
+	if(x64api.prog.globs_count != irapi.prog.globs_count)
+	{
+		panic_begin();
+		putzstr("expected the number of x64globs to be equal to the number of irglobs (\0");
+		putuint(irapi.prog.globs_count);
+		putzstr(") but it is instead \0");
+		putuint(x64api.prog.globs_count);
+		putzstr("...\n\0");
+		panic_end();
+	}
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
 		irfunc_lower_x64(irapi.prog.funcs # i);
@@ -80,6 +102,29 @@ ir_lower_epilog_x64 : func(-> v0)
 	x64_pop(ref rbp);
 };
 
+irglob_lower_x64 : func(glob : irglob mut? -> v0)
+{
+	g : x64glob mut;
+	if(glob->is_mut)
+	{
+		g.tag = x64glob_tag.mutable;
+	}
+	else
+	{
+		g.tag = x64glob_tag.readonly;
+	}
+	g.size = glob->data_size;
+	g.init_data = glob->data;
+	g.init_data_size = glob->data_size;
+	// any irglob could have irrelocs pointing to its data (sadly we cant immediately tell which irglobs are and which arent), so we just assume that they all are subject to change
+	// this is important as sometimes we need to transform immediates (that dont fit properly as an operand to a certain x64 instruction e.g imul) into global data. we want to check if a global already exists with the exact immediate data so we can re-use it... BUT if that global is not finalised (aka it could still be written to) then we better not re-use that one
+	// in simpler words, this makes sure no x64globs that are spawned from irglobs are potentially re-used when transforming immediates into globs (coz an x64glob and the irglob its spawned from share the same data-span which is subject to irreloc writes)
+	g.data_finalised = false;
+
+	dummy : x64val mut;
+	x64_add_glob_no_memsize(ref dummy, ref g);
+};
+
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
 	dummy : x64val mut;
@@ -123,7 +168,7 @@ ir_lower_x64val_is_memory : func(v : x64val mut? -> bool)
 {
 	tagbase : x64val_tag := x64val_tag.custom;
 	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	return (idx == ir_lower_x64val_tag.vmemreg) || (idx == ir_lower_x64val_tag.vmemglob) || (idx == ir_lower_x64val_tag.irblkref);
+	return (idx == ir_lower_x64val_tag.vmemreg) || (idx == ir_lower_x64val_tag.irblkref);
 };
 
 ir_lower_x64val_is_register : func(v : x64val mut? -> bool)
@@ -144,10 +189,6 @@ ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
 	if(idx == ir_lower_x64val_tag.vmemreg)
 	{
 		return [irsz_sizes # [x64val_vmemreg_get_sz(v)]@s64] * 8;
-	}
-	if(idx == ir_lower_x64val_tag.vmemglob)
-	{
-		return [irsz_sizes # [x64val_vmemglob_get_sz(v)]@s64] * 8;
 	}
 	if(idx == ir_lower_x64val_tag.irblkref)
 	{
@@ -288,7 +329,6 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 
 	tagbase : x64val_tag := x64val_tag.custom;
 	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
-	customidx_vmemglob : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
 
 	mem : x64val mut;
 	if(base->tag == irval_tag.reg)
@@ -305,10 +345,10 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	{
 		if(base->tag == irval_tag.globref)
 		{
-			mem.tag = (tagbase@s64 + customidx_vmemglob@s64)@x64val_tag;
-			[x64val_vmemglob_get_globidx(ref mem)] = [irval_globref_get_idx(base)];
-			[x64val_vmemglob_get_displacement(ref mem)] = disp;
-			[x64val_vmemglob_get_sz(ref mem)] = sz;
+			mem.tag = x64val_tag.globref;
+			[x64val_globref_get_index(ref mem)] = [irval_globref_get_idx(base)];
+			[x64val_globref_get_size(ref mem)] = [irsz_sizes # (sz@s64)] * 8;
+			[x64val_globref_get_displacement(ref mem)] = disp;
 		}
 		else
 		{
@@ -335,7 +375,6 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 
 	tagbase : x64val_tag := x64val_tag.custom;
 	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
-	customidx_vmemglob : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
 
 	mem : x64val mut;
 	if(base->tag == irval_tag.reg)
@@ -352,10 +391,10 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	{
 		if(base->tag == irval_tag.globref)
 		{
-			mem.tag = (tagbase@s64 + customidx_vmemglob@s64)@x64val_tag;
-			[x64val_vmemglob_get_globidx(ref mem)] = [irval_globref_get_idx(base)];
-			[x64val_vmemglob_get_displacement(ref mem)] = disp;
-			[x64val_vmemglob_get_sz(ref mem)] = sz;
+			mem.tag = x64val_tag.globref;
+			[x64val_globref_get_index(ref mem)] = [irval_globref_get_idx(base)];
+			[x64val_globref_get_size(ref mem)] = [irsz_sizes # (sz@s64)] * 8;
+			[x64val_globref_get_displacement(ref mem)] = disp;
 		}
 		else
 		{
@@ -535,6 +574,7 @@ irinst_lower_x64_umul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	irval_lower_x64(ir_umul_get_rhs(inst), ref rhsx64);
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64val_imm_try_match_integer(ref rhsx64, x64val_get_size(ref lhsx64));
 	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	x64_imul(ref outx64, ref rhsx64);
 };
@@ -549,6 +589,7 @@ irinst_lower_x64_smul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	irval_lower_x64(ir_smul_get_rhs(inst), ref rhsx64);
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+	x64val_imm_try_match_integer(ref rhsx64, x64val_get_size(ref lhsx64));
 	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	x64_imul(ref outx64, ref rhsx64);
 };
@@ -968,8 +1009,7 @@ ir_lower_x64val_tag : enum
 {
 	.vreg := 0; // irval_tag.reg (but stored in an x64val)
 	.vmemreg := 1; // x64val_tag.memreg, but the base/index registers are optional irval_tag.regs
-	.vmemglob := 2; // x64val_tag.memreg, but the base register is a ir globref and has a displacement (but no index + scale)
-	.irblkref := 3; // irval_tag.blkref (but stored in an x64val)
+	.irblkref := 2; // irval_tag.blkref (but stored in an x64val)
 };
 
 // x64val_dump_to handler for custom x64val tags (i.e irvals that have been converted to x64val_tag but are in some non-encodeable, intermediate state.
@@ -986,8 +1026,7 @@ ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? ->
 {
 	.0 := ir_lower_x64val_custom_dump_to_vreg;
 	.1 := ir_lower_x64val_custom_dump_to_vmemreg;
-	.2 := ir_lower_x64val_custom_dump_to_vmemglob;
-	.3 := ir_lower_x64val_custom_dump_to_irblkref;
+	.2 := ir_lower_x64val_custom_dump_to_irblkref;
 };
 
 ir_lower_x64val_custom_dump_to_vreg : func(w : bwriter mut?, v : x64val mut? -> v0)
@@ -1045,23 +1084,6 @@ ir_lower_x64val_custom_dump_to_vmemreg : func(w : bwriter mut?, v : x64val mut? 
 	bwrite8(w, ']');
 };
 
-ir_lower_x64val_custom_dump_to_vmemglob : func(w : bwriter mut?, v : x64val mut? -> v0)
-{
-	sz ::= [x64val_vmemglob_get_sz(v)];
-	bwrite_zstr(w, [irsz_names # sz@s64]);
-	bwrite_zstr(w, "glob [\0");
-
-	bwrite8(w, '@');
-	bwrite_uint(w, [x64val_vmemglob_get_globidx(v)]);
-	disp ::= [x64val_vmemglob_get_displacement(v)]@s64;
-	if(disp != 0)
-	{
-		bwrite_zstr(w, " + imm32 \0");
-		bwrite_sint(w, disp);
-	}
-	bwrite8(w, ']');
-};
-
 ir_lower_x64val_custom_dump_to_irblkref : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
 	bwrite8(w, '_');
@@ -1113,21 +1135,6 @@ x64val_vmemreg_get_sz : func(v : x64val mut? -> irsz mut?)
 	return ref(v->v5)@irsz mut?;
 };
 
-x64val_vmemglob_get_globidx : func(v : x64val mut? -> u64 mut?)
-{
-	return ref(v->v1);
-};
-
-x64val_vmemglob_get_displacement : func(v : x64val mut? -> s32 mut?)
-{
-	return ref(v->v2)@s32 mut?;
-};
-
-x64val_vmemglob_get_sz : func(v : x64val mut? -> irsz mut?)
-{
-	return ref(v->r1)@irsz mut?;
-};
-
 x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
 {
 	return ref(v->v1);
@@ -1175,17 +1182,12 @@ irval_lower_x64_reg : func(v : irval mut?, out : x64val mut? -> v0)
 
 irval_lower_x64_globref : func(v : irval mut?, out : x64val mut? -> v0)
 {
-	sz ::= [irval_imm_get_sz(v)];
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemglob;
-
 	// if we see lower a globref individually as a value (and isnt special-cased by some instruction lowering handle), then we treat it as a pointer-to-the-start-of-the-globdata.
 	// i.e irsz.q and no displacement
-	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
-	// pointer size
-	[x64val_vmemglob_get_sz(out)] = irsz.q;
-	[x64val_vmemglob_get_globidx(out)] = [irval_globref_get_idx(v)];
-	[x64val_vmemglob_get_displacement(out)] = 0;
+	out->tag = x64val_tag.globref;
+	[x64val_globref_get_index(out)] = [irval_globref_get_idx(v)];
+	[x64val_globref_get_displacement(out)] = 0;
+	[x64val_globref_get_size(out)] = 64;
 };
 
 irval_lower_x64_fnref : func(v : irval mut?, out : x64val mut? -> v0)
