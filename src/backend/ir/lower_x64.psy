@@ -227,6 +227,7 @@ ir_lower_x64inst_tag : enum
 	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must be assigned the specific x64 register param1 during register allocation
 	.regcant := 2; // meta-instruction requiring that param0 (an ssa-register) must *NOT* be assigned the specific x64 register param1 during register allocation for correctness reasons
 	.clobber := 3; // meta-instruction to mark a hardware register as clobbered
+	.scratch := 4; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
@@ -234,6 +235,7 @@ ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 	.1 := "regmust\0";
 	.2 := "regcant\0";
 	.3 := "clobber\0";
+	.4 := "scratch\0";
 };
 
 // x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
@@ -285,6 +287,12 @@ x64_custom_clobber : func(hw_reg : x64val mut? -> v0)
 {
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.clobber;
 	x64_custom(tag, hw_reg, 1);
+};
+
+x64_custom_scratch : func(ssa_reg : x64val mut? -> v0)
+{
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.scratch;
+	x64_custom(tag, ssa_reg, 1);
 };
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -722,6 +730,66 @@ irinst_lower_x64_and : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	x64_and(ref outx64, ref rhsx64);
 };
 
+irinst_lower_x64_shl : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_shl_get_out(inst), ref outx64);
+	lhs ::= ir_shl_get_lhs(inst);
+	lhsx64 : x64val mut;
+	irval_lower_x64(lhs, ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_shl_get_rhs(inst), ref rhsx64);
+
+	// if lhs is an immediate then it needs to turn into a scratch register
+	if(lhsx64.tag == x64val_tag.imm)
+	{
+		scratch : irval mut;
+		ir_new_scratch_reg_of(fn, irval_get_sz(lhs), ref scratch);
+		scratchx64 : x64val mut;
+		irval_lower_x64(ref scratch, ref scratchx64);
+		x64_custom_scratch(ref scratchx64);
+		ir_lower_x64_generic_move_no_load(ref scratchx64, ref lhsx64);
+		lhsx64 = scratchx64;
+	}
+
+	cl : x64val mut;
+	cl.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref cl)] = x64_reg.rcx;
+	[x64val_reg_get_size(ref cl)] = 8;
+
+	needs_mov_to_cl : bool mut := rhsx64.tag != x64val_tag.imm;
+	if(x64val_imm_try_truncate_integer(ref rhsx64, 8) == false)
+	{
+		// immediate that doesnt fit sadly...
+		needs_mov_to_cl = true;
+	}
+	if(needs_mov_to_cl)
+	{
+		// note: always 8-bit so if rhsx64 is not infact 8-bit it gets auto-truncated
+		if(x64val_get_size(ref rhsx64) != 8)
+		{
+			warn_begin();
+			putzstr("rhs operand of the following instruction will be implicitly trunc'd to 8-bit:\n\0");
+			irinst_dump(inst);
+			warn_end();
+		}
+		rhscpy : irval mut := [ir_shl_get_rhs(inst)];
+		if(irval_try_set_sz(ref rhscpy, irsz.b) == false)
+		{
+			panic_begin();
+			putzstr("rhs operand of the following instruction could not be implicitly trunc'd to 8-bit:\n\0");
+			irinst_dump(inst);
+			panic_end();
+		}
+		irval_lower_x64(ref rhscpy, ref rhsx64);
+		ir_lower_x64_generic_move_no_load(ref cl, ref rhsx64);
+		rhsx64 = cl;
+	}
+
+	x64_shl(ref lhsx64, ref rhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
+};
+
 irinst_lower_x64_cmp_slt : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	outx64 : x64val mut;
@@ -1017,7 +1085,7 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.26 := irinst_lower_x64_xor;
 	.27 := irinst_lower_x64_or;
 	.28 := irinst_lower_x64_and;
-	.29 := irinst_lower_x64_nyi;
+	.29 := irinst_lower_x64_shl;
 	.30 := irinst_lower_x64_nyi;
 	.31 := irinst_lower_x64_nyi;
 	.32 := irinst_lower_x64_nyi;

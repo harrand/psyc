@@ -279,6 +279,10 @@ x64val_get_size : func(v : x64val mut? -> u64)
 x64val_satisfies_optype_encodeably : func(v : x64val mut?, type : x64enc_operand_type -> bool)
 {
 	sz ::= x64val_get_size(v);
+	if(x64val_satisfies_very_specific_optypes(v, type) == false)
+	{
+		return false;
+	}
 	if(x64val_is_encodeable_memory(v))
 	{
 		if(sz == 8)
@@ -352,6 +356,10 @@ x64val_satisfies_optype_encodeably : func(v : x64val mut?, type : x64enc_operand
 x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bool)
 {
 	sz ::= x64val_get_size(v);
+	if(x64val_satisfies_very_specific_optypes(v, type) == false)
+	{
+		return false;
+	}
 	if(x64val_is_any_memory(v))
 	{
 		if(sz == 8)
@@ -420,6 +428,16 @@ x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bo
 	}
 	return false;
 };
+
+x64val_satisfies_very_specific_optypes : func(v : x64val mut?, type : x64enc_operand_type -> bool)
+{
+	if(type == x64enc_operand_type.cl)
+	{
+		return (v->tag == x64val_tag.reg) && ([x64val_reg_get_size(v)] == 8) && ([x64val_reg_get_reg(v)] == x64_reg.rcx);
+	}
+	return true;
+};
+
 
 x64memreg_size_name ::= u8?[7]
 {
