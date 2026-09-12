@@ -224,7 +224,7 @@ ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? ->
 ir_lower_x64inst_tag : enum
 {
 	.blkbegin := 0; // meta-instruction marking the beginning of block N
-	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must be assigned the specific x64 register param1 during register allocation
+	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must not be spilled to memory
 	.regcant := 2; // meta-instruction requiring that param0 (an ssa-register) must *NOT* be assigned the specific x64 register param1 during register allocation for correctness reasons
 	.clobber := 3; // meta-instruction to mark a hardware register as clobbered
 	.scratch := 4; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
@@ -263,14 +263,10 @@ x64_custom_blkbegin : func(blk : irblk mut? -> v0)
 	x64_custom(tag, ref blkval, 1);
 };
 
-x64_custom_regmust : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
+x64_custom_regmust : func(ssa_reg : x64val mut? -> v0)
 {
-	params : x64val mut[2];
-	[params # 0] = [ssa_reg];
-	[params # 1] = [hw_reg];
-
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regmust;
-	x64_custom(tag, params # 0, countof typeof(params));
+	x64_custom(tag, ssa_reg, 1);
 };
 
 x64_custom_regcant : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
@@ -448,7 +444,9 @@ irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	{
 		cur_out : x64val mut;
 		irval_lower_x64(begin # i, ref cur_out);
-		ir_lower_x64_generic_move_no_load(output_registers_begin # i, ref cur_out);
+		cur_abi_out : x64val mut := [output_registers_begin # i];
+		[x64val_reg_get_size(ref cur_abi_out)] = x64val_get_size(ref cur_out);
+		ir_lower_x64_generic_move_no_load(ref cur_abi_out, ref cur_out);
 	}
 	ir_lower_epilog_x64();
 	x64_ret();
@@ -463,6 +461,7 @@ irinst_lower_x64_jmp : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 
 irinst_lower_x64_jmpif : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
+	// jmpif conditions cannot be immediate (it would've been folded into a normal jmp)
 	condx64 : x64val mut;
 	irval_lower_x64(ir_jmpif_get_cond(inst), ref condx64);
 	truex64 : x64val mut;
@@ -470,6 +469,7 @@ irinst_lower_x64_jmpif : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	falsex64 : x64val mut;
 	irval_lower_x64(ir_jmpif_get_false_loc(inst), ref falsex64);
 
+	// so test with the cond twice should always be safe?
 	x64_test(ref condx64, ref condx64);
 	x64_jnz(ref truex64);
 	x64_jmp(ref falsex64);
@@ -747,7 +747,10 @@ irinst_lower_x64_shl : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 		ir_new_scratch_reg_of(fn, irval_get_sz(lhs), ref scratch);
 		scratchx64 : x64val mut;
 		irval_lower_x64(ref scratch, ref scratchx64);
+		// need a scratch register
 		x64_custom_scratch(ref scratchx64);
+		// make sure the scratch doesnt also spill!
+		x64_custom_regmust(ref scratchx64);
 		ir_lower_x64_generic_move_no_load(ref scratchx64, ref lhsx64);
 		lhsx64 = scratchx64;
 	}
@@ -766,13 +769,6 @@ irinst_lower_x64_shl : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	if(needs_mov_to_cl)
 	{
 		// note: always 8-bit so if rhsx64 is not infact 8-bit it gets auto-truncated
-		if(x64val_get_size(ref rhsx64) != 8)
-		{
-			warn_begin();
-			putzstr("rhs operand of the following instruction will be implicitly trunc'd to 8-bit:\n\0");
-			irinst_dump(inst);
-			warn_end();
-		}
 		rhscpy : irval mut := [ir_shl_get_rhs(inst)];
 		if(irval_try_set_sz(ref rhscpy, irsz.b) == false)
 		{
