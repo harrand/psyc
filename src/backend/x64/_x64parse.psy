@@ -105,14 +105,6 @@ x64_parse_a_constraint : func(constraints : u8?, constraints_len : u64, out : x6
 	content ::= constraints # off;
 	len ::= constraints_len - off;
 	con->tag = x64val_tag.invalid;
-	// todo: check if 'memory'?
-	if(strstartswith(content, len, "memory", 6))
-	{
-		warn_begin();
-		putzstr("memory constraints are not yet implemented, constraint of 'memory' is ignored\0");
-		warn_end();
-		return 6 + 1 + off;
-	}
 	i : u64 mut;
 	for(i = 0; i < countof typeof x64reg_name; i = i + 1)
 	{
@@ -261,15 +253,214 @@ x64_constraints_to_ty : func(constraints : u8?, constraints_len : u64 -> ty)
 	return ty_wrap(ref u);
 };
 
-x64_parse_asm : func(code : u8?, code_len : u64, out_insts : x64inst mut? mut?, out_insts_count : u64 mut? -> v0)
+x64_parse_asm_breaks : func(ch : u8 -> bool)
 {
-	warn_begin();
-	putzstr("parsing of assembly code:\n\0");
-	colour_yellow();
-	putchars(code, code_len);
-	colour_reset();
-	putzstr("\n is not yet implemented. zero instructions have been parsed.\0");
-	warn_end();
-	[out_insts] = zero;
-	[out_insts_count] = 0;
+	return (ch == ' ') || (ch == '\t') || (ch == '\r') || (ch == '\n') || (ch == zero) || (ch == ',');
+};
+
+x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_count : u64 -> v0)
+{
+	// $N is treated as [inputs # N] (you are free to pass zero for both if you dont need to support that special syntax)
+	cursor : u64 mut := 0;
+	curinst : x64inst mut := zero;
+	curop_is_mem : bool mut := false;
+	curop_mem_sz : u64 mut := 0;
+	curop : x64val mut := zero;
+	// parse the assembly (please deal with memory operands too)
+	i : u64 mut;
+	j : u64 mut;
+	while(cursor < code_len)
+	{
+		if([code # cursor] == '\n')
+		{
+			// we're done
+			x64_add_instruction(ref curinst);
+			cursor = cursor + 1;
+			curinst = zero;
+			curop_is_mem = false;
+			curop_mem_sz = 0;
+			curop = zero;
+		}
+		while(x64_parse_asm_breaks([code # cursor]))
+		{
+			// just skip the whitespacey thing
+			cursor = cursor + 1;
+		}
+		if(curinst.tag == zero)
+		{
+			// expect an instruction name
+			instword_begin ::= code # cursor;
+			for(i = cursor; i <= code_len; i = i + 1)
+			{
+				idx : u64 mut := i;
+				if(idx == code_len)
+				{
+					idx = idx - 1;
+				}
+				if(x64_parse_asm_breaks([code # idx]) || (i == code_len))
+				{
+					// we broke the word
+					// match sstr{instword_begin, i} to an instruction name. error if it doesnt match any
+					instword_len ::= i - cursor;
+					for(j = 0; j < countof x64inst_tag; j = j + 1)
+					{
+						curinst_name_zstr ::= [x64inst_name # j];
+						if(streql(instword_begin, instword_len, curinst_name_zstr, zstrlen(curinst_name_zstr)))
+						{
+							curinst.tag = j@s64@x64inst_tag;
+						}
+					}
+					if(curinst.tag == zero)
+					{
+						err_begin();
+						putzstr("could not recognise x64 instruction name \0");
+						putchar('"');
+						putchars(instword_begin, instword_len);
+						putchar('"');
+						putzstr(" within the following inline-asm code:\n\0");
+						colour_red();
+						putchars(code, code_len);
+						colour_reset();
+						err_end();
+					}
+					cursor = cursor + instword_len + 1;
+					i = code_len + 1;
+				}
+			}
+			// assume we hit the end (so we break the word in this case too)
+		}
+		else
+		{
+			// expect an operand
+			// first we scan for _WORD PTR
+			for(i = 0; i < countof typeof x64memreg_size_name; i = i + 1)
+			{
+				curname_zstr ::= [x64memreg_size_name # i];
+				if(strstartswith(code # cursor, code_len - cursor, curname_zstr, zstrlen(curname_zstr)))
+				{
+					// ok we really should expect a memory operand.
+					curop_is_mem = true;
+					curop_mem_sz = 8 << i;
+					cursor = cursor + zstrlen(curname_zstr);
+				}
+			}
+			// ok now search all registers
+			for(i = 1; i < countof typeof x64reg_name; i = i + 1)
+			{
+				curreg_idx : u64 := (i - 1) / 7;
+				// workaround compiler bug (lhs of shift clearly is still an imm lmao)
+				eight : u64 mut := 8;
+				curreg_sz : u64 := eight << ((i - 1) % 7);
+				curreg_zstr ::= [x64reg_name # i];
+				if(strstartswith(code # cursor, code_len - cursor, curreg_zstr, zstrlen(curreg_zstr)))
+				{
+					curop.tag = x64val_tag.reg;
+					[x64val_reg_get_reg(ref curop)] = curreg_idx@s64@x64_reg;
+					[x64val_reg_get_size(ref curop)] = curreg_sz;
+					cursor = cursor + zstrlen(curreg_zstr);
+					i = countof typeof x64reg_name;
+				}
+			}
+			number : parseutil_number mut := zero;
+			// how about an integral literal?
+			if(parseutil_is_digit([code # cursor]))
+			{
+				for(i = cursor + 1; i < code_len; i = i + 1)
+				{
+					if(parseutil_is_digit([code # i]) == false)
+					{
+						parseutil_parse_number(code # cursor, i - (cursor), ref number);
+						// immediate
+						curop.tag = x64val_tag.imm;
+						// todo: support immX <num> instead of just taking a num directly and just assuming its 32-bit...
+						[x64val_imm_get_size(ref curop)] = 32;
+						[x64val_imm_get_value(ref curop)] = number.i@u64;
+						// set cursor and end loop
+						cursor = i;
+						i = code_len;
+					}
+				}
+			}
+
+			// ok... is it a dollar?
+			if([code # cursor] == '$')
+			{
+				// its an input!
+				for(i = cursor + 1; i < code_len; i = i + 1)
+				{
+					if(parseutil_is_digit([code # i]) == false)
+					{
+						parseutil_parse_number(code # (cursor + 1), i - (cursor + 1), ref number);
+						// input N
+						if(number.i >= inputs_count@s64)
+						{
+							err_begin();
+							putzstr("detected parsed-operand \0");
+							putchar('"');
+							putchars(code # cursor, i - cursor);
+							putchar('"');
+							putzstr(" (index \0");
+							putsint(number.i);
+							putzstr("), but the inline-asm only has \0");
+							putuint(inputs_count);
+							putzstr(" inputs...\n\0");
+							err_end();
+						}
+						curop = [inputs # (number.i)];
+						cursor = i;
+						i = code_len;
+					}
+				}
+			}
+			
+			if(curop.tag == zero)
+			{
+				panic_begin();
+				putzstr("fucked up parsing an operand :/\n\0");
+				x64inst_dump(ref curinst);
+				panic_end();
+			}
+			if(curop_is_mem)
+			{
+				curop_cpy ::= curop;
+				curop.tag = x64val_tag.memreg;
+				[x64val_memreg_get_base(ref curop)] = [x64val_reg_get_reg(ref curop_cpy)];
+				[x64val_memreg_get_base_size(ref curop)] = [x64val_reg_get_size(ref curop_cpy)];
+				[x64val_memreg_get_index(ref curop)] = zero;
+				[x64val_memreg_get_index_size(ref curop)] = zero;
+				[x64val_memreg_get_scale(ref curop)] = zero;
+				[x64val_memreg_get_displacement(ref curop)] = zero;
+				[x64val_memreg_get_displacement_size(ref curop)] = zero;
+				[x64val_memreg_get_size(ref curop)] = curop_mem_sz;
+			}
+			// lets fucking go
+			x64inst_add_operand(ref curinst, ref curop);
+			curop = zero;
+			curop_is_mem = false;
+			curop_mem_sz = 0;
+		}
+	}
+	// we ran out of code
+	// do we still have a curop in-flight? do the code again
+	if(curinst.tag != zero)
+	{
+		if(curop.tag != zero)
+		{
+			if(curop_is_mem)
+			{
+				curop_cpy2 ::= curop;
+				curop.tag = x64val_tag.memreg;
+				[x64val_memreg_get_base(ref curop)] = [x64val_reg_get_reg(ref curop_cpy2)];
+				[x64val_memreg_get_base_size(ref curop)] = [x64val_reg_get_size(ref curop_cpy2)];
+				[x64val_memreg_get_index(ref curop)] = zero;
+				[x64val_memreg_get_index_size(ref curop)] = zero;
+				[x64val_memreg_get_scale(ref curop)] = zero;
+				[x64val_memreg_get_displacement(ref curop)] = zero;
+				[x64val_memreg_get_displacement_size(ref curop)] = zero;
+				[x64val_memreg_get_size(ref curop)] = curop_mem_sz;
+			}
+			x64inst_add_operand(ref curinst, ref curop);
+		}
+		x64_add_instruction(ref curinst);
+	}
 };
