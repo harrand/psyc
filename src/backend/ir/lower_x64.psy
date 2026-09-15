@@ -128,6 +128,7 @@ irglob_lower_x64 : func(glob : irglob mut? -> v0)
 
 irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
+	arena_clear(scratch_arena);
 	dummy : x64val mut;
 	fnx64 ::= x64_add_func(ref dummy);
 	ir_lower_prolog_x64();
@@ -137,6 +138,32 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		irblk_lower_x64(fn, fn->blks # i);
+	}
+
+	keep_going : bool mut := true;
+	s : s64 mut;
+	while(keep_going)
+	{
+		//x64func_dump(fnx64);
+		keep_going = false;
+		for(s = (fnx64->insts_count@s64 - 1); s >= 0; s = s - 1)
+		{
+			cur ::= fnx64->insts # s;
+			prev : x64inst mut? mut := zero;
+			next : x64inst mut? mut := zero;
+			if(s < (fnx64->insts_count@s64 - 1))
+			{
+				next = fnx64->insts # (s + 1);
+			}
+			if(s >= 1)
+			{
+				prev = fnx64->insts # (s - 1);
+			}
+			if(x64inst_calc_live_in_out(cur, prev, next))
+			{
+				keep_going = true;
+			}
+		}
 	}
 };
 

@@ -1,5 +1,6 @@
 x64inst_calc_live_in_out : func(inst : x64inst mut?, prev : x64inst mut?, next : x64inst mut? -> bool)
 {
+	putchar('a');
 	i : u64 mut;
 	j : u64 mut;
 	old_live_out ::= inst->live_out;
@@ -28,6 +29,7 @@ x64inst_calc_live_in_out : func(inst : x64inst mut?, prev : x64inst mut?, next :
 
 	// iterate over all uses and copy them to live_in if they're registery
 	enc ::= x64enc_fetch(inst);
+	//x64inst_dump(inst);
 	if(enc != zero)
 	{
 		usecount ::= x64enc_reads_count(enc);
@@ -49,7 +51,7 @@ x64inst_calc_live_in_out : func(inst : x64inst mut?, prev : x64inst mut?, next :
 		for(j = 0; j < defcount; j = j + 1)
 		{
 			cur_def : x64val mut;
-			x64enc_get_write(inst, enc, i, ref cur_def);
+			x64enc_get_write(inst, enc, j, ref cur_def);
 			if(x64val_equal_to(ref cur_def, ref tmp))
 			{
 				tmp_is_in_defs = true;
@@ -61,24 +63,42 @@ x64inst_calc_live_in_out : func(inst : x64inst mut?, prev : x64inst mut?, next :
 		}
 	}
 	// did we make any changes? if so, return true
+	putchar('b');
 	if((old_live_in_count != inst->live_in_count) || (old_live_out_count != inst->live_out_count))
 	{
+		putzstr("returning true because live-in/out-live out changed (live-in: \0");
+		putuint(old_live_in_count);
+		putchar(':');
+		putuint(inst->live_in_count);
+		putzstr(", live-out: \0");
+		putuint(old_live_out_count);
+		putchar(':');
+		putuint(inst->live_out_count);
+		putzstr(")\n\0");
+		x64inst_dump(inst);
+		putuint(scratch_arena->cur);
+		putchar('\n');
 		return true;
 	}
+	putchar('c');
 	for(i = 0; i < old_live_in_count; i = i + 1)
 	{
 		if(x64val_equal_to(old_live_in # i, inst->live_in # i) == false)
 		{
+			putzstr("returning true because a live-in has changed\n\0");
 			return true;
 		}
 	}
+	putchar('d');
 	for(i = 0; i < old_live_out_count; i = i + 1)
 	{
 		if(x64val_equal_to(old_live_out # i, inst->live_out # i) == false)
 		{
+			putzstr("returning true because a live-out has changed\n\0");
 			return true;
 		}
 	}
+	putchar('f');
 	return false;
 };
 
@@ -141,4 +161,3 @@ x64inst_finalise_live_out : func(inst : x64inst mut? -> v0)
 		[inst->live_out # i] = [old # i];
 	}
 };
-
