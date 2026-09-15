@@ -429,6 +429,53 @@ x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bo
 	return false;
 };
 
+x64val_custom_equal_to_handler : func(lhs : x64val mut?, rhs : x64val mut? -> bool) mut := zero;
+x64val_equal_to : func(lhs : x64val mut?, rhs : x64val mut? -> bool)
+{
+	if(lhs->tag != rhs->tag)
+	{
+		return false;
+	}
+	if(lhs->tag == x64val_tag.invalid)
+	{
+		return false;
+	}
+	if(lhs->tag == x64val_tag.imm)
+	{
+		return ([x64val_imm_get_size(lhs)] == [x64val_imm_get_size(rhs)]) && ([x64val_imm_get_value(lhs)] == [x64val_imm_get_value(rhs)]);
+	}
+	if(lhs->tag == x64val_tag.reg)
+	{
+		return ([x64val_reg_get_reg(lhs)] == [x64val_reg_get_reg(rhs)]);
+	}
+	if(lhs->tag == x64val_tag.memreg)
+	{
+		return ([x64val_memreg_get_memsize(lhs)] == [x64val_memreg_get_memsize(rhs)])
+			&& ([x64val_memreg_get_base(lhs)] == [x64val_memreg_get_base(rhs)])
+			&& ([x64val_memreg_get_base_size(lhs)] == [x64val_memreg_get_base_size(rhs)])
+			&& ([x64val_memreg_get_index(lhs)] == [x64val_memreg_get_index(rhs)])
+			&& ([x64val_memreg_get_index_size(lhs)] == [x64val_memreg_get_index_size(lhs)])
+			&& ([x64val_memreg_get_displacement(lhs)] == [x64val_memreg_get_displacement(rhs)]);
+	}
+	if(lhs->tag == x64val_tag.ripreli)
+	{
+		return [x64val_ripreli_get_delta(lhs)] == [x64val_ripreli_get_delta(rhs)];
+	}
+	if(lhs->tag == x64val_tag.fnref)
+	{
+		return [x64val_fnref_get_index(lhs)] == [x64val_fnref_get_index(rhs)];
+	}
+	if(lhs->tag == x64val_tag.globref)
+	{
+		return [x64val_globref_get_index(lhs)] == [x64val_globref_get_index(rhs)];
+	}
+	if(x64val_is_any_custom(lhs))
+	{
+		return x64val_custom_equal_to_handler(lhs, rhs);
+	}
+	return false;
+};
+
 x64memreg_size_name ::= u8?[7]
 {
 	.0 := "BYTE\0";

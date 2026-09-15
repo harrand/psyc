@@ -6,6 +6,7 @@ ir_lower_x64 : func(-> v0)
 	// install custom handlers
 	x64inst_custom_dump_to_handler = ir_lower_x64inst_custom_dump_to;
 	x64val_custom_dump_to_handler = ir_lower_x64val_custom_dump_to;
+	x64val_custom_equal_to_handler = ir_lower_x64val_custom_equal_to;
 	x64val_custom_is_any_memory_handler = ir_lower_x64val_is_memory;
 	x64val_custom_is_any_register_handler = ir_lower_x64val_is_register;
 	x64val_custom_get_size = ir_lower_x64val_get_size;
@@ -1119,6 +1120,30 @@ ir_lower_x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 	idx ::= v->tag@s64 - tagbase@s64;
 	[ir_lower_x64val_custom_dump_to_tbl # idx](w, v);
 	bwrite_colour_reset(w);
+};
+
+ir_lower_x64val_custom_equal_to : func(lhs : x64val mut?, rhs : x64val mut? -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx ::= (lhs->tag@s64 - tagbase@s64)@ir_lower_x64val_tag;
+	if(idx == ir_lower_x64val_tag.vreg)
+	{
+		return [x64val_vreg_get_idx(lhs)] == [x64val_vreg_get_idx(rhs)];
+	}
+	if(idx == ir_lower_x64val_tag.vmemreg)
+	{
+		return ([x64val_vmemreg_get_base_sz(lhs)] == [x64val_vmemreg_get_base_sz(rhs)])
+			&& ([x64val_vmemreg_get_base_idx(lhs)] == [x64val_vmemreg_get_base_idx(rhs)])
+			&& ([x64val_vmemreg_get_index_sz(lhs)] == [x64val_vmemreg_get_index_sz(rhs)])
+			&& ([x64val_vmemreg_get_index_idx(lhs)] == [x64val_vmemreg_get_index_idx(rhs)])
+			&& ([x64val_vmemreg_get_displacement(lhs)] == [x64val_vmemreg_get_displacement(rhs)])
+			&& ([x64val_vmemreg_get_sz(lhs)] == [x64val_vmemreg_get_sz(rhs)]);
+	}
+	if(idx == ir_lower_x64val_tag.irblkref)
+	{
+		return [x64val_irblkref_get_idx(lhs)] == [x64val_irblkref_get_idx(rhs)];
+	}
+	return false;
 };
 
 ir_lower_x64val_custom_dump_to_tbl ::= func(w : bwriter mut?, v : x64val mut? -> v0)[countof ir_lower_x64val_tag]
