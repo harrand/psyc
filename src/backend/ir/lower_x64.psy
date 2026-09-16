@@ -610,34 +610,6 @@ irinst_lower_x64_smul : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	x64_imul(ref outx64, ref rhsx64);
 };
 
-irinst_lower_x64_udiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
-{
-	outx64 : x64val mut;
-	irval_lower_x64(ir_udiv_get_out(inst), ref outx64);
-	lhsx64 : x64val mut;
-	irval_lower_x64(ir_udiv_get_lhs(inst), ref lhsx64);
-	rhsx64 : x64val mut;
-	irval_lower_x64(ir_udiv_get_rhs(inst), ref rhsx64);
-
-	// rdx is the top-half of the numerator
-	// and because we only support 64-bit numerators it must always be zero'd
-	rdx_sized : x64val mut;
-	rdx_sized.tag = x64val_tag.reg;
-	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
-	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
-	x64_xor(ref rdx_sized, ref rdx_sized);
-
-	rax_sized : x64val mut;
-	rax_sized.tag = x64val_tag.reg;
-	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
-	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
-	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
-
-	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
-	x64_div(ref rhsx64);
-	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
-};
-
 irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	outx64 : x64val mut;
@@ -675,6 +647,111 @@ irinst_lower_x64_sdiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	x64_idiv(ref rhsx64);
 	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
+};
+
+irinst_lower_x64_udiv : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_rhs(inst), ref rhsx64);
+
+	// rdx is the top-half of the numerator
+	// and because we only support 64-bit numerators it must always be zero'd
+	rdx_sized : x64val mut;
+	rdx_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
+	x64_xor(ref rdx_sized, ref rdx_sized);
+
+	rax_sized : x64val mut;
+	rax_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
+	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
+
+	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	x64_div(ref rhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref rax_sized);
+};
+
+irinst_lower_x64_smod : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_sdiv_get_rhs(inst), ref rhsx64);
+	
+	rax_sized : x64val mut;
+	rax_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
+	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
+
+	// sign-extend rax to rdx
+	lhs_sz ::= x64val_get_size(ref lhsx64);
+	if(lhs_sz == 64)
+	{
+		x64_cqo();
+	}
+	if(lhs_sz == 32)
+	{
+		x64_cdq();
+	}
+	if(lhs_sz == 16)
+	{
+		x64_cwd();
+	}
+	if(lhs_sz == 8)
+	{
+		x64_cbw();
+	}
+
+	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	x64_idiv(ref rhsx64);
+
+	rdx_sized : x64val mut;
+	rdx_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref rdx_sized);
+};
+
+irinst_lower_x64_umod : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	outx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_out(inst), ref outx64);
+	lhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_lhs(inst), ref lhsx64);
+	rhsx64 : x64val mut;
+	irval_lower_x64(ir_udiv_get_rhs(inst), ref rhsx64);
+
+	// rdx is the top-half of the numerator
+	// and because we only support 64-bit numerators it must always be zero'd
+	rdx_sized : x64val mut;
+	rdx_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
+	x64_xor(ref rdx_sized, ref rdx_sized);
+
+	rax_sized : x64val mut;
+	rax_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rax_sized)] = x64_reg.rax;
+	[x64val_reg_get_size(ref rax_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref rax_sized, ref lhsx64);
+
+	x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	x64_div(ref rhsx64);
+
+	rdx_sized : x64val mut;
+	rdx_sized.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rdx_sized)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref rdx_sized)] = x64val_get_size(ref lhsx64);
+	ir_lower_x64_generic_move_no_load(ref outx64, ref rdx_sized);
 };
 
 irinst_lower_x64_xor : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -1066,8 +1143,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.16 := irinst_lower_x64_smul;
 	.17 := irinst_lower_x64_udiv;
 	.18 := irinst_lower_x64_sdiv;
-	.19 := irinst_lower_x64_nyi;
-	.20 := irinst_lower_x64_nyi;
+	.19 := irinst_lower_x64_smod;
+	.20 := irinst_lower_x64_umod;
 	.21 := irinst_lower_x64_nyi;
 	.22 := irinst_lower_x64_nyi;
 	.23 := irinst_lower_x64_nyi;
