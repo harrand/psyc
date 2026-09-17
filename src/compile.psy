@@ -39,7 +39,71 @@ compile : func(-> v0)
 	compile_timings.object_write = t - old;
 	old = t;
 
+	dump_metrics();
 	dump_timings();
+};
+
+dump_metrics : func(-> v0)
+{
+	if(args_should_dump_metrics() == false)
+	{
+		return;
+	}
+	i : u64 mut;
+	if(args_has_metrics_dump_specific())
+	{
+		fn ::= prog_find_function(args.metrics_dump_specific.data, args.metrics_dump_specific.len);
+		if(fn == zero)
+		{
+			err_begin();
+			putzstr("requested to dump-metrics for function \0");
+			putchar('"');
+			putchars(args.metrics_dump_specific.data, args.metrics_dump_specific.len);
+			putchar('"');
+			putzstr(" but no function exists with this name\0");
+			err_end();
+		}
+		dump_metrics_for(fn);
+	}
+	else
+	{
+		for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
+		{
+			dump_metrics_for(prog.global_scope.funcs # i);
+		}
+	}
+};
+
+dump_metrics_for : func(fn : function_t mut? -> v0)
+{
+	colour_green_underline();
+	putchars([ast_decl_get_name(fn->node)], [ast_decl_get_name_len(fn->node)]);
+	colour_reset();
+	putzstr(" : \0");
+	putty(fn->type);
+	putzstr(":\n\0");
+	i : u64 mut;
+
+	putzstr("\tstmt count: \0");
+	putuint(ast_get_child_statements_count(fn->node));
+	irfn ::= irapi.prog.funcs # fn->irfunc_idx;
+	x64fn ::= x64api.prog.funcs # fn->irfunc_idx;
+	putzstr("\n\tir-params count: \0");
+	putuint(irfn->params_count);
+	putzstr("\n\tir-returns count: \0");
+	putuint(irfn->returns_count);
+	putzstr("\n\tirblk count: \0");
+	putuint(irfn->blks_count);
+	inst_count : u64 mut := 0;
+	for(i = 0; i < irfn->blks_count; i = i + 1)
+	{
+		inst_count = inst_count + (irfn->blks # i)->insts_count;
+	}
+	putzstr("\n\tirinst count: \0");
+	putuint(inst_count);
+	putzstr("\n\tx64inst count: \0");
+	putuint(x64fn->insts_count);
+	putchar('\n');
 };
 
 compile_timings_t : struct

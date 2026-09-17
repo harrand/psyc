@@ -7,6 +7,7 @@ args_t : struct
 
 	ir_dump_specific : sstr;
 	asm_dump_specific : sstr;
+	metrics_dump_specific : sstr;
 };
 
 args ::= args_t mut
@@ -17,6 +18,7 @@ args ::= args_t mut
 	.target := sstr{.data := "default"; .len := 7;};
 	.ir_dump_specific := sstr{.data := zero; .len := 0;};
 	.asm_dump_specific := sstr{.data := zero; .len := 0;};
+	.metrics_dump_specific := sstr{.data := zero; .len := 0;};
 };
 
 args_should_dump_tokens : func(-> bool)
@@ -37,6 +39,11 @@ args_should_dump_ir : func(-> bool)
 args_should_dump_asm : func(-> bool)
 {
 	return (args.dump_flag & 0b00010000) != 0;
+};
+
+args_should_dump_metrics : func(-> bool)
+{
+	return (args.dump_flag & 0b00001000) != 0;
 };
 
 args_should_skip_ir : func(-> bool)
@@ -62,6 +69,11 @@ args_has_irdump_specific : func(-> bool)
 args_has_asmdump_specific : func(-> bool)
 {
 	return args.asm_dump_specific.len > 0;
+};
+
+args_has_metrics_dump_specific : func(-> bool)
+{
+	return args.metrics_dump_specific.len > 0;
 };
 
 debugbreak : asm("" -> v0)
@@ -105,6 +117,16 @@ handle_arg : func(arg : u8??, dst : u64 -> u64)
 			{
 				args.asm_dump_specific.data = [arg] # 11;
 				args.asm_dump_specific.len = zstrlen([arg]) - 11;
+			}
+			return 0;
+		}
+		if(zstrstartswith([arg], "--dump-metrics\0"))
+		{
+			args.dump_flag = (args.dump_flag | 0b00001000);
+			if(zstrstartswith([arg], "--dump-metrics=\0"))
+			{
+				args.metrics_dump_specific.data = [arg] # 15;
+				args.metrics_dump_specific.len = zstrlen([arg]) - 15;
 			}
 			return 0;
 		}

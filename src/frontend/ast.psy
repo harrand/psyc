@@ -637,6 +637,66 @@ token_tag2unop_tag : func(t : token_tag -> ast_unop_tag)
 	return ~0;
 };
 
+ast_get_child_statements_count : func(n : ast mut? -> u64)
+{
+	count : u64 mut := 1;
+	sub : ast mut? mut;
+	num : u64 mut weak;
+	i : u64 mut;
+	if(ast_is_stmt(n, ast_stmt_tag.function))
+	{
+		count = 0;
+		sub = ast_function_get_body(n);
+		num = ast_function_get_body_size(n);
+		for(i = 0; i < num; i = i + 1)
+		{
+			count = count + ast_get_child_statements_count(sub # i);
+		}
+		return count;
+	}
+	if(ast_is_stmt(n, ast_stmt_tag.if_blk))
+	{
+		sub = ast_if_get_body(n);
+		num = ast_if_get_body_count(n);
+		for(i = 0; i < num; i = i + 1)
+		{
+			count = count + ast_get_child_statements_count(sub # i);
+		}
+		return count;
+	}
+	if(ast_is_stmt(n, ast_stmt_tag.else_blk))
+	{
+		sub = ast_else_get_body(n);
+		num = ast_else_get_body_count(n);
+		for(i = 0; i < num; i = i + 1)
+		{
+			count = count + ast_get_child_statements_count(sub # i);
+		}
+		return count;
+	}
+	if(ast_is_stmt(n, ast_stmt_tag.while_blk))
+	{
+		sub = ast_while_get_body(n);
+		num = ast_while_get_body_count(n);
+		for(i = 0; i < num; i = i + 1)
+		{
+			count = count + ast_get_child_statements_count(sub # i);
+		}
+		return count;
+	}
+	if(ast_is_stmt(n, ast_stmt_tag.for_blk))
+	{
+		sub = ast_for_get_body(n);
+		num = ast_for_get_body_count(n);
+		for(i = 0; i < num; i = i + 1)
+		{
+			count = count + ast_get_child_statements_count(sub # i);
+		}
+		return count;
+	}
+	return count;
+};
+
 ast_token_get_tag : func(n : ast mut? -> token_tag mut?)
 {
 	return ref(n->d0)@token_tag mut?;
@@ -1408,6 +1468,15 @@ ast_is_expr : func(node : ast mut?, tag : ast_expr_tag -> bool)
 	if((node->tag == ast_tag.expr) || ((node->tag == ast_tag.stmt) && ([ast_stmt_get_tag(node)] == ast_stmt_tag.expr)))
 	{
 		return [ast_expr_get_tag(node)] == tag;
+	}
+	return false;
+};
+
+ast_is_stmt : func(node : ast mut?, tag : ast_stmt_tag -> bool)
+{
+	if(node->tag == ast_tag.stmt)
+	{
+		return [ast_stmt_get_tag(node)] == tag;
 	}
 	return false;
 };
