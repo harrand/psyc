@@ -392,7 +392,15 @@ val_from_node_expr_literal_string : func(ctx : source_context mut?, out : val mu
 	{
 		return;
 	}
-	ir_add_glob([ast_literal_get_string(ctx->node)], [ast_literal_get_string_len(ctx->node)], false, val_scalar_get_irval(out));
+	str_data ::= [ast_literal_get_string(ctx->node)];
+	str_len ::= [ast_literal_get_string_len(ctx->node)];
+	strlit ::= ir_add_glob(str_data, str_len, false, val_scalar_get_irval(out));
+	strlit_custom_name : u8 mut? := arena_alloc(global_arena, str_len + 2);
+	[strlit_custom_name # 0] = '"';
+	[strlit_custom_name # (str_len + 1)] = '"';
+	memcopy(strlit_custom_name # 1, str_data, str_len);
+	strlit->custom_name = strlit_custom_name;
+	strlit->custom_name_len = str_len + 2;
 	[val_scalar_get_displacement(out)] = 0;
 };
 

@@ -36,7 +36,16 @@ irval_dump_to_reg : func(w : bwriter mut?, v : irval mut? -> v0)
 irval_dump_to_globref : func(w : bwriter mut?, v : irval mut? -> v0)
 {
 	bwrite8(w, '@');
-	bwrite_uint(w, [irval_globref_get_idx(v)]);
+	idx ::= [irval_globref_get_idx(v)];
+	glob ::= irapi.prog.globs # idx; 
+	if(glob->custom_name != zero)
+	{
+		bwrite_bytes(w, glob->custom_name, glob->custom_name_len);
+	}
+	else
+	{
+		bwrite_uint(w, idx);
+	}
 };
 
 irval_dump_to_fnref : func(w : bwriter mut?, v : irval mut? -> v0)
@@ -354,7 +363,14 @@ irasm_dump : func(as : irasm mut? -> v0)
 irglob_dump_to : func(w : bwriter mut?, g : irglob mut? -> v0)
 {
 	bwrite8(w, '@');
-	bwrite_uint(w, g->idx);
+	if(g->custom_name != zero)
+	{
+		bwrite_bytes(w, g->custom_name, g->custom_name_len);
+	}
+	else
+	{
+		bwrite_uint(w, g->idx);
+	}
 	if(g->is_mut)
 	{
 		bwrite_zstr(w, " mut\n{\n  \0");

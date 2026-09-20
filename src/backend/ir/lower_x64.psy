@@ -117,6 +117,8 @@ irglob_lower_x64 : func(glob : irglob mut? -> v0)
 	g.size = glob->data_size;
 	g.init_data = glob->data;
 	g.init_data_size = glob->data_size;
+	g.custom_name = glob->custom_name;
+	g.custom_name_len = glob->custom_name_len;
 	// any irglob could have irrelocs pointing to its data (sadly we cant immediately tell which irglobs are and which arent), so we just assume that they all are subject to change
 	// this is important as sometimes we need to transform immediates (that dont fit properly as an operand to a certain x64 instruction e.g imul) into global data. we want to check if a global already exists with the exact immediate data so we can re-use it... BUT if that global is not finalised (aka it could still be written to) then we better not re-use that one
 	// in simpler words, this makes sure no x64globs that are spawned from irglobs are potentially re-used when transforming immediates into globs (coz an x64glob and the irglob its spawned from share the same data-span which is subject to irreloc writes)
@@ -300,13 +302,13 @@ irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -
 irinst_lower_x64_nyi : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
 	//warn_begin();
-	//panic_begin();
-	//putzstr("lowering of irinst.\0");
-	//putsint(inst->tag@s64);
-	//putzstr(" (\0");
-	//putzstr([irinst_names # (inst->tag@s64)]);
-	//putzstr(") is NYI\n\0");
-	//panic_end();
+	panic_begin();
+	putzstr("lowering of irinst.\0");
+	putsint(inst->tag@s64);
+	putzstr(" (\0");
+	putzstr([irinst_names # (inst->tag@s64)]);
+	putzstr(") is NYI\n\0");
+	panic_end();
 	//warn_end();
 };
 
@@ -542,6 +544,24 @@ irinst_lower_x64_trunc : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	irval_lower_x64(out, ref outx64);
 	
 	ir_lower_x64_generic_move_no_load(ref outx64, ref inx64);
+};
+
+irinst_lower_x64_cvtf : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	warn_begin();
+	putzstr("lowering of ctvf is NYI, skipping:\n\0");
+	irinst_dump(inst);
+	putchar('\n');
+	warn_end();
+};
+
+irinst_lower_x64_cvti : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
+{
+	warn_begin();
+	putzstr("lowering of ctvi is NYI, skipping:\n\0");
+	irinst_dump(inst);
+	putchar('\n');
+	warn_end();
 };
 
 irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -1315,8 +1335,8 @@ irinst_lower_x64_tbl ::= func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	.8 := irinst_lower_x64_zex;
 	.9 := irinst_lower_x64_sex;
 	.10 := irinst_lower_x64_trunc;
-	.11 := irinst_lower_x64_nyi;
-	.12 := irinst_lower_x64_nyi;
+	.11 := irinst_lower_x64_cvtf;
+	.12 := irinst_lower_x64_cvti;
 	.13 := irinst_lower_x64_add;
 	.14 := irinst_lower_x64_sub;
 	.15 := irinst_lower_x64_umul;
