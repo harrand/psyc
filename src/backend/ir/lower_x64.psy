@@ -227,16 +227,16 @@ ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? ->
 ir_lower_x64inst_tag : enum
 {
 	.blkbegin := 0; // meta-instruction marking the beginning of block N
-	.regmust := 1; // meta-instruction requiring that param0 (an ssa-register) must not be spilled to memory
-	.regcant := 2; // meta-instruction requiring that param0 (an ssa-register) must *NOT* be assigned the specific x64 register param1 during register allocation for correctness reasons
+	.regnospill := 1;
+	.reghint:= 2; // meta-instruction recommending that param0 (an ssa-register) ought to be lowered to hardware-register param1 (but correctness doesn't require this to be the case)
 	.clobber := 3; // meta-instruction to mark a hardware register as clobbered
 	.scratch := 4; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
 	.0 := "blkbegin\0";
-	.1 := "regmust\0";
-	.2 := "regcant\0";
+	.1 := "regnospill\0";
+	.2 := "reghint\0";
 	.3 := "clobber\0";
 	.4 := "scratch\0";
 };
@@ -266,19 +266,19 @@ x64_custom_blkbegin : func(blk : irblk mut? -> v0)
 	x64_custom(tag, ref blkval, 1);
 };
 
-x64_custom_regmust : func(ssa_reg : x64val mut? -> v0)
+x64_custom_regnospill : func(ssa_reg : x64val mut? -> v0)
 {
-	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regmust;
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regnospill;
 	x64_custom(tag, ssa_reg, 1);
 };
 
-x64_custom_regcant : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
+x64_custom_reghint : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
 {
 	params : x64val mut[2];
 	[params # 0] = [ssa_reg];
 	[params # 1] = [hw_reg];
 
-	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regcant;
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.reghint;
 	x64_custom(tag, params # 0, countof typeof(params));
 };
 
@@ -848,7 +848,7 @@ irinst_lower_x64_shl : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 		// need a scratch register
 		x64_custom_scratch(ref scratchx64);
 		// make sure the scratch doesnt also spill!
-		x64_custom_regmust(ref scratchx64);
+		x64_custom_regnospill(ref scratchx64);
 		ir_lower_x64_generic_move_no_load(ref scratchx64, ref lhsx64);
 		lhsx64 = scratchx64;
 	}
@@ -904,7 +904,7 @@ irinst_lower_x64_ushr : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		// need a scratch register
 		x64_custom_scratch(ref scratchx64);
 		// make sure the scratch doesnt also spill!
-		x64_custom_regmust(ref scratchx64);
+		x64_custom_regnospill(ref scratchx64);
 		ir_lower_x64_generic_move_no_load(ref scratchx64, ref lhsx64);
 		lhsx64 = scratchx64;
 	}
@@ -960,7 +960,7 @@ irinst_lower_x64_sshr : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		// need a scratch register
 		x64_custom_scratch(ref scratchx64);
 		// make sure the scratch doesnt also spill!
-		x64_custom_regmust(ref scratchx64);
+		x64_custom_regnospill(ref scratchx64);
 		ir_lower_x64_generic_move_no_load(ref scratchx64, ref lhsx64);
 		lhsx64 = scratchx64;
 	}
@@ -1246,6 +1246,8 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		cur_param : x64val mut;
 		irval_lower_x64(callbegin # i, ref cur_param);
 		[x64val_reg_get_size(ref cur_abi_param)] = x64val_get_size(ref cur_param);
+		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
+		x64_custom_reghint(ref cur_param, ref cur_abi_param);
 		ir_lower_x64_generic_move_no_load(ref cur_abi_param, ref cur_param);
 	}
 	x64_call(ref callee);
@@ -1271,6 +1273,8 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		cur_ret : x64val mut;
 		irval_lower_x64(retbegin # i, ref cur_ret);
 		[x64val_reg_get_size(ref cur_abi_ret)] = x64val_get_size(ref cur_ret);
+		// hint: it would be nice if the output ssa reg could be lowered to the abi return register
+		x64_custom_reghint(ref cur_ret, ref cur_abi_ret);
 		ir_lower_x64_generic_move_no_load(ref cur_ret, ref cur_abi_ret);
 	}
 };
