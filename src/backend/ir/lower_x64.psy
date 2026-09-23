@@ -147,6 +147,31 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	irfunc_legalisation_x64(fn, fnx64);
 };
 
+ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
+{
+	lhs ::= inst->operands # 0;
+	rhs ::= inst->operands # 1;
+	if(x64val_is_any_memory(lhs) && x64val_is_any_memory(rhs))
+	{
+		x64inst_dump(inst);
+		putzstr("\nbecomes:\n\0");
+		x64_position_before_inst(inst_id);
+
+		// potential todo: instead of hardcoding to use rax as a scratch register, should we create a new ssa register, custom_scratch it and regnospill it?
+		intermediate : x64val mut;
+		intermediate.tag = x64val_tag.reg;
+		[x64val_reg_get_reg(ref intermediate)] = x64_reg.rax;
+		[x64val_reg_get_size(ref intermediate)] = x64val_get_size(rhs);
+		tmp : x64val mut := [rhs];
+		[rhs] = intermediate;
+		ir_lower_x64_generic_move(ref intermediate, ref tmp);
+		// do a mov
+		x64inst_dump(inst);
+		x64inst_dump(inst # 1);
+		putchar('\n');
+	}
+};
+
 irfunc_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
 	warn_begin();
@@ -168,6 +193,14 @@ irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 	warn_end();
 	// iterate over all x64insts in the fnx64
 	// keep legalising until they're all legal
+	i : u64 mut;
+	count ::= fnx64->insts_count;
+	x64_position_start_func(fnx64->idx);
+	for(i = 0; i < count; i = i + 1)
+	{
+		inst ::= fnx64->insts # i;
+		ir_lower_handle_double_memory_operand(inst, i);
+	}
 };
 
 irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
@@ -820,6 +853,17 @@ irinst_lower_x64_xor : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	{
 		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	}
+	// if it fits in a 32-bit immediate but doesnt fit in a lhs-sized-immediate, then the immediate is simply too large and would overflow
+	if(x64val_imm_try_truncate_integer(ref rhsx64, x64val_get_size(ref lhsx64)) == false)
+	{
+		panic_begin();
+		putzstr("failed to lower:\n\0");
+		irinst_dump(inst);
+		putzstr("\nbecause the rhs-immediate-value in the rhs does not fit in \0");
+		putuint(x64val_get_size(ref lhsx64));
+		putzstr("-bits (the size of the lhs)\0");
+		panic_end();
+	}
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
 	x64_xor(ref outx64, ref rhsx64);
@@ -838,6 +882,17 @@ irinst_lower_x64_or : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut
 	{
 		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
 	}
+	// if it fits in a 32-bit immediate but doesnt fit in a lhs-sized-immediate, then the immediate is simply too large and would overflow
+	if(x64val_imm_try_truncate_integer(ref rhsx64, x64val_get_size(ref lhsx64)) == false)
+	{
+		panic_begin();
+		putzstr("failed to lower:\n\0");
+		irinst_dump(inst);
+		putzstr("\nbecause the rhs-immediate-value in the rhs does not fit in \0");
+		putuint(x64val_get_size(ref lhsx64));
+		putzstr("-bits (the size of the lhs)\0");
+		panic_end();
+	}
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
 	x64_or(ref outx64, ref rhsx64);
@@ -855,6 +910,17 @@ irinst_lower_x64_and : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	if(x64val_imm_try_truncate_integer(ref rhsx64, 32) == false)
 	{
 		x64val_imm_as_globref(ref rhsx64, ref rhsx64);
+	}
+	// if it fits in a 32-bit immediate but doesnt fit in a lhs-sized-immediate, then the immediate is simply too large and would overflow
+	if(x64val_imm_try_truncate_integer(ref rhsx64, x64val_get_size(ref lhsx64)) == false)
+	{
+		panic_begin();
+		putzstr("failed to lower:\n\0");
+		irinst_dump(inst);
+		putzstr("\nbecause the rhs-immediate-value in the rhs does not fit in \0");
+		putuint(x64val_get_size(ref lhsx64));
+		putzstr("-bits (the size of the lhs)\0");
+		panic_end();
 	}
 
 	ir_lower_x64_generic_move_no_load(ref outx64, ref lhsx64);
