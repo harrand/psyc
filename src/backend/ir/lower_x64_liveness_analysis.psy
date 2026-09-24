@@ -1,4 +1,4 @@
-irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
 	i : u64 mut;
 	curblk_idx : u64 mut := ~0;
@@ -7,6 +7,15 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	state->blk_defs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
 	state->blk_live_ins = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
 	state->blk_live_outs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+	// iterate over all block lists and zero them all
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		// everything starts off-empty
+		x64val_list_empty(state->blk_uses # i);
+		x64val_list_empty(state->blk_defs # i);
+		x64val_list_empty(state->blk_live_ins # i);
+		x64val_list_empty(state->blk_live_outs # i);
+	}
 	for(i = 0; i < fnx64->insts_count; i = i + 1)
 	{
 		inst ::= fnx64->insts # i;
@@ -19,11 +28,6 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 		if(idx == ir_lower_x64inst_tag.blkbegin)
 		{
 			curblk_idx = [x64val_irblkref_get_idx(op0)];
-			// everything starts off-empty
-			x64val_list_empty(state->blk_uses # curblk_idx);
-			x64val_list_empty(state->blk_defs # curblk_idx);
-			x64val_list_empty(state->blk_live_ins # curblk_idx);
-			x64val_list_empty(state->blk_live_outs # curblk_idx);
 		}
 		use ::= state->blk_uses # curblk_idx;
 		def ::= state->blk_defs # curblk_idx;
@@ -32,20 +36,13 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 
 		enc ::= x64enc_fetch(inst);
 		j : u64 mut;
+		k : u64 mut;
 		cur : x64val mut;
 		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
 		if((enc != zero) && (curblk_idx != ~0))
 		{
 			// we have an encoding and we are inside a block.
 			// add the reads as uses, and the writes as defs
-			read_count ::= x64enc_reads_count(enc);
-			for(j = 0; j < read_count; j = j + 1)
-			{
-				if(x64enc_get_read(inst, enc, j, ref cur))
-				{
-					x64val_list_append_unique(use, ref cur);
-				}
-			}
 			write_count ::= x64enc_writes_count(enc);
 			for(j = 0; j < write_count; j = j + 1)
 			{
@@ -54,13 +51,128 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 					x64val_list_append_unique(def, ref cur);
 				}
 			}
+			read_count ::= x64enc_reads_count(enc);
+			for(j = 0; j < read_count; j = j + 1)
+			{
+				// remember: a use only counts if it is before a potential redefinition within the block
+				if(x64enc_get_read(inst, enc, j, ref cur))
+				{
+					already_defined_previously : bool mut := false;
+					for(k = 0; k < def->count; k = k + 1)
+					{
+						if(x64val_equal_to(ref cur, def->data # k))
+						{
+							already_defined_previously = true;
+						}
+					}
+					if(already_defined_previously == false)
+					{
+						x64val_list_append_unique(use, ref cur);
+					}
+				}
+			}
 		}
 	}
+};
 
+irfunc_liveness_analysis_converge_liveinout : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> bool)
+{
+	i : s64 mut;
+	j : u64 mut;
+	k : u64 mut;
+
+	no_changes : bool mut := true;
+
+	// remember we iterate backwards
+	for(i = (fn->blks_count - 1)@s64; i >= 0; i = i - 1)
+	{
+		blk ::= fn->blks # i;
+		// save the old live-out for this block
+		live_out_ptr ::= state->blk_live_outs # i;
+		old_live_out ::= [live_out_ptr];
+		x64val_list_empty(live_out_ptr);
+		// iterate over successors
+		for(j = 0; j < blk->successors_count; j = j + 1)
+		{
+			// get the live-in for succ and add them all to blk_live_out
+			succ_blkid ::= [blk->successors # j];
+			succ_live_in ::= state->blk_live_ins # succ_blkid;
+			for(k = 0; k < succ_live_in->count; k = k + 1)
+			{
+				x64val_list_append_unique(live_out_ptr, succ_live_in->data # k);
+			}
+		}
+		// now save old live-in and recalculate it
+		live_in_ptr ::= state->blk_live_ins # i;
+		old_live_in ::= [live_in_ptr];
+		x64val_list_empty(live_in_ptr);
+		// copy all uses to live_in
+		uses_ptr ::= state->blk_uses # i;
+		for(j = 0; j < uses_ptr->count; j = j + 1)
+		{
+			x64val_list_append_unique(live_in_ptr, uses_ptr->data # j);
+		}
+		defs_ptr ::= state->blk_defs # i;
+		// and also add everything in the new-live-out but only if its not in the defs
+		for(j = 0; j < live_out_ptr->count; j = j + 1)
+		{
+			the_live_out ::= live_out_ptr->data # j;
+			the_live_out_is_in_defs : bool mut := false;
+			for(k = 0; k < defs_ptr->count; k = k + 1)
+			{
+				if(x64val_equal_to(the_live_out, defs_ptr->data # k))
+				{
+					the_live_out_is_in_defs = true;
+					k = defs_ptr->count;
+				}
+			}
+			if(the_live_out_is_in_defs == false)
+			{
+				x64val_list_append_unique(live_in_ptr, the_live_out);
+			}
+		}
+		// calculate livein(B)/liveout(B) using dataflow analysis
+		// livein(B) = used(B) union (liveout(B) - def(B))
+		// liveout(B) = foreach X in successors(B): livein(X) union livein(X+1)
+		// these are mutually recursive. so we continually recurse on this until we converge to a fixed-point
+		// at the beginning livein(B) and liveout(B) are both empty
+
+		// if anything at all has changed, set no_changes = false because we haven't converged
+		if(((old_live_in.count) != (live_in_ptr->count)) || ((old_live_out.count) != (live_out_ptr->count)))
+		{
+			no_changes = false;
+		}
+		else
+		{
+			// iterate over and check everything is exactly the same
+			for(j = 0; j < old_live_in.count; j = j + 1)
+			{
+				if(x64val_list_contains(ref old_live_in, live_in_ptr->data # j) == false)
+				{
+					no_changes = false;
+				}
+			}
+			for(j = 0; j < old_live_out.count; j = j + 1)
+			{
+				if(x64val_list_contains(ref old_live_out, live_out_ptr->data # j) == false)
+				{
+					no_changes = false;
+				}
+			}
+		}
+	}
+	return no_changes;
+};
+
+irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	irfunc_liveness_analysis_block_setup_x64(state, fn, fnx64);
 	// 2. calculate live-in/out for each block (using irblk successors)
 	//    (note: step 2 requires repeated iteration until convergence is reached)
-	for(i = 0; i < fn->blks_count; i = i + 1)
+	convergence : bool mut := false;
+	while(convergence == false)
 	{
+		convergence = irfunc_liveness_analysis_converge_liveinout(state, fn, fnx64);
 	}
 	// 3. then do an instruction-level algorithm:
 	// cur_live = live_out(blk)
