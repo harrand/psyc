@@ -153,10 +153,6 @@ ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 
 	rhs ::= inst->operands # 1;
 	if(x64val_is_any_memory(lhs) && x64val_is_any_memory(rhs))
 	{
-		x64inst_dump(inst);
-		putzstr("\nbecomes:\n\0");
-		x64_position_before_inst(inst_id);
-
 		// potential todo: instead of hardcoding to use rax as a scratch register, should we create a new ssa register, custom_scratch it and regnospill it?
 		intermediate : x64val mut;
 		intermediate.tag = x64val_tag.reg;
@@ -164,11 +160,8 @@ ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 
 		[x64val_reg_get_size(ref intermediate)] = x64val_get_size(rhs);
 		tmp : x64val mut := [rhs];
 		[rhs] = intermediate;
-		ir_lower_x64_generic_move(ref intermediate, ref tmp);
 		// do a mov
-		x64inst_dump(inst);
-		x64inst_dump(inst # 1);
-		putchar('\n');
+		ir_lower_x64_generic_move(ref intermediate, ref tmp);
 	}
 };
 
@@ -188,9 +181,6 @@ irfunc_register_allocation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> 
 
 irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
-	warn_begin();
-	putzstr("irfunc_legalisation_x64 is NYI\n\0");
-	warn_end();
 	// iterate over all x64insts in the fnx64
 	// keep legalising until they're all legal
 	i : u64 mut;
