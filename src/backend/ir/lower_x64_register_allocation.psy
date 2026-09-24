@@ -1,0 +1,63 @@
+x64val_list : struct
+{
+	data : x64val mut?;
+	count : u64;
+	cap : u64;
+};
+
+x64val_list_empty : func(list : x64val_list mut? -> v0)
+{
+	list->cap = 8;
+	list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
+	list->count = 0;
+};
+
+x64val_list_append_unique : func(list : x64val_list mut?, v : x64val mut? -> bool)
+{
+	if(list->data == zero)
+	{
+		x64val_list_empty(list);
+	}
+	i : u64 mut;
+	for(i = 0; i < list->count; i = i + 1)
+	{
+		if(x64val_equal_to(list->data # i, v))
+		{
+			return false;
+		}
+	}
+	while(list->count >= list->cap)
+	{
+		old ::= list->data;
+		oldcap ::= list->cap;
+		list->cap = oldcap * 2;
+		list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
+		memcopy(list->data, old, oldcap * sizeof typeof([list->data]));
+	}
+	[list->data # (list->count)] = [v];
+	list->count = list->count + 1;
+	return true;
+};
+
+// stores liveness-analysis + register allocation state for a single function
+lower_x64_register_allocation_state : struct
+{
+	blk_uses : x64val_list mut?;
+	blk_defs : x64val_list mut?;
+	blk_live_ins : x64val_list mut?;
+	blk_live_outs : x64val_list mut?;
+};
+
+irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	//warn_begin();
+	//putzstr("irfunc_register_allocation_x64 is NYI\n\0");
+	//warn_end();
+	irfunc_liveness_analysis_x64(state, fn, fnx64);
+	// 1. liveness analysis (data-flow analysis)
+	// 2. interference graph
+	// 3. precolouring
+	// 4. graph-colouring for ssa register nodes
+	// 5. replace ssa operands in all instructions with their lowered variants
+	// populate all our colours
+};

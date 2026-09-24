@@ -1,0 +1,74 @@
+irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	i : u64 mut;
+	curblk_idx : u64 mut := ~0;
+	// 0. initialise the state and x64val_lists for each blk
+	state->blk_uses = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+	state->blk_defs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+	state->blk_live_ins = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+	state->blk_live_outs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst ::= fnx64->insts # i;
+		tagbase : x64inst_tag := x64inst_tag.custom;
+		idx : s64 weak := inst->tag@s64 - tagbase@s64;
+
+		op0 ::= inst->operands # 0;
+		op1 ::= inst->operands # 0;
+
+		if(idx == ir_lower_x64inst_tag.blkbegin)
+		{
+			curblk_idx = [x64val_irblkref_get_idx(op0)];
+			// everything starts off-empty
+			x64val_list_empty(state->blk_uses # curblk_idx);
+			x64val_list_empty(state->blk_defs # curblk_idx);
+			x64val_list_empty(state->blk_live_ins # curblk_idx);
+			x64val_list_empty(state->blk_live_outs # curblk_idx);
+		}
+		use ::= state->blk_uses # curblk_idx;
+		def ::= state->blk_defs # curblk_idx;
+		live_in ::= state->blk_live_ins # curblk_idx;
+		live_out ::= state->blk_live_ins # curblk_idx;
+
+		enc ::= x64enc_fetch(inst);
+		j : u64 mut;
+		cur : x64val mut;
+		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
+		if((enc != zero) && (curblk_idx != ~0))
+		{
+			// we have an encoding and we are inside a block.
+			// add the reads as uses, and the writes as defs
+			read_count ::= x64enc_reads_count(enc);
+			for(j = 0; j < read_count; j = j + 1)
+			{
+				if(x64enc_get_read(inst, enc, j, ref cur))
+				{
+					x64val_list_append_unique(use, ref cur);
+				}
+			}
+			write_count ::= x64enc_writes_count(enc);
+			for(j = 0; j < write_count; j = j + 1)
+			{
+				if(x64enc_get_write(inst, enc, j, ref cur))
+				{
+					x64val_list_append_unique(def, ref cur);
+				}
+			}
+		}
+	}
+
+	// 2. calculate live-in/out for each block (using irblk successors)
+	//    (note: step 2 requires repeated iteration until convergence is reached)
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+	}
+	// 3. then do an instruction-level algorithm:
+	// cur_live = live_out(blk)
+	// then foreach_backwards(inst in blk)
+	//{
+	// live_after(inst) = cur_live
+	// cur_live = use(inst) U (cur_live - def(inst))
+	// live_before(inst) = cur_live
+	//}
+	//    (note: step 3 does NOT require repeated iteration, it just runs once backwards per block)
+};
