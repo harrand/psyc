@@ -7,6 +7,11 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 	state->blk_defs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
 	state->blk_live_ins = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
 	state->blk_live_outs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
+
+	state->inst_uses = arena_alloc(global_arena, fnx64->insts_count * sizeof typeof([state->inst_uses]));
+	state->inst_defs = arena_alloc(global_arena, fnx64->insts_count * sizeof typeof([state->inst_defs]));
+	state->inst_live_befores = arena_alloc(global_arena, fnx64->insts_count * sizeof typeof([state->inst_live_befores]));
+	state->inst_live_afters = arena_alloc(global_arena, fnx64->insts_count * sizeof typeof([state->inst_live_afters]));
 	// iterate over all block lists and zero them all
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
@@ -18,6 +23,10 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 	}
 	for(i = 0; i < fnx64->insts_count; i = i + 1)
 	{
+		x64val_list_empty(state->inst_uses # i);
+		x64val_list_empty(state->inst_defs # i);
+		x64val_list_empty(state->inst_live_befores # i);
+		x64val_list_empty(state->inst_live_afters # i);
 		inst ::= fnx64->insts # i;
 		tagbase : x64inst_tag := x64inst_tag.custom;
 		idx : s64 weak := inst->tag@s64 - tagbase@s64;
@@ -33,6 +42,9 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		def ::= state->blk_defs # curblk_idx;
 		live_in ::= state->blk_live_ins # curblk_idx;
 		live_out ::= state->blk_live_ins # curblk_idx;
+
+		inst_use ::= state->inst_uses # i;
+		inst_def ::= state->inst_defs # i;
 
 		enc ::= x64enc_fetch(inst);
 		j : u64 mut;
@@ -56,6 +68,7 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 					{
 						x64val_get_contained_register(ref cur, ref curreg, k);
 						x64val_list_append_unique(def, ref curreg);
+						x64val_list_append_unique(inst_def, ref curreg);
 					}
 				}
 			}
@@ -70,6 +83,7 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 					for(k = 0; k < regcount; k = k + 1)
 					{
 						x64val_get_contained_register(ref cur, ref curreg, k);
+						x64val_list_append_unique(inst_use, ref curreg);
 						for(l = 0; l < def->count; l = l + 1)
 						{
 							if(x64val_equal_to(ref curreg, def->data # l))
@@ -85,6 +99,9 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 				}
 			}
 		}
+		// finalise inst-def and inst-use
+		x64val_list_finalise(inst_def);
+		x64val_list_finalise(inst_use);
 	}
 };
 
@@ -187,6 +204,15 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	{
 		convergence = irfunc_liveness_analysis_converge_liveinout(state, fn, fnx64);
 	}
+	// now finalise all the blocks lists
+	i : u64 mut;
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		x64val_list_finalise(state->blk_uses # i);
+		x64val_list_finalise(state->blk_defs # i);
+		x64val_list_finalise(state->blk_live_ins # i);
+		x64val_list_finalise(state->blk_live_outs # i);
+	}
 	// 3. then do an instruction-level algorithm:
 	// cur_live = live_out(blk)
 	// then foreach_backwards(inst in blk)
@@ -196,4 +222,23 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	// live_before(inst) = cur_live
 	//}
 	//    (note: step 3 does NOT require repeated iteration, it just runs once backwards per block)
+	curblk_idx : u64 mut := ~0;
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst ::= fnx64->insts # i;
+		tagbase : x64inst_tag := x64inst_tag.custom;
+		idx : s64 weak := inst->tag@s64 - tagbase@s64;
+
+		op0 ::= inst->operands # 0;
+		op1 ::= inst->operands # 0;
+
+		// these were calculated during block_setup
+		inst_uses ::= state->inst_uses # i;
+		inst_defs ::= state->inst_defs # i;
+
+		if(idx == ir_lower_x64inst_tag.blkbegin)
+		{
+			curblk_idx = [x64val_irblkref_get_idx(op0)];
+		}
+	}
 };

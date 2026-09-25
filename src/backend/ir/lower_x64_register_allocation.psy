@@ -52,6 +52,13 @@ x64val_list_append_unique : func(list : x64val_list mut?, v : x64val mut? -> boo
 	return true;
 };
 
+x64val_list_finalise : func(l : x64val_list mut? -> v0)
+{
+	l->cap = l->count;
+	final_data : x64val mut? := arena_alloc(global_arena, l->cap * sizeof typeof([l->data]));
+	memcopy(final_data, l->data, l->cap * sizeof typeof([l->data]));
+};
+
 // stores liveness-analysis + register allocation state for a single function
 lower_x64_register_allocation_state : struct
 {
@@ -59,6 +66,11 @@ lower_x64_register_allocation_state : struct
 	blk_defs : x64val_list mut?;
 	blk_live_ins : x64val_list mut?;
 	blk_live_outs : x64val_list mut?;
+
+	inst_uses : x64val_list mut?;
+	inst_defs : x64val_list mut?;
+	inst_live_befores : x64val_list mut?;
+	inst_live_afters : x64val_list mut?;
 };
 
 irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
