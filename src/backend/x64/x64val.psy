@@ -229,6 +229,84 @@ x64val_is_encodeable_register : func(v : x64val mut? -> bool)
 	return v->tag == x64val_tag.reg;
 };
 
+// given any x64val, return the number of any-registers within the instruction
+// for x64val_tag.reg this will obviously be 1 etc
+// for a memreg, this will be upto 2 (base register + index register, if they exist)
+x64val_custom_contained_registers_count_handler : func(v : x64val mut? -> u64) mut := zero;
+x64val_contained_registers_count : func(v : x64val mut? -> u64)
+{
+	if(v->tag == x64val_tag.reg)
+	{
+		return 1;
+	}
+	if(v->tag == x64val_tag.memreg)
+	{
+		count : u64 mut := 0;
+		if([x64val_memreg_get_base_size(v)] != 0)
+		{
+			count = count + 1;
+		}
+		if([x64val_memreg_get_index_size(v)] != 0)
+		{
+			count = count + 1;
+		}
+		return count;
+	}
+	// rip-relative intermediaries of course use rip, but we don't count those as we only really care about GPRs
+	if(x64val_is_any_custom(v))
+	{
+		return x64val_custom_contained_registers_count_handler(v);
+	}
+	return 0;
+};
+
+x64val_custom_get_contained_register_handler : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool) mut := zero;
+x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool)
+{
+	if(v->tag == x64val_tag.reg)
+	{
+		if(idx == 0)
+		{
+			[out] = [v];
+			return true;
+		}
+		return false;
+	}
+	if(v->tag == x64val_tag.memreg)
+	{
+		count : u64 mut := 0;
+		if([x64val_memreg_get_base_size(v)] != 0)
+		{
+			if(idx == count)
+			{
+				out->tag = x64val_tag.reg;
+				[x64val_reg_get_reg(out)] = [x64val_memreg_get_base(v)];
+				[x64val_reg_get_size(out)] = [x64val_memreg_get_base_size(v)];
+				return true;
+			}
+			count = count + 1;
+		}
+		if([x64val_memreg_get_index_size(v)] != 0)
+		{
+			if(idx == count)
+			{
+				out->tag = x64val_tag.reg;
+				[x64val_reg_get_reg(out)] = [x64val_memreg_get_index(v)];
+				[x64val_reg_get_size(out)] = [x64val_memreg_get_index_size(v)];
+				return true;
+			}
+			count = count + 1;
+		}
+		return false;
+	}
+	// rip-relative intermediaries of course use rip, but we don't count those as we only really care about GPRs
+	if(x64val_is_any_custom(v))
+	{
+		return x64val_custom_get_contained_register_handler(v, out, idx);
+	}
+	return 0;
+};
+
 x64val_custom_is_any_memory_handler : func(v : x64val mut? -> bool) mut := zero;
 x64val_is_any_memory : func(v : x64val mut? -> bool)
 {
