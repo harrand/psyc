@@ -222,10 +222,13 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	// live_before(inst) = cur_live
 	//}
 	//    (note: step 3 does NOT require repeated iteration, it just runs once backwards per block)
-	curblk_idx : u64 mut := ~0;
-	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	curblk_idx : u64 mut := fn->blks_count - 1;
+	cur_live : x64val_list mut := [state->blk_live_outs # curblk_idx];
+	s : s64 mut := 0;
+	for(s = fnx64->insts_count@s64 - 1; s >= 0; s = s - 1)
 	{
-		inst ::= fnx64->insts # i;
+		[state->inst_live_afters # s] = cur_live;
+		inst ::= fnx64->insts # s;
 		tagbase : x64inst_tag := x64inst_tag.custom;
 		idx : s64 weak := inst->tag@s64 - tagbase@s64;
 
@@ -233,12 +236,41 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 		op1 ::= inst->operands # 0;
 
 		// these were calculated during block_setup
-		inst_uses ::= state->inst_uses # i;
-		inst_defs ::= state->inst_defs # i;
+		inst_uses ::= state->inst_uses # s;
+		inst_defs ::= state->inst_defs # s;
 
+		// recalculate cur_live
+		// cur_live = use(inst) U (cur_live - def(inst))
+		// so remove everything from cur_live that is in def(inst)
+		for(i = 0; i < cur_live.count; i = i + 1)
+		{
+			if(x64val_list_contains(inst_defs, cur_live.data # i))
+			{
+				// remove it from cur_live.data
+				// we just decrement the count and memcopy_backwards by 1 element around the index
+				if(i < (cur_live.count - 1))
+				{
+					memcopy(cur_live.data # i, cur_live.data # (i + 1), sizeof typeof([cur_live.data]) * (cur_live.count - (i + 1)));
+				}
+				cur_live.count = (cur_live.count - 1);
+			}
+		}
+		// and then just add the uses for this instruction.
+		for(i = 0; i < inst_uses->count; i = i + 1)
+		{
+			x64val_list_append_unique(ref cur_live, inst_uses->data # i);
+		}
+
+		[state->inst_live_befores # s] = cur_live;
 		if(idx == ir_lower_x64inst_tag.blkbegin)
 		{
-			curblk_idx = [x64val_irblkref_get_idx(op0)];
+			if(curblk_idx == 0)
+			{
+				// we've now reached the instructions before any blkbegins (most likely a function prolog)
+				return;
+			}
+			curblk_idx = curblk_idx - 1;
+			cur_live = [state->blk_live_outs # curblk_idx];
 		}
 	}
 };
