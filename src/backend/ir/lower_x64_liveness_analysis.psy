@@ -37,18 +37,26 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		enc ::= x64enc_fetch(inst);
 		j : u64 mut;
 		k : u64 mut;
+		l : u64 mut;
 		cur : x64val mut;
+		curreg : x64val mut;
 		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
 		if((enc != zero) && (curblk_idx != ~0))
 		{
 			// we have an encoding and we are inside a block.
 			// add the reads as uses, and the writes as defs
 			write_count ::= x64enc_writes_count(enc);
+			regcount : u64 mut;
 			for(j = 0; j < write_count; j = j + 1)
 			{
 				if(x64enc_get_write(inst, enc, j, ref cur))
 				{
-					x64val_list_append_unique(def, ref cur);
+					regcount = x64val_contained_registers_count(ref cur);
+					for(k = 0; k < regcount; k = k + 1)
+					{
+						x64val_get_contained_register(ref cur, ref curreg, k);
+						x64val_list_append_unique(def, ref curreg);
+					}
 				}
 			}
 			read_count ::= x64enc_reads_count(enc);
@@ -58,16 +66,21 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 				if(x64enc_get_read(inst, enc, j, ref cur))
 				{
 					already_defined_previously : bool mut := false;
-					for(k = 0; k < def->count; k = k + 1)
+					regcount = x64val_contained_registers_count(ref cur);
+					for(k = 0; k < regcount; k = k + 1)
 					{
-						if(x64val_equal_to(ref cur, def->data # k))
+						x64val_get_contained_register(ref cur, ref curreg, k);
+						for(l = 0; l < def->count; l = l + 1)
 						{
-							already_defined_previously = true;
+							if(x64val_equal_to(ref curreg, def->data # l))
+							{
+								already_defined_previously = true;
+							}
 						}
-					}
-					if(already_defined_previously == false)
-					{
-						x64val_list_append_unique(use, ref cur);
+						if(already_defined_previously == false)
+						{
+							x64val_list_append_unique(use, ref curreg);
+						}
 					}
 				}
 			}

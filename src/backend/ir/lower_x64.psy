@@ -9,6 +9,8 @@ ir_lower_x64 : func(-> v0)
 	x64val_custom_equal_to_handler = ir_lower_x64val_custom_equal_to;
 	x64val_custom_is_any_memory_handler = ir_lower_x64val_is_memory;
 	x64val_custom_is_any_register_handler = ir_lower_x64val_is_register;
+	x64val_custom_contained_registers_count_handler = ir_lower_x64val_contained_registers_count;
+	x64val_custom_get_contained_register_handler = ir_lower_x64val_get_contained_register;
 	x64val_custom_get_size = ir_lower_x64val_get_size;
 	if(args_should_skip_asm())
 	{
@@ -203,6 +205,76 @@ ir_lower_x64val_is_register : func(v : x64val mut? -> bool)
 	tagbase : x64val_tag := x64val_tag.custom;
 	idx : s64 weak := v->tag@s64 - tagbase@s64;
 	return (idx == ir_lower_x64val_tag.vreg);
+};
+
+ir_lower_x64val_contained_registers_count : func(v : x64val mut? -> u64)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx : s64 weak := v->tag@s64 - tagbase@s64;
+	if(idx == ir_lower_x64val_tag.vreg)
+	{
+		return 1;
+	}
+	if(idx == ir_lower_x64val_tag.vmemreg)
+	{
+		count : u64 mut := 0;
+		if([x64val_vmemreg_get_base_sz(v)] != irsz.none)
+		{
+			count = count + 1;
+		}
+		if([x64val_vmemreg_get_index_sz(v)] != irsz.none)
+		{
+			count = count + 1;
+		}
+		return count;
+	}
+	// irblkref has no registers
+	return 0;
+};
+
+ir_lower_x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	tagidx : s64 weak := v->tag@s64 - tagbase@s64;
+	vreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vreg;
+	if(tagidx == ir_lower_x64val_tag.vreg)
+	{
+		if(idx == 0)
+		{
+			[out] = [v];
+			return true;
+		}
+		return false;
+	}
+	if(tagidx == ir_lower_x64val_tag.vmemreg)
+	{
+		count : u64 mut := 0;
+		if([x64val_vmemreg_get_base_sz(v)] != irsz.none)
+		{
+			if(idx == count)
+			{
+				out->tag = (tagbase@s64 + vreg@s64)@x64val_tag;
+				[x64val_vreg_get_sz(out)] = [x64val_vmemreg_get_base_sz(v)];
+				[x64val_vreg_get_idx(out)] = [x64val_vmemreg_get_base_idx(v)];
+				return true;
+			}
+			count = count + 1;
+		}
+		if([x64val_vmemreg_get_index_sz(v)] != irsz.none)
+		{
+			if(idx == count)
+			{
+				out->tag = (tagbase@s64 + vreg@s64)@x64val_tag;
+				[x64val_vreg_get_sz(out)] = [x64val_vmemreg_get_index_sz(v)];
+				[x64val_vreg_get_idx(out)] = [x64val_vmemreg_get_index_idx(v)];
+				return true;
+			}
+			count = count + 1;
+		}
+		return false;
+	}
+	// irblkref has no registers
+	return false;
 };
 
 ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
