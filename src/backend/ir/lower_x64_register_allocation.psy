@@ -1,8 +1,7 @@
 // stores liveness-analysis + register allocation state for a single function
 lower_x64_register_allocation_state : struct
 {
-	igraph_nodes : x64val_list;
-	igraph_edges : lower_x64_igraph_edge_list;
+	igraph_nodes : igraph_node_x64_list;
 	// array of uses/defs/live-in/live-out lists of values. e.g blk_uses[i] == the list of used x64vals in fn.blks[i]
 	blk_uses : x64val_list mut?;
 	blk_defs : x64val_list mut?;
@@ -33,6 +32,62 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 
 irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
-	x64val_list_empty(ref(state->igraph_nodes));
-	lower_x64_igraph_edge_list_empty(ref(state->igraph_edges));
+	igraph_node_x64_list_empty(ref(state->igraph_nodes));
+	// we want every value to have a node in the igraph
+	// foreach(inst in fn)
+	// {
+	//   foreach(def in inst.defs)
+	//   {
+	//      foreach(out in inst.live_afters)
+	//		{
+	//        add_edge(def, out)
+	//		}
+    //   }
+	// }
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		defs ::= state->inst_defs # i;
+		live_afters ::= state->inst_live_afters # i;
+		for(j = 0; j < defs->count; j = j + 1)
+		{
+			cur_def ::= defs->data # j;
+			for(k = 0; k < live_afters->count; k = k + 1)
+			{
+				cur_after ::= live_afters->data # k;
+				if(x64val_equal_to(cur_after, cur_def) == false)
+				{
+					// add an edge between the two nodes...
+					def_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_def);
+					after_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_after);
+					igraph_node_x64_add_edge_unique(state->igraph_nodes.data # def_node_id, after_node_id);
+					igraph_node_x64_add_edge_unique(state->igraph_nodes.data # after_node_id, def_node_id);
+				}
+			}
+		}
+	}
+
+	putzstr("\nigraph for function \0");
+	putchars(fn->custom_name, fn->custom_name_len);
+	putzstr(": \n\0");
+	// dump the interference graph:
+	for(i = 0; i < state->igraph_nodes.count; i = i + 1)
+	{
+		node ::= state->igraph_nodes.data # i;
+		x64val_dump(ref(node->value));
+		putzstr(": \0");
+		for(j = 0; j < node->edges_count; j = j + 1)
+		{
+			other_node ::= state->igraph_nodes.data # [node->edges # j];
+			x64val_dump(ref(other_node->value));
+			if(j < (node->edges_count - 1))
+			{
+				putzstr(", \0");
+			}
+		}
+		putchar('\n');
+	}
+	putchar('\n');
 };

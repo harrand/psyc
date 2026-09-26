@@ -59,31 +59,68 @@ x64val_list_finalise : func(l : x64val_list mut? -> v0)
 	l->data = final_data;
 };
 
-lower_x64_igraph_edge : struct
+igraph_node_x64 : struct
 {
-	lhs : u64;
-	rhs : u64;
+	value : x64val;
+	edges : u64 mut?;
+	edges_count : u64;
+	edges_cap : u64;
 };
 
-lower_x64_igraph_edge_list : struct
+igraph_node_x64_add_edge_unique : func(node : igraph_node_x64 mut?, other_idx : u64 -> v0)
 {
-	data : lower_x64_igraph_edge mut?;
+	i : u64 mut;
+	for(i = 0; i < node->edges_count; i = i + 1)
+	{
+		if([node->edges # i] == other_idx)
+		{
+			return;
+		}
+	}
+	if(node->edges == zero)
+	{
+		node->edges_cap = 8;
+		node->edges = arena_alloc(global_arena, node->edges_cap * sizeof typeof([node->edges]));
+	}
+	while(node->edges_count >= node->edges_cap)
+	{
+		oldcap ::= node->edges_cap;
+		old ::= node->edges;
+		node->edges_cap = node->edges_cap * 2;
+		node->edges = arena_alloc(global_arena, node->edges_cap * sizeof typeof([node->edges]));
+		memcopy(node->edges, old, oldcap * sizeof typeof([node->edges]));
+	}
+	[node->edges # (node->edges_count)] = other_idx;
+	node->edges_count = node->edges_count + 1;
+};
+
+igraph_node_x64_list : struct
+{
+	data : igraph_node_x64 mut?;
 	count : u64;
 	cap : u64;
 };
 
-lower_x64_igraph_edge_list_empty : func(list : lower_x64_igraph_edge_list mut? -> v0)
+igraph_node_x64_list_empty : func(list : igraph_node_x64_list mut? -> v0)
 {
 	list->cap = 8;
 	list->data = arena_alloc(global_arena, list->cap * sizeof typeof([list->data]));
 	list->count = 0;
 };
 
-lower_x64_igraph_edge_list_append : func(list : lower_x64_igraph_edge_list mut?, v : lower_x64_igraph_edge mut? -> bool)
+igraph_node_x64_list_append_unique : func(list : igraph_node_x64_list mut?, v : x64val mut? -> u64)
 {
 	if(list->data == zero)
 	{
-		lower_x64_igraph_edge_list_empty(list);
+		igraph_node_x64_list_empty(list);
+	}
+	i : u64 mut;
+	for(i = 0; i < list->count; i = i + 1)
+	{
+		if(x64val_equal_to(ref((list->data # i)->value), v))
+		{
+			return i;
+		}
 	}
 	while(list->count >= list->cap)
 	{
@@ -93,7 +130,12 @@ lower_x64_igraph_edge_list_append : func(list : lower_x64_igraph_edge_list mut?,
 		list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
 		memcopy(list->data, old, oldcap * sizeof typeof([list->data]));
 	}
-	[list->data # (list->count)] = [v];
+	ptr ::= list->data # (list->count);
+	ptr->value = [v];
+	ptr->edges = zero;
+	ptr->edges_count = 0;
+	ptr->edges_cap = 0;
+	ret ::= list->count;
 	list->count = list->count + 1;
-	return true;
+	return ret;
 };
