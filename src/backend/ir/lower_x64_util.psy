@@ -1,0 +1,99 @@
+x64val_list : struct
+{
+	data : x64val mut?;
+	count : u64;
+	cap : u64;
+};
+
+x64val_list_empty : func(list : x64val_list mut? -> v0)
+{
+	list->cap = 8;
+	list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
+	list->count = 0;
+};
+
+x64val_list_contains : func(list : x64val_list mut?, v : x64val mut? -> bool)
+{
+	i : u64 mut;
+	for(i = 0; i < list->count; i = i + 1)
+	{
+		if(x64val_equal_to(list->data # i, v))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+x64val_list_append_unique : func(list : x64val_list mut?, v : x64val mut? -> bool)
+{
+	if(list->data == zero)
+	{
+		x64val_list_empty(list);
+	}
+	i : u64 mut;
+	for(i = 0; i < list->count; i = i + 1)
+	{
+		if(x64val_equal_to(list->data # i, v))
+		{
+			return false;
+		}
+	}
+	while(list->count >= list->cap)
+	{
+		old ::= list->data;
+		oldcap ::= list->cap;
+		list->cap = oldcap * 2;
+		list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
+		memcopy(list->data, old, oldcap * sizeof typeof([list->data]));
+	}
+	[list->data # (list->count)] = [v];
+	list->count = list->count + 1;
+	return true;
+};
+
+x64val_list_finalise : func(l : x64val_list mut? -> v0)
+{
+	final_data : x64val mut? := arena_alloc(global_arena, l->count * sizeof typeof([l->data]));
+	memcopy(final_data, l->data, l->count * sizeof typeof([l->data]));
+	l->data = final_data;
+};
+
+lower_x64_igraph_edge : struct
+{
+	lhs : u64;
+	rhs : u64;
+};
+
+lower_x64_igraph_edge_list : struct
+{
+	data : lower_x64_igraph_edge mut?;
+	count : u64;
+	cap : u64;
+};
+
+lower_x64_igraph_edge_list_empty : func(list : lower_x64_igraph_edge_list mut? -> v0)
+{
+	list->cap = 8;
+	list->data = arena_alloc(global_arena, list->cap * sizeof typeof([list->data]));
+	list->count = 0;
+};
+
+lower_x64_igraph_edge_list_append : func(list : lower_x64_igraph_edge_list mut?, v : lower_x64_igraph_edge mut? -> bool)
+{
+	if(list->data == zero)
+	{
+		lower_x64_igraph_edge_list_empty(list);
+	}
+	while(list->count >= list->cap)
+	{
+		old ::= list->data;
+		oldcap ::= list->cap;
+		list->cap = oldcap * 2;
+		list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
+		memcopy(list->data, old, oldcap * sizeof typeof([list->data]));
+	}
+	[list->data # (list->count)] = [v];
+	list->count = list->count + 1;
+	return true;
+};

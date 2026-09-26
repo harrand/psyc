@@ -1,72 +1,15 @@
-x64val_list : struct
-{
-	data : x64val mut?;
-	count : u64;
-	cap : u64;
-};
-
-x64val_list_empty : func(list : x64val_list mut? -> v0)
-{
-	list->cap = 8;
-	list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
-	list->count = 0;
-};
-
-x64val_list_contains : func(list : x64val_list mut?, v : x64val mut? -> bool)
-{
-	i : u64 mut;
-	for(i = 0; i < list->count; i = i + 1)
-	{
-		if(x64val_equal_to(list->data # i, v))
-		{
-			return true;
-		}
-	}
-	return false;
-};
-
-x64val_list_append_unique : func(list : x64val_list mut?, v : x64val mut? -> bool)
-{
-	if(list->data == zero)
-	{
-		x64val_list_empty(list);
-	}
-	i : u64 mut;
-	for(i = 0; i < list->count; i = i + 1)
-	{
-		if(x64val_equal_to(list->data # i, v))
-		{
-			return false;
-		}
-	}
-	while(list->count >= list->cap)
-	{
-		old ::= list->data;
-		oldcap ::= list->cap;
-		list->cap = oldcap * 2;
-		list->data = arena_alloc(scratch_arena, list->cap * sizeof typeof([list->data]));
-		memcopy(list->data, old, oldcap * sizeof typeof([list->data]));
-	}
-	[list->data # (list->count)] = [v];
-	list->count = list->count + 1;
-	return true;
-};
-
-x64val_list_finalise : func(l : x64val_list mut? -> v0)
-{
-	final_data : x64val mut? := arena_alloc(global_arena, l->count * sizeof typeof([l->data]));
-	memcopy(final_data, l->data, l->count * sizeof typeof([l->data]));
-	l->data = final_data;
-};
-
 // stores liveness-analysis + register allocation state for a single function
 lower_x64_register_allocation_state : struct
 {
+	igraph_nodes : x64val_list;
+	igraph_edges : lower_x64_igraph_edge_list;
+	// array of uses/defs/live-in/live-out lists of values. e.g blk_uses[i] == the list of used x64vals in fn.blks[i]
 	blk_uses : x64val_list mut?;
 	blk_defs : x64val_list mut?;
 	blk_live_ins : x64val_list mut?;
 	blk_live_outs : x64val_list mut?;
 
+	// array of uses/defs/live-before/live-after lists of values. e.g inst_uses[i] == the list of used x64vals in fnx64.insts[i]
 	inst_uses : x64val_list mut?;
 	inst_defs : x64val_list mut?;
 	inst_live_befores : x64val_list mut?;
@@ -78,32 +21,18 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	//warn_begin();
 	//putzstr("irfunc_register_allocation_x64 is NYI\n\0");
 	//warn_end();
-	irfunc_liveness_analysis_x64(state, fn, fnx64);
-	i : u64 mut;
-	j : u64 mut;
-	for(i = 0; i < fnx64->insts_count; i = i + 1)
-	{
-		putzstr("\n\n\tbefore: \0");
-		befores ::= state->inst_live_befores # i;
-		for(j = 0; j < befores->count; j = j + 1)
-		{
-			x64val_dump(befores->data # j);
-			putchar(' ');
-		}
-		putchar('\n');
-		x64inst_dump(fnx64->insts # i);
-		putzstr("\tafter: \0");
-		afters ::= state->inst_live_afters # i;
-		for(j = 0; j < afters->count; j = j + 1)
-		{
-			x64val_dump(afters->data # j);
-			putchar(' ');
-		}
-	}
 	// 1. liveness analysis (data-flow analysis)
+	irfunc_liveness_analysis_x64(state, fn, fnx64);
 	// 2. interference graph
+	irfunc_build_interference_graph_x64(state, fn, fnx64);
 	// 3. precolouring
 	// 4. graph-colouring for ssa register nodes
 	// 5. replace ssa operands in all instructions with their lowered variants
 	// populate all our colours
+};
+
+irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	x64val_list_empty(ref(state->igraph_nodes));
+	lower_x64_igraph_edge_list_empty(ref(state->igraph_edges));
 };
