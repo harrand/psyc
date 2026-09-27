@@ -56,6 +56,18 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		if((enc != zero) && (curblk_idx != ~0))
 		{
 			// we have an encoding and we are inside a block.
+			// calls clobber volatile registers (abi-specific)
+			if(inst->tag == x64inst_tag.call)
+			{
+				the_abi : abi_tag := abi_tag.psy64;
+				volatile_count ::= abi_volatile_registers_count_x64(the_abi);
+				volatile_array ::= abi_volatile_registers_begin_x64(the_abi);
+				for(j = 0; j < volatile_count; j = j + 1)
+				{
+					x64val_list_append_unique(def, volatile_array # j);
+					x64val_list_append_unique(inst_def, volatile_array # j);
+				}
+			}
 			// add the reads as uses, and the writes as defs
 			write_count ::= x64enc_writes_count(enc);
 			regcount : u64 mut;
