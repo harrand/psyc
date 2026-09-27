@@ -269,6 +269,22 @@ codegen_ir_funcdef : func(fn : function_t mut? -> v0)
 	usrdata.parent_fn = fn;
 	usrdata.src = fn->src;
 	ast_walk(fn->node, 1, fn->node->children_count@u64, codegen_node_callback, ref usrdata);
+	if(irblk_has_terminator(ir_current_blk()) == false)
+	{
+		if(ty_underlying(fn->type) != ty.v0)
+		{
+			err_begin();
+			putzstr("function \0");
+			putchars([ast_function_get_name(fn->node)], [ast_function_get_name_len(fn->node)]);
+			putzstr(" doesn't return v0, and therefore needs a terminator; but it doesn't return have one at \0");
+			putsrc(fn->src, fn->node->src_beg@u64, fn->node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		else
+		{
+			ir_ret(zero, zero);
+		}
+	}
 };
 
 codegen_node_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
