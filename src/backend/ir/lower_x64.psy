@@ -88,6 +88,12 @@ ir_lower_prolog_x64 : func(-> v0)
 	[x64val_reg_get_size(ref rsp)] = 64;
 	x64_push(ref rbp);
 	x64_mov(ref rbp, ref rsp);
+	
+	stackamt_imm : x64val mut;
+	stackamt_imm.tag = x64val_tag.imm;
+	[x64val_imm_get_size(ref stackamt_imm)] = 32;
+	[x64val_imm_get_value(ref stackamt_imm)] = x64_current_func()->stack;
+	x64_sub(ref rsp, ref stackamt_imm);
 };
 
 ir_lower_epilog_x64 : func(-> v0)
@@ -195,6 +201,13 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 // ================
 // helper functions
 // ================
+
+ir_lower_x64val_is_vmemreg : func(v : x64val mut? -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	idx : s64 weak := v->tag@s64 - tagbase@s64;
+	return (idx == ir_lower_x64val_tag.vmemreg);
+};
 
 ir_lower_x64val_is_memory : func(v : x64val mut? -> bool)
 {
@@ -435,7 +448,7 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	[x64val_memreg_get_displacement(ref stackpos)] = fnx64->stack;
 	[x64val_memreg_get_displacement_size(ref stackpos)] = 32;
 	[x64val_memreg_get_size(ref stackpos)] = 64;
-	x64_add_replacement(ref outx64, ref stackpos);
+	x64_add_stack_slot(ref outx64, ref stackpos);
 
 	fnx64->stack = fnx64->stack + [x64val_imm_get_value(ref sizex64)];
 };
@@ -447,13 +460,15 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	sz ::= irval_get_sz(ir_load_get_out(inst));
 
 	base ::= ir_load_get_base(inst);
+	basex64 : x64val mut;
+	irval_lower_x64(base, ref basex64);
 	disp ::= [ir_load_get_disp(inst)];
 
 	tagbase : x64val_tag := x64val_tag.custom;
 	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
 
 	mem : x64val mut;
-	if(base->tag == irval_tag.reg)
+	if(ir_lower_x64val_is_register(ref basex64))
 	{
 		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
 		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
@@ -474,12 +489,20 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 		}
 		else
 		{
-			// panic
-			panic_begin();
-			putzstr("ir.load base param is of irval_tag.\0");
-			putsint(base->tag@s64);
-			putzstr(", but expected either .reg or .globref...\n\0");
-			panic_end();
+			if(basex64.tag == x64val_tag.memreg)
+			{
+				mem = basex64;
+				[x64val_memreg_get_displacement(ref mem)] = [x64val_memreg_get_displacement(ref mem)] + disp@s64@u64;
+			}
+			else
+			{
+				// panic
+				panic_begin();
+				putzstr("ir.load base param is of irval_tag.\0");
+				putsint(base->tag@s64);
+				putzstr(", but expected either .reg or .globref...\n\0");
+				panic_end();
+			}
 		}
 	}
 
@@ -498,13 +521,16 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	}
 
 	base ::= ir_store_get_base(inst);
+	basex64 : x64val mut;
+	irval_lower_x64(base, ref basex64);
 	disp ::= [ir_store_get_disp(inst)];
 
 	tagbase : x64val_tag := x64val_tag.custom;
 	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
 
 	mem : x64val mut;
-	if(base->tag == irval_tag.reg)
+	// check the base -> x64 lower instead of just the base as an ssa reg (because it may be a stack-slot which has been replaced by a memreg)
+	if(ir_lower_x64val_is_register(ref basex64))
 	{
 		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
 		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
@@ -525,12 +551,20 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 		}
 		else
 		{
-			// panic
-			panic_begin();
-			putzstr("ir.store base param is of irval_tag.\0");
-			putsint(base->tag@s64);
-			putzstr(", but expected either .reg or .globref...\n\0");
-			panic_end();
+			if(basex64.tag == x64val_tag.memreg)
+			{
+				mem = basex64;
+				[x64val_memreg_get_displacement(ref mem)] = [x64val_memreg_get_displacement(ref mem)] + disp@s64@u64;
+			}
+			else
+			{
+				// panic
+				panic_begin();
+				putzstr("ir.store base param is of irval_tag.\0");
+				putsint(base->tag@s64);
+				putzstr(", but expected either .reg or .globref...\n\0");
+				panic_end();
+			}
 		}
 	}
 
@@ -1691,20 +1725,26 @@ x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
 	return ref(v->v1);
 };
 
-irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
+irval_lower_check_stack_slots : func(v : x64val mut? -> v0)
 {
-	[irval_lower_x64_tbl # (v->tag@s64)](v, out);
-	// first check for replacements
+	// first check for stack_slots
+	// if a vreg is a stack-slot (i.e it was the output of ir_stack) then replace any occurrences of it with the stack-slot
 	fnx64 ::= x64_current_func();
 	i : u64 mut;
-	for(i = 0; i < fnx64->replace_count; i = i + 1)
+	for(i = 0; i < fnx64->stack_slot_count; i = i + 1)
 	{
-		if(x64val_equal_to(fnx64->replace_froms # i, out))
+		if(x64val_equal_to(v, fnx64->stack_slot_froms # i))
 		{
-			[out] = [fnx64->replace_tos # i];
+			[v] = [fnx64->stack_slot_tos # i];
 			return;
 		}
 	}
+};
+
+irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
+{
+	[irval_lower_x64_tbl # (v->tag@s64)](v, out);
+	irval_lower_check_stack_slots(out);
 };
 
 irval_lower_x64_invalid : func(v : irval mut?, out : x64val mut? -> v0)

@@ -11,34 +11,34 @@ x64func : struct
 	custom_name : u8?;
 	custom_name_len : u64;
 
-	replace_froms : x64val mut?;
-	replace_tos : x64val mut?;
-	replace_count : u64;
-	replace_cap : u64;
+	stack_slot_froms : x64val mut?;
+	stack_slot_tos : x64val mut?;
+	stack_slot_count : u64;
+	stack_slot_cap : u64;
 };
 
-x64func_add_replacement : func(fn : x64func mut?, from : x64val mut?, to : x64val mut? -> v0)
+x64func_add_stack_slot : func(fn : x64func mut?, from : x64val mut?, to : x64val mut? -> v0)
 {
-	if((fn->replace_froms == zero) || (fn->replace_tos == zero))
+	if((fn->stack_slot_froms == zero) || (fn->stack_slot_tos == zero))
 	{
-		fn->replace_cap = 8;
-		fn->replace_froms = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_froms]));
-		fn->replace_tos = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_tos]));
+		fn->stack_slot_cap = 8;
+		fn->stack_slot_froms = arena_alloc(global_arena, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_froms]));
+		fn->stack_slot_tos = arena_alloc(global_arena, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_tos]));
 	}
-	while(fn->replace_count >= fn->replace_cap)
+	while(fn->stack_slot_count >= fn->stack_slot_cap)
 	{
-		old_froms ::= fn->replace_froms;
-		old_tos ::= fn->replace_tos;
-		oldcap ::= fn->replace_cap;
-		fn->replace_cap = fn->replace_cap * 2;
-		fn->replace_froms = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_froms]));
-		memcopy(fn->replace_froms, old_froms, fn->replace_cap * sizeof typeof([fn->replace_froms]));
-		fn->replace_tos = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_tos]));
-		memcopy(fn->replace_tos, old_tos, fn->replace_cap * sizeof typeof([fn->replace_tos]));
+		old_froms ::= fn->stack_slot_froms;
+		old_tos ::= fn->stack_slot_tos;
+		oldcap ::= fn->stack_slot_cap;
+		fn->stack_slot_cap = fn->stack_slot_cap * 2;
+		fn->stack_slot_froms = arena_alloc(global_arena, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_froms]));
+		memcopy(fn->stack_slot_froms, old_froms, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_froms]));
+		fn->stack_slot_tos = arena_alloc(global_arena, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_tos]));
+		memcopy(fn->stack_slot_tos, old_tos, fn->stack_slot_cap * sizeof typeof([fn->stack_slot_tos]));
 	}
-	[fn->replace_froms # fn->replace_count] = [from];
-	[fn->replace_tos # fn->replace_count] = [to];
-	fn->replace_count = fn->replace_count + 1;
+	[fn->stack_slot_froms # fn->stack_slot_count] = [from];
+	[fn->stack_slot_tos # fn->stack_slot_count] = [to];
+	fn->stack_slot_count = fn->stack_slot_count + 1;
 };
 
 x64func_add_inst_at : func(fn : x64func mut?, inst : x64inst mut?, idx : u64 -> v0)
