@@ -134,7 +134,6 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 {
 	dummy : x64val mut;
 	fnx64 ::= x64_add_func(ref dummy);
-	ir_lower_prolog_x64();
 	fnx64->custom_name = fn->custom_name;
 	fnx64->custom_name_len = fn->custom_name_len;
 	i : u64 mut;
@@ -148,6 +147,10 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	irfunc_register_allocation_x64(ref state, fn, fnx64);
 	// legalise any instructions that are still invalid (e.g double memory operand)
 	irfunc_legalisation_x64(fn, fnx64);
+
+	// set the stack amt
+	x64_position_before_inst(0);
+	ir_lower_prolog_x64();
 };
 
 ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
@@ -421,15 +424,20 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	alignx64 : x64val mut;
 	irval_lower_x64(ir_stack_get_align(inst), ref alignx64);
 
-	rsp : x64val mut;
-	rsp.tag = x64val_tag.reg;
-	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
-	[x64val_reg_get_size(ref rsp)] = 64;
+	fnx64 ::= x64_current_func();
 
-	// todo: care about align?
-	x64_sub(ref rsp, ref sizex64);
+	stackpos : x64val mut;
+	stackpos.tag = x64val_tag.memreg;
+	[x64val_memreg_get_base(ref stackpos)] = x64_reg.rbp;
+	[x64val_memreg_get_base_size(ref stackpos)] = 64;
+	[x64val_memreg_get_index_size(ref stackpos)] = 0;
+	[x64val_memreg_get_scale(ref stackpos)] = 0;
+	[x64val_memreg_get_displacement(ref stackpos)] = fnx64->stack;
+	[x64val_memreg_get_displacement_size(ref stackpos)] = 32;
+	[x64val_memreg_get_size(ref stackpos)] = 64;
+	x64_add_replacement(ref outx64, ref stackpos);
 
-	x64_mov(ref outx64, ref rsp);
+	fnx64->stack = fnx64->stack + [x64val_imm_get_value(ref sizex64)];
 };
 
 irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -1686,6 +1694,17 @@ x64val_irblkref_get_idx : func(v : x64val mut? -> u64 mut?)
 irval_lower_x64 : func(v : irval mut?, out : x64val mut? -> v0)
 {
 	[irval_lower_x64_tbl # (v->tag@s64)](v, out);
+	// first check for replacements
+	fnx64 ::= x64_current_func();
+	i : u64 mut;
+	for(i = 0; i < fnx64->replace_count; i = i + 1)
+	{
+		if(x64val_equal_to(fnx64->replace_froms # i, out))
+		{
+			[out] = [fnx64->replace_tos # i];
+			return;
+		}
+	}
 };
 
 irval_lower_x64_invalid : func(v : irval mut?, out : x64val mut? -> v0)

@@ -5,10 +5,40 @@ x64func : struct
 	insts_cap : u64;
 
 	// implementation detail. represents some byte offset in an encoder where the code within this function starts
+	stack : u64;
 	enc_byte_offset_begin : u64;
 	idx : u64;
 	custom_name : u8?;
 	custom_name_len : u64;
+
+	replace_froms : x64val mut?;
+	replace_tos : x64val mut?;
+	replace_count : u64;
+	replace_cap : u64;
+};
+
+x64func_add_replacement : func(fn : x64func mut?, from : x64val mut?, to : x64val mut? -> v0)
+{
+	if((fn->replace_froms == zero) || (fn->replace_tos == zero))
+	{
+		fn->replace_cap = 8;
+		fn->replace_froms = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_froms]));
+		fn->replace_tos = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_tos]));
+	}
+	while(fn->replace_count >= fn->replace_cap)
+	{
+		old_froms ::= fn->replace_froms;
+		old_tos ::= fn->replace_tos;
+		oldcap ::= fn->replace_cap;
+		fn->replace_cap = fn->replace_cap * 2;
+		fn->replace_froms = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_froms]));
+		memcopy(fn->replace_froms, old_froms, fn->replace_cap * sizeof typeof([fn->replace_froms]));
+		fn->replace_tos = arena_alloc(global_arena, fn->replace_cap * sizeof typeof([fn->replace_tos]));
+		memcopy(fn->replace_tos, old_tos, fn->replace_cap * sizeof typeof([fn->replace_tos]));
+	}
+	[fn->replace_froms # fn->replace_count] = [from];
+	[fn->replace_tos # fn->replace_count] = [to];
+	fn->replace_count = fn->replace_count + 1;
 };
 
 x64func_add_inst_at : func(fn : x64func mut?, inst : x64inst mut?, idx : u64 -> v0)
