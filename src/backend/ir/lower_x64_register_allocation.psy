@@ -1,3 +1,40 @@
+igraph_node_x64 : struct
+{
+	value : x64val;
+	edges : u64 mut?;
+	edges_count : u64;
+	edges_cap : u64;
+	hints : x64val_list;
+	colour_tag : igraph_node_x64_colour_tag;
+	colour : u64 mut;
+};
+
+igraph_node_x64_colour_tag : enum
+{
+	.unset := 0;
+	.unchanged := 1;
+	.param := 2;
+	.stack_spill := 3;
+	.hwreg := 4;
+};
+
+igraph_node_colour_param : func(node : igraph_node_x64 mut?, param_idx : u64 -> v0)
+{
+	node->colour_tag = igraph_node_x64_colour_tag.param;
+	node->colour = param_idx;
+};
+
+igraph_node_colour_spill : func(node : igraph_node_x64 mut?, stack_amt : u64 -> v0)
+{
+	node->colour_tag = igraph_node_x64_colour_tag.stack_spill;
+	node->colour = stack_amt;
+};
+
+igraph_node_colour_register : func(node : igraph_node_x64 mut?, hwreg_idx : u64 -> v0)
+{
+	node->colour_tag = igraph_node_x64_colour_tag.hwreg;
+	node->colour = hwreg_idx;
+};
 // stores liveness-analysis + register allocation state for a single function
 lower_x64_register_allocation_state : struct
 {
@@ -13,6 +50,11 @@ lower_x64_register_allocation_state : struct
 	inst_defs : x64val_list mut?;
 	inst_live_befores : x64val_list mut?;
 	inst_live_afters : x64val_list mut?;
+
+	abi_param_regs : x64val mut?;
+	abi_param_regs_count : u64;
+	abi_hwregs : x64val mut?;
+	abi_hwregs_count : u64;
 };
 
 irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -124,6 +166,23 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 irfunc_precolouring_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
 	// precolour all igraph nodes storing ssa regs if they are parameters (set them to their abi-coded hardware registers)
+	i : u64 mut;
+	nodes_count ::= state->igraph_nodes.count;
+
+	for(i = 0; i < nodes_count; i = i + 1)
+	{
+		node ::= state->igraph_nodes.data # i;
+		nodeval ::= ref(node->value);
+		// if our param is a ssa vreg that with a parameter index, we precolour it.
+		if(ir_lower_x64val_is_register(nodeval))
+		{
+			vreg_idx ::= [x64val_vreg_get_idx(nodeval)];
+			if(vreg_idx < fn->params_count)
+			{
+				igraph_node_colour_param(node, vreg_idx);
+			}
+		}
+	}
 };
 
 irfunc_do_graph_colouring_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -135,4 +194,82 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 {
 	// given a finalised, coloured interference graph, patch all of the vreg x64vals in the instructions of the function with their associated coloured x64val_tag.reg replacements (thus making the instructions encodeable)
 	// this not only involves vreg -> reg but also vmemregs where the base/index registers are ssa registers
+	replacement : x64val mut;
+
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	nodes_count ::= state->igraph_nodes.count;
+	for(i = 0; i < nodes_count; i = i + 1)
+	{
+		replacement.tag = x64val_tag.invalid;
+		node ::= state->igraph_nodes.data # i;
+		nodeval ::= ref(node->value);
+		if(node->colour_tag == igraph_node_x64_colour_tag.param)
+		{
+			replacement = [state->abi_param_regs # node->colour];
+			[x64val_reg_get_size(ref replacement)] = x64val_get_size(nodeval);
+		}
+		if(node->colour_tag == igraph_node_x64_colour_tag.hwreg)
+		{
+			replacement = [state->abi_hwregs # node->colour];
+			[x64val_reg_get_size(ref replacement)] = x64val_get_size(nodeval);
+		}
+		if(node->colour_tag == igraph_node_x64_colour_tag.stack_spill)
+		{
+			replacement.tag = x64val_tag.memreg;
+			[x64val_memreg_get_base(ref replacement)] = x64_reg.rbp;
+			[x64val_memreg_get_base_size(ref replacement)] = 64;
+			[x64val_memreg_get_index_size(ref replacement)] = 0;
+			[x64val_memreg_get_scale(ref replacement)] = 0;
+			[x64val_memreg_get_displacement(ref replacement)] = fnx64->stack;
+			[x64val_memreg_get_displacement_size(ref replacement)] = 32;
+			[x64val_memreg_get_size(ref replacement)] = x64val_get_size(nodeval);
+			fnx64->stack = fnx64->stack + 8;
+		}
+
+		if(replacement.tag != x64val_tag.invalid)
+		{
+			// we changed it to something else neat!
+			// replace all occurrences of nodeval in all instructions.
+			for(j = 0; j < fnx64->insts_count; j = j + 1)
+			{
+				inst ::= fnx64->insts # j;
+				opcount ::= x64inst_operands_count(inst);
+				for(k = 0; k < opcount; k = k + 1)
+				{
+					if(x64val_equal_to(inst->operands # k, nodeval))
+					{
+						// replace!
+						putzstr("in instruction: \0");
+						x64inst_dump(inst);
+						putzstr("patching \0");
+						x64val_dump(nodeval);
+						putzstr(" to \0");
+						x64val_dump(ref replacement);
+						putzstr(" (size: \0");
+						putuint(x64val_get_size(nodeval));
+						putzstr(")\n\0");
+						// why the fuck do we do this, you ask?
+						// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
+						// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
+						// hence this weird jank below
+						oldsz ::= x64val_get_size(inst->operands # k);
+						[inst->operands # k] = replacement;
+						if(replacement.tag == x64val_tag.memreg)
+						{
+							[x64val_memreg_get_size(inst->operands # k)] = oldsz;
+						}
+						else
+						{
+							[x64val_reg_get_size(inst->operands # k)] = oldsz;
+						}
+						x64inst_dump(inst);
+						putchar('\n');
+					}
+					// todo: not just direct replacements, but also indirect usages via vmemregs...
+				}
+			}
+		}
+	}
 };
