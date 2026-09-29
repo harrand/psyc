@@ -460,7 +460,13 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	irval_lower_x64(ir_stack_get_align(inst), ref alignx64);
 
 	fnx64 ::= x64_current_func();
+	// make sure we are aligned properly...
+	align_amt ::= [x64val_imm_get_value(ref alignx64)];
+	padding ::= ((-(fnx64->stack@s64)) & (align_amt@s64 - 1))@u64;
+	fnx64->stack = fnx64->stack + padding;
 
+	// make sure fnx64->stack is aligned to our desired alignment!
+	stack_sz_amt ::= [x64val_imm_get_value(ref sizex64)];
 	stackpos : x64val mut;
 	stackpos.tag = x64val_tag.memreg;
 	[x64val_memreg_get_base(ref stackpos)] = x64_reg.rbp;
@@ -469,10 +475,11 @@ irinst_lower_x64_stack : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	[x64val_memreg_get_scale(ref stackpos)] = 0;
 	[x64val_memreg_get_displacement(ref stackpos)] = fnx64->stack;
 	[x64val_memreg_get_displacement_size(ref stackpos)] = 32;
+	// note: the size of the memreg is unknowable - its up to load/store to overwrite it.
 	[x64val_memreg_get_size(ref stackpos)] = 64;
 	x64_add_stack_slot(ref outx64, ref stackpos);
 
-	fnx64->stack = fnx64->stack + [x64val_imm_get_value(ref sizex64)];
+	fnx64->stack = fnx64->stack + stack_sz_amt;
 };
 
 irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -480,6 +487,7 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	outx64 : x64val mut;
 	irval_lower_x64(ir_load_get_out(inst), ref outx64);
 	sz ::= irval_get_sz(ir_load_get_out(inst));
+	size ::= [irsz_sizes # (sz@s64)] * 8;
 
 	base ::= ir_load_get_base(inst);
 	basex64 : x64val mut;
@@ -513,6 +521,8 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 			{
 				mem = basex64;
 				[x64val_memreg_get_displacement(ref mem)] = [x64val_memreg_get_displacement(ref mem)] + disp@s64@u64;
+				// need to set the size too! the stack slot has no idea how much of it is being loaded/stored
+				[x64val_memreg_get_size(ref mem)] = x64val_get_size(ref outx64);
 			}
 			else
 			{
@@ -535,6 +545,7 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	irval_lower_x64(ir_store_get_value(inst), ref valuex64);
 
 	sz ::= irval_get_sz(ir_store_get_value(inst));
+	size ::= [irsz_sizes # (sz@s64)] * 8;
 	if(sz == irsz.q)
 	{
 		x64val_imm_try_truncate_integer(ref valuex64, 32);
@@ -573,6 +584,8 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 			{
 				mem = basex64;
 				[x64val_memreg_get_displacement(ref mem)] = [x64val_memreg_get_displacement(ref mem)] + disp@s64@u64;
+				// need to set the size too! the stack slot has no idea how much of it is being loaded/stored
+				[x64val_memreg_get_size(ref mem)] = size;
 			}
 			else
 			{
