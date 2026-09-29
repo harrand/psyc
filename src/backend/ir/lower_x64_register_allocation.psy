@@ -72,7 +72,8 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	irfunc_do_graph_colouring_x64(state, fn, fnx64);
 	// 5. replace ssa operands in all instructions with their lowered variants
 	irfunc_post_graph_colouring_patch_x64(state, fn, fnx64);
-	// populate all our colours
+	// 6. do caller-saves (push/pop all volatile + param registers that are live-out in every call, but iterate backwards over the function so the state.inst_xyz indices remain valid for preceding calls)
+	irfunc_post_graph_colouring_caller_saves_x64(state, fn, fnx64);
 };
 
 irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -314,4 +315,8 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 			}
 		}
 	}
+};
+
+irfunc_post_graph_colouring_caller_saves_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
 };
