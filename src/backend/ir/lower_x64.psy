@@ -161,6 +161,26 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	// set the stack amt. note: if we don't use the stack, then we dont need to bother with prolog/epilog (but we'd have to deal with the epilog in a clever way)
 	x64_position_before_inst(0);
 	ir_lower_prolog_x64();
+	param_reg_count : u64 mut := state.abi_param_regs_count;
+	if(fn->params_count < param_reg_count)
+	{
+		param_reg_count = fn->params_count;
+	}
+	for(i = 0; i < param_reg_count; i = i + 1)
+	{
+		cur_param_ssa_reg : irval mut;
+		cur_param_ssa_reg.tag = irval_tag.reg;
+		[irval_reg_get_sz(ref cur_param_ssa_reg)] = [fn->params # i];
+		[irval_reg_get_idx(ref cur_param_ssa_reg)] = i;
+		cur_param_ssa_reg_x64 : x64val mut;
+		irval_lower_x64(ref cur_param_ssa_reg, ref cur_param_ssa_reg_x64);
+
+		abi_param_register : x64val mut := [state.abi_param_regs # i];
+		[x64val_reg_get_size(ref abi_param_register)] = x64val_get_size(ref cur_param_ssa_reg_x64);
+		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
+		x64_custom_reghint(ref cur_param_ssa_reg_x64, ref abi_param_register);
+		ir_lower_x64_generic_move_no_load(ref cur_param_ssa_reg_x64, ref abi_param_register);
+	}
 };
 
 ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
