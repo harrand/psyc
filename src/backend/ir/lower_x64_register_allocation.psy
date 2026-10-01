@@ -69,6 +69,7 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	// 3. precolouring
 	irfunc_precolouring_x64(state, fn, fnx64);
 	// 4. graph-colouring for ssa register nodes
+	// note: this is semi-close to working but fucks up in certain edge-cases.
 	irfunc_do_graph_colouring_x64(state, fn, fnx64);
 	// 5. replace ssa operands in all instructions with their lowered variants
 	irfunc_post_graph_colouring_patch_x64(state, fn, fnx64);
@@ -190,9 +191,66 @@ irfunc_precolouring_x64 : func(state : lower_x64_register_allocation_state mut?,
 	//}
 };
 
+igraph_node_find_neighbour_by_value : func(node : igraph_node_x64 mut?, state : lower_x64_register_allocation_state mut?, v : x64val mut? -> igraph_node_x64 mut?)
+{
+	i : u64 mut;
+	for(i = 0; i < node->edges_count; i = i + 1)
+	{
+		neighbour_node ::= state->igraph_nodes.data # [node->edges # i];
+		if(x64val_equal_to(ref(neighbour_node->value), v))
+		{
+			return neighbour_node;
+		}
+	}
+	return zero;
+};
+
+igraph_node_any_neighbour_has_colour : func(node : igraph_node_x64 mut?, state : lower_x64_register_allocation_state mut?, hwreg_col : u64 -> bool)
+{
+	i : u64 mut;
+	for(i = 0; i < node->edges_count; i = i + 1)
+	{
+		neighbour_node ::= state->igraph_nodes.data # [node->edges # i];
+		if((neighbour_node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (neighbour_node->colour == hwreg_col))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
 irfunc_do_graph_colouring_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
 	// do graph colouring based on the edges, and a set of colours (NYI TODO)
+	// foreach node, assign them a colour
+	// if there are any hints, choose the first one thats not already precoloured
+	// if not, choose the first scratch volatile/nonvolatile register that doesnt have the same colour as any of our neighbours
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < state->igraph_nodes.count; i = i + 1)
+	{
+		node ::= state->igraph_nodes.data # i;
+		if(ir_lower_x64val_is_register(ref(node->value)) && (node->colour_tag == igraph_node_x64_colour_tag.unset))
+		{
+			// todo: check hints
+			for(j = 0; j < state->abi_hwregs_count; j = j + 1)
+			{
+				// colour j
+				// iterate over neighbours and see if j is taken
+				if((node->colour_tag == igraph_node_x64_colour_tag.unset) && (igraph_node_any_neighbour_has_colour(node, state, j) == false))
+				{
+					// cool!
+					node->colour_tag = igraph_node_x64_colour_tag.hwreg;
+					node->colour = j;
+				}
+			}
+			if(node->colour_tag == igraph_node_x64_colour_tag.unset)
+			{
+				// couldnt find a colour. it gets spilled now.
+				node->colour_tag = igraph_node_x64_colour_tag.stack_spill;
+			}
+		}
+	}
 };
 
 irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
