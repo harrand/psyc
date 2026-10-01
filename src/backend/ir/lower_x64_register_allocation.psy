@@ -64,6 +64,11 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	//warn_end();
 	// 1. liveness analysis (data-flow analysis)
 	irfunc_liveness_analysis_x64(state, fn, fnx64);
+	should_print ::= args_has_asmdump_specific() && streql(fn->custom_name, fn->custom_name_len, args.asm_dump_specific.data, args.asm_dump_specific.len);
+	if(should_print)
+	{
+		x64func_dump_with_liveness(state, fn, fnx64);
+	}
 	// 2. interference graph
 	irfunc_build_interference_graph_x64(state, fn, fnx64);
 	// 3. precolouring
@@ -130,39 +135,42 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 		}
 	}
 
-	//putzstr("\nigraph for function \0");
-	//putchars(fn->custom_name, fn->custom_name_len);
-	//putzstr(": \n\0");
-	//// dump the interference graph:
-	//for(i = 0; i < state->igraph_nodes.count; i = i + 1)
-	//{
-		//node ::= state->igraph_nodes.data # i;
-		//x64val_dump(ref(node->value));
-		//putzstr(": \0");
-		//for(j = 0; j < node->edges_count; j = j + 1)
-		//{
-			//other_node ::= state->igraph_nodes.data # [node->edges # j];
-			//x64val_dump(ref(other_node->value));
-			//if(j < (node->edges_count - 1))
-			//{
-				//putzstr(", \0");
-			//}
-		//}
-		//if(node->hints.count > 0)
-		//{
-			//putzstr("\n\treghints: \0");
-			//for(j = 0; j < node->hints.count; j = j + 1)
-			//{
-				//x64val_dump(node->hints.data # j);
-				//if(j < (node->edges_count - 1))
-				//{
-					//putzstr(", \0");
-				//}
-			//}
-		//}
-		//putchar('\n');
-	//}
-	//putchar('\n');
+	if(args_has_asmdump_specific() && streql(fn->custom_name, fn->custom_name_len, args.asm_dump_specific.data, args.asm_dump_specific.len))
+	{
+	putzstr("\nigraph for function \0");
+	putchars(fn->custom_name, fn->custom_name_len);
+	putzstr(": \n\0");
+	// dump the interference graph:
+	for(i = 0; i < state->igraph_nodes.count; i = i + 1)
+	{
+		node ::= state->igraph_nodes.data # i;
+		x64val_dump(ref(node->value));
+		putzstr(": \0");
+		for(j = 0; j < node->edges_count; j = j + 1)
+		{
+			other_node ::= state->igraph_nodes.data # [node->edges # j];
+			x64val_dump(ref(other_node->value));
+			if(j < (node->edges_count - 1))
+			{
+				putzstr(", \0");
+			}
+		}
+		if(node->hints.count > 0)
+		{
+			putzstr("\n\treghints: \0");
+			for(j = 0; j < node->hints.count; j = j + 1)
+			{
+				x64val_dump(node->hints.data # j);
+				if(j < (node->edges_count - 1))
+				{
+					putzstr(", \0");
+				}
+			}
+		}
+		putchar('\n');
+	}
+	putchar('\n');
+	}
 };
 
 irfunc_precolouring_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -309,10 +317,10 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 						if(x64val_equal_to(ref maybe_vreg, nodeval))
 						{
 							// replace!
-							putzstr("in instruction: \0");
-							x64inst_dump(inst);
-							putzstr("patching vmemreg \0");
-							x64val_dump(curop);
+							//putzstr("in instruction: \0");
+							//x64inst_dump(inst);
+							//putzstr("patching vmemreg \0");
+							//x64val_dump(curop);
 							// just replace the base vreg with a real memreg
 							memsz ::= ir_lower_x64val_get_size(curop);
 							disp ::= [x64val_vmemreg_get_displacement(curop)];
@@ -335,27 +343,28 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 							[x64val_memreg_get_index_size(curop)] = 0;
 							[x64val_memreg_get_scale(curop)] = 0;
 
-							putzstr(" to \0");
-							x64val_dump(ref replacement);
-							putchar('\n');
+							//putzstr(" to \0");
+							//x64val_dump(ref replacement);
+							//putchar('\n');
 
-							x64inst_dump(inst);
-							putchar('\n');
+							//x64inst_dump(inst);
+							//putchar('\n');
 							}
 					}
 					// and if we just see the vreg then simply replace it!
 					if(x64val_equal_to(curop, nodeval))
 					{
 						// replace!
-						putzstr("in instruction: \0");
-						x64inst_dump(inst);
-						putzstr("patching \0");
-						x64val_dump(nodeval);
-						putzstr(" to \0");
-						x64val_dump(ref replacement);
-						putzstr(" (size: \0");
-						putuint(x64val_get_size(nodeval));
-						putzstr(")\n\0");
+						//putzstr("in instruction: \0");
+						//x64inst_dump(inst);
+						//putzstr("patching \0");
+						//x64val_dump(nodeval);
+						//putzstr(" to \0");
+						//x64val_dump(ref replacement);
+						//putzstr(" (size: \0");
+						//putuint(x64val_get_size(nodeval));
+						//putzstr(")\n\0");
+
 						// why the fuck do we do this, you ask?
 						// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
 						// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
@@ -370,8 +379,8 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 						{
 							[x64val_reg_get_size(curop)] = oldsz;
 						}
-						x64inst_dump(inst);
-						putchar('\n');
+						//x64inst_dump(inst);
+						//putchar('\n');
 					}
 				}
 			}

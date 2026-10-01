@@ -38,10 +38,13 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		{
 			curblk_idx = [x64val_irblkref_get_idx(op0)];
 		}
-		use ::= state->blk_uses # curblk_idx;
-		def ::= state->blk_defs # curblk_idx;
-		live_in ::= state->blk_live_ins # curblk_idx;
-		live_out ::= state->blk_live_ins # curblk_idx;
+		use : x64val_list mut? mut := zero;
+		def : x64val_list mut? mut := zero;
+		if(curblk_idx != ~0)
+		{
+			use = state->blk_uses # curblk_idx;
+			def = state->blk_defs # curblk_idx;
+		}
 
 		inst_use ::= state->inst_uses # i;
 		inst_def ::= state->inst_defs # i;
@@ -53,7 +56,7 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		cur : x64val mut;
 		curreg : x64val mut;
 		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
-		if((enc != zero) && (curblk_idx != ~0))
+		if((enc != zero))
 		{
 			// we have an encoding and we are inside a block.
 			// calls clobber volatile registers (abi-specific)
@@ -64,7 +67,10 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 				volatile_array ::= abi_volatile_registers_begin_x64(the_abi);
 				for(j = 0; j < volatile_count; j = j + 1)
 				{
-					x64val_list_append_unique(def, volatile_array # j);
+					if(def != zero)
+					{
+						x64val_list_append_unique(def, volatile_array # j);
+					}
 					x64val_list_append_unique(inst_def, volatile_array # j);
 				}
 			}
@@ -79,7 +85,10 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 					for(k = 0; k < regcount; k = k + 1)
 					{
 						x64val_get_contained_register(ref cur, ref curreg, k);
-						x64val_list_append_unique(def, ref curreg);
+						if(def != zero)
+						{
+							x64val_list_append_unique(def, ref curreg);
+						}
 						x64val_list_append_unique(inst_def, ref curreg);
 					}
 				}
@@ -96,16 +105,19 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 					{
 						x64val_get_contained_register(ref cur, ref curreg, k);
 						x64val_list_append_unique(inst_use, ref curreg);
-						for(l = 0; l < def->count; l = l + 1)
+						if((use != zero) && (def != zero))
 						{
-							if(x64val_equal_to(ref curreg, def->data # l))
+							for(l = 0; l < def->count; l = l + 1)
 							{
-								already_defined_previously = true;
+								if(x64val_equal_to(ref curreg, def->data # l))
+								{
+									already_defined_previously = true;
+								}
 							}
-						}
-						if(already_defined_previously == false)
-						{
-							x64val_list_append_unique(use, ref curreg);
+							if(already_defined_previously == false)
+							{
+								x64val_list_append_unique(use, ref curreg);
+							}
 						}
 					}
 				}
@@ -234,6 +246,7 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	// live_before(inst) = cur_live
 	//}
 	//    (note: step 3 does NOT require repeated iteration, it just runs once backwards per block)
+
 	curblk_idx : u64 mut := fn->blks_count - 1;
 	cur_live : x64val_list mut := [state->blk_live_outs # curblk_idx];
 	s : s64 mut := 0;
@@ -280,11 +293,41 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 		{
 			if(curblk_idx == 0)
 			{
-				// we've now reached the instructions before any blkbegins (most likely a function prolog)
-				return;
+				// we've now reached the instructions before any blkbegins (most likely a function prolog) or moves
+				// however we do need those!
 			}
-			curblk_idx = curblk_idx - 1;
-			cur_live = [state->blk_live_outs # curblk_idx];
+			else
+			{
+				curblk_idx = curblk_idx - 1;
+				cur_live = [state->blk_live_outs # curblk_idx];
+			}
 		}
+	}
+};
+
+x64func_dump_with_liveness : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	s : u64 mut;
+	i : u64 mut;
+	for(s = 0; s < fnx64->insts_count; s = s + 1)
+	{
+		colour_reset();
+		putzstr("\n\tlive-before: \0");
+		befores ::= state->inst_live_befores # s;
+		for(i = 0; i < befores->count; i = i + 1)
+		{
+			x64val_dump(befores->data # i);
+			putchar(' ');
+		}
+		putchar('\n');
+		x64inst_dump(fnx64->insts # s);
+		putzstr("\tlive-after: \0");
+		afters ::= state->inst_live_afters # s;
+		for(i = 0; i < afters->count; i = i + 1)
+		{
+			x64val_dump(afters->data # i);
+			putchar(' ');
+		}
+		putzstr("\n\0");
 	}
 };
