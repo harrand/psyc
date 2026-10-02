@@ -8,14 +8,17 @@ x64val_tag : enum
 	// memory operand: r1 = base_reg, v1 = base_reg_size (0/8/16/32/64), r2 = index_reg, v2 = index_reg_size (0/8/16/32/64), v3 = scale (0/1/2/4/8), v4 = displacement, v5 = displacement_size (8/32), v6 = memsize (8/16/32/64)
 	.memreg := 3;
 	// rip-instruction-relative memory operand: v1 = instruction delta
-	// note: converted to a 32-bit-displacement memory operand always
+	// converted to a 32-bit-displacement memory operand (i.e QWORD PTR [rip + rel32])
 	.ripreli := 4;
+	// rip-instruction-relative memory operand: v1 = instruction delta
+	// converted to a 32-bit-displacement immediate (i.e rel32)
+	.riprelimm := 5;
 	// function reference: v1 = function index in the program
-	.fnref := 5;
+	.fnref := 6;
 	// global data reference: v1 = global index, v2 = memory size (not necessarily the size of the global data), v3 = displacement (in bytes)
-	.globref := 6;
+	.globref := 7;
 	// non-encodeable custom userdata: user-defined
-	.custom := 7;
+	.custom := 8;
 };
 
 x64_reg : enum
@@ -189,6 +192,11 @@ x64val_ripreli_get_delta : func(v : x64val mut? -> s32 mut?)
 	return ref(v->v1)@s32 mut?;
 };
 
+x64val_riprelimm_get_delta : func(v : x64val mut? -> s32 mut?)
+{
+	return ref(v->v1)@s32 mut?;
+};
+
 x64val_fnref_get_index : func(v : x64val mut? -> u64 mut?)
 {
 	return ref(v->v1)@u64 mut?;
@@ -207,6 +215,17 @@ x64val_globref_get_size : func(v : x64val mut? -> u64 mut?)
 x64val_globref_get_displacement : func(v : x64val mut? -> s32 mut?)
 {
 	return ref(v->v3)@s32 mut?;
+};
+
+x64val_is_custom : func(v : x64val mut?, custom_idx : s64 weak -> bool)
+{
+	tagbase : x64val_tag := x64val_tag.custom;
+	dst ::= v->tag@s64 - tagbase@s64;
+	if(dst < 0)
+	{
+		return false;
+	}
+	return dst == custom_idx;
 };
 
 x64val_is_any_custom : func(v : x64val mut? -> bool)
@@ -326,6 +345,11 @@ x64val_is_encodeable_memory : func(v : x64val mut? -> bool)
 	return (v->tag == x64val_tag.memreg);
 };
 
+x64val_is_any_immediate : func(v : x64val mut? -> bool)
+{
+	return (v->tag == x64val_tag.imm) || (v->tag == x64val_tag.riprelimm);
+};
+
 x64val_custom_get_size : func(v : x64val mut? -> u64) mut := zero;
 x64val_get_size : func(v : x64val mut? -> u64)
 {
@@ -435,6 +459,10 @@ x64val_satisfies_optype_encodeably : func(v : x64val mut?, type : x64enc_operand
 			return true;
 		}
 	}
+	if(v->tag == x64val_tag.riprelimm)
+	{
+		return type == x64enc_operand_type.imm32;
+	}
 	return false;
 };
 
@@ -512,6 +540,10 @@ x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bo
 			return true;
 		}
 	}
+	if(v->tag == x64val_tag.riprelimm)
+	{
+		return type == x64enc_operand_type.imm32;
+	}
 	return false;
 };
 
@@ -546,6 +578,10 @@ x64val_equal_to : func(lhs : x64val mut?, rhs : x64val mut? -> bool)
 	if(lhs->tag == x64val_tag.ripreli)
 	{
 		return [x64val_ripreli_get_delta(lhs)] == [x64val_ripreli_get_delta(rhs)];
+	}
+	if(lhs->tag == x64val_tag.riprelimm)
+	{
+		return [x64val_riprelimm_get_delta(lhs)] == [x64val_riprelimm_get_delta(rhs)];
 	}
 	if(lhs->tag == x64val_tag.fnref)
 	{

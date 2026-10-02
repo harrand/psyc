@@ -3,10 +3,41 @@ irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 	// iterate over all x64insts in the fnx64
 	// keep legalising until they're all legal
 	i : u64 mut;
+	j : u64 mut;
 	x64_position_start_func(fnx64->idx);
+
+	blkbegin_inst_indices : u64 mut? := arena_alloc(scratch_arena, fn->blks_count * sizeof u64);
+	inst : x64inst mut? mut;
+	blkidx : u64 mut;
 	for(i = 0; i < fnx64->insts_count; i = i + 1)
 	{
-		inst ::= fnx64->insts # i;
+		inst = fnx64->insts # i;
 		ir_lower_handle_double_memory_operand(inst, i);
+		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.blkbegin))
+		{
+			blkidx = [x64val_irblkref_get_idx(inst->operands # 0)];
+			[blkbegin_inst_indices # blkidx] = i;
+		}
+	}
+
+	// now patch all irblkrefs in non-blkbegin instructions
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst = fnx64->insts # i;
+		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.blkbegin) == false)
+		{
+			count ::= x64inst_operands_count(inst);
+			for(j = 0; j < count; j = j + 1)
+			{
+				op ::= inst->operands # j;
+				if(x64val_is_custom(op, ir_lower_x64val_tag.irblkref))
+				{
+					blkidx = [x64val_irblkref_get_idx(op)];
+					inst_delta : s64 mut := ([blkbegin_inst_indices # blkidx]@s64 - i@s64);
+					op->tag = x64val_tag.riprelimm;
+					[x64val_riprelimm_get_delta(op)] = ([blkbegin_inst_indices # blkidx]@s64 - i@s64)@s32;
+				}
+			}
+		}
 	}
 };
