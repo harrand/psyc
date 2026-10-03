@@ -18,23 +18,6 @@ igraph_node_x64_colour_tag : enum
 	.hwreg := 4;
 };
 
-igraph_node_colour_param : func(node : igraph_node_x64 mut?, param_idx : u64 -> v0)
-{
-	node->colour_tag = igraph_node_x64_colour_tag.param;
-	node->colour = param_idx;
-};
-
-igraph_node_colour_spill : func(node : igraph_node_x64 mut?, stack_amt : u64 -> v0)
-{
-	node->colour_tag = igraph_node_x64_colour_tag.stack_spill;
-	node->colour = stack_amt;
-};
-
-igraph_node_colour_register : func(node : igraph_node_x64 mut?, hwreg_idx : u64 -> v0)
-{
-	node->colour_tag = igraph_node_x64_colour_tag.hwreg;
-	node->colour = hwreg_idx;
-};
 // stores liveness-analysis + register allocation state for a single function
 lower_x64_register_allocation_state : struct
 {
@@ -312,6 +295,7 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 					// first we check if it is the base register of a vmemreg
 					maybe_vreg : x64val mut;
 					curop ::= inst->operands # k;
+					// error out if the instruction is a regnospill
 					if(x64val_vmemreg_get_base_vreg(curop, ref maybe_vreg))
 					{
 						if(x64val_equal_to(ref maybe_vreg, nodeval))
@@ -349,7 +333,16 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 
 							//x64inst_dump(inst);
 							//putchar('\n');
+							if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
+							{
+								panic_begin();
+								putzstr("ssa register \0");
+								x64val_dump(ref maybe_vreg);
+								putzstr(" was marked regnospill, but has been spilled to: \0");
+								x64val_dump(curop);
+								panic_end();
 							}
+						}
 					}
 					// and if we just see the vreg then simply replace it!
 					if(x64val_equal_to(curop, nodeval))
@@ -369,6 +362,7 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 						// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
 						// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
 						// hence this weird jank below
+						old ::= [curop];
 						oldsz ::= x64val_get_size(curop);
 						[curop] = replacement;
 						if(replacement.tag == x64val_tag.memreg)
@@ -381,6 +375,15 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 						}
 						//x64inst_dump(inst);
 						//putchar('\n');
+						if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
+						{
+							panic_begin();
+							putzstr("ssa register \0");
+							x64val_dump(ref old);
+							putzstr(" was marked regnospill, but has been spilled to: \0");
+							x64val_dump(curop);
+							panic_end();
+						}
 					}
 				}
 			}
