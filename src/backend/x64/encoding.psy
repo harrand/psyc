@@ -10,7 +10,7 @@ x64enc_meta : struct
 	begin_mutablezero_glob_vaddr : u64;
 };
 
-x64enc_catch_edge_cases : func(inst : x64inst mut? -> v0)
+x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
 {
 	i : u64 mut;
 	// edge case 1: movzx r64, r/m32 does not exist. patch it to mov r32, r/m32 instead
@@ -42,6 +42,22 @@ x64enc_catch_edge_cases : func(inst : x64inst mut? -> v0)
 			// todo: patch globrefs to rip-relative memregs
 			// we can calculate the globref distance to rodata-begin etc
 			// and we know our own inst->enc_byte_offset_begin
+			glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
+			// choose the correct start point from the tag.
+			inst_start_addr ::= inst->enc_byte_offset_begin + m->begin_code_vaddr;
+			// todo: don't we want the start_addr of the next instruction?
+			inst_end_addr ::= inst_start_addr;
+			// todo: get the offset from the start of this region to the glob begin
+			glob_begin_vaddr : u64 mut := 0;
+			if(glob->tag == x64glob_tag.readonly)
+			{
+			}
+			if(glob->tag == x64glob_tag.mutable)
+			{
+			}
+			if(glob->tag == x64glob_tag.mutablezero)
+			{
+			}
 		}
 	}
 };
@@ -263,7 +279,7 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 	}
 	inst->enc_byte_offset_begin = w->cursor;
 	count ::= x64inst_operands_count(inst);
-	x64enc_catch_edge_cases(inst);
+	x64enc_catch_edge_cases(inst, m);
 	// complex
 	enc : x64enc_table_entry mut := [x64enc_fetch(inst)];
 	modrm_val : u8 mut := 0;
