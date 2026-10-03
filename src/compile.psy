@@ -130,25 +130,32 @@ write_output_x64 : func(-> v0)
 
 	f ::= path_open(zstr2path("build/test.elf\0"), file.cwd, file_access.write, path_open_flag.truncate | path_open_flag.create_if_notfound | path_open_flag.create_executable);
 
-	stream : bwriter mut;
-	w ::= ref stream;
-	bwriter_create_native(w, 1024, scratch_arena);
+	codestream : bwriter mut;
+	code ::= ref codestream;
+	bwriter_create_native(code, 1024, scratch_arena);
+	readonlystream : bwriter mut;
+	readonly ::= ref readonlystream;
+	bwriter_create_native(readonly, 1024, scratch_arena);
+	mutablestream : bwriter mut;
+	mutable ::= ref mutablestream;
+	bwriter_create_native(mutable, 1024, scratch_arena);
 
 	meta : x64enc_meta mut;
 	meta.begin_code_vaddr = 0;
 	meta.begin_readonly_glob_vaddr = 0;
 	meta.begin_mutable_glob_vaddr = 0;
 	meta.begin_mutablezero_glob_vaddr = 0;
-	x64prog_encode_to(w, ref(x64api.prog), ref meta);
+	meta.mutablezero_size = 0;
+	x64prog_encode_to(code, readonly, mutable, ref(x64api.prog), ref meta);
 
 	edata : elf_data mut;
-	edata.code = w->buf;
-	edata.code_len = w->cursor;
-	edata.rodata = zero;
-	edata.rodata_len = zero;
-	edata.data = zero;
-	edata.data_len = zero;
-	edata.bss_len = zero;
+	edata.code = code->buf;
+	edata.code_len = code->cursor;
+	edata.rodata = readonly->buf;
+	edata.rodata_len = readonly->cursor;
+	edata.data = mutable->buf;
+	edata.data_len = mutable->cursor;
+	edata.bss_len = meta.mutablezero_size;
 	if(x64api.prog.funcs_count == 0)
 	{
 		edata.entrypoint = 0;
@@ -158,12 +165,13 @@ write_output_x64 : func(-> v0)
 		edata.entrypoint = (x64api.prog.funcs # (x64api.prog.entrypoint_func_index))->enc_byte_offset_begin;
 	}
 
-	w->cursor = 0;
-	w->len = 0;
-	w->buf = zero;
-	elf_write(w, ref edata);
+	// repurpose code to be the final elf writer
+	code->cursor = 0;
+	code->len = 0;
+	code->buf = zero;
+	elf_write(code, ref edata);
 
-	file_write(f, w->buf, w->cursor);
+	file_write(f, code->buf, code->cursor);
 	file_close(f);
 };
 

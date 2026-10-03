@@ -8,6 +8,13 @@ x64enc_meta : struct
 	begin_mutable_glob_vaddr : u64;
 	// absolute virtual address where the mutable zeroed global data (.bss) starts
 	begin_mutablezero_glob_vaddr : u64;
+	// how many bytes does the .bss region last?
+	mutablezero_size : u64;
+};
+
+x64enc_meta_calculate_globref_riprel : func(glob_data_begin_vaddr : u64, globref_disp : s32, current_instruction_end_vaddr : u64 -> u64)
+{
+	return (glob_data_begin_vaddr + globref_disp@s64@u64) - (current_instruction_end_vaddr);
 };
 
 x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
@@ -39,25 +46,45 @@ x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
 		}
 		if(op->tag == x64val_tag.globref)
 		{
-			// todo: patch globrefs to rip-relative memregs
+			// here we: patch globrefs to rip-relative memregs
 			// we can calculate the globref distance to rodata-begin etc
 			// and we know our own inst->enc_byte_offset_begin
 			glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
 			// choose the correct start point from the tag.
-			inst_start_addr ::= inst->enc_byte_offset_begin + m->begin_code_vaddr;
+			inst_start_vaddr ::= inst->enc_byte_offset_begin + m->begin_code_vaddr;
 			// todo: don't we want the start_addr of the next instruction?
-			inst_end_addr ::= inst_start_addr;
+			inst_end_vaddr ::= inst_start_vaddr;
 			// todo: get the offset from the start of this region to the glob begin
 			glob_begin_vaddr : u64 mut := 0;
+
 			if(glob->tag == x64glob_tag.readonly)
 			{
+				glob_begin_vaddr = m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
 			}
 			if(glob->tag == x64glob_tag.mutable)
 			{
+				glob_begin_vaddr = m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
 			}
 			if(glob->tag == x64glob_tag.mutablezero)
 			{
+				glob_begin_vaddr = m->begin_mutablezero_glob_vaddr + glob->data_begin_offset_bytes;
 			}
+
+			opcpy ::= [op];
+
+			op->tag = x64val_tag.memreg;
+			[x64val_memreg_get_base(op)] = x64_reg.rip;
+			[x64val_memreg_get_base_size(op)] = 64;
+			[x64val_memreg_get_index_size(op)] = zero;
+			[x64val_memreg_get_scale(op)] = 0;
+			[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_begin_vaddr, [x64val_globref_get_displacement(ref opcpy)], inst_end_vaddr);
+			[x64val_memreg_get_displacement_size(op)] = 32;
+			[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
+			putzstr("globref \0");
+			x64val_dump(ref opcpy);
+			putzstr("\nturned into: \0");
+			x64val_dump(op);
+			putchar('\n');
 		}
 	}
 };
@@ -270,6 +297,10 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 	{
 		return;
 	}
+	inst->enc_byte_offset_begin = w->cursor;
+	count ::= x64inst_operands_count(inst);
+	x64enc_catch_edge_cases(inst, m);
+
 	if(x64inst_is_encodeable(inst) == false)
 	{
 		panic_begin();
@@ -277,9 +308,6 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 		x64inst_dump(inst);
 		panic_end();
 	}
-	inst->enc_byte_offset_begin = w->cursor;
-	count ::= x64inst_operands_count(inst);
-	x64enc_catch_edge_cases(inst, m);
 	// complex
 	enc : x64enc_table_entry mut := [x64enc_fetch(inst)];
 	modrm_val : u8 mut := 0;
@@ -383,12 +411,41 @@ x64func_encode_to : func(w : bwriter mut?, fn : x64func mut?, p : x64prog mut?, 
 	}
 };
 
-x64prog_encode_to : func(w : bwriter mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
+x64glob_encode_to : func(w : bwriter mut?, glob : x64glob mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
 {
 	i : u64 mut;
+	bwrite_bytes(w, glob->init_data, glob->init_data_size);
+	for(i = glob->init_data_size; i < glob->size; i = i + 1)
+	{
+		bwrite8(w, 0);
+	}
+};
+
+x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutablew : bwriter mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < p->globs_count; i = i + 1)
+	{
+		glob ::= p->globs # i;
+		if(glob->tag == x64glob_tag.readonly)
+		{
+			glob->data_begin_offset_bytes = readonlyw->cursor;
+			x64glob_encode_to(readonlyw, glob, p, m);
+		}
+		if(glob->tag == x64glob_tag.mutable)
+		{
+			glob->data_begin_offset_bytes = mutablew->cursor;
+			x64glob_encode_to(mutablew, glob, p, m);
+		}
+		if(glob->tag == x64glob_tag.mutablezero)
+		{
+			glob->data_begin_offset_bytes = m->mutablezero_size;
+			m->mutablezero_size = m->mutablezero_size + glob->size;
+		}
+	}
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
-		x64func_encode_to(w, p->funcs # i, p, m);
+		x64func_encode_to(codew, p->funcs # i, p, m);
 	}
 };
 
