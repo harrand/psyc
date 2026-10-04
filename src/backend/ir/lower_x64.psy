@@ -76,7 +76,7 @@ ir_lower_x64 : func(-> v0)
 // irfunc + irblks -> x64func lowering
 // ===================================
 
-ir_lower_prolog_x64 : func(-> v0)
+ir_lower_prolog_x64 : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 {
 	rbp : x64val mut;
 	rbp.tag = x64val_tag.reg;
@@ -88,6 +88,12 @@ ir_lower_prolog_x64 : func(-> v0)
 	[x64val_reg_get_size(ref rsp)] = 64;
 	x64_push(ref rbp);
 	x64_mov(ref rbp, ref rsp);
+
+	i : u64 mut;
+	for(i = 0; i < epilog_state->regs_to_pop_count; i = i + 1)
+	{
+		x64_push(epilog_state->regs_to_pop # i);
+	}
 	
 	stackamt_imm : x64val mut;
 	stackamt_imm.tag = x64val_tag.imm;
@@ -96,7 +102,30 @@ ir_lower_prolog_x64 : func(-> v0)
 	x64_sub(ref rsp, ref stackamt_imm);
 };
 
-ir_lower_epilog_x64 : func(-> v0)
+ir_lower_epilog_state : struct
+{
+	regs_to_pop : x64val mut?;
+	regs_to_pop_count : u64;
+};
+
+// add rsp, <stackamt>
+ir_lower_epilog_part_1 : func(-> v0)
+{
+	rsp : x64val mut;
+	rsp.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
+	[x64val_reg_get_size(ref rsp)] = 64;
+	// add the stack amt
+	stackamt_imm : x64val mut;
+	stackamt_imm.tag = x64val_tag.imm;
+	[x64val_imm_get_size(ref stackamt_imm)] = 32;
+	[x64val_imm_get_value(ref stackamt_imm)] = x64_current_func()->stack;
+	x64_add(ref rsp, ref stackamt_imm);
+};
+
+// mov rsp, rbp
+// pop rbp
+ir_lower_epilog_part_2 : func(-> v0)
 {
 	rbp : x64val mut;
 	rbp.tag = x64val_tag.reg;
@@ -186,19 +215,42 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	irfunc_legalisation_x64(fn, fnx64);
 
 	x64_position_before_inst(0);
-	ir_lower_prolog_x64();
-	irfunc_abi_caller_saved_x64(fn, fnx64);
+
+	epilog_state : ir_lower_epilog_state := zero;
+	irfunc_abi_caller_saved_x64(fn, fnx64, ref epilog_state);
+	ir_lower_prolog_x64(ref epilog_state);
+	s : s64 mut;
+	for(s = (fnx64->insts_count - 1)@s64; s >= 0; s = s - 1)
+	{
+		inst ::= fnx64->insts # s;
+		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.epilog))
+		{
+			x64_position_before_inst(s@u64);
+			// delete the .epilog custom instruction
+			x64_delete_instruction();
+			// do part 1 of the epilog (must happen before the pops)
+			ir_lower_epilog_part_1();
+			for(i = 0; i < epilog_state.regs_to_pop_count; i = i + 1)
+			{
+				x64_pop(epilog_state.regs_to_pop # i);
+			}
+			// do part 2 of the epilog (must happen after the pops)
+			ir_lower_epilog_part_2();
+		}
+	}
 };
 
-irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state : ir_lower_epilog_state mut? -> v0)
 {
 	cur_inst_id ::= x64_get_position();
 	// iterate over all instructions
 	// make a list of all volatile registers that are ever written to
 	nonvolatiles ::= abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
 	cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64);
-	count : u64 mut := 0;
-	data : x64val mut? := arena_alloc(scratch_arena, cap * sizeof x64val);
+	count ::= ref(state->regs_to_pop_count);
+	data ::= ref(state->regs_to_pop);
+	[count] = 0;
+	[data] = arena_alloc(scratch_arena, cap * sizeof x64val);
 	i : u64 mut;
 	j : u64 mut;
 	k : u64 mut;
@@ -230,9 +282,9 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 							{
 								// but only if we dont already have it
 								already_saved_it : bool mut := false;
-								for(m = 0; m < count; m = m + 1)
+								for(m = 0; m < [count]; m = m + 1)
 								{
-									if(x64val_equal_to(data # m, ref curreg))
+									if(x64val_equal_to([data] # m, ref curreg))
 									{
 										already_saved_it = true;
 									}
@@ -241,8 +293,8 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 								{
 									// save it as a 64-bit version.
 									[x64val_reg_get_size(ref curreg)] = 64;
-									[data # count] = curreg;
-									count = count + 1;
+									[[data] # [count]] = curreg;
+									[count] = [count] + 1;
 								}
 							}
 						}
@@ -250,16 +302,6 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 				}
 			}
 		}
-	}
-
-	// now iterate over the list then push/pop them all
-	for(i = 0; i < count; i = i + 1)
-	{
-		x64_position_before_inst(cur_inst_id + i);
-		x64_push(data # i);
-		// todo: do this for every epilog, not randomly at the end of the function
-		x64_position_end();
-		x64_pop(data # i);
 	}
 };
 
@@ -466,6 +508,7 @@ ir_lower_x64inst_tag : enum
 	.reghint:= 2; // meta-instruction recommending that param0 (an ssa-register) ought to be lowered to hardware-register param1 (but correctness doesn't require this to be the case)
 	.clobber := 3; // meta-instruction to mark a hardware register as clobbered
 	.scratch := 4; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
+	.epilog := 5; // meta-instruction representing the exit-point of a function (will turn into a proper epilog tearing down stackframe state etc...). does *not* include the ret
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
@@ -474,6 +517,7 @@ ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 	.2 := "reghint\0";
 	.3 := "clobber\0";
 	.4 := "scratch\0";
+	.5 := "epilog\0";
 };
 
 // x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
@@ -531,6 +575,12 @@ x64_custom_scratch : func(ssa_reg : x64val mut? -> v0)
 {
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.scratch;
 	x64_custom(tag, ssa_reg, 1);
+};
+
+x64_custom_epilog : func(-> v0)
+{
+	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.epilog;
+	x64_custom(tag, zero, zero);
 };
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
@@ -732,7 +782,8 @@ irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 		[x64val_reg_get_size(ref cur_abi_out)] = x64val_get_size(ref cur_out);
 		ir_lower_x64_generic_move_no_load(ref cur_abi_out, ref cur_out);
 	}
-	ir_lower_epilog_x64();
+	x64_custom_epilog();
+	//ir_lower_epilog_x64();
 	x64_ret();
 };
 
