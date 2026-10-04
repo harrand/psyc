@@ -44,48 +44,6 @@ x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
 				[x64val_memreg_get_displacement(op)] = 0;
 			}
 		}
-		if(op->tag == x64val_tag.globref)
-		{
-			// here we: patch globrefs to rip-relative memregs
-			// we can calculate the globref distance to rodata-begin etc
-			// and we know our own inst->enc_byte_offset_begin
-			glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
-			// choose the correct start point from the tag.
-			inst_start_vaddr ::= inst->enc_byte_offset_begin + m->begin_code_vaddr;
-			// todo: don't we want the start_addr of the next instruction?
-			inst_end_vaddr ::= inst_start_vaddr;
-			// todo: get the offset from the start of this region to the glob begin
-			glob_begin_vaddr : u64 mut := 0;
-
-			if(glob->tag == x64glob_tag.readonly)
-			{
-				glob_begin_vaddr = m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
-			}
-			if(glob->tag == x64glob_tag.mutable)
-			{
-				glob_begin_vaddr = m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
-			}
-			if(glob->tag == x64glob_tag.mutablezero)
-			{
-				glob_begin_vaddr = m->begin_mutablezero_glob_vaddr + glob->data_begin_offset_bytes;
-			}
-
-			opcpy ::= [op];
-
-			op->tag = x64val_tag.memreg;
-			[x64val_memreg_get_base(op)] = x64_reg.rip;
-			[x64val_memreg_get_base_size(op)] = 64;
-			[x64val_memreg_get_index_size(op)] = zero;
-			[x64val_memreg_get_scale(op)] = 0;
-			[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_begin_vaddr, [x64val_globref_get_displacement(ref opcpy)], inst_end_vaddr);
-			[x64val_memreg_get_displacement_size(op)] = 32;
-			[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
-			putzstr("globref \0");
-			x64val_dump(ref opcpy);
-			putzstr("\nturned into: \0");
-			x64val_dump(op);
-			putchar('\n');
-		}
 	}
 };
 
@@ -179,7 +137,12 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 	else
 	{
 		// rm is a memory rm_operand
-		rm_baseregbits ::= [x64val_memreg_get_base(rm_operand)];
+		rm_baseregbits : x64_reg mut := [x64val_memreg_get_base(rm_operand)];
+		// catch ripreli/globref/fnref (which should be treated as a 32-bit rip-relative memory operand
+		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
+		{
+			rm_baseregbits = x64_reg.rip;
+		}
 		modrm_set_rm([modrm_out], (rm_baseregbits@s64 & 0b111)@u8);
 		if(rm_baseregbits@s64 > 0b111)
 		{
@@ -187,7 +150,12 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
 		}
 		// check if we have a displacement
-		disp_sz ::= [x64val_memreg_get_displacement_size(rm_operand)];
+		disp_sz : u64 mut := [x64val_memreg_get_displacement_size(rm_operand)];
+		// catch ripreli/globref/fnref (which should be treated as a 32-bit rip-relative memory operand
+		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
+		{
+			disp_sz = 32;
+		}
 		if(disp_sz != 0)
 		{
 			if(disp_sz == 8)
@@ -212,7 +180,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		}
 
 		// do we need a sib?
-		if(([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
+		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
 		{
 			[sib_out] = zero;
 			return;
@@ -376,6 +344,10 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 				bwrite32(w, [x64val_memreg_get_displacement(op)]);
 			}
 		}
+		if((op->tag == x64val_tag.riprelimm) || (op->tag == x64val_tag.ripreli) || (op->tag == x64val_tag.fnref) || (op->tag == x64val_tag.globref))
+		{
+			bwrite32(w, zero);
+		}
 		if(op->tag == x64val_tag.imm)
 		{
 			immval ::= [x64val_imm_get_value(op)];
@@ -443,6 +415,7 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			m->mutablezero_size = m->mutablezero_size + glob->size;
 		}
 	}
+	x64prog_patch_everything(p, m);
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
 		x64func_encode_to(codew, p->funcs # i, p, m);
@@ -654,3 +627,90 @@ x64enc_get_write : func(inst : x64inst mut?, enc : x64enc_table_entry mut?, idx 
 	return x64enc_clobber_as_value(inst, enc, clob, out);
 };
 
+// get the encoding size of an instruction. the instruction must always be legal. the instruction must also be encodeable unless it's only unencodeable due to the presence of at least one of the following:
+// - one or more riprelis
+// - one or more riprelimms
+// - one or more globrefs
+x64inst_encode_size : func(inst : x64inst mut? -> u64)
+{
+	tmp : bwriter mut;
+	w ::= ref tmp;
+	bwriter_create_native(w, 16, scratch_arena);
+	// todo: x64inst_encode_to shouldnt take an x64func and x64prog and x64enc_meta anyway because they're not needed.
+	x64inst_encode_to(w, inst, zero, zero, zero);
+	return w->cursor;
+};
+
+x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
+{
+	// patch:
+	// - globrefs
+	// - fnrefs
+	// - ripreli
+	// - riprelimm
+
+	// todo: massive array of all instructions storing a u64 representing the byte distance from code_segment_begin to the beginning of the instruciton
+	// assume no padding ever occurs, so the end of instruction X is the begin of instruction X+1
+	// todo: massive array of all functions toring a u64 representing the byte distance from code_segment to the beginning of the function
+	i : u64 mut;
+	j : u64 mut;
+	// fill the aforementioned arrays
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		fnx64 ::= p->funcs # i;
+		for(j = 0; j < fnx64->insts_count; j = j + 1)
+		{
+			inst ::= fnx64->insts # j;
+			// encode the instruction to a temporary scratch encoder so we can figure out its length
+		}
+	}
+
+	// now we know the location of everything
+	// iterate again, but also iterate over the operands of everything
+	// everytime we see a globref, patch it to a riprel
+	// everytime we see a ripreli, patch it to a riprel
+	// everytime we see a riprelimm, patch it to an immediate
+	// old code for globref:
+		//if(op->tag == x64val_tag.globref)
+		//{
+		//	// here we: patch globrefs to rip-relative memregs
+		//	// we can calculate the globref distance to rodata-begin etc
+		//	// and we know our own inst->enc_byte_offset_begin
+		//	glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
+		//	// choose the correct start point from the tag.
+		//	inst_start_vaddr ::= inst->enc_byte_offset_begin + m->begin_code_vaddr;
+		//	// todo: don't we want the start_addr of the next instruction?
+		//	inst_end_vaddr ::= inst_start_vaddr + enc_size;
+		//	// todo: get the offset from the start of this region to the glob begin
+		//	glob_begin_vaddr : u64 mut := 0;
+		//
+		//	if(glob->tag == x64glob_tag.readonly)
+		//	{
+		//		glob_begin_vaddr = m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
+		//	}
+		//	if(glob->tag == x64glob_tag.mutable)
+		//	{
+		//		glob_begin_vaddr = m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
+		//	}
+		//	if(glob->tag == x64glob_tag.mutablezero)
+		//	{
+		//		glob_begin_vaddr = m->begin_mutablezero_glob_vaddr + glob->data_begin_offset_bytes;
+		//	}
+		//
+		//	opcpy ::= [op];
+		//
+		//	op->tag = x64val_tag.memreg;
+		//	[x64val_memreg_get_base(op)] = x64_reg.rip;
+		//	[x64val_memreg_get_base_size(op)] = 64;
+		//	[x64val_memreg_get_index_size(op)] = zero;
+		//	[x64val_memreg_get_scale(op)] = 0;
+		//	[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_begin_vaddr, [x64val_globref_get_displacement(ref opcpy)], inst_end_vaddr);
+		//	[x64val_memreg_get_displacement_size(op)] = 32;
+		//	[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
+		//	putzstr("globref \0");
+		//	x64val_dump(ref opcpy);
+		//	putzstr("\nturned into: \0");
+		//	x64val_dump(op);
+		//	putchar('\n');
+		//}
+};
