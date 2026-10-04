@@ -38,6 +38,10 @@ lower_x64_register_allocation_state : struct
 	abi_param_regs_count : u64;
 	abi_hwregs : x64val mut?;
 	abi_hwregs_count : u64;
+	abi_volatile_regs : x64val mut?;
+	abi_volatile_regs_count : u64;
+	abi_nonvolatile_regs : x64val mut?;
+	abi_nonvolatile_regs_count : u64;
 };
 
 irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -54,15 +58,11 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	}
 	// 2. interference graph
 	irfunc_build_interference_graph_x64(state, fn, fnx64);
-	// 3. precolouring
-	irfunc_precolouring_x64(state, fn, fnx64);
-	// 4. graph-colouring for ssa register nodes
+	// 3. graph-colouring for ssa register nodes
 	// note: this is semi-close to working but fucks up in certain edge-cases.
 	irfunc_do_graph_colouring_x64(state, fn, fnx64);
-	// 5. replace ssa operands in all instructions with their lowered variants
+	// 4. replace ssa operands in all instructions with their lowered variants
 	irfunc_post_graph_colouring_patch_x64(state, fn, fnx64);
-	// 6. do caller-saves (push/pop all volatile + param registers that are live-out in every call, but iterate backwards over the function so the state.inst_xyz indices remain valid for preceding calls)
-	irfunc_post_graph_colouring_caller_saves_x64(state, fn, fnx64);
 };
 
 irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
@@ -154,32 +154,6 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 	}
 	putchar('\n');
 	}
-};
-
-irfunc_precolouring_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
-{
-	// the below code is wrong - we shouldnt assume %q0 -> paramreg0
-	// it should be moved from paramreg0 to %q0 instead and %q0 should partake in register allocation like normal (but can use the reghint)
-	// this is because if we call another function we immediately clobber param registers - meaning we clobber %q0-%qN if we directly precolour them
-
-	// precolour all igraph nodes storing ssa regs if they are parameters (set them to their abi-coded hardware registers)
-	//i : u64 mut;
-	//nodes_count ::= state->igraph_nodes.count;
-	//
-	//for(i = 0; i < nodes_count; i = i + 1)
-	//{
-	//	node ::= state->igraph_nodes.data # i;
-	//	nodeval ::= ref(node->value);
-	//	// if our param is a ssa vreg that with a parameter index, we precolour it.
-	//	if(ir_lower_x64val_is_register(nodeval))
-	//	{
-	//		vreg_idx ::= [x64val_vreg_get_idx(nodeval)];
-	//		if(vreg_idx < fn->params_count)
-	//		{
-	//			igraph_node_colour_param(node, vreg_idx);
-	//		}
-	//	}
-	//}
 };
 
 igraph_node_find_neighbour_by_value : func(node : igraph_node_x64 mut?, state : lower_x64_register_allocation_state mut?, v : x64val mut? -> igraph_node_x64 mut?)
@@ -389,8 +363,4 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 			}
 		}
 	}
-};
-
-irfunc_post_graph_colouring_caller_saves_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
-{
 };
