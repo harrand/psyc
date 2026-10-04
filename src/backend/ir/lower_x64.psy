@@ -97,9 +97,13 @@ ir_lower_prolog_x64 : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 	
 	stackamt_imm : x64val mut;
 	stackamt_imm.tag = x64val_tag.imm;
-	[x64val_imm_get_size(ref stackamt_imm)] = 32;
-	[x64val_imm_get_value(ref stackamt_imm)] = x64_current_func()->stack;
-	x64_sub(ref rsp, ref stackamt_imm);
+	stackamt ::= x64_current_func()->stack;
+	if(stackamt != 0)
+	{
+		[x64val_imm_get_size(ref stackamt_imm)] = 32;
+		[x64val_imm_get_value(ref stackamt_imm)] = stackamt;
+		x64_sub(ref rsp, ref stackamt_imm);
+	}
 };
 
 ir_lower_epilog_state : struct
@@ -118,9 +122,13 @@ ir_lower_epilog_part_1 : func(-> v0)
 	// add the stack amt
 	stackamt_imm : x64val mut;
 	stackamt_imm.tag = x64val_tag.imm;
-	[x64val_imm_get_size(ref stackamt_imm)] = 32;
-	[x64val_imm_get_value(ref stackamt_imm)] = x64_current_func()->stack;
-	x64_add(ref rsp, ref stackamt_imm);
+	stackamt ::= x64_current_func()->stack;
+	if(stackamt != 0)
+	{
+		[x64val_imm_get_size(ref stackamt_imm)] = 32;
+		[x64val_imm_get_value(ref stackamt_imm)] = stackamt;
+		x64_add(ref rsp, ref stackamt_imm);
+	}
 };
 
 // mov rsp, rbp
