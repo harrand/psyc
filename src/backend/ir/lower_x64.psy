@@ -150,7 +150,6 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 
 	// set the stack amt. note: if we don't use the stack, then we dont need to bother with prolog/epilog (but we'd have to deal with the epilog in a clever way)
 	x64_position_before_inst(0);
-	ir_lower_prolog_x64();
 	param_reg_count : u64 mut := abi_param_registers_count_x64(abi_tag.psy64);
 	if(fn->params_count < param_reg_count)
 	{
@@ -185,6 +184,83 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	irfunc_register_allocation_x64(ref state, fn, fnx64);
 	// legalise any instructions that are still invalid (e.g double memory operand)
 	irfunc_legalisation_x64(fn, fnx64);
+
+	x64_position_before_inst(0);
+	ir_lower_prolog_x64();
+	irfunc_abi_caller_saved_x64(fn, fnx64);
+};
+
+irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+{
+	cur_inst_id ::= x64_get_position();
+	// iterate over all instructions
+	// make a list of all volatile registers that are ever written to
+	nonvolatiles ::= abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
+	cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64);
+	count : u64 mut := 0;
+	data : x64val mut? := arena_alloc(scratch_arena, cap * sizeof x64val);
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	l : u64 mut;
+	m : u64 mut;
+
+	cur : x64val mut;
+	curreg : x64val mut;
+	regcount : u64 mut;
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst ::= fnx64->insts # i;
+		enc ::= x64enc_fetch(inst);
+		if(enc != zero)
+		{
+			write_count ::= x64enc_writes_count(enc);
+			for(j = 0; j < write_count; j = j + 1)
+			{
+				if(x64enc_get_write(inst, enc, j, ref cur))
+				{
+					regcount = x64val_contained_registers_count(ref cur);
+					for(k = 0; k < regcount; k = k + 1)
+					{
+						x64val_get_contained_register(ref cur, ref curreg, k);
+						// if curreg is a nonvolatile register, then push it to the list
+						for(l = 0; l < cap; l = l + 1)
+						{
+							if(x64val_equal_to(ref curreg, nonvolatiles # l))
+							{
+								// but only if we dont already have it
+								already_saved_it : bool mut := false;
+								for(m = 0; m < count; m = m + 1)
+								{
+									if(x64val_equal_to(data # m, ref curreg))
+									{
+										already_saved_it = true;
+									}
+								}
+								if(already_saved_it == false)
+								{
+									// save it as a 64-bit version.
+									[x64val_reg_get_size(ref curreg)] = 64;
+									[data # count] = curreg;
+									count = count + 1;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// now iterate over the list then push/pop them all
+	for(i = 0; i < count; i = i + 1)
+	{
+		x64_position_before_inst(cur_inst_id + i);
+		x64_push(data # i);
+		// todo: do this for every epilog, not randomly at the end of the function
+		x64_position_end();
+		x64_pop(data # i);
+	}
 };
 
 ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
