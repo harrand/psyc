@@ -313,6 +313,24 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state
 	}
 };
 
+ir_lower_handle_unallowed_first_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
+{
+	op ::= inst->operands # 0;
+	// inst->operands # 0 is memory but it must be a register.
+	// register allocation is complete so we have to use a scratch, we may be dealing with spills so rax is unavailable.
+	// we will have to use rdx.
+	intermediate : x64val mut;
+	intermediate.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref intermediate)] = x64_reg.rdx;
+	[x64val_reg_get_size(ref intermediate)] = x64val_get_size(op);
+	tmp : x64val mut := [op];
+	[op] = intermediate;
+	// do a mov
+	x64_position_before_inst(inst_id);
+	ir_lower_x64_generic_move(ref intermediate, ref tmp);
+	
+};
+
 ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)
 {
 	lhs ::= inst->operands # 0;
@@ -320,12 +338,18 @@ ir_lower_handle_double_memory_operand : func(inst : x64inst mut?, inst_id : u64 
 	if(x64val_is_any_memory(lhs) && x64val_is_any_memory(rhs))
 	{
 		// potential todo: instead of hardcoding to use rax as a scratch register, should we create a new ssa register, custom_scratch it and regnospill it?
+		thing_to_change : x64val mut? mut := rhs;
+		if(inst->tag == x64inst_tag.lea)
+		{
+			thing_to_change = lhs;
+		}
+
 		intermediate : x64val mut;
 		intermediate.tag = x64val_tag.reg;
 		[x64val_reg_get_reg(ref intermediate)] = x64_reg.rax;
-		[x64val_reg_get_size(ref intermediate)] = x64val_get_size(rhs);
-		tmp : x64val mut := [rhs];
-		[rhs] = intermediate;
+		[x64val_reg_get_size(ref intermediate)] = x64val_get_size(thing_to_change);
+		tmp : x64val mut := [thing_to_change];
+		[thing_to_change] = intermediate;
 		// do a mov
 		x64_position_before_inst(inst_id);
 		ir_lower_x64_generic_move(ref intermediate, ref tmp);
