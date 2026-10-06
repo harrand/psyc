@@ -665,12 +665,14 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 	// todo: massive array of all functions toring a u64 representing the byte distance from code_segment to the beginning of the function
 	j : u64 mut;
 	// fill the aforementioned arrays
+	fnx64 : x64func mut? mut;
+	inst : x64inst mut? mut;
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
-		fnx64 ::= p->funcs # i;
+		fnx64 = p->funcs # i;
 		for(j = 0; j < fnx64->insts_count; j = j + 1)
 		{
-			inst ::= fnx64->insts # j;
+			inst = fnx64->insts # j;
 			// encode the instruction to a temporary scratch encoder so we can figure out its length
 			cur_inst_bytes ::= x64inst_encode_size(inst);
 			[instruction_byte_distances # instruction_counter] = instruction_byte_counter;
@@ -684,6 +686,68 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 	// everytime we see a globref, patch it to a riprel
 	// everytime we see a ripreli, patch it to a riprel
 	// everytime we see a riprelimm, patch it to an immediate
+	instruction_counter = 0;
+	k : u64 mut;
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		fnx64 = p->funcs # i;
+		for(j = 0; j < fnx64->insts_count; j = j + 1)
+		{
+			inst = fnx64->insts # j;
+			// dst from code begin to start of our instruction
+			code_segment_offset_bytes ::= [instruction_byte_distances # instruction_counter];
+			// dst from code begin to start of next instruction
+			code_segment_offset_bytes_next : u64 mut;
+			if(instruction_counter < total_instructions_count)
+			{
+				code_segment_offset_bytes_next ::= [instruction_byte_distances # (instruction_counter + 1)];
+			}
+			// iterate over operands
+			count ::= x64inst_operands_count(inst);
+			for(k = 0; k < count; k = k + 1)
+			{
+				op ::= inst->operands # k;
+				if(op->tag == x64val_tag.globref)
+				{
+					// get the glob
+					glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
+					glob_vaddr : u64 mut := 0;
+					// get its dst from <region_begin>
+					if(glob->tag == x64glob_tag.readonly)
+					{
+						glob_vaddr = m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
+					}
+					if(glob->tag == x64glob_tag.mutable)
+					{
+						glob_vaddr = m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
+					}
+					if(glob->tag == x64glob_tag.mutablezero)
+					{
+						glob_vaddr = m->begin_mutablezero_glob_vaddr + glob->data_begin_offset_bytes;
+					}
+					opcpy ::= [op];
+					op->tag = x64val_tag.memreg;
+					[x64val_memreg_get_base(op)] = x64_reg.rip;
+					[x64val_memreg_get_base_size(op)] = 64;
+					[x64val_memreg_get_index_size(op)] = zero;
+					[x64val_memreg_get_scale(op)] = 0;
+					[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_vaddr, [x64val_globref_get_displacement(ref opcpy)], code_segment_offset_bytes_next);
+					[x64val_memreg_get_displacement_size(op)] = 32;
+					[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
+
+					putzstr("globref \0");
+					x64val_dump(ref opcpy);
+					putzstr("\nturned into: \0");
+					x64val_dump(op);
+					putchar('\n');
+				}
+				// globref -> riprel
+				// ripreli -> riprel
+				// riprelimm -> immediate
+			}
+			instruction_counter = instruction_counter + 1;
+		}
+	}
 	// old code for globref:
 		//if(op->tag == x64val_tag.globref)
 		//{
