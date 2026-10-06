@@ -755,33 +755,47 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					[x64val_memreg_get_displacement_size(op)] = 32;
 					[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
 
-					putzstr("globref \0");
-					x64val_dump(ref opcpy);
-					putzstr("\nturned into: \0");
-					x64val_dump(op);
-					putchar('\n');
+					//putzstr("globref \0");
+					//x64val_dump(ref opcpy);
+					//putzstr("\nturned into: \0");
+					//x64val_dump(op);
+					//putchar('\n');
 				}
-				// fnref -> rel32
+				// fnref -> rel32 (or riprel if lea)
 				if(op->tag == x64val_tag.fnref)
 				{
 					// get the fn
 					fn_begin_bytes ::= [function_byte_distances # [x64val_fnref_get_index(op)]];
 					opcpy = [op];
-					op->tag = x64val_tag.imm;
-					[x64val_imm_get_value(op)] = x64enc_meta_calculate_fnref_riprel(fn_begin_bytes, code_segment_offset_bytes_next);
-					[x64val_imm_get_size(op)] = 32;
+					if(inst->tag == x64inst_tag.lea)
+					{
+						op->tag = x64val_tag.memreg;
+						[x64val_memreg_get_base(op)] = x64_reg.rip;
+						[x64val_memreg_get_base_size(op)] = 64;
+						[x64val_memreg_get_index_size(op)] = zero;
+						[x64val_memreg_get_scale(op)] = 0;
+						[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_fnref_riprel(fn_begin_bytes, code_segment_offset_bytes_next);
+						[x64val_memreg_get_displacement_size(op)] = 32;
+						[x64val_memreg_get_size(op)] = 64;
+					}
+					else
+					{
+						op->tag = x64val_tag.imm;
+						[x64val_imm_get_value(op)] = x64enc_meta_calculate_fnref_riprel(fn_begin_bytes, code_segment_offset_bytes_next);
+						[x64val_imm_get_size(op)] = 32;
+					}
 
-					putzstr("fnref \0");
-					x64val_dump(ref opcpy);
-					putzstr("\nturned into: \0");
-					x64val_dump(op);
-					putchar('\n');
+					//putzstr("fnref \0");
+					//x64val_dump(ref opcpy);
+					//putzstr("\nturned into: \0");
+					//x64val_dump(op);
+					//putchar('\n');
 				}
 				// riprelimm -> immediate
 				if(op->tag == x64val_tag.riprelimm)
 				{
-					delta ::= [x64val_riprelimm_get_delta(op)]@s64@u64;
-					target_inst_begin ::= [instruction_byte_distances # (j + delta)];
+					delta ::= [x64val_riprelimm_get_delta(op)];
+					target_inst_begin ::= [instruction_byte_distances # (j@u32@s32 + delta)];
 					opcpy = [op];
 
 					opcpy = [op];
@@ -789,11 +803,11 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					[x64val_imm_get_value(op)] = x64enc_meta_calculate_ripreli_riprel(target_inst_begin, code_segment_offset_bytes_next);
 					[x64val_imm_get_size(op)] = 32;
 
-					putzstr("riprelimm \0");
-					x64val_dump(ref opcpy);
-					putzstr("\nturned into: \0");
-					x64val_dump(op);
-					putchar('\n');
+					//putzstr("riprelimm \0");
+					//x64val_dump(ref opcpy);
+					//putzstr("\nturned into: \0");
+					//x64val_dump(op);
+					//putchar('\n');
 				}
 			}
 			instruction_counter = instruction_counter + 1;
