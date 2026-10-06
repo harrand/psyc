@@ -81,12 +81,31 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 					regcount = x64val_contained_registers_count(ref cur);
 					for(k = 0; k < regcount; k = k + 1)
 					{
-						x64val_get_contained_register(ref cur, ref curreg, k);
-						if(def != zero)
+						this_write_is_direct ::= x64val_get_contained_register(ref cur, ref curreg, k);
+						// direct is when the register is directly the same as the val
+						// for example if we mov into rax, then rax is direct and therefore defined
+						// but if we move into QWORD PTR [rax], then the memory is whats written to but rax is used, not defined.
+						if(this_write_is_direct)
 						{
-							x64val_list_append_unique(def, ref curreg);
+							if(def != zero)
+							{
+								x64val_list_append_unique(def, ref curreg);
+							}
+							x64val_list_append_unique(inst_def, ref curreg);
 						}
-						x64val_list_append_unique(inst_def, ref curreg);
+						else
+						{
+							already_defined_previously_ : bool mut := true;
+							if(def != zero)
+							{
+								already_defined_previously_ = x64val_list_contains(def, ref curreg);
+							}
+							if((use != zero) && (already_defined_previously_ == false))
+							{
+								x64val_list_append_unique(use, ref curreg);
+							}
+							x64val_list_append_unique(inst_use, ref curreg);
+						}
 					}
 				}
 			}
@@ -318,6 +337,24 @@ x64func_dump_with_liveness : func(state : lower_x64_register_allocation_state mu
 		}
 		putchar('\n');
 		x64inst_dump(fnx64->insts # s);
+
+		putzstr("\tdefs: \0");
+		defs ::= state->inst_defs # s;
+		for(i = 0; i < defs->count; i = i + 1)
+		{
+			x64val_dump(defs->data # i);
+			putchar(' ');
+		}
+		putzstr("\n\0");
+		putzstr("\tuses: \0");
+		uses ::= state->inst_uses # s;
+		for(i = 0; i < uses->count; i = i + 1)
+		{
+			x64val_dump(uses->data # i);
+			putchar(' ');
+		}
+		putzstr("\n\0");
+
 		putzstr("\tlive-after: \0");
 		afters ::= state->inst_live_afters # s;
 		for(i = 0; i < afters->count; i = i + 1)

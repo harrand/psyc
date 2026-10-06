@@ -279,6 +279,7 @@ x64val_contained_registers_count : func(v : x64val mut? -> u64)
 	return 0;
 };
 
+// return true if the register is directly used, false if indirectly used (e.g via a memreg)
 x64val_custom_get_contained_register_handler : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool) mut := zero;
 x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool)
 {
@@ -289,7 +290,6 @@ x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u
 			[out] = [v];
 			return true;
 		}
-		return false;
 	}
 	if(v->tag == x64val_tag.memreg)
 	{
@@ -301,7 +301,7 @@ x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u
 				out->tag = x64val_tag.reg;
 				[x64val_reg_get_reg(out)] = [x64val_memreg_get_base(v)];
 				[x64val_reg_get_size(out)] = [x64val_memreg_get_base_size(v)];
-				return true;
+				return false;
 			}
 			count = count + 1;
 		}
@@ -312,18 +312,18 @@ x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u
 				out->tag = x64val_tag.reg;
 				[x64val_reg_get_reg(out)] = [x64val_memreg_get_index(v)];
 				[x64val_reg_get_size(out)] = [x64val_memreg_get_index_size(v)];
-				return true;
+				return false;
 			}
 			count = count + 1;
 		}
-		return false;
 	}
 	// rip-relative intermediaries of course use rip, but we don't count those as we only really care about GPRs
 	if(x64val_is_any_custom(v))
 	{
 		return x64val_custom_get_contained_register_handler(v, out, idx);
 	}
-	return 0;
+	debugbreak();
+	unreachable;
 };
 
 x64val_custom_is_any_memory_handler : func(v : x64val mut? -> bool) mut := zero;
