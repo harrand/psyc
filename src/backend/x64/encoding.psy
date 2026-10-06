@@ -22,8 +22,15 @@ x64enc_meta_calculate_globref_riprel : func(glob_data_begin_vaddr : u64, globref
 x64enc_meta_calculate_fnref_riprel : func(fn_code_offset_bytes : u64, current_instruction_end_vaddr : u64 -> u64)
 {
 	// fn_addr = rip + rel32
-	// rel32 = rip - fn_addr
-	return current_instruction_end_vaddr - fn_code_offset_bytes;
+	// rel32 = fn_addr - rip;
+	return fn_code_offset_bytes - current_instruction_end_vaddr;
+};
+
+x64enc_meta_calculate_ripreli_riprel : func(target_inst_begin_vaddr : u64, current_instruction_end_vaddr : u64 -> u64)
+{
+	// addr = rip + rel32
+	// rel32 = addr - rip
+	return current_instruction_end_vaddr - target_inst_begin_vaddr;
 };
 
 x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
@@ -771,7 +778,37 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					putchar('\n');
 				}
 				// ripreli -> riprel
+				if(op->tag == x64val_tag.ripreli)
+				{
+					delta ::= [x64val_ripreli_get_delta(op)]@s64@u64;
+					//target_inst_begin ::= [instruction_byte_distances # (j + delta)];
+					opcpy = [op];
+
+					putzstr("ripreli \0");
+					x64val_dump(ref opcpy);
+					putzstr("\nturned into: \0");
+					x64val_dump(op);
+					putchar('\n');
+					debugbreak();
+				}
 				// riprelimm -> immediate
+				if(op->tag == x64val_tag.riprelimm)
+				{
+					delta ::= [x64val_riprelimm_get_delta(op)]@s64@u64;
+					target_inst_begin ::= [instruction_byte_distances # (j + delta)];
+					opcpy = [op];
+
+					opcpy = [op];
+					op->tag = x64val_tag.imm;
+					[x64val_imm_get_value(op)] = x64enc_meta_calculate_ripreli_riprel(target_inst_begin, code_segment_offset_bytes_next);
+					[x64val_imm_get_size(op)] = 32;
+
+					putzstr("riprelimm \0");
+					x64val_dump(ref opcpy);
+					putzstr("\nturned into: \0");
+					x64val_dump(op);
+					putchar('\n');
+				}
 			}
 			instruction_counter = instruction_counter + 1;
 		}
