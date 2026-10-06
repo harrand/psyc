@@ -8,17 +8,14 @@ x64val_tag : enum
 	// memory operand: r1 = base_reg, v1 = base_reg_size (0/8/16/32/64), r2 = index_reg, v2 = index_reg_size (0/8/16/32/64), v3 = scale (0/1/2/4/8), v4 = displacement, v5 = displacement_size (8/32), v6 = memsize (8/16/32/64)
 	.memreg := 3;
 	// rip-instruction-relative memory operand: v1 = instruction delta
-	// converted to a 32-bit-displacement memory operand (i.e QWORD PTR [rip + rel32])
-	.ripreli := 4;
-	// rip-instruction-relative memory operand: v1 = instruction delta
 	// converted to a 32-bit-displacement immediate (i.e rel32)
-	.riprelimm := 5;
+	.riprelimm := 4;
 	// function reference: v1 = function index in the program
-	.fnref := 6;
+	.fnref := 5;
 	// global data reference: v1 = global index, v2 = memory size (not necessarily the size of the global data), v3 = displacement (in bytes)
-	.globref := 7;
+	.globref := 6;
 	// non-encodeable custom userdata: user-defined
-	.custom := 8;
+	.custom := 7;
 };
 
 x64_reg : enum
@@ -187,11 +184,6 @@ x64val_memreg_get_memsize : func(v : x64val mut? -> u64 mut?)
 	return ref(v->v1);
 };
 
-x64val_ripreli_get_delta : func(v : x64val mut? -> s32 mut?)
-{
-	return ref(v->v1)@s32 mut?;
-};
-
 x64val_riprelimm_get_delta : func(v : x64val mut? -> s32 mut?)
 {
 	return ref(v->v1)@s32 mut?;
@@ -333,7 +325,7 @@ x64val_is_any_memory : func(v : x64val mut? -> bool)
 	{
 		return x64val_custom_is_any_memory_handler(v);
 	}
-	return (v->tag == x64val_tag.memreg) || (v->tag == x64val_tag.ripreli) || (v->tag == x64val_tag.globref) || (v->tag == x64val_tag.fnref);
+	return (v->tag == x64val_tag.memreg) || (v->tag == x64val_tag.globref) || (v->tag == x64val_tag.fnref);
 };
 
 x64val_is_encodeable_memory : func(v : x64val mut? -> bool)
@@ -370,9 +362,9 @@ x64val_get_size : func(v : x64val mut? -> u64)
 	{
 		return [x64val_memreg_get_size(v)];
 	}
-	if(v->tag == x64val_tag.ripreli)
+	if(v->tag == x64val_tag.riprelimm)
 	{
-		return 64;
+		return 32;
 	}
 	if(v->tag == x64val_tag.fnref)
 	{
@@ -574,10 +566,6 @@ x64val_equal_to : func(lhs : x64val mut?, rhs : x64val mut? -> bool)
 			&& ([x64val_memreg_get_index(lhs)] == [x64val_memreg_get_index(rhs)])
 			&& ([x64val_memreg_get_index_size(lhs)] == [x64val_memreg_get_index_size(lhs)])
 			&& ([x64val_memreg_get_displacement(lhs)] == [x64val_memreg_get_displacement(rhs)]);
-	}
-	if(lhs->tag == x64val_tag.ripreli)
-	{
-		return [x64val_ripreli_get_delta(lhs)] == [x64val_ripreli_get_delta(rhs)];
 	}
 	if(lhs->tag == x64val_tag.riprelimm)
 	{

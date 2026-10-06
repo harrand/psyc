@@ -155,7 +155,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		// rm is a memory rm_operand
 		rm_baseregbits : x64_reg mut := [x64val_memreg_get_base(rm_operand)];
 		// catch ripreli/globref/fnref (which should be treated as a 32-bit rip-relative memory operand
-		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
+		if((rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
 		{
 			rm_baseregbits = x64_reg.rip;
 		}
@@ -168,7 +168,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		// check if we have a displacement
 		disp_sz : u64 mut := [x64val_memreg_get_displacement_size(rm_operand)];
 		// catch ripreli/globref/fnref (which should be treated as a 32-bit rip-relative memory operand
-		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
+		if((rm_operand->tag == x64val_tag.globref) || (rm_operand->tag == x64val_tag.fnref))
 		{
 			disp_sz = 32;
 		}
@@ -198,7 +198,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		}
 
 		// do we need a sib?
-		if((rm_operand->tag == x64val_tag.ripreli) || (rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
+		if((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
 		{
 			[sib_out] = zero;
 			return;
@@ -362,7 +362,7 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 				bwrite32(w, [x64val_memreg_get_displacement(op)]);
 			}
 		}
-		if((op->tag == x64val_tag.riprelimm) || (op->tag == x64val_tag.ripreli) || (op->tag == x64val_tag.fnref) || (op->tag == x64val_tag.globref))
+		if((op->tag == x64val_tag.riprelimm) || (op->tag == x64val_tag.fnref) || (op->tag == x64val_tag.globref))
 		{
 			bwrite32(w, zero);
 		}
@@ -776,20 +776,6 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					putzstr("\nturned into: \0");
 					x64val_dump(op);
 					putchar('\n');
-				}
-				// ripreli -> riprel
-				if(op->tag == x64val_tag.ripreli)
-				{
-					delta ::= [x64val_ripreli_get_delta(op)]@s64@u64;
-					//target_inst_begin ::= [instruction_byte_distances # (j + delta)];
-					opcpy = [op];
-
-					putzstr("ripreli \0");
-					x64val_dump(ref opcpy);
-					putzstr("\nturned into: \0");
-					x64val_dump(op);
-					putchar('\n');
-					debugbreak();
 				}
 				// riprelimm -> immediate
 				if(op->tag == x64val_tag.riprelimm)
