@@ -30,7 +30,12 @@ x64enc_meta_calculate_ripreli_riprel : func(target_inst_begin_vaddr : u64, curre
 {
 	// addr = rip + rel32
 	// rel32 = addr - rip
-	return current_instruction_end_vaddr - target_inst_begin_vaddr;
+	putzstr("\n\n\ttarget_inst_begin_vaddr: \0");
+	putuint(target_inst_begin_vaddr);
+	putzstr("\n\tcurrent_instruction_end_vaddr: \0");
+	putuint(current_instruction_end_vaddr);
+	putzstr("\n\0");
+	return target_inst_begin_vaddr - current_instruction_end_vaddr;
 };
 
 x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
@@ -826,9 +831,7 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 				if(op->tag == x64val_tag.riprelimm)
 				{
 					delta ::= [x64val_riprelimm_get_delta(op)];
-					target_inst_begin ::= [instruction_byte_distances # (j@u32@s32 + delta)];
-					opcpy = [op];
-
+					target_inst_begin ::= [instruction_byte_distances # (instruction_counter@u32@s32 + delta)];
 					opcpy = [op];
 					op->tag = x64val_tag.imm;
 					[x64val_imm_get_value(op)] = x64enc_meta_calculate_ripreli_riprel(target_inst_begin, code_segment_offset_bytes_next);

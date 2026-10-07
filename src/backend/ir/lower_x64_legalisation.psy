@@ -8,19 +8,24 @@ irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 
 	blkbegin_inst_indices : u64 mut? := arena_alloc(scratch_arena, fn->blks_count * sizeof u64);
 	inst : x64inst mut? mut;
-	blkidx : u64 mut;
 	for(i = 0; i < fnx64->insts_count; i = i + 1)
 	{
 		inst = fnx64->insts # i;
 		ir_lower_handle_double_memory_operand(inst, i);
+		if(((inst->tag == x64inst_tag.movzx) || (inst->tag == x64inst_tag.movsx) || (inst->tag == x64inst_tag.imul)) && x64val_is_any_memory(inst->operands # 0))
+		{
+			ir_lower_handle_unallowed_first_memory_operand(inst, i);
+		}
+	}
+
+	blkidx : u64 mut;
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst = fnx64->insts # i;
 		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.blkbegin))
 		{
 			blkidx = [x64val_irblkref_get_idx(inst->operands # 0)];
 			[blkbegin_inst_indices # blkidx] = i;
-		}
-		if(((inst->tag == x64inst_tag.movzx) || (inst->tag == x64inst_tag.movsx) || (inst->tag == x64inst_tag.imul)) && x64val_is_any_memory(inst->operands # 0))
-		{
-			ir_lower_handle_unallowed_first_memory_operand(inst, i);
 		}
 	}
 
@@ -37,9 +42,16 @@ irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 				if(x64val_is_custom(op, ir_lower_x64val_tag.irblkref))
 				{
 					blkidx = [x64val_irblkref_get_idx(op)];
-					inst_delta : s64 mut := ([blkbegin_inst_indices # blkidx]@s64 - i@s64);
+					// each block has an instruction index
+					// _0: 0
+					// _1: 5
+					// _2: 9
+					// jmp _3
+					// _3: 19
+					// well the delta should be _3 inst id - the inst id of the thing
+					inst_delta ::= [blkbegin_inst_indices # blkidx]@s64@s32 - i@s32;
 					op->tag = x64val_tag.riprelimm;
-					[x64val_riprelimm_get_delta(op)] = ([blkbegin_inst_indices # blkidx]@s64 - i@s64)@s32;
+					[x64val_riprelimm_get_delta(op)] = inst_delta;
 				}
 			}
 		}
