@@ -380,6 +380,10 @@ x64val_get_size : func(v : x64val mut? -> u64)
 // the value satisfies the required operand type (and is encodeable)
 x64val_satisfies_optype_encodeably : func(v : x64val mut?, type : x64enc_operand_type -> bool)
 {
+	if(x64val_is_encodeable(v) == false)
+	{
+		return false;
+	}
 	sz ::= x64val_get_size(v);
 	if(type == x64enc_operand_type.cl)
 	{
@@ -466,6 +470,11 @@ x64val_satisfies_optype : func(v : x64val mut?, type : x64enc_operand_type -> bo
 		return (v->tag == x64val_tag.reg) && ([x64val_reg_get_size(v)] == 8) && ([x64val_reg_get_reg(v)] == x64_reg.rcx);
 	}
 	sz ::= x64val_get_size(v);
+	if((v->tag == x64val_tag.fnref))
+	{
+		// fnref works for either an imm32 (riprelimm) or a memory operand (for lea)
+		return (type == x64enc_operand_type.rm64) || (type == x64enc_operand_type.m64) || (type == x64enc_operand_type.imm32);
+	}
 	if(x64val_is_any_memory(v))
 	{
 		if(sz == 8)

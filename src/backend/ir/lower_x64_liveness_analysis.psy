@@ -59,16 +59,24 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		if((enc != zero))
 		{
 			// we have an encoding and we are inside a block.
-			// calls clobber volatile registers (abi-specific)
+			// calls clobber volatile registers (read + write) (abi-specific)
 			if(inst->tag == x64inst_tag.call)
 			{
 				for(j = 0; j < state->abi_volatile_regs_count; j = j + 1)
 				{
+					if(use != zero)
+					{
+						if(x64val_list_contains(def, state->abi_volatile_regs # j) == false)
+						{
+							x64val_list_append_unique(use, state->abi_volatile_regs # j);
+						}
+					}
 					if(def != zero)
 					{
 						x64val_list_append_unique(def, state->abi_volatile_regs # j);
 					}
 					x64val_list_append_unique(inst_def, state->abi_volatile_regs # j);
+					x64val_list_append_unique(inst_use, state->abi_volatile_regs # j);
 				}
 			}
 			// add the reads as uses, and the writes as defs

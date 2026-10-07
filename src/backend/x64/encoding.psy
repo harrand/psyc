@@ -723,6 +723,7 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 		for(j = 0; j < fnx64->insts_count; j = j + 1)
 		{
 			inst = fnx64->insts # j;
+			old_sz ::= x64inst_encode_size(inst);
 			// dst from code begin to start of our instruction
 			code_segment_offset_bytes ::= [instruction_byte_distances # instruction_counter];
 			// dst from code begin to start of next instruction
@@ -822,6 +823,19 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 				}
 			}
 			instruction_counter = instruction_counter + 1;
+			// calculate the new size
+			new_sz ::= x64inst_encode_size(inst);
+			if(old_sz != new_sz)
+			{
+				panic_begin();
+				putzstr("transformation of globrefs et al in newly-transformed instructon: \n\0");
+				x64inst_dump(inst);
+				putzstr(" changed the encode-size. it used to be \0");
+				putuint(old_sz);
+				putzstr(" but now it is \0");
+				putuint(new_sz);
+				panic_end();
+			}
 		}
 	}
 };
