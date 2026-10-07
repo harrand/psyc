@@ -50,6 +50,11 @@ align_up : func(input : u64, align : u64 -> u64)
 	return input + alignment_padding_req(input, align);
 };
 
+align_up_pagesize : func(input : u64 -> u64)
+{
+	return align_up(input, 0x1000);
+};
+
 elf_data : struct
 {
 	code : u8?;
@@ -88,9 +93,9 @@ elf_write : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	proghdr_count : u64 := 3;
 	proghdr_size : u64 := 56; // always 56 bytes each
 	// byte offset from start of elf to code segment
-	rodata_segment_begin ::= align_up(elf_hdr_size + (proghdr_count * proghdr_size), page_size);
-	data_and_bss_segment_begin ::= align_up(rodata_segment_begin + e->rodata_len, page_size);
-	code_segment_begin ::= align_up(data_and_bss_segment_begin + e->data_len + e->bss_len, page_size);
+	rodata_segment_begin ::= align_up_pagesize(elf_hdr_size + (proghdr_count * proghdr_size));
+	data_and_bss_segment_begin ::= align_up_pagesize(rodata_segment_begin + e->rodata_len);
+	code_segment_begin ::= align_up_pagesize(data_and_bss_segment_begin + e->data_len + e->bss_len);
 	// entrypoint vaddr
 	base_vaddr : u64 := 0x400000;
 	rodata_begin_addr ::= align_up(base_vaddr + rodata_segment_begin, page_size);

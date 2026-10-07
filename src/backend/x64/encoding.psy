@@ -94,9 +94,6 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 	mod_bits : u8 mut := 0;
 	reg_bits : u8 mut := 0;
 
-	scale_bits : u8 mut := 0;
-	index_bits : u8 mut := 0;
-	base_bits : u8 mut := 0;
 	// modrm.reg is the register operand
 	op : x64val mut? mut;
 	type : x64enc_operand_type mut;
@@ -115,6 +112,7 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 			}
 			
 			reg_bits = (regbits@s64 & 0b111)@u8;
+			modrm_set_reg([modrm_out], reg_bits);
 		}
 	}
 	for(i = 0; i < operands_count; i = i + 1)
@@ -160,7 +158,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			rm_baseregbits = x64_reg.rip;
 		}
 		modrm_set_rm([modrm_out], (rm_baseregbits@s64 & 0b111)@u8);
-		if(rm_baseregbits@s64 > 0b111)
+		if((rm_baseregbits@s64 > 0b111) && (rm_baseregbits != x64_reg.rip))
 		{
 			// extend rm via rex.b
 			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_b);
@@ -197,6 +195,11 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			modrm_set_mod([modrm_out], 0b00);
 		}
 
+		if(rm_baseregbits == x64_reg.rip)
+		{
+			modrm_set_mod([modrm_out], 0b00);
+			modrm_set_rm([modrm_out], 0b101);
+		}
 		// do we need a sib?
 		if((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
 		{
@@ -435,6 +438,12 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			m->mutablezero_size = m->mutablezero_size + glob->size;
 		}
 	}
+	initial_vaddr ::= 0x400000;
+	m->begin_readonly_glob_vaddr = align_up_pagesize(initial_vaddr);
+	m->begin_mutable_glob_vaddr = align_up_pagesize(m->begin_readonly_glob_vaddr + readonlyw->cursor);
+	m->begin_mutablezero_glob_vaddr = m->begin_mutable_glob_vaddr + mutablew->cursor;
+	m->begin_code_vaddr = align_up_pagesize(m->begin_mutablezero_glob_vaddr);
+
 	x64prog_patch_everything(p, m);
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
