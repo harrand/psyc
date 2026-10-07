@@ -63,6 +63,27 @@ x64enc_catch_edge_cases : func(inst : x64inst mut?, m : x64enc_meta mut? -> v0)
 	}
 };
 
+x64enc_pre_encode_empty : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
+{
+	has_any_rm : bool mut := false;
+	i : u64 mut;
+	for(i = 0; i < operands_count; i = i + 1)
+	{
+		op ::= operands # i;
+		type ::= [enc->operand_types # i];
+		if((type == x64enc_operand_type.rm8) || (type == x64enc_operand_type.rm16) || (type == x64enc_operand_type.rm32) || (type == x64enc_operand_type.rm64) || (type == x64enc_operand_type.rm128) || (type == x64enc_operand_type.m8) || (type == x64enc_operand_type.m16) || (type == x64enc_operand_type.m32) || (type == x64enc_operand_type.m64))
+		{
+			has_any_rm = true;
+			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out);
+		}
+	}
+	if(has_any_rm == false)
+	{
+		[modrm_out] = zero;
+		[sib_out] = zero;
+	}
+};
+
 x64enc_pre_encode_plus_reg : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
 {
 	// easy peasy. find the register
@@ -263,8 +284,7 @@ x64enc_pre_encode : func(enc : x64enc_table_entry mut?, operands : x64val mut?, 
 {
 	if(enc->ext == zero)
 	{
-		[modrm_out] = zero;
-		[sib_out] = zero;
+		x64enc_pre_encode_empty(enc, operands, operands_count, modrm_out, sib_out);
 	}
 	if(enc->ext == x64enc_opmode.plus_reg)
 	{
