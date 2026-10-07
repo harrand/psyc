@@ -1374,8 +1374,22 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 	// we have to do the mul + add for rhs
 	rhs_addition_bytes : irval mut;
 	sizeof_imm : irval mut;
-	irval_dimm(sizeof_element, ref sizeof_imm);
+	irval_imm(sizeof_element, irval_get_sz(rhs_irval), ref sizeof_imm);
 	ir_umul(ref rhs_addition_bytes, rhs_irval, ref sizeof_imm);
+	// size of out and rhs_addition_bytes are *not* necessarily the same.
+	outsz ::= irval_get_sz(val_scalar_get_irval(out));
+	insz ::= irval_get_sz(ref rhs_addition_bytes);
+	if([irsz_sizes # outsz@s64] > [irsz_sizes # insz@s64])
+	{
+		ir_zex(ref rhs_addition_bytes, outsz, ref rhs_addition_bytes);
+	}
+	else
+	{
+		if([irsz_sizes # outsz@s64] != [irsz_sizes # insz@s64])
+		{
+			ir_trunc(ref rhs_addition_bytes, outsz, ref rhs_addition_bytes);
+		}
+	}
 	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(out), ref rhs_addition_bytes);
 };
 
