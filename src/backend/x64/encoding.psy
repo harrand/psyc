@@ -4,8 +4,10 @@ x64enc_meta : struct
 	begin_code_vaddr : u64;
 	// absolute virtual address where the readonly global data (.rodata) starts
 	begin_readonly_glob_vaddr : u64;
+	readonly_size : u64;
 	// absolute virtual address where the mutable global data (.data) starts
 	begin_mutable_glob_vaddr : u64;
+	mutable_size : u64;
 	// absolute virtual address where the mutable zeroed global data (.bss) starts
 	begin_mutablezero_glob_vaddr : u64;
 	// how many bytes does the .bss region last?
@@ -16,6 +18,12 @@ x64enc_meta_calculate_globref_riprel : func(glob_data_begin_vaddr : u64, globref
 {
 	// glob_addr = rip + rel32
 	// rel32 = glob_addr - rip
+	putzstr("glob_data_begin_vaddr: \0");
+	putuint(glob_data_begin_vaddr);
+	putzstr("\nglobref_disp: \0");
+	putsint(globref_disp);
+	putzstr("\ncurrent_instruction_end_vaddr: \0");
+	putuint(current_instruction_end_vaddr);
 	return (-(glob_data_begin_vaddr + (globref_disp@s64@u64)) - current_instruction_end_vaddr);
 };
 
@@ -459,7 +467,9 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 		}
 	}
 	m->begin_readonly_glob_vaddr = 0;
+	m->readonly_size = align_up_pagesize(readonlyw->cursor);
 	m->begin_mutable_glob_vaddr = align_up_pagesize(m->begin_readonly_glob_vaddr + readonlyw->cursor);
+	m->mutable_size = align_up_pagesize(mutablew->cursor);
 	m->begin_mutablezero_glob_vaddr = m->begin_mutable_glob_vaddr + mutablew->cursor;
 	m->begin_code_vaddr = align_up_pagesize(m->begin_mutablezero_glob_vaddr);
 
@@ -762,19 +772,21 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 				{
 					// get the glob
 					glob ::= x64api.prog.globs # [x64val_globref_get_index(op)];
-					glob_vaddr : u64 mut := 0;
+					glob_dst : u64 mut := 0;
 					// get its dst from <region_begin>
+					// we are in the code section
+					// the order goes: readonly, mutable (+ mutablezero), code
 					if(glob->tag == x64glob_tag.readonly)
 					{
-						glob_vaddr = m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
+						glob_dst = -(code_segment_offset_bytes_next + m->mutablezero_size + m->mutable_size + (m->readonly_size - glob->data_begin_offset_bytes));
 					}
 					if(glob->tag == x64glob_tag.mutable)
 					{
-						glob_vaddr = m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
+						glob_dst = -(code_segment_offset_bytes_next + m->mutablezero_size + (m->mutable_size - glob->data_begin_offset_bytes));
 					}
 					if(glob->tag == x64glob_tag.mutablezero)
 					{
-						glob_vaddr = m->begin_mutablezero_glob_vaddr + glob->data_begin_offset_bytes;
+						glob_dst = -(code_segment_offset_bytes_next + (m->mutablezero_size - glob->data_begin_offset_bytes));
 					}
 					opcpy = [op];
 					op->tag = x64val_tag.memreg;
@@ -782,15 +794,15 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					[x64val_memreg_get_base_size(op)] = 64;
 					[x64val_memreg_get_index_size(op)] = zero;
 					[x64val_memreg_get_scale(op)] = 0;
-					[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_vaddr, [x64val_globref_get_displacement(ref opcpy)], code_segment_offset_bytes_next);
+					[x64val_memreg_get_displacement(op)] = glob_dst;
 					[x64val_memreg_get_displacement_size(op)] = 32;
 					[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
 
-					//putzstr("globref \0");
-					//x64val_dump(ref opcpy);
-					//putzstr("\nturned into: \0");
-					//x64val_dump(op);
-					//putchar('\n');
+					putzstr("globref \0");
+					x64val_dump(ref opcpy);
+					putzstr("\nturned into: \0");
+					x64val_dump(op);
+					putchar('\n');
 				}
 				// fnref -> rel32 (or riprel if lea)
 				if(op->tag == x64val_tag.fnref)
