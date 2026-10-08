@@ -12,11 +12,11 @@ x64enc_meta : struct
 	mutablezero_size : u64;
 };
 
-x64enc_meta_calculate_globref_riprel : func(glob_data_begin_vaddr : u64, globref_disp : s32, current_instruction_end_vaddr : u64 -> s32)
+x64enc_meta_calculate_globref_riprel : func(glob_data_begin_vaddr : u64, globref_disp : s32, current_instruction_end_vaddr : u64 -> u64)
 {
 	// glob_addr = rip + rel32
 	// rel32 = glob_addr - rip
-	return (-(glob_data_begin_vaddr@s64@s32 + globref_disp) - (current_instruction_end_vaddr@s64@s32));
+	return (-(glob_data_begin_vaddr + (globref_disp@s64@u64)) - current_instruction_end_vaddr);
 };
 
 x64enc_meta_calculate_fnref_riprel : func(fn_code_offset_bytes : u64, current_instruction_end_vaddr : u64 -> u64)
@@ -782,7 +782,7 @@ x64prog_patch_everything : func(p : x64prog mut?, m : x64enc_meta mut? -> v0)
 					[x64val_memreg_get_base_size(op)] = 64;
 					[x64val_memreg_get_index_size(op)] = zero;
 					[x64val_memreg_get_scale(op)] = 0;
-					[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_vaddr, [x64val_globref_get_displacement(ref opcpy)], code_segment_offset_bytes_next)@s64@u64;
+					[x64val_memreg_get_displacement(op)] = x64enc_meta_calculate_globref_riprel(glob_vaddr, [x64val_globref_get_displacement(ref opcpy)], code_segment_offset_bytes_next);
 					[x64val_memreg_get_displacement_size(op)] = 32;
 					[x64val_memreg_get_size(op)] = [x64val_globref_get_size(ref opcpy)];
 
