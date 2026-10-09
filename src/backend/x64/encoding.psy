@@ -229,8 +229,14 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			modrm_set_mod([modrm_out], 0b00);
 			modrm_set_rm([modrm_out], 0b101);
 		}
+		if((rm_baseregbits == x64_reg.rsp) || (rm_baseregbits == x64_reg.r12))
+		{
+			// rsp or r12 as r/m actually does mean we emit a SIB, even if there is no index/scale
+		}
+		sib_edge_case ::= (rm_baseregbits == x64_reg.rsp) || (rm_baseregbits == x64_reg.r12);
 		// do we need a sib?
-		if((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0))
+		// note: r12 and rsp as base registers require a SIB!
+		if(((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0)) && (sib_edge_case == false))
 		{
 			[sib_out] = zero;
 			return;
@@ -246,6 +252,10 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_x);
 		}
 		index_bits = (rm_idxregbits@s64 & 0b111)@u8;
+		if([x64val_memreg_get_index_size(rm_operand)] == 0)
+		{
+			index_bits = 0b100;
+		}
 		[[sib_out]] = (scale_bits << 6) | (index_bits << 3) | base_bits;
 	}
 };
