@@ -50,6 +50,11 @@ dump_metrics : func(-> v0)
 		return;
 	}
 	i : u64 mut;
+
+	total_stmt_count : u64 mut := 0;
+	total_irinst_count : u64 mut := 0;
+	total_x64inst_count : u64 mut := 0;
+
 	if(args_has_metrics_dump_specific())
 	{
 		fn ::= prog_find_function(args.metrics_dump_specific.data, args.metrics_dump_specific.len);
@@ -63,18 +68,51 @@ dump_metrics : func(-> v0)
 			putzstr(" but no function exists with this name\0");
 			err_end();
 		}
-		dump_metrics_for(fn);
+		dump_metrics_for(fn, zero, zero, zero);
 	}
 	else
 	{
 		for(i = 0; i < prog.global_scope.funcs_count; i = i + 1)
 		{
-			dump_metrics_for(prog.global_scope.funcs # i);
+			dump_metrics_for(prog.global_scope.funcs # i, ref total_stmt_count, ref total_irinst_count, ref total_x64inst_count);
 		}
+
+		colour_green_underline();
+		putzstr("total\0");
+		colour_reset();
+		putzstr("\n\tfunction count: \0");
+		putuint(prog.global_scope.funcs_count);
+		putzstr("\n\tstmt count: \0");
+		putuint(total_stmt_count);
+		if(prog.global_scope.funcs_count > 1)
+		{
+			putzstr(" (\0");
+			putuint(total_stmt_count / prog.global_scope.funcs_count);
+			putzstr(" avg per func)\0");
+		}
+
+		putzstr("\n\tirinst count: \0");
+		putuint(total_irinst_count);
+		if(prog.global_scope.funcs_count > 1)
+		{
+			putzstr(" (\0");
+			putuint(total_irinst_count / prog.global_scope.funcs_count);
+			putzstr(" avg per func)\0");
+		}
+
+		putzstr("\n\tx64inst count: \0");
+		putuint(total_x64inst_count);
+		if(prog.global_scope.funcs_count > 1)
+		{
+			putzstr(" (\0");
+			putuint(total_x64inst_count / prog.global_scope.funcs_count);
+			putzstr(" avg per func)\0");
+		}
+		putchar('\n');
 	}
 };
 
-dump_metrics_for : func(fn : function_t mut? -> v0)
+dump_metrics_for : func(fn : function_t mut?, out_stmt_count : u64 mut?, out_irinst_count : u64 mut?, out_x64inst_count : u64 mut? -> v0)
 {
 	colour_green_underline();
 	putchars([ast_decl_get_name(fn->node)], [ast_decl_get_name_len(fn->node)]);
@@ -104,6 +142,18 @@ dump_metrics_for : func(fn : function_t mut? -> v0)
 	putzstr("\n\tx64inst count: \0");
 	putuint(x64fn->insts_count);
 	putchar('\n');
+	if(out_stmt_count != zero)
+	{
+		[out_stmt_count] = [out_stmt_count] + ast_get_child_statements_count(fn->node);
+	}
+	if(out_irinst_count != zero)
+	{
+		[out_irinst_count] = [out_irinst_count] + inst_count;
+	}
+	if(out_x64inst_count != zero)
+	{
+		[out_x64inst_count] = [out_x64inst_count] + x64fn->insts_count;
+	}
 };
 
 compile_timings_t : struct
