@@ -87,13 +87,13 @@ ir_lower_prolog_x64 : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
 	[x64val_reg_get_size(ref rsp)] = 64;
 	x64_push(ref rbp);
-	x64_mov(ref rbp, ref rsp);
 
 	i : u64 mut;
 	for(i = 0; i < epilog_state->regs_to_pop_count; i = i + 1)
 	{
 		x64_push(epilog_state->regs_to_pop # i);
 	}
+	x64_mov(ref rbp, ref rsp);
 	
 	stackamt_imm : x64val mut;
 	stackamt_imm.tag = x64val_tag.imm;
@@ -129,12 +129,7 @@ ir_lower_epilog_part_1 : func(-> v0)
 		[x64val_imm_get_value(ref stackamt_imm)] = stackamt;
 		x64_add(ref rsp, ref stackamt_imm);
 	}
-};
 
-// mov rsp, rbp
-// pop rbp
-ir_lower_epilog_part_2 : func(-> v0)
-{
 	rbp : x64val mut;
 	rbp.tag = x64val_tag.reg;
 	[x64val_reg_get_reg(ref rbp)] = x64_reg.rbp;
@@ -145,6 +140,16 @@ ir_lower_epilog_part_2 : func(-> v0)
 	[x64val_reg_get_size(ref rsp)] = 64;
 
 	x64_mov(ref rsp, ref rbp);
+};
+
+// mov rsp, rbp
+// pop rbp
+ir_lower_epilog_part_2 : func(-> v0)
+{
+	rbp : x64val mut;
+	rbp.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref rbp)] = x64_reg.rbp;
+	[x64val_reg_get_size(ref rbp)] = 64;
 	x64_pop(ref rbp);
 };
 
