@@ -88,80 +88,104 @@ parseutil_parse_number : func(str : u8?, len : u64, out : parseutil_number mut? 
 	return cursor;
 };
 
-parseutil_escape_char : func(str : u8?, str_len : u64 -> u8)
+parseutil_escape_char_literal : func(str : u8 mut?, str_len : u64 -> bool)
 {
 	if(str_len == 0)
 	{
-		panic_begin();
-		putzstr("zero-sized char literal\0");
-		panic_end();
+		return false;
+	}
+	return parseutil_escape_char(str, str_len) == str_len;
+};
+
+parseutil_escape_char : func(str : u8 mut?, str_len : u64 -> u64)
+{
+	if(str_len == 0)
+	{
+		return 0;
 	}
 	ch ::= [str # 0]@s64 weak;
 	if(ch != 92) // '\'
 	{
-		if(str_len > 1)
-		{
-			panic_begin();
-			putzstr("char-literal had more than 1 character inside: '\0");
-			putchars(str, str_len);
-			putzstr("'\n\0");
-			panic_end();
-		}
-		return ch;
+		//if(str_len > 1)
+		//{
+		//	panic_begin();
+		//	putzstr("char-literal had more than 1 character inside: '\0");
+		//	putchars(str, str_len);
+		//	putzstr("'\n\0");
+		//	panic_end();
+		//}
+		return 1;
 	}
 	// \<stuff>
 	nxt ::= [str # 1];
 	if(nxt == 'x')
 	{
 		v : u8 mut := 0;
-		i : u64 mut;
-		for(i = 2; i < str_len; i = i + 1)
+		i : u64 mut := 2;
+		keep_going : bool mut := true;
+		while(keep_going)
+		//for(i = 2; i < str_len; i = i + 1)
 		{
 			digit ::= [str # i];
 			digit_val : u8 mut;
+			keep_going = false;
 			if((digit >= '0') && (digit <= '9'))
 			{
 				digit_val = digit - '0';
+				keep_going = true;
+				i = i + 1;
 			}
 			if((digit >= 'a') && (digit <= 'f'))
 			{
 				digit_val = digit - 'a';
+				keep_going = true;
+				i = i + 1;
 			}
 			if((digit >= 'A') && (digit <= 'F'))
 			{
 				digit_val = digit - 'A';
+				keep_going = true;
+				i = i + 1;
 			}
-			v = (v * 16) + (digit_val);
+			if(keep_going)
+			{
+				v = (v * 16) + (digit_val);
+			}
 		}
-		return v;
+		[str # 0] = v;
+		return i;
 	}
-	if(str_len != 2)
-	{
-		panic_begin();
-		putzstr("malformed char literal");
-		putchars(str, str_len);
-		putzstr("'\n\0");
-		panic_end();
-	}
+	//if(str_len != 2)
+	//{
+	//	panic_begin();
+	//	putzstr("malformed char literal");
+	//	putchars(str, str_len);
+	//	putzstr("'\n\0");
+	//	panic_end();
+	//}
 	if(nxt == 'n')
 	{
-		return '\n';
+		[str # 0] = '\n';
+		return 2;
 	}
 	if(nxt == 'r')
 	{
-		return '\r';
+		[str # 0] = '\r';
+		return 2;
 	}
 	if(nxt == 't')
 	{
-		return '\t';
+		[str # 0] = '\t';
+		return 2;
 	}
 	if(nxt == '0')
 	{
-		return '\0';
+		[str # 0] = '\0';
+		return 2;
 	}
 	if(nxt == 92)
 	{
-		return 92;
+		return 1;
 	}
 	panic_begin();
 	putzstr("malformed char literal");
@@ -171,12 +195,20 @@ parseutil_escape_char : func(str : u8?, str_len : u64 -> u8)
 	unreachable;
 };
 
-parseutil_escape_string : func(str : u8?, str_len : u64 -> u64)
+parseutil_escape_string : func(str : u8 mut?, str_len : u64 -> u64)
 {
-	warn_begin();
-	putzstr("nyi: parseutil_escape_string NYI, just returning as-is\0");
-	warn_end();
-	return str_len;
+	len : u64 mut := str_len;
+	i : u64 mut := 0;
+	while(i < len)
+	{
+		cur ::= parseutil_escape_char(str # i, len);
+		i = i + 1;
+		if(cur > 1)
+		{
+			len - len - (cur - 1);
+		}
+	}
+	return len;
 };
 
 parseutil_is_whitespace : func(char : u8 -> bool)
