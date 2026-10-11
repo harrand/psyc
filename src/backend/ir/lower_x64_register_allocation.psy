@@ -51,6 +51,10 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	//warn_end();
 	// 1. liveness analysis (data-flow analysis)
 	irfunc_liveness_analysis_x64(state, fn, fnx64);
+
+	// timing
+	t : u64 mut := nanotime();
+
 	should_print ::= args_has_asmdump_specific() && streql(fn->custom_name, fn->custom_name_len, args.asm_dump_specific.data, args.asm_dump_specific.len);
 	if(should_print)
 	{
@@ -63,6 +67,8 @@ irfunc_register_allocation_x64 : func(state : lower_x64_register_allocation_stat
 	irfunc_do_graph_colouring_x64(state, fn, fnx64);
 	// 4. replace ssa operands in all instructions with their lowered variants
 	irfunc_post_graph_colouring_patch_x64(state, fn, fnx64);
+
+	compile_timings.assembly_register_allocation = compile_timings.assembly_register_allocation + (nanotime() - t);
 };
 
 irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
