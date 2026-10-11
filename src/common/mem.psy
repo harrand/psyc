@@ -1,5 +1,35 @@
 memcopy : func(dst : u8 mut? weak, src : u8? weak, len : u64 -> v0)
 {
+	prepad : u64 mut := -(dst@u64) & 7;
+
+    if(prepad > len)
+    {
+        prepad = len;
+    }
+
+    memcopy8(dst, src, prepad);
+
+    remaining ::= len - prepad;
+    quad_bytes ::= (remaining / 8) * 8;
+
+    memcopy64(dst # prepad, src # prepad, quad_bytes);
+
+    postpad : u64 := remaining - quad_bytes;
+
+    memcopy8(dst # (prepad + quad_bytes), src # (prepad + quad_bytes), postpad);
+};
+
+memcopy64 : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < (len / 8); i = i + 1)
+	{
+		[dst # i] = [src # i];
+	}
+};
+
+memcopy8 : func(dst : u8 mut? weak, src : u8? weak, len : u64 -> v0)
+{
 	i : u64 mut;
 	for(i = 0; i < len; i = i + 1)
 	{
