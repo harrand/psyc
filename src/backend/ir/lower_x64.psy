@@ -75,7 +75,7 @@ ir_lower_x64 : func(-> v0)
 // irfunc + irblks -> x64func lowering
 // ===================================
 
-ir_lower_prolog_x64 : func(epilog_state : ir_lower_epilog_state mut? -> v0)
+ir_lower_prolog : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 {
 	rbp : x64val mut;
 	rbp.tag = x64val_tag.reg;
@@ -111,8 +111,7 @@ ir_lower_epilog_state : struct
 	regs_to_pop_count : u64;
 };
 
-// add rsp, <stackamt>
-ir_lower_epilog_part_1 : func(-> v0)
+ir_lower_epilog : func(state : ir_lower_epilog_state mut? -> v0)
 {
 	rsp : x64val mut;
 	rsp.tag = x64val_tag.reg;
@@ -139,16 +138,17 @@ ir_lower_epilog_part_1 : func(-> v0)
 	[x64val_reg_get_size(ref rsp)] = 64;
 
 	x64_mov(ref rsp, ref rbp);
-};
+	// add rsp, ...
+	// mov rsp, rbp
 
-// mov rsp, rbp
-// pop rbp
-ir_lower_epilog_part_2 : func(-> v0)
-{
-	rbp : x64val mut;
-	rbp.tag = x64val_tag.reg;
-	[x64val_reg_get_reg(ref rbp)] = x64_reg.rbp;
-	[x64val_reg_get_size(ref rbp)] = 64;
+	// pop nonvolatiles
+	s : s64 mut;
+	for(s = (state->regs_to_pop_count - 1)@s64; s >= 0; s = s - 1)
+	{
+		x64_pop(state->regs_to_pop # s);
+	}
+
+	// pop rbp
 	x64_pop(ref rbp);
 };
 
@@ -224,99 +224,120 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	state.abi_nonvolatile_regs = abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
 	state.abi_nonvolatile_regs_count = abi_nonvolatile_registers_count_x64(abi_tag.psy64);
 	irfunc_register_allocation_x64(ref state, fn, fnx64);
-	x64_position_before_inst(0);
 
 	epilog_state : ir_lower_epilog_state := zero;
-	irfunc_abi_caller_saved_x64(fn, fnx64, ref epilog_state);
-	ir_lower_prolog_x64(ref epilog_state);
-	s : s64 mut;
-	for(s = (fnx64->insts_count - 1)@s64; s >= 0; s = s - 1)
-	{
-		inst ::= fnx64->insts # s;
-		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.epilog))
-		{
-			x64_position_before_inst(s@u64);
-			// delete the .epilog custom instruction
-			x64_delete_instruction();
-			// do part 1 of the epilog (must happen before the pops)
-			ir_lower_epilog_part_1();
-			s2 : s64 mut;
-			for(s2 = (epilog_state.regs_to_pop_count - 1)@s64; s2 >= 0; s2 = s2 - 1)
-			{
-				x64_pop(epilog_state.regs_to_pop # s2);
-			}
-			// do part 2 of the epilog (must happen after the pops)
-			ir_lower_epilog_part_2();
-		}
-	}
+	irfunc_abi_caller_saved_x64(fn, fnx64, ref epilog_state, ref state);
+	x64_position_before_inst(0);
+	ir_lower_prolog(ref epilog_state);
 
 	// legalise any instructions that are still invalid (e.g double memory operand)
-	irfunc_legalisation_x64(fn, fnx64);
+	irfunc_legalisation_x64(fn, fnx64, ref epilog_state);
 };
 
-irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state : ir_lower_epilog_state mut? -> v0)
+irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state : ir_lower_epilog_state mut?, regs : lower_x64_register_allocation_state mut? -> v0)
 {
-	cur_inst_id ::= x64_get_position();
-	// iterate over all instructions
-	// make a list of all volatile registers that are ever written to
 	nonvolatiles ::= abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
 	cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64);
 	count ::= ref(state->regs_to_pop_count);
 	data ::= ref(state->regs_to_pop);
 	[count] = 0;
 	[data] = arena_alloc(scratch_arena, cap * sizeof x64val);
+	// iterate over the igraph nodes
+	// if we see any nonvolatile registers in there, or a node that has been allocated to a nonvolatile register, then append it to [data]
 	i : u64 mut;
 	j : u64 mut;
-	k : u64 mut;
-	l : u64 mut;
-	m : u64 mut;
-
-	cur : x64val mut;
-	curreg : x64val mut;
-	regcount : u64 mut;
-	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	for(i = 0; i < cap; i = i + 1)
 	{
-		inst ::= fnx64->insts # i;
-		enc ::= x64enc_fetch(inst);
-		if(enc != zero)
+		nonvol ::= nonvolatiles # i;
+		is_used : bool mut := false;
+		// first check if the abi_hwregs contains our nonvolatile (if so, save the index of it)
+		alloc_id : u64 mut := ~0;
+		for(j = 0; j < regs->abi_hwregs_count; j = j + 1)
 		{
-			write_count ::= x64enc_writes_count(enc);
-			for(j = 0; j < write_count; j = j + 1)
+			if(x64val_equal_to(nonvol, regs->abi_hwregs # j))
 			{
-				if(x64enc_get_write(inst, enc, j, ref cur))
-				{
-					regcount = x64val_contained_registers_count(ref cur);
-					for(k = 0; k < regcount; k = k + 1)
-					{
-						x64val_get_contained_register(ref cur, ref curreg, k);
-						// if curreg is a nonvolatile register, then push it to the list
-						for(l = 0; l < cap; l = l + 1)
-						{
-							if(x64val_equal_to(ref curreg, nonvolatiles # l))
-							{
-								// but only if we dont already have it
-								already_saved_it : bool mut := false;
-								for(m = 0; m < [count]; m = m + 1)
-								{
-									if(x64val_equal_to([data] # m, ref curreg))
-									{
-										already_saved_it = true;
-									}
-								}
-								if(already_saved_it == false)
-								{
-									// save it as a 64-bit version.
-									[x64val_reg_get_size(ref curreg)] = 64;
-									[[data] # [count]] = curreg;
-									[count] = [count] + 1;
-								}
-							}
-						}
-					}
-				}
+				alloc_id = j;
 			}
 		}
+		already_added : bool mut := false;
+		// then iterate over all nodes
+		for(j = 0; j < regs->igraph_nodes.count; j = j + 1)
+		{
+			node ::= regs->igraph_nodes.data # j;
+			if((((node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (node->colour == alloc_id)) || x64val_equal_to(nonvol, ref(node->value))) && (already_added == false))
+			{
+				// add this one (as the 64-bit version even if it isnt used in a 64 bit way)
+				curreg : x64val mut := [nonvol];
+				[x64val_reg_get_size(ref curreg)] = 64;
+				[[data] # [count]] = curreg;
+				[count] = [count] + 1;
+				already_added = true;
+			}
+		}
+		// if their value is the nonvolatile, or they are assigned a hwreg of id matching the one we saved, then we need to add it.
 	}
+
+	//cur_inst_id ::= x64_get_position();
+	// iterate over all instructions
+	// make a list of all volatile registers that are ever written to
+	//nonvolatiles ::= abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
+	//cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64);
+	//count ::= ref(state->regs_to_pop_count);
+	//data ::= ref(state->regs_to_pop);
+	//[count] = 0;
+	//[data] = arena_alloc(scratch_arena, cap * sizeof x64val);
+	//i : u64 mut;
+	//j : u64 mut;
+	//k : u64 mut;
+	//l : u64 mut;
+	//m : u64 mut;
+
+	//cur : x64val mut;
+	//curreg : x64val mut;
+	//regcount : u64 mut;
+	//for(i = 0; i < fnx64->insts_count; i = i + 1)
+	//{
+	//	inst ::= fnx64->insts # i;
+	//	enc ::= x64enc_fetch(inst);
+	//	if(enc != zero)
+	//	{
+	//		write_count ::= x64enc_writes_count(enc);
+	//		for(j = 0; j < write_count; j = j + 1)
+	//		{
+	//			if(x64enc_get_write(inst, enc, j, ref cur))
+	//			{
+	//				regcount = x64val_contained_registers_count(ref cur);
+	//				for(k = 0; k < regcount; k = k + 1)
+	//				{
+	//					x64val_get_contained_register(ref cur, ref curreg, k);
+	//					// if curreg is a nonvolatile register, then push it to the list
+	//					for(l = 0; l < cap; l = l + 1)
+	//					{
+	//						if(x64val_equal_to(ref curreg, nonvolatiles # l))
+	//						{
+	//							// but only if we dont already have it
+	//							already_saved_it : bool mut := false;
+	//							for(m = 0; m < [count]; m = m + 1)
+	//							{
+	//								if(x64val_equal_to([data] # m, ref curreg))
+	//								{
+	//									already_saved_it = true;
+	//								}
+	//							}
+	//							if(already_saved_it == false)
+	//							{
+	//								// save it as a 64-bit version.
+	//								[x64val_reg_get_size(ref curreg)] = 64;
+	//								[[data] # [count]] = curreg;
+	//								[count] = [count] + 1;
+	//							}
+	//						}
+	//					}
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
 };
 
 ir_lower_handle_unallowed_first_memory_operand : func(inst : x64inst mut?, inst_id : u64 -> v0)

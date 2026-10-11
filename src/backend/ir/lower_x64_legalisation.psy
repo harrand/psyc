@@ -1,4 +1,4 @@
-irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
+irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, epilog_state : ir_lower_epilog_state mut? -> v0)
 {
 	t : u64 mut := nanotime();
 	// iterate over all x64insts in the fnx64
@@ -20,13 +20,24 @@ irfunc_legalisation_x64 : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 	}
 
 	blkidx : u64 mut;
-	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	s : s64 mut;
+	for(s = fnx64->insts_count@s64 - 1; s >= 0; s = s - 1)
 	{
-		inst = fnx64->insts # i;
+		inst = fnx64->insts # s;
 		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.blkbegin))
 		{
 			blkidx = [x64val_irblkref_get_idx(inst->operands # 0)];
-			[blkbegin_inst_indices # blkidx] = i;
+			[blkbegin_inst_indices # blkidx] = s@u64;
+		}
+
+		// handle epilogs
+		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.epilog))
+		{
+			x64_position_before_inst(s@u64);
+			// delete the .epilog custom instruction
+			x64_delete_instruction();
+			// do part 1 of the epilog (must happen before the pops)
+			ir_lower_epilog(epilog_state);
 		}
 	}
 
