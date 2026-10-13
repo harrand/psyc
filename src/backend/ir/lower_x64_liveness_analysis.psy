@@ -56,6 +56,23 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		cur : x64val mut;
 		curreg : x64val mut;
 		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
+		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.clobber))
+		{
+			the_clobber ::= inst->operands # 0;
+			if(use != zero)
+			{
+				if(x64val_list_contains(def, the_clobber) == false)
+				{
+					x64val_list_append_unique(use, the_clobber);
+				}
+			}
+			if(def != zero)
+			{
+				x64val_list_append_unique(def, the_clobber);
+			}
+			x64val_list_append_unique(inst_def, the_clobber);
+			x64val_list_append_unique(inst_use, the_clobber);
+		}
 		if((enc != zero))
 		{
 			// we have an encoding and we are inside a block.
