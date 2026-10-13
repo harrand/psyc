@@ -1314,6 +1314,17 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 		putsrc(ctx->src, rhs_node->src_beg@u64, rhs_node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+
+	// convert the integral rhs to something 64-bit, so we dont easily overflow when offsetting by a u8 for example
+	if(ty_is_signed(rhs_val->type))
+	{
+		val_conv(rhs_val, ty_add_weak(ty.s64), rhs_val, ref rhs_ctx);
+	}
+	else
+	{
+		val_conv(rhs_val, ty_add_weak(ty.u64), rhs_val, ref rhs_ctx);
+	}
+
 	if((ty_is_pointer(lhs_val->type) == false) && (ty_is_array(lhs_val->type) == false))
 	{
 		err_begin();
