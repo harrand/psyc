@@ -354,6 +354,24 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 			bwrite8(w, curprefix@s64@u8);
 		}
 	}
+	count ::= x64inst_operands_count(inst);
+	for(i = 0; i < count; i = i + 1)
+	{
+		// sil dil bpl spl => rex prefix
+		op ::= inst->operands # i;
+		if((op->tag == x64val_tag.reg) && ([x64val_reg_get_size(op)] == 8))
+		{
+			// sil dil bpl spl => 8-bit rsp rbp rsi rdi
+			if(([x64val_reg_get_reg(op)] == x64_reg.rsp)
+			|| ([x64val_reg_get_reg(op)] == x64_reg.rbp)
+			|| ([x64val_reg_get_reg(op)] == x64_reg.rsi)
+			|| ([x64val_reg_get_reg(op)] == x64_reg.rdi)
+			)
+			{
+				enc.rex_prefix = enc.rex_prefix | x64enc_rex_prefix.rex;
+			}
+		}
+	}
 	if(enc.rex_prefix != zero)
 	{
 		bwrite8(w, enc.rex_prefix@s64);
