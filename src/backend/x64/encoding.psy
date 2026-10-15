@@ -245,16 +245,19 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		modrm_set_rm([modrm_out], 0b100);
 		// we do need a sib
 		scale_bits = log2([x64val_memreg_get_scale(rm_operand)])@u8;
-		rm_idxregbits ::= [x64val_memreg_get_index(rm_operand)];
-		if(rm_idxregbits@s64 > 0b111)
-		{
-			// rex_x
-			enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_x);
-		}
-		index_bits = (rm_idxregbits@s64 & 0b111)@u8;
 		if([x64val_memreg_get_index_size(rm_operand)] == 0)
 		{
 			index_bits = 0b100;
+		}
+		else
+		{
+			rm_idxregbits ::= [x64val_memreg_get_index(rm_operand)];
+			if(rm_idxregbits@s64 > 0b111)
+			{
+				// rex_x
+				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_x);
+			}
+			index_bits = (rm_idxregbits@s64 & 0b111)@u8;
 		}
 		[[sib_out]] = (scale_bits << 6) | (index_bits << 3) | base_bits;
 	}
