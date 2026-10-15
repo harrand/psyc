@@ -59,7 +59,7 @@ x64_find_const_glob_matching_bytes : func(data : u8?, data_count : u64, out : x6
 		cur_glob ::= x64api.prog.globs # i;
 		if((cur_glob->data_finalised) && (cur_glob->tag == x64glob_tag.readonly))
 		{
-			if(cur_glob->init_data_size == data_count)
+			if((cur_glob->init_data_size == data_count) && cur_glob->data_finalised)
 			{
 				all_match : bool mut := false;
 				for(j = 0; j < data_count; j = j + 1)
@@ -185,28 +185,42 @@ x64_current_instruction : func(-> x64inst mut?)
 
 x64val_imm_as_globref : func(imm : x64val mut?, out : x64val mut? -> v0)
 {
+	putchar('A');
 	if(imm->tag != x64val_tag.imm)
 	{
 		[out] = [imm];
 		return;
 	}
+	putchar('B');
 	// create some global data containing an immediate value, and turn 'out' into a globref referencing that data
-	bytes ::= x64val_imm_get_value(imm)@u8?;
-	bytes_count ::= [x64val_imm_get_size(imm)];
-	if(x64_find_const_glob_matching_bytes(bytes, bytes_count, out))
-	{
-		[x64val_globref_get_size(out)] = bytes_count;
-		return;
-	}
+	the_imm_value ::= [x64val_imm_get_value(imm)];
+	bytes ::= ref the_imm_value@u8 mut?;
+	putchar('C');
+	bits_count ::= [x64val_imm_get_size(imm)];
+	putchar('D');
+	bytes_count ::= bits_count / 8;
+	putchar('E');
+	//if(x64_find_const_glob_matching_bytes(bytes, bytes_count, out))
+	//{
+	//	[x64val_globref_get_size(out)] = bits_count;
+	//	return;
+	//}
+	putchar('F');
 	// didnt find such a thing. create the glob.
+	putchar('G');
 	newglob : x64glob mut;
 	newglob.tag = x64glob_tag.readonly;
 	newglob.size = bytes_count;
+	putchar('H');
 	newglob.init_data = arena_alloc(global_arena, bytes_count);
-	memcopy(newglob.init_data, bytes, bytes_count);
+	putchar('I');
+	memcopy8(newglob.init_data, bytes, bytes_count);
+	putchar('J');
 	newglob.init_data_size = bytes_count;
 	newglob.data_finalised = true;
-	x64_add_glob(out, ref newglob, bytes_count);
+	putchar('K');
+	x64_add_glob(out, ref newglob, bits_count);
+	putchar('L');
 };
 
 x64_dump : func(-> v0)

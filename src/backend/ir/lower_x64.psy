@@ -113,43 +113,59 @@ ir_lower_epilog_state : struct
 
 ir_lower_epilog : func(state : ir_lower_epilog_state mut? -> v0)
 {
+	putchar('a');
 	rsp : x64val mut;
 	rsp.tag = x64val_tag.reg;
 	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
 	[x64val_reg_get_size(ref rsp)] = 64;
 	// add the stack amt
+	putchar('b');
 	stackamt_imm : x64val mut;
 	stackamt_imm.tag = x64val_tag.imm;
 	stackamt ::= x64_current_func()->stack;
+	putchar('c');
 	if(stackamt != 0)
 	{
+		putchar('d');
 		[x64val_imm_get_size(ref stackamt_imm)] = 32;
+		putchar('e');
 		[x64val_imm_get_value(ref stackamt_imm)] = stackamt;
+		putchar('f');
 		x64_add(ref rsp, ref stackamt_imm);
+		putchar('g');
 	}
 
+	putchar('h');
 	rbp : x64val mut;
 	rbp.tag = x64val_tag.reg;
 	[x64val_reg_get_reg(ref rbp)] = x64_reg.rbp;
 	[x64val_reg_get_size(ref rbp)] = 64;
+	putchar('i');
 	rsp : x64val mut;
 	rsp.tag = x64val_tag.reg;
 	[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
 	[x64val_reg_get_size(ref rsp)] = 64;
 
+	putchar('j');
 	x64_mov(ref rsp, ref rbp);
+	putchar('k');
 	// add rsp, ...
 	// mov rsp, rbp
 
 	// pop nonvolatiles
+	putchar('l');
 	s : s64 mut;
 	for(s = (state->regs_to_pop_count - 1)@s64; s >= 0; s = s - 1)
 	{
+		putchar('m');
 		x64_pop(state->regs_to_pop # s);
+		putchar('n');
 	}
+	putchar('o');
 
 	// pop rbp
 	x64_pop(ref rbp);
+	putchar('p');
 };
 
 irglob_lower_x64 : func(glob : irglob mut? -> v0)
@@ -168,6 +184,7 @@ irglob_lower_x64 : func(glob : irglob mut? -> v0)
 	g.init_data_size = glob->data_size;
 	g.custom_name = glob->custom_name;
 	g.custom_name_len = glob->custom_name_len;
+
 	// any irglob could have irrelocs pointing to its data (sadly we cant immediately tell which irglobs are and which arent), so we just assume that they all are subject to change
 	// this is important as sometimes we need to transform immediates (that dont fit properly as an operand to a certain x64 instruction e.g imul) into global data. we want to check if a global already exists with the exact immediate data so we can re-use it... BUT if that global is not finalised (aka it could still be written to) then we better not re-use that one
 	// in simpler words, this makes sure no x64globs that are spawned from irglobs are potentially re-used when transforming immediates into globs (coz an x64glob and the irglob its spawned from share the same data-span which is subject to irreloc writes)
@@ -190,12 +207,15 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	}
 
 	// set the stack amt. note: if we don't use the stack, then we dont need to bother with prolog/epilog (but we'd have to deal with the epilog in a clever way)
+	putchar('A');
 	x64_position_before_inst(0);
 	param_reg_count : u64 mut := abi_param_registers_count_x64(abi_tag.psy64);
+	putchar('B');
 	if(fn->params_count < param_reg_count)
 	{
 		param_reg_count = fn->params_count;
 	}
+	putchar('C');
 	for(i = 0; i < param_reg_count; i = i + 1)
 	{
 		cur_param_ssa_reg : irval mut;
@@ -211,6 +231,7 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 		x64_custom_reghint(ref cur_param_ssa_reg_x64, ref abi_param_register);
 		ir_lower_x64_generic_move_no_load(ref cur_param_ssa_reg_x64, ref abi_param_register);
 	}
+	putchar('D');
 
 
 	// do register allocation
@@ -223,15 +244,21 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	state.abi_volatile_regs_count = abi_volatile_registers_count_x64(abi_tag.psy64);
 	state.abi_nonvolatile_regs = abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
 	state.abi_nonvolatile_regs_count = abi_nonvolatile_registers_count_x64(abi_tag.psy64);
+	putchar('E');
 	irfunc_register_allocation_x64(ref state, fn, fnx64);
+	putchar('F');
 
 	epilog_state : ir_lower_epilog_state := zero;
 	irfunc_abi_caller_saved_x64(fn, fnx64, ref epilog_state, ref state);
+	putchar('G');
 	x64_position_before_inst(0);
+	putchar('H');
 	ir_lower_prolog(ref epilog_state);
+	putchar('I');
 
 	// legalise any instructions that are still invalid (e.g double memory operand)
 	irfunc_legalisation_x64(fn, fnx64, ref epilog_state);
+	putchar('J');
 };
 
 irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state : ir_lower_epilog_state mut?, regs : lower_x64_register_allocation_state mut? -> v0)
@@ -644,6 +671,8 @@ x64_custom_epilog : func(-> v0)
 
 irinst_lower_x64 : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
+	irinst_dump(inst);
+	putchar('\n');
 	[irinst_lower_x64_tbl # (inst->tag@s64)](fn, blk, inst);
 };
 
