@@ -32,7 +32,6 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		idx : s64 weak := inst->tag@s64 - tagbase@s64;
 
 		op0 ::= inst->operands # 0;
-		op1 ::= inst->operands # 0;
 
 		if(idx == ir_lower_x64inst_tag.blkbegin)
 		{
@@ -294,16 +293,14 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	curblk_idx : u64 mut := fn->blks_count - 1;
 	cur_live : x64val_list mut := [state->blk_live_outs # curblk_idx];
 	s : s64 mut := 0;
+
 	for(s = fnx64->insts_count@s64 - 1; s >= 0; s = s - 1)
 	{
+		inst ::= fnx64->insts # s;
 		[state->inst_live_afters # s] = cur_live;
 		x64val_list_finalise(state->inst_live_afters # s);
-		inst ::= fnx64->insts # s;
 		tagbase : x64inst_tag := x64inst_tag.custom;
 		idx : s64 weak := inst->tag@s64 - tagbase@s64;
-
-		op0 ::= inst->operands # 0;
-		op1 ::= inst->operands # 0;
 
 		// these were calculated during block_setup
 		inst_uses ::= state->inst_uses # s;
@@ -320,7 +317,7 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 				// we just decrement the count and memcopy_backwards by 1 element around the index
 				if(i < (cur_live.count - 1))
 				{
-					memcopy(cur_live.data # i, cur_live.data # (i + 1), sizeof typeof([cur_live.data]) * (cur_live.count - (i + 1)));
+					memcopy(cur_live.data # i, cur_live.data # (i + 1), sizeof typeof([cur_live.data]) * (cur_live.count - i));
 				}
 				cur_live.count = (cur_live.count - 1);
 			}
@@ -333,6 +330,7 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 
 		[state->inst_live_befores # s] = cur_live;
 		x64val_list_finalise(state->inst_live_befores # s);
+
 		if(idx == ir_lower_x64inst_tag.blkbegin)
 		{
 			if(curblk_idx == 0)
