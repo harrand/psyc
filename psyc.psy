@@ -124,6 +124,7 @@ pargc : s64? mut;
 pargv : u8??? mut;
 argc : s64 mut;
 argv : u8?? mut;
+// todo: delete when __startnew is able to always be used.
 __start : asm("{rax},{rcx}" -> v0)
 {
 	mov r8, rsp
@@ -133,9 +134,23 @@ __start : asm("{rax},{rcx}" -> v0)
 	mov $1, r8
 };
 
+// todo: rename to __start once the bootstrap is working again
+__startnew : asm("{rax},{rcx}" -> v0)
+{
+	mov r8, rsp
+	add r8, 16
+	mov $0, r8
+	add r8, 8
+	mov $1, r8
+};
+
+
 _start : func(-> v0)
 {
-	__start(ref(pargc), ref(argv));
+	// for old compiler
+	//__start(ref(pargc), ref(argv));
+	// for this compiler (post-bootstrap)
+	//__startnew(ref(pargc), ref(argv));
 	argc = [pargc];
 
 	linux_exit(main());

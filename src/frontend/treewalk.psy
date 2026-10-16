@@ -90,7 +90,17 @@ treewalk_stmt_enumeration : func(stmt : ast mut?, s : source -> v0)
 	for(i = 0; i < enumty.members_count; i = i + 1)
 	{
 		// members # i stores a ty but it is actually a s64 containing the entry value for an enum type
-		[enumty.members # i] = [ast_literal_get_integer(ast_init_get_expr(enumty_entry_nodes # i))]@ty;
+		init_expr_node ::= ast_init_get_expr(enumty_entry_nodes # i);
+
+		init_ctx : source_context mut;
+		init_ctx.src = s;
+		init_ctx.node = init_expr_node;
+		init_ctx.parent_fn = zero;
+		init_ctx.type_only = false;
+		init_val : val mut;
+		val_from_node(ref init_ctx, ref init_val);
+		// assume we end up with a qimm
+		[enumty.members # i] = [irval_imm_get_integer(val_scalar_get_irval(ref init_val))]@ty;
 	}
 	enumty.reference = stmt;
 	enumty.src = s;
