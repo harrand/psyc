@@ -478,18 +478,21 @@ x64glob_encode_to : func(w : bwriter mut?, glob : x64glob mut?, p : x64prog mut?
 x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutablew : bwriter mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
 {
 	i : u64 mut;
+	m->readonly_size = 0;
+	m->mutable_size = 0;
+	m->mutablezero_size = 0;
 	for(i = 0; i < p->globs_count; i = i + 1)
 	{
 		glob ::= p->globs # i;
 		if(glob->tag == x64glob_tag.readonly)
 		{
-			glob->data_begin_offset_bytes = readonlyw->cursor;
-			x64glob_encode_to(readonlyw, glob, p, m);
+			glob->data_begin_offset_bytes = m->readonly_size;
+			m->readonly_size = m->readonly_size + glob->size;
 		}
 		if(glob->tag == x64glob_tag.mutable)
 		{
-			glob->data_begin_offset_bytes = mutablew->cursor;
-			x64glob_encode_to(mutablew, glob, p, m);
+			glob->data_begin_offset_bytes = m->mutable_size;
+			m->mutable_size = m->mutable_size + glob->size;
 		}
 		if(glob->tag == x64glob_tag.mutablezero)
 		{
@@ -498,16 +501,30 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 		}
 	}
 	m->begin_readonly_glob_vaddr = 0;
-	m->readonly_size = align_up_pagesize(readonlyw->cursor);
-	m->begin_mutable_glob_vaddr = align_up_pagesize(m->begin_readonly_glob_vaddr + readonlyw->cursor);
-	m->mutable_size = align_up_pagesize(mutablew->cursor);
-	m->begin_mutablezero_glob_vaddr = m->begin_mutable_glob_vaddr + mutablew->cursor;
+	m->begin_mutable_glob_vaddr = align_up_pagesize(m->begin_readonly_glob_vaddr + m->readonly_size);
+	m->begin_mutablezero_glob_vaddr = m->begin_mutable_glob_vaddr + m->mutable_size;
 	m->begin_code_vaddr = align_up_pagesize(m->begin_mutablezero_glob_vaddr);
+
+	m->readonly_size = align_up_pagesize(m->readonly_size);
+	m->mutable_size = align_up_pagesize(m->mutable_size);
 
 	x64prog_patch_everything(p, m);
 	for(i = 0; i < p->funcs_count; i = i + 1)
 	{
 		x64func_encode_to(codew, p->funcs # i, p, m);
+	}
+
+	for(i = 0; i < p->globs_count; i = i + 1)
+	{
+		glob ::= p->globs # i;
+		if(glob->tag == x64glob_tag.readonly)
+		{
+			x64glob_encode_to(readonlyw, glob, p, m);
+		}
+		if(glob->tag == x64glob_tag.mutable)
+		{
+			x64glob_encode_to(mutablew, glob, p, m);
+		}
 	}
 };
 
