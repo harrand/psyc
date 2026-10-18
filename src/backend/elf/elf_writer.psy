@@ -57,6 +57,7 @@ align_up_pagesize : func(input : u64 -> u64)
 
 elf_data : struct
 {
+	base_vaddr : u64;
 	code : u8?;
 	code_len : u64;
 	entrypoint : u64;
@@ -97,10 +98,9 @@ elf_write : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	data_and_bss_segment_begin ::= align_up_pagesize(rodata_segment_begin + e->rodata_len);
 	code_segment_begin ::= align_up_pagesize(data_and_bss_segment_begin + e->data_len + e->bss_len);
 	// entrypoint vaddr
-	base_vaddr : u64 := 0x400000;
-	rodata_begin_addr ::= align_up(base_vaddr + rodata_segment_begin, page_size);
-	data_and_bss_begin_addr ::= align_up(base_vaddr + data_and_bss_segment_begin, page_size);
-	code_begin_addr ::= align_up(base_vaddr + code_segment_begin, page_size);
+	rodata_begin_addr ::= align_up(e->base_vaddr + rodata_segment_begin, page_size);
+	data_and_bss_begin_addr ::= align_up(e->base_vaddr + data_and_bss_segment_begin, page_size);
+	code_begin_addr ::= align_up(e->base_vaddr + code_segment_begin, page_size);
 	// rest of elf header
 	bwrite16(w, elf_type_executable);
 	bwrite16(w, elf_instruction_set_x64);

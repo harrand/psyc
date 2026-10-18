@@ -1,5 +1,6 @@
 x64enc_meta : struct
 {
+	base_vaddr : u64;
 	// absolute virtual address where the code starts
 	begin_code_vaddr : u64;
 	// absolute virtual address where the readonly global data (.rodata) starts
@@ -518,7 +519,6 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
 	{
 		glob_ir ::= irapi.prog.globs # i;
-		the_base_vaddr : u64 := 0x400000;
 		for(j = 0; j < glob_ir->relocs.count; j = j + 1)
 		{
 			reloc ::= glob_ir->relocs.data # j;
@@ -531,7 +531,7 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			if(reloc->tag == irreloc_tag.fn)
 			{
 				// patch virtual address of function id reloc->idx
-				function_vaddr ::= the_base_vaddr + m->begin_code_vaddr + (x64api.prog.funcs # reloc->idx)->enc_byte_offset_begin;
+				function_vaddr ::= m->base_vaddr + m->begin_code_vaddr + (x64api.prog.funcs # reloc->idx)->enc_byte_offset_begin;
 				[the_data_to_patch@u64 mut?] = function_vaddr;
 				putzstr("patching fnref \0");
 				putuint(reloc->idx);
