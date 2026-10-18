@@ -11,19 +11,33 @@ Psyc has zero dependencies.
 `psyc [options] file`
 ### Options
 `-b`                    Specify custom build-directory (default: .`/build`)
+
 `--dump-tokens`         Dump all tokens of all source files to stdout.
+
 `--dump-ast`            Dump the full AST for each source file to stdout.
+
 `--dump-ir`             Dump the IR instructions for all functions to stdout.
+
 `--dump-ir=<name>`      Dump the IR instructios for function '<name>' to stdout.
+
 `--dump-asm`            Dump the assembly instructions for all functions to stdout.
+
 `--dump-asm=<name>`     Dump the assembly instructios for function '<name>' to stdout.
+
 `--dump-metrics`        Dump code metrics for all functions (+ total) to stdout.
+
 `--dump-metrics=<name>` Dump code metrics for function '<name>' to stdout.
+
 `--skip-ir`             Skip the IR generation process, running only the frontend.
+
                             Implies `--skip-asm`
+
                             Implies `--skip-object-write`
+
 `--skip-asm`            Generate the IR, but don't lower it to assembly.
+
                             Implies `--skip-object-write`
+
 `--skip-object-write`   Generate the assembly, but don't write it to an executable.
 
 ## How it Works
