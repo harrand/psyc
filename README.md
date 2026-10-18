@@ -30,13 +30,7 @@ Psyc has zero dependencies.
 
 `--skip-ir`             Skip the IR generation process, running only the frontend.
 
-                            Implies `--skip-asm`
-
-                            Implies `--skip-object-write`
-
 `--skip-asm`            Generate the IR, but don't lower it to assembly.
-
-                            Implies `--skip-object-write`
 
 `--skip-object-write`   Generate the assembly, but don't write it to an executable.
 
