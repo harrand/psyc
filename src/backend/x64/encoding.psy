@@ -478,6 +478,7 @@ x64glob_encode_to : func(w : bwriter mut?, glob : x64glob mut?, p : x64prog mut?
 x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutablew : bwriter mut?, p : x64prog mut?, m : x64enc_meta mut? -> v0)
 {
 	i : u64 mut;
+	j : u64 mut;
 	m->readonly_size = 0;
 	m->mutable_size = 0;
 	m->mutablezero_size = 0;
@@ -514,16 +515,30 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 		x64func_encode_to(codew, p->funcs # i, p, m);
 	}
 
-	for(i = 0; i < irapi.prog.relocs_count; i = i + 1)
+	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
 	{
-		reloc ::= irapi.prog.relocs # i;
-		if(reloc->tag == irreloc_tag.glob)
+		glob_ir ::= irapi.prog.globs # i;
+		the_base_vaddr : u64 := 0x400000;
+		for(j = 0; j < glob_ir->relocs.count; j = j + 1)
 		{
-			// patch pointer to the glob at reloc->idx
-		}
-		if(reloc->tag == irreloc_tag.fn)
-		{
-			// patch virtual address of function id reloc->idx
+			reloc ::= glob_ir->relocs.data # j;
+			the_data_to_patch ::= glob_ir->data # reloc->data_offset;
+			if(reloc->tag == irreloc_tag.glob)
+			{
+				// patch pointer to the glob at reloc->idx
+				//the_refd_glob ::= x64api.prog.globs # reloc->idx;
+			}
+			if(reloc->tag == irreloc_tag.fn)
+			{
+				// patch virtual address of function id reloc->idx
+				function_vaddr ::= the_base_vaddr + m->begin_code_vaddr + (x64api.prog.funcs # reloc->idx)->enc_byte_offset_begin;
+				[the_data_to_patch@u64 mut?] = function_vaddr;
+				putzstr("patching fnref \0");
+				putuint(reloc->idx);
+				putzstr(" to virtual-address \0");
+				putuint(function_vaddr);
+				putchar('\n');
+			}
 		}
 	}
 

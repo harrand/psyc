@@ -286,12 +286,12 @@ abi_offsetof_struct_psy64 : func(type : ty, idx : u64 -> u64)
 	return cursor + ((-cursor) & (final_align - 1));
 };
 
-abi_serialise_val_to_psy64 : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64 : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
-	[abi_serialise_val_to_psy64_tbl # v->tag@s64](w, v, ctx);
+	[abi_serialise_val_to_psy64_tbl # v->tag@s64](w, v, ctx, relocs);
 };
 
-abi_serialise_val_to_psy64_nyi : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64_nyi : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	panic_begin();
 	putzstr("abi_serialise_val_to_psy64 is NYI for val_tag.\0");
@@ -301,7 +301,7 @@ abi_serialise_val_to_psy64_nyi : func(w : bwriter mut?, v : val mut?, ctx : sour
 	panic_end();
 };
 
-abi_serialise_val_to_psy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	err_begin();
 	putzstr("cannot compile-time-serialise a value that cannot be computed at compile-time at \0");
@@ -309,7 +309,7 @@ abi_serialise_val_to_psy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : 
 	err_end();
 };
 
-abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	err_begin();
 	putzstr("cannot compile-time-serialise a typeless zero-value at \0");
@@ -317,7 +317,7 @@ abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx 
 	err_end();
 };
 
-abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	if(ty_floating_point_size(v->type) > 0)
 	{
@@ -341,7 +341,7 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 			reloc.data_offset = w->cursor;
 			bwrite64(w, 0);
 			reloc.idx = [irval_globref_get_idx(scalar_irval)];
-			ir_add_reloc(ref reloc);
+			irreloc_list_append(relocs, ref reloc);
 			return;
 		}
 		if(scalar_irval->tag == irval_tag.fnref)
@@ -350,7 +350,7 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 			reloc.data_offset = w->cursor;
 			bwrite64(w, 0);
 			reloc.idx = [irval_fnref_get_idx(scalar_irval)];
-			ir_add_reloc(ref reloc);
+			irreloc_list_append(relocs, ref reloc);
 			return;
 		}
 		err_begin();
@@ -392,7 +392,7 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 	panic_end();
 };
 
-abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)
+abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	data_begin ::= w->cursor;
 
@@ -411,7 +411,7 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 			bwrite8(w, zero);
 		}
 		// write the chunk
-		abi_serialise_val_to_psy64(w, members # i, ctx);
+		abi_serialise_val_to_psy64(w, members # i, ctx, relocs);
 	}
 	if((w->cursor - data_begin) != abi_sizeof(abi_tag.psy64, v->type))
 	{
@@ -428,7 +428,7 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 	}
 };
 
-abi_serialise_val_to_psy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : source_context mut? -> v0)[countof val_tag]
+abi_serialise_val_to_psy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)[countof val_tag]
 {
 	.0 := abi_serialise_val_to_psy64_invalid;
 	.1 := abi_serialise_val_to_psy64_scalar;

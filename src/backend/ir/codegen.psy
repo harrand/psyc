@@ -79,11 +79,14 @@ codegen_ir_global : func(var : variable_t mut? -> v0)
 		}
 	}
 
-	abi_serialise_val_to(abi, w, ref v, ref ctx);
+	relocs : irreloc_list mut;
+	irreloc_list_empty(ref relocs);
+	abi_serialise_val_to(abi, w, ref v, ref ctx, ref relocs);
 
 	storage_ref ::= ref(var->storage);
 	storage_ref->tag = val_tag.pointer;
 	glob ::= ir_add_glob(stream.buf, stream.cursor, ty_is_mut(var->type), val_pointer_get_irval(storage_ref));
+	glob->relocs = relocs;
 	glob->custom_name = [ast_decl_get_name(var->node)];
 	glob->custom_name_len = [ast_decl_get_name_len(var->node)];
 	[val_pointer_get_displacement(storage_ref)] = 0;
