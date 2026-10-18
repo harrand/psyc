@@ -8,7 +8,7 @@ Psyc currently only supports x86_64 AVX2 little-endian CPUs on any platform runn
 Psyc has zero dependencies.
 
 ## Usage
-`psyc [options] file`
+`psyc [options] file.psy`
 ### Options
 `-b`                    Specify custom build-directory (default: .`/build`)
 
