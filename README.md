@@ -2,11 +2,31 @@
 
 Psyc is a compiler for the Psy Programming Language.
 
-## Dependencies
-Psyc has zero dependencies. If you're running on a linux kernel that's less than several decades old, the compiler should *just work*, and make no use of any userland code, such as libc or a linker.
+## Support & Dependencies
+Psyc currently only supports x86_64 AVX2 little-endian CPUs on any platform running under the linux-kernel. It is not production-ready.
 
-## Architecture & How it Works
-Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux kernel. The performance of generated code is of extremely poor quality, and codegen bugs are rife. It works as follows:
+Psyc has zero dependencies.
+
+## Usage
+`psyc [options] file`
+### Options
+`-b`                    Specify custom build-directory (default: .`/build`)
+`--dump-tokens`         Dump all tokens of all source files to stdout.
+`--dump-ast`            Dump the full AST for each source file to stdout.
+`--dump-ir`             Dump the IR instructions for all functions to stdout.
+`--dump-ir=<name>`      Dump the IR instructios for function '<name>' to stdout.
+`--dump-asm`            Dump the assembly instructions for all functions to stdout.
+`--dump-asm=<name>`     Dump the assembly instructios for function '<name>' to stdout.
+`--dump-metrics`        Dump code metrics for all functions (+ total) to stdout.
+`--dump-metrics=<name>` Dump code metrics for function '<name>' to stdout.
+`--skip-ir`             Skip the IR generation process, running only the frontend.
+                            Implies `--skip-asm`
+                            Implies `--skip-object-write`
+`--skip-asm`            Generate the IR, but don't lower it to assembly.
+                            Implies `--skip-object-write`
+`--skip-object-write`   Generate the assembly, but don't write it to an executable.
+
+## How it Works
 1. You invoke `psyc my_build_file.psy`
 2. Psyc reads the contents of the file, and passes the whole thing through a table-based finite-state-machine. A large array of tokens is created.
 3. These tokens are parsed into a custom AST format via a handwritten LR(1) parser using a open-addressed hashtable.
@@ -18,37 +38,37 @@ Currently, psyc only supports x86_64 AVX2 little-endian CPUs running the linux k
 9. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions (using a custom internal ABI). The assembly is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
 10. After that, postbuild commands are invoked and then the compiler exits, printing a basic summary of how much time was spent on each compilation stage.
 
-No AI was used in the creation of this compiler, and will remain clanker-free forever.
-**Please note that psyc does not currently have a license. This means that it is open-source insofar as you can view the code, but beware that draconian default copyright laws apply until I add a license.**
+This compiler is clanker-free. This means that no form of AI assistance was used, and any potential future AI-assisted contributions will be discarded with prejudice.
 
 ## Planned Work
 - AArch64
 - AVX512 (optional, but on by default)
 - Large amounts of optimisation work, though matching LLVM is unrealistic.
-- Add a license. Until there is an anti-AI license that I am happy with, it will remain without one.
-
-# Unplanned/Rejected Work
-- LLVM support. This will never be a part of the mainline compiler because it is a dependency that is 100x larger than the actual project.
-- LSP/other tooling support
-- Foreign Function Interface (FFI)
-- Static Linking
 
 # Psy Programming Language <a name="intro"></a>
 
-Psy is a highly-opinionated, systems programming language, built for extremely-fast compile times and simple programs.
+Psy is a highly-opinionated, low-level systems programming language.
 
-## Why Psy?
-You might like Psy if:
-- You want a C successor, but the ones currently on the market don't quite hit the spot
-- You want a development environment that is fully dependency free. No system library installations, no LLVM, no libc, not even a linker
-- You trust yourself to create your software, and want minimal hand-holding
+## Design Philosophy
+Psy is designed to be somewhere between writing in your current machines assembly language, and writing in C. It is intended to be the best systems language for ignoring the past 50 years of software and reinventing the wheel.
 
-## Why not Psy?
-You may *not* like Psy if:
-- You need/want to depend on libraries in binary form (i.e static linking)
-- You do not like to read assembly code
-- You want to use AI to partially or entirely write your code
-- You require highly-optimised code generation, such as LLVM
+### Autarkic Programs
+Psy programs, by design, are dependency-free and fully self-contained.
+- It is impossible to produce a Psy program that statically links against anything.
+- It is impossible to produce a Psy program that relies on a userland dynamic linker.
+- Psy compilers may only produce non-PIE, static executables.
+- Batteries not included. There is no standard libary or interop with libc. Infact, there is no runtime at all.
+
+As a result, Psy programs default to being very small, fast to compile, and userland-agnostic.
+
+This is particularly great on Linux, because we can ignore the complete dumpster-fire that is the userland of every crappy linux distro, and just ship the same binary for all of them.
+
+### Low-level
+The language is not designed to insulate you from how your machine actually works. It also doesn't sacrifice user-developer experience in pursuit of optimisation wins.
+- Memory is memory; you are free to type-pun and cast pointers freely to your hearts content, even if it leads to you carelessly stepping on a rake.
+- There are no type-aliasing restrictions in Psy, nor any pointer provenance rules.
+- No overloads or redefining of language concepts. If you add two numbers, the compiler should emit some `add` instruction based on your target architecture, and never anything else.
+- Stuff like division-by-zero, signed overflow are all implementation-defined. You are encouraged to rely on whatever your supported architectures/CPU manuals say what will happen in these cases.
 
 ## Anatomy of a Psy Program
 Psy programs are simpler than C programs. They are:
@@ -57,7 +77,7 @@ Psy programs are simpler than C programs. They are:
 - Source files contain function definitions, type declarations (enums and structs), inline-assembly definitions (similar to LLVM-IR InlineAsm), and global variables.
 - The order of declarations in source files does not matter. There is no need to pre-declare anything, and you can add your source files in any order you wish
 
-## Build Regions
+### Build Regions
 Build regions can:
 - Add source files, or add whole directories of source files.
 - Invoke another *build region*, either in the same build file or in another.

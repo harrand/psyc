@@ -85,6 +85,11 @@ handle_arg : func(arg : u8??, dst : u64 -> u64)
 {
 	if(zstrbegin([arg], '-'))
 	{
+		if(zstreql([arg], "-h\0") || zstrstartswith([arg], "--help\0"))
+		{
+			print_usage();
+			return 0;
+		}
 		if(zstrstartswith([arg], "-b\0"))
 		{
 			args.target = zstr2sstr([arg # 1]);
@@ -153,7 +158,7 @@ handle_arg : func(arg : u8??, dst : u64 -> u64)
 
 print_usage : func(-> v0)
 {
-	linux_write(1, "psyc file.psy [--dump-tokens] [--dump-ast] [--dump-ir] [--dump-asm]", 67);
+	putzstr("psyc file.psy [--dump-tokens] [--dump-ast] [--dump-ir] [--dump-ir=<name>] [--dump-asm] [--dump-asm=<name>] [--skip-ir] [--skip-asm] [--skip-object-write]\0");
 };
 
 parse_args : func(-> v0)
@@ -163,7 +168,7 @@ parse_args : func(-> v0)
 	if(argc <= 1)
 	{
 		err_begin();
-		linux_write(1, "missing arguments\n", 18);
+		putzstr("missing arguments\n\0");
 		print_usage();
 		err_end();
 	}
