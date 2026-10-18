@@ -502,7 +502,8 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			m->mutablezero_size = m->mutablezero_size + glob->size;
 		}
 	}
-	m->begin_readonly_glob_vaddr = 0;
+	// assumes our headers etc are less than a page size
+	m->begin_readonly_glob_vaddr = 0x1000;
 	m->begin_mutable_glob_vaddr = align_up_pagesize(m->begin_readonly_glob_vaddr + m->readonly_size);
 	m->begin_mutablezero_glob_vaddr = m->begin_mutable_glob_vaddr + m->mutable_size;
 	m->begin_code_vaddr = align_up_pagesize(m->begin_mutablezero_glob_vaddr);
@@ -527,17 +528,18 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			{
 				// patch pointer to the glob at reloc->idx
 				//the_refd_glob ::= x64api.prog.globs # reloc->idx;
+				warn_begin();
+				putzstr("detected irreloc for global variable which needs to be patched. but support for that is NYI. the global:\n\0");
+				irglob_dump(glob_ir);
+				putzstr(" has a reloc for other global: \n\0");
+				irglob_dump(irapi.prog.globs # reloc->idx);
+				warn_end();
 			}
 			if(reloc->tag == irreloc_tag.fn)
 			{
 				// patch virtual address of function id reloc->idx
 				function_vaddr ::= m->base_vaddr + m->begin_code_vaddr + (x64api.prog.funcs # reloc->idx)->enc_byte_offset_begin;
 				[the_data_to_patch@u64 mut?] = function_vaddr;
-				putzstr("patching fnref \0");
-				putuint(reloc->idx);
-				putzstr(" to virtual-address \0");
-				putuint(function_vaddr);
-				putchar('\n');
 			}
 		}
 	}
