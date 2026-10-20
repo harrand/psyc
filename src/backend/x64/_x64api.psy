@@ -211,6 +211,21 @@ x64val_imm_as_globref : func(imm : x64val mut?, out : x64val mut? -> v0)
 	x64_add_glob(out, ref newglob, bits_count);
 };
 
+x64_lea_globref_as_reg : func(globref : x64val mut?, intermediate_reg : x64_reg, out : x64val mut? -> v0)
+{
+	if(globref->tag != x64val_tag.globref)
+	{
+		[out] = [globref];
+		return;
+	}
+	intermediate : x64val mut;
+	intermediate.tag = x64val_tag.reg;
+	[x64val_reg_get_reg(ref intermediate)] = intermediate_reg;
+	[x64val_reg_get_size(ref intermediate)] = 64;
+	x64_lea(ref intermediate, globref);
+	[out] = intermediate;
+};
+
 x64_dump : func(-> v0)
 {
 	x64prog_dump(ref x64api.prog);
