@@ -230,10 +230,6 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 			modrm_set_mod([modrm_out], 0b00);
 			modrm_set_rm([modrm_out], 0b101);
 		}
-		if((rm_baseregbits == x64_reg.rsp) || (rm_baseregbits == x64_reg.r12))
-		{
-			// rsp or r12 as r/m actually does mean we emit a SIB, even if there is no index/scale
-		}
 		sib_edge_case ::= (rm_baseregbits == x64_reg.rsp) || (rm_baseregbits == x64_reg.r12);
 		// do we need a sib?
 		// note: r12 and rsp as base registers require a SIB!
@@ -249,6 +245,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		if([x64val_memreg_get_index_size(rm_operand)] == 0)
 		{
 			index_bits = 0b100;
+			scale_bits = 0;
 		}
 		else
 		{
@@ -299,7 +296,6 @@ x64enc_pre_encode_plus_n : func(enc : x64enc_table_entry mut?, operands : x64val
 	// note: if in theory we encounter a plus_n instruction encoding with no rm operands, then the mod and rm bits are unset. but i dont really know what we would do in that scenario anyway? so currently we just assume there is always an rm operand and x64_enc_pre_encode_handle_rm sets the rm and mod bits above
 	base : x64enc_opmode := x64enc_opmode.plus_0;
 	modrm_set_reg([modrm_out], (enc->ext@s64 - base@s64)@u8);
-	[sib_out] = zero;
 };
 
 x64enc_pre_encode : func(enc : x64enc_table_entry mut?, operands : x64val mut?, operands_count : u64, modrm_out : u8 mut? mut?, sib_out : u8 mut? mut? -> v0)
