@@ -1,7 +1,7 @@
 irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_allocation_state mut?, fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
 	i : u64 mut;
-	curblk_idx : u64 mut := ~0;
+	curblk_idx : u64 mut := 0;
 	// 0. initialise the state and x64val_lists for each blk
 	state->blk_uses = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
 	state->blk_defs = arena_alloc(global_arena, fn->blks_count * sizeof typeof([state->blk_uses]));
@@ -98,6 +98,35 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 			// add the reads as uses, and the writes as defs
 			write_count ::= x64enc_writes_count(enc);
 			regcount : u64 mut;
+			read_count ::= x64enc_reads_count(enc);
+			for(j = 0; j < read_count; j = j + 1)
+			{
+				// remember: a use only counts if it is before a potential redefinition within the block
+				if(x64enc_get_read(inst, enc, j, ref cur))
+				{
+					regcount = x64val_contained_registers_count(ref cur);
+					for(k = 0; k < regcount; k = k + 1)
+					{
+						x64val_get_contained_register(ref cur, ref curreg, k);
+						x64val_list_append_unique(inst_use, ref curreg);
+						if((use != zero) && (def != zero))
+						{
+							already_defined_previously : bool mut := false;
+							for(l = 0; l < def->count; l = l + 1)
+							{
+								if(x64val_equal_to(ref curreg, def->data # l))
+								{
+									already_defined_previously = true;
+								}
+							}
+							if(already_defined_previously == false)
+							{
+								x64val_list_append_unique(use, ref curreg);
+							}
+						}
+					}
+				}
+			}
 			for(j = 0; j < write_count; j = j + 1)
 			{
 				if(x64enc_get_write(inst, enc, j, ref cur))
@@ -129,35 +158,6 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 								x64val_list_append_unique(use, ref curreg);
 							}
 							x64val_list_append_unique(inst_use, ref curreg);
-						}
-					}
-				}
-			}
-			read_count ::= x64enc_reads_count(enc);
-			for(j = 0; j < read_count; j = j + 1)
-			{
-				// remember: a use only counts if it is before a potential redefinition within the block
-				if(x64enc_get_read(inst, enc, j, ref cur))
-				{
-					already_defined_previously : bool mut := false;
-					regcount = x64val_contained_registers_count(ref cur);
-					for(k = 0; k < regcount; k = k + 1)
-					{
-						x64val_get_contained_register(ref cur, ref curreg, k);
-						x64val_list_append_unique(inst_use, ref curreg);
-						if((use != zero) && (def != zero))
-						{
-							for(l = 0; l < def->count; l = l + 1)
-							{
-								if(x64val_equal_to(ref curreg, def->data # l))
-								{
-									already_defined_previously = true;
-								}
-							}
-							if(already_defined_previously == false)
-							{
-								x64val_list_append_unique(use, ref curreg);
-							}
 						}
 					}
 				}
@@ -271,8 +271,8 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 	{
 		convergence = irfunc_liveness_analysis_converge_liveinout(state, fn, fnx64);
 	}
-	// now finalise all the blocks lists
 	i : u64 mut;
+	// now finalise all the blocks lists
 	for(i = 0; i < fn->blks_count; i = i + 1)
 	{
 		x64val_list_finalise(state->blk_uses # i);
@@ -317,7 +317,11 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 				// we just decrement the count and memcopy_backwards by 1 element around the index
 				if(i < (cur_live.count - 1))
 				{
-					memcopy(cur_live.data # i, cur_live.data # (i + 1), sizeof typeof([cur_live.data]) * (cur_live.count - i));
+					memcopy(cur_live.data # i, cur_live.data # (i + 1), sizeof typeof([cur_live.data]) * (cur_live.count - i - 1));
+				}
+				if(i > 0)
+				{
+					i = i - 1;
 				}
 				cur_live.count = (cur_live.count - 1);
 			}
