@@ -483,9 +483,12 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 	m->readonly_size = 0;
 	m->mutable_size = 0;
 	m->mutablezero_size = 0;
+
+	glob : x64glob mut? mut;
+
 	for(i = 0; i < p->globs_count; i = i + 1)
 	{
-		glob ::= p->globs # i;
+		glob = p->globs # i;
 		if(glob->tag == x64glob_tag.readonly)
 		{
 			glob->data_begin_offset_bytes = m->readonly_size;
@@ -517,6 +520,22 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 		x64func_encode_to(codew, p->funcs # i, p, m);
 	}
 
+	glob_vaddrs : u64 mut? := arena_alloc(scratch_arena, p->globs_count * sizeof u64);
+	readonly_counter : u64 mut := 0;
+	mutable_counter : u64 mut := 0;
+	for(i = 0; i < p->globs_count; i = i + 1)
+	{
+		glob = p->globs # i;
+		if(glob->tag == x64glob_tag.readonly)
+		{
+			[glob_vaddrs # i] = m->base_vaddr + m->begin_readonly_glob_vaddr + glob->data_begin_offset_bytes;
+		}
+		if(glob->tag == x64glob_tag.mutable)
+		{
+			[glob_vaddrs # i] = m->base_vaddr + m->begin_mutable_glob_vaddr + glob->data_begin_offset_bytes;
+		}
+	}
+
 	for(i = 0; i < irapi.prog.globs_count; i = i + 1)
 	{
 		glob_ir ::= irapi.prog.globs # i;
@@ -527,13 +546,7 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 			if(reloc->tag == irreloc_tag.glob)
 			{
 				// patch pointer to the glob at reloc->idx
-				//the_refd_glob ::= x64api.prog.globs # reloc->idx;
-				warn_begin();
-				putzstr("detected irreloc for global variable which needs to be patched. but support for that is NYI. the global:\n\0");
-				irglob_dump(glob_ir);
-				putzstr(" has a reloc for other global: \n\0");
-				irglob_dump(irapi.prog.globs # reloc->idx);
-				warn_end();
+				[the_data_to_patch@u64 mut?] = [glob_vaddrs # reloc->idx];
 			}
 			if(reloc->tag == irreloc_tag.fn)
 			{
@@ -546,7 +559,7 @@ x64prog_encode_to : func(codew : bwriter mut?, readonlyw : bwriter mut?, mutable
 
 	for(i = 0; i < p->globs_count; i = i + 1)
 	{
-		glob ::= p->globs # i;
+		glob = p->globs # i;
 		if(glob->tag == x64glob_tag.readonly)
 		{
 			x64glob_encode_to(readonlyw, glob, p, m);
