@@ -3,7 +3,7 @@
 Psyc is a compiler for the Psy Programming Language.
 
 ## Support & Dependencies
-Psyc currently only supports x86_64 AVX2 little-endian CPUs on any platform running under the linux-kernel. It is not production-ready.
+Psyc currently only supports x86_64 AVX2 little-endian CPUs on any platform running under the linux-kernel. The compiler is hilariously incomplete: Optimisations, floating-point and SSE operations are not yet implemented.
 
 Psyc has zero dependencies.
 
@@ -34,63 +34,50 @@ Psyc has zero dependencies.
 
 `--skip-object-write`   Generate the assembly, but don't write it to an executable.
 
-## How it Works
-1. You invoke `psyc my_build_file.psy`
-2. Psyc reads the contents of the file, and passes the whole thing through a table-based finite-state-machine. A large array of tokens is created.
-3. These tokens are parsed into a custom AST format via a handwritten LR(1) parser using a open-addressed hashtable.
-4. After the AST is generated, treewalking occurs. This involes walking through the AST, searching for enums, structs, functions, assemblies and global variables. Each of these is recorded in a single, giant, whole-program-state.
-5. The file provided to the compiler is a build file. This means its *build region* is executed immediately after treewalking. This could add more source/build files to the program. For each of these, steps 2-4 is repeated.
-6. After the main build file is parsed, its *build region* is executed at compile-time. For any new source file added by the build region, step 2 and 3 is repeated (recursively). Afterwards, there is an array containing a fully-parsed AST for each source file in the program. Once all files in the project have been processed into the single whole-program-state, the rest of the compiler now works only on that state.
-7. Semantic analysis is performed once, on the whole program state. This largely boils down to type-checking and preparing the program state for code generation.
-8. Code generation involves generating a custom internal IR (psyir) using the verified whole program state. Most optimisations are performed on this IR, unless optimisations are disabled.
-9. Afterwards, the whole program IR is lowered down to x86_64 assembly instructions (using a custom internal ABI). The assembly is optimised further, then encoded into machine code and the final executable is written out. Position-independent-executables (PIE) are not supported.
-10. After that, postbuild commands are invoked and then the compiler exits, printing a basic summary of how much time was spent on each compilation stage.
-
-This compiler is clanker-free. This means that no form of AI assistance was used, and any potential future AI-assisted contributions will be discarded with prejudice.
+This compiler is clanker-free. This means that no form of AI assistance was used.
 
 ## Planned Work
-- AArch64
+- Optimisation passes
+- Floating point operations
 - AVX512 (optional, but on by default)
-- Large amounts of optimisation work, though matching LLVM is unrealistic.
+- AArch64
 
 # Psy Programming Language <a name="intro"></a>
 
 Psy is a highly-opinionated, low-level systems programming language.
 
-## Design Philosophy
-Psy is designed to be somewhere between writing in your current machines assembly language, and writing in C. It is intended to be the best systems language for ignoring the past 50 years of software and reinventing the wheel.
-
-### Autarkic Programs
+### Dependency-Free
 Psy programs, by design, are dependency-free and fully self-contained.
 - It is impossible to produce a Psy program that statically links against anything.
 - It is impossible to produce a Psy program that relies on a userland dynamic linker.
-- Psy compilers may only produce non-PIE, static executables.
-- Batteries not included. There is no standard libary or interop with libc. Infact, there is no runtime at all.
+- Psy compilers may only produce non-PIE executables. They can *only* produce executables, this is by-design.
+- Batteries not included. There is no standard libary or interop with libc. Infact, there is no runtime at all - you are likely to need to write your own entry-point.
 
-As a result, Psy programs default to being very small, fast to compile, and userland-agnostic.
-
-This is particularly great on Linux, because we can ignore the complete dumpster-fire that is the userland of every crappy linux distro, and just ship the same binary for all of them.
+As a result, Psy programs default to being very small, fast to compile, and userland-agnostic; a linux build will run on any platform that uses the linux kernel (from the past decade or two).
 
 ### Low-level
-The language is not designed to insulate you from how your machine actually works. It also doesn't sacrifice user-developer experience in pursuit of optimisation wins.
-- Memory is memory; you are free to type-pun and cast pointers freely to your hearts content, even if it leads to you carelessly stepping on a rake.
-- There are no type-aliasing restrictions in Psy, nor any pointer provenance rules.
+The language does not intend to insulate you from how your machine actually works, even if doing so could in theory improve optimisations. See examples below:
+- Memory is memory; you are free to type-pun and cast pointers freely to your hearts content, so long as you don't directly access out-of-bounds of the memory.
 - No overloads or redefining of language concepts. If you add two numbers, the compiler should emit some `add` instruction based on your target architecture, and never anything else.
 - Stuff like division-by-zero, signed overflow are all implementation-defined. You are encouraged to rely on whatever your supported architectures/CPU manuals say what will happen in these cases.
+- Compiler intrinsics are not offered, you are instead encouraged to write inline-assembly for all the targets you support.
 
 ## Anatomy of a Psy Program
-Psy programs are simpler than C programs. They are:
-- Comprised of a single build file.
-	- A build file is a source file that contains at least one *build region*. A *build region* is where your build script logic lives. It can do many things, but more on that later.
-- Source files contain function definitions, type declarations (enums and structs), inline-assembly definitions (similar to LLVM-IR InlineAsm), and global variables.
-- The order of declarations in source files does not matter. There is no need to pre-declare anything, and you can add your source files in any order you wish
+Psy programs are simpler than C programs. A psy program consists of one or more build files, and any number of source files.
+- Source files contain program code to be compiled.
+- A build file is a source file that contains at least one build region.
+
+A Psy program is simply the sum of all of its types/functions/assemblies/globals/build regions.
 
 ### Build Regions
-Build regions can:
+Build regions are blocks of Psy code that contain build instructions. These are not compiled into machine code, but are interpreted at compile-time to control compilation. In other words, a build region replaces your build script.
+
+Any source file that contains at least one build region is considered a build file. Because a program is comprised of at least one build file, all programs *must* contain *at least one* build region.
+
+Build instructions within a region are pretty versatile. They can:
 - Add source files, or add whole directories of source files.
 - Invoke another *build region*, either in the same build file or in another.
-- Specify the name of the output executable.
-- Specify whether debugging symbols should be written into the output executable.
+- Specify the name of the output executable (by default, this is `build/psyout`).
 - Specify which optimisations should be performed by the code generator.
 - Do conditional logic, for example you can only add a source file if you are on windows, or fail compilation with a custom error message on ARM.
 - Invoke external commands as a prebuild or postbuild command (though this is generally discouraged)
