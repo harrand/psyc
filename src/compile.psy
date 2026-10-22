@@ -185,6 +185,18 @@ write_output_x64 : func(-> v0)
 	out_name ::= sstr2zstr(prog.output.data, prog.output.len, global_arena);
 	f ::= path_open(zstr2path(out_name), file.cwd, file_access.write, path_open_flag.truncate | path_open_flag.create_if_notfound | path_open_flag.create_executable);
 
+	if(file_is_valid(f) == false)
+	{
+		err_begin();
+		putzstr("failed to open output file \0");
+		putchar('"');
+		putzstr(out_name);
+		putchar('"');
+		putzstr(" for writing: error code \0");
+		putsint(file_get_error(f)@s64);
+		err_end();
+	}
+
 	codestream : bwriter mut;
 	code ::= ref codestream;
 	bwriter_create_native(code, 1024, scratch_arena);
