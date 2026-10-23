@@ -552,6 +552,54 @@ x64enc_fetch_ret : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 	return encoding_tbl_ret # 0;
 };
 
+x64enc_fetch_cvtsi2ss : func(inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op1 ::= inst->operands # 1;
+	op1_sz ::= x64val_get_size(op1);
+	return encoding_tbl_cvtsi2ss # ((op1_sz / 32) - 1);
+};
+
+x64enc_fetch_cvtsi2sd : func(inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op1 ::= inst->operands # 1;
+	op1_sz ::= x64val_get_size(op1);
+	return encoding_tbl_cvtsi2sd # ((op1_sz / 32) - 1);
+};
+
+x64enc_fetch_cvttss2si : func(inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op0_sz ::= x64val_get_size(inst->operands # 0);
+	op1_sz ::= x64val_get_size(inst->operands # 1);
+	idx : u64 mut := 0;
+	if(op0_sz == 64)
+	{
+		idx = idx + 2;
+	}
+	off : u64 mut := 0;
+	if(op1_sz == 32)
+	{
+		off = off + 1;
+	}
+	return encoding_tbl_cvttss2si # (idx + off);
+};
+
+x64enc_fetch_cvttsd2si : func(inst : x64inst mut? -> x64enc_table_entry mut?)
+{
+	op0_sz ::= x64val_get_size(inst->operands # 0);
+	op1_sz ::= x64val_get_size(inst->operands # 1);
+	idx : u64 mut := 0;
+	if(op0_sz == 64)
+	{
+		idx = idx + 2;
+	}
+	off : u64 mut := 0;
+	if(op1_sz == 64)
+	{
+		off = off + 1;
+	}
+	return encoding_tbl_cvttsd2si # (idx + off);
+};
+
 x64enc_fetch_syscall : func(inst : x64inst mut? -> x64enc_table_entry mut?)
 {
 	return encoding_tbl_syscall # 0;
@@ -634,10 +682,10 @@ x64enc_fetch_tbl ::= func(inst : x64inst mut? -> x64enc_table_entry mut?)[counto
 	.59 := x64enc_fetch_sets;
 	.60 := x64enc_fetch_seto;
 	.61 := x64enc_fetch_ret;
-	.62 := x64enc_fetch_nyi;
-	.63 := x64enc_fetch_nyi;
-	.64 := x64enc_fetch_nyi;
-	.65 := x64enc_fetch_nyi;
+	.62 := x64enc_fetch_cvtsi2ss;
+	.63 := x64enc_fetch_cvtsi2sd;
+	.64 := x64enc_fetch_cvttss2si;
+	.65 := x64enc_fetch_cvttsd2si;
 	.66 := x64enc_fetch_nyi;
 	.67 := x64enc_fetch_nyi;
 	.68 := x64enc_fetch_nyi;
