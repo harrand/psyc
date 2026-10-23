@@ -461,18 +461,54 @@ rule_symbol_col_keywordasm_oparen2assemblyawaitconstraint : func(nodes : ast mut
 	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitconstraint;
 };
 
-rule_assemblyawaitconstraint_stringlit_arrow2assemblyawaitreturntype : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+rule_assemblyawaitconstraint_symbol_arrow2assemblyawaitreturntype: func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
 	out_result->type = grammar_result_type.reduce;
 	out_result->shift_or_delete_count = 2;
 	out_result->delete_offset = 1;
 
 	out ::= nodes # 0;
-	strlit_node ::= nodes # 1;
+	symbol_node ::= nodes # 1;
+	ast_add_child(out, symbol_node);
+	[ast_assembly_get_constraints_len(out)] = [ast_assembly_get_constraints_len(out)] + 1;
+
 	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitreturntype;
-	[ast_assembly_get_constraints(out)] = parse_state.src->src # strlit_node->src_beg # 1;
-	[ast_assembly_get_constraints_len(out)] = (strlit_node->src_end - strlit_node->src_beg - 2)@u64;
 };
+
+rule_assemblyawaitconstraint_symbol_comma2assemblyawaitconstraint: func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 2;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	symbol_node ::= nodes # 1;
+	ast_add_child(out, symbol_node);
+	[ast_assembly_get_constraints_len(out)] = [ast_assembly_get_constraints_len(out)] + 1;
+};
+
+rule_assemblyawaitconstraint_arrow2assemblyawaitreturntype: func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+{
+	out_result->type = grammar_result_type.reduce;
+	out_result->shift_or_delete_count = 1;
+	out_result->delete_offset = 1;
+
+	out ::= nodes # 0;
+	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitreturntype;
+};
+
+//rule_assemblyawaitconstraint_stringlit_arrow2assemblyawaitreturntype : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
+//{
+//	out_result->type = grammar_result_type.reduce;
+//	out_result->shift_or_delete_count = 2;
+//	out_result->delete_offset = 1;
+//
+//	out ::= nodes # 0;
+//	strlit_node ::= nodes # 1;
+//	[ast_assembly_get_parse_state(out)] = ast_assembly_parse_state.awaitreturntype;
+//	[ast_assembly_get_constraints(out)] = parse_state.src->src # strlit_node->src_beg # 1;
+//	[ast_assembly_get_constraints_len(out)] = (strlit_node->src_end - strlit_node->src_beg - 2)@u64;
+//};
 
 rule_assemblyawaitreturntype_typenamefinalised_cparen_obrace2assemblycoding : func(nodes : ast mut?, nodes_count : u64, out_result : grammar_result mut? -> v0)
 {
