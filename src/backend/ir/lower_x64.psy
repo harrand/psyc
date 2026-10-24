@@ -418,6 +418,11 @@ irblk_lower_x64 : func(fn : irfunc mut?, blk : irblk mut? -> v0)
 // helper functions
 // ================
 
+ir_lower_x64val_is_vreg : func(v : x64val mut? -> bool)
+{
+	return (v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vreg;
+};
+
 ir_lower_x64val_is_vmemreg : func(v : x64val mut? -> bool)
 {
 	return (v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vmemreg;
@@ -435,9 +440,7 @@ x64val_vmemreg_get_base_vreg : func(v : x64val mut?, out : x64val mut? -> bool)
 	{
 		return false;
 	}
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : ir_lower_x64val_tag := ir_lower_x64val_tag.vreg;
-	out->tag = (tagbase@s64 + idx@s64)@x64val_tag;
+	out->tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.vreg@s64)@x64val_tag;
 	[x64val_vreg_get_idx(out)] = base_idx;
 	[x64val_vreg_get_sz(out)] = base_sz;
 	return true;
@@ -449,36 +452,33 @@ x64val_vmemreg_set_base_vreg : func(vmemreg : x64val mut?, vreg : x64val mut? ->
 	[x64val_vmemreg_get_base_sz(vmemreg)] = [x64val_vreg_get_sz(vreg)];
 };
 
+ir_lower_x64val_is_irblkref : func(v : x64val mut? -> bool)
+{
+	return ((v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.irblkref);
+};
+
 ir_lower_x64val_is_memory : func(v : x64val mut? -> bool)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	return (idx == ir_lower_x64val_tag.vmemreg) || (idx == ir_lower_x64val_tag.irblkref);
+	return ir_lower_x64val_is_irblkref(v) || ir_lower_x64val_is_vmemreg(v);
 };
 
 ir_lower_x64val_is_vmemreg : func(v : x64val mut? -> bool)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	return (idx == ir_lower_x64val_tag.vmemreg);
+	return ((v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vmemreg);
 };
 
 ir_lower_x64val_is_register : func(v : x64val mut? -> bool)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	return (idx == ir_lower_x64val_tag.vreg);
+	return ((v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vreg);
 };
 
 ir_lower_x64val_contained_registers_count : func(v : x64val mut? -> u64)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	if(idx == ir_lower_x64val_tag.vreg)
+	if(ir_lower_x64val_is_register(v))
 	{
 		return 1;
 	}
-	if(idx == ir_lower_x64val_tag.vmemreg)
+	if(ir_lower_x64val_is_vmemreg(v))
 	{
 		count : u64 mut := 0;
 		if([x64val_vmemreg_get_base_sz(v)] != irsz.none)
@@ -493,10 +493,7 @@ ir_lower_x64val_contained_registers_count : func(v : x64val mut? -> u64)
 
 ir_lower_x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?, idx : u64 -> bool)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	tagidx : s64 weak := v->tag@s64 - tagbase@s64;
-	vreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vreg;
-	if(tagidx == ir_lower_x64val_tag.vreg)
+	if(ir_lower_x64val_is_register(v))
 	{
 		if(idx == 0)
 		{
@@ -504,14 +501,14 @@ ir_lower_x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?
 			return true;
 		}
 	}
-	if(tagidx == ir_lower_x64val_tag.vmemreg)
+	if(ir_lower_x64val_is_vmemreg(v))
 	{
 		count : u64 mut := 0;
 		if([x64val_vmemreg_get_base_sz(v)] != irsz.none)
 		{
 			if(idx == count)
 			{
-				out->tag = (tagbase@s64 + vreg@s64)@x64val_tag;
+				out->tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.vreg@s64)@x64val_tag;
 				[x64val_vreg_get_sz(out)] = [x64val_vmemreg_get_base_sz(v)];
 				[x64val_vreg_get_idx(out)] = [x64val_vmemreg_get_base_idx(v)];
 				return false;
@@ -526,17 +523,15 @@ ir_lower_x64val_get_contained_register : func(v : x64val mut?, out : x64val mut?
 
 ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx : s64 weak := v->tag@s64 - tagbase@s64;
-	if(idx == ir_lower_x64val_tag.vreg)
+	if(ir_lower_x64val_is_register(v))
 	{
 		return [irsz_sizes # [x64val_vreg_get_sz(v)]@s64] * 8;
 	}
-	if(idx == ir_lower_x64val_tag.vmemreg)
+	if(ir_lower_x64val_is_vmemreg(v))
 	{
 		return [irsz_sizes # [x64val_vmemreg_get_sz(v)]@s64] * 8;
 	}
-	if(idx == ir_lower_x64val_tag.irblkref)
+	if(ir_lower_x64val_is_irblkref(v))
 	{
 		return 64;
 	}
@@ -591,20 +586,14 @@ ir_lower_x64inst_custom_dump_to : func(w : bwriter mut?, inst : x64inst mut? -> 
 {
 	bwrite_colour_green(w);
 	bwrite8(w, '.');
-	tagbase : x64inst_tag := x64inst_tag.custom;
-	idx ::= inst->tag@s64 - tagbase@s64;
-	bwrite_zstr(w, [ir_lower_x64inst_tag_named # idx]);
+	bwrite_zstr(w, [ir_lower_x64inst_tag_named # (inst->tag@s64 - x64inst_tag.custom@s64)]);
 	bwrite_colour_reset(w);
 };
 
 x64_custom_blkbegin : func(blk : irblk mut? -> v0)
 {
 	blkval : x64val mut := zero;
-
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.irblkref;
-
-	blkval.tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	blkval.tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.irblkref@s64)@x64val_tag;
 	[x64val_irblkref_get_idx(ref blkval)] = blk->idx;
 	
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.blkbegin;
@@ -712,13 +701,10 @@ irinst_lower_x64_load : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	irval_lower_x64(base, ref basex64);
 	disp ::= [ir_load_get_disp(inst)];
 
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
-
 	mem : x64val mut;
 	if(ir_lower_x64val_is_register(ref basex64))
 	{
-		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
+		mem.tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.vmemreg@s64)@x64val_tag;
 		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
 		[x64val_vmemreg_get_base_sz(ref mem)] = [irval_reg_get_sz(base)];
 		[x64val_vmemreg_get_displacement(ref mem)] = disp;
@@ -775,14 +761,11 @@ irinst_lower_x64_store : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 	irval_lower_x64(base, ref basex64);
 	disp ::= [ir_store_get_disp(inst)];
 
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx_vmemreg : ir_lower_x64val_tag := ir_lower_x64val_tag.vmemreg;
-
 	mem : x64val mut;
 	// check the base -> x64 lower instead of just the base as an ssa reg (because it may be a stack-slot which has been replaced by a memreg)
 	if(ir_lower_x64val_is_register(ref basex64))
 	{
-		mem.tag = (tagbase@s64 + customidx_vmemreg@s64)@x64val_tag;
+		mem.tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.vmemreg@s64)@x64val_tag;
 		[x64val_vmemreg_get_base_idx(ref mem)] = [irval_reg_get_idx(base)];
 		[x64val_vmemreg_get_base_sz(ref mem)] = [irval_reg_get_sz(base)];
 		[x64val_vmemreg_get_displacement(ref mem)] = disp;
@@ -1946,28 +1929,24 @@ ir_lower_x64val_tag : enum
 ir_lower_x64val_custom_dump_to : func(w : bwriter mut?, v : x64val mut? -> v0)
 {
 	bwrite_colour_blue(w);
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx ::= v->tag@s64 - tagbase@s64;
-	[ir_lower_x64val_custom_dump_to_tbl # idx](w, v);
+	[ir_lower_x64val_custom_dump_to_tbl # (v->tag@s64 - x64val_tag.custom@s64)](w, v);
 	bwrite_colour_reset(w);
 };
 
 ir_lower_x64val_custom_equal_to : func(lhs : x64val mut?, rhs : x64val mut? -> bool)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	idx ::= (lhs->tag@s64 - tagbase@s64)@ir_lower_x64val_tag;
-	if(idx == ir_lower_x64val_tag.vreg)
+	if(ir_lower_x64val_is_vreg(lhs))
 	{
 		return [x64val_vreg_get_idx(lhs)] == [x64val_vreg_get_idx(rhs)];
 	}
-	if(idx == ir_lower_x64val_tag.vmemreg)
+	if(ir_lower_x64val_is_vmemreg(lhs))
 	{
 		return ([x64val_vmemreg_get_base_sz(lhs)] == [x64val_vmemreg_get_base_sz(rhs)])
 			&& ([x64val_vmemreg_get_base_idx(lhs)] == [x64val_vmemreg_get_base_idx(rhs)])
 			&& ([x64val_vmemreg_get_displacement(lhs)] == [x64val_vmemreg_get_displacement(rhs)])
 			&& ([x64val_vmemreg_get_sz(lhs)] == [x64val_vmemreg_get_sz(rhs)]);
 	}
-	if(idx == ir_lower_x64val_tag.irblkref)
+	if(ir_lower_x64val_is_irblkref(lhs))
 	{
 		return [x64val_irblkref_get_idx(lhs)] == [x64val_irblkref_get_idx(rhs)];
 	}
@@ -2107,10 +2086,7 @@ irval_lower_x64_imm : func(v : irval mut?, out : x64val mut? -> v0)
 
 irval_lower_x64_reg : func(v : irval mut?, out : x64val mut? -> v0)
 {
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.vreg;
-
-	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	out->tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.vreg@s64)@x64val_tag;
 	vcpy ::= [v];
 	[x64val_vreg_get_sz(out)] = [irval_reg_get_sz(ref vcpy)];
 	[x64val_vreg_get_idx(out)] = [irval_reg_get_idx(ref vcpy)];
@@ -2134,11 +2110,7 @@ irval_lower_x64_fnref : func(v : irval mut?, out : x64val mut? -> v0)
 
 irval_lower_x64_blkref : func(v : irval mut?, out : x64val mut? -> v0)
 {
-	blkidx ::= [irval_blkref_get_idx(v)];
-	tagbase : x64val_tag := x64val_tag.custom;
-	customidx : ir_lower_x64val_tag := ir_lower_x64val_tag.irblkref;
-
-	out->tag = (tagbase@s64 + customidx@s64)@x64val_tag;
+	out->tag = (x64val_tag.custom@s64 + ir_lower_x64val_tag.irblkref@s64)@x64val_tag;
 	[x64val_irblkref_get_idx(out)] = [irval_blkref_get_idx(v)];
 };
 
