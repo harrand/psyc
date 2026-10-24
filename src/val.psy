@@ -1756,7 +1756,19 @@ val_from_node_expr_cast : func(ctx : source_context mut?, out : val mut?  -> v0)
 	cast_to_ctx : source_context mut := [ctx];
 	cast_to_ctx.node = cast_to_node;
 
-	to ::= ty_from_typename_node(ref cast_to_ctx);
+	to : ty mut := ty.invalid;
+	// weakening idiom (foo@_ means cast to itself, but with weakness applied)
+	if([ast_typename_get_tag(cast_to_node)] == ast_typename_tag.base)
+	{
+		if(streql([ast_typename_base_get_basename(cast_to_node)], [ast_typename_base_get_basename_len(cast_to_node)], "_", 1))
+		{
+			to = ty_add_weak(castee_val.type);
+		}
+	}
+	if(to == ty.invalid)
+	{
+		to = ty_from_typename_node(ref cast_to_ctx);
+	}
 	if(to == ty.invalid)
 	{
 		err_begin();
