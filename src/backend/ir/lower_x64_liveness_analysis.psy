@@ -28,12 +28,10 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		x64val_list_empty(state->inst_live_befores # i);
 		x64val_list_empty(state->inst_live_afters # i);
 		inst ::= fnx64->insts # i;
-		tagbase : x64inst_tag := x64inst_tag.custom;
-		idx : s64 weak := inst->tag@s64 - tagbase@s64;
 
 		op0 ::= inst->operands # 0;
 
-		if(idx == ir_lower_x64inst_tag.blkbegin)
+		if((inst->tag@s64 - x64inst_tag.custom@s64) == (ir_lower_x64inst_tag.blkbegin@s64))
 		{
 			curblk_idx = [x64val_irblkref_get_idx(op0)];
 		}
@@ -299,8 +297,6 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 		inst ::= fnx64->insts # s;
 		[state->inst_live_afters # s] = cur_live;
 		x64val_list_finalise(state->inst_live_afters # s);
-		tagbase : x64inst_tag := x64inst_tag.custom;
-		idx : s64 weak := inst->tag@s64 - tagbase@s64;
 
 		// these were calculated during block_setup
 		inst_uses ::= state->inst_uses # s;
@@ -335,7 +331,7 @@ irfunc_liveness_analysis_x64 : func(state : lower_x64_register_allocation_state 
 		[state->inst_live_befores # s] = cur_live;
 		x64val_list_finalise(state->inst_live_befores # s);
 
-		if(idx == ir_lower_x64inst_tag.blkbegin)
+		if((inst->tag@s64 - x64inst_tag.custom@s64) == (ir_lower_x64inst_tag.blkbegin@s64))
 		{
 			if(curblk_idx == 0)
 			{
