@@ -9,14 +9,17 @@ arena : struct
 
 arena_create_virtual : func(reserve : u64, initial_commit : u64, out : arena mut? -> v0)
 {
-	out->res = reserve;
-	out->com = initial_commit;
-	out->cur = 0;
-	out->aalign = 1;
 	// 0x00 = PROT_NONE
 	// 0x22 = MAP_PRIVATE | MAP_ANONYMOUS
 	// reserve
-	out->ptr = linux_mmap(zero, out->res, 0x00, 0x22, zero, zero);
+	[out] = arena
+	{
+		.ptr := linux_mmap(zero, reserve, 0x00, 0x22, zero, zero);
+		.res := reserve;
+		.com := initial_commit;
+		.cur := 0;
+		.aalign := 1;
+	};
 	// initial commit
 	// 0x03 = PROT_READ | PROT_WRITE
 	linux_mprotect(out->ptr, initial_commit, 0x03);
@@ -24,11 +27,14 @@ arena_create_virtual : func(reserve : u64, initial_commit : u64, out : arena mut
 
 arena_create_preallocated : func(ptr : v0? weak, len : u64, out : arena mut? -> v0)
 {
-	out->res = len;
-	out->com = len;
-	out->cur = 0;
-	out->ptr = ptr;
-	out->aalign = 1;
+	[out] = arena
+	{
+		.ptr := ptr;
+		.res := len;
+		.com := len;
+		.cur := 0;
+		.aalign := 1;
+	};
 };
 
 arena_align : func(a : arena mut?, align : u64 -> u64)
