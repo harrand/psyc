@@ -134,6 +134,61 @@ x64_parse_a_constraint : func(constraints : u8?, constraints_len : u64, out : x6
 	return 0;
 };
 
+x64_parse_reg : func(name : u8?, name_len : u64, out : x64val mut? -> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < countof typeof x64reg_name; i = i + 1)
+	{
+		cur ::= [x64reg_name # i];
+		cur_len ::= zstrlen(cur);
+		if(streql(cur, cur_len, name, name_len))
+		{
+			out->tag = x64val_tag.reg;
+			mod ::= i % 7;
+			j : u64 mut;
+			sz : u64 mut := 1;
+			for(j = 1; j < mod; j = j + 1)
+			{
+				sz = sz * 2;
+			}
+			[x64val_reg_get_size(out)] = sz * 8;
+			[x64val_reg_get_reg(out)] = (i / 7)@s64@x64_reg;
+			return;
+		}
+	}
+	err_begin();
+	putzstr("failed to parse \0");
+	putchar('"');
+	putchars(name, name_len);
+	putchar('"');
+	putzstr(" as a valid x64 register\0");
+	err_end();
+};
+
+x64_parse_constraints2 : func(constraints : assembly_constraint mut?, constraints_len : u64, return_constraints : assembly_constraint mut?, return_constraints_len : u64, out : x64_constraints_data mut? -> v0)
+{
+	i : u64 mut;
+	cur : assembly_constraint mut? mut;
+	for(i = 0; i < constraints_len; i = i + 1)
+	{
+		cur = constraints # i;
+		if(cur->type == ty.invalid)
+		{
+			// treat it as a clobber.
+			x64_parse_reg(cur->name, cur->name_len, x64_constraints_data_add_clobber(out));
+		}
+		else // otherwise its an input
+		{
+			x64_parse_reg(cur->name, cur->name_len, x64_constraints_data_add_input(out));
+		}
+	}
+	for(i = 0; i < return_constraints_len; i = i + 1)
+	{
+		cur = return_constraints # i;
+		x64_parse_reg(cur->name, cur->name_len, x64_constraints_data_add_output(out));
+	}
+};
+
 x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64_constraints_data mut? -> v0)
 {
 	ptr : u8? mut := constraints;
