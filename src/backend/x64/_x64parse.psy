@@ -168,6 +168,7 @@ x64_parse_reg : func(name : u8?, name_len : u64, out : x64val mut? -> v0)
 x64_parse_constraints2 : func(constraints : assembly_constraint mut?, constraints_len : u64, return_constraints : assembly_constraint mut?, return_constraints_len : u64, out : x64_constraints_data mut? -> v0)
 {
 	i : u64 mut;
+	putzstr("parse constraints begin\n\0");
 	cur : assembly_constraint mut? mut;
 	for(i = 0; i < constraints_len; i = i + 1)
 	{
@@ -187,6 +188,7 @@ x64_parse_constraints2 : func(constraints : assembly_constraint mut?, constraint
 		cur = return_constraints # i;
 		x64_parse_reg(cur->name, cur->name_len, x64_constraints_data_add_output(out));
 	}
+	putzstr("parse constraints end\n\0");
 };
 
 x64_parse_constraints : func(constraints : u8?, constraints_len : u64, out : x64_constraints_data mut? -> v0)
@@ -233,7 +235,7 @@ x64_constraints_to_ty2 : func(constraints : assembly_constraint mut?, constraint
 		putzstr("more than 1 return constraint in an inline-asm is NYI\0");
 		panic_end();
 	}
-	u.underlying = ty.invalid;
+	u.underlying = ty.v0;
 	curty : ty mut;
 	if(return_constraints_len == 1)
 	{
@@ -358,6 +360,11 @@ x64_parse_asm_breaks : func(ch : u8 -> bool)
 
 x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_count : u64 -> v0)
 {
+	putzstr("parsing asm: \0");
+	putchars(code, code_len);
+	putzstr(" (\0");
+	putuint(inputs_count);
+	putzstr(" inputs...)\n\0");
 	// $N is treated as [inputs # N] (you are free to pass zero for both if you dont need to support that special syntax)
 	cursor : u64 mut := 0;
 	curinst : x64inst mut := zero;

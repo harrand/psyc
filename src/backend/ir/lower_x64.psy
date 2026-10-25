@@ -1818,20 +1818,30 @@ irinst_lower_x64_asmcall : func(fn : irfunc mut?, blk : irblk mut?, inst : irins
 	asmref ::= ir_call_get_callee(inst);
 	as ::= irapi.prog.asms # [irval_asmref_get_idx(asmref)];
 	constraints : x64_constraints_data mut := zero;
+	putzstr("calling asm \0");
+	putchars(as->custom_name, as->custom_name_len);
+	putchar(':');
 	x64_parse_constraints2(as->constraints, as->constraints_len, as->return_constraints, as->return_constraints_len, ref constraints);
+	putchar('a');
 	params_count ::= ir_call_get_params_count(inst)@u64;
 	params_begin ::= ir_call_get_params(inst);
 
 	paramsx64 : x64val mut? := arena_alloc(scratch_arena, params_count * sizeof x64val);
 	i : u64 mut;
+	putchar('b');
 	for(i = 0; i < params_count; i = i + 1)
 	{
+		putchar('c');
 		// move the param values to the input registers as requested by the constraint string
 		// depending on lowering we could actually want to end up doing this in a different order. todo: emit a custom begin/end instruction to tell the legaliser to re-order these sensibly
 		irval_lower_x64(params_begin # i, paramsx64 # i);
+		putchar('d');
 		ir_lower_x64_generic_move_no_load(constraints.inputs # i, paramsx64 # i);
+		putchar('e');
 	}
+	putchar('f');
 	x64_parse_asm(as->code, as->code_len, paramsx64 # 0, params_count);
+	putchar('g');
 	for(i = 0; i < constraints.clobbers_count; i = i + 1)
 	{
 		if(x64val_is_valid(constraints.clobbers # i))
@@ -1839,15 +1849,18 @@ irinst_lower_x64_asmcall : func(fn : irfunc mut?, blk : irblk mut?, inst : irins
 			x64_custom_clobber(constraints.clobbers # i);
 		}
 	}
+	putchar('h');
 
 	returns_count ::= ir_call_get_returns_count(inst)@u64;
 	returns_begin ::= ir_call_get_returns(inst);
+	putchar('i');
 	for(i = 0; i < returns_count; i = i + 1)
 	{
 		cur_return : x64val mut;
 		irval_lower_x64(returns_begin # i, ref cur_return);
 		ir_lower_x64_generic_move_no_load(ref cur_return, constraints.outputs # i);
 	}
+	putchar('j');
 };
 
 irinst_lower_x64_brk : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
