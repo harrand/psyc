@@ -331,12 +331,25 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 	{
 		out->tag = val_tag.invalid;
 		out->type = maybe_ty;
+		if(!ctx->type_only)
+		{
+			err_begin();
+			putzstr("invalid use of typename \0");
+			putty(out->type);
+			putzstr(" in this context at \0");
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+			err_end();
+		}
 		return;
 	}
-	panic_begin();
-	putzstr("reached end of val_from_node_expr_symbol at \0");
+	err_begin();
+	putzstr("unrecognised symbol \0");
+	putchar('"');
+	putchars(sym, len);
+	putchar('"');
+	putzstr(" at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	err_end();
 };
 
 val_from_node_expr_literal : func(ctx : source_context mut?, out : val mut? -> v0)

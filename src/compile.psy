@@ -227,10 +227,17 @@ write_output_x64 : func(-> v0)
 	else
 	{
 		the_entrypoint ::= prog_find_function(prog.entrypoint.data, prog.entrypoint.len);
-		if(the_entrypoint != zero)
+		if(the_entrypoint == zero)
 		{
-			edata.entrypoint = (x64api.prog.funcs # (the_entrypoint->irfunc_idx))->enc_byte_offset_begin;
+			err_begin();
+			putzstr("entrypoint \0");
+			putchar('"');
+			putchars(prog.entrypoint.data, prog.entrypoint.len);
+			putchar('"');
+			putzstr(" could not be found\0");
+			err_end();
 		}
+		edata.entrypoint = (x64api.prog.funcs # (the_entrypoint->irfunc_idx))->enc_byte_offset_begin;
 	}
 
 	// repurpose code to be the final elf writer
