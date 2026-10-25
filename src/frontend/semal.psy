@@ -231,23 +231,50 @@ populate_assemblies : func(-> v0)
 	for(i = 0; i < count; i = i + 1)
 	{
 		as ::= prog.global_scope.asms # i;
-		as->type = x64_constraints_to_ty(as->constraints, as->constraints_len);
+		putzstr("semal for assembly \0");
+		putchars([ast_assembly_get_name(as->node)], [ast_assembly_get_name_len(as->node)]);
+		putzstr(": \n\0");
+		//as->type = x64_constraints_to_ty(as->constraints, as->constraints_len);
+		for(j = 0; j < (as->return_constraints_len + as->constraints_len); j = j + 1)
+		{
+			putuint(j);
+			cur_constraint : assembly_constraint mut? mut;
+			if(j < as->constraints_len)
+			{
+				cur_constraint = as->constraints # j;
+				putzstr(" (constraint \0");
+				putuint(j);
+				putzstr("): \0");
+			}
+			else
+			{
+				cur_constraint = as->return_constraints # (j - as->constraints_len);
+				putzstr(" (return constraint \0");
+				putuint(j - as->constraints_len);
+				putzstr("): \0");
+			}
+			decl_node ::= ast_assembly_get_constraints(as->node) # j;
+			cur_constraint->name = [ast_decl_get_name(decl_node)];
+			cur_constraint->name_len = [ast_decl_get_name_len(decl_node)];
+			putchars(cur_constraint->name, cur_constraint->name_len);
+			typename_ctx : source_context mut;
+			typename_node ::= ast_decl_get_typename(decl_node);
+			typename_ctx.node = typename_node;
+			typename_ctx.parent_fn = zero;
+			typename_ctx.src = as->src;
+			typename_ctx.type_only = true;
+			putzstr(", type: \0");
+			cur_constraint->type = ty_from_typename_node(ref typename_ctx);
+			putty(cur_constraint->type);
+			putchar('\n');
+		}
+
+		as->type = x64_constraints_to_ty2(as->constraints, as->constraints_len, as->return_constraints, as->return_constraints_len);
+		putzstr("type of \0");
+		putchars([ast_assembly_get_name(as->node)], [ast_assembly_get_name_len(as->node)]);
+		putzstr(" = \0");
+		putty(as->type);
+		putchar('\n');
 		
-		//for(j = 0; j < (as->return_constraints_len + as->constraints_len); j = j + 1)
-		//{
-		//	cur_constraint : assembly_constraint mut? mut;
-		//	if(j < as->constraints_len)
-		//	{
-		//		cur_constraint = as->constraints # j;
-		//	}
-		//	else
-		//	{
-		//		cur_constraint = as->return_constraints # (j - as->constraints_len);
-		//	}
-		//	decl_node ::= ast_assembly_get_constraints(as->node) # j;
-		//	cur_constraint->name = [ast_decl_get_name(decl_node)];
-		//	cur_constraint->name_len = [ast_decl_get_name_len(decl_node)];
-		//	cur_constraint->type = ty_from_typename_node(ast_decl_get_typename(decl_node));
-		//}
 	}
 };
