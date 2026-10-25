@@ -288,6 +288,31 @@ val_from_node_expr_symbol : func(ctx : source_context mut?, out : val mut? -> v0
 	maybe_var ::= scope_find_variable(scope, sym, len);
 	if(maybe_var != zero)
 	{
+		// note: check if the variable was defined in the same context as our source
+		if((ctx->parent_fn != zero) && (maybe_var->src == ctx->src))
+		{
+			parent_fn_begin ::= ctx->parent_fn->node->src_beg@u64;
+			parent_fn_end ::= ctx->parent_fn->node->src_end@u64;
+			// was the symbol defined between parent_fn_begin and parent_fn_end? if so then we assume the symbol is a local variable and we are using it in the function.
+			symbol_use_begin ::= ctx->node->src_beg@u64;
+			if((symbol_use_begin >= parent_fn_begin) && (symbol_use_begin <= parent_fn_end))
+			{
+				// yes. if symbol_use_begin <= maybe_var->node->src_beg@u64, then we are using a variable before it is defined
+				if(symbol_use_begin <= (maybe_var->node->src_beg@u64))
+				{
+					err_begin();
+					putzstr("local variable \0");
+					putchars(sym, len);
+					putzstr(" is used before its definition. used at: \0");
+					putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+					putzstr("but defined at: \0");
+					putsrc(maybe_var->src, maybe_var->node->src_beg@u64, maybe_var->node->src_end@u64, putcol.yellow_underline);
+					err_end();
+				}
+			}
+		}
+
+
 		[out] = maybe_var->storage;
 		if(ctx->type_only)
 		{
@@ -1441,6 +1466,17 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 		putchar('"');
 		putzstr(" at \0");
 		putsrc(ctx->src, callee_node->src_beg@u64, callee_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	if(ty_countof(callee_fnty)@u32 != ast_call_get_params_count(ctx->node))
+	{
+		err_begin();
+		putzstr("invalid call - provided \0");
+		putuint(ast_call_get_params_count(ctx->node));
+		putzstr(" params but expected \0");
+		putuint(ty_countof(callee_fnty));
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	out->type = ty_underlying(callee_fnty);
