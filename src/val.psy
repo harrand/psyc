@@ -624,6 +624,24 @@ val_store_generic : func(ptr : val mut?, v : val mut?, ctx : source_context mut?
 	vcpy : val mut := [v];
 	val_load_if_pointer(ref vcpy, ref vcpy);
 	val_conv(ref vcpy, ptr->type, ref vcpy, ctx);
+
+	if(ptr->tag != val_tag.pointer)
+	{
+		err_begin();
+		putzstr("store to non-storeable destination \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	irtag ::= val_pointer_get_irval(ptr)->tag;
+	if((irtag != irval_tag.reg) && (irtag != irval_tag.globref))
+	{
+		err_begin();
+		putzstr("store to non-storeable destination \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
 	if(vcpy.tag == val_tag.scalar)
 	{
 		ir_store(val_scalar_get_irval(ref vcpy), val_pointer_get_irval(ptr), [val_pointer_get_displacement(ptr)] + [val_scalar_get_displacement(ref vcpy)]);
