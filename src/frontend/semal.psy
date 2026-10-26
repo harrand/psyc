@@ -248,11 +248,36 @@ populate_assemblies : func(-> v0)
 			cur_constraint->name_len = [ast_decl_get_name_len(decl_node)];
 			typename_ctx : source_context mut;
 			typename_node ::= ast_decl_get_typename(decl_node);
-			typename_ctx.node = typename_node;
-			typename_ctx.parent_fn = zero;
-			typename_ctx.src = as->src;
-			typename_ctx.type_only = true;
-			cur_constraint->type = ty_from_typename_node(ref typename_ctx);
+			// note: the typename node could actually be a token ("clobber") which means we give it an invalid type
+			if(typename_node->tag == ast_tag.typename)
+			{
+				typename_ctx.node = typename_node;
+				typename_ctx.parent_fn = zero;
+				typename_ctx.src = as->src;
+				typename_ctx.type_only = true;
+				cur_constraint->type = ty_from_typename_node(ref typename_ctx);
+				if(cur_constraint->type == ty.invalid)
+				{
+					err_begin();
+					putzstr("unknown type of assembly constraint at \0");
+					putsrc(as->src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
+					err_end();
+				}
+			}
+			else
+			{
+				if((typename_node->tag == ast_tag.token) && ([ast_token_get_tag(typename_node)] == token_tag.keyword_clobber))
+				{
+					cur_constraint->type == ty.invalid;
+				}
+				else
+				{
+					err_begin();
+					putzstr("dodgy assembly constraint. expected either a typename or a clobber keyword at \0");
+					putsrc(as->src, typename_node->src_beg@u64, typename_node->src_end@u64, putcol.red_underline);
+					err_end();
+				}
+			}
 		}
 
 		as->type = x64_constraints_to_ty2(as->constraints, as->constraints_len, as->return_constraints, as->return_constraints_len);
