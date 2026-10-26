@@ -275,17 +275,20 @@ reduce : func(r : grammar_result mut? -> v0)
 	// - reduce nodes_cursor by the delete_count
 	pointer_a ::= parse_state.nodes # (r->delete_offset);
 	off : u64 mut := r->shift_or_delete_count;
-	if(off > 0)
-	{
-		off = off - 1;
-	}
 	pointer_b ::= pointer_a # off;
 
 	// before we delete anything, say that the replacement (even if we dont use it we are setting this anyway) begin/end cursors match the whole deletion span
 	beg : u32 mut := pointer_a->src_beg;
 	end : u32 mut := pointer_b->src_end;
 	
-	memcopy(pointer_a, pointer_b, (parse_state.nodes_cursor - r->shift_or_delete_count) * sizeof ast);
+	// nodes_cursor = 7
+	// offset = 1
+	// delete_count = 2
+	// a b c d e f g h
+	//   [-] <-
+	// a d
+	// memcopy(a + 1, a + 1 + 2, c + 1)
+	memcopy(pointer_a, pointer_b, (parse_state.nodes_cursor - (r->shift_or_delete_count + r->delete_offset)) * sizeof ast);
 	parse_state.nodes_cursor = parse_state.nodes_cursor - (r->shift_or_delete_count);
 	
 	if(r->delete_offset > 0)
@@ -293,6 +296,7 @@ reduce : func(r : grammar_result mut? -> v0)
 		// the last node before the delete_offset should have its src_end extended to fit hte deleted nodes
 		(parse_state.nodes # (r->delete_offset - 1))->src_end = end;
 	}
+	// maybe the first node after the offset + delete_amt should have its src_beg distended?
 };
 
 commit : func(-> v0)
