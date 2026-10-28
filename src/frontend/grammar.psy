@@ -4,6 +4,8 @@ grammar_install : func(-> v0)
 	grammar_return();
 	foreach_expr(grammar_return_expr);
 
+	grammar_attrib();
+
 	grammar_unreachable();
 	grammar_setup_base_operators();
 	grammar_basic_exprs();
@@ -93,6 +95,30 @@ grammar_return_expr : func(t : ast_expr_tag -> v0)
 	state3(_token(token_tag.keyword_return), _expr(t), _token(token_tag.semicol),
 		zero, zero);
 	grammar_associate(rule_keywordreturn_exprx_semicol2returnstmt);
+};
+
+grammar_attrib : func(-> v0)
+{
+	state1(_token(token_tag.dollar),
+		_token(token_tag.symbol), zero);
+	grammar_associate(rule_shift1);
+
+	state2(_token(token_tag.dollar), _token(token_tag.symbol),
+		zero, zero);
+	grammar_associate(rule_dollar_symbol2attrib);
+
+	state1(_node(ast_tag.attrib),
+		zero, zero);
+	grammar_associate(rule_stash);
+
+	// attribs can apply to functionfinalised
+	state1(_function(ast_function_parse_state.finalised),
+		zero, _node(ast_tag.attrib));
+	grammar_associate(rule_unstash);
+
+	state2(_node(ast_tag.attrib), _function(ast_function_parse_state.finalised),
+		zero, zero);
+	grammar_associate(rule_attrib_functionfinalised2functionfinalised);
 };
 
 grammar_unreachable : func(-> v0)

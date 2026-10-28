@@ -41,7 +41,7 @@ ast_tag : enum
 	.init := 6;
 	// structure (d1 = name, d2 = name_len, d3 = structure_parse_state, child0... = decl-stmt data members)
 	.structure := 7;
-	// function (d1 = name, d2 = name_len, d3 = function_parse_state, child0 = return typename, child1... = param decls 1-N, childN... = function body statements)
+	// function (d1 = name, d2 = name_len, d3 = function_parse_state, d4 = attrib_count, child0 = return typename, child1... = param decls 1-N, childN... = function body statements, childN... = function attribs)
 	.function := 8;
 	// enumeration (d1 = name, d2 = name_len, d3 = enumeration_parse_state, child0... = entry init statements)
 	.enumeration := 9;
@@ -65,6 +65,8 @@ ast_tag : enum
 	.forblk := 18;
 	// block initialiser (d2 = blkinit_parse_state, child0 = typename node, child1... = member init statements)
 	.blkinit := 19;
+	// attribute (d1 = name, d2 = name_len)
+	.attrib := 20;
 };
 
 ast_stmt_tag : enum
@@ -846,6 +848,11 @@ ast_function_get_parse_state : func(n : ast mut? -> ast_function_parse_state mut
 	return ref(n->d3)@ast_function_parse_state mut?;
 };
 
+ast_function_get_attribs_count : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d4)@u64 mut?;
+};
+
 ast_function_get_typename : func(n : ast mut? -> ast mut?)
 {
 	return n->children # 0;
@@ -853,12 +860,22 @@ ast_function_get_typename : func(n : ast mut? -> ast mut?)
 
 ast_function_get_body : func(n : ast mut? -> ast mut?)
 {
-	return n->children # 1;
+	return n->children # ast_function_get_offset_to_body(n);
+};
+
+ast_function_get_offset_to_body : func(n : ast mut? -> u32)
+{
+	return 1;
 };
 
 ast_function_get_body_size : func(n : ast mut? -> u32)
 {
-	return n->children_count - 1;
+	return n->children_count - ([ast_function_get_attribs_count(n)] + 1)@u32;
+};
+
+ast_function_get_attribs : func(n : ast mut? -> ast mut?)
+{
+	return n->children # (n->children_count@u64 - [ast_function_get_attribs_count(n)]);
 };
 
 ast_enumeration_get_name : func(n : ast mut? -> u8 mut? mut?)
@@ -1128,6 +1145,16 @@ ast_init_get_symbol_len : func(n : ast mut? -> u64 mut?)
 	return ref(n->d4)@u64 mut?;
 };
 
+ast_attrib_get_name : func(n : ast mut? -> u8 mut? mut?)
+{
+	return ref(n->d1)@u8 mut? mut?;
+};
+
+ast_attrib_get_name_len : func(n : ast mut? -> u64 mut?)
+{
+	return ref(n->d1)@u64 mut?;
+};
+
 ast_symbol_get_data : func(n : ast mut? -> u8 mut? mut?)
 {
 	return ref(n->d2)@u8 mut? mut?;
@@ -1353,6 +1380,7 @@ ast_dump_tbl ::= func(n : ast mut?, src : u8?, src_len : u64 -> v0)[countof ast_
 	.17 := zero;
 	.18 := zero;
 	.19 := zero;
+	.20 := ast_dump_attrib;
 };
 
 ast_dump_root : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
@@ -1426,6 +1454,11 @@ ast_dump_enumeration : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
 ast_dump_assembly : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
 {
 	putzstr("assembly\n\0");
+};
+
+ast_dump_attrib : func(n : ast mut?, src : u8?, src_len : u64 -> v0)
+{
+	putzstr("attrib\n\0");
 };
 
 ast_dump_one : func(n : ast mut?, src : u8?, src_len : u64, tabcount : u64 -> v0)
