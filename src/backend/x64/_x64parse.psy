@@ -252,12 +252,16 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 			for(i = 0; i < countof typeof x64memreg_size_name; i = i + 1)
 			{
 				curname_zstr ::= [x64memreg_size_name # i];
+				curname_zstrlen ::= zstrlen(curname_zstr);
 				if(strstartswith(code # cursor, code_len - cursor, curname_zstr, zstrlen(curname_zstr)))
 				{
-					// ok we really should expect a memory operand.
-					curop_is_mem = true;
-					curop_mem_sz = 8 << i;
-					cursor = cursor + zstrlen(curname_zstr);
+					if(strstartswith(code # (cursor + curname_zstrlen), code_len - (cursor + curname_zstrlen), "_PTR [", 6))
+					{
+						// ok we really should expect a memory operand.
+						curop_is_mem = true;
+						curop_mem_sz = 8 << i;
+						cursor = cursor + curname_zstrlen + 6;
+					}
 				}
 			}
 			// ok now search all registers
@@ -336,7 +340,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 				x64inst_dump(ref curinst);
 				panic_end();
 			}
-			if(curop_is_mem)
+			if(curop_is_mem && ([code # cursor] == ']'))
 			{
 				curop_cpy ::= curop;
 				curop.tag = x64val_tag.memreg;
@@ -348,6 +352,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 				[x64val_memreg_get_displacement(ref curop)] = zero;
 				[x64val_memreg_get_displacement_size(ref curop)] = zero;
 				[x64val_memreg_get_size(ref curop)] = curop_mem_sz;
+				cursor = cursor + 1;
 			}
 			// lets fucking go
 			x64inst_add_operand(ref curinst, ref curop);

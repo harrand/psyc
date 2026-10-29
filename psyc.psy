@@ -109,15 +109,13 @@ scratch_reset : func(-> v0)
 	arena_clear(scratch_arena);
 };
 
-pargc : s64? mut;
-pargv : u8??? mut;
 argc : s64 mut;
 argv : u8?? mut;
 
 __start : asm(rax : u64 weak, rcx : u64 weak ->)
 {
 	mov r8, rsp
-	mov $0, r8
+	mov $0, QWORD_PTR [r8]
 	add r8, 8
 	mov $1, r8
 };
@@ -125,10 +123,7 @@ __start : asm(rax : u64 weak, rcx : u64 weak ->)
 $bare
 _start : func(-> v0)
 {
-	// just do this once we can change the inline-asm to use memory operands
-	//__start(ref(argc), ref(argv));
-	__start(ref(pargc), ref(argv));
-	argc = [pargc];
+	__start(ref(argc), ref(argv));
 
 	linux_exit(main());
 	unreachable;
