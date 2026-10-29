@@ -1829,7 +1829,11 @@ irinst_lower_x64_asmcall : func(fn : irfunc mut?, blk : irblk mut?, inst : irins
 		// move the param values to the input registers as requested by the constraint string
 		// depending on lowering we could actually want to end up doing this in a different order. todo: emit a custom begin/end instruction to tell the legaliser to re-order these sensibly
 		irval_lower_x64(params_begin # i, paramsx64 # i);
-		ir_lower_x64_generic_move_no_load(constraints.inputs # i, paramsx64 # i);
+		cur_input ::= constraints.inputs # i;
+		if(cur_input->tag != x64val_tag.invalid)
+		{
+			ir_lower_x64_generic_move_no_load(constraints.inputs # i, paramsx64 # i);
+		}
 	}
 	x64_parse_asm(as->code, as->code_len, paramsx64 # 0, params_count);
 	for(i = 0; i < constraints.clobbers_count; i = i + 1)
