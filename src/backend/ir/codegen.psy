@@ -244,6 +244,31 @@ codegen_ir_funcsig : func(fn : function_t mut? -> v0)
 		ir_add_return(sz);
 	}
 
+	// check for attribs
+	attribs_begin ::= ast_function_get_attribs(fn->node);
+	attribs_count ::= [ast_function_get_attribs_count(fn->node)];
+	for(i = 0; i < attribs_count; i = i + 1)
+	{
+		cur_attrib ::= attribs_begin # i;
+		attrib_matches_anything : bool mut := false;
+		if(streql([ast_attrib_get_name(cur_attrib)], [ast_attrib_get_name_len(cur_attrib)], "bare", 4))
+		{
+			irfn->attribs = irfn->attribs | irfunc_attrib.bare;
+			attrib_matches_anything = true;
+		}
+		if(!attrib_matches_anything)
+		{
+			err_begin();
+			putzstr("unrecognised function attribute \0");
+			putchar('"');
+			putchars([ast_attrib_get_name(cur_attrib)], [ast_attrib_get_name_len(cur_attrib)]);
+			putchar('"');
+			putzstr(" at \0");
+			putsrc(fn->src, cur_attrib->src_beg@u64, cur_attrib->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+	}
+
 	fn->irfunc_idx = irfn->idx;
 };
 
