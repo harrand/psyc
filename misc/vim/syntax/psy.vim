@@ -26,6 +26,7 @@ syn match psy_float display "\<[0-9][0-9_]*\%(\.[0-9][0-9_]*\)\%([eE][+-]\=[0-9_
 syn match psy_float display "\<[0-9][0-9_]*\%(\.[0-9][0-9_]*\)\=\%([eE][+-]\=[0-9_]\+\)\(f32\|f64\)\="
 syn match psy_float display "\<[0-9][0-9_]*\%(\.[0-9][0-9_]*\)\=\%([eE][+-]\=[0-9_]\+\)\=\(f32\|f64\)"
 syn match psy_call "\w\(\w\)*("he=e-1,me=e-1
+syn match psy_attrib /\$\k*/
 
 syn region psy_string_literal start=+"+ skip=+\\"+ end=+"+
 syn region psy_char_literal start=+'+ skip=+\\'+ end=+'+
@@ -46,6 +47,7 @@ hi link psy_call Function
 hi link psy_funcs Type
 hi link psy_keywords Keyword
 hi link psy_modifiers Storage
+hi link psy_attrib Operator
 hi link psy_constants Number
 hi link psy_operators Operator
 
