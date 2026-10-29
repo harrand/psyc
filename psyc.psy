@@ -1,9 +1,41 @@
 == default ==
 {
 	add_source_directory_recursive("src");
-	entrypoint("_start");
 };
 
+argc : s64 mut;
+argv : u8?? mut;
+
+collect_args_linux : asm(_ : u64 weak, _ : u64 weak ->)
+{
+	mov r8, rsp
+	mov $0, QWORD_PTR [r8]
+	add r8, 8
+	mov $1, r8
+};
+
+$bare $entrypoint
+_start : func(-> v0)
+{
+	collect_args_linux(ref(argc), ref(argv));
+
+	linux_exit(main());
+	unreachable;
+};
+
+main : func(-> s32)
+{
+	setup_arenas();
+
+	lex_init();
+	grammar_setup();
+	parse_args();
+
+	compile();
+
+	teardown_arenas();
+	return 0;
+};
 
 global_arena_value : arena mut;
 global_arena : arena mut? mut;
@@ -109,36 +141,3 @@ scratch_reset : func(-> v0)
 	arena_clear(scratch_arena);
 };
 
-argc : s64 mut;
-argv : u8?? mut;
-
-collect_args_linux : asm(_ : u64 weak, _ : u64 weak ->)
-{
-	mov r8, rsp
-	mov $0, QWORD_PTR [r8]
-	add r8, 8
-	mov $1, r8
-};
-
-$bare
-_start : func(-> v0)
-{
-	collect_args_linux(ref(argc), ref(argv));
-
-	linux_exit(main());
-	unreachable;
-};
-
-main : func(-> s32)
-{
-	setup_arenas();
-
-	lex_init();
-	grammar_setup();
-	parse_args();
-
-	compile();
-
-	teardown_arenas();
-	return 0;
-};
