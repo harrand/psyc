@@ -5,6 +5,7 @@ grammar_install : func(-> v0)
 	foreach_expr(grammar_return_expr);
 
 	grammar_attrib();
+	grammar_builtin();
 
 	grammar_unreachable();
 	grammar_setup_base_operators();
@@ -119,6 +120,18 @@ grammar_attrib : func(-> v0)
 	state2(_node(ast_tag.attrib), _function(ast_function_parse_state.finalised),
 		zero, zero);
 	grammar_associate(rule_attrib_functionfinalised2functionfinalised);
+};
+
+grammar_builtin : func(-> v0)
+{
+	// attrib oparen => builtin call
+	state1(_token(token_tag.oparen),
+		zero, _node(ast_tag.attrib));
+	grammar_associate(rule_unstash);
+
+	state2(_node(ast_tag.attrib), _token(token_tag.oparen),
+		zero, zero);
+	grammar_associate(rule_attrib_oparen2callwip);
 };
 
 grammar_unreachable : func(-> v0)
