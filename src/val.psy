@@ -1463,9 +1463,22 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 	ir_add(val_scalar_get_irval(out), val_scalar_get_irval(out), ref rhs_addition_bytes);
 };
 
+val_from_node_expr_builtin_call : func(ctx : source_context mut?, out : val mut?  -> v0)
+{
+	panic_begin();
+	putzstr("calling builtins outside of build regions is not yet implemented at \0");
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+	panic_end();
+};
+
 val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 {
 	// we expect callee scalar
+	if([ast_call_get_is_builtin_call(ctx->node)])
+	{
+		val_from_node_expr_builtin_call(ctx, out);
+		return;
+	}
 	callee_node ::= ast_call_get_callee(ctx->node);
 
 	callee_ctx : source_context mut := [ctx];
