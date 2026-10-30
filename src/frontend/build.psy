@@ -47,10 +47,21 @@ execute_build_inst_call : func(call : ast mut?, src : source -> v0)
 	else
 	{
 		// todo: call other build region. find the build region of name matching the callee (error if not exists) and then call that too.
-		panic_begin();
-		putzstr("build region non-builtin calls are not yet implemented at \0");
-		putsrc(src, call->src_beg@u64, call->src_end@u64, putcol.red_underline);
-		panic_end();
+		file_ast ::= ref(prog_get_source(src)->node);
+
+		other_region ::= find_build_region(file_ast, [ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)]);
+		if(other_region == zero)
+		{
+			err_begin();
+			putzstr("call to build-region \0");
+			putchar('"');
+			putchars([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)]);
+			putchar('"');
+			putzstr(", which is not found in the same source-file at \0");
+			putsrc(src, call->src_beg@u64, call->src_end@u64, putcol.red_underline);
+			err_end();
+		}
+		execute_build_region(src, other_region);
 	}
 };
 
