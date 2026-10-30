@@ -1465,10 +1465,16 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 
 val_from_node_expr_builtin_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 {
-	panic_begin();
-	putzstr("calling builtins outside of build regions is not yet implemented at \0");
-	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
-	panic_end();
+	callee_node ::= ast_call_get_callee(ctx->node);
+	if([ast_expr_get_tag(callee_node)] != ast_expr_tag.symbol)
+	{
+		err_begin();
+		putzstr("callee must be a symbol expression if the call is a builtin call (intrinsic) at \0");
+		putsrc(ctx->src, callee_node->src_beg@u64, callee_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	// a builtin call outside of a build region is a call to a compiler intrinsic (see intrinsics.psy)
+	val_from_node_expr_intrinsic_call(ctx, [ast_symbol_get_data(callee_node)], [ast_symbol_get_data_len(callee_node)], out);
 };
 
 val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
