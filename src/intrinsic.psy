@@ -30,6 +30,10 @@ val_from_node_expr_intrinsic_call : func(ctx : source_context mut?, name : u8?, 
 	{
 		val_from_node_expr_intrinsic_call_error_end(ctx, param_nodes, param_count, out);
 	}
+	if(streql(name, name_len, "embed", 5))
+	{
+		val_from_node_expr_intrinsic_call_embed(ctx, param_nodes, param_count, out);
+	}
 };
 
 val_from_node_expr_intrinsic_call_print : func(ctx : source_context mut?, param_nodes : ast mut?, params_count : u64, out : val mut? -> v0)
@@ -65,7 +69,7 @@ val_from_node_expr_intrinsic_call_message_end : func(ctx : source_context mut?, 
 	if(params_count != 0)
 	{
 		err_begin();
-		putzstr("invalid call to intrinsic $message_begin - expected 0 params, got \0");
+		putzstr("invalid call to intrinsic $message_end - expected 0 params, got \0");
 		putuint(params_count);
 		putzstr(" at \0");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
@@ -93,7 +97,7 @@ val_from_node_expr_intrinsic_call_warning_end : func(ctx : source_context mut?, 
 	if(params_count != 0)
 	{
 		err_begin();
-		putzstr("invalid call to intrinsic $warning_begin - expected 0 params, got \0");
+		putzstr("invalid call to intrinsic $warning_end - expected 0 params, got \0");
 		putuint(params_count);
 		putzstr(" at \0");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
@@ -121,11 +125,100 @@ val_from_node_expr_intrinsic_call_error_end : func(ctx : source_context mut?, pa
 	if(params_count != 0)
 	{
 		err_begin();
-		putzstr("invalid call to intrinsic $error_begin - expected 0 params, got \0");
+		putzstr("invalid call to intrinsic $error_end - expected 0 params, got \0");
 		putuint(params_count);
 		putzstr(" at \0");
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	err_end();
+};
+
+val_from_node_expr_intrinsic_call_embed : func(ctx : source_context mut?, param_nodes : ast mut?, params_count : u64, out : val mut? -> v0)
+{
+	if(params_count != 3)
+	{
+		err_begin();
+		putzstr("invalid call to intrinsic $embed - expected 0 params, got \0");
+		putuint(params_count);
+		putzstr(" at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	param1 : val mut;
+	param1_ctx : source_context mut := [ctx];
+	param1_ctx.node = param_nodes # 1;
+	val_from_node(ref param1_ctx, ref param1);
+	val_load_if_pointer(ref param1, ref param1);
+	val_conv(ref param1, ty_make_pointer(ty_make_pointer(ty.u8, zero), ty.qual_mut | ty.qual_weak), ref param1, ref param1_ctx);
+	val_scalar_realise_displacement(ref param1, ref param1, ref param1_ctx);
+
+	param2 : val mut;
+	param2_ctx : source_context mut := [ctx];
+	param2_ctx.node = param_nodes # 2;
+	val_from_node(ref param2_ctx, ref param2);
+	val_load_if_pointer(ref param2, ref param2);
+	val_conv(ref param2, ty_make_pointer(ty.u64, ty.qual_mut | ty.qual_weak), ref param2, ref param2_ctx);
+	val_scalar_realise_displacement(ref param2, ref param2, ref param2_ctx);
+
+	filename_zstr ::= sstr2zstr([ast_literal_get_string(param_nodes # 0)], [ast_literal_get_string_len(param_nodes # 0)], scratch_arena);
+	
+	stats : file_stats mut;
+	staterr ::= path_get_stats(zstr2path(filename_zstr), ref stats, file.cwd);
+	if(staterr != zero)
+	{
+		err_begin();
+		putzstr("embed file \0");
+		putchar('"');
+		putzstr(filename_zstr);
+		putchar('"');
+		putzstr(" open failed with error code \0");
+		putsint(staterr@s64);
+		err_end();
+	}
+	if(stats.type == file_type.notfound)
+	{
+		err_begin();
+		putzstr("embed file \0");
+		putchar('"');
+		putzstr(filename_zstr);
+		putchar('"');
+		putzstr(" could not be found\0");
+		err_end();
+	}
+
+	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
+	f : file := path_open(zstr2path(filename_zstr), file.cwd, file_access.read, zero);
+	file_read(f, ptr, stats.size);
+	file_close(f);
+
+	strlit_val : val mut;
+	strlit ::= ir_add_glob(ptr, stats.size, false, val_scalar_get_irval(ref strlit_val));
+	strlit_val.tag = val_tag.scalar;
+	strlit_val.type = ty_string_literal();
+	[val_scalar_get_displacement(ref strlit_val)] = 0;
+
+	strlit_size_val : val mut;
+	strlit_size_val.tag = val_tag.scalar;
+	strlit_size_val.type = ty_integer_literal();
+	irval_qimm(stats.size, val_scalar_get_irval(ref strlit_size_val));
+	[val_scalar_get_displacement(ref strlit_size_val)] = 0;
+
+	if(ctx->type_only)
+	{
+		return;
+	}
+
+	// store into param1 the pointer to the string literal
+	param1.type = ty_underlying(param1.type);
+	param1.tag = val_tag.pointer;
+	[val_pointer_get_irval(ref param1)] = [val_scalar_get_irval(ref param1)];
+	[val_pointer_get_displacement(ref param1)] = [val_scalar_get_displacement(ref param1)];
+	val_store_generic(ref param1, ref strlit_val, ctx);
+	// store into param2 stats.size as an integer literal
+	param2.type = ty_underlying(param2.type);
+	param2.tag = val_tag.pointer;
+	[val_pointer_get_irval(ref param2)] = [val_scalar_get_irval(ref param2)];
+	[val_pointer_get_displacement(ref param2)] = [val_scalar_get_displacement(ref param2)];
+	val_store_generic(ref param2, ref strlit_size_val, ctx);
 };
