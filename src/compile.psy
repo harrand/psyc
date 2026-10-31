@@ -188,8 +188,23 @@ write_output_x64 : func(-> v0)
 		err_end();
 	}
 
-	out_name ::= sstr2zstr(prog.output.data, prog.output.len, global_arena);
-	f ::= path_open(zstr2path(out_name), file.cwd, file_access.write, path_open_flag.truncate | path_open_flag.create_if_notfound | path_open_flag.create_executable);
+	out_dirname ::= sstr2zstr(prog.output_dir.data, prog.output_dir.len, global_arena);
+	out_name ::= sstr2zstr(prog.output_name.data, prog.output_name.len, global_arena);
+	output_dir ::= path_open(zstr2path(out_dirname), file.cwd, file_access.directory, path_open_flag.create_if_notfound);
+
+	if(file_is_valid(output_dir) == false)
+	{
+		err_begin();
+		putzstr("failed to open output directory \0");
+		putchar('"');
+		putzstr(out_dirname);
+		putchar('"');
+		putzstr(": error code \0");
+		putsint(file_get_error(output_dir)@s64);
+		err_end();
+	}
+
+	f ::= path_open(zstr2path(out_name), output_dir, file_access.write, path_open_flag.truncate | path_open_flag.create_if_notfound | path_open_flag.create_executable);
 
 	if(file_is_valid(f) == false)
 	{

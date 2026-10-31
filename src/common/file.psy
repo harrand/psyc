@@ -22,6 +22,7 @@ file_access : enum
 	.read := 0;
 	.write := 1;
 	.read_write := 2;
+	.directory := 4;
 };
 
 path : enum
@@ -94,6 +95,7 @@ path_open_flag : enum
 
 path_open : func(p : path, relative_to : file, access : file_access, flags : path_open_flag -> file)
 {
+	access_flags : s64 mut := access@s64;
 	linux_dirfd : s32 mut := relative_to@s64@s32;
 	if(relative_to == file.cwd)
 	{
@@ -113,7 +115,20 @@ path_open : func(p : path, relative_to : file, access : file_access, flags : pat
 		// remove path_open_flag.create_executable from flagbits because it should only affect mode and not flags
 		flagbits = flagbits & ~(0x1);
 	}
-	return linux_openat(linux_dirfd, path2zstr(p), access@s64 | flagbits, mode)@s64@file;
+
+	if((access & file_access.directory) != zero)
+	{
+		access_flags = file_access.read@s64;
+		// if we want to create_if_notfound and its a directory then we should call mkdirat
+		if((flags & path_open_flag.create_if_notfound) != zero)
+		{
+			// make sure the directory exists.
+			linux_mkdirat(linux_dirfd, path2zstr(p), 0x1ff); // O777
+			// remove the O_CREAT in this case because it implies writing which is not allowed for directories
+			flagbits = flagbits & (~path_open_flag.create_if_notfound@s64);
+		}
+	}
+	return linux_openat(linux_dirfd, path2zstr(p), access_flags | flagbits, mode)@s64@file;
 };
 
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
