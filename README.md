@@ -12,6 +12,8 @@ Psyc has zero dependencies.
 ## Usage
 `psyc [options] file.psy`
 ### Options
+`-b <build_region>`     Invoke specific build region instead of `default`
+
 `--dump-tokens`         Dump all tokens of all source files to stdout.
 
 `--dump-ast`            Dump the full AST for each source file to stdout.
