@@ -201,6 +201,18 @@ execute_build_builtin_set_optimization : func(params : ast mut?, params_count : 
 	prog.opt = [irval_imm_get_integer(opt_irval)]@program_optimisation;
 };
 
+execute_build_builtin_debug_symbols : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	opt_val : val mut;
+	opt_ctx : source_context mut;
+	opt_ctx.node = params # 0;
+	opt_ctx.parent_fn = zero;
+	opt_ctx.src = src;
+	val_from_node(ref opt_ctx, ref opt_val);
+	opt_irval ::= val_scalar_get_irval(ref opt_val);
+	prog.debug_symbols = ([irval_imm_get_integer(opt_irval)] != 0);
+};
+
 execute_build_builtin_output_directory : func(params : ast mut?, params_count : u32, src : source -> v0)
 {
 	prog.output_dir.data = [ast_literal_get_string(params # 0)];
@@ -238,6 +250,11 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, para
 	if(streql(name, name_len, "set_optimization", 16))
 	{
 		execute_build_builtin_set_optimization(params, params_count, src);
+		return;
+	}
+	if(streql(name, name_len, "debug_symbols", 13))
+	{
+		execute_build_builtin_debug_symbols(params, params_count, src);
 		return;
 	}
 	if(streql(name, name_len, "output_directory", 16))
