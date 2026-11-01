@@ -509,7 +509,7 @@ val_from_node_expr_unop_bitwise_invert : func(operand : val mut?, ctx : source_c
 {
 	out->type = operand->type;
 	out->tag = val_tag.scalar;
-	if((ty_integral_size(operand->type) == 0) && (ty_floating_point_size(operand->type) == 0) && (ty_is_enumeration(operand->type) == false))
+	if((ty_integral_size(operand->type) == 0) && (ty_floating_point_size(operand->type) == 0) && !ty_is_enumeration(operand->type))
 	{
 		err_begin();
 		putzstr("cannot negate non-numeric, non-enum type \0");
@@ -532,7 +532,7 @@ val_from_node_expr_unop_logical_invert : func(operand : val mut?, ctx : source_c
 {
 	out->type = operand->type;
 	out->tag = val_tag.scalar;
-	if(ty_is_bool(operand->type) == false)
+	if(!ty_is_bool(operand->type))
 	{
 		err_begin();
 		putzstr("cannot logical-invert non-bool type \0");
@@ -678,7 +678,7 @@ val_from_node_expr_biop_compare_equal : func(lhs_node : ast mut?, rhs_node : ast
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_equality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_equality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare types \0");
@@ -711,7 +711,7 @@ val_from_node_expr_biop_compare_not_equal : func(lhs_node : ast mut?, rhs_node :
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_equality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_equality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare types \0");
@@ -744,7 +744,7 @@ val_from_node_expr_biop_compare_less : func(lhs_node : ast mut?, rhs_node : ast 
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_inequality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_inequality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare-less types \0");
@@ -791,7 +791,7 @@ val_from_node_expr_biop_compare_less_equal : func(lhs_node : ast mut?, rhs_node 
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_inequality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_inequality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare-less-equal types \0");
@@ -838,7 +838,7 @@ val_from_node_expr_biop_compare_greater : func(lhs_node : ast mut?, rhs_node : a
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_inequality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_inequality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare-greater types \0");
@@ -885,7 +885,7 @@ val_from_node_expr_biop_compare_greater_equal : func(lhs_node : ast mut?, rhs_no
 	val_load_if_pointer(rhs_val, rhs_val);
 	val_scalar_realise_displacement(rhs_val, rhs_val, ctx);
 
-	if(ty_inequality_comparable_to(lhs_val->type, rhs_val->type) == false)
+	if(!ty_inequality_comparable_to(lhs_val->type, rhs_val->type))
 	{
 		err_begin();
 		putzstr("cannot compare-greater-equal types \0");
@@ -1381,7 +1381,7 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 		val_conv(rhs_val, ty_add_weak(ty.u64), rhs_val, ref rhs_ctx);
 	}
 
-	if((ty_is_pointer(lhs_val->type) == false) && (ty_is_array(lhs_val->type) == false))
+	if(!ty_is_pointer(lhs_val->type) && !ty_is_array(lhs_val->type))
 	{
 		err_begin();
 		putzstr("lhs of 'at' (#) expression must be either an array or a pointer, you have provided a \0");
@@ -1395,7 +1395,7 @@ val_from_node_expr_biop_at : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs_
 
 	out->type = ty_make_pointer(ty_underlying(lhs_val->type), zero);
 	out->tag = val_tag.scalar;
-	if(ty_is_array(lhs_val->type) == false)
+	if(!ty_is_array(lhs_val->type))
 	{
 		val_load_if_pointer(lhs_val, lhs_val);
 	}
@@ -1494,7 +1494,7 @@ val_from_node_expr_call : func(ctx : source_context mut?, out : val mut?  -> v0)
 	val_from_node(ref callee_ctx, ref callee_val);
 	val_load_if_pointer(ref callee_val, ref callee_val);
 	callee_fnty ::= callee_val.type;
-	if(ty_is_function(callee_fnty) == false)
+	if(!ty_is_function(callee_fnty))
 	{
 		err_begin();
 		putzstr("call to non-callable type \0");
@@ -1804,7 +1804,7 @@ val_from_node_expr_dereference : func(ctx : source_context mut?, out : val mut? 
 	val_from_node(ref operand_ctx, ref operand_val);
 	val_load_if_pointer(ref operand_val, ref operand_val);
 	
-	if(ty_is_pointer(operand_val.type) == false)
+	if(!ty_is_pointer(operand_val.type))
 	{
 		err_begin();
 		putzstr("cannot dereference non-pointer-type \0");
@@ -1880,7 +1880,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 	lhs_node ::= ast_field_get_lhs(ctx->node);
 	rhs_node ::= ast_field_get_rhs(ctx->node);
 	is_ptr_field ::= [ast_field_get_parse_state(ctx->node)] == ast_field_parse_state.finalisedarrow;
-	if(ast_is_expr(lhs_node, ast_expr_tag.symbol) && (is_ptr_field == false))
+	if(ast_is_expr(lhs_node, ast_expr_tag.symbol) && !is_ptr_field)
 	{
 		lhs_as_type ::= ty_find_by_name([ast_symbol_get_data(lhs_node)], [ast_symbol_get_data_len(lhs_node)]);
 		if(lhs_as_type != ty.invalid)
@@ -1904,7 +1904,7 @@ val_from_node_expr_field : func(ctx : source_context mut?, out : val mut? -> v0)
 		lhs_access_type = ty_underlying(lhs.type);
 	}
 
-	if(ty_is_structure(lhs_access_type) == false)
+	if(!ty_is_structure(lhs_access_type))
 	{
 		err_begin();
 		putzstr("invalid aggregate access field expression of non-struct-type \0");
@@ -2071,7 +2071,7 @@ val_from_node_expr_enum_field : func(type : ty, rhs_symbol_node : ast mut?, ctx 
 		out->type = type;
 		return;
 	}
-	if(ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol) == false)
+	if(!ast_is_expr(rhs_symbol_node, ast_expr_tag.symbol))
 	{
 		err_begin();
 		putzstr("lhs of field-expression was enum type \0");
@@ -2237,7 +2237,7 @@ val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0
 	true_ctx.node = zero;
 	true_off ::= ast_if_get_offset_to_body(ctx->node);
 	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
-	if(irblk_has_terminator(ir_current_blk()) == false)
+	if(!irblk_has_terminator(ir_current_blk()))
 	{
 		ir_jmp(cont_blk->idx);
 	}
@@ -2251,7 +2251,7 @@ val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0
 		false_ctx.node = maybe_else;
 		ast_walk(maybe_else, 0, maybe_else->children_count@u64, codegen_node_callback, ref false_ctx);
 	}
-	if(irblk_has_terminator(ir_current_blk()) == false)
+	if(!irblk_has_terminator(ir_current_blk()))
 	{
 		ir_jmp(cont_blk->idx);
 	}
@@ -2293,7 +2293,7 @@ val_from_node_stmt_while_blk : func(ctx : source_context mut?, out : val mut? ->
 	true_ctx.node = zero;
 	true_off ::= ast_while_get_offset_to_body(ctx->node);
 	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
-	if(irblk_has_terminator(ir_current_blk()) == false)
+	if(!irblk_has_terminator(ir_current_blk()))
 	{
 		val_from_node(ref cond_ctx, ref cond_val);
 		val_load_if_pointer(ref cond_val, ref cond_val);
@@ -2350,7 +2350,7 @@ val_from_node_stmt_for_blk : func(ctx : source_context mut?, out : val mut? -> v
 	true_off ::= ast_for_get_offset_to_body(ctx->node);
 	ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
 	// and then the cond if there is one
-	if(irblk_has_terminator(ir_current_blk()) == false)
+	if(!irblk_has_terminator(ir_current_blk()))
 	{
 		// do the iter
 		val_from_node(ref iter_ctx, ref dummy);

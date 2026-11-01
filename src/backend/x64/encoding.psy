@@ -86,7 +86,7 @@ x64enc_pre_encode_empty : func(enc : x64enc_table_entry mut?, operands : x64val 
 			x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out);
 		}
 	}
-	if(has_any_rm == false)
+	if(!has_any_rm)
 	{
 		[modrm_out] = zero;
 		[sib_out] = zero;
@@ -233,7 +233,7 @@ x64enc_pre_encode_handle_rm : func(enc : x64enc_table_entry mut?, rm_operand : x
 		sib_edge_case ::= (rm_baseregbits == x64_reg.rsp) || (rm_baseregbits == x64_reg.r12);
 		// do we need a sib?
 		// note: r12 and rsp as base registers require a SIB!
-		if(((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0)) && (sib_edge_case == false))
+		if(((rm_operand->tag == x64val_tag.fnref) || (rm_operand->tag == x64val_tag.globref) || ([x64val_memreg_get_index_size(rm_operand)] == 0) || ([x64val_memreg_get_scale(rm_operand)] == 0)) && !sib_edge_case)
 		{
 			[sib_out] = zero;
 			return;
@@ -328,7 +328,7 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 	count ::= x64inst_operands_count(inst);
 	x64enc_catch_edge_cases(inst, m);
 
-	if((x64inst_is_encodeable(inst) == false) && (allow_unencodeable == false))
+	if(!x64inst_is_encodeable(inst) && !allow_unencodeable)
 	{
 		panic_begin();
 		putzstr("attempt to encode unencodeable instruction:\n\0");
@@ -398,7 +398,7 @@ x64inst_encode_to : func(w : bwriter mut?, inst : x64inst mut?, fn : x64func mut
 	for(i = 0; i < count; i = i + 1)
 	{
 		op ::= inst->operands # i;
-		if((x64val_is_encodeable(op) == false) && (allow_unencodeable == false))
+		if(!x64val_is_encodeable(op) && !allow_unencodeable)
 		{
 			//panic_begin();
 			warn_begin();
