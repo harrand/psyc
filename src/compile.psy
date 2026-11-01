@@ -253,7 +253,20 @@ write_output_x64 : func(-> v0)
 			putzstr(" could not be found\0");
 			err_end();
 		}
-		edata.entrypoint = (x64api.prog.funcs # (the_entrypoint->irfunc_idx))->enc_byte_offset_begin;
+		entrypoint_irfn ::= irapi.prog.funcs # (the_entrypoint->irfunc_idx);
+		entrypoint_fn ::= x64api.prog.funcs # (the_entrypoint->irfunc_idx);
+		edata.entrypoint = entrypoint_fn->enc_byte_offset_begin;
+		if((entrypoint_irfn->blks_count == 1) && ((entrypoint_irfn->blks # 0)->insts_count == 1))
+		{
+			warn_begin();
+			putzstr("entrypoint function \0");
+			putchar('"');
+			putchars(prog.entrypoint.data, prog.entrypoint.len);
+			putchar('"');
+			putzstr(" contains no real instructions, which is likely to crash on most platforms at \0");
+			putsrc(the_entrypoint->src, the_entrypoint->node->src_beg@u64, the_entrypoint->node->src_end@u64, putcol.yellow_underline);
+			warn_end();
+		}
 	}
 
 	// repurpose code to be the final elf writer
