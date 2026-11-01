@@ -318,28 +318,21 @@ add_source_file : func(p : path -> source)
 		err_end();
 		return source.invalid;
 	}
-	if(stats.size == 0)
-	{
-		warn_begin();
-		putzstr("file \0");
-		putchar('"');
-		putzstr(path2zstr(p));
-		putchar('"');
-		putzstr(" is empty, skipping...\0");
-		warn_end();
-		return source.invalid;
-	}
-	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
-	f : file := path_open(p, file.cwd, file_access.read, zero);
-	file_read(f, ptr, stats.size);
-	//linux_write(1, ptr, stats.size);
 
 	src : source_file mut;
+	src.src = zero;
 	src.node = zero;
-	src.src = ptr;
 	src.src_len = stats.size;
 	src.path = p;
 
+	if(stats.size == 0)
+	{
+		return prog_add_source_file(ref src);
+	}
+	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
+	src.src = ptr;
+	f : file := path_open(p, file.cwd, file_access.read, zero);
+	file_read(f, ptr, stats.size);
 
 	toks : token_buffer mut;
 	toks.tokens = zero;
