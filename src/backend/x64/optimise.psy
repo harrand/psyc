@@ -1,3 +1,33 @@
-optimise_x64 : func(-> v0)
+optimise_x64func : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 {
+	t ::= nanotime();
+
+	x64_position_start_func(fn->idx);
+	i : u64 mut := 0;
+	while(i < fnx64->insts_count)
+	{
+		x64_position_before_inst(i);
+		if(x64_optimise_current_inst_is_noop())
+		{
+			//putzstr("deleting noop instruction: \0");
+			//x64inst_dump(x64_current_instruction());
+			x64_delete_instruction();
+		}
+		else
+		{
+			i = i + 1;
+		}
+	}
+
+	compile_timings.optimise_asm = compile_timings.optimise_asm + (nanotime() - t);
+};
+
+x64_optimise_current_inst_is_noop : func(-> bool)
+{
+	inst ::= x64_current_instruction();
+	if(inst->tag == x64inst_tag.mov)
+	{
+		return x64val_equal_to(inst->operands # 0, inst->operands # 1);
+	}
+	return false;
 };
