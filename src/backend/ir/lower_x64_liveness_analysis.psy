@@ -28,134 +28,136 @@ irfunc_liveness_analysis_block_setup_x64 : func(state : lower_x64_register_alloc
 		x64val_list_empty(state->inst_live_befores # i);
 		x64val_list_empty(state->inst_live_afters # i);
 		inst ::= fnx64->insts # i;
-
-		op0 ::= inst->operands # 0;
-
-		if((inst->tag@s64 - x64inst_tag.custom@s64) == (ir_lower_x64inst_tag.blkbegin@s64))
+		if(x64inst_is_valid(inst))
 		{
-			curblk_idx = [x64val_irblkref_get_idx(op0)];
-		}
-		use : x64val_list mut? mut := zero;
-		def : x64val_list mut? mut := zero;
-		if(curblk_idx != ~0)
-		{
-			use = state->blk_uses # curblk_idx;
-			def = state->blk_defs # curblk_idx;
-		}
+			op0 ::= inst->operands # 0;
 
-		inst_use ::= state->inst_uses # i;
-		inst_def ::= state->inst_defs # i;
-
-		enc ::= x64enc_fetch(inst);
-		j : u64 mut;
-		k : u64 mut;
-		l : u64 mut;
-		cur : x64val mut;
-		curreg : x64val mut;
-		// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
-		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.clob))
-		{
-			the_clobber ::= inst->operands # 0;
-			if(use != zero)
+			if((inst->tag@s64 - x64inst_tag.custom@s64) == (ir_lower_x64inst_tag.blkbegin@s64))
 			{
-				if(!x64val_list_contains(def, the_clobber))
-				{
-					x64val_list_append_unique(use, the_clobber);
-				}
+				curblk_idx = [x64val_irblkref_get_idx(op0)];
 			}
-			if(def != zero)
+			use : x64val_list mut? mut := zero;
+			def : x64val_list mut? mut := zero;
+			if(curblk_idx != ~0)
 			{
-				x64val_list_append_unique(def, the_clobber);
+				use = state->blk_uses # curblk_idx;
+				def = state->blk_defs # curblk_idx;
 			}
-			x64val_list_append_unique(inst_def, the_clobber);
-			x64val_list_append_unique(inst_use, the_clobber);
-		}
-		if((enc != zero))
-		{
-			// we have an encoding and we are inside a block.
-			// calls clobber volatile registers (read + write) (abi-specific)
-			if(inst->tag == x64inst_tag.call)
+
+			inst_use ::= state->inst_uses # i;
+			inst_def ::= state->inst_defs # i;
+
+			enc ::= x64enc_fetch(inst);
+			j : u64 mut;
+			k : u64 mut;
+			l : u64 mut;
+			cur : x64val mut;
+			curreg : x64val mut;
+			// 1. calculate use/def for each irblk (using irblkref instructions in the x64 code)
+			if(x64inst_is_custom(inst, ir_lower_x64inst_tag.clob))
 			{
-				for(j = 0; j < state->abi_volatile_regs_count; j = j + 1)
+				the_clobber ::= inst->operands # 0;
+				if(use != zero)
 				{
-					if(use != zero)
+					if(!x64val_list_contains(def, the_clobber))
 					{
-						if(!x64val_list_contains(def, state->abi_volatile_regs # j))
-						{
-							x64val_list_append_unique(use, state->abi_volatile_regs # j);
-						}
+						x64val_list_append_unique(use, the_clobber);
 					}
-					if(def != zero)
-					{
-						x64val_list_append_unique(def, state->abi_volatile_regs # j);
-					}
-					x64val_list_append_unique(inst_def, state->abi_volatile_regs # j);
-					x64val_list_append_unique(inst_use, state->abi_volatile_regs # j);
 				}
-			}
-			// add the reads as uses, and the writes as defs
-			write_count ::= x64enc_writes_count(enc);
-			regcount : u64 mut;
-			read_count ::= x64enc_reads_count(enc);
-			for(j = 0; j < read_count; j = j + 1)
-			{
-				// remember: a use only counts if it is before a potential redefinition within the block
-				if(x64enc_get_read(inst, enc, j, ref cur))
+				if(def != zero)
 				{
-					regcount = x64val_contained_registers_count(ref cur);
-					for(k = 0; k < regcount; k = k + 1)
+					x64val_list_append_unique(def, the_clobber);
+				}
+				x64val_list_append_unique(inst_def, the_clobber);
+				x64val_list_append_unique(inst_use, the_clobber);
+			}
+			if((enc != zero))
+			{
+				// we have an encoding and we are inside a block.
+				// calls clobber volatile registers (read + write) (abi-specific)
+				if(inst->tag == x64inst_tag.call)
+				{
+					for(j = 0; j < state->abi_volatile_regs_count; j = j + 1)
 					{
-						x64val_get_contained_register(ref cur, ref curreg, k);
-						x64val_list_append_unique(inst_use, ref curreg);
-						if((use != zero) && (def != zero))
+						if(use != zero)
 						{
-							already_defined_previously : bool mut := false;
-							for(l = 0; l < def->count; l = l + 1)
+							if(!x64val_list_contains(def, state->abi_volatile_regs # j))
 							{
-								if(x64val_equal_to(ref curreg, def->data # l))
+								x64val_list_append_unique(use, state->abi_volatile_regs # j);
+							}
+						}
+						if(def != zero)
+						{
+							x64val_list_append_unique(def, state->abi_volatile_regs # j);
+						}
+						x64val_list_append_unique(inst_def, state->abi_volatile_regs # j);
+						x64val_list_append_unique(inst_use, state->abi_volatile_regs # j);
+					}
+				}
+				// add the reads as uses, and the writes as defs
+				write_count ::= x64enc_writes_count(enc);
+				regcount : u64 mut;
+				read_count ::= x64enc_reads_count(enc);
+				for(j = 0; j < read_count; j = j + 1)
+				{
+					// remember: a use only counts if it is before a potential redefinition within the block
+					if(x64enc_get_read(inst, enc, j, ref cur))
+					{
+						regcount = x64val_contained_registers_count(ref cur);
+						for(k = 0; k < regcount; k = k + 1)
+						{
+							x64val_get_contained_register(ref cur, ref curreg, k);
+							x64val_list_append_unique(inst_use, ref curreg);
+							if((use != zero) && (def != zero))
+							{
+								already_defined_previously : bool mut := false;
+								for(l = 0; l < def->count; l = l + 1)
 								{
-									already_defined_previously = true;
+									if(x64val_equal_to(ref curreg, def->data # l))
+									{
+										already_defined_previously = true;
+									}
+								}
+								if(!already_defined_previously)
+								{
+									x64val_list_append_unique(use, ref curreg);
 								}
 							}
-							if(!already_defined_previously)
-							{
-								x64val_list_append_unique(use, ref curreg);
-							}
 						}
 					}
 				}
-			}
-			for(j = 0; j < write_count; j = j + 1)
-			{
-				if(x64enc_get_write(inst, enc, j, ref cur))
+				for(j = 0; j < write_count; j = j + 1)
 				{
-					regcount = x64val_contained_registers_count(ref cur);
-					for(k = 0; k < regcount; k = k + 1)
+					if(x64enc_get_write(inst, enc, j, ref cur))
 					{
-						this_write_is_direct ::= x64val_get_contained_register(ref cur, ref curreg, k);
-						// direct is when the register is directly the same as the val
-						// for example if we mov into rax, then rax is direct and therefore defined
-						// but if we move into QWORD PTR [rax], then the memory is whats written to but rax is used, not defined.
-						if(this_write_is_direct)
+						regcount = x64val_contained_registers_count(ref cur);
+						for(k = 0; k < regcount; k = k + 1)
 						{
-							if(def != zero)
+							this_write_is_direct ::= x64val_get_contained_register(ref cur, ref curreg, k);
+							// direct is when the register is directly the same as the val
+							// for example if we mov into rax, then rax is direct and therefore defined
+							// but if we move into QWORD PTR [rax], then the memory is whats written to but rax is used, not defined.
+							if(this_write_is_direct)
 							{
-								x64val_list_append_unique(def, ref curreg);
+								if(def != zero)
+								{
+									x64val_list_append_unique(def, ref curreg);
+								}
+								x64val_list_append_unique(inst_def, ref curreg);
 							}
-							x64val_list_append_unique(inst_def, ref curreg);
-						}
-						else
-						{
-							already_defined_previously_ : bool mut := true;
-							if(def != zero)
+							else
 							{
-								already_defined_previously_ = x64val_list_contains(def, ref curreg);
+								already_defined_previously_ : bool mut := true;
+								if(def != zero)
+								{
+									already_defined_previously_ = x64val_list_contains(def, ref curreg);
+								}
+								if((use != zero) && !already_defined_previously_)
+								{
+									x64val_list_append_unique(use, ref curreg);
+								}
+								x64val_list_append_unique(inst_use, ref curreg);
 							}
-							if((use != zero) && !already_defined_previously_)
-							{
-								x64val_list_append_unique(use, ref curreg);
-							}
-							x64val_list_append_unique(inst_use, ref curreg);
 						}
 					}
 				}

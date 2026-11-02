@@ -91,38 +91,41 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 	for(i = 0; i < fnx64->insts_count; i = i + 1)
 	{
 		inst ::= fnx64->insts # i;
-		if(x64inst_is_custom(inst, ir_lower_x64inst_tag.reghint))
+		if(x64inst_is_valid(inst))
 		{
-			// reghint is treated specially...
-			op0 ::= inst->operands # 0;
-			op1 ::= inst->operands # 1;
-			op0_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), op0);
-			x64val_list_append_unique((ref(state->igraph_nodes.data # op0_node_id)->hints), op1);
-		}
-		uses ::= state->inst_uses # i;
-		defs ::= state->inst_defs # i;
-		live_afters ::= state->inst_live_afters # i;
-		for(j = 0; j < uses->count; j = j + 1)
-		{
-			igraph_node_x64_list_append_unique(ref(state->igraph_nodes), uses->data # j);
-		}
-		for(j = 0; j < defs->count; j = j + 1)
-		{
-			igraph_node_x64_list_append_unique(ref(state->igraph_nodes), defs->data # j);
-		}
-		for(j = 0; j < defs->count; j = j + 1)
-		{
-			cur_def ::= defs->data # j;
-			for(k = 0; k < live_afters->count; k = k + 1)
+			if(x64inst_is_custom(inst, ir_lower_x64inst_tag.reghint))
 			{
-				cur_after ::= live_afters->data # k;
-				if(!x64val_equal_to(cur_after, cur_def))
+				// reghint is treated specially...
+				op0 ::= inst->operands # 0;
+				op1 ::= inst->operands # 1;
+				op0_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), op0);
+				x64val_list_append_unique((ref(state->igraph_nodes.data # op0_node_id)->hints), op1);
+			}
+			uses ::= state->inst_uses # i;
+			defs ::= state->inst_defs # i;
+			live_afters ::= state->inst_live_afters # i;
+			for(j = 0; j < uses->count; j = j + 1)
+			{
+				igraph_node_x64_list_append_unique(ref(state->igraph_nodes), uses->data # j);
+			}
+			for(j = 0; j < defs->count; j = j + 1)
+			{
+				igraph_node_x64_list_append_unique(ref(state->igraph_nodes), defs->data # j);
+			}
+			for(j = 0; j < defs->count; j = j + 1)
+			{
+				cur_def ::= defs->data # j;
+				for(k = 0; k < live_afters->count; k = k + 1)
 				{
-					// add an edge between the two nodes...
-					def_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_def);
-					after_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_after);
-					igraph_node_x64_add_edge_unique(state->igraph_nodes.data # def_node_id, after_node_id);
-					igraph_node_x64_add_edge_unique(state->igraph_nodes.data # after_node_id, def_node_id);
+					cur_after ::= live_afters->data # k;
+					if(!x64val_equal_to(cur_after, cur_def))
+					{
+						// add an edge between the two nodes...
+						def_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_def);
+						after_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_after);
+						igraph_node_x64_add_edge_unique(state->igraph_nodes.data # def_node_id, after_node_id);
+						igraph_node_x64_add_edge_unique(state->igraph_nodes.data # after_node_id, def_node_id);
+					}
 				}
 			}
 		}
@@ -277,104 +280,107 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 			for(j = 0; j < fnx64->insts_count; j = j + 1)
 			{
 				inst ::= fnx64->insts # j;
-				opcount ::= x64inst_operands_count(inst);
-				for(k = 0; k < opcount; k = k + 1)
+				if(x64inst_is_valid(inst))
 				{
-					// first we check if it is the base register of a vmemreg
-					maybe_vreg : x64val mut;
-					curop ::= inst->operands # k;
-					// error out if the instruction is a regnospill
-					if(x64val_vmemreg_get_base_vreg(curop, ref maybe_vreg))
+					opcount ::= x64inst_operands_count(inst);
+					for(k = 0; k < opcount; k = k + 1)
 					{
-						if(x64val_equal_to(ref maybe_vreg, nodeval))
+						// first we check if it is the base register of a vmemreg
+						maybe_vreg : x64val mut;
+						curop ::= inst->operands # k;
+						// error out if the instruction is a regnospill
+						if(x64val_vmemreg_get_base_vreg(curop, ref maybe_vreg))
+						{
+							if(x64val_equal_to(ref maybe_vreg, nodeval))
+							{
+								// replace!
+								//putzstr("in instruction: \0");
+								//x64inst_dump(inst);
+								//putzstr("patching vmemreg \0");
+								//x64val_dump(curop);
+								// just replace the base vreg with a real memreg
+								memsz ::= x64val_get_size(curop);
+								disp ::= [x64val_vmemreg_get_displacement(curop)];
+								curop->tag = x64val_tag.memreg;
+								[x64val_memreg_get_size(curop)] = memsz;
+								[x64val_memreg_get_displacement_size(curop)] = 32;
+								[x64val_memreg_get_base_size(curop)] = ir_lower_x64val_get_size(ref maybe_vreg);
+								// note: replacement could be a stack-slot (spilled!)
+								if(replacement.tag == x64val_tag.memreg)
+								{
+									// in which case the base becomes the replacements base and we add its displacement
+									[x64val_memreg_get_base(curop)] = [x64val_memreg_get_base(ref replacement)];
+									disp = disp + [x64val_memreg_get_displacement(ref replacement)]@s64@s32;
+								}
+								else
+								{
+									[x64val_memreg_get_base(curop)] = [x64val_reg_get_reg(ref replacement)];
+								}
+								[x64val_memreg_get_displacement(curop)] = disp@s64@u64;
+								[x64val_memreg_get_index_size(curop)] = 0;
+								[x64val_memreg_get_scale(curop)] = 0;
+
+								//putzstr(" to \0");
+								//x64val_dump(ref replacement);
+								//putchar('\n');
+
+								//x64inst_dump(inst);
+								//putchar('\n');
+								if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
+								{
+									panic_begin();
+									putzstr("ssa register \0");
+									x64val_dump(ref maybe_vreg);
+									putzstr(" was marked regnospill, but has been spilled to: \n\0");
+									x64val_dump(curop);
+									putzstr("\nsee whole function: \n\0");
+									x64func_dump(fnx64);
+									panic_end();
+								}
+							}
+						}
+						// and if we just see the vreg then simply replace it!
+						if(x64val_equal_to(curop, nodeval))
 						{
 							// replace!
 							//putzstr("in instruction: \0");
 							//x64inst_dump(inst);
-							//putzstr("patching vmemreg \0");
-							//x64val_dump(curop);
-							// just replace the base vreg with a real memreg
-							memsz ::= x64val_get_size(curop);
-							disp ::= [x64val_vmemreg_get_displacement(curop)];
-							curop->tag = x64val_tag.memreg;
-							[x64val_memreg_get_size(curop)] = memsz;
-							[x64val_memreg_get_displacement_size(curop)] = 32;
-							[x64val_memreg_get_base_size(curop)] = ir_lower_x64val_get_size(ref maybe_vreg);
-							// note: replacement could be a stack-slot (spilled!)
+							//putzstr("patching \0");
+							//x64val_dump(nodeval);
+							//putzstr(" to \0");
+							//x64val_dump(ref replacement);
+							//putzstr(" (size: \0");
+							//putuint(x64val_get_size(nodeval));
+							//putzstr(")\n\0");
+
+							// why the fuck do we do this, you ask?
+							// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
+							// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
+							// hence this weird jank below
+							old ::= [curop];
+							oldsz ::= x64val_get_size(curop);
+							[curop] = replacement;
 							if(replacement.tag == x64val_tag.memreg)
 							{
-								// in which case the base becomes the replacements base and we add its displacement
-								[x64val_memreg_get_base(curop)] = [x64val_memreg_get_base(ref replacement)];
-								disp = disp + [x64val_memreg_get_displacement(ref replacement)]@s64@s32;
+								[x64val_memreg_get_size(curop)] = oldsz;
 							}
 							else
 							{
-								[x64val_memreg_get_base(curop)] = [x64val_reg_get_reg(ref replacement)];
+								[x64val_reg_get_size(curop)] = oldsz;
 							}
-							[x64val_memreg_get_displacement(curop)] = disp@s64@u64;
-							[x64val_memreg_get_index_size(curop)] = 0;
-							[x64val_memreg_get_scale(curop)] = 0;
-
-							//putzstr(" to \0");
-							//x64val_dump(ref replacement);
-							//putchar('\n');
-
 							//x64inst_dump(inst);
 							//putchar('\n');
 							if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
 							{
 								panic_begin();
 								putzstr("ssa register \0");
-								x64val_dump(ref maybe_vreg);
+								x64val_dump(ref old);
 								putzstr(" was marked regnospill, but has been spilled to: \n\0");
 								x64val_dump(curop);
 								putzstr("\nsee whole function: \n\0");
 								x64func_dump(fnx64);
 								panic_end();
 							}
-						}
-					}
-					// and if we just see the vreg then simply replace it!
-					if(x64val_equal_to(curop, nodeval))
-					{
-						// replace!
-						//putzstr("in instruction: \0");
-						//x64inst_dump(inst);
-						//putzstr("patching \0");
-						//x64val_dump(nodeval);
-						//putzstr(" to \0");
-						//x64val_dump(ref replacement);
-						//putzstr(" (size: \0");
-						//putuint(x64val_get_size(nodeval));
-						//putzstr(")\n\0");
-
-						// why the fuck do we do this, you ask?
-						// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
-						// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
-						// hence this weird jank below
-						old ::= [curop];
-						oldsz ::= x64val_get_size(curop);
-						[curop] = replacement;
-						if(replacement.tag == x64val_tag.memreg)
-						{
-							[x64val_memreg_get_size(curop)] = oldsz;
-						}
-						else
-						{
-							[x64val_reg_get_size(curop)] = oldsz;
-						}
-						//x64inst_dump(inst);
-						//putchar('\n');
-						if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
-						{
-							panic_begin();
-							putzstr("ssa register \0");
-							x64val_dump(ref old);
-							putzstr(" was marked regnospill, but has been spilled to: \n\0");
-							x64val_dump(curop);
-							putzstr("\nsee whole function: \n\0");
-							x64func_dump(fnx64);
-							panic_end();
 						}
 					}
 				}
