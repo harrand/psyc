@@ -7,6 +7,7 @@ igraph_node_x64 : struct
 	hints : x64val_list;
 	colour_tag : igraph_node_x64_colour_tag;
 	colour : u64 mut;
+	replacement : x64val;
 };
 
 igraph_node_x64_colour_tag : enum
@@ -248,143 +249,134 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 	j : u64 mut;
 	k : u64 mut;
 	nodes_count ::= state->igraph_nodes.count;
+	node : igraph_node_x64 mut? mut;
 	for(i = 0; i < nodes_count; i = i + 1)
 	{
-		replacement.tag = x64val_tag.invalid;
-		node ::= state->igraph_nodes.data # i;
+		node = state->igraph_nodes.data # i;
+		node->replacement.tag = x64val_tag.invalid;
 		nodeval ::= ref(node->value);
 		if(node->colour_tag == igraph_node_x64_colour_tag.param)
 		{
-			replacement = [state->abi_param_regs # node->colour];
+			node->replacement = [state->abi_param_regs # node->colour];
 		}
 		if(node->colour_tag == igraph_node_x64_colour_tag.hwreg)
 		{
-			replacement = [state->abi_hwregs # node->colour];
+			node->replacement = [state->abi_hwregs # node->colour];
 		}
 		if(node->colour_tag == igraph_node_x64_colour_tag.stack_spill)
 		{
-			replacement.tag = x64val_tag.memreg;
-			[x64val_memreg_get_base(ref replacement)] = x64_reg.rbp;
-			[x64val_memreg_get_base_size(ref replacement)] = 64;
-			[x64val_memreg_get_index_size(ref replacement)] = 0;
-			[x64val_memreg_get_scale(ref replacement)] = 0;
+			node->replacement.tag = x64val_tag.memreg;
+			[x64val_memreg_get_base(ref (node->replacement))] = x64_reg.rbp;
+			[x64val_memreg_get_base_size(ref (node->replacement))] = 64;
+			[x64val_memreg_get_index_size(ref (node->replacement))] = 0;
+			[x64val_memreg_get_scale(ref (node->replacement))] = 0;
 			fnx64->stack = fnx64->stack + 8;
-			[x64val_memreg_get_displacement(ref replacement)] = -fnx64->stack;
-			[x64val_memreg_get_displacement_size(ref replacement)] = 32;
+			[x64val_memreg_get_displacement(ref (node->replacement))] = -fnx64->stack;
+			[x64val_memreg_get_displacement_size(ref (node->replacement))] = 32;
 		}
+	}
 
-		if(replacement.tag != x64val_tag.invalid)
+	for(i = 0; i < fnx64->insts_count; i = i + 1)
+	{
+		inst ::= fnx64->insts # i;
+		if(x64inst_is_valid(inst))
 		{
-			// we changed it to something else neat!
-			// replace all occurrences of nodeval in all instructions.
-			for(j = 0; j < fnx64->insts_count; j = j + 1)
+			// if any operand matches any node (and that node has a replacement, make the replacement)
+			for(j = 0; j < nodes_count; j = j + 1)
 			{
-				inst ::= fnx64->insts # j;
-				if(x64inst_is_valid(inst))
-				{
-					opcount ::= x64inst_operands_count(inst);
-					for(k = 0; k < opcount; k = k + 1)
-					{
-						// first we check if it is the base register of a vmemreg
-						maybe_vreg : x64val mut;
-						curop ::= inst->operands # k;
-						// error out if the instruction is a regnospill
-						if(x64val_vmemreg_get_base_vreg(curop, ref maybe_vreg))
-						{
-							if(x64val_equal_to(ref maybe_vreg, nodeval))
-							{
-								// replace!
-								//putzstr("in instruction: \0");
-								//x64inst_dump(inst);
-								//putzstr("patching vmemreg \0");
-								//x64val_dump(curop);
-								// just replace the base vreg with a real memreg
-								memsz ::= x64val_get_size(curop);
-								disp ::= [x64val_vmemreg_get_displacement(curop)];
-								curop->tag = x64val_tag.memreg;
-								[x64val_memreg_get_size(curop)] = memsz;
-								[x64val_memreg_get_displacement_size(curop)] = 32;
-								[x64val_memreg_get_base_size(curop)] = ir_lower_x64val_get_size(ref maybe_vreg);
-								// note: replacement could be a stack-slot (spilled!)
-								if(replacement.tag == x64val_tag.memreg)
-								{
-									// in which case the base becomes the replacements base and we add its displacement
-									[x64val_memreg_get_base(curop)] = [x64val_memreg_get_base(ref replacement)];
-									disp = disp + [x64val_memreg_get_displacement(ref replacement)]@s64@s32;
-								}
-								else
-								{
-									[x64val_memreg_get_base(curop)] = [x64val_reg_get_reg(ref replacement)];
-								}
-								[x64val_memreg_get_displacement(curop)] = disp@s64@u64;
-								[x64val_memreg_get_index_size(curop)] = 0;
-								[x64val_memreg_get_scale(curop)] = 0;
+				node = state->igraph_nodes.data # j;
+				replacement_match ::= ref(node->value);
+				replace_with ::= ref(node->replacement);
 
-								//putzstr(" to \0");
-								//x64val_dump(ref replacement);
-								//putchar('\n');
-
-								//x64inst_dump(inst);
-								//putchar('\n');
-								if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
-								{
-									panic_begin();
-									putzstr("ssa register \0");
-									x64val_dump(ref maybe_vreg);
-									putzstr(" was marked regnospill, but has been spilled to: \n\0");
-									x64val_dump(curop);
-									putzstr("\nsee whole function: \n\0");
-									x64func_dump(fnx64);
-									panic_end();
-								}
-							}
-						}
-						// and if we just see the vreg then simply replace it!
-						if(x64val_equal_to(curop, nodeval))
-						{
-							// replace!
-							//putzstr("in instruction: \0");
-							//x64inst_dump(inst);
-							//putzstr("patching \0");
-							//x64val_dump(nodeval);
-							//putzstr(" to \0");
-							//x64val_dump(ref replacement);
-							//putzstr(" (size: \0");
-							//putuint(x64val_get_size(nodeval));
-							//putzstr(")\n\0");
-
-							// why the fuck do we do this, you ask?
-							// well sometimes we may see two of the same ssa reg but of different sizes (lowering of ir_trunc does this for example)
-							// and we need to basically dynamically patch the size of the coloured result to whatever the old values actual size was
-							// hence this weird jank below
-							old ::= [curop];
-							oldsz ::= x64val_get_size(curop);
-							[curop] = replacement;
-							if(replacement.tag == x64val_tag.memreg)
-							{
-								[x64val_memreg_get_size(curop)] = oldsz;
-							}
-							else
-							{
-								[x64val_reg_get_size(curop)] = oldsz;
-							}
-							//x64inst_dump(inst);
-							//putchar('\n');
-							if(x64inst_is_custom(inst, ir_lower_x64inst_tag.regnospill) && (replacement.tag == x64val_tag.memreg))
-							{
-								panic_begin();
-								putzstr("ssa register \0");
-								x64val_dump(ref old);
-								putzstr(" was marked regnospill, but has been spilled to: \n\0");
-								x64val_dump(curop);
-								putzstr("\nsee whole function: \n\0");
-								x64func_dump(fnx64);
-								panic_end();
-							}
-						}
-					}
-				}
+				ir_lower_replace_values_within(inst, replacement_match, replace_with);
 			}
 		}
+	}
+};
+
+ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+{
+	// for each operand V in the instruction, if the operand *contains* registers that are equal to 'replacement_match', then the registers are replaced with 'replace_with'
+	// e.g for 'mov %q0, QWORD PTR [%q0]'
+	// and replacement_match == %q0, replace_with = rax
+	// yields => 'mov rax, QWORD PTR [rax]'
+
+	// we cant just use ir_lower_x64val_get_contained_register because we need to not only retrieve the contained registers, but change them too (that function only allows retrieval for architectural reasons)
+	// so what we actually need to do is manually check all the ways we could have a register (remember we havent transformed anything yet so this is still the semi-IR form! that means we care about:
+	// - vregs
+	// - vmemregs (base register)
+	opcount ::= x64inst_operands_count(inst);
+	i : u64 mut;
+	for(i = 0; i < opcount; i = i + 1)
+	{
+		operand ::= inst->operands # i;
+		if(ir_lower_x64val_is_vreg(operand))
+		{
+			ir_lower_replace_values_within_vreg(operand, replacement_match, replace_with);
+		}
+		if(ir_lower_x64val_is_vmemreg(operand))
+		{
+			ir_lower_replace_values_within_vmemreg(operand, replacement_match, replace_with);
+		}
+	}
+};
+
+ir_lower_replace_values_within_vreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+{
+	if(x64val_equal_to(v, replacement_match))
+	{
+		// remember the replacement match is not necessarily the same size as the actual value
+		the_size ::= x64val_get_size(v);
+
+		[v] = [replace_with];
+		// replace_with is either a reg or a memreg
+		// and we need to preserve the old size, so:
+		if(replace_with->tag == x64val_tag.memreg)
+		{
+			[x64val_memreg_get_size(v)] = the_size;
+		}
+		else
+		{
+			[x64val_reg_get_size(v)] = the_size;
+		}
+	}
+};
+
+ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+{
+	// check the base reg (if there somehow isnt one we bail)
+	the_vreg : x64val mut;
+	if(!x64val_vmemreg_get_base_vreg(v, ref the_vreg))
+	{
+		return;
+	}
+	// now just check that
+	if(x64val_equal_to(ref the_vreg, replacement_match))
+	{
+		// we need to turn this vmemreg with the vreg base register into a proper memreg with the proper base register
+		// but this gets a bit complex - because replace_with isnt always a reg, it could be a memreg if we spilled
+		// remember the replacement match is not necessarily the same size as the actual value
+		the_mem_size ::= x64val_get_size(v);
+		the_disp : s32 mut := [x64val_vmemreg_get_displacement(v)];
+		v->tag = x64val_tag.memreg;
+		[x64val_memreg_get_size(v)] = the_mem_size;
+		[x64val_memreg_get_displacement_size(v)] = 32;
+		// patch up the base register
+		[x64val_memreg_get_base_size(v)] = x64val_get_size(ref the_vreg);
+		// base register is not that simple because as stated previously replace_with could be a memreg so we have to check both:
+		if(replace_with->tag == x64val_tag.memreg)
+		{
+			// preserve displacement
+			the_disp = the_disp + [x64val_memreg_get_displacement(replace_with)]@s64@s32;
+			[x64val_memreg_get_base(v)] = [x64val_memreg_get_base(replace_with)];
+		}
+		else
+		{
+			// easy, just set the register as the base register of the memreg
+			[x64val_memreg_get_base(v)] = [x64val_reg_get_reg(replace_with)];
+		}
+		[x64val_memreg_get_displacement(v)] = the_disp@s64@u64;
+		[x64val_memreg_get_index_size(v)] = 0;
+		[x64val_memreg_get_scale(v)] = 0;
 	}
 };
