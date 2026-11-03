@@ -1,3 +1,86 @@
 optimise_ir : func(-> v0)
 {
+	i : u64 mut;
+	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
+	{
+		// todo: skip this without optimisation flags?
+		while(irfunc_optimise_dead_reg_elimination(irapi.prog.funcs # i) != 0){}
+	}
+};
+
+irfunc_optimise_dead_reg_elimination : func(fn : irfunc mut? -> u64)
+{
+	elim_count : u64 mut := 0;
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+
+	// store refcounts for all registers
+	refcounts : u64 mut? := arena_alloc(scratch_arena, fn->counter * sizeof u64);
+	// initially they are all zero
+	for(i = 0; i < fn->counter; i = i + 1)
+	{
+		[refcounts # i] = 0;
+	}
+	// accumulate refcounts for all regs
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+		for(j = 0; j < blk->insts_count; j = j + 1)
+		{
+			inst ::= blk->insts # j;
+			outs_begin : u64 mut;
+			outs_count : u64 mut;
+			params_begin : u64 mut;
+			params_count : u64 mut;
+			irinst_analyse(inst, ref outs_begin, ref outs_count, ref params_begin, ref params_count);
+			// only care about params
+			for(k = 0; k < params_count; k = k + 1)
+			{
+				the_param ::= inst->operands # (params_begin + k);
+				if(the_param->tag == irval_tag.reg)
+				{
+					regidx ::= [irval_reg_get_idx(the_param)];
+					[refcounts # regidx] = [refcounts # regidx] + 1;
+				}
+			}
+		}
+	}
+
+	// now go through again. everytime you see an instruction that has an operand containing a register with a 0 refcount, then it is an instruction that generates the dead reg, and can be deleted so long as it doesn't have side-effects
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+		j = 0;
+		while(j < blk->insts_count)
+		{
+			inst ::= blk->insts # j;
+			old_elim_count ::= elim_count;
+			if(!irinst_could_have_side_effects(inst))
+			{
+				this_opcount ::= inst->operands_count;
+				for(k = 0; k < this_opcount; k = k + 1)
+				{
+					the_operand ::= inst->operands # k;
+					if(the_operand->tag == irval_tag.reg)
+					{
+						if([refcounts # [irval_reg_get_idx(the_operand)]] == 0)
+						{
+							ir_position_before(fn->idx, i, j);
+							ir_delete_instruction();
+							elim_count = elim_count + 1;
+							// dont do it again we're done with this instruction
+							k = this_opcount;
+						}
+					}
+				}
+			}
+			if(old_elim_count == elim_count)
+			{
+				j = j + 1;
+			}
+		}
+	}
+
+	return elim_count;
 };
