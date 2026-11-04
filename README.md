@@ -36,6 +36,16 @@ Psyc has zero dependencies.
 
 `--skip-object-write`   Generate the assembly, but don't write it to an executable.
 
+## How to Build
+Psyc is itself written in Psy, with no other language support, so you will need to retrieve an existing binary and then build the compiler to create your own.
+
+1. Retrieve a binary from [one of the releases](https://github.com/harrand/psyc/releases)
+2. Checkout this repository. You don't need to download anything else.
+3. EITHER
+	- Do `psyc psyc.psy` to do a debug build
+	- Do `psyc psyc.psy -b release` to do a release build (optimisations)
+4. Binary should be created in `./build/psyc_out`. You can replace the binary you downloaded with this result if you wish.
+
 ## Planned Work
 - Floating point operations
 - AVX2 (always on)
