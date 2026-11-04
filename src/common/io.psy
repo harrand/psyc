@@ -118,6 +118,47 @@ putsrc : func(s : source, begin : u64, end : u64, col : putcol -> v0)
 	putchar('\n');
 };
 
+putsrc_noquote : func(s : source, begin : u64, end : u64 -> v0)
+{
+	src ::= prog_get_source(s);
+	line_begin : u64 mut := 0;
+	line_begin_cursor : u64 mut := 0;
+
+	i : u64 mut;
+	for(i = 0; i < begin; i = i + 1)
+	{
+		if([src->src # i] == '\n')
+		{
+			line_begin = line_begin + 1;
+			line_begin_cursor = i;
+		}
+	}
+
+	line_end : u64 mut := 0;
+	line_end_cursor : u64 mut := 0;
+	
+	for(i = begin; i < end; i = i + 1)
+	{
+		if([src->src # i] == '\n')
+		{
+			line_end = line_begin + 1;
+		}
+	}
+	for(i = end; (i < src->src_len) && ([src->src # i] != '\n'); i = i + 1)
+	{
+	}
+	line_end_cursor = i;
+
+	colour_reset();
+
+	putzstr(path2zstr(src->path));
+	putchar('(');
+	putuint(line_begin + 1);
+	putchar(':');
+	putuint(1 + begin - line_begin_cursor);
+	putzstr(")\n\0");
+};
+
 putty : func(type : ty -> v0)
 {
 	scratch_writer : bwriter mut;
