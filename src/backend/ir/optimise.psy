@@ -4,12 +4,98 @@ optimise_ir : func(-> v0)
 	{
 		return;
 	}
-	i : u64 mut;
+	i : u64 mut := 0;
+	// function-level optimisations
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
-		// todo: skip this without optimisation flags?
 		while(irfunc_optimise_dead_reg_elimination(irapi.prog.funcs # i) != 0){}
 	}
+
+	// program-level optimisations (so-called link-time-optimisation and whole-program-optimisation in other languages)
+	while(irprog_optimise_dead_function_elimination(ref(irapi.prog)) != 0){}
+};
+
+irprog_optimise_dead_function_elimination : func(p : irprog mut? -> u64)
+{
+	// go through the entire irprog, if any functions are genuinely not used by anything, then mark it as deleted (so that its instructions are never lowered and thus do not appear in the final binary)
+	elim_count : u64 mut := 0;
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+	l : u64 mut;
+
+	// store refcounts for all functions
+	refcounts : u64 mut? := arena_alloc(scratch_arena, p->funcs_count * sizeof u64);
+	// initially they are all zero
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		[refcounts # i] = 0;
+	}
+
+	ref_idx : u64 mut;
+	fn : irfunc mut? mut;
+	// iterate over all functions, blocks and instructions
+	// any fnref to index i increments irfunc i's refcount
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		fn = p->funcs # i;
+		// note: functions that are marked as entrypoint should never get optimised away
+		if((fn->attribs & irfunc_attrib.entrypoint) != zero)
+		{
+			[refcounts # i] = [refcounts # i] + 1;
+		}
+		// functions that are already optimised away do not contribute...
+		if((fn->attribs & irfunc_attrib.optimised_away) == zero)
+		{
+			for(j = 0; j < fn->blks_count; j = j + 1)
+			{
+				blk ::= fn->blks # j;
+				for(k = 0; k < blk->insts_count; k = k + 1)
+				{
+					inst ::= blk->insts # k;
+					for(l = 0; l < inst->operands_count; l = l + 1)
+					{
+						operand ::= inst->operands # l;
+						if(operand->tag == irval_tag.fnref)
+						{
+							ref_idx = [irval_fnref_get_idx(operand)];
+							[refcounts # ref_idx] = [refcounts # ref_idx] + 1;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// also iterate over all globals, and check irrelocs for additional fnrefs
+	for(i = 0; i < p->globs_count; i = i + 1)
+	{
+		glob ::= p->globs # i;
+		for(j = 0; j < glob->relocs.count; j = j + 1)
+		{
+			reloc ::= glob->relocs.data # j;
+			if(reloc->tag == irreloc_tag.fn)
+			{
+				ref_idx = reloc->idx;
+				[refcounts # ref_idx] = [refcounts # ref_idx] + 1;
+			}
+		}
+	}
+
+	// now iterate over all functions one more time
+	// each function whose refcount is still  0 should be marked as optimised-away
+	for(i = 0; i < p->funcs_count; i = i + 1)
+	{
+		fn = p->funcs # i;
+		if(([refcounts # i] == 0) && ((fn->attribs & irfunc_attrib.optimised_away) == zero))
+		{
+			fn->attribs = fn->attribs | irfunc_attrib.optimised_away;
+			elim_count = elim_count + 1;
+		}
+	}
+	// how many functions did we mark as optimised away?
+	// note: this function should be called in a loop until this reaches zero, because functions that are optimised away may be the only thing referencing another function - meaning that function becomes dead too, and so on...
+	return elim_count;
 };
 
 irfunc_optimise_dead_reg_elimination : func(fn : irfunc mut? -> u64)
