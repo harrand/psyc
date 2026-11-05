@@ -37,12 +37,20 @@ lower_x64_register_allocation_state : struct
 
 	abi_param_regs : x64val mut?;
 	abi_param_regs_count : u64;
+	abi_fp_param_regs : x64val mut?;
+	abi_fp_param_regs_count : u64;
 	abi_hwregs : x64val mut?;
 	abi_hwregs_count : u64;
+	abi_fp_hwregs : x64val mut?;
+	abi_fp_hwregs_count : u64;
 	abi_volatile_regs : x64val mut?;
 	abi_volatile_regs_count : u64;
+	abi_fp_volatile_regs : x64val mut?;
+	abi_fp_volatile_regs_count : u64;
 	abi_nonvolatile_regs : x64val mut?;
 	abi_nonvolatile_regs_count : u64;
+	abi_fp_nonvolatile_regs : x64val mut?;
+	abi_fp_nonvolatile_regs_count : u64;
 };
 
 igraph_node_is_floating_point : func(n : igraph_node_x64 mut? -> bool)
@@ -192,19 +200,36 @@ igraph_node_find_neighbour_by_value : func(node : igraph_node_x64 mut?, state : 
 igraph_node_any_neighbour_has_colour : func(node : igraph_node_x64 mut?, state : lower_x64_register_allocation_state mut?, hwreg_col : u64 -> bool)
 {
 	i : u64 mut;
+	is_fp ::= igraph_node_is_floating_point(node);
 	for(i = 0; i < node->edges_count; i = i + 1)
 	{
 		neighbour_node ::= state->igraph_nodes.data # [node->edges # i];
 		// check if the node is coloured the hwreg
-		if((neighbour_node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (neighbour_node->colour == hwreg_col))
+		// if their fp-ness differs, then they cannot have the same colour
+		if(is_fp == igraph_node_is_floating_point(neighbour_node))
 		{
-			return true;
-		}
-		// also check if the node *is* the hwreg
-		the_hwreg ::= state->abi_hwregs # (hwreg_col);
-		if(x64val_equal_to(ref(neighbour_node->value), the_hwreg))
-		{
-			return true;
+			if((neighbour_node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (neighbour_node->colour == hwreg_col))
+			{
+				return true;
+			}
+			if(is_fp)
+			{
+				// also check if the node *is* the hwreg
+				the_fp_hwreg ::= state->abi_fp_hwregs # (hwreg_col);
+				if(x64val_equal_to(ref(neighbour_node->value), the_fp_hwreg))
+				{
+					return true;
+				}
+			}
+			else
+			{
+				// also check if the node *is* the hwreg
+				the_hwreg ::= state->abi_hwregs # (hwreg_col);
+				if(x64val_equal_to(ref(neighbour_node->value), the_hwreg))
+				{
+					return true;
+				}
+			}
 		}
 	}
 	return false;
@@ -221,18 +246,35 @@ irfunc_do_graph_colouring_x64 : func(state : lower_x64_register_allocation_state
 	for(i = 0; i < state->igraph_nodes.count; i = i + 1)
 	{
 		node ::= state->igraph_nodes.data # i;
+		is_fp ::= igraph_node_is_floating_point(node);
 		if(ir_lower_x64val_is_register(ref(node->value)) && (node->colour_tag == igraph_node_x64_colour_tag.unset))
 		{
-			// todo: check hints
-			for(j = 0; j < state->abi_hwregs_count; j = j + 1)
+			if(is_fp)
 			{
-				// colour j
-				// iterate over neighbours and see if j is taken
-				if((node->colour_tag == igraph_node_x64_colour_tag.unset) && !igraph_node_any_neighbour_has_colour(node, state, j))
+				for(j = 0; j < state->abi_fp_hwregs_count; j = j + 1)
 				{
-					// cool!
-					node->colour_tag = igraph_node_x64_colour_tag.hwreg;
-					node->colour = j;
+					// colour j
+					// iterate over neighbours and see if j is taken
+					if((node->colour_tag == igraph_node_x64_colour_tag.unset) && !igraph_node_any_neighbour_has_colour(node, state, j))
+					{
+						// cool!
+						node->colour_tag = igraph_node_x64_colour_tag.hwreg;
+						node->colour = j;
+					}
+				}
+			}
+			else
+			{
+				for(j = 0; j < state->abi_hwregs_count; j = j + 1)
+				{
+					// colour j
+					// iterate over neighbours and see if j is taken
+					if((node->colour_tag == igraph_node_x64_colour_tag.unset) && !igraph_node_any_neighbour_has_colour(node, state, j))
+					{
+						// cool!
+						node->colour_tag = igraph_node_x64_colour_tag.hwreg;
+						node->colour = j;
+					}
 				}
 			}
 			if(node->colour_tag == igraph_node_x64_colour_tag.unset)
@@ -260,13 +302,28 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 		node = state->igraph_nodes.data # i;
 		node->replacement.tag = x64val_tag.invalid;
 		nodeval ::= ref(node->value);
-		if(node->colour_tag == igraph_node_x64_colour_tag.param)
+		is_fp ::= igraph_node_is_floating_point(node);
+		if(is_fp)
 		{
-			node->replacement = [state->abi_param_regs # node->colour];
+			if(node->colour_tag == igraph_node_x64_colour_tag.param)
+			{
+				node->replacement = [state->abi_fp_param_regs # node->colour];
+			}
+			if(node->colour_tag == igraph_node_x64_colour_tag.hwreg)
+			{
+				node->replacement = [state->abi_fp_hwregs # node->colour];
+			}
 		}
-		if(node->colour_tag == igraph_node_x64_colour_tag.hwreg)
+		else
 		{
-			node->replacement = [state->abi_hwregs # node->colour];
+			if(node->colour_tag == igraph_node_x64_colour_tag.param)
+			{
+				node->replacement = [state->abi_param_regs # node->colour];
+			}
+			if(node->colour_tag == igraph_node_x64_colour_tag.hwreg)
+			{
+				node->replacement = [state->abi_hwregs # node->colour];
+			}
 		}
 		if(node->colour_tag == igraph_node_x64_colour_tag.stack_spill)
 		{
@@ -293,13 +350,13 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 				replacement_match ::= ref(node->value);
 				replace_with ::= ref(node->replacement);
 
-				ir_lower_replace_values_within(inst, replacement_match, replace_with);
+				ir_lower_replace_values_within(inst, replacement_match, replace_with, igraph_node_is_floating_point(node));
 			}
 		}
 	}
 };
 
-ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
 {
 	// for each operand V in the instruction, if the operand *contains* registers that are equal to 'replacement_match', then the registers are replaced with 'replace_with'
 	// e.g for 'mov %q0, QWORD PTR [%q0]'
@@ -317,16 +374,16 @@ ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x
 		operand ::= inst->operands # i;
 		if(ir_lower_x64val_is_vreg(operand))
 		{
-			ir_lower_replace_values_within_vreg(operand, replacement_match, replace_with);
+			ir_lower_replace_values_within_vreg(operand, replacement_match, replace_with, is_fp);
 		}
 		if(ir_lower_x64val_is_vmemreg(operand))
 		{
-			ir_lower_replace_values_within_vmemreg(operand, replacement_match, replace_with);
+			ir_lower_replace_values_within_vmemreg(operand, replacement_match, replace_with, is_fp);
 		}
 	}
 };
 
-ir_lower_replace_values_within_vreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+ir_lower_replace_values_within_vreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
 {
 	if(x64val_equal_to(v, replacement_match))
 	{
@@ -342,12 +399,20 @@ ir_lower_replace_values_within_vreg : func(v : x64val mut?, replacement_match : 
 		}
 		else
 		{
-			[x64val_reg_get_size(v)] = the_size;
+			if(is_fp)
+			{
+				// floats live in xmmN, stupid x64
+				[x64val_reg_get_size(v)] = 128;
+			}
+			else
+			{
+				[x64val_reg_get_size(v)] = the_size;
+			}
 		}
 	}
 };
 
-ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut? -> v0)
+ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
 {
 	// check the base reg (if there somehow isnt one we bail)
 	the_vreg : x64val mut;
