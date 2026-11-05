@@ -72,6 +72,77 @@ ir_lower_x64 : func(-> v0)
 // irfunc + irblks -> x64func lowering
 // ===================================
 
+x64_push_generic : func(v : x64val mut? -> v0)
+{
+	sz_bytes ::= x64val_get_size(v) / 8;
+	if(sz_bytes >= 16)
+	{
+		// push does not support xmm registers. manually do it.
+		rsp : x64val mut;
+		rsp.tag = x64val_tag.reg;
+		[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
+		[x64val_reg_get_size(ref rsp)] = 64;
+
+		sz_imm : x64val mut;
+		sz_imm.tag = x64val_tag.imm;
+		[x64val_imm_get_size(ref sz_imm)] = 32;
+		[x64val_imm_get_value(ref sz_imm)] = sz_bytes;
+		x64_sub(ref rsp, ref sz_imm);
+
+		rsp_memreg : x64val mut;
+		rsp_memreg.tag = x64val_tag.memreg;
+		[x64val_memreg_get_base(ref rsp_memreg)] = x64_reg.rsp;
+		[x64val_memreg_get_base_size(ref rsp_memreg)] = 64;
+		[x64val_memreg_get_index_size(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_scale(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_displacement(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_displacement_size(ref rsp_memreg)] = 32;
+		[x64val_memreg_get_size(ref rsp_memreg)] = sz_bytes * 8;
+
+		x64_movdqu(ref rsp_memreg, v);
+	}
+	else
+	{
+		x64_push(v);
+	}
+};
+
+x64_pop_generic : func(v : x64val mut? -> v0)
+{
+	sz_bytes ::= x64val_get_size(v) / 8;
+	if(sz_bytes >= 16)
+	{
+		// pop does not support xmm registers. manually do it.
+		rsp_memreg : x64val mut;
+		rsp_memreg.tag = x64val_tag.memreg;
+		[x64val_memreg_get_base(ref rsp_memreg)] = x64_reg.rsp;
+		[x64val_memreg_get_base_size(ref rsp_memreg)] = 64;
+		[x64val_memreg_get_index_size(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_scale(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_displacement(ref rsp_memreg)] = 0;
+		[x64val_memreg_get_displacement_size(ref rsp_memreg)] = 32;
+		[x64val_memreg_get_size(ref rsp_memreg)] = sz_bytes * 8;
+
+		x64_movdqu(v, ref rsp_memreg);
+
+		rsp : x64val mut;
+		rsp.tag = x64val_tag.reg;
+		[x64val_reg_get_reg(ref rsp)] = x64_reg.rsp;
+		[x64val_reg_get_size(ref rsp)] = 64;
+
+		sz_imm : x64val mut;
+		sz_imm.tag = x64val_tag.imm;
+		[x64val_imm_get_size(ref sz_imm)] = 32;
+		[x64val_imm_get_value(ref sz_imm)] = sz_bytes;
+		x64_add(ref rsp, ref sz_imm);
+
+	}
+	else
+	{
+		x64_pop(v);
+	}
+};
+
 ir_lower_prolog : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 {
 	rbp : x64val mut;
@@ -90,7 +161,7 @@ ir_lower_prolog : func(epilog_state : ir_lower_epilog_state mut? -> v0)
 		i : u64 mut;
 		for(i = 0; i < epilog_state->regs_to_pop_count; i = i + 1)
 		{
-			x64_push(epilog_state->regs_to_pop # i);
+			x64_push_generic(epilog_state->regs_to_pop # i);
 		}
 		x64_mov(ref rbp, ref rsp);
 	}
@@ -149,7 +220,7 @@ ir_lower_epilog : func(state : ir_lower_epilog_state mut? -> v0)
 		s : s64 mut;
 		for(s = (state->regs_to_pop_count - 1)@s64; s >= 0; s = s - 1)
 		{
-			x64_pop(state->regs_to_pop # s);
+			x64_pop_generic(state->regs_to_pop # s);
 		}
 
 		// pop rbp
@@ -274,7 +345,8 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state : ir_lower_epilog_state mut?, regs : lower_x64_register_allocation_state mut? -> v0)
 {
 	nonvolatiles ::= abi_nonvolatile_registers_begin_x64(abi_tag.psy64);
-	cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64);
+	nonvolatiles_fp ::= abi_nonvolatile_fp_registers_begin_x64(abi_tag.psy64);
+	cap ::= abi_nonvolatile_registers_count_x64(abi_tag.psy64) + abi_nonvolatile_fp_registers_count_x64(abi_tag.psy64);
 	count ::= ref(state->regs_to_pop_count);
 	data ::= ref(state->regs_to_pop);
 	[count] = 0;
@@ -283,12 +355,16 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state
 	// if we see any nonvolatile registers in there, or a node that has been allocated to a nonvolatile register, then append it to [data]
 	i : u64 mut;
 	j : u64 mut;
-	for(i = 0; i < cap; i = i + 1)
+	nonvol : x64val mut? mut;
+	already_added : bool mut;
+	curreg : x64val mut;
+	alloc_id : u64 mut;
+	node : igraph_node_x64 mut? mut;
+	for(i = 0; i < abi_nonvolatile_registers_count_x64(abi_tag.psy64); i = i + 1)
 	{
-		nonvol ::= nonvolatiles # i;
-		is_used : bool mut := false;
+		nonvol = nonvolatiles # i;
 		// first check if the abi_hwregs contains our nonvolatile (if so, save the index of it)
-		alloc_id : u64 mut := ~0;
+		alloc_id = ~0;
 		for(j = 0; j < regs->abi_hwregs_count; j = j + 1)
 		{
 			if(x64val_equal_to(nonvol, regs->abi_hwregs # j))
@@ -296,16 +372,45 @@ irfunc_abi_caller_saved_x64 : func(fn : irfunc mut?, fnx64 : x64func mut?, state
 				alloc_id = j;
 			}
 		}
-		already_added : bool mut := false;
+		already_added = false;
 		// then iterate over all nodes
 		for(j = 0; j < regs->igraph_nodes.count; j = j + 1)
 		{
-			node ::= regs->igraph_nodes.data # j;
-			if((((node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (node->colour == alloc_id)) || x64val_equal_to(nonvol, ref(node->value))) && !already_added)
+			node = regs->igraph_nodes.data # j;
+			if((((node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (node->colour == alloc_id)) || x64val_equal_to(nonvol, ref(node->value))) && !already_added && !igraph_node_is_floating_point(node))
 			{
 				// add this one (as the 64-bit version even if it isnt used in a 64 bit way)
-				curreg : x64val mut := [nonvol];
+				curreg = [nonvol];
 				[x64val_reg_get_size(ref curreg)] = 64;
+				[[data] # [count]] = curreg;
+				[count] = [count] + 1;
+				already_added = true;
+			}
+		}
+		// if their value is the nonvolatile, or they are assigned a hwreg of id matching the one we saved, then we need to add it.
+	}
+	for(i = 0; i < abi_nonvolatile_fp_registers_count_x64(abi_tag.psy64); i = i + 1)
+	{
+		nonvol = nonvolatiles_fp # i;
+		// first check if the abi_hwregs contains our nonvolatile (if so, save the index of it)
+		alloc_id = ~0;
+		for(j = 0; j < regs->abi_fp_hwregs_count; j = j + 1)
+		{
+			if(x64val_equal_to(nonvol, regs->abi_fp_hwregs # j))
+			{
+				alloc_id = j;
+			}
+		}
+		already_added = false;
+		// then iterate over all nodes
+		for(j = 0; j < regs->igraph_nodes.count; j = j + 1)
+		{
+			node = regs->igraph_nodes.data # j;
+			if((((node->colour_tag == igraph_node_x64_colour_tag.hwreg) && (node->colour == alloc_id)) || x64val_equal_to(nonvol, ref(node->value))) && !already_added && igraph_node_is_floating_point(node))
+			{
+				// add this one (as the 128-bit version even if it isnt used in a 64 bit way)
+				curreg = [nonvol];
+				[x64val_reg_get_size(ref curreg)] = 128;
 				[[data] # [count]] = curreg;
 				[count] = [count] + 1;
 				already_added = true;
