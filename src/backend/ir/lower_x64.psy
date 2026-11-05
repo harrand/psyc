@@ -371,26 +371,6 @@ ir_lower_x64val_is_vreg : func(v : x64val mut? -> bool)
 	return (v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vreg;
 };
 
-// not floating point => 0
-// otherwise, 32/64 depending on f32/f64
-ir_lower_x64val_floating_point_size : func(v : x64val mut? -> u64)
-{
-	if(!ir_lower_x64val_is_vreg(v))
-	{
-		return 0;
-	}
-	sz ::= [x64val_vreg_get_sz(v)];
-	if(sz == irsz.f)
-	{
-		return 32;
-	}
-	if(sz == irsz.g)
-	{
-		return 64;
-	}
-	return 0;
-};
-
 ir_lower_x64val_is_vmemreg : func(v : x64val mut? -> bool)
 {
 	return (v->tag@s64 - x64val_tag.custom@s64)@_ == ir_lower_x64val_tag.vmemreg;
@@ -1983,6 +1963,27 @@ x64val_vreg_get_idx : func(v : x64val mut? -> u64 mut?)
 {
 	return ref(v->v1);
 };
+
+// not a floating point vreg => 0
+// otherwise, 32/64 depending on f32/f64
+x64val_vreg_floating_point_size : func(v : x64val mut? -> u64)
+{
+	if(!ir_lower_x64val_is_vreg(v))
+	{
+		return 0;
+	}
+	sz ::= [x64val_vreg_get_sz(v)];
+	if(sz == irsz.f)
+	{
+		return 32;
+	}
+	if(sz == irsz.g)
+	{
+		return 64;
+	}
+	return 0;
+};
+
 
 x64val_vmemreg_get_base_sz : func(v : x64val mut? -> irsz mut?)
 {
