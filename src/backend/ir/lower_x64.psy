@@ -832,6 +832,8 @@ irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	begin ::= ir_ret_get_vals(inst);
 	output_registers_begin ::= abi_output_registers_begin_x64(abi_tag.psy64);
 	output_registers_count ::= abi_output_registers_count_x64(abi_tag.psy64);
+	output_fp_registers_begin ::= abi_output_fp_registers_begin_x64(abi_tag.psy64);
+	output_fp_registers_count ::= abi_output_fp_registers_count_x64(abi_tag.psy64);
 	if(output_registers_count < count)
 	{
 		err_begin();
@@ -847,8 +849,18 @@ irinst_lower_x64_ret : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mu
 	{
 		cur_out : x64val mut;
 		irval_lower_x64(begin # i, ref cur_out);
-		cur_abi_out : x64val mut := [output_registers_begin # i];
-		[x64val_reg_get_size(ref cur_abi_out)] = x64val_get_size(ref cur_out);
+		cur_abi_out : x64val mut;
+		cur_return_irsz ::= [fn->returns # i];
+		cur_return_is_fp ::= (cur_return_irsz == irsz.f) || (cur_return_irsz == irsz.g);
+		if(cur_return_is_fp)
+		{
+			cur_abi_out = [output_fp_registers_begin # i];
+		}
+		else
+		{
+			cur_abi_out = [output_registers_begin # i];
+			[x64val_reg_get_size(ref cur_abi_out)] = x64val_get_size(ref cur_out);
+		}
 		ir_lower_x64_generic_move_no_load(ref cur_abi_out, ref cur_out);
 	}
 	x64_custom_epilog();
