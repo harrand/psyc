@@ -211,13 +211,25 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 	{
 		cur_param_ssa_reg : irval mut;
 		cur_param_ssa_reg.tag = irval_tag.reg;
-		[irval_reg_get_sz(ref cur_param_ssa_reg)] = [fn->params # i];
+
+		param_sz ::= [fn->params # i];
+		[irval_reg_get_sz(ref cur_param_ssa_reg)] = param_sz;
 		[irval_reg_get_idx(ref cur_param_ssa_reg)] = i;
 		cur_param_ssa_reg_x64 : x64val mut;
 		irval_lower_x64(ref cur_param_ssa_reg, ref cur_param_ssa_reg_x64);
 
-		abi_param_register : x64val mut := [abi_param_registers_begin_x64(abi_tag.psy64) # i];
-		[x64val_reg_get_size(ref abi_param_register)] = x64val_get_size(ref cur_param_ssa_reg_x64);
+		cur_param_is_fp ::= (param_sz == irsz.f) || (param_sz == irsz.g);
+		abi_param_register : x64val mut;
+		if(cur_param_is_fp)
+		{
+			abi_param_register = [abi_param_fp_registers_begin_x64(abi_tag.psy64) # i];
+		}
+		else
+		{
+			abi_param_register = [abi_param_registers_begin_x64(abi_tag.psy64) # i];
+			[x64val_reg_get_size(ref abi_param_register)] = x64val_get_size(ref cur_param_ssa_reg_x64);
+		}
+
 		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
 		x64_custom_reghint(ref cur_param_ssa_reg_x64, ref abi_param_register);
 		ir_lower_x64_generic_move_no_load(ref cur_param_ssa_reg_x64, ref abi_param_register);
@@ -497,14 +509,57 @@ ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
 // if the src is a memory operand, a mov will occur, acting as a load
 ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
 {
-	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	dst_fp_sz ::= x64val_vreg_floating_point_size(dst);
+	src_fp_sz ::= x64val_vreg_floating_point_size(src);
+	if((dst_fp_sz != 0) || (src_fp_sz != 0))
+	{
+		// floating point
+		if(src_fp_sz == 64)
+		{
+			x64_movsd(dst, src);
+		}
+		if(src_fp_sz == 32)
+		{
+			x64_movss(dst, src);
+		}
+		return;
+	}
 	x64_mov(dst, src);
 };
 
 // if the src is a memory operand, a lea will occur
 ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? -> v0)
 {
-	// todo: movss if float, movsd if double. movups/movupd/movdqu?
+	dst_fp_sz ::= x64val_vreg_floating_point_size(dst);
+	src_fp_sz ::= x64val_vreg_floating_point_size(src);
+	if((dst_fp_sz != 0) || (src_fp_sz != 0))
+	{
+		// if one is zero, its probably an xmm hardware register and so we really dont know
+		the_fp_size : u64 mut := dst_fp_sz;
+		if(the_fp_size == 0)
+		{
+			the_fp_size = src_fp_sz;
+		}
+		//if(dst_fp_sz != src_fp_sz)
+		//{
+		//	panic_begin();
+		//	putzstr("ir_lower_x64_generic_move_no_load called on floating-point source and destinations of differing sizes (\0");
+		//	x64val_dump(dst);
+		//	putzstr(" and \0");
+		//	x64val_dump(src);
+		//	putzstr(")\n\0");
+		//	panic_end();
+		//}
+		if(the_fp_size == 32)
+		{
+			x64_movss(dst, src);
+		}
+		if(the_fp_size == 64)
+		{
+			x64_movsd(dst, src);
+		}
+		return;
+	}
 	if(!x64val_is_any_memory(dst) && x64val_is_any_memory(src))
 	{
 		x64_lea(dst, src);
@@ -1707,8 +1762,12 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 
 	abi_begin ::= abi_param_registers_begin_x64(abi_tag.psy64);
 	abi_count ::= abi_param_registers_count_x64(abi_tag.psy64);
+	abi_fp_begin ::= abi_param_fp_registers_begin_x64(abi_tag.psy64);
+	abi_fp_count ::= abi_param_fp_registers_count_x64(abi_tag.psy64);
 	abi_retbegin ::= abi_output_registers_begin_x64(abi_tag.psy64);
 	abi_retcount ::= abi_output_registers_count_x64(abi_tag.psy64);
+	abi_fp_retbegin ::= abi_output_fp_registers_begin_x64(abi_tag.psy64);
+	abi_fp_retcount ::= abi_output_fp_registers_count_x64(abi_tag.psy64);
 
 	callcount ::= ir_call_get_params_count(inst)@u64;
 	callbegin ::= ir_call_get_params(inst);
@@ -1730,10 +1789,19 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	for(i = 0; i < callcount; i = i + 1)
 	{
 		// resize abi_begin # i to be cur_param_sz to prevent e.g 'mov rbx, imm8 1', instead want 'mov bl, imm8 1'
-		cur_abi_param : x64val mut := [abi_begin # i];
 		cur_param : x64val mut;
 		irval_lower_x64(callbegin # i, ref cur_param);
-		[x64val_reg_get_size(ref cur_abi_param)] = x64val_get_size(ref cur_param);
+		cur_param_is_fp ::= (x64val_get_size(ref cur_param) == 128) || (x64val_vreg_floating_point_size(ref cur_param) > 0);
+		cur_abi_param : x64val mut;
+		if(cur_param_is_fp)
+		{
+			cur_abi_param = [abi_fp_begin # i];
+		}
+		else
+		{
+			cur_abi_param = [abi_begin # i];
+			[x64val_reg_get_size(ref cur_abi_param)] = x64val_get_size(ref cur_param);
+		}
 		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
 		x64_custom_reghint(ref cur_param, ref cur_abi_param);
 		ir_lower_x64_generic_move_no_load(ref cur_abi_param, ref cur_param);
@@ -1757,10 +1825,19 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 
 	for(i = 0; i < retcount; i = i + 1)
 	{
-		cur_abi_ret : x64val mut := [abi_retbegin # i];
 		cur_ret : x64val mut;
 		irval_lower_x64(retbegin # i, ref cur_ret);
-		[x64val_reg_get_size(ref cur_abi_ret)] = x64val_get_size(ref cur_ret);
+		cur_abi_ret : x64val mut;
+		cur_ret_is_fp ::= (x64val_get_size(ref cur_ret) == 128) || (x64val_vreg_floating_point_size(ref cur_ret) > 0);
+		if(cur_ret_is_fp)
+		{
+			cur_abi_ret = [abi_fp_retbegin # i];
+		}
+		else
+		{
+			cur_abi_ret = [abi_retbegin # i];
+			[x64val_reg_get_size(ref cur_abi_ret)] = x64val_get_size(ref cur_ret);
+		}
 		// hint: it would be nice if the output ssa reg could be lowered to the abi return register
 		x64_custom_reghint(ref cur_ret, ref cur_abi_ret);
 		ir_lower_x64_generic_move_no_load(ref cur_ret, ref cur_abi_ret);
