@@ -614,16 +614,27 @@ ir_lower_x64val_get_size : func(v : x64val mut? -> u64)
 // if the src is a memory operand, a mov will occur, acting as a load
 ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
 {
-	dst_fp_sz ::= x64val_vreg_floating_point_size(dst);
-	src_fp_sz ::= x64val_vreg_floating_point_size(src);
-	if((dst_fp_sz != 0) || (src_fp_sz != 0))
+	dst_sz ::= x64val_get_size(dst);
+	src_sz ::= x64val_get_size(src);
+	either_is_fp : bool mut := (x64val_vreg_floating_point_size(dst) > 0) || (x64val_vreg_floating_point_size(src) > 0);
+	if((dst_sz >= 128) || (src_sz >= 128))
+	{
+		either_is_fp = true;
+	}
+	if(either_is_fp)
 	{
 		// floating point
-		if(src_fp_sz == 64)
+		x64val_imm_as_globref(src, src);
+		the_fp_size : u64 mut := dst_sz;
+		if(the_fp_size >= 128)
+		{
+			the_fp_size = src_sz;
+		}
+		if(the_fp_size >= 64)
 		{
 			x64_movsd(dst, src);
 		}
-		if(src_fp_sz == 32)
+		if(the_fp_size == 32)
 		{
 			x64_movss(dst, src);
 		}
@@ -635,32 +646,28 @@ ir_lower_x64_generic_move : func(dst : x64val mut?, src : x64val mut? -> v0)
 // if the src is a memory operand, a lea will occur
 ir_lower_x64_generic_move_no_load : func(dst : x64val mut?, src : x64val mut? -> v0)
 {
-	dst_fp_sz ::= x64val_vreg_floating_point_size(dst);
-	src_fp_sz ::= x64val_vreg_floating_point_size(src);
-	if((dst_fp_sz != 0) || (src_fp_sz != 0))
+	dst_sz ::= x64val_get_size(dst);
+	src_sz ::= x64val_get_size(src);
+	either_is_fp : bool mut := (x64val_vreg_floating_point_size(dst) > 0) || (x64val_vreg_floating_point_size(src) > 0);
+	if((dst_sz >= 128) || (src_sz >= 128))
 	{
-		// if one is zero, its probably an xmm hardware register and so we really dont know
-		the_fp_size : u64 mut := dst_fp_sz;
-		if(the_fp_size == 0)
+		either_is_fp = true;
+	}
+	if(either_is_fp)
+	{
+		the_fp_size : u64 mut := dst_sz;
+		if(the_fp_size >= 128)
 		{
-			the_fp_size = src_fp_sz;
+			the_fp_size = src_sz;
 		}
-		//if(dst_fp_sz != src_fp_sz)
-		//{
-		//	panic_begin();
-		//	putzstr("ir_lower_x64_generic_move_no_load called on floating-point source and destinations of differing sizes (\0");
-		//	x64val_dump(dst);
-		//	putzstr(" and \0");
-		//	x64val_dump(src);
-		//	putzstr(")\n\0");
-		//	panic_end();
-		//}
+		x64val_imm_as_globref(src, src);
 		if(the_fp_size == 32)
 		{
 			x64_movss(dst, src);
 		}
-		if(the_fp_size == 64)
+		if(the_fp_size >= 64)
 		{
+			// fp_size >= 64 is a big hack - if we mov xmm1 into xmm0 then we have no way at all of knowing the size and we're just gonna go with movsd
 			x64_movsd(dst, src);
 		}
 		return;
@@ -1907,8 +1914,9 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 	{
 		// resize abi_begin # i to be cur_param_sz to prevent e.g 'mov rbx, imm8 1', instead want 'mov bl, imm8 1'
 		cur_param : x64val mut;
+		cur_param_sz ::= irval_get_sz(callbegin # i);
+		cur_param_is_fp ::= (cur_param_sz == irsz.f) || (cur_param_sz == irsz.g);
 		irval_lower_x64(callbegin # i, ref cur_param);
-		cur_param_is_fp ::= (x64val_get_size(ref cur_param) == 128) || (x64val_vreg_floating_point_size(ref cur_param) > 0);
 		cur_abi_param : x64val mut;
 		if(cur_param_is_fp)
 		{

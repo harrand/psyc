@@ -127,6 +127,7 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 	// modrm.reg is the register operand
 	op : x64val mut? mut;
 	type : x64enc_operand_type mut;
+	reg_found : bool mut := false;
 	for(i = 0; i < operands_count; i = i + 1)
 	{
 		op = operands # i;
@@ -135,14 +136,25 @@ x64enc_pre_encode_reg : func(enc : x64enc_table_entry mut?, operands : x64val mu
 		{
 			// this is our register
 			regbits ::= [x64val_reg_get_reg(op)];
-			if(regbits@s64 > 0b111)
+			// if reg_found was already true, then we have 2 reg operands (and we are the 2nd)
+			// in this case the 2nd becomes r/m
+			if(reg_found)
 			{
-				// rex_r to extend modrm.reg
-				enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_r);
+				// let the rm codepath handle it because /r with 2 register operands means the 2nd one is r/m
+				x64enc_pre_encode_handle_rm(enc, op, modrm_out, sib_out);
 			}
-			
-			reg_bits = (regbits@s64 & 0b111)@u8;
-			modrm_set_reg([modrm_out], reg_bits);
+			else
+			{
+				if(regbits@s64 > 0b111)
+				{
+					// rex_r to extend modrm.reg
+					enc->rex_prefix = (enc->rex_prefix | x64enc_rex_prefix.rex_r);
+				}
+				
+				reg_bits = (regbits@s64 & 0b111)@u8;
+				modrm_set_reg([modrm_out], reg_bits);
+				reg_found = true;
+			}
 		}
 	}
 	for(i = 0; i < operands_count; i = i + 1)
