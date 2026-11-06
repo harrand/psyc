@@ -1072,20 +1072,66 @@ irinst_lower_x64_trunc : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst 
 
 irinst_lower_x64_cvtf : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
-	warn_begin();
-	putzstr("lowering of ctvf is NYI, skipping:\n\0");
-	irinst_dump(inst);
-	putchar('\n');
-	warn_end();
+	// integer -> floating point
+	op ::= ir_cvtf_get_operand(inst);
+	opx64 : x64val mut;
+	irval_lower_x64(op, ref opx64);
+	out ::= ir_cvtf_get_out(inst);
+	outx64 : x64val mut;
+	irval_lower_x64(out, ref outx64);
+
+	x64val_imm_as_globref(ref opx64, ref opx64);
+
+	// if the floating-point size is 64-bit, then we use cvtsi2sd
+	// otherwise, cvtsi2ss
+	if(irval_get_sz(out) == irsz.g)
+	{
+		x64_cvtsi2sd(ref outx64, ref opx64);
+	}
+	else
+	{
+		if(irval_get_sz(out) != irsz.f)
+		{
+			// panic: non-floating-point output of cvtf
+			panic_begin();
+			putzstr("non-floating-point output detected of cvtf instruction: \0");
+			irinst_dump(inst);
+			panic_end();
+		}
+		x64_cvtsi2ss(ref outx64, ref opx64);
+	}
 };
 
 irinst_lower_x64_cvti : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
 {
-	warn_begin();
-	putzstr("lowering of ctvi is NYI, skipping:\n\0");
-	irinst_dump(inst);
-	putchar('\n');
-	warn_end();
+	// floating point -> integer
+	op ::= ir_cvti_get_operand(inst);
+	opx64 : x64val mut;
+	irval_lower_x64(op, ref opx64);
+	out ::= ir_cvti_get_out(inst);
+	outx64 : x64val mut;
+	irval_lower_x64(out, ref outx64);
+
+	x64val_imm_as_globref(ref opx64, ref opx64);
+
+	// if the floating-point size is 64-bit, then we use cvttsd2si
+	// otherwise, cvttss2si
+	if(irval_get_sz(op) == irsz.g)
+	{
+		x64_cvttsd2si(ref outx64, ref opx64);
+	}
+	else
+	{
+		if(irval_get_sz(op) != irsz.f)
+		{
+			// panic: non-floating-point input of cvti
+			panic_begin();
+			putzstr("non-floating-point input detected of cvti instruction: \0");
+			irinst_dump(inst);
+			panic_end();
+		}
+		x64_cvttss2si(ref outx64, ref opx64);
+	}
 };
 
 irinst_lower_x64_add : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut? -> v0)
