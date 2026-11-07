@@ -188,6 +188,8 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 	curop_is_mem : bool mut := false;
 	curop_mem_sz : u64 mut := 0;
 	curop : x64val mut := zero;
+	curop_disp : x64val mut := zero;
+	curop_disp_is_negative : bool mut := false;
 	// parse the assembly (please deal with memory operands too)
 	i : u64 mut;
 	j : u64 mut;
@@ -287,7 +289,18 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 					i = countof typeof x64reg_name;
 				}
 			}
+
 			number : parseutil_number mut := zero;
+			if([code # cursor] == '+')
+			{
+				curop_disp_is_negative = false;
+				cursor = cursor + 1;
+			}
+			if([code # cursor] == '-')
+			{
+				curop_disp_is_negative = true;
+				cursor = cursor + 1;
+			}
 			// how about an integral literal?
 			if(parseutil_is_digit([code # cursor]))
 			{
@@ -297,11 +310,22 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 					{
 						parseutil_parse_number(code # cursor, i - (cursor), ref number);
 						// immediate
-						curop.tag = x64val_tag.imm;
+						// unless we are in a memory operand in which case we assume this is a plus
+						opptr : x64val mut? mut := ref curop;
+						if(curop_is_mem)
+						{
+							opptr = ref curop_disp;
+						}
+						opptr->tag = x64val_tag.imm;
 						// todo: support immX <num> instead of just taking a num directly and just assuming its 32-bit...
-						[x64val_imm_get_size(ref curop)] = 32;
-						[x64val_imm_get_value(ref curop)] = number.i@u64;
+						[x64val_imm_get_size(opptr)] = 32;
+						[x64val_imm_get_value(opptr)] = number.i@u64;
 						// set cursor and end loop
+						if(curop_is_mem && curop_disp_is_negative)
+						{
+							[x64val_imm_get_value(opptr)] = -[x64val_imm_get_value(opptr)];
+							curop_disp_is_negative = false;
+						}
 						cursor = i;
 						i = code_len;
 					}
@@ -355,8 +379,18 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 				[x64val_memreg_get_index(ref curop)] = zero;
 				[x64val_memreg_get_index_size(ref curop)] = zero;
 				[x64val_memreg_get_scale(ref curop)] = zero;
-				[x64val_memreg_get_displacement(ref curop)] = zero;
-				[x64val_memreg_get_displacement_size(ref curop)] = zero;
+
+				if(x64val_is_valid(ref curop_disp))
+				{
+					[x64val_memreg_get_displacement(ref curop)] = [x64val_imm_get_value(ref curop_disp)];
+					[x64val_memreg_get_displacement_size(ref curop)] = 32;
+					curop_disp = zero;
+				}
+				else
+				{
+					[x64val_memreg_get_displacement(ref curop)] = zero;
+					[x64val_memreg_get_displacement_size(ref curop)] = zero;
+				}
 				[x64val_memreg_get_size(ref curop)] = curop_mem_sz;
 				cursor = cursor + 1;
 			}
@@ -365,6 +399,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 			curop = zero;
 			curop_is_mem = false;
 			curop_mem_sz = 0;
+			curop_disp = zero;
 		}
 	}
 	// we ran out of code
