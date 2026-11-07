@@ -1000,7 +1000,14 @@ val_from_node_expr_biop_sub : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		return;
 	}
 
-	ir_sub(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	if(ty_floating_point_size(arith) > 0)
+	{
+		ir_fsub(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
+	else
+	{
+		ir_sub(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+	}
 	[val_scalar_get_displacement(out)] = 0;
 };
 
@@ -1036,13 +1043,20 @@ val_from_node_expr_biop_mul : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		return;
 	}
 
-	if(ty_is_signed(out->type))
+	if(ty_floating_point_size(arith) > 0)
 	{
-		ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		ir_fmul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 	}
 	else
 	{
-		ir_umul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		if(ty_is_signed(out->type))
+		{
+			ir_smul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		}
+		else
+		{
+			ir_umul(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		}
 	}
 	[val_scalar_get_displacement(out)] = 0;
 };
@@ -1079,13 +1093,20 @@ val_from_node_expr_biop_div : func(lhs_node : ast mut?, rhs_node : ast mut?, lhs
 		return;
 	}
 
-	if(ty_is_signed(out->type))
+	if(ty_floating_point_size(arith) > 0)
 	{
-		ir_sdiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		ir_fdiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
 	}
 	else
 	{
-		ir_udiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		if(ty_is_signed(out->type))
+		{
+			ir_sdiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		}
+		else
+		{
+			ir_udiv(val_scalar_get_irval(out), val_scalar_get_irval(lhs_val), val_scalar_get_irval(rhs_val));
+		}
 	}
 	[val_scalar_get_displacement(out)] = 0;
 };
