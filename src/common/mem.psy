@@ -61,6 +61,24 @@ memcopy128_unaligned : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v
 	}
 };
 
+memcopy128_backwards_unaligned : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v0)
+{
+	i : s64 mut weak;
+	for(i = (len / 8) - 2; i >= 0; i = i - 2)
+	{
+		cpy128_unaligned(dst # i, src # i);
+	}
+};
+
+memcopy128_backwards_aligned : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v0)
+{
+	i : s64 mut weak;
+	for(i = (len / 8) - 2; i >= 0; i = i - 2)
+	{
+		cpy128_aligned(dst # i, src # i);
+	}
+};
+
 memcopy64 : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v0)
 {
 	i : u64 mut;
@@ -99,7 +117,7 @@ memcopy64_backwards : func(dst : u64 mut? weak, src : u64? weak, len : u64 -> v0
 
 memcopy_backwards : func(dst : u8 mut? weak, src : u8? weak, len : u64 -> v0)
 {
-	postpad : u64 mut := (dst@u64 + len) & 7;
+	postpad : u64 mut := (dst@u64 + len) & 15;
 
 	if(postpad > len)
 	{
@@ -109,11 +127,19 @@ memcopy_backwards : func(dst : u8 mut? weak, src : u8? weak, len : u64 -> v0)
 	memcopy8_backwards(dst # (len - postpad), src # (len - postpad), postpad);
 
 	remaining ::= len - postpad;
-	quad_bytes ::= (remaining / 8) * 8;
-
-	memcopy64_backwards(dst # (remaining - quad_bytes), src # (remaining - quad_bytes), quad_bytes);
+	quad_bytes ::= (remaining / 16) * 16;
 
 	prepad : u64 := remaining - quad_bytes;
+
+	if((((dst # prepad)@u64 ^ (src # prepad)@u64) & 15) == 0)
+	{
+		// both are aligned
+		memcopy128_backwards_aligned(dst # prepad, src # prepad, quad_bytes);
+	}
+	else
+	{
+		memcopy128_backwards_unaligned(dst # prepad, src # prepad, quad_bytes);
+	}
 
 	memcopy8_backwards(dst, src, prepad);
 };
