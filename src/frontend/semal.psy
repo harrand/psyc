@@ -121,6 +121,17 @@ populate_function_declarations : func(-> v0)
 		fn_typename_ctx.type_only = true;
 		fn->type = ty_from_typename_node(ref fn_typename_ctx);
 
+		if(ty_is_abi_sysv(fn->type))
+		{
+			// todo: abi_tag.sysv
+			warn_begin();
+			putzstr("function \0");
+			putchars([ast_function_get_name(fn->node)], [ast_function_get_name_len(fn->node)]);
+			putzstr(" is labelled to use the SYSV ABI, but this is not yet implemented, so we fall back to psy64 at \0");
+			putsrc(fn->src, fn->node->src_beg@u64, fn->node->src_end@u64, putcol.yellow_underline);
+			warn_end();
+		}
+
 		param_count ::= ty_countof(fn->type);
 		param_decls ::= ast_typename_function_get_param_decls(fn_typename_node);
 		for(j = 0; j < param_count; j = j + 1)
