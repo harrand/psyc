@@ -15,6 +15,7 @@ optimise_x64func : func(fn : irfunc mut?, fnx64 : x64func mut? -> v0)
 		{
 			x64_delete_instruction();
 		}
+		x64_insert_plusminus1_with_incdec(x64_current_instruction());
 		i = i + 1;
 	}
 
@@ -29,4 +30,22 @@ x64_optimise_current_inst_is_noop : func(-> bool)
 		return x64val_equal_to(inst->operands # 0, inst->operands # 1);
 	}
 	return false;
+};
+
+x64_insert_plusminus1_with_incdec : func(inst : x64inst mut? -> v0)
+{
+	op1 ::= inst->operands # 1;
+	if((op1->tag == x64val_tag.imm) && ([x64val_imm_get_value(op1)] == 1))
+	{
+		if((inst->tag == x64inst_tag.add))
+		{
+			op1->tag = x64val_tag.invalid;
+			inst->tag = x64inst_tag.inc;
+		}
+		if((inst->tag == x64inst_tag.sub))
+		{
+			op1->tag = x64val_tag.invalid;
+			inst->tag = x64inst_tag.dec;
+		}
+	}
 };

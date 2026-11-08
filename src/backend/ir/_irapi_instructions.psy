@@ -581,6 +581,18 @@ ir_smul : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] * [irval_imm_get_integer(rhs)];
 		return;
 	}
+	if((rhs->tag == irval_tag.imm))
+	{
+		immval ::= [irval_imm_get_integer(rhs)];
+		if(is_pow2(immval@_))
+		{
+			shift_imm : irval mut := [rhs];
+			[irval_imm_get_integer(ref shift_imm)] = log2(immval@_)@_;
+			ir_shl(out, lhs, ref shift_imm);
+			return;
+		}
+		// if rhs is divisible by 2, do a shift instead.
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -616,6 +628,18 @@ ir_umul : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		[out] = lhscpy;
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] * [irval_imm_get_integer(rhs)];
 		return;
+	}
+	if((rhs->tag == irval_tag.imm))
+	{
+		immval ::= [irval_imm_get_integer(rhs)];
+		if(is_pow2(immval@_))
+		{
+			shift_imm : irval mut := [rhs];
+			[irval_imm_get_integer(ref shift_imm)] = log2(immval@_)@_;
+			ir_shl(out, lhs, ref shift_imm);
+			return;
+		}
+		// if rhs is divisible by 2, do a shift instead.
 	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
@@ -653,6 +677,17 @@ ir_sdiv : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] / [irval_imm_get_integer(rhs)];
 		return;
 	}
+	if((rhs->tag == irval_tag.imm))
+	{
+		immval ::= [irval_imm_get_integer(rhs)];
+		if(is_pow2(immval@_))
+		{
+			shift_imm : irval mut := [rhs];
+			[irval_imm_get_integer(ref shift_imm)] = log2(immval@_)@_;
+			ir_sshr(out, lhs, ref shift_imm);
+			return;
+		}
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -688,6 +723,17 @@ ir_udiv : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		[out] = lhscpy;
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] / [irval_imm_get_integer(rhs)];
 		return;
+	}
+	if((rhs->tag == irval_tag.imm))
+	{
+		immval ::= [irval_imm_get_integer(rhs)];
+		if(is_pow2(immval@_))
+		{
+			shift_imm : irval mut := [rhs];
+			[irval_imm_get_integer(ref shift_imm)] = log2(immval@_)@_;
+			ir_ushr(out, lhs, ref shift_imm);
+			return;
+		}
 	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
