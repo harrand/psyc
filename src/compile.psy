@@ -1,6 +1,6 @@
 compile : func(-> v0)
 {
-	add_build_file(args.build_file, args.target.data, args.target.len);
+	add_build_file(args.build_file, args.target.data, args.target.len, file.cwd);
 
 	putchar('\r');
 	putzstr("finalising...                                 \0");
@@ -292,13 +292,13 @@ write_output_x64 : func(-> v0)
 	file_close(f);
 };
 
-add_build_file : func(p : path, target : u8?, target_len : u64 -> v0)
+add_build_file : func(p : path, target : u8?, target_len : u64, rel : file -> v0)
 {
 	putchar('\r');
 	putzstr(path2zstr(p));
 	putzstr("...\0");
 
-	src ::= add_source_file(p);
+	src ::= add_source_file(p, rel);
 
 	file_node ::= ref(prog_get_source(src)->node);
 	region_node ::= find_build_region(file_node, target, target_len);
@@ -314,14 +314,14 @@ add_build_file : func(p : path, target : u8?, target_len : u64 -> v0)
 		err_end();
 	}
 	t : u64 mut := nanotime();
-	execute_build_region(src, region_node);
+	execute_build_region(src, region_node, rel);
 	compile_timings.build_regions_plus_tokenise_and_parse = compile_timings.build_regions_plus_tokenise_and_parse + (nanotime() - t);
 };
 
-add_source_file : func(p : path -> source)
+add_source_file : func(p : path, rel : file -> source)
 {
 	stats : file_stats mut;
-	staterr ::= path_get_stats(p, ref stats, file.cwd);
+	staterr ::= path_get_stats(p, ref stats, rel);
 	if(staterr != zero)
 	{
 		err_begin();
@@ -357,7 +357,7 @@ add_source_file : func(p : path -> source)
 	}
 	ptr : u8 mut? := arena_alloc(global_arena, stats.size);
 	src.src = ptr;
-	f : file := path_open(p, file.cwd, file_access.read, zero);
+	f : file := path_open(p, rel, file_access.read, zero);
 	file_read(f, ptr, stats.size);
 
 	toks : token_buffer mut;

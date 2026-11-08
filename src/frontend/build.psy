@@ -13,7 +13,7 @@ find_build_region : func(node : ast mut?, name : u8?, name_len : u64 -> ast mut?
 	return zero;
 };
 
-execute_build_region : func(src : source, region_node : ast mut? -> v0)
+execute_build_region : func(src : source, region_node : ast mut?, rel : file -> v0)
 {
 	i : u32 mut;
 	count ::= ast_region_get_body_count(region_node);
@@ -21,16 +21,16 @@ execute_build_region : func(src : source, region_node : ast mut? -> v0)
 	for(i = 0; i < count; i = i + 1)
 	{
 		child ::= body # i;
-		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src);
+		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel);
 	}
 };
 
-execute_build_inst_expr : func(expr : ast mut?, src : source -> v0)
+execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file -> v0)
 {
-	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src);
+	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel);
 };
 
-execute_build_inst_call : func(call : ast mut?, src : source -> v0)
+execute_build_inst_call : func(call : ast mut?, src : source, rel : file -> v0)
 {
 	callee ::= ast_call_get_callee(call);
 	if([ast_expr_get_tag(callee)] != ast_expr_tag.symbol)
@@ -43,7 +43,7 @@ execute_build_inst_call : func(call : ast mut?, src : source -> v0)
 	// do builtin call
 	if([ast_call_get_is_builtin_call(call)])
 	{
-		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], ast_call_get_params(call), ast_call_get_params_count(call), src, call);
+		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], ast_call_get_params(call), ast_call_get_params_count(call), src, call, rel);
 	}
 	else
 	{
@@ -62,11 +62,11 @@ execute_build_inst_call : func(call : ast mut?, src : source -> v0)
 			putsrc(src, call->src_beg@u64, call->src_end@u64, putcol.red_underline);
 			err_end();
 		}
-		execute_build_region(src, other_region);
+		execute_build_region(src, other_region, rel);
 	}
 };
 
-execute_build_inst_invalid : func(stmt : ast mut?, src : source -> v0)
+execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file -> v0)
 {
 	err_begin();
 	putzstr("statement is not a valid build instruction\n\0");
@@ -74,7 +74,7 @@ execute_build_inst_invalid : func(stmt : ast mut?, src : source -> v0)
 	err_end();
 };
 
-execute_build_inst_tbl ::= func(stmt : ast mut?, src : source -> v0)[countof ast_stmt_tag]
+execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file -> v0)[countof ast_stmt_tag]
 {
 	.0 := execute_build_inst_expr;
 	.1 := execute_build_inst_invalid;
@@ -92,7 +92,7 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source -> v0)[countof ast
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source -> v0)[countof ast_expr_tag]
+execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file -> v0)[countof ast_expr_tag]
 {
 	.0 := execute_build_inst_invalid;
 	.1 := execute_build_inst_invalid;
@@ -110,15 +110,15 @@ execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source -> v0)[counto
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_builtin_add_source_file : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_add_source_file : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
 {
 	path_data ::= [ast_literal_get_string(params # 0)];
 	path_len ::= [ast_literal_get_string_len(params # 0)];
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
-	add_source_file(zstr2path(path_zstr));
+	add_source_file(zstr2path(path_zstr), rel);
 };
 
-execute_build_builtin_add_build_file : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_add_build_file : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
 {
 	path_data ::= [ast_literal_get_string(params # 0)];
 	path_len ::= [ast_literal_get_string_len(params # 0)];
@@ -126,55 +126,54 @@ execute_build_builtin_add_build_file : func(params : ast mut?, params_count : u3
 
 	target_data ::= [ast_literal_get_string(params # 1)];
 	target_len ::= [ast_literal_get_string_len(params # 1)];
-	add_build_file(zstr2path(path_zstr), target_data, target_len);
+	add_build_file(zstr2path(path_zstr), target_data, target_len, rel);
 };
 
-execute_build_builtin_add_source_directory : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_add_source_directory : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
 {
 	path_data ::= [ast_literal_get_string(params # 0)];
 	path_len ::= [ast_literal_get_string_len(params # 0)];
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
 	dir ::= path_open(zstr2path(path_zstr), file.cwd, file_access.read, zero);
-	directory_iterate(dir, build_builtin_add_source_directory_callback, path_zstr);
+	directory_iterate(dir, build_builtin_add_source_directory_callback, rel@s64@u64);
 	file_close(dir);
 };
 
 build_builtin_add_source_directory_callback : func(child_path : path, usrdata : v0? weak -> bool)
 {
-	parent_path ::= zstr2path(usrdata@u8 mut?);
-	add_source_file(path_combine(parent_path, child_path, global_arena));
+	rel ::= usrdata@u64@s64@file;
+	add_source_file(child_path, rel);
 	return true;
 };
 
-execute_build_builtin_add_source_directory_recursive : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_add_source_directory_recursive : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
 {
 	path_data ::= [ast_literal_get_string(params # 0)];
 	path_len ::= [ast_literal_get_string_len(params # 0)];
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
-	dir ::= path_open(zstr2path(path_zstr), file.cwd, file_access.read, zero);
-	directory_iterate(dir, build_builtin_add_source_directory_recursive_callback, path_zstr);
+	dir ::= path_open(zstr2path(path_zstr), rel, file_access.read, zero);
+	directory_iterate(dir, build_builtin_add_source_directory_recursive_callback, dir@s64@u64);
 	file_close(dir);
 };
 
 build_builtin_add_source_directory_recursive_callback : func(child_path : path, usrdata : v0? weak -> bool)
 {
-	parent_path ::= zstr2path(usrdata@u8 mut?);
-	path ::= path_combine(parent_path, child_path, global_arena);
+	rel ::= usrdata@u64@s64@file;
 
 	stats : file_stats mut;
-	err ::= path_get_stats(path, ref stats, file.cwd);
+	err ::= path_get_stats(child_path, ref stats, rel);
 	if(err == zero)
 	{
 		if(stats.type == file_type.dir)
 		{
 			// iterate again
-			dir ::= path_open(path, file.cwd, file_access.read, zero);
-			directory_iterate(dir, build_builtin_add_source_directory_recursive_callback, path2zstr(path));
+			dir ::= path_open(child_path, rel, file_access.directory, zero);
+			directory_iterate(dir, build_builtin_add_source_directory_recursive_callback, dir@s64@u64);
 			file_close(dir);
 		}
 		else
 		{
-			add_source_file(path);
+			add_source_file(child_path, rel);
 		}
 	}
 	else
@@ -182,7 +181,7 @@ build_builtin_add_source_directory_recursive_callback : func(child_path : path, 
 		err_begin();
 		putzstr("within add_source_directory_recursive, failed to stat \0");
 		putchar('"');
-		putzstr(path2zstr(path));
+		putzstr(path2zstr(child_path));
 		putchar('"');
 		putzstr(": error code \0");
 		putsint(err@s64);
@@ -236,26 +235,26 @@ execute_build_builtin_output_name : func(params : ast mut?, params_count : u32, 
 	prog.output_name.len = [ast_literal_get_string_len(params # 0)];
 };
 
-execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, params_count : u32, src : source, node : ast mut? -> v0)
+execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, params_count : u32, src : source, node : ast mut?, rel : file -> v0)
 {
 	if(streql(name, name_len, "add_source_file", 15))
 	{
-		execute_build_builtin_add_source_file(params, params_count, src);
+		execute_build_builtin_add_source_file(params, params_count, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_build_file", 14))
 	{
-		execute_build_builtin_add_build_file(params, params_count, src);
+		execute_build_builtin_add_build_file(params, params_count, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_source_directory", 20))
 	{
-		execute_build_builtin_add_source_directory(params, params_count, src);
+		execute_build_builtin_add_source_directory(params, params_count, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_source_directory_recursive", 30))
 	{
-		execute_build_builtin_add_source_directory_recursive(params, params_count, src);
+		execute_build_builtin_add_source_directory_recursive(params, params_count, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "prebuild_command", 16))
