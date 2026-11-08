@@ -509,6 +509,12 @@ ir_add : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] + [irval_imm_get_integer(rhs)];
 		return;
 	}
+	if((rhs->tag == irval_tag.imm) && ([irval_imm_get_integer(rhs)] == 0))
+	{
+		// rhs immN 0 is a noop
+		[out] = lhscpy;
+		return;
+	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
 	irinst_add_operand(ref inst, out);
 	irinst_add_operand(ref inst, ref lhscpy);
@@ -543,6 +549,12 @@ ir_sub : func(out : irval mut?, lhs : irval mut?, rhs : irval mut? -> v0)
 		// if both operands are imms then we really dont need to emit an instruction
 		[out] = lhscpy;
 		[irval_imm_get_integer(out)] = [irval_imm_get_integer(lhs)] - [irval_imm_get_integer(rhs)];
+		return;
+	}
+	if((rhs->tag == irval_tag.imm) && ([irval_imm_get_integer(rhs)] == 0))
+	{
+		// rhs immN 0 is a noop
+		[out] = lhscpy;
 		return;
 	}
 	ir_new_reg_of(irval_get_sz(lhs), out);
