@@ -1,8 +1,9 @@
 ty : enum
 {
-	.qual_mut    := 0x0800000000000000; // not-quite-msb
-	.qual_weak   := 0x0400000000000000; // not-quite-msb-1
-	.qual_static := 0x0200000000000000; // not-quite-msb-2
+	.qual_mut      := 0x0800000000000000; // not-quite-msb
+	.qual_weak     := 0x0400000000000000; // not-quite-msb-1
+	.qual_static   := 0x0200000000000000; // not-quite-msb-2
+	.qual_abi_sysv := 0x0100000000000000; // not-quite-msb-3
 	// (should be most significant nibble really, but it doesnt actually matter that much and i work around a compiler bug this way)
 
 	.v0   := 0;	
@@ -62,6 +63,11 @@ ty_add_static : func(in : ty -> ty)
 	return in | ty.qual_static;
 };
 
+ty_add_abi_sysv : func(in : ty -> ty)
+{
+	return in | ty.qual_abi_sysv;
+};
+
 ty_strip_mut : func(in : ty -> ty)
 {
 	return in & (~ty.qual_mut);
@@ -77,6 +83,11 @@ ty_strip_static : func(in : ty -> ty)
 	return in & (~ty.qual_static);
 };
 
+ty_strip_abi_sysv : func(in : ty -> ty)
+{
+	return in & (~ty.qual_abi_sysv);
+};
+
 ty_strip_static_unless : func(in : ty, cond : bool -> ty)
 {
 	if(cond)
@@ -88,7 +99,7 @@ ty_strip_static_unless : func(in : ty, cond : bool -> ty)
 
 ty_strip : func(in : ty -> ty)
 {
-	return in & (~(ty.qual_mut | ty.qual_weak | ty.qual_static));
+	return in & (~(ty.qual_mut | ty.qual_weak | ty.qual_static | ty.qual_abi_sysv));
 };
 
 ty_is_mut : func(t : ty -> bool)
@@ -104,6 +115,11 @@ ty_is_weak : func(t : ty -> bool)
 ty_is_static : func(t : ty -> bool)
 {
 	return t & ty.qual_static != zero;
+};
+
+ty_is_abi_sysv : func(t : ty -> bool)
+{
+	return t & ty.qual_abi_sysv != zero;
 };
 
 ty_eq : func(lhs : ty, rhs : ty -> bool)
@@ -759,6 +775,10 @@ bwrite_ty : func(w : bwriter mut?, type : ty -> v0)
 	if(ty_is_static(type))
 	{
 		bwrite_zstr(w, " static\0");
+	}
+	if(ty_is_abi_sysv(type))
+	{
+		bwrite_zstr(w, " abi_sysv\0");
 	}
 };
 
