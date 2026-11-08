@@ -42,6 +42,49 @@ path_combine : func(lhs : path, rhs : path, ar : arena mut? -> path)
 	return zstr2path(zstrcombz(lhsz, rhsz, '/', ar));
 };
 
+path_get_parent : func(p : path, relative_to : file, out_path : path mut? -> file)
+{
+	// if the path contains a parent path, then make a new file descriptor for it relative to the param
+	// otherwise if theres no parent path, just return relative_to
+	path_zstr ::= path2zstr(p);
+	len ::= zstrlen(path_zstr);
+
+	if(len == 0)
+	{
+		[out_path] = p;
+		return relative_to;
+	}
+
+	i : u64 mut;
+	last_found_slash : u64 mut := ~0;
+	for(i = 0; i < len - 1; i = i + 1)
+	{
+		if([path_zstr # i] == '/')
+		{
+			last_found_slash = i;
+		}
+	}
+
+	// if we never found a slash, there is no parent path
+	if((last_found_slash == ~0))
+	{
+		[out_path] = p;
+		return relative_to;
+	}
+	parent_path_zstr ::= sstr2zstr(path_zstr, last_found_slash, scratch_arena);
+	[out_path] = zstr2path(path_zstr # (last_found_slash + 1));
+	parent_dir ::= path_open(zstr2path(parent_path_zstr), relative_to, file_access.directory, zero);
+	if(!file_is_valid(parent_dir))
+	{
+		warn_begin();
+		putzstr("fucked up parent path: \0");
+		putzstr(parent_path_zstr);
+		warn_end();
+	}
+	return parent_dir;
+};
+
+
 path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
 {
 	linux_out : linux_stat_t mut;
