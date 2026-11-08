@@ -42,6 +42,16 @@ path_combine : func(lhs : path, rhs : path, ar : arena mut? -> path)
 	return zstr2path(zstrcombz(lhsz, rhsz, '/', ar));
 };
 
+path_dupe : func(p : path, ar : arena mut? -> path)
+{
+	p_zstr ::= path2zstr(p);
+	len ::= zstrlen(p_zstr);
+	ptr : u8 mut? := arena_alloc(ar, len + 1);
+	memcopy(ptr, p_zstr, len);
+	[p_zstr # len] = '\0';
+	return zstr2path(ptr);
+};
+
 path_get_parent : func(p : path, relative_to : file, out_path : path mut? -> file)
 {
 	// if the path contains a parent path, then make a new file descriptor for it relative to the param
@@ -71,7 +81,7 @@ path_get_parent : func(p : path, relative_to : file, out_path : path mut? -> fil
 		[out_path] = p;
 		return relative_to;
 	}
-	parent_path_zstr ::= sstr2zstr(path_zstr, last_found_slash, scratch_arena);
+	parent_path_zstr ::= sstr2zstr(path_zstr, last_found_slash, global_arena);
 	[out_path] = zstr2path(path_zstr # (last_found_slash + 1));
 	parent_dir ::= path_open(zstr2path(parent_path_zstr), relative_to, file_access.directory, zero);
 	if(!file_is_valid(parent_dir))
@@ -174,6 +184,7 @@ path_open : func(p : path, relative_to : file, access : file_access, flags : pat
 	return linux_openat(linux_dirfd, path2zstr(p), access_flags | flagbits, mode)@s64@file;
 };
 
+// note: the path provided to the callback should not be cached - as it points to temporary stack memory. if you want to keep ahold of it, do a deep-copy via path_dupe
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
 {
 	counter : u64 mut := 0;
