@@ -1,34 +1,50 @@
+// opaque handle representing a file descriptor
 file : enum
 {
 	.none := ~0;
 	.cwd := ~1;
 };
 
+// files arent necessarily actual files, they can also represent directories for example
 file_type : enum
 {
+	// the file doesnt exist
 	.notfound := 0;
+	// the file is a normal file
 	.file := 1;
+	// the file is a directory
 	.dir := 2;
 };
 
+// basic information about a file
 file_stats : struct
 {
+	// size in bytes.
 	size : u64;
+	// what type of file are we? if type == notfound, then the file doesnt actually exist.
 	type : file_type;
 };
 
 file_access : enum
 {
+	// we want to be able to read the file
 	.read := 0;
+	// we want to be able to write to the file
 	.write := 1;
+	// read + write
 	.read_write := 2;
+	// we expect the file to be a directory
 	.directory := 4;
 };
 
+// opaque handle representing a path to a file (in reality its a char-pointer underneath)
 path : enum
 {
 };
 
+// given a parent path and a child path, combine them to make one singular path
+// e.g: path_combine("/usr/lib"path, "foo.txt"path) => "/usr/lib/foo.txt"path
+// the arena is used for memory allocation
 path_combine : func(lhs : path, rhs : path, ar : arena mut? -> path)
 {
 	lhsz ::= path2zstr(lhs);
@@ -42,6 +58,7 @@ path_combine : func(lhs : path, rhs : path, ar : arena mut? -> path)
 	return zstr2path(zstrcombz(lhsz, rhsz, '/', ar));
 };
 
+// deep-copy a path using the given arena. the result has the exact same contents.
 path_dupe : func(p : path, ar : arena mut? -> path)
 {
 	p_zstr ::= path2zstr(p);
@@ -52,6 +69,10 @@ path_dupe : func(p : path, ar : arena mut? -> path)
 	return zstr2path(ptr);
 };
 
+// given a path, try to get the parent part of the path. return a file descriptor representing the parent directory (relative to the argument which can be file.cwd)
+// e.g path_get_parent("foo/baz.png"path, file.cwd, ref output) => a directory file descriptor for "./foo"
+// if the path had no parent path, just return the relative argument back
+// e.g path_get_parent("baz.png"path, dir_foo, ref output) => dir_foo
 path_get_parent : func(p : path, relative_to : file, out_path : path mut? -> file)
 {
 	// if the path contains a parent path, then make a new file descriptor for it relative to the param
@@ -94,8 +115,9 @@ path_get_parent : func(p : path, relative_to : file, out_path : path mut? -> fil
 	return parent_dir;
 };
 
-
-path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> err)
+// given a path to a file, retrieve stats about that file (relative to another file, which can be file.cwd)
+// use 'out->type != file_type.notfound' to check if the file actually exists. otherwise have a look at the file_stats struct and take what you need.
+path_get_stats : func(p : path, out : file_stats mut?, relative_to : file -> err)
 {
 	linux_out : linux_stat_t mut;
 
@@ -116,8 +138,8 @@ path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> e
 	}
 	if(linux_err == -2) // ENOENT
 	{
-		stats->size = 0;
-		stats->type = file_type.notfound;
+		out->size = 0;
+		out->type = file_type.notfound;
 		return zero;
 	}
 	if(linux_err == -20) // ENOTDIR
@@ -130,19 +152,20 @@ path_get_stats : func(p : path, stats : file_stats mut?, relative_to : file -> e
 	}
 	if(linux_err == 0)
 	{
-		__linux_stat2file_stats(ref linux_out, stats);
+		__linux_stat2file_stats(ref linux_out, out);
 		return zero;
 	}
 	return err.unknown;
 };
 
+// controls optional behaviours when opening a file
 path_open_flag : enum
 {
 	// if the file already has content, truncate it so that it is empty
 	.truncate := 0x0200;
-	// if the file does not exist, create it
+	// if the file does not exist, create it (file perms are rw-rw-r-- if supported)
 	.create_if_notfound := 0x40;
-	// if we are creating the file, make it executable
+	// if we are creating the file (i.e via create_if_notfound), make the file permissions executable (file perms are rwxr-xr-x if supported)
 	.create_executable := 0x01;
 };
 
@@ -184,7 +207,8 @@ path_open : func(p : path, relative_to : file, access : file_access, flags : pat
 	return linux_openat(linux_dirfd, path2zstr(p), access_flags | flagbits, mode)@s64@file;
 };
 
-// note: the path provided to the callback should not be cached - as it points to temporary stack memory. if you want to keep ahold of it, do a deep-copy via path_dupe
+// given a directory file descriptor, iterate over all files in the directory (non-recursively) and invoke the callback for each filename (and I will pass back the userdata you provide me)
+// important: the path provided to the callback should not be cached - as it points to temporary stack memory. if you want to keep ahold of it, do a deep-copy via path_dupe
 directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? weak -> bool), usrdata : v0? weak -> u64)
 {
 	counter : u64 mut := 0;
@@ -217,6 +241,7 @@ directory_iterate : func(dir : file, callback : func(p : path, usrdata : v0? wea
 	unreachable;
 };
 
+// close a file. all opened files should be closed if you want to reclaim internal/kernel resources
 file_close : func(f : file -> err)
 {
 	linux_err : s32 := linux_close(f@s64@s32);
@@ -231,16 +256,21 @@ file_close : func(f : file -> err)
 	return err.unknown;
 };
 
+// if !file_is_valid(f), yield an error code describing why it isnt valid
+// note: calling this on a valid file will yield a garbage result, not necessarily zero.
 file_get_error : func(f : file -> err)
 {
 	return -(f@s64)@err;
 };
 
+// returns true if the file is valid (i.e successfully opened). if false, you can get an error code via file_get_error.
 file_is_valid : func(f : file -> bool)
 {
 	return f@s64 > 0;
 };
 
+// read data from a file. returns zero on success.
+// dev note: this may or may not read 'out_size' bytes, but there is no way for the caller to know lmao because that will still return zero
 file_read : func(f : file, out : u8 mut?, out_size : u64 -> err)
 {
 	ret : s32 := linux_read(f@s64@s32, out, out_size)@s32;
@@ -251,6 +281,8 @@ file_read : func(f : file, out : u8 mut?, out_size : u64 -> err)
 	return err.unknown;
 };
 
+// write data to a file. returns zero on success
+// dev note: this may or may not write 'in_size' bytes, but there is no way for the caller to know lmao because that will still return zero
 file_write : func(f : file, in : u8 mut?, in_size  : u64 -> err)
 {
 	ret : s32 := linux_write(f@s64@s32, in, in_size)@s32;
@@ -261,6 +293,7 @@ file_write : func(f : file, in : u8 mut?, in_size  : u64 -> err)
 	return err.unknown;
 };
 
+// internal impl details.
 __linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
 {
 	out->size = s->st_size@u64;
@@ -276,11 +309,13 @@ __linux_stat2file_stats : func(s : linux_stat_t?, out : file_stats mut? -> v0)
 	}
 };
 
+// convert a zstr to a path
 zstr2path : func(zstr : u8? -> path)
 {
 	return zstr@u64@s64@path;
 };
 
+// convert a path to a zstr
 path2zstr : func(p : path -> u8?)
 {
 	return p@s64@u64@u8?;
