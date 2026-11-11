@@ -292,16 +292,22 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 	// this not only involves vreg -> reg but also vmemregs where the base/index registers are ssa registers
 	replacement : x64val mut;
 
+	nodes_count ::= state->igraph_nodes.count;
+	vreg_idx_to_replacement_map : x64val mut? mut? := arena_alloc(scratch_arena, nodes_count * sizeof x64val mut?);
+
 	i : u64 mut;
 	j : u64 mut;
 	k : u64 mut;
-	nodes_count ::= state->igraph_nodes.count;
 	node : igraph_node_x64 mut? mut;
 	for(i = 0; i < nodes_count; i = i + 1)
 	{
 		node = state->igraph_nodes.data # i;
 		node->replacement.tag = x64val_tag.invalid;
 		nodeval ::= ref(node->value);
+		if(ir_lower_x64val_is_vreg(nodeval))
+		{
+			[vreg_idx_to_replacement_map # [x64val_vreg_get_idx(nodeval)]] = ref(node->replacement);
+		}
 		is_fp ::= igraph_node_is_floating_point(node);
 		if(is_fp)
 		{
@@ -344,19 +350,21 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 		if(x64inst_is_valid(inst))
 		{
 			// if any operand matches any node (and that node has a replacement, make the replacement)
-			for(j = 0; j < nodes_count; j = j + 1)
-			{
-				node = state->igraph_nodes.data # j;
-				replacement_match ::= ref(node->value);
-				replace_with ::= ref(node->replacement);
-
-				ir_lower_replace_values_within(inst, replacement_match, replace_with, igraph_node_is_floating_point(node));
-			}
+			ir_lower_replace_values_within(inst, vreg_idx_to_replacement_map);
+			
+			//for(j = 0; j < nodes_count; j = j + 1)
+			//{
+			//	node = state->igraph_nodes.data # j;
+			//	replacement_match ::= ref(node->value);
+			//	replace_with ::= ref(node->replacement);
+			//
+			//	ir_lower_replace_values_within(inst, replacement_match, replace_with, igraph_node_is_floating_point(node), vreg_idx_to_replacement_map);
+			//}
 		}
 	}
 };
 
-ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
+ir_lower_replace_values_within : func(inst : x64inst mut?, vreg_idx_to_replacement_map : x64val mut? mut? -> v0)
 {
 	// for each operand V in the instruction, if the operand *contains* registers that are equal to 'replacement_match', then the registers are replaced with 'replace_with'
 	// e.g for 'mov %q0, QWORD PTR [%q0]'
@@ -374,45 +382,46 @@ ir_lower_replace_values_within : func(inst : x64inst mut?, replacement_match : x
 		operand ::= inst->operands # i;
 		if(ir_lower_x64val_is_vreg(operand))
 		{
-			ir_lower_replace_values_within_vreg(operand, replacement_match, replace_with, is_fp);
+			ir_lower_replace_values_within_vreg(operand, vreg_idx_to_replacement_map);
 		}
 		if(ir_lower_x64val_is_vmemreg(operand))
 		{
-			ir_lower_replace_values_within_vmemreg(operand, replacement_match, replace_with, is_fp);
+			ir_lower_replace_values_within_vmemreg(operand, vreg_idx_to_replacement_map);
 		}
 	}
 };
 
-ir_lower_replace_values_within_vreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
+ir_lower_replace_values_within_vreg : func(v : x64val mut?, vreg_idx_to_replacement_map : x64val mut? mut? -> v0)
 {
-	if(x64val_equal_to(v, replacement_match))
-	{
-		// remember the replacement match is not necessarily the same size as the actual value
-		the_size ::= x64val_get_size(v);
+	vreg_idx ::= [x64val_vreg_get_idx(v)];
+	sz ::= [x64val_vreg_get_sz(v)];
+	is_fp ::= (sz == irsz.f) || (sz == irsz.g);
+	replacement ::= [vreg_idx_to_replacement_map # vreg_idx];
+	// remember the replacement match is not necessarily the same size as the actual value
+	the_size ::= x64val_get_size(v);
 
-		[v] = [replace_with];
-		// replace_with is either a reg or a memreg
-		// and we need to preserve the old size, so:
-		if(replace_with->tag == x64val_tag.memreg)
+	[v] = [replacement];
+	// replace_with is either a reg or a memreg
+	// and we need to preserve the old size, so:
+	if(replacement->tag == x64val_tag.memreg)
+	{
+		[x64val_memreg_get_size(v)] = the_size;
+	}
+	else
+	{
+		if(is_fp)
 		{
-			[x64val_memreg_get_size(v)] = the_size;
+			// floats live in xmmN, stupid x64
+			[x64val_reg_get_size(v)] = 128;
 		}
 		else
 		{
-			if(is_fp)
-			{
-				// floats live in xmmN, stupid x64
-				[x64val_reg_get_size(v)] = 128;
-			}
-			else
-			{
-				[x64val_reg_get_size(v)] = the_size;
-			}
+			[x64val_reg_get_size(v)] = the_size;
 		}
 	}
 };
 
-ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, replacement_match : x64val mut?, replace_with : x64val mut?, is_fp : bool -> v0)
+ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, vreg_idx_to_replacement_map : x64val mut? mut? -> v0)
 {
 	// check the base reg (if there somehow isnt one we bail)
 	the_vreg : x64val mut;
@@ -420,33 +429,34 @@ ir_lower_replace_values_within_vmemreg : func(v : x64val mut?, replacement_match
 	{
 		return;
 	}
+	vreg_idx ::= [x64val_vreg_get_idx(ref the_vreg)];
+	sz ::= [x64val_vreg_get_sz(ref the_vreg)];
+	is_fp ::= (sz == irsz.f) || (sz == irsz.g);
+	replacement ::= [vreg_idx_to_replacement_map # vreg_idx];
 	// now just check that
-	if(x64val_equal_to(ref the_vreg, replacement_match))
+	// we need to turn this vmemreg with the vreg base register into a proper memreg with the proper base register
+	// but this gets a bit complex - because replace_with isnt always a reg, it could be a memreg if we spilled
+	// remember the replacement match is not necessarily the same size as the actual value
+	the_mem_size ::= x64val_get_size(v);
+	the_disp : s32 mut := [x64val_vmemreg_get_displacement(v)];
+	v->tag = x64val_tag.memreg;
+	[x64val_memreg_get_size(v)] = the_mem_size;
+	[x64val_memreg_get_displacement_size(v)] = 32;
+	// patch up the base register
+	[x64val_memreg_get_base_size(v)] = x64val_get_size(ref the_vreg);
+	// base register is not that simple because as stated previously replace_with could be a memreg so we have to check both:
+	if(replacement->tag == x64val_tag.memreg)
 	{
-		// we need to turn this vmemreg with the vreg base register into a proper memreg with the proper base register
-		// but this gets a bit complex - because replace_with isnt always a reg, it could be a memreg if we spilled
-		// remember the replacement match is not necessarily the same size as the actual value
-		the_mem_size ::= x64val_get_size(v);
-		the_disp : s32 mut := [x64val_vmemreg_get_displacement(v)];
-		v->tag = x64val_tag.memreg;
-		[x64val_memreg_get_size(v)] = the_mem_size;
-		[x64val_memreg_get_displacement_size(v)] = 32;
-		// patch up the base register
-		[x64val_memreg_get_base_size(v)] = x64val_get_size(ref the_vreg);
-		// base register is not that simple because as stated previously replace_with could be a memreg so we have to check both:
-		if(replace_with->tag == x64val_tag.memreg)
-		{
-			// preserve displacement
-			the_disp = the_disp + [x64val_memreg_get_displacement(replace_with)]@s64@s32;
-			[x64val_memreg_get_base(v)] = [x64val_memreg_get_base(replace_with)];
-		}
-		else
-		{
-			// easy, just set the register as the base register of the memreg
-			[x64val_memreg_get_base(v)] = [x64val_reg_get_reg(replace_with)];
-		}
-		[x64val_memreg_get_displacement(v)] = the_disp@s64@u64;
-		[x64val_memreg_get_index_size(v)] = 0;
-		[x64val_memreg_get_scale(v)] = 0;
+		// preserve displacement
+		the_disp = the_disp + [x64val_memreg_get_displacement(replacement)]@s64@s32;
+		[x64val_memreg_get_base(v)] = [x64val_memreg_get_base(replacement)];
 	}
+	else
+	{
+		// easy, just set the register as the base register of the memreg
+		[x64val_memreg_get_base(v)] = [x64val_reg_get_reg(replacement)];
+	}
+	[x64val_memreg_get_displacement(v)] = the_disp@s64@u64;
+	[x64val_memreg_get_index_size(v)] = 0;
+	[x64val_memreg_get_scale(v)] = 0;
 };
