@@ -1,45 +1,3 @@
-elf_magic : u64 := 0x464c457f;
-elf_ident_type_little_endian : u64 := 1;
-elf_ident_type_big_endian : u64 := 1;
-elf_ident_32_bit : u64 := 1;
-elf_ident_64_bit : u64 := 2;
-elf_hdr_size : u64 := 64;
-
-elf_type_relocatable : u64 := 1;
-elf_type_executable : u64 := 2;
-elf_type_shared : u64 := 3;
-elf_type_core : u64 := 4;
-
-elf_instruction_set_x86 : u64 := 0x03;
-elf_instruction_set_x64 : u64 := 0x3e;
-elf_instruction_set_arm32 : u64 := 0x28;
-elf_instruction_set_arm64 : u64 := 0xb7;
-
-elf_osabi_sysv : u64 := 0;
-//elf_osabi_linux : u64 := 3;
-
-elf_proghdr_type_null : u64 := 0; // ignore this entry
-elf_proghdr_type_load : u64 := 1; // clear p_memsz bytes at p_vaddr to 0, then copy p_filesz bytes from p_offset to p_vaddr
-elf_proghdr_type_dynamic : u64 := 2; // requires dynamic linking
-elf_proghdr_type_interp : u64 := 3; // contains a file path to an executable to use as an interpreter for the following segment
-elf_proghdr_type_note : u64 := 4; // note section
-
-elf_proghdr_flag_executable : u64 := 1; // PROT_EXEC
-elf_proghdr_flag_writable : u64 := 2; // PROT_WRITE
-elf_proghdr_flag_readable : u64 := 4; // PROT_READ
-
-elf_proghdr : struct
-{
-	p_type : u32;
-	p_flags : u32;
-	p_offset : u64;
-	p_vaddr : u64;
-	p_paddr : u64;
-	p_filesz : u64;
-	p_memsz : u64; // >= p_filesz
-	p_align : u64;
-};
-
 alignment_padding_req : func(input :  u64, align : u64 -> u64)
 {
 	return (-input) & (align - 1);
@@ -71,13 +29,34 @@ elf_data : struct
 
 elf_write : func(w : bwriter mut?, e : elf_data mut? -> v0)
 {
+	elf_magic : u64 := 0x464c457f;
+	elf_ident_type_little_endian : u64 := 1;
+	elf_ident_type_big_endian : u64 := 1;
+	elf_ident_32_bit : u64 := 1;
+	elf_ident_64_bit : u64 := 2;
+	elf_hdr_size : u64 := 64;
+
+	elf_type_relocatable : u64 := 1;
+	elf_type_executable : u64 := 2;
+	elf_type_shared : u64 := 3;
+	elf_type_core : u64 := 4;
+
+	elf_instruction_set_x86 : u64 := 0x03;
+	elf_instruction_set_x64 : u64 := 0x3e;
+	elf_instruction_set_arm32 : u64 := 0x28;
+	elf_instruction_set_arm64 : u64 := 0xb7;
+
+	// note: 0 is sysv, but i explicitly dont want to use that because people will think it contains SYSV code
+	// so i am unofficially designating the below number to represent psy64.
+	elf_osabi_psy64 : u64 := 69;
+
 	page_size : u64 := 0x1000;
 	// elf header
 	bwrite32(w, elf_magic);
 	bwrite8(w, elf_ident_64_bit);
 	bwrite8(w, elf_ident_type_little_endian);
 	bwrite8(w, 1);
-	bwrite8(w, elf_osabi_sysv);
+	bwrite8(w, elf_osabi_psy64);
 	bwrite8(w, 0);
 
 	bwrite8(w, 0);
