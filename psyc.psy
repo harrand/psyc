@@ -26,7 +26,7 @@
 $bare $entrypoint
 psyc_main : func(-> v0)
 {
-	collect_args_linux(ref argc, ref argv);
+	collect_args_linux(ref argc, ref argv, ref envp);
 
 	setup_arenas();
 	lex_init();
@@ -41,12 +41,18 @@ psyc_main : func(-> v0)
 
 argc : s64 mut;
 argv : u8?? mut;
+envp : u8?? mut;
 
-collect_args_linux : asm(_ : u64 weak, _ : u64 weak ->)
+collect_args_linux : asm(_ : u64 weak, _ : u64 weak, _ : u64 weak ->)
 {
 	mov $0, QWORD PTR [rsp]
-	lea rax, QWORD PTR [rsp+8]
+	lea rax, QWORD PTR [rsp+imm32 8]
 	mov $1, rax
+	lea rax, QWORD PTR [rsp+imm32 16]
+	mov rbx, $0
+	shl rbx, imm8 3
+	add rax, rbx
+	mov $2, rax
 };
 
 global_arena_value : arena mut;

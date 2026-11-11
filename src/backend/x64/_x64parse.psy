@@ -190,6 +190,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 	curop : x64val mut := zero;
 	curop_disp : x64val mut := zero;
 	curop_disp_is_negative : bool mut := false;
+	imm_sz : u64 mut := 32;
 	// parse the assembly (please deal with memory operands too)
 	i : u64 mut;
 	j : u64 mut;
@@ -301,6 +302,26 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 				curop_disp_is_negative = true;
 				cursor = cursor + 1;
 			}
+			if(strstartswith(code # cursor, code_len - cursor, "imm8", 4))
+			{
+				cursor = cursor + 5;
+				imm_sz = 8;
+			}
+			if(strstartswith(code # cursor, code_len - cursor, "imm16", 5))
+			{
+				cursor = cursor + 6;
+				imm_sz = 16;
+			}
+			if(strstartswith(code # cursor, code_len - cursor, "imm32", 5))
+			{
+				cursor = cursor + 6;
+				imm_sz = 32;
+			}
+			if(strstartswith(code # cursor, code_len - cursor, "imm64", 5))
+			{
+				cursor = cursor + 6;
+				imm_sz = 64;
+			}
 			// how about an integral literal?
 			if(parseutil_is_digit([code # cursor]))
 			{
@@ -318,7 +339,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 						}
 						opptr->tag = x64val_tag.imm;
 						// todo: support immX <num> instead of just taking a num directly and just assuming its 32-bit...
-						[x64val_imm_get_size(opptr)] = 32;
+						[x64val_imm_get_size(opptr)] = imm_sz;
 						[x64val_imm_get_value(opptr)] = number.i@u64;
 						// set cursor and end loop
 						if(curop_is_mem && curop_disp_is_negative)
