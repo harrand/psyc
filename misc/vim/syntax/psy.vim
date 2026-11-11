@@ -31,8 +31,8 @@ syn match psy_attrib /\$\k*/
 syn region psy_string_literal start=+"+ skip=+\\"+ end=+"+
 syn region psy_char_literal start=+'+ skip=+\\'+ end=+'+
 
-syntax keyword psy_keywords ref if static_if else while for return unreachable sizeof alignof countof nameof typeof clobber abi_sysv
-syntax keyword psy_modifiers mut weak static
+syntax keyword psy_keywords ref if static_if else while for return unreachable sizeof alignof countof nameof typeof clobber
+syntax keyword psy_modifiers mut weak static abi_sysv
 syntax keyword psy_constants true false zero extern _config _win32 _linux
 syntax keyword psy_funcs func macro asm
 syntax keyword psy_types struct enum v0 s8 s16 s32 s64 u8 u16 u32 u64 bool embed_data srcloc program_args _atomic_op _atomic_ordering barrier
