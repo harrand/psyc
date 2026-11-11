@@ -301,8 +301,6 @@ irfunc_lower_x64 : func(fn : irfunc mut? -> v0)
 			[x64val_reg_get_size(ref abi_param_register)] = x64val_get_size(ref cur_param_ssa_reg_x64);
 		}
 
-		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
-		x64_custom_reghint(ref cur_param_ssa_reg_x64, ref abi_param_register);
 		ir_lower_x64_generic_move_no_load(ref cur_param_ssa_reg_x64, ref abi_param_register);
 	}
 
@@ -689,19 +687,17 @@ ir_lower_x64inst_tag : enum
 {
 	.blkbegin := 0; // meta-instruction marking the beginning of block N
 	.regnospill := 1;
-	.reghint:= 2; // meta-instruction recommending that param0 (an ssa-register) ought to be lowered to hardware-register param1 (but correctness doesn't require this to be the case)
-	.clob := 3; // meta-instruction to mark a hardware register as clobbered
-	.scratch := 4; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
-	.epilog := 5; // meta-instruction representing the exit-point of a function (will turn into a proper epilog tearing down stackframe state etc...). does *not* include the ret
+	.clob := 2; // meta-instruction to mark a hardware register as clobbered
+	.scratch := 3; // meta-instruction creating a new scratch register (that did not exist in the source-ir but is a lowering artifact)
+	.epilog := 4; // meta-instruction representing the exit-point of a function (will turn into a proper epilog tearing down stackframe state etc...). does *not* include the ret
 };
 ir_lower_x64inst_tag_named ::= u8?[countof ir_lower_x64inst_tag]
 {
 	.0 := "blkbegin\0";
 	.1 := "regnospill\0";
-	.2 := "reghint\0";
-	.3 := "clobber\0";
-	.4 := "scratch\0";
-	.5 := "epilog\0";
+	.2 := "clobber\0";
+	.3 := "scratch\0";
+	.4 := "epilog\0";
 };
 
 // x64inst_dump_to handler for custom x64inst tags (i.e irinsts that have been converted to x64inst_tag but are in some non-encodeable, intermediate state.
@@ -727,20 +723,6 @@ x64_custom_regnospill : func(ssa_reg : x64val mut? -> v0)
 {
 	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.regnospill;
 	x64_custom(tag, ssa_reg, 1);
-};
-
-x64_custom_reghint : func(ssa_reg : x64val mut?, hw_reg : x64val mut? -> v0)
-{
-	if(!x64val_is_any_register(ssa_reg) || !x64val_is_any_register(hw_reg))
-	{
-		return;
-	}
-	params : x64val mut[2];
-	[params # 0] = [ssa_reg];
-	[params # 1] = [hw_reg];
-
-	tag : ir_lower_x64inst_tag := ir_lower_x64inst_tag.reghint;
-	x64_custom(tag, params # 0, countof typeof(params));
 };
 
 x64_custom_clobber : func(hw_reg : x64val mut? -> v0)
@@ -2084,8 +2066,6 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 			cur_abi_param = [abi_begin # i];
 			[x64val_reg_get_size(ref cur_abi_param)] = x64val_get_size(ref cur_param);
 		}
-		// hint: it would be nice if the param ssa reg could be lowered to the abi param register
-		x64_custom_reghint(ref cur_param, ref cur_abi_param);
 		ir_lower_x64_generic_move_no_load(ref cur_abi_param, ref cur_param);
 	}
 	x64_call(ref callee);
@@ -2120,8 +2100,6 @@ irinst_lower_x64_call : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst m
 			cur_abi_ret = [abi_retbegin # i];
 			[x64val_reg_get_size(ref cur_abi_ret)] = x64val_get_size(ref cur_ret);
 		}
-		// hint: it would be nice if the output ssa reg could be lowered to the abi return register
-		x64_custom_reghint(ref cur_ret, ref cur_abi_ret);
 		ir_lower_x64_generic_move_no_load(ref cur_ret, ref cur_abi_ret);
 	}
 };

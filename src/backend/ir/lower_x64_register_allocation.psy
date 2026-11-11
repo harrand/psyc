@@ -4,7 +4,6 @@ igraph_node_x64 : struct
 	edges : u64 mut?;
 	edges_count : u64;
 	edges_cap : u64;
-	hints : x64val_list;
 	colour_tag : igraph_node_x64_colour_tag;
 	colour : u64 mut;
 	replacement : x64val;
@@ -107,14 +106,6 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 		inst ::= fnx64->insts # i;
 		if(x64inst_is_valid(inst))
 		{
-			if(x64inst_is_custom(inst, ir_lower_x64inst_tag.reghint))
-			{
-				// reghint is treated specially...
-				op0 ::= inst->operands # 0;
-				op1 ::= inst->operands # 1;
-				op0_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), op0);
-				x64val_list_append_unique((ref(state->igraph_nodes.data # op0_node_id)->hints), op1);
-			}
 			uses ::= state->inst_uses # i;
 			defs ::= state->inst_defs # i;
 			live_afters ::= state->inst_live_afters # i;
@@ -124,18 +115,14 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 			}
 			for(j = 0; j < defs->count; j = j + 1)
 			{
-				igraph_node_x64_list_append_unique(ref(state->igraph_nodes), defs->data # j);
-			}
-			for(j = 0; j < defs->count; j = j + 1)
-			{
 				cur_def ::= defs->data # j;
+				def_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), defs->data # j);
 				for(k = 0; k < live_afters->count; k = k + 1)
 				{
 					cur_after ::= live_afters->data # k;
 					if(!x64val_equal_to(cur_after, cur_def))
 					{
 						// add an edge between the two nodes...
-						def_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_def);
 						after_node_id ::= igraph_node_x64_list_append_unique(ref(state->igraph_nodes), cur_after);
 						igraph_node_x64_add_edge_unique(state->igraph_nodes.data # def_node_id, after_node_id);
 						igraph_node_x64_add_edge_unique(state->igraph_nodes.data # after_node_id, def_node_id);
@@ -163,18 +150,6 @@ irfunc_build_interference_graph_x64 : func(state : lower_x64_register_allocation
 			if(j < (node->edges_count - 1))
 			{
 				putzstr(", \0");
-			}
-		}
-		if(node->hints.count > 0)
-		{
-			putzstr("\n\treghints: \0");
-			for(j = 0; j < node->hints.count; j = j + 1)
-			{
-				x64val_dump(node->hints.data # j);
-				if(j < (node->edges_count - 1))
-				{
-					putzstr(", \0");
-				}
 			}
 		}
 		putchar('\n');
@@ -239,7 +214,6 @@ irfunc_do_graph_colouring_x64 : func(state : lower_x64_register_allocation_state
 {
 	// do graph colouring based on the edges, and a set of colours (NYI TODO)
 	// foreach node, assign them a colour
-	// if there are any hints, choose the first one thats not already precoloured
 	// if not, choose the first scratch volatile/nonvolatile register that doesnt have the same colour as any of our neighbours
 	i : u64 mut;
 	j : u64 mut;
@@ -351,15 +325,6 @@ irfunc_post_graph_colouring_patch_x64 : func(state : lower_x64_register_allocati
 		{
 			// if any operand matches any node (and that node has a replacement, make the replacement)
 			ir_lower_replace_values_within(inst, vreg_idx_to_replacement_map);
-			
-			//for(j = 0; j < nodes_count; j = j + 1)
-			//{
-			//	node = state->igraph_nodes.data # j;
-			//	replacement_match ::= ref(node->value);
-			//	replace_with ::= ref(node->replacement);
-			//
-			//	ir_lower_replace_values_within(inst, replacement_match, replace_with, igraph_node_is_floating_point(node), vreg_idx_to_replacement_map);
-			//}
 		}
 	}
 };
