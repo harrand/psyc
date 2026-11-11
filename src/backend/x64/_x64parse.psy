@@ -190,7 +190,9 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 	curop : x64val mut := zero;
 	curop_disp : x64val mut := zero;
 	curop_disp_is_negative : bool mut := false;
-	imm_sz : u64 mut := 32;
+	default_imm_sz : u64 static := 32;
+	imm_sz : u64 mut := default_imm_sz;
+	cursor_this_line : u64 mut := 0;
 	// parse the assembly (please deal with memory operands too)
 	i : u64 mut;
 	j : u64 mut;
@@ -200,11 +202,41 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 		{
 			// we're done
 			x64_add_instruction(ref curinst);
+			cursor_this_line = cursor;
 			cursor = cursor + 1;
 			curinst = zero;
 			curop_is_mem = false;
 			curop_mem_sz = 0;
 			curop = zero;
+		}
+		// comment: skip till you see \n
+		while(([code # cursor] == '/') && ([code # (cursor + 1)] == '/'))
+		{
+			for(i = cursor; i <= code_len; i = i + 1)
+			{
+				if([code # i] == '\n')
+				{
+					cursor = i;
+					i = code_len;
+				}
+			}
+		}
+		while(x64_parse_asm_breaks([code # cursor]))
+		{
+			// just skip the whitespacey thing
+			cursor = cursor + 1;
+		}
+		// comment: skip till you see \n
+		while(([code # cursor] == '/') && ([code # (cursor + 1)] == '/'))
+		{
+			for(i = cursor; i <= code_len; i = i + 1)
+			{
+				if([code # i] == '\n')
+				{
+					cursor = i;
+					i = code_len;
+				}
+			}
 		}
 		while(x64_parse_asm_breaks([code # cursor]))
 		{
@@ -351,6 +383,7 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 						// todo: support immX <num> instead of just taking a num directly and just assuming its 32-bit...
 						[x64val_imm_get_size(opptr)] = imm_sz;
 						[x64val_imm_get_value(opptr)] = number.i@u64;
+						imm_sz = default_imm_sz;
 						// set cursor and end loop
 						if(curop_is_mem && curop_disp_is_negative)
 						{
@@ -397,7 +430,13 @@ x64_parse_asm : func(code : u8?, code_len : u64, inputs : x64val mut?, inputs_co
 			if(curop.tag == zero)
 			{
 				panic_begin();
-				putzstr("fucked up parsing an operand :/\n\0");
+				putzstr("failed to parse one or more operands within assembly fragment: \n\0");
+				colour_reset();
+				putchars(code, cursor_this_line);
+				colour_red();
+				putchars(code # cursor_this_line, cursor - cursor_this_line);
+				colour_reset();
+				putzstr("\ncurrent mid-parsed instruction looks like this: \n\t\0");
 				x64inst_dump(ref curinst);
 				panic_end();
 			}
