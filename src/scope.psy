@@ -124,6 +124,21 @@ scope_find_function : func(s : scope_t mut?, name : u8?, name_len : u64 -> funct
 
 scope_add_function : func(scope : scope_t mut?, fn : function_t mut? -> v0)
 {
+	name ::= [ast_function_get_name(fn->node)];
+	name_len ::= [ast_function_get_name_len(fn->node)];
+	already ::= scope_find_function(scope, name, name_len);
+	if(already != zero)
+	{
+		err_begin();
+		putzstr("duplicate definition of a function named \0");
+		putchars(name, name_len);
+		putzstr(" at \0");
+		putsrc(fn->src, fn->node->src_beg@u64, fn->node->src_end@u64, putcol.red_underline);
+		putzstr("\npreviously defined at \0");
+		putsrc(already->src, already->node->src_beg@u64, already->node->src_end@u64, putcol.blue_underline);
+		err_end();
+	}
+
 	if(scope->funcs == zero)
 	{
 		scope->funcs_cap = 8;
