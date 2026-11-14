@@ -12,15 +12,12 @@ proc_create_flag : enum
 
 proc_create : func(executable_name : path, relative_to : file, arg_zstrs : u8??, args_count : u64, stdout : file, stdin : file, stderr : file, ar : arena mut? -> proc)
 {
-	i : u64 mut;
-	// make null-terminated argv
-	argv : u8? mut? := arena_alloc(ar, (args_count + 2) * sizeof u8?);
-	[argv # 0] = path2zstr(executable_name);
-	for(i = 0; i < args_count; i = i + 1)
-	{
-		[argv # (i + 1)] = [arg_zstrs # i];
-	}
-	[argv # (i + 1)] = zero;
+	my_argv : u8? mut? := arena_alloc(ar, (args_count + 2) * sizeof u8?);
+	// make null-terminated argv and argv[0] is the executable name
+	[my_argv # 0] = path2zstr(executable_name);
+	// note: doing this loop manually might reproduce a miscompile.
+	memcopy(my_argv # 1, arg_zstrs # 0, args_count * sizeof u8?);
+	[my_argv # (args_count + 1)] = zero;
 
 	linux_dirfd : s32 mut := relative_to@s64@s32;
 	if(relative_to == file.cwd)
@@ -81,7 +78,7 @@ proc_create : func(executable_name : path, relative_to : file, arg_zstrs : u8??,
 
 		// todo: respect flag.inherit_environment
 		file_close(null_file);
-		linux_execveat(linux_dirfd, path2zstr(executable_name), argv, envp, 0);
+		linux_execveat(linux_dirfd, path2zstr(executable_name), my_argv # 0, envp, 0);
 		// if execve fails then control will reach this point on the child
 		// exit with an error
 		linux_exit(-1);
