@@ -1,3 +1,4 @@
+// return pointer to node representing the build region in the AST, or zero if no such region exists.
 find_build_region : func(node : ast mut?, name : u8?, name_len : u64 -> ast mut?)
 {
 	i : u32 mut;
@@ -13,6 +14,8 @@ find_build_region : func(node : ast mut?, name : u8?, name_len : u64 -> ast mut?
 	return zero;
 };
 
+// go through the build region and interpret its contents as compile-time build instructions. this has a passing resemblence to code generation using the val system, and even tries to re-use a bunch of its code. but it has a handful of special-cases and restrictions because of course its build time.
+// for example, as there is no ABI, you cant get the sizeof/alignof types
 execute_build_region : func(src : source, region_node : ast mut?, rel : file -> v0)
 {
 	build_scope : scope_t mut := zero;
@@ -28,16 +31,19 @@ execute_build_region : func(src : source, region_node : ast mut?, rel : file -> 
 	}
 };
 
+// val_from_node_stmt but for a build region
 execute_build_inst_stmt : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	[execute_build_inst_tbl # [ast_stmt_get_tag(stmt)]@s64](stmt, src, rel, scope, out);
 };
 
+// val_from_node_expr but for a build region
 execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel, scope, out);
 };
 
+// val_from_node_stmt_decl but for a build region. the hoisting behaviour only exists in the runtime codegen; here we generate new variable_t's on-the-fly and add them to our scope representing the current build region.
 execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	name ::= [ast_decl_get_name(stmt)];
@@ -48,7 +54,6 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 	var.src = src;
 	var.type = zero;
 	var.local_param_idx = ~0;
-	scope_add_variable(scope, ref var);
 
 	ctx : source_context mut;
 	ctx.node = stmt;
@@ -57,17 +62,24 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 	ctx.type_only = false;
 	
 	semal_variable(ref var, ref ctx);
-	// todo: set variable stuff.
+	// if we dont have an init node, then its a val_tag.invalid from semal_variable
+	// if we do then turn the node into a val
 	init_node ::= ast_decl_maybe_get_init_node(stmt);
 	if(init_node != zero)
 	{
-		ctx.node = stmt;
 		execute_build_inst_expr(init_node, src, rel, scope, ref(var.storage));
 	}
+	scope_add_variable(scope, ref var);
 };
 
-execute_build_inst_symbol : func(literal : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_symbol : func(sym : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
+	ctx : source_context mut;
+	ctx.src = src;
+	ctx.node = sym;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+	val_from_node_expr_symbol_from_scope(ref ctx, scope, out);
 };
 
 execute_build_inst_literal : func(literal : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
@@ -232,6 +244,7 @@ build_make_string_literal : func(chars : u8?, chars_len : u64, out : val mut? ->
 		cur_val ::= mems # i;
 		cur_val->tag = val_tag.scalar;
 		cur_val->type = ty_char_literal();
+		[val_scalar_get_displacement(cur_val)] = 0;
 		irval_bimm([chars # i], val_scalar_get_irval(cur_val));
 	}
 
