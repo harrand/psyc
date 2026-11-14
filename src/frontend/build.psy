@@ -15,22 +15,52 @@ find_build_region : func(node : ast mut?, name : u8?, name_len : u64 -> ast mut?
 
 execute_build_region : func(src : source, region_node : ast mut?, rel : file -> v0)
 {
+	build_scope : scope_t mut := zero;
+
 	i : u32 mut;
 	count ::= ast_region_get_body_count(region_node);
 	body ::= ast_region_get_body(region_node);
 	for(i = 0; i < count; i = i + 1)
 	{
 		child ::= body # i;
-		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel);
+		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel, ref build_scope);
 	}
 };
 
-execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file -> v0)
+execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
 {
-	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel);
+	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel, scope);
 };
 
-execute_build_inst_call : func(call : ast mut?, src : source, rel : file -> v0)
+execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
+{
+	name ::= [ast_decl_get_name(stmt)];
+	name_len ::= [ast_decl_get_name_len(stmt)];
+
+	var : variable_t mut;
+	var.node = stmt;
+	var.src = src;
+	var.type = zero;
+	var.local_param_idx = ~0;
+	scope_add_variable(scope, ref var);
+
+	ctx : source_context mut;
+	ctx.node = stmt;
+	ctx.src = src;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+	
+	semal_variable(ref var, ref ctx);
+	// todo: set variable stuff.
+	init_node ::= ast_decl_maybe_get_init_node(stmt);
+	if(init_node != zero)
+	{
+		ctx.node = stmt;
+		val_from_node(ref ctx, ref(var.storage));
+	}
+};
+
+execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
 {
 	callee ::= ast_call_get_callee(call);
 	if([ast_expr_get_tag(callee)] != ast_expr_tag.symbol)
@@ -66,7 +96,7 @@ execute_build_inst_call : func(call : ast mut?, src : source, rel : file -> v0)
 	}
 };
 
-execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file -> v0)
+execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
 {
 	err_begin();
 	putzstr("statement is not a valid build instruction\n\0");
@@ -74,10 +104,10 @@ execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file -> v
 	err_end();
 };
 
-execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file -> v0)[countof ast_stmt_tag]
+execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)[countof ast_stmt_tag]
 {
 	.0 := execute_build_inst_expr;
-	.1 := execute_build_inst_invalid;
+	.1 := execute_build_inst_decl;
 	.2 := execute_build_inst_invalid;
 	.3 := execute_build_inst_invalid;
 	.4 := execute_build_inst_invalid;
@@ -92,7 +122,7 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file -> v0)
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file -> v0)[countof ast_expr_tag]
+execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)[countof ast_expr_tag]
 {
 	.0 := execute_build_inst_invalid;
 	.1 := execute_build_inst_invalid;
