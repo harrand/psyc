@@ -87,6 +87,52 @@ execute_build_inst_literal : func(literal : ast mut?, src : source, rel : file, 
 	val_from_node_expr_literal(ref ctx, out);
 };
 
+execute_build_inst_unop : func(unop : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	operand_node ::= ast_unop_get_operand(unop);
+	operand_val : val mut;
+	execute_build_inst_expr(operand_node, src, rel, scope, ref operand_val);
+	ctx : source_context mut;
+	ctx.node = unop;
+	ctx.src = src;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+
+	[val_from_node_expr_unop_tbl # [ast_unop_get_tag(unop)]@s64](ref operand_val, ref ctx, out);
+};
+
+execute_build_inst_biop : func(biop : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	lhs_node ::= ast_biop_get_lhs(biop);
+	lhs_val : val mut;
+	execute_build_inst_expr(lhs_node, src, rel, scope, ref lhs_val);
+	rhs_node ::= ast_biop_get_rhs(biop);
+	rhs_val : val mut;
+	if(ast_is_expr(rhs_node, ast_expr_tag.zero_value))
+	{
+		// special-case for biop.at
+		if([ast_biop_get_tag(biop)] == ast_biop_tag.at)
+		{
+			val_zero_as(ty.s64, ref rhs_val);
+		}
+		else
+		{
+			// otherwise is zero@lhs.type
+			val_zero_as(lhs_val.type, ref rhs_val);
+		}
+	}
+	else
+	{
+		execute_build_inst_expr(rhs_node, src, rel, scope, ref rhs_val);
+	}
+	ctx : source_context mut;
+	ctx.node = biop;
+	ctx.src = src;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(biop)]@s64](lhs_node, rhs_node, ref lhs_val, ref rhs_val, ref ctx, out);
+};
+
 execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	callee ::= ast_call_get_callee(call);
@@ -163,8 +209,8 @@ execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, 
 	.0 := execute_build_inst_symbol;
 	.1 := execute_build_inst_literal;
 	.2 := execute_build_inst_invalid;
-	.3 := execute_build_inst_invalid;
-	.4 := execute_build_inst_invalid;
+	.3 := execute_build_inst_unop;
+	.4 := execute_build_inst_biop;
 	.5 := execute_build_inst_call;
 	.6 := execute_build_inst_invalid;
 	.7 := execute_build_inst_invalid;
