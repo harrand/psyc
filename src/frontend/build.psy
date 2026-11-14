@@ -24,8 +24,13 @@ execute_build_region : func(src : source, region_node : ast mut?, rel : file -> 
 	{
 		child ::= body # i;
 		out : val mut;
-		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel, ref build_scope, ref out);
+		execute_build_inst_stmt(child, src, rel, ref build_scope, ref out);
 	}
+};
+
+execute_build_inst_stmt : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	[execute_build_inst_tbl # [ast_stmt_get_tag(stmt)]@s64](stmt, src, rel, scope, out);
 };
 
 execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
@@ -61,6 +66,27 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 	}
 };
 
+execute_build_inst_symbol : func(literal : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+};
+
+execute_build_inst_literal : func(literal : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	tag ::= [ast_literal_get_tag(literal)];
+	if(tag == ast_literal_tag.string)
+	{
+		// string-literal is special-cased because otherwise it produces an ir global which is wrong.
+		build_make_string_literal([ast_literal_get_string(literal)], [ast_literal_get_string_len(literal)], out);
+		return;
+	}
+	ctx : source_context mut;
+	ctx.src = src;
+	ctx.node = literal;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+	val_from_node_expr_literal(ref ctx, out);
+};
+
 execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	callee ::= ast_call_get_callee(call);
@@ -71,10 +97,19 @@ execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope 
 		putsrc(src, callee->src_beg@u64, callee->src_end@u64, putcol.red_underline);
 		err_end();
 	}
+	// collect params
+	params_count ::= ast_call_get_params_count(call)@u64;
+	params_begin ::= ast_call_get_params(call);
+	params : val mut? := arena_alloc(scratch_arena, params_count * sizeof val);
+	i : u64 mut;
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		execute_build_inst_expr(params_begin # i, src, rel, scope, params # i);
+	}
 	// do builtin call
 	if([ast_call_get_is_builtin_call(call)])
 	{
-		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], ast_call_get_params(call), ast_call_get_params_count(call), src, call, rel, out);
+		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], params, params_count, src, call, rel, out);
 	}
 	else
 	{
@@ -125,8 +160,8 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope
 
 execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_expr_tag]
 {
-	.0 := execute_build_inst_invalid;
-	.1 := execute_build_inst_invalid;
+	.0 := execute_build_inst_symbol;
+	.1 := execute_build_inst_literal;
 	.2 := execute_build_inst_invalid;
 	.3 := execute_build_inst_invalid;
 	.4 := execute_build_inst_invalid;
@@ -141,34 +176,92 @@ execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, 
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_builtin_add_source_file : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
+build_make_string_literal : func(chars : u8?, chars_len : u64, out : val mut? -> v0)
 {
-	path_data ::= [ast_literal_get_string(params # 0)];
-	path_len ::= [ast_literal_get_string_len(params # 0)];
+	out->tag = val_tag.aggregate;
+	mems : val mut? := arena_alloc(scratch_arena, chars_len * sizeof val);
+	i : u64 mut;
+	for(i = 0; i < chars_len; i = i + 1)
+	{
+		cur_val ::= mems # i;
+		cur_val->tag = val_tag.scalar;
+		cur_val->type = ty_char_literal();
+		irval_bimm([chars # i], val_scalar_get_irval(cur_val));
+	}
+
+	[val_aggregate_get_members(out)] = mems;
+	[val_aggregate_get_members_count(out)] = chars_len;
+	// the concept of abi chunks doesnt exist at the build region level, because there is no ABI
+	[val_aggregate_get_chunks(out)] = zero;
+};
+
+build_try_get_string_literal : func(v : val mut?, chars_out : u8 mut? mut?, chars_len_out : u64 mut? -> bool)
+{
+	if(v->tag != val_tag.aggregate)
+	{
+		return false;
+	}
+	len ::= [val_aggregate_get_members_count(v)];
+	agg_begin ::= [val_aggregate_get_members(v)];
+	out : u8 mut? := arena_alloc(global_arena, len);
+	i : u64 mut;
+	for(i = 0; i < len; i = i + 1)
+	{
+		agg_cur ::= agg_begin # i;
+		if((agg_cur->tag != val_tag.scalar) || (agg_cur->type != ty_char_literal()))
+		{
+			return false;
+		}
+		[out # i] = [irval_imm_get_integer(val_scalar_get_irval(agg_cur))]@u8;
+	}
+	[chars_out] = out;
+	[chars_len_out] = len;
+	return true;
+};
+
+build_must_get_string_literal : func(v : val mut?, chars_out : u8 mut? mut?, chars_len_out : u64 mut? -> v0)
+{
+	if(!build_try_get_string_literal(v, chars_out, chars_len_out))
+	{
+		err_begin();
+		putzstr("fucked up getting string literal data within a build region\0");
+		err_end();
+	}
+};
+
+execute_build_builtin_add_source_file : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
+{
+	path_data : u8 mut? mut;
+	path_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref path_data, ref path_len);
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
 	add_source_file(zstr2path(path_zstr), rel);
 };
 
-execute_build_builtin_add_build_file : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
+execute_build_builtin_add_build_file : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
 {
-	path_data ::= [ast_literal_get_string(params # 0)];
-	path_len ::= [ast_literal_get_string_len(params # 0)];
+	path_data : u8 mut? mut;
+	path_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref path_data, ref path_len);
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
 	the_path : path mut := zstr2path(path_zstr);
 
 	// if the path contains a parent path, then we actually want that to be the relative path of the add_build_file, not our rel
 	actual_rel ::= path_get_parent(the_path, rel, ref the_path);
 
-	target_data ::= [ast_literal_get_string(params # 1)];
-	target_len ::= [ast_literal_get_string_len(params # 1)];
+	target_data : u8 mut? mut;
+	target_len : u64 mut;
+	build_must_get_string_literal(params # 1, ref target_data, ref target_len);
 	add_build_file(the_path, target_data, target_len, actual_rel);
 };
 
-execute_build_builtin_add_source_directory : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
+execute_build_builtin_add_source_directory : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
 {
-	path_data ::= [ast_literal_get_string(params # 0)];
-	path_len ::= [ast_literal_get_string_len(params # 0)];
+	path_data : u8 mut? mut;
+	path_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref path_data, ref path_len);
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
+
 	dir ::= path_open(zstr2path(path_zstr), file.cwd, file_access.read, zero);
 	directory_iterate(dir, build_builtin_add_source_directory_callback, rel@s64@u64);
 	file_close(dir);
@@ -181,10 +274,11 @@ build_builtin_add_source_directory_callback : func(child_path : path, usrdata : 
 	return true;
 };
 
-execute_build_builtin_add_source_directory_recursive : func(params : ast mut?, params_count : u32, src : source, rel : file -> v0)
+execute_build_builtin_add_source_directory_recursive : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
 {
-	path_data ::= [ast_literal_get_string(params # 0)];
-	path_len ::= [ast_literal_get_string_len(params # 0)];
+	path_data : u8 mut? mut;
+	path_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref path_data, ref path_len);
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
 	dir ::= path_open(zstr2path(path_zstr), rel, file_access.read, zero);
 	directory_iterate(dir, build_builtin_add_source_directory_recursive_callback, dir@s64@u64);
@@ -225,14 +319,14 @@ build_builtin_add_source_directory_recursive_callback : func(child_path : path, 
 	return true;
 };
 
-execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : u32, src : source, out : val mut? -> v0)
+execute_build_builtin_prebuild_command : func(params : val mut?, params_count : u64, src : source, out : val mut? -> v0)
 {
-	cmd_data ::= [ast_literal_get_string(params # 0)];
-	cmd_len ::= [ast_literal_get_string_len(params # 0)];
-	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, scratch_arena);
-	// todo: return output code
-	return_code : s32 := shell_command(cmd_zstr);
+	cmd_data : u8 mut? mut;
+	cmd_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref cmd_data, ref cmd_len);
+	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, global_arena);
 
+	return_code : s32 := shell_command(cmd_zstr);
 	out->tag = val_tag.scalar;
 	out->type = ty_integer_literal();
 	irval_qimm(return_code, val_scalar_get_irval(out));
@@ -240,50 +334,40 @@ execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : 
 	
 };
 
-execute_build_builtin_set_optimization : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_set_optimization : func(params : val mut?, params_count : u64, src : source -> v0)
 {
-	opt_val : val mut;
-	opt_ctx : source_context mut;
-	opt_ctx.node = params # 0;
-	opt_ctx.parent_fn = zero;
-	opt_ctx.src = src;
-	val_from_node(ref opt_ctx, ref opt_val);
-	opt_irval ::= val_scalar_get_irval(ref opt_val);
+	opt_irval ::= val_scalar_get_irval(params # 0);
 	prog.opt = [irval_imm_get_integer(opt_irval)]@program_optimisation;
 };
 
-execute_build_builtin_debug_symbols : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_debug_symbols : func(params : val mut?, params_count : u64, src : source -> v0)
 {
-	opt_val : val mut;
-	opt_ctx : source_context mut;
-	opt_ctx.node = params # 0;
-	opt_ctx.parent_fn = zero;
-	opt_ctx.src = src;
-	val_from_node(ref opt_ctx, ref opt_val);
-	opt_irval ::= val_scalar_get_irval(ref opt_val);
+	opt_irval ::= val_scalar_get_irval(params # 0);
 	prog.debug_symbols = ([irval_imm_get_integer(opt_irval)] != 0);
 };
 
-execute_build_builtin_output_directory : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_output_directory : func(params : val mut?, params_count : u64, src : source -> v0)
 {
-	prog.output_dir.data = [ast_literal_get_string(params # 0)];
-	prog.output_dir.len = [ast_literal_get_string_len(params # 0)];
+	build_must_get_string_literal(params # 0, ref(prog.output_dir.data), ref(prog.output_dir.len));
 };
 
-execute_build_builtin_output_name : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_output_name : func(params : val mut?, params_count : u64, src : source -> v0)
 {
-	prog.output_name.data = [ast_literal_get_string(params # 0)];
-	prog.output_name.len = [ast_literal_get_string_len(params # 0)];
+	build_must_get_string_literal(params # 0, ref(prog.output_name.data), ref(prog.output_name.len));
 };
 
-execute_build_builtin_assert : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_assert : func(params : val mut?, params_count : u64, src : source -> v0)
 {
-	warn_begin();
-	putzstr("$assert is NYI\n\0");
-	warn_end();
+	the_irval ::= val_scalar_get_irval(params # 0);
+	if([irval_imm_get_integer(the_irval)] == 0)
+	{
+		panic_begin();
+		putzstr("$assert failure\0");
+		panic_end();
+	}
 };
 
-execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, params_count : u32, src : source, node : ast mut?, rel : file, out : val mut? -> v0)
+execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, params_count : u64, src : source, node : ast mut?, rel : file, out : val mut? -> v0)
 {
 	if(streql(name, name_len, "add_source_file", 15))
 	{
