@@ -23,16 +23,17 @@ execute_build_region : func(src : source, region_node : ast mut?, rel : file -> 
 	for(i = 0; i < count; i = i + 1)
 	{
 		child ::= body # i;
-		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel, ref build_scope);
+		out : val mut;
+		[execute_build_inst_tbl # [ast_stmt_get_tag(child)]@s64](child, src, rel, ref build_scope, ref out);
 	}
 };
 
-execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
+execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel, scope);
+	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel, scope, out);
 };
 
-execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
+execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	name ::= [ast_decl_get_name(stmt)];
 	name_len ::= [ast_decl_get_name_len(stmt)];
@@ -56,11 +57,11 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 	if(init_node != zero)
 	{
 		ctx.node = stmt;
-		val_from_node(ref ctx, ref(var.storage));
+		execute_build_inst_expr(init_node, src, rel, scope, ref(var.storage));
 	}
 };
 
-execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
+execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	callee ::= ast_call_get_callee(call);
 	if([ast_expr_get_tag(callee)] != ast_expr_tag.symbol)
@@ -73,7 +74,7 @@ execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope 
 	// do builtin call
 	if([ast_call_get_is_builtin_call(call)])
 	{
-		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], ast_call_get_params(call), ast_call_get_params_count(call), src, call, rel);
+		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], ast_call_get_params(call), ast_call_get_params_count(call), src, call, rel, out);
 	}
 	else
 	{
@@ -96,7 +97,7 @@ execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope 
 	}
 };
 
-execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)
+execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	err_begin();
 	putzstr("statement is not a valid build instruction\n\0");
@@ -104,7 +105,7 @@ execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, sco
 	err_end();
 };
 
-execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)[countof ast_stmt_tag]
+execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_stmt_tag]
 {
 	.0 := execute_build_inst_expr;
 	.1 := execute_build_inst_decl;
@@ -122,7 +123,7 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, scope : scope_t mut? -> v0)[countof ast_expr_tag]
+execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_expr_tag]
 {
 	.0 := execute_build_inst_invalid;
 	.1 := execute_build_inst_invalid;
@@ -224,13 +225,19 @@ build_builtin_add_source_directory_recursive_callback : func(child_path : path, 
 	return true;
 };
 
-execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : u32, src : source -> v0)
+execute_build_builtin_prebuild_command : func(params : ast mut?, params_count : u32, src : source, out : val mut? -> v0)
 {
 	cmd_data ::= [ast_literal_get_string(params # 0)];
 	cmd_len ::= [ast_literal_get_string_len(params # 0)];
 	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, scratch_arena);
 	// todo: return output code
-	shell_command(cmd_zstr);
+	return_code : s32 := shell_command(cmd_zstr);
+
+	out->tag = val_tag.scalar;
+	out->type = ty_integer_literal();
+	irval_qimm(return_code, val_scalar_get_irval(out));
+	[val_scalar_get_displacement(out)] = 0;
+	
 };
 
 execute_build_builtin_set_optimization : func(params : ast mut?, params_count : u32, src : source -> v0)
@@ -269,7 +276,14 @@ execute_build_builtin_output_name : func(params : ast mut?, params_count : u32, 
 	prog.output_name.len = [ast_literal_get_string_len(params # 0)];
 };
 
-execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, params_count : u32, src : source, node : ast mut?, rel : file -> v0)
+execute_build_builtin_assert : func(params : ast mut?, params_count : u32, src : source -> v0)
+{
+	warn_begin();
+	putzstr("$assert is NYI\n\0");
+	warn_end();
+};
+
+execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, params_count : u32, src : source, node : ast mut?, rel : file, out : val mut? -> v0)
 {
 	if(streql(name, name_len, "add_source_file", 15))
 	{
@@ -293,7 +307,7 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, para
 	}
 	if(streql(name, name_len, "prebuild_command", 16))
 	{
-		execute_build_builtin_prebuild_command(params, params_count, src);
+		execute_build_builtin_prebuild_command(params, params_count, src, out);
 		return;
 	}
 	if(streql(name, name_len, "set_optimization", 16))
@@ -314,6 +328,11 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : ast mut?, para
 	if(streql(name, name_len, "output_name", 11))
 	{
 		execute_build_builtin_output_name(params, params_count, src);
+		return;
+	}
+	if(streql(name, name_len, "assert", 6))
+	{
+		execute_build_builtin_assert(params, params_count, src);
 		return;
 	}
 	
