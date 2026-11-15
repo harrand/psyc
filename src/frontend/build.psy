@@ -69,6 +69,22 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 	{
 		execute_build_inst_expr(init_node, src, rel, scope, ref(var.storage));
 	}
+	else
+	{
+		err_begin();
+		putzstr("build-region decl \0");
+		putchars(name, name_len);
+		putzstr(" has no initialiser\0");
+		err_end();
+	}
+	if(var.storage.tag == val_tag.invalid)
+	{
+		err_begin();
+		putzstr("build-region decl \0");
+		putchars(name, name_len);
+		putzstr(" had an initialiser that doesn't yield a value\0");
+		err_end();
+	}
 	scope_add_variable(scope, ref var);
 };
 
@@ -288,7 +304,7 @@ build_must_get_string_literal : func(v : val mut?, chars_out : u8 mut? mut?, cha
 	}
 };
 
-execute_build_builtin_add_source_file : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
+execute_build_builtin_add_source_file : func(params : val mut?, params_count : u64, node : ast mut?, src : source, rel : file -> v0)
 {
 	path_data : u8 mut? mut;
 	path_len : u64 mut;
@@ -297,7 +313,7 @@ execute_build_builtin_add_source_file : func(params : val mut?, params_count : u
 	add_source_file(zstr2path(path_zstr), rel);
 };
 
-execute_build_builtin_add_build_file : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
+execute_build_builtin_add_build_file : func(params : val mut?, params_count : u64, node : ast mut?, src : source, rel : file -> v0)
 {
 	path_data : u8 mut? mut;
 	path_len : u64 mut;
@@ -314,7 +330,7 @@ execute_build_builtin_add_build_file : func(params : val mut?, params_count : u6
 	add_build_file(the_path, target_data, target_len, actual_rel);
 };
 
-execute_build_builtin_add_source_directory : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
+execute_build_builtin_add_source_directory : func(params : val mut?, params_count : u64, node : ast mut?, src : source, rel : file -> v0)
 {
 	path_data : u8 mut? mut;
 	path_len : u64 mut;
@@ -333,7 +349,7 @@ build_builtin_add_source_directory_callback : func(child_path : path, usrdata : 
 	return true;
 };
 
-execute_build_builtin_add_source_directory_recursive : func(params : val mut?, params_count : u64, src : source, rel : file -> v0)
+execute_build_builtin_add_source_directory_recursive : func(params : val mut?, params_count : u64, node : ast mut?, src : source, rel : file -> v0)
 {
 	path_data : u8 mut? mut;
 	path_len : u64 mut;
@@ -378,7 +394,7 @@ build_builtin_add_source_directory_recursive_callback : func(child_path : path, 
 	return true;
 };
 
-execute_build_builtin_prebuild_command : func(params : val mut?, params_count : u64, src : source, out : val mut? -> v0)
+execute_build_builtin_prebuild_command : func(params : val mut?, params_count : u64, node : ast mut?, src : source, out : val mut? -> v0)
 {
 	cmd_data : u8 mut? mut;
 	cmd_len : u64 mut;
@@ -392,7 +408,7 @@ execute_build_builtin_prebuild_command : func(params : val mut?, params_count : 
 	[val_scalar_get_displacement(out)] = 0;
 };
 
-execute_build_builtin_postbuild_command : func(params : val mut?, params_count : u64, src : source, out : val mut? -> v0)
+execute_build_builtin_postbuild_command : func(params : val mut?, params_count : u64, node : ast mut?, src : source, out : val mut? -> v0)
 {
 	cmd_data : u8 mut? mut;
 	cmd_len : u64 mut;
@@ -402,35 +418,36 @@ execute_build_builtin_postbuild_command : func(params : val mut?, params_count :
 	prog_add_postbuild_command(cmd_zstr);
 };
 
-execute_build_builtin_set_optimization : func(params : val mut?, params_count : u64, src : source -> v0)
+execute_build_builtin_set_optimization : func(params : val mut?, params_count : u64, node : ast mut?, src : source -> v0)
 {
 	opt_irval ::= val_scalar_get_irval(params # 0);
 	prog.opt = [irval_imm_get_integer(opt_irval)]@program_optimisation;
 };
 
-execute_build_builtin_debug_symbols : func(params : val mut?, params_count : u64, src : source -> v0)
+execute_build_builtin_debug_symbols : func(params : val mut?, params_count : u64, node : ast mut?, src : source -> v0)
 {
 	opt_irval ::= val_scalar_get_irval(params # 0);
 	prog.debug_symbols = ([irval_imm_get_integer(opt_irval)] != 0);
 };
 
-execute_build_builtin_output_directory : func(params : val mut?, params_count : u64, src : source -> v0)
+execute_build_builtin_output_directory : func(params : val mut?, params_count : u64, node : ast mut?, src : source -> v0)
 {
 	build_must_get_string_literal(params # 0, ref(prog.output_dir.data), ref(prog.output_dir.len));
 };
 
-execute_build_builtin_output_name : func(params : val mut?, params_count : u64, src : source -> v0)
+execute_build_builtin_output_name : func(params : val mut?, params_count : u64, node : ast mut?, src : source -> v0)
 {
 	build_must_get_string_literal(params # 0, ref(prog.output_name.data), ref(prog.output_name.len));
 };
 
-execute_build_builtin_assert : func(params : val mut?, params_count : u64, src : source -> v0)
+execute_build_builtin_assert : func(params : val mut?, params_count : u64, node : ast mut?, src : source -> v0)
 {
 	the_irval ::= val_scalar_get_irval(params # 0);
 	if([irval_imm_get_integer(the_irval)] == 0)
 	{
 		panic_begin();
-		putzstr("$assert failure\0");
+		putzstr("$assert failure in build region at \0");
+		putsrc(src, node->src_beg@u64, node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
 };
@@ -439,57 +456,57 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, para
 {
 	if(streql(name, name_len, "add_source_file", 15))
 	{
-		execute_build_builtin_add_source_file(params, params_count, src, rel);
+		execute_build_builtin_add_source_file(params, params_count, node, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_build_file", 14))
 	{
-		execute_build_builtin_add_build_file(params, params_count, src, rel);
+		execute_build_builtin_add_build_file(params, params_count, node, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_source_directory", 20))
 	{
-		execute_build_builtin_add_source_directory(params, params_count, src, rel);
+		execute_build_builtin_add_source_directory(params, params_count, node, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "add_source_directory_recursive", 30))
 	{
-		execute_build_builtin_add_source_directory_recursive(params, params_count, src, rel);
+		execute_build_builtin_add_source_directory_recursive(params, params_count, node, src, rel);
 		return;
 	}
 	if(streql(name, name_len, "prebuild_command", 16))
 	{
-		execute_build_builtin_prebuild_command(params, params_count, src, out);
+		execute_build_builtin_prebuild_command(params, params_count, node, src, out);
 		return;
 	}
 	if(streql(name, name_len, "postbuild_command", 17))
 	{
-		execute_build_builtin_postbuild_command(params, params_count, src, out);
+		execute_build_builtin_postbuild_command(params, params_count, node, src, out);
 		return;
 	}
 	if(streql(name, name_len, "set_optimization", 16))
 	{
-		execute_build_builtin_set_optimization(params, params_count, src);
+		execute_build_builtin_set_optimization(params, params_count, node, src);
 		return;
 	}
 	if(streql(name, name_len, "debug_symbols", 13))
 	{
-		execute_build_builtin_debug_symbols(params, params_count, src);
+		execute_build_builtin_debug_symbols(params, params_count, node, src);
 		return;
 	}
 	if(streql(name, name_len, "output_directory", 16))
 	{
-		execute_build_builtin_output_directory(params, params_count, src);
+		execute_build_builtin_output_directory(params, params_count, node, src);
 		return;
 	}
 	if(streql(name, name_len, "output_name", 11))
 	{
-		execute_build_builtin_output_name(params, params_count, src);
+		execute_build_builtin_output_name(params, params_count, node, src);
 		return;
 	}
 	if(streql(name, name_len, "assert", 6))
 	{
-		execute_build_builtin_assert(params, params_count, src);
+		execute_build_builtin_assert(params, params_count, node, src);
 		return;
 	}
 	
