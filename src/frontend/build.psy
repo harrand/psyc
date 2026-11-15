@@ -175,7 +175,7 @@ execute_build_inst_call : func(ctx : source_context mut?, rel : file, scope : sc
 	// do builtin call
 	if([ast_call_get_is_builtin_call(ctx->node)])
 	{
-		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], params, params_count, ctx, rel, out);
+		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], params, params_count, ctx, rel, scope, out);
 	}
 	else
 	{
@@ -483,7 +483,27 @@ execute_build_builtin_assert : func(param : val mut?, ctx : source_context mut? 
 	}
 };
 
-execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, params_count : u64, ctx : source_context mut?, rel : file, out : val mut? -> v0)
+execute_build_builtin_define : func(param_node : ast mut?, ctx : source_context mut?, scope : scope_t mut? -> v0)
+{
+	// assume param_node is a symbol expression
+	name ::= [ast_symbol_get_data(param_node)];
+	name_len ::= [ast_symbol_get_data_len(param_node)];
+	the_var ::= scope_find_variable(scope, name, name_len);
+	if(the_var == zero)
+	{
+		err_begin();
+		putzstr("could not $define variable \0");
+		putchar('"');
+		putchars(name, name_len);
+		putchar('"');
+		putzstr(" because no such variable was defined within this or a caller build region at \0");
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	prog_add_global_variable(the_var);
+};
+
+execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, params_count : u64, ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	if(streql(name, name_len, "add_source_file", 15))
 	{
@@ -538,6 +558,11 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, para
 	if(streql(name, name_len, "assert", 6))
 	{
 		execute_build_builtin_assert(params, ctx);
+		return;
+	}
+	if(streql(name, name_len, "define", 6))
+	{
+		execute_build_builtin_define(ast_call_get_params(ctx->node), ctx, scope);
 		return;
 	}
 	
