@@ -27,47 +27,48 @@ execute_build_region : func(src : source, region_node : ast mut?, rel : file -> 
 	{
 		child ::= body # i;
 		out : val mut;
-		execute_build_inst_stmt(child, src, rel, ref build_scope, ref out);
+		ctx : source_context mut;
+		ctx.src = src;
+		ctx.node = child;
+		ctx.parent_fn = zero;
+		ctx.type_only = false;
+		execute_build_inst_stmt(ref ctx, rel, ref build_scope, ref out);
 	}
 };
 
 // val_from_node_stmt but for a build region
-execute_build_inst_stmt : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_stmt : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	[execute_build_inst_tbl # [ast_stmt_get_tag(stmt)]@s64](stmt, src, rel, scope, out);
+	[execute_build_inst_tbl # [ast_stmt_get_tag(ctx->node)]@s64](ctx, rel, scope, out);
 };
 
 // val_from_node_expr but for a build region
-execute_build_inst_expr : func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_expr : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	[execute_build_inst_expr_tbl # [ast_expr_get_tag(expr)]@s64](expr, src, rel, scope, out);
+	[execute_build_inst_expr_tbl # [ast_expr_get_tag(ctx->node)]@s64](ctx, rel, scope, out);
 };
 
 // val_from_node_stmt_decl but for a build region. the hoisting behaviour only exists in the runtime codegen; here we generate new variable_t's on-the-fly and add them to our scope representing the current build region.
-execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_decl : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	name ::= [ast_decl_get_name(stmt)];
-	name_len ::= [ast_decl_get_name_len(stmt)];
+	name ::= [ast_decl_get_name(ctx->node)];
+	name_len ::= [ast_decl_get_name_len(ctx->node)];
 
 	var : variable_t mut;
-	var.node = stmt;
-	var.src = src;
+	var.node = ctx->node;
+	var.src = ctx->src;
 	var.type = zero;
 	var.local_param_idx = ~0;
-
-	ctx : source_context mut;
-	ctx.node = stmt;
-	ctx.src = src;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
 	
-	semal_variable(ref var, ref ctx);
+	semal_variable(ref var, ctx);
 	// if we dont have an init node, then its a val_tag.invalid from semal_variable
 	// if we do then turn the node into a val
-	init_node ::= ast_decl_maybe_get_init_node(stmt);
+	init_node ::= ast_decl_maybe_get_init_node(ctx->node);
 	if(init_node != zero)
 	{
-		execute_build_inst_expr(init_node, src, rel, scope, ref(var.storage));
+		init_ctx : source_context mut := [ctx];
+		init_ctx.node = init_node;
+		execute_build_inst_expr(ref init_ctx, rel, scope, ref(var.storage));
 	}
 	else
 	{
@@ -75,7 +76,7 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 		putzstr("build-region decl \0");
 		putchars(name, name_len);
 		putzstr(" has no initialiser at \0");
-		putsrc(src, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	if(var.storage.tag == val_tag.invalid)
@@ -84,64 +85,54 @@ execute_build_inst_decl : func(stmt : ast mut?, src : source, rel : file, scope 
 		putzstr("build-region decl \0");
 		putchars(name, name_len);
 		putzstr(" had an initialiser that doesn't yield a value at \0");
-		putsrc(src, init_node->src_beg@u64, init_node->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	scope_add_variable(scope, ref var);
 };
 
-execute_build_inst_symbol : func(sym : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_symbol : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	ctx : source_context mut;
-	ctx.src = src;
-	ctx.node = sym;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
-	val_from_node_expr_symbol_from_scope(ref ctx, scope, out);
+	val_from_node_expr_symbol_from_scope(ctx, scope, out);
 };
 
-execute_build_inst_literal : func(literal : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_literal : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	tag ::= [ast_literal_get_tag(literal)];
+	tag ::= [ast_literal_get_tag(ctx->node)];
 	if(tag == ast_literal_tag.string)
 	{
 		// string-literal is special-cased because otherwise it produces an ir global which is wrong.
-		build_make_string_literal([ast_literal_get_string(literal)], [ast_literal_get_string_len(literal)], out);
+		build_make_string_literal([ast_literal_get_string(ctx->node)], [ast_literal_get_string_len(ctx->node)], out);
 		return;
 	}
-	ctx : source_context mut;
-	ctx.src = src;
-	ctx.node = literal;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
-	val_from_node_expr_literal(ref ctx, out);
+	val_from_node_expr_literal(ctx, out);
 };
 
-execute_build_inst_unop : func(unop : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_unop : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	operand_node ::= ast_unop_get_operand(unop);
 	operand_val : val mut;
-	execute_build_inst_expr(operand_node, src, rel, scope, ref operand_val);
-	ctx : source_context mut;
-	ctx.node = unop;
-	ctx.src = src;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
 
-	[val_from_node_expr_unop_tbl # [ast_unop_get_tag(unop)]@s64](ref operand_val, ref ctx, out);
+	operand_ctx : source_context mut := [ctx];
+	operand_ctx.node = ast_unop_get_operand(ctx->node);
+	execute_build_inst_expr(ref operand_ctx, rel, scope, ref operand_val);
+	[val_from_node_expr_unop_tbl # [ast_unop_get_tag(ctx->node)]@s64](ref operand_val, ctx, out);
 };
 
-execute_build_inst_biop : func(biop : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_biop : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	lhs_node ::= ast_biop_get_lhs(biop);
+	lhs_node ::= ast_biop_get_lhs(ctx->node);
+
+	lhs_context : source_context mut := [ctx];
+	lhs_context.node = lhs_node;
 	lhs_val : val mut;
-	execute_build_inst_expr(lhs_node, src, rel, scope, ref lhs_val);
-	rhs_node ::= ast_biop_get_rhs(biop);
+	execute_build_inst_expr(ref lhs_context, rel, scope, ref lhs_val);
+
+	rhs_node ::= ast_biop_get_rhs(ctx->node);
 	rhs_val : val mut;
 	if(ast_is_expr(rhs_node, ast_expr_tag.zero_value))
 	{
 		// special-case for biop.at
-		if([ast_biop_get_tag(biop)] == ast_biop_tag.at)
+		if([ast_biop_get_tag(ctx->node)] == ast_biop_tag.at)
 		{
 			val_zero_as(ty.s64, ref rhs_val);
 		}
@@ -153,44 +144,43 @@ execute_build_inst_biop : func(biop : ast mut?, src : source, rel : file, scope 
 	}
 	else
 	{
-		execute_build_inst_expr(rhs_node, src, rel, scope, ref rhs_val);
+		rhs_context : source_context mut := [ctx];
+		rhs_context.node = rhs_node;
+		execute_build_inst_expr(ref rhs_context, rel, scope, ref rhs_val);
 	}
-	ctx : source_context mut;
-	ctx.node = biop;
-	ctx.src = src;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
-	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(biop)]@s64](lhs_node, rhs_node, ref lhs_val, ref rhs_val, ref ctx, out);
+	[val_from_node_expr_biop_tbl # [ast_biop_get_tag(ctx->node)]@s64](lhs_node, rhs_node, ref lhs_val, ref rhs_val, ctx, out);
 };
 
-execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_call : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
-	callee ::= ast_call_get_callee(call);
+	callee ::= ast_call_get_callee(ctx->node);
 	if([ast_expr_get_tag(callee)] != ast_expr_tag.symbol)
 	{
 		err_begin();
 		putzstr("callee must be a symbol expression in a build region at \0");
-		putsrc(src, callee->src_beg@u64, callee->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, callee->src_beg@u64, callee->src_end@u64, putcol.red_underline);
 		err_end();
 	}
 	// collect params
-	params_count ::= ast_call_get_params_count(call)@u64;
-	params_begin ::= ast_call_get_params(call);
+	params_count ::= ast_call_get_params_count(ctx->node)@u64;
+	params_begin ::= ast_call_get_params(ctx->node);
 	params : val mut? := arena_alloc(scratch_arena, params_count * sizeof val);
 	i : u64 mut;
 	for(i = 0; i < params_count; i = i + 1)
 	{
-		execute_build_inst_expr(params_begin # i, src, rel, scope, params # i);
+		param_ctx : source_context mut := [ctx];
+		param_ctx.node = params_begin # i;
+		execute_build_inst_expr(ref param_ctx, rel, scope, params # i);
 	}
 	// do builtin call
-	if([ast_call_get_is_builtin_call(call)])
+	if([ast_call_get_is_builtin_call(ctx->node)])
 	{
-		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], params, params_count, src, call, rel, out);
+		execute_build_builtin([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)], params, params_count, ctx->src, ctx->node, rel, out);
 	}
 	else
 	{
 		// call other build region
-		file_ast ::= ref(prog_get_source(src)->node);
+		file_ast ::= ref(prog_get_source(ctx->src)->node);
 
 		other_region ::= find_build_region(file_ast, [ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)]);
 		if(other_region == zero)
@@ -201,58 +191,57 @@ execute_build_inst_call : func(call : ast mut?, src : source, rel : file, scope 
 			putchars([ast_symbol_get_data(callee)], [ast_symbol_get_data_len(callee)]);
 			putchar('"');
 			putzstr(", which is not found in the same source-file at \0");
-			putsrc(src, call->src_beg@u64, call->src_end@u64, putcol.red_underline);
+			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
-		execute_build_region(src, other_region, rel);
+		execute_build_region(ctx->src, other_region, rel);
 	}
 };
 
-execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_invalid : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	err_begin();
 	putzstr("statement is not a valid build instruction\n\0");
-	putsrc(src, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
+	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	err_end();
 };
 
-execute_build_inst_if_stmt : func(ifblk : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+execute_build_inst_if_stmt : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	// get the condition and evaluate it immediately
 	// if its truthy, then execute the if-body
-	cond_expr ::= ast_if_get_condition_expression(ifblk);
+	cond_expr ::= ast_if_get_condition_expression(ctx->node);
 	cond_val : val mut;
 	cond_val.tag = val_tag.invalid;
-	execute_build_inst_expr(cond_expr, src, rel, scope, ref cond_val);
+	cond_ctx : source_context mut := [ctx];
+	cond_ctx.node = cond_expr;
+	execute_build_inst_expr(ref cond_ctx, rel, scope, ref cond_val);
 	if(cond_val.tag != val_tag.scalar)
 	{
 		err_begin();
 		putzstr("condition of if-statement in build region did not produce a valid value at \0");
-		putsrc(src, cond_expr->src_beg@u64, cond_expr->src_end@u64, putcol.red_underline);
+		putsrc(ctx->src, cond_expr->src_beg@u64, cond_expr->src_end@u64, putcol.red_underline);
 		err_end();
 	}
-	ctx : source_context mut;
-	ctx.node = cond_expr;
-	ctx.src = src;
-	ctx.parent_fn = zero;
-	ctx.type_only = false;
-	val_conv(ref cond_val, ty.bool, ref cond_val, ref ctx);
+	val_conv(ref cond_val, ty.bool, ref cond_val, ref cond_ctx);
 	the_value ::= [irval_imm_get_integer(val_scalar_get_irval(ref cond_val))]@u8;
 	if(the_value != 0)
 	{
-		body_begin ::= ast_if_get_body(ifblk);
-		body_count ::= ast_if_get_body_count(ifblk)@u64;
+		body_begin ::= ast_if_get_body(ctx->node);
+		body_count ::= ast_if_get_body_count(ctx->node)@u64;
 		// execute the body
 		i : u64 mut;
 		for(i = 0; i < body_count; i = i + 1)
 		{
 			dummy : val mut;
-			execute_build_inst_stmt(body_begin # i, src, rel, scope, ref dummy);
+			body_ctx : source_context mut := [ctx];
+			body_ctx.node = body_begin # i;
+			execute_build_inst_stmt(ref body_ctx, rel, scope, ref dummy);
 		}
 	}
 };
 
-execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_stmt_tag]
+execute_build_inst_tbl ::= func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_stmt_tag]
 {
 	.0 := execute_build_inst_expr;
 	.1 := execute_build_inst_decl;
@@ -270,7 +259,7 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope
 	.13 := execute_build_inst_invalid;
 };
 
-execute_build_inst_expr_tbl ::= func(expr : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_expr_tag]
+execute_build_inst_expr_tbl ::= func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_expr_tag]
 {
 	.0 := execute_build_inst_symbol;
 	.1 := execute_build_inst_literal;
