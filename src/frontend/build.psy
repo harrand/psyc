@@ -216,6 +216,42 @@ execute_build_inst_invalid : func(stmt : ast mut?, src : source, rel : file, sco
 	err_end();
 };
 
+execute_build_inst_if_stmt : func(ifblk : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	// get the condition and evaluate it immediately
+	// if its truthy, then execute the if-body
+	cond_expr ::= ast_if_get_condition_expression(ifblk);
+	cond_val : val mut;
+	cond_val.tag = val_tag.invalid;
+	execute_build_inst_expr(cond_expr, src, rel, scope, ref cond_val);
+	if(cond_val.tag != val_tag.scalar)
+	{
+		err_begin();
+		putzstr("condition of if-statement in build region did not produce a valid value at \0");
+		putsrc(src, cond_expr->src_beg@u64, cond_expr->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	ctx : source_context mut;
+	ctx.node = cond_expr;
+	ctx.src = src;
+	ctx.parent_fn = zero;
+	ctx.type_only = false;
+	val_conv(ref cond_val, ty.bool, ref cond_val, ref ctx);
+	the_value ::= [irval_imm_get_integer(val_scalar_get_irval(ref cond_val))]@u8;
+	if(the_value != 0)
+	{
+		body_begin ::= ast_if_get_body(ifblk);
+		body_count ::= ast_if_get_body_count(ifblk)@u64;
+		// execute the body
+		i : u64 mut;
+		for(i = 0; i < body_count; i = i + 1)
+		{
+			dummy : val mut;
+			execute_build_inst_stmt(body_begin # i, src, rel, scope, ref dummy);
+		}
+	}
+};
+
 execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope : scope_t mut?, out : val mut? -> v0)[countof ast_stmt_tag]
 {
 	.0 := execute_build_inst_expr;
@@ -225,7 +261,7 @@ execute_build_inst_tbl ::= func(stmt : ast mut?, src : source, rel : file, scope
 	.4 := execute_build_inst_invalid;
 	.5 := execute_build_inst_invalid;
 	.6 := execute_build_inst_invalid;
-	.7 := execute_build_inst_invalid;
+	.7 := execute_build_inst_if_stmt;
 	.8 := execute_build_inst_invalid;
 	.9 := execute_build_inst_invalid;
 	.10 := execute_build_inst_invalid;
