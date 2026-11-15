@@ -27,6 +27,12 @@ source : enum
 	.invalid := ~0;
 };
 
+postbuild_command_t : struct
+{
+	cmd : u8?;
+	rel : file;
+};
+
 prog_t : struct
 {
 	stack_size : u64;
@@ -41,7 +47,7 @@ prog_t : struct
 	source_files_cap : u64;
 
 	global_scope : scope_t;
-	postbuild_commands : u8? mut?;
+	postbuild_commands : postbuild_command_t mut?;
 	postbuild_commands_count : u64;
 	postbuild_commands_cap : u64;
 };
@@ -64,7 +70,7 @@ prog ::= prog_t mut
 	.postbuild_commands_cap := zero;
 };
 
-prog_add_postbuild_command : func(cmd_zstr : u8? -> v0)
+prog_add_postbuild_command : func(cmd : postbuild_command_t mut? -> v0)
 {
 	if(prog.postbuild_commands == zero)
 	{
@@ -84,7 +90,7 @@ prog_add_postbuild_command : func(cmd_zstr : u8? -> v0)
 		}
 	}
 
-	[prog.postbuild_commands # prog.postbuild_commands_count] = cmd_zstr;
+	[prog.postbuild_commands # prog.postbuild_commands_count] = [cmd];
 	prog.postbuild_commands_count = prog.postbuild_commands_count + 1;
 };
 
