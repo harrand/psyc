@@ -37,8 +37,34 @@ compile : func(-> v0)
 	compile_timings.object_write = t - old;
 	old = t;
 
+	postbuild();
+	t = nanotime();
+	compile_timings.postbuild = t - old;
+	old = t;
+
 	dump_metrics();
 	dump_timings();
+};
+
+postbuild : func(-> v0)
+{
+	i : u64 mut;
+	for(i = 0; i < prog.postbuild_commands_count; i = i + 1)
+	{
+		cmd ::= [prog.postbuild_commands # i];
+		return_code : s32 := shell_command(cmd);
+		if(return_code != 0)
+		{
+			warn_begin();
+			putzstr("postbuild command \0");
+			putchar('"');
+			putzstr(cmd);
+			putchar('"');
+			putzstr(" exited with code \0");
+			putsint(return_code);
+			warn_end();
+		}
+	}
 };
 
 dump_metrics : func(-> v0)
@@ -182,6 +208,7 @@ compile_timings_t : struct
 	assembly_legalisation : u64;
 	optimise_asm : u64;
 	object_write : u64;
+	postbuild : u64;
 };
 
 compile_timings : compile_timings_t mut := zero;

@@ -41,6 +41,9 @@ prog_t : struct
 	source_files_cap : u64;
 
 	global_scope : scope_t;
+	postbuild_commands : u8? mut?;
+	postbuild_commands_count : u64;
+	postbuild_commands_cap : u64;
 };
 // whole program state
 prog ::= prog_t mut
@@ -56,6 +59,33 @@ prog ::= prog_t mut
 	.source_files_count := zero;
 	.source_files_cap := zero;
 	.global_scope := zero;
+	.postbuild_commands := zero;
+	.postbuild_commands_count := zero;
+	.postbuild_commands_cap := zero;
+};
+
+prog_add_postbuild_command : func(cmd_zstr : u8? -> v0)
+{
+	if(prog.postbuild_commands == zero)
+	{
+		prog.postbuild_commands_cap = 8;
+		prog.postbuild_commands = arena_alloc(global_arena, prog.postbuild_commands_cap * sizeof typeof([prog.postbuild_commands]));
+	}
+	while(prog.postbuild_commands_count >= prog.postbuild_commands_cap)
+	{
+		i : u64 mut;
+		oldcap ::= prog.postbuild_commands_cap;
+		olddata ::= prog.postbuild_commands;
+		prog.postbuild_commands_cap = prog.postbuild_commands_cap * 2;
+		prog.postbuild_commands = arena_alloc(global_arena, prog.postbuild_commands_cap * sizeof typeof([prog.postbuild_commands]));
+		for(i = 0; i < oldcap; i = i + 1)
+		{
+			[prog.postbuild_commands # i] = [olddata # i];
+		}
+	}
+
+	[prog.postbuild_commands # prog.postbuild_commands_count] = cmd_zstr;
+	prog.postbuild_commands_count = prog.postbuild_commands_count + 1;
 };
 
 prog_add_source_file : func(src : source_file? -> source)

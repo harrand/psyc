@@ -390,7 +390,16 @@ execute_build_builtin_prebuild_command : func(params : val mut?, params_count : 
 	out->type = ty_integer_literal();
 	irval_qimm(return_code, val_scalar_get_irval(out));
 	[val_scalar_get_displacement(out)] = 0;
-	
+};
+
+execute_build_builtin_postbuild_command : func(params : val mut?, params_count : u64, src : source, out : val mut? -> v0)
+{
+	cmd_data : u8 mut? mut;
+	cmd_len : u64 mut;
+	build_must_get_string_literal(params # 0, ref cmd_data, ref cmd_len);
+	cmd_zstr ::= sstr2zstr(cmd_data, cmd_len, global_arena);
+
+	prog_add_postbuild_command(cmd_zstr);
 };
 
 execute_build_builtin_set_optimization : func(params : val mut?, params_count : u64, src : source -> v0)
@@ -451,6 +460,11 @@ execute_build_builtin : func(name : u8?, name_len : u64, params : val mut?, para
 	if(streql(name, name_len, "prebuild_command", 16))
 	{
 		execute_build_builtin_prebuild_command(params, params_count, src, out);
+		return;
+	}
+	if(streql(name, name_len, "postbuild_command", 17))
+	{
+		execute_build_builtin_postbuild_command(params, params_count, src, out);
 		return;
 	}
 	if(streql(name, name_len, "set_optimization", 16))
