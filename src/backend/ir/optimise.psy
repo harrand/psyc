@@ -273,11 +273,41 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 	rename_idx ::= fn->counter;
 	fn->counter = fn->counter + callee_fn->counter;
 
+	return_permutations_cap : u64 mut := 8;
+	return_permutations_count : u64 mut := 0;
+	return_permutations : irinst mut? mut := arena_alloc(scratch_arena, return_permutations_cap * sizeof irinst);
+
+	callee_curblk : irblk mut? mut;
+	inlined_callee_curblkref : irval mut;
+	inlined_callee_curblk : irblk mut? mut;
 	for(i = 0; i < callee_fn->blks_count; i = i + 1)
 	{
-		callee_curblk ::= callee_fn->blks # i;
-		inlined_callee_curblkref : irval mut;
-		inlined_callee_curblk ::= ir_add_blk(ref inlined_callee_curblkref);
+		callee_curblk = callee_fn->blks # i;
+		inlined_callee_curblk = ir_add_blk(ref inlined_callee_curblkref);
+		for(j = 0; j < callee_curblk->insts_count; j = j + 1)
+		{
+			callee_inst_ptr ::= callee_curblk->insts # j;
+			if(callee_inst_ptr->tag == irinst_tag.ret)
+			{
+				// (but first we need to save the operands for later on so we can rename output/return registers accordingly)
+				while(return_permutations_count >= return_permutations_cap)
+				{
+					olddata ::= return_permutations;
+					oldcap ::= return_permutations_cap;
+					return_permutations_cap = return_permutations_cap * 2;
+					return_permutations = arena_alloc(scratch_arena, return_permutations_cap * sizeof irinst);
+				}
+				[return_permutations # return_permutations_count] = callee_inst;
+				return_permutations_count = return_permutations_count + 1;
+			}
+		}
+	}
+
+
+	for(i = 0; i < callee_fn->blks_count; i = i + 1)
+	{
+		callee_curblk = callee_fn->blks # i;
+		inlined_callee_curblk = ir_add_blk(ref inlined_callee_curblkref);
 		for(j = 0; j < callee_curblk->insts_count; j = j + 1)
 		{
 			callee_inst ::= [callee_curblk->insts # j];
@@ -318,7 +348,7 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 			if(callee_inst.tag == irinst_tag.ret)
 			{
 				//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
-				// (but we need to save the operands for later on so we can rename output/return registers accordingly)
+				// okay back to doing d.)
 				callee_inst = zero;
 				callee_inst.tag = irinst_tag.jmp;
 				irinst_add_operand(ref callee_inst, ref newblkref);
