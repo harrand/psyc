@@ -9,6 +9,7 @@ optimise_ir : func(-> v0)
 	for(i = 0; i < irapi.prog.funcs_count; i = i + 1)
 	{
 		while(irfunc_optimise_dead_reg_elimination(irapi.prog.funcs # i) != 0){}
+		while(irfunc_optimise_do_inlining(irapi.prog.funcs # i) != 0){}
 	}
 
 	// program-level optimisations (so-called link-time-optimisation and whole-program-optimisation in other languages)
@@ -173,4 +174,80 @@ irfunc_optimise_dead_reg_elimination : func(fn : irfunc mut? -> u64)
 	}
 
 	return elim_count;
+};
+
+irinst_should_call_be_inlined : func(fn : irfunc mut?, blk : irblk mut?, inst : irinst mut?, callee : irfunc mut? -> bool)
+{
+	// this returns true for each call that should be inlined.
+	
+	// note: currently this always returns false, meaning we never inline anything. this should remain the case until irfunc_do_inline_call is fully implemented and working properly
+	return false;
+};
+
+irinst_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> bool)
+{
+	blk ::= fn->blks # blkidx;
+	inst ::= blk->insts # instidx;
+
+	if(inst->tag != irinst_tag.call)
+	{
+		// cant inline a non-call
+		return false;
+	}
+	callable ::= ir_call_get_callee(inst);
+	if(callable->tag != irval_tag.fnref)
+	{
+		// cant inline a call to a non-fnref (i.e an asmref or an indirect call)
+		return false;
+	}
+	callee_idx ::= [irval_fnref_get_idx(callable)];
+	callee_fn ::= irapi.prog.funcs # callee_idx;
+	if(!irinst_should_call_be_inlined(fn, blk, inst, callee_fn))
+	{
+		return false;
+	}
+
+	// actually do the inline call.
+	irfunc_do_inline_call(fn, blkidx, instidx);
+	return true;
+};
+
+irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0)
+{
+	blk ::= fn->blks # blkidx;
+	inst ::= blk->insts # instidx;
+	ir_position_before(fn->idx, blkidx, instidx);
+	//putzstr("inlining call: \0");
+	//irinst_dump(inst);
+	//putchar('\n');
+	
+	// 1. make an array of all the params passed to the call instruction
+	// 2. make an array of all the returns from the call instruction
+	// 3. set position to the current call instruction
+	// 4. delete the current instruction
+	// 5. copypasta all the blks/instructions from the callee function to our current position. for each instruction during copying:
+	//	a. replace each use of param register i with array_of_params[i]
+	//	b. different codepaths could return different ssa regs. will need to patch them all to the output register(s) correctly.
+	//	c. scratch registers should be renamed from %Nx to %Nx+y, where 'x' was the reg idx of the scratch register, and 'y' is the total number of registers in this function (to guarantee no collision with any other scratch register in the calling function)
+	//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
+};
+
+irfunc_optimise_do_inlining : func(fn : irfunc mut? -> u64)
+{
+	inline_count : u64 mut := 0;
+	i : u64 mut;
+	j : u64 mut;
+	for(i = 0; i < fn->blks_count; i = i + 1)
+	{
+		blk ::= fn->blks # i;
+
+		for(j = 0; j < blk->insts_count; j = j + 1)
+		{
+			if(irinst_inline_call(fn, i, j))
+			{
+				inline_count = inline_count + 1;
+			}
+		}
+	}
+	return inline_count;
 };
