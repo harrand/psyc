@@ -181,7 +181,7 @@ irinst_should_call_be_inlined : func(fn : irfunc mut?, blk : irblk mut?, inst : 
 	// this returns true for each call that should be inlined.
 	
 	// note: currently this always returns false, meaning we never inline anything. this should remain the case until irfunc_do_inline_call is fully implemented and working properly
-	return false;
+	return true;
 };
 
 irinst_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> bool)
@@ -214,10 +214,13 @@ irinst_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> bool)
 
 irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0)
 {
+	putzstr("inlining: \0");
 	blk ::= fn->blks # blkidx;
 	inst ::= blk->insts # instidx;
+	irinst_dump(inst);
 	i : u64 mut;
 	j : u64 mut;
+	k : u64 mut;
 
 	// 1. make an array (deep copy) of all the params passed to the call instruction
 	params_count ::= ir_call_get_params_count(inst)@u64;
@@ -236,6 +239,9 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 	{
 		[returns # i] = [returns_src # i];
 	}
+
+	callee_fnidx ::= [irval_fnref_get_idx(ir_call_get_callee(inst))];
+	callee_fn ::= irapi.prog.funcs # callee_fnidx;
 	// 3. set position to the current call instruction
 	ir_position_before(fn->idx, blkidx, instidx);
 	// 4. delete the current instruction
@@ -257,25 +263,70 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 	// all returns should be replaced with a jump to newblk
 	ir_position_end_of_blk(blkidx);
 	// 6. copypasta all the blks/instructions from the callee function to our current position. for each instruction during copying:
-	callee_fnidx ::= [irval_fnref_get_idx(ir_call_get_callee(inst))];
-	callee_fn ::= irapi.prog.funcs # callee_fnidx;
+	putzstr("callee: \n\0");
+	irfunc_dump(callee_fn);
+	rename_idx ::= fn->counter;
+	fn->counter = fn->counter + callee_fn->counter;
+
+	// store all output permutations (i.e each permutation is just a list of the operands provided by a return instruction)
 	for(i = 0; i < callee_fn->blks_count; i = i + 1)
 	{
 		callee_curblk ::= callee_fn->blks # i;
 		for(j = 0; j < callee_curblk->insts_count; j = j + 1)
 		{
-			callee_inst ::= callee_curblk->insts # j;
-			//	a. replace each use of param register i with array_of_params[i]
+			callee_inst ::= [callee_curblk->insts # j];
+			// deep-copy the operands (because we might change them but we dont actually want to affect the operands in the real callee function)
+			old_operands ::= callee_inst.operands;
+			callee_inst.operands = arena_alloc(global_arena, callee_inst.operands_count * sizeof irval);
+			for(k = 0; k < callee_inst.operands_count; k = k + 1)
+			{
+				op_src ::= old_operands # k;
+				op_dst ::= callee_inst.operands # k;
+				[op_dst] = [op_src];
+				if(op_src->tag == irval_tag.reg)
+				{
+					regidx ::= [irval_reg_get_idx(op_src)];
+					//	a. replace each use of param register i with array_of_params[i]
+					if(regidx < callee_fn->params_count)
+					{
+						[op_dst] = [params # regidx];
+					}
+					else
+					{
+						//	c. scratch registers should be renamed from %Nx to %Nx+y, where 'x' was the reg idx of the scratch register, and 'y' is the total number of registers in this function (to guarantee no collision with any other scratch register in the calling function)
+
+						// its a generic ssa reg (or an output reg but we dont know yet)
+						// rename its index to += fn->counter (and then increment the latter so it doesnt get re-used again)
+						[irval_reg_get_idx(op_dst)] = [irval_reg_get_idx(op_dst)] + rename_idx;
+					}
+				}
+			}
+
 			//	b. different codepaths could return different ssa regs. will need to patch them all to the output register(s) correctly.
-			//	c. scratch registers should be renamed from %Nx to %Nx+y, where 'x' was the reg idx of the scratch register, and 'y' is the total number of registers in this function (to guarantee no collision with any other scratch register in the calling function)
-			//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
+			if(callee_inst.tag == irinst_tag.ret)
+			{
+				//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
+				// (but we need to save the operands for later on so we can rename output/return registers accordingly)
+				callee_inst = zero;
+				callee_inst.tag = irinst_tag.jmp;
+				irinst_add_operand(ref callee_inst, ref newblkref);
+			}
 			// once we're happy, add the instruction in our callee location
+			putuint(j);
+			putchar(' ');
+			putsint(callee_inst.tag@s64);
+			irinst_dump(ref callee_inst);
+			ir_add_instruction(ref callee_inst);
 		}
 	}
 };
 
 irfunc_optimise_do_inlining : func(fn : irfunc mut? -> u64)
 {
+	if(!streql(fn->custom_name, fn->custom_name_len, "type_from_node", 14))
+	{
+		return 0;
+	}
 	inline_count : u64 mut := 0;
 	i : u64 mut;
 	j : u64 mut;
@@ -291,5 +342,8 @@ irfunc_optimise_do_inlining : func(fn : irfunc mut? -> u64)
 			}
 		}
 	}
+
+	putzstr("after inlining: \0");
+	irfunc_dump(fn);
 	return inline_count;
 };
