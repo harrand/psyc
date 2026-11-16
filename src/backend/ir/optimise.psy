@@ -216,20 +216,62 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 {
 	blk ::= fn->blks # blkidx;
 	inst ::= blk->insts # instidx;
-	ir_position_before(fn->idx, blkidx, instidx);
-	//putzstr("inlining call: \0");
-	//irinst_dump(inst);
-	//putchar('\n');
+	i : u64 mut;
+	j : u64 mut;
+
+	// 1. make an array (deep copy) of all the params passed to the call instruction
+	params_count ::= ir_call_get_params_count(inst)@u64;
+	params_src ::= ir_call_get_params(inst);
+	params : irval mut? := arena_alloc(scratch_arena, params_count * sizeof irval);
+	for(i = 0; i < params_count; i = i + 1)
+	{
+		[params # i] = [params_src # i];
+	}
 	
-	// 1. make an array of all the params passed to the call instruction
-	// 2. make an array of all the returns from the call instruction
+	// 2. make an array (deep copy) of all the returns from the call instruction
+	returns_count ::= ir_call_get_returns_count(inst)@u64;
+	returns_src ::= ir_call_get_returns(inst);
+	returns : irval mut? := arena_alloc(scratch_arena, returns_count * sizeof irval);
+	for(i = 0; i < returns_count; i = i + 1)
+	{
+		[returns # i] = [returns_src # i];
+	}
 	// 3. set position to the current call instruction
+	ir_position_before(fn->idx, blkidx, instidx);
 	// 4. delete the current instruction
-	// 5. copypasta all the blks/instructions from the callee function to our current position. for each instruction during copying:
-	//	a. replace each use of param register i with array_of_params[i]
-	//	b. different codepaths could return different ssa regs. will need to patch them all to the output register(s) correctly.
-	//	c. scratch registers should be renamed from %Nx to %Nx+y, where 'x' was the reg idx of the scratch register, and 'y' is the total number of registers in this function (to guarantee no collision with any other scratch register in the calling function)
-	//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
+	ir_delete_instruction();
+	// 5. cut the current block off, the rest of the instructions after us should be moved to the new block, meaning the instructions we're about to add from the inlined call should comprise the end of this block.
+	//	- remember: we arent necessarily the last block in the function, so we need to be careful.
+	remaining_instructions_this_blk_count ::= blk->insts_count - instidx;
+	remaining_instructions_this_blk ::= inst;
+	// todo: sanity-check for off-by-1.
+	blk->insts_count = instidx;
+	newblkref : irval mut;
+	newblk ::= ir_add_blk(ref newblkref);
+	// potentially start from 1? not sure.
+	for(i = 0; i < remaining_instructions_this_blk_count; i = i + 1)
+	{
+		ir_add_instruction(inst # i);
+	}
+	// now go back to the truncated block. the copypasta instructions should go in here.
+	// all returns should be replaced with a jump to newblk
+	ir_position_end_of_blk(blkidx);
+	// 6. copypasta all the blks/instructions from the callee function to our current position. for each instruction during copying:
+	callee_fnidx ::= [irval_fnref_get_idx(ir_call_get_callee(inst))];
+	callee_fn ::= irapi.prog.funcs # callee_fnidx;
+	for(i = 0; i < callee_fn->blks_count; i = i + 1)
+	{
+		callee_curblk ::= callee_fn->blks # i;
+		for(j = 0; j < callee_curblk->insts_count; j = j + 1)
+		{
+			callee_inst ::= callee_curblk->insts # j;
+			//	a. replace each use of param register i with array_of_params[i]
+			//	b. different codepaths could return different ssa regs. will need to patch them all to the output register(s) correctly.
+			//	c. scratch registers should be renamed from %Nx to %Nx+y, where 'x' was the reg idx of the scratch register, and 'y' is the total number of registers in this function (to guarantee no collision with any other scratch register in the calling function)
+			//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
+			// once we're happy, add the instruction in our callee location
+		}
+	}
 };
 
 irfunc_optimise_do_inlining : func(fn : irfunc mut? -> u64)
