@@ -245,17 +245,22 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 	// 3. set position to the current call instruction
 	ir_position_before(fn->idx, blkidx, instidx);
 	// 4. delete the current instruction
-	ir_delete_instruction();
+	//ir_delete_instruction();
+	// jump to entry blk
+	newblkref : irval mut;
+	newblk ::= ir_add_blk(ref newblkref);
+	blkdiff ::= fn->blks_count;
+	inst->tag = irinst_tag.jmp;
+	inst->operands_count = 1;
+	irval_blkref(blkdiff, inst->operands # 0);
 	// 5. cut the current block off, the rest of the instructions after us should be moved to the new block, meaning the instructions we're about to add from the inlined call should comprise the end of this block.
 	//	- remember: we arent necessarily the last block in the function, so we need to be careful.
 	remaining_instructions_this_blk_count ::= blk->insts_count - instidx;
 	remaining_instructions_this_blk ::= inst;
 	// todo: sanity-check for off-by-1.
-	blk->insts_count = instidx;
-	newblkref : irval mut;
-	newblk ::= ir_add_blk(ref newblkref);
+	blk->insts_count = instidx + 1;
 	// potentially start from 1? not sure.
-	for(i = 0; i < remaining_instructions_this_blk_count; i = i + 1)
+	for(i = 1; i < remaining_instructions_this_blk_count; i = i + 1)
 	{
 		ir_add_instruction(inst # i);
 	}
@@ -268,10 +273,11 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 	rename_idx ::= fn->counter;
 	fn->counter = fn->counter + callee_fn->counter;
 
-	// store all output permutations (i.e each permutation is just a list of the operands provided by a return instruction)
 	for(i = 0; i < callee_fn->blks_count; i = i + 1)
 	{
 		callee_curblk ::= callee_fn->blks # i;
+		inlined_callee_curblkref : irval mut;
+		inlined_callee_curblk ::= ir_add_blk(ref inlined_callee_curblkref);
 		for(j = 0; j < callee_curblk->insts_count; j = j + 1)
 		{
 			callee_inst ::= [callee_curblk->insts # j];
@@ -303,6 +309,12 @@ irfunc_do_inline_call : func(fn : irfunc mut?, blkidx : u64, instidx : u64 -> v0
 			}
 
 			//	b. different codepaths could return different ssa regs. will need to patch them all to the output register(s) correctly.
+			if(callee_inst.tag == irinst_tag.jmp)
+			{
+				// the blkref idx needs to have blkdiff added to it.
+				op0 ::= callee_inst.operands # 0;
+				[irval_blkref_get_idx(op0)] = [irval_blkref_get_idx(op0)] + blkdiff;
+			}
 			if(callee_inst.tag == irinst_tag.ret)
 			{
 				//  d. if output registers have been patched correctly, any return instructions should be replaced with an unconditional jump to a new irblk representing after-the-call.
