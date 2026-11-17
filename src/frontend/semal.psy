@@ -206,9 +206,24 @@ semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak ->
 	t ::= [ast_stmt_get_tag(node)];
 	if(t == ast_stmt_tag.if_blk)
 	{
-		if(!semal_if_should_be_ignored(node, u->src, u->scope))
+		body ::= ast_if_get_body(node);
+		body_count : u32 mut := ast_if_get_body_count(node);
+		maybe_else ::= ast_if_get_else(node);
+		true_off ::= ast_if_get_offset_to_body(node);
+		if(maybe_else != zero)
 		{
-			semal_node_collect_locals(node, 1, node->children_count@u64, u);
+			body_count = body_count - 1;
+		}
+		if(semal_if_should_be_ignored(node, u->src, u->scope))
+		{
+		}
+		else
+		{
+			semal_node_collect_locals(node, true_off, true_off + body_count@u64, u);
+		}
+		if(maybe_else != zero)
+		{
+			semal_node_collect_locals(maybe_else, 0, maybe_else->children_count@u64, u);
 		}
 	}
 	if((t == ast_stmt_tag.while_blk))
