@@ -22,6 +22,17 @@ treewalk_stmt_none : func(stmt : ast mut?, s : source -> v0)
 {
 };
 
+treewalk_stmt_none_but_warn : func(stmt : ast mut?, s : source -> v0)
+{
+	err_begin();
+	putzstr("the following expression is dead code, because the containing statement is not a context that undergoes code generation (for example, you are trying to call a function in a top-level statement, outside of another function) at \0");
+	putsrc(s, stmt->src_beg@u64, stmt->src_end@u64, putcol.red_underline);
+	msg_begin();	
+	putzstr("hint: delete the above code, or move it inside a function body.");
+	msg_end();
+	err_end();
+};
+
 treewalk_stmt_decl : func(stmt : ast mut?, s : source -> v0)
 {
 	name ::= [ast_decl_get_name(stmt)];
@@ -179,7 +190,7 @@ treewalk_stmt_if : func(stmt : ast mut?, s : source -> v0)
 
 treewalk_stmt_tbl ::= func(stmt : ast mut?, s : source -> v0)[countof ast_stmt_tag]
 {
-	.0 := treewalk_stmt_none;
+	.0 := treewalk_stmt_none_but_warn;
 	.1 := treewalk_stmt_decl;
 	.2 := treewalk_stmt_structure;
 	.3 := treewalk_stmt_function;
