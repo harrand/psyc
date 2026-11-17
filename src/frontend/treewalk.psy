@@ -147,6 +147,41 @@ treewalk_stmt_assembly : func(stmt : ast mut?, s : source -> v0)
 	prog_add_assembly(ref as);
 };
 
+treewalk_stmt_if : func(stmt : ast mut?, s : source -> v0)
+{
+	body ::= ast_if_get_body(stmt);
+	body_count : u32 mut := ast_if_get_body_count(stmt);
+	maybe_else ::= ast_if_get_else(stmt);
+	if(maybe_else != zero)
+	{
+		body_count = body_count - 1;
+	}
+	child_node : ast mut? mut;
+	i : u64 mut;
+	true_off ::= ast_if_get_offset_to_body(stmt);
+	if(semal_if_should_be_ignored(stmt, s, ref(prog.global_scope)))
+	{
+		if(maybe_else != zero)
+		{
+			// do treewalk the else if the static_if was false
+			for(i = 0; i < maybe_else->children_count@u64; i = i + 1)
+			{
+				child_node = maybe_else->children # i;
+				[treewalk_stmt_tbl # [ast_stmt_get_tag(child_node)]@s64](child_node, s);
+			}
+		}
+	}
+	else
+	{
+		// do treewalk the body if the static_if was false
+		for(i = true_off; i < true_off + body_count@u64; i = i + 1)
+		{
+			child_node = stmt->children # i;
+			[treewalk_stmt_tbl # [ast_stmt_get_tag(child_node)]@s64](child_node, s);
+		}
+	}
+};
+
 treewalk_stmt_tbl ::= func(stmt : ast mut?, s : source -> v0)[countof ast_stmt_tag]
 {
 	.0 := treewalk_stmt_none;
@@ -156,7 +191,7 @@ treewalk_stmt_tbl ::= func(stmt : ast mut?, s : source -> v0)[countof ast_stmt_t
 	.4 := treewalk_stmt_enumeration;
 	.5 := treewalk_stmt_assembly;
 	.6 := treewalk_stmt_none;
-	.7 := treewalk_stmt_none;
+	.7 := treewalk_stmt_if;
 	.8 := treewalk_stmt_none;
 	.9 := treewalk_stmt_none;
 	.10 := treewalk_stmt_none;
