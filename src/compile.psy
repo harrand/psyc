@@ -328,7 +328,7 @@ add_build_file : func(p : path, target : u8?, target_len : u64, rel : file -> v0
 	putzstr(path2zstr(p));
 	putzstr("...\0");
 
-	src ::= add_source_file(p, rel);
+	src ::= add_source_file(p, rel, false);
 
 	file_node ::= ref(prog_get_source(src)->node);
 	region_node ::= find_build_region(file_node, target, target_len);
@@ -346,9 +346,13 @@ add_build_file : func(p : path, target : u8?, target_len : u64, rel : file -> v0
 	t : u64 mut := nanotime();
 	execute_build_region(src, region_node, rel, zero);
 	compile_timings.build_regions_plus_tokenise_and_parse = compile_timings.build_regions_plus_tokenise_and_parse + (nanotime() - t);
+
+	treewalk(src);
 };
 
-add_source_file : func(p : path, rel : file -> source)
+// note: we may not want to do the treewalk implicitly
+// particularly if we're adding a build file (we want to run its build region *before* treewalking incase it adds new types/variables that the code relies on when treewalking)
+add_source_file : func(p : path, rel : file, do_treewalk_implicitly : bool -> source)
 {
 	stats : file_stats mut;
 	staterr ::= path_get_stats(p, ref stats, rel);
@@ -403,7 +407,10 @@ add_source_file : func(p : path, rel : file -> source)
 	t = nanotime();
 	parse(retfile, ref toks);
 	compile_timings.parse = compile_timings.parse + (nanotime() - t);
-	treewalk(retfile);
+	if(do_treewalk_implicitly)
+	{
+		treewalk(retfile);
+	}
 	scratch_reset();
 
 	file_close(f);

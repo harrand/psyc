@@ -97,6 +97,11 @@ execute_build_inst_decl : func(ctx : source_context mut?, rel : file, scope : sc
 	scope_add_variable(scope, ref var);
 };
 
+execute_build_inst_enum : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	treewalk_stmt_enumeration(ctx->node, ctx->src);
+};
+
 execute_build_inst_symbol : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	val_from_node_expr_symbol_from_scope(ctx, scope, out);
@@ -204,6 +209,11 @@ execute_build_inst_call : func(ctx : source_context mut?, rel : file, scope : sc
 	}
 };
 
+execute_build_inst_field : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
+{
+	val_from_node_expr_field(ctx, out);
+};
+
 execute_build_inst_invalid : func(ctx : source_context mut?, rel : file, scope : scope_t mut?, out : val mut? -> v0)
 {
 	err_begin();
@@ -253,7 +263,7 @@ execute_build_inst_tbl ::= func(ctx : source_context mut?, rel : file, scope : s
 	.1 := execute_build_inst_decl;
 	.2 := execute_build_inst_invalid;
 	.3 := execute_build_inst_invalid;
-	.4 := execute_build_inst_invalid;
+	.4 := execute_build_inst_enum;
 	.5 := execute_build_inst_invalid;
 	.6 := execute_build_inst_invalid;
 	.7 := execute_build_inst_if_stmt;
@@ -276,7 +286,7 @@ execute_build_inst_expr_tbl ::= func(ctx : source_context mut?, rel : file, scop
 	.6 := execute_build_inst_invalid;
 	.7 := execute_build_inst_invalid;
 	.8 := execute_build_inst_invalid;
-	.9 := execute_build_inst_invalid;
+	.9 := execute_build_inst_field;
 	.10 := execute_build_inst_invalid;
 	.11 := execute_build_inst_invalid;
 	.12 := execute_build_inst_invalid;
@@ -343,7 +353,7 @@ execute_build_builtin_add_source_file : func(param : val mut?, rel : file -> v0)
 	path_len : u64 mut;
 	build_must_get_string_literal(param, ref path_data, ref path_len);
 	path_zstr ::= sstr2zstr(path_data, path_len, global_arena);
-	add_source_file(zstr2path(path_zstr), rel);
+	add_source_file(zstr2path(path_zstr), rel, true);
 };
 
 execute_build_builtin_add_build_file : func(params : val mut?, params_count : u64, rel : file -> v0)
@@ -378,7 +388,7 @@ execute_build_builtin_add_source_directory : func(param : val mut?, rel : file -
 build_builtin_add_source_directory_callback : func(child_path : path, usrdata : v0? weak -> bool)
 {
 	rel ::= usrdata@u64@s64@file;
-	add_source_file(path_dupe(child_path, global_arena), rel);
+	add_source_file(path_dupe(child_path, global_arena), rel, true);
 	return true;
 };
 
@@ -410,7 +420,7 @@ build_builtin_add_source_directory_recursive_callback : func(child_path : path, 
 		}
 		else
 		{
-			add_source_file(path_dupe(child_path, global_arena), rel);
+			add_source_file(path_dupe(child_path, global_arena), rel, true);
 		}
 	}
 	else
