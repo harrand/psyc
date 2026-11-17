@@ -16,9 +16,14 @@ find_build_region : func(node : ast mut?, name : u8?, name_len : u64 -> ast mut?
 
 // go through the build region and interpret its contents as compile-time build instructions. this has a passing resemblence to code generation using the val system, and even tries to re-use a bunch of its code. but it has a handful of special-cases and restrictions because of course its build time.
 // for example, as there is no ABI, you cant get the sizeof/alignof types
-execute_build_region : func(src : source, region_node : ast mut?, rel : file -> v0)
+execute_build_region : func(src : source, region_node : ast mut?, rel : file, scope : scope_t mut? -> v0)
 {
-	build_scope : scope_t mut := zero;
+	new_scope : scope_t mut := zero;
+	build_scope : scope_t mut? mut := scope;
+	if(build_scope == zero)
+	{
+		build_scope = ref new_scope;
+	}
 
 	i : u32 mut;
 	count ::= ast_region_get_body_count(region_node);
@@ -32,7 +37,7 @@ execute_build_region : func(src : source, region_node : ast mut?, rel : file -> 
 		ctx.node = child;
 		ctx.parent_fn = zero;
 		ctx.type_only = false;
-		execute_build_inst_stmt(ref ctx, rel, ref build_scope, ref out);
+		execute_build_inst_stmt(ref ctx, rel, build_scope, ref out);
 	}
 };
 
@@ -194,7 +199,7 @@ execute_build_inst_call : func(ctx : source_context mut?, rel : file, scope : sc
 			putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 			err_end();
 		}
-		execute_build_region(ctx->src, other_region, rel);
+		execute_build_region(ctx->src, other_region, rel, scope);
 	}
 };
 
