@@ -2232,8 +2232,64 @@ val_from_node_stmt_decl : func(ctx : source_context mut?, out : val mut? -> v0)
 	val_store_generic(ref(var->storage), ref init_val, ref init_ctx);
 };
 
+val_from_node_stmt_static_if_blk : func(ctx : source_context mut?, out : val mut? -> v0)
+{
+	cond_node ::= ast_if_get_condition_expression(ctx->node);
+	cond_ctx : source_context mut := [ctx];
+	cond_ctx.node = cond_node;
+	cond_val : val mut;
+	//execute_build_inst_expr(ref cond_ctx, zero, ref(prog.global_scope), ref cond_val);
+	val_from_node(ref cond_ctx, ref cond_val);
+	if(cond_val.tag != val_tag.scalar)
+	{
+		err_begin();
+		putzstr("condition of static_if statement did not yield a statically-known scalar at \0");
+		putsrc(ctx->src, cond_node->src_beg@u64, cond_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+	cond_irval ::= val_scalar_get_irval(ref cond_val);
+	if(cond_irval->tag != irval_tag.imm)
+	{
+		err_begin();
+		putzstr("condition of static_if statement did not yield a statically-known value at \0");
+		putsrc(ctx->src, cond_node->src_beg@u64, cond_node->src_end@u64, putcol.red_underline);
+		err_end();
+	}
+
+	body ::= ast_if_get_body(ctx->node);
+	body_count : u32 mut := ast_if_get_body_count(ctx->node);
+
+	maybe_else ::= ast_if_get_else(ctx->node);
+	if(maybe_else != zero)
+	{
+		body_count = body_count - 1;
+	}
+	true_off ::= ast_if_get_offset_to_body(ctx->node);
+	static_if_passed ::= [irval_imm_get_integer(cond_irval)] != 0;
+	true_ctx : source_context mut := [ctx];
+	true_ctx.node = zero;
+	if(static_if_passed)
+	{
+		ast_walk(ctx->node, true_off, true_off + body_count@u64, codegen_node_callback, ref true_ctx);
+	}
+	else
+	{
+		if(maybe_else != zero)
+		{
+			false_ctx : source_context mut := [ctx];
+			false_ctx.node = maybe_else;
+			ast_walk(maybe_else, 0, maybe_else->children_count@u64, codegen_node_callback, ref false_ctx);
+		}
+	}
+};
+
 val_from_node_stmt_if_blk : func(ctx : source_context mut?, out : val mut? -> v0)
 {
+	if([ast_if_get_is_static(ctx->node)])
+	{
+		val_from_node_stmt_static_if_blk(ctx, out);
+		return;
+	}
 	cond_node ::= ast_if_get_condition_expression(ctx->node);
 	cond_ctx : source_context mut := [ctx];
 	cond_ctx.node = cond_node;

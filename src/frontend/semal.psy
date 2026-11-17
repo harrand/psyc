@@ -39,6 +39,7 @@ semal_variable : func(var : variable_t mut?, ctx : source_context mut? -> v0)
 	if((var->type != ty.invalid) && (var->storage.tag != val_tag.invalid))
 	{
 		// this variable doesn't need semantic analysis. chances are this variable was $define'd within a build region so we don't need to touch it.
+		return;
 	}
 	typename_node ::= ast_decl_get_typename(var->node);
 	if([ast_typename_get_tag(typename_node)] == ast_typename_tag.deduced)
@@ -181,13 +182,34 @@ semal_func_collect_locals_usrdata : struct
 	src : source;
 };
 
+// return true if this node is a static-if and the condition is false
+semal_if_should_be_ignored : func(if_stmt : ast mut?, src : source, scope : scope_t mut? -> bool)
+{
+	if([ast_if_get_is_static(if_stmt)])
+	{
+		cond_node ::= ast_if_get_condition_expression(if_stmt);
+		cond_val : val mut;
+		ctx : source_context mut;
+		ctx.src = src;
+		ctx.node = cond_node;
+		ctx.parent_fn = zero;
+		ctx.type_only = false;
+		val_from_node(ref ctx, ref cond_val);
+		return [irval_imm_get_integer(val_scalar_get_irval(ref cond_val))] == 0;
+	}
+	return false;
+};
+
 semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak -> v0)
 {
 	u ::= usrdata@semal_func_collect_locals_usrdata mut?;
 	t ::= [ast_stmt_get_tag(node)];
-	if((t == ast_stmt_tag.if_blk))
+	if(t == ast_stmt_tag.if_blk)
 	{
-		semal_node_collect_locals(node, 1, node->children_count@u64, u);
+		if(!semal_if_should_be_ignored(node, u->src, u->scope))
+		{
+			semal_node_collect_locals(node, 1, node->children_count@u64, u);
+		}
 	}
 	if((t == ast_stmt_tag.while_blk))
 	{
@@ -208,6 +230,7 @@ semal_func_collect_locals_callback : func(node : ast mut?, usrdata : v0? weak ->
 		var.src = u->src;
 		var.type = zero;
 		var.local_param_idx = ~0;
+		var.storage.tag = val_tag.invalid;
 
 		var_ctx : source_context mut;
 		var_ctx.node = node;
