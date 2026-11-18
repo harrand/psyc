@@ -25,6 +25,9 @@ elf_data : struct
 	data : u8?;
 	data_len : u64;
 	bss_len : u64;
+
+	progsrc : x64prog mut?;
+	include_function_names : bool;
 };
 
 elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
@@ -48,7 +51,7 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 
 	// note: 0 is sysv, but i explicitly dont want to use that because people will think it contains SYSV code
 	// so i am unofficially designating the below number to represent psy64.
-	elf_osabi_psy64 : u64 := 69;
+	elf_osabi_psy64 : u64 := 0;
 
 	page_size : u64 := 0x1000;
 	// elf header
@@ -80,20 +83,29 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	rodata_begin_addr ::= align_up(e->base_vaddr + rodata_segment_begin, page_size);
 	data_and_bss_begin_addr ::= align_up(e->base_vaddr + data_and_bss_segment_begin, page_size);
 	code_begin_addr ::= align_up(e->base_vaddr + code_segment_begin, page_size);
+
+	sechdr_count : u16 mut := 0;
+	sechdr_size : u64 := 64;
+	if(e->include_function_names)
+	{
+		// strtab, symtab and shstrtab
+		sechdr_count = 3;
+	}
 	// rest of elf header
 	bwrite16(w, elf_type_executable);
 	bwrite16(w, elf_instruction_set_x64);
 	bwrite32(w, 1);
 	bwrite64(w, code_begin_addr + e->entrypoint);
 	bwrite64(w, 64); // program header offset bytes
+	sechdr_offset_offset : u64 mut := w->cursor;
 	bwrite64(w, zero); // section header offset in bytes
 	bwrite32(w, 0); // flags
 	bwrite16(w, elf_hdr_size);
 	bwrite16(w, proghdr_size);
 	bwrite16(w, proghdr_count);
-	bwrite16(w, zero); // section header table entry size bytes
-	bwrite16(w, zero); // number of section header table entries
-	bwrite16(w, zero); // section header table index associated with the section name string table
+	bwrite16(w, sechdr_size); // section header table entry size bytes
+	bwrite16(w, sechdr_count); // number of section header table entries
+	bwrite16(w, 2); // section header table index associated with the section name string table
 
 	// program headers
 	PF_X : u64 := 0x1;
@@ -178,4 +190,141 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 		panic_end();
 	}
 	bwrite_bytes(w, e->code, e->code_len);
+
+	if(e->include_function_names)
+	{
+		// section header table starts here.
+		while(alignment_padding_req(w->cursor, page_size) != 0)
+		{
+			bwrite8(w, 0);
+		}
+		[(w->buf # sechdr_offset_offset)@u64 mut?] = w->cursor;
+		// symtab header
+		symtab_name_offset : u64 mut := w->cursor;
+		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
+		bwrite32(w, 2); // SH_SYMTAB
+		bwrite64(w, 0); // flags (no runtime behaviour)
+		bwrite64(w, 0); // no virtual address (no runtime behaviour)
+		symtab_begin_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		symtab_size_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		bwrite32(w, 1); // sh_link (which section am i associated with? well thats strtab which is section index 1)
+		symtab_entrycount_offset : u64 mut := w->cursor;
+		bwrite32(w, 0); // sh_info?
+		bwrite64(w, 8); // sh_addralign (apparantly its 8 for symtab)
+		bwrite64(w, 24); // sh_entsize (apparantly its 24 for symtab)
+		
+		// strtab header
+		strtab_name_offset : u64 mut := w->cursor;
+		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
+		bwrite32(w, 3); // SH_STRTAB
+		bwrite64(w, 0); // flags (no runtime behaviour)
+		bwrite64(w, 0); // no virtual address (no runtime behaviour)
+		strtab_begin_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		strtab_size_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		bwrite32(w, 0); // sh_link (which section am i associated with? well thats symtab which is section index 0)
+		bwrite32(w, 0); // sh_info?
+		bwrite64(w, 1); // sh_addralign (strtab contains chars so align 1)
+		bwrite64(w, 0); // sh_entsize (variable-length so 0)
+
+		// shstrtab header
+		shstrtab_name_offset : u64 mut := w->cursor;
+		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
+		bwrite32(w, 3); // SH_STRTAB (again)
+		bwrite64(w, 0); // flags (no runtime behaviour)
+		bwrite64(w, 0); // no virtual address (no runtime behaviour)
+		shstrtab_begin_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		shstrtab_size_offset : u64 mut := w->cursor;
+		bwrite64(w, 0);
+		bwrite32(w, 0); // sh_link (which section am i associated with? well thats strtab which is section index 1)
+		bwrite32(w, 0); // sh_info?
+		bwrite64(w, 1); // sh_addralign (apparantly its 8 for symtab)
+		bwrite64(w, 0); // sh_entsize (apparantly its 24 for symtab)
+		
+		// symtab begins here
+		//typedef struct {
+			//Elf64_Word      st_name;
+			//unsigned char   st_info;
+			//unsigned char   st_other;
+			//Elf64_Half      st_shndx;
+			//Elf64_Addr      st_value;
+			//Elf64_Xword     st_size;
+		//} Elf64_Sym;
+		[(w->buf # symtab_begin_offset)@u64 mut?] = w->cursor;
+		symtab_begin ::= w->cursor;
+		// cumulative_name_offset starts at 0 (and is used to represent the offset into strtab)
+		cumulative_name_offset : u64 mut := 0;
+		name_count : u64 mut := 0;
+		fnx64 : x64func mut? mut;
+		for(i = 0; i < e->progsrc->funcs_count; i = i + 1)
+		{
+			fnx64 = e->progsrc->funcs # i;
+			if(fnx64->custom_name != zero)
+			{
+				// write Elf64_Sym
+				bwrite32(w, cumulative_name_offset);
+				bwrite8(w, 0b000000010); // st_info?
+				bwrite8(w, 0); // st_other?
+				bwrite16(w, 65521); // st_shndx? (SHN_ABS == 65521 apparantly)
+				fn_vaddr ::= e->base_vaddr + page_size + align_up_pagesize(e->rodata_len) + align_up_pagesize(e->data_len) + align_up_pagesize(e->bss_len) + fnx64->enc_byte_offset_begin;
+				bwrite64(w, fn_vaddr);
+				fn_bytesize : u64 mut;
+				if(i == (e->progsrc->funcs_count - 1))
+				{
+					// if its the last function in the program, then it's between the vaddr start and the code_len
+					fn_bytesize = e->code_len - fnx64->enc_byte_offset_begin;
+				}
+				else
+				{
+					// otherwise, its the distance between the start of this function and the next.
+					fn_bytesize = ((e->progsrc->funcs # (i + 1))->enc_byte_offset_begin) - fnx64->enc_byte_offset_begin;
+				}
+				bwrite64(w, fn_bytesize);
+				// make it null-terminated.
+				cumulative_name_offset = cumulative_name_offset + fnx64->custom_name_len + 1;
+				name_count = name_count + 1;
+			}
+		}
+		[(w->buf # symtab_entrycount_offset)@u64 mut?] = name_count;
+		[(w->buf # symtab_size_offset)@u64 mut?] = w->cursor - symtab_begin;
+
+		strtab_begin ::= w->cursor;
+		[(w->buf # strtab_begin_offset)@u64 mut?] = w->cursor;
+		putzstr("strtab begin: \0");
+		putuint(strtab_begin);
+		putchar('\n');
+		for(i = 0; i < e->progsrc->funcs_count; i = i + 1)
+		{
+			fnx64 = e->progsrc->funcs # i;
+			putzstr("bwriting: \0");
+			putchars(fnx64->custom_name, fnx64->custom_name_len);
+			putchar('\n');
+			bwrite_bytes(w, fnx64->custom_name, fnx64->custom_name_len);
+			bwrite8(w, 0);
+		}
+		[(w->buf # strtab_size_offset)@u64 mut?] = w->cursor - strtab_begin;
+		putzstr("strtab size: \0");
+		putuint(w->cursor - strtab_begin);
+		putzstr(", data: \n\0");
+		putchars(w->buf # strtab_begin, w->cursor - strtab_begin);
+		putchar('\n');
+		
+		shstrtab_begin ::= w->cursor;
+		[(w->buf # shstrtab_begin_offset)@u64 mut?] = w->cursor;
+		bwrite8(w, 0);
+		[(w->buf # shstrtab_name_offset)@u32 mut?] = (w->cursor - shstrtab_begin)@_;
+		bwrite_zstr(w, ".shstrtab\0");
+		bwrite8(w, 0);
+		[(w->buf # symtab_name_offset)@u32 mut?] = (w->cursor - shstrtab_begin)@_;
+		bwrite_zstr(w, ".symtab\0");
+		bwrite8(w, 0);
+		[(w->buf # strtab_name_offset)@u32 mut?] = (w->cursor - shstrtab_begin)@_;
+		bwrite_zstr(w, ".strtab\0");
+		bwrite8(w, 0);
+		[(w->buf # shstrtab_size_offset)@u64 mut?] = (w->cursor - shstrtab_begin)@_;
+	}
 };
