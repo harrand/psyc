@@ -88,8 +88,8 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	sechdr_size : u64 := 64;
 	if(e->include_function_names)
 	{
-		// strtab, symtab and shstrtab
-		sechdr_count = 3;
+		// nullheader, strtab, symtab, text and shstrtab
+		sechdr_count = 5;
 	}
 	// rest of elf header
 	bwrite16(w, elf_type_executable);
@@ -105,7 +105,7 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	bwrite16(w, proghdr_count);
 	bwrite16(w, sechdr_size); // section header table entry size bytes
 	bwrite16(w, sechdr_count); // number of section header table entries
-	bwrite16(w, 2); // section header table index associated with the section name string table
+	bwrite16(w, 4); // section header table index associated with the section name string table
 
 	// program headers
 	PF_X : u64 := 0x1;
@@ -199,6 +199,19 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 			bwrite8(w, 0);
 		}
 		[(w->buf # sechdr_offset_offset)@u64 mut?] = w->cursor;
+		// null header (???)
+		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
+		bwrite32(w, 0); // SH_SYMTAB
+		bwrite64(w, 0); // flags (no runtime behaviour)
+		bwrite64(w, 0); // no virtual address (no runtime behaviour)
+		bwrite64(w, 0);
+		bwrite64(w, 0);
+		bwrite32(w, 0); // sh_link (which section am i associated with? well thats strtab which is section index 1)
+		bwrite32(w, 0); // sh_info?
+		bwrite64(w, 0); // sh_addralign (apparantly its 8 for symtab)
+		bwrite64(w, 0); // sh_entsize (apparantly its 24 for symtab)
+
+
 		// symtab header
 		symtab_name_offset : u64 mut := w->cursor;
 		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
@@ -209,7 +222,7 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 		bwrite64(w, 0);
 		symtab_size_offset : u64 mut := w->cursor;
 		bwrite64(w, 0);
-		bwrite32(w, 1); // sh_link (which section am i associated with? well thats strtab which is section index 1)
+		bwrite32(w, 2); // sh_link (which section am i associated with? well thats strtab which is section index 2)
 		symtab_entrycount_offset : u64 mut := w->cursor;
 		bwrite32(w, 0); // sh_info?
 		bwrite64(w, 8); // sh_addralign (apparantly its 8 for symtab)
@@ -225,10 +238,23 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 		bwrite64(w, 0);
 		strtab_size_offset : u64 mut := w->cursor;
 		bwrite64(w, 0);
-		bwrite32(w, 0); // sh_link (which section am i associated with? well thats symtab which is section index 0)
+		bwrite32(w, 0); // sh_link (which section am i associated with? nobody)
 		bwrite32(w, 0); // sh_info?
 		bwrite64(w, 1); // sh_addralign (strtab contains chars so align 1)
 		bwrite64(w, 0); // sh_entsize (variable-length so 0)
+
+		// text header
+		text_name_offset : u64 mut := w->cursor;
+		bwrite32(w, zero); // index into section header string table, location of a nultermd string (which we dont currently have)
+		bwrite32(w, 1); // SH_PROGBITS
+		bwrite64(w, 0x2 | 0x4); // flags (SHF_ALLOC | SHF_EXECINSTR)
+		bwrite64(w, code_begin_addr); // associated with the code vaddr
+		bwrite64(w, code_segment_begin);
+		bwrite64(w, e->code_len);
+		bwrite32(w, 0); // sh_link (not associated with any other section)
+		bwrite32(w, 0); // sh_info?
+		bwrite64(w, page_size); // sh_addralign (page aligned)
+		bwrite64(w, 0); // sh_entsize (apparantly its 24 for symtab)
 
 		// shstrtab header
 		shstrtab_name_offset : u64 mut := w->cursor;
@@ -269,7 +295,7 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 				bwrite32(w, cumulative_name_offset);
 				bwrite8(w, 0b000000010); // st_info?
 				bwrite8(w, 0); // st_other?
-				bwrite16(w, 65521); // st_shndx? (SHN_ABS == 65521 apparantly)
+				bwrite16(w, 3); // st_shndx? (SHN_ABS == 65521 apparantly)
 				fn_vaddr ::= e->base_vaddr + page_size + align_up_pagesize(e->rodata_len) + align_up_pagesize(e->data_len) + align_up_pagesize(e->bss_len) + fnx64->enc_byte_offset_begin;
 				bwrite64(w, fn_vaddr);
 				fn_bytesize : u64 mut;
@@ -326,6 +352,9 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 		bwrite8(w, 0);
 		[(w->buf # strtab_name_offset)@u32 mut?] = (w->cursor - shstrtab_begin)@_;
 		bwrite_zstr(w, ".strtab\0");
+		bwrite8(w, 0);
+		[(w->buf # text_name_offset)@u32 mut?] = (w->cursor - shstrtab_begin)@_;
+		bwrite_zstr(w, ".text\0");
 		bwrite8(w, 0);
 		[(w->buf # shstrtab_size_offset)@u64 mut?] = (w->cursor - shstrtab_begin)@_;
 	}
