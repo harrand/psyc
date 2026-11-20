@@ -86,10 +86,12 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 
 	sechdr_count : u16 mut := 0;
 	sechdr_size : u64 := 64;
+	sechdr_shstrtab_idx : u64 mut := 0;
 	if(e->include_function_names)
 	{
 		// nullheader, strtab, symtab, text and shstrtab
 		sechdr_count = 5;
+		sechdr_shstrtab_idx = 4;
 	}
 	// rest of elf header
 	bwrite16(w, elf_type_executable);
@@ -105,7 +107,8 @@ elf_encode_to : func(w : bwriter mut?, e : elf_data mut? -> v0)
 	bwrite16(w, proghdr_count);
 	bwrite16(w, sechdr_size); // section header table entry size bytes
 	bwrite16(w, sechdr_count); // number of section header table entries
-	bwrite16(w, 4); // section header table index associated with the section name string table
+	section_header_name_table_index_offset : u64 mut := w->cursor;
+	bwrite16(w, sechdr_shstrtab_idx); // section header table index associated with the section name string table
 
 	// program headers
 	PF_X : u64 := 0x1;
