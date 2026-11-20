@@ -68,102 +68,73 @@ put_setcol : func(col : putcol -> v0)
 	[putcol_tbl # col@s64]();
 };
 
-putsrc : func(s : source, begin : u64, end : u64, col : putcol -> v0)
+colour_red : func(-> v0)
 {
-	src ::= prog_get_source(s);
-	line_begin : u64 mut := 0;
-	line_begin_cursor : u64 mut := 0;
-
-	i : u64 mut;
-	for(i = 0; i < begin; i = i + 1)
-	{
-		if([src->src # i] == '\n')
-		{
-			line_begin = line_begin + 1;
-			line_begin_cursor = i;
-		}
-	}
-
-	line_end : u64 mut := 0;
-	line_end_cursor : u64 mut := 0;
-	
-	for(i = begin; i < end; i = i + 1)
-	{
-		if([src->src # i] == '\n')
-		{
-			line_end = line_begin + 1;
-		}
-	}
-	for(i = end; (i < src->src_len) && ([src->src # i] != '\n'); i = i + 1)
-	{
-	}
-	line_end_cursor = i;
-
-	// print the lines containing begin/end
-	// but highlight the specific part
-	colour_reset();
-
-	putzstr(path2zstr(src->path));
-	putchar('(');
-	putuint(line_begin + 1);
-	putchar(':');
-	putuint(1 + begin - line_begin_cursor);
-	putzstr("):\n\0");
-
-	putchars(src->src # line_begin_cursor, begin - line_begin_cursor);
-	put_setcol(col);
-	putchars(src->src # begin, end - begin);
-	colour_reset();
-	putchars(src->src # end, line_end_cursor - end);
-	putchar('\n');
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[91m", 4);
 };
 
-putsrc_noquote : func(s : source, begin : u64, end : u64 -> v0)
+colour_red_underline : func(-> v0)
 {
-	src ::= prog_get_source(s);
-	line_begin : u64 mut := 0;
-	line_begin_cursor : u64 mut := 0;
-
-	i : u64 mut;
-	for(i = 0; i < begin; i = i + 1)
-	{
-		if([src->src # i] == '\n')
-		{
-			line_begin = line_begin + 1;
-			line_begin_cursor = i;
-		}
-	}
-
-	line_end : u64 mut := 0;
-	line_end_cursor : u64 mut := 0;
-	
-	for(i = begin; i < end; i = i + 1)
-	{
-		if([src->src # i] == '\n')
-		{
-			line_end = line_begin + 1;
-		}
-	}
-	for(i = end; (i < src->src_len) && ([src->src # i] != '\n'); i = i + 1)
-	{
-	}
-	line_end_cursor = i;
-
-	colour_reset();
-
-	putzstr(path2zstr(src->path));
-	putchar('(');
-	putuint(line_begin + 1);
-	putchar(':');
-	putuint(1 + begin - line_begin_cursor);
-	putzstr(")\n\0");
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[4;91m", 6);
 };
 
-putty : func(type : ty -> v0)
+colour_dark_red : func(-> v0)
 {
-	scratch_writer : bwriter mut;
-	w ::= ref scratch_writer;
-	bwriter_create_native(w, 64, scratch_arena);
-	bwrite_ty(w, type);
-	putchars(w->buf, w->cursor);
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[0;31m", 6);
 };
+
+colour_yellow : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[1;33m", 6);
+};
+
+colour_yellow_underline : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[4;93m", 6);
+};
+
+colour_blue : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[96m", 4);
+};
+
+colour_blue_underline : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[4;96m", 6);
+};
+
+colour_green : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[92m", 4);
+};
+
+colour_green_underline : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[4;92m", 6);
+};
+
+colour_reset : func(-> v0)
+{
+	ansi_esc_char : u8 := 27;
+	linux_write(1, ref ansi_esc_char, 1);
+	linux_write(1, "[0m", 3);
+};
+
