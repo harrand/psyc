@@ -38,16 +38,6 @@ ty_name_tbl ::= u8?[ty.custom_begin@s64]
 	.11 := "bool\0";
 };
 
-tytag : enum
-{
-	.prim := 1;
-	.structure := 2;
-	.enumeration := 3;
-	.function := 4;
-	.array := 5;
-	.ptr := 6;
-};
-
 ty_add_mut : func(in : ty -> ty)
 {
 	return in | ty.qual_mut;
@@ -236,6 +226,16 @@ ty_make_array : func(underlying : ty, count : u64, quals : ty -> ty)
 	return ty_wrap(ref data) | quals;
 };
 
+ty_make_alias : func(name : u8?, name_len : u64, underlying : ty, quals : ty -> ty)
+{
+	data : tydata mut;
+	data.tag = tydata_tag.alias;
+	data.underlying = underlying;
+	data.name = name;
+	data.name_len = name_len;
+	return ty_wrap(ref data) | quals;
+};
+
 tydata_tag : enum
 {
 	.pointer := 0;
@@ -243,6 +243,7 @@ tydata_tag : enum
 	.enumeration := 2;
 	.structure := 3;
 	.function := 4;
+	.alias := 7;
 };
 
 tydata_enum_entry : struct
@@ -311,6 +312,15 @@ ty_is_function : func(type : ty -> bool)
 		return false;
 	}
 	return ty_unwrap(type)->tag == tydata_tag.function;
+};
+
+ty_is_alias : func(type : ty -> bool)
+{
+	if(ty_is_primitive(type))
+	{
+		return false;
+	}
+	return ty_unwrap(type)->tag == tydata_tag.alias;
 };
 
 // if ptr, return type of pointee
