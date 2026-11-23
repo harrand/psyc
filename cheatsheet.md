@@ -59,6 +59,26 @@ Sy is a strongly-typed language, because data type rules are strictly enforced. 
 
 A type consists of a base type (this is either a primitive, enum, struct, array or pointer) and zero or more qualifiers.
 
+### Primitive Types
+
+| Sy Type  | C Equivalent  |
+| -------- | ------- |
+| `v0`       | `void`    |
+| `u64`      | `uint64_t`|
+| `u32`      | `uint32_t`|
+| `u16`      | `uint16_t`|
+| `u8`       | `uint8_t` |
+| `s64`      | `int64_t`|
+| `s32`      | `int32_t`|
+| `s16`      | `int16_t`|
+| `s8`       | `int8_t` |
+| `f64`      | `double`  |
+| `f32`      | `float`   |
+| `bool`     | `bool`    |
+
+- Variable-sized integer types do not exist in Sy.
+- `bool` values are guaranteed to be 1-byte in size on all platforms.
+
 ### Enum Types
 
 Enum types represent a fixed-size set of integral constants. All enum types are compiled down to 64-bit signed integers (i.e `s64` under-the-hood). An example enum declaration might look like this:
@@ -108,25 +128,17 @@ Array types consist of a base-type (which could itself be an array type) followe
 		[fibonacci_numbers # 2] = 2;
 		// and so on...
 ```
-### Primitive Types
 
-| Sy Type  | C Equivalent  |
-| -------- | ------- |
-| `v0`       | `void`    |
-| `u64`      | `uint64_t`|
-| `u32`      | `uint32_t`|
-| `u16`      | `uint16_t`|
-| `u8`       | `uint8_t` |
-| `s64`      | `int64_t`|
-| `s32`      | `int32_t`|
-| `s16`      | `int16_t`|
-| `s8`       | `int8_t` |
-| `f64`      | `double`  |
-| `f32`      | `float`   |
-| `bool`     | `bool`    |
+### Pointer Types
+Pointer types consist of a base-type (which could itself be an array type) followed by a `?` symbol. An example array might look like this:
 
-- Variable-sized integer types do not exist in Sy.
-- `bool` values are guaranteed to be 1-byte in size on all platforms.
+```go
+
+		a_number : u64 := 80;
+		the_const_pointer : u64? := ref a_number;
+		the_mutable_pointer : u64 mut? := ref a_number;
+		[the_mutable_pointer] = 81;
+```
 
 ### Type Qualifiers
 
@@ -144,6 +156,6 @@ Some example of qualified types look like:
 
 		a : u64 mut;
 		b : u64 mut weak?;
-		b : u8 mut? mut? mut;
+		b : u8 mut? mut? mut[100];
 		s : s64 static;
 ```
