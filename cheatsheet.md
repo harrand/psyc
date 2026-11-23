@@ -1,13 +1,12 @@
 # Cheatsheet
 
-test para 1
+## String Literals
 
-```cpp
+String literals in Sy are not nul-terminated by default. If you want a nul-terminating string, you must add the terminator yourself. For example:
 
-foo : func(-> u64)
-{
-	return 5 + 6;
-};
+```go
+my_assert(my_zstrlen("foo") == 3); // false
+my_assert(my_zstrlen("foo\0") == 3); // true
 ```
 
 ## Foo
