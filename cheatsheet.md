@@ -9,9 +9,9 @@
 
 ```go
 
-my_var1 : the_type; // undefined value
-my_var2 : the_type := the_init_value; // well-defined init value, explicitly-typed
-my_var3 ::= the_init_value; // well-defined init value, type exactly matches that of the init value
+		my_var1 : the_type; // undefined value
+		my_var2 : the_type := the_init_value; // well-defined init value, explicitly-typed
+		my_var3 ::= the_init_value; // well-defined init value, type exactly matches that of the init value
 ```
 
 ### Function Declaration
@@ -21,23 +21,27 @@ my_var3 ::= the_init_value; // well-defined init value, type exactly matches tha
 
 ```go
 
-// function declaration of 'my_func_name'
-my_func_name : func(param0 : type0, param1 : type1 -> return_type)
-{
-	// function pointer local variable. zero-initialised (better not call it!)
-	my_function_ptr : func(-> v0) := zero;
-};
+		// function declaration of 'my_func_name'
+		my_func_name : func(param0 : type0, param1 : type1 -> return_type)
+		{
+			// function pointer local variable. zero-initialised (better not call it!)
+			my_function_ptr : func(-> v0) := zero;
+		};
 ```
 ### Integer Literals
 
 Integer literals have intuitive syntax. They are of type `s64 weak`. Example:
 ```go
 
-my_favourite_number : s64 weak := 862;
+		my_favourite_number : s64 weak := 862;
 ```
 ### Floating-point Literals
 
-Floating-point literals have intuitive syntax. They are of type `f64 weak`
+Floating-point literals have intuitive syntax. They are of type `f64 weak`. Example:
+```go
+
+		the_funny_number : f64 weak := 69.420;
+```
 
 ### String Literals
 
@@ -46,8 +50,8 @@ String literals in Sy are not nul-terminated by default. If you want a nul-termi
 
 ```go
 
-my_assert(my_zstrlen("foo") == 3); // false
-my_assert(my_zstrlen("foo\0") == 3); // true
+		my_assert(my_zstrlen("foo") == 3); // false
+		my_assert(my_zstrlen("foo\0") == 3); // true
 ```
 
 ## Types
@@ -61,14 +65,14 @@ Enum types represent a fixed-size set of integral constants. All enum types are 
 
 ```go
 
-colour : enum
-{
-	.blue := 0;
-	.red := 1;
-	.green := 2;
-};
+		colour : enum
+		{
+			.blue := 0;
+			.red := 1;
+			.green := 2;
+		};
 
-my_favourite_colour ::= colour.red; // type: colour
+		my_favourite_colour ::= colour.red; // type: colour
 ```
 
 ### Struct Types
@@ -76,21 +80,21 @@ Struct types represent a group of related data types into one place for easy usa
 
 ```go
 
-wallet : struct
-{
-	total_pennies : u64;
-	card_count : u64;
-	card_values : u64 mut?;
-	appearance : colour;
-};
+		wallet : struct
+		{
+			total_pennies : u64;
+			card_count : u64;
+			card_values : u64 mut?;
+			appearance : colour;
+		};
 
-my_wallet ::= wallet
-{
-	.total_pennies := 10000;
-	.card_count := 0;
-	.card_values := zero;
-	.appearance := colour.green;
-};
+		my_wallet ::= wallet
+		{
+			.total_pennies := 10000;
+			.card_count := 0;
+			.card_values := zero;
+			.appearance := colour.green;
+		};
 ```
 
 ### Array Types
@@ -98,28 +102,28 @@ Array types consist of a base-type (which could itself be an array type) followe
 
 ```go
 
-fibonacci_numbers : u64 mut[8];
-[fibonacci_numbers # 0] = 1;
-[fibonacci_numbers # 1] = 1;
-[fibonacci_numbers # 2] = 2;
-// and so on...
+		fibonacci_numbers : u64 mut[8];
+		[fibonacci_numbers # 0] = 1;
+		[fibonacci_numbers # 1] = 1;
+		[fibonacci_numbers # 2] = 2;
+		// and so on...
 ```
 ### Primitive Types
 
 | Sy Type  | C Equivalent  |
 | -------- | ------- |
-| v0       | void    |
-| u64      | uint64_t|
-| u32      | uint32_t|
-| u16      | uint16_t|
-| u8       | uint8_t |
-| s64      | sint64_t|
-| s32      | sint32_t|
-| s16      | sint16_t|
-| s8       | sint8_t |
-| f64      | double  |
-| f32      | float   |
-| bool     | bool    |
+| `v0`       | `void`    |
+| `u64`      | `uint64_t`|
+| `u32`      | `uint32_t`|
+| `u16`      | `uint16_t`|
+| `u8`       | `uint8_t` |
+| `s64`      | `sint64_t`|
+| `s32`      | `sint32_t`|
+| `s16`      | `sint16_t`|
+| `s8`       | `sint8_t` |
+| `f64`      | `double`  |
+| `f32`      | `float`   |
+| `bool`     | `bool`    |
 
 - Variable-sized integer types do not exist in Sy.
 - `bool` values are guaranteed to be 1-byte in size on all platforms.
@@ -130,16 +134,16 @@ Any type can have any permutation/combination of qualifiers.
 
 | Sy Qualifier  | Description | C Equivalent  |
 | -------- | ------- | ------- |
-| mut      | value can be changed (mutable)    | not-`const` (everything is const by default)
-| static   | value is a compile-time constant (statically-known) | `constexpr`
-| weak     | type undergoes implicit conversions | N/A (all types in C are equivalent to `weak`)
+| `mut`      | value can be changed (mutable)    | not-`const` (everything is const by default)
+| `static`   | value is a compile-time constant (statically-known) | `constexpr`
+| `weak`     | type undergoes implicit conversions | N/A (all types in C are equivalent to `weak`)
 | abi_sysv | function type will use the System V ABI | N/A
 
 Some example of qualified types look like:
 ```go
 
-a : u64 mut;
-b : u64 mut weak?;
-b : u8 mut? mut? mut;
-s : s64 static;
+		a : u64 mut;
+		b : u64 mut weak?;
+		b : u8 mut? mut? mut;
+		s : s64 static;
 ```
