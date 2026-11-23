@@ -117,10 +117,10 @@ Array types consist of a base-type (which could itself be an array type) followe
 | `u32`      | `uint32_t`|
 | `u16`      | `uint16_t`|
 | `u8`       | `uint8_t` |
-| `s64`      | `sint64_t`|
-| `s32`      | `sint32_t`|
-| `s16`      | `sint16_t`|
-| `s8`       | `sint8_t` |
+| `s64`      | `int64_t`|
+| `s32`      | `int32_t`|
+| `s16`      | `int16_t`|
+| `s8`       | `int8_t` |
 | `f64`      | `double`  |
 | `f32`      | `float`   |
 | `bool`     | `bool`    |
@@ -137,7 +137,7 @@ Any type can have any permutation/combination of qualifiers.
 | `mut`      | value can be changed (mutable)    | not-`const` (everything is const by default)
 | `static`   | value is a compile-time constant (statically-known) | `constexpr`
 | `weak`     | type undergoes implicit conversions | N/A (all types in C are equivalent to `weak`)
-| abi_sysv | function type will use the System V ABI | N/A
+| `abi_sysv` | function type will use the System V ABI | N/A
 
 Some example of qualified types look like:
 ```go
