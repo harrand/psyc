@@ -17,7 +17,7 @@ _chunkhelper_append : func(chunks : abi_chunk mut? mut?, count : u64 mut?, cap :
 	[count] = [count] + 1;
 };
 
-abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
+abi_chunk_tys_sy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mut? mut?, out_chunks_count : u64 mut?, ar : arena mut? -> v0)
 {
 	[out_chunks] = zero;
 	[out_chunks_count] = 0;
@@ -33,7 +33,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 	for(i = 0; i < tys_count; i = i + 1)
 	{
 		curty ::= [tys # i];
-		curty_sz ::= abi_sizeof_psy64(curty);
+		curty_sz ::= abi_sizeof_sy64(curty);
 		if(curty_sz > 0)
 		{
 			if(ty_is_structure(curty) || ty_is_array(curty))
@@ -44,7 +44,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 					agg ::= ty_unwrap(curty);
 					subchunks : abi_chunk mut? mut;
 					subchunks_count : u64 mut := 0;
-					abi_chunk_tys_psy64(agg->members, ty_countof(curty), ref subchunks, ref subchunks_count, scratch_arena);
+					abi_chunk_tys_sy64(agg->members, ty_countof(curty), ref subchunks, ref subchunks_count, scratch_arena);
 					cumulative_chunk_byte_counter : u64 mut := 0;
 					current_subchunk_idx : u64 mut := 0;
 					for(j = 0; j < subchunks_count; j = j + 1)
@@ -56,7 +56,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 							current_subchunk_idx = memptr->src_idx_begin;
 							cumulative_chunk_byte_counter = 0;
 						}
-						memptr->src_byte_offset = byte_counter + abi_offsetof_struct_psy64(curty, memptr->src_idx_begin) + cumulative_chunk_byte_counter;
+						memptr->src_byte_offset = byte_counter + abi_offsetof_struct_sy64(curty, memptr->src_idx_begin) + cumulative_chunk_byte_counter;
 						memptr->src_idx_begin = i;
 						memptr->src_idx_end = i;
 						// number of bytes from the very start = byte_counter (to get to the beginning of this struct) + the offset of the chunk from the start of the struct + the cumulative chunk bytes for this chunk
@@ -71,8 +71,8 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 					array_len ::= ty_countof(curty);
 					array_element_chunks : abi_chunk mut? mut;
 					array_element_chunks_count : u64 mut;
-					array_element_sz ::= abi_sizeof_psy64(array_element_ty);
-					abi_chunk_tys_psy64(ref array_element_ty, 1, ref array_element_chunks, ref array_element_chunks_count, scratch_arena);
+					array_element_sz ::= abi_sizeof_sy64(array_element_ty);
+					abi_chunk_tys_sy64(ref array_element_ty, 1, ref array_element_chunks, ref array_element_chunks_count, scratch_arena);
 					k : u64 mut;
 					for(j = 0; j < array_len; j = j + 1)
 					{
@@ -112,7 +112,7 @@ abi_chunk_tys_psy64 : func(tys : ty?, tys_count : u64, out_chunks : abi_chunk mu
 	}
 };
 
-abi_calibrate_structure_chunks_psy64 : func(chunks : abi_chunk mut?, chunks_count : u64, struct_type : ty -> v0)
+abi_calibrate_structure_chunks_sy64 : func(chunks : abi_chunk mut?, chunks_count : u64, struct_type : ty -> v0)
 {
 	// given a list of chunks whose src_idx_begin and src_idx_end are 'not correct' in some way
 	// and a structure type that was used to generate those chunks
@@ -126,7 +126,7 @@ abi_calibrate_structure_chunks_psy64 : func(chunks : abi_chunk mut?, chunks_coun
 	count ::= ty_countof(struct_type);
 	for(i = 0; i < count; i = i + 1)
 	{
-		off ::= abi_offsetof_struct_psy64(struct_type, i);
+		off ::= abi_offsetof_struct_sy64(struct_type, i);
 		for(j = 0; j < chunks_count; j = j + 1)
 		{
 			curchunk ::= chunks # j;
@@ -139,7 +139,7 @@ abi_calibrate_structure_chunks_psy64 : func(chunks : abi_chunk mut?, chunks_coun
 	}
 };
 
-abi_sizeof_psy64 : func(type : ty -> u64)
+abi_sizeof_sy64 : func(type : ty -> u64)
 {
 	if(ty_is_v0(type))
 	{
@@ -157,30 +157,30 @@ abi_sizeof_psy64 : func(type : ty -> u64)
 	}
 	if(ty_is_bool(type))
 	{
-		return abi_sizeof_psy64(ty.u8);
+		return abi_sizeof_sy64(ty.u8);
 	}
 	if(ty_is_pointer(type))
 	{
-		return abi_sizeof_psy64(ty.u64);
+		return abi_sizeof_sy64(ty.u64);
 	}
 	if(ty_is_enumeration(type))
 	{
-		return abi_sizeof_psy64(ty.s64);
+		return abi_sizeof_sy64(ty.s64);
 	}
 	if(ty_is_array(type))
 	{
-		return abi_sizeof_psy64(ty_underlying(type)) * ty_countof(type);
+		return abi_sizeof_sy64(ty_underlying(type)) * ty_countof(type);
 	}
 	if(ty_is_function(type))
 	{
-		return abi_sizeof_psy64(ty.u64);
+		return abi_sizeof_sy64(ty.u64);
 	}
 	if(ty_is_structure(type))
 	{
-		return abi_sizeof_struct_psy64(type);
+		return abi_sizeof_struct_sy64(type);
 	}
 	panic_begin();
-	putzstr("reached end of abi_sizeof_psy64 for type \0");
+	putzstr("reached end of abi_sizeof_sy64 for type \0");
 	putchar('"');
 	putty(type);
 	putchar('"');
@@ -188,16 +188,16 @@ abi_sizeof_psy64 : func(type : ty -> u64)
 	return zero;
 };
 
-abi_sizeof_struct_psy64 : func(type : ty -> u64)
+abi_sizeof_struct_sy64 : func(type : ty -> u64)
 {
-	align ::= abi_alignof_struct_psy64(type);
+	align ::= abi_alignof_struct_sy64(type);
 	strct ::= ty_unwrap(type);
 	i : u64 mut;
 	cursor : u64 mut := 0;
 	for(i = 0; i < strct->members_count; i = i + 1)
 	{
-		curalign ::= abi_alignof(abi_tag.psy64, [strct->members # i]);
-		cursz ::= abi_sizeof(abi_tag.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi_tag.sy64, [strct->members # i]);
+		cursz ::= abi_sizeof(abi_tag.sy64, [strct->members # i]);
 		padding ::= (-cursor) & (curalign - 1);
 		cursor = cursor + padding;
 		cursor = cursor + cursz;
@@ -206,7 +206,7 @@ abi_sizeof_struct_psy64 : func(type : ty -> u64)
 	return cursor + ((-cursor) & (align - 1));
 };
 
-abi_alignof_psy64 : func(type : ty -> u64)
+abi_alignof_sy64 : func(type : ty -> u64)
 {
 	if(ty_is_v0(type))
 	{
@@ -224,43 +224,43 @@ abi_alignof_psy64 : func(type : ty -> u64)
 	}
 	if(ty_is_bool(type))
 	{
-		return abi_alignof_psy64(ty.u8);
+		return abi_alignof_sy64(ty.u8);
 	}
     if(ty_is_pointer(type))
 	{
-		return abi_alignof_psy64(ty.u64);
+		return abi_alignof_sy64(ty.u64);
 	}
 	if(ty_is_enumeration(type))
 	{
-		return abi_alignof_psy64(ty.s64);
+		return abi_alignof_sy64(ty.s64);
 	}
 	if(ty_is_array(type))
 	{
-		return abi_alignof_psy64(ty_underlying(type));
+		return abi_alignof_sy64(ty_underlying(type));
 	}
 	if(ty_is_function(type))
 	{
-		return abi_alignof_psy64(ty.u64);
+		return abi_alignof_sy64(ty.u64);
 	}
 	if(ty_is_structure(type))
 	{
-		return abi_alignof_struct_psy64(type);
+		return abi_alignof_struct_sy64(type);
 	}
-	putzstr("reached end of abi_alignof_psy64 for type \0");
+	putzstr("reached end of abi_alignof_sy64 for type \0");
 	putchar('"');
 	putty(type);
 	putchar('"');
 	return zero;
 };
 
-abi_alignof_struct_psy64 : func(type : ty -> u64)
+abi_alignof_struct_sy64 : func(type : ty -> u64)
 {
 	strct ::= ty_unwrap(type);
 	i : u64 mut;
 	max_align : u64 mut := 1;
 	for(i = 0; i < strct->members_count; i = i + 1)
 	{
-		curalign ::= abi_alignof(abi_tag.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi_tag.sy64, [strct->members # i]);
 		if(curalign > max_align)
 		{
 			max_align = curalign;
@@ -269,39 +269,39 @@ abi_alignof_struct_psy64 : func(type : ty -> u64)
 	return max_align;
 };
 
-abi_offsetof_struct_psy64 : func(type : ty, idx : u64 -> u64)
+abi_offsetof_struct_sy64 : func(type : ty, idx : u64 -> u64)
 {
 	strct ::= ty_unwrap(type);
 	cursor : u64 mut := 0;
 	i : u64 mut;
 	for(i = 0; i < idx; i = i + 1)
 	{
-		curalign ::= abi_alignof(abi_tag.psy64, [strct->members # i]);
-		cursz ::= abi_sizeof(abi_tag.psy64, [strct->members # i]);
+		curalign ::= abi_alignof(abi_tag.sy64, [strct->members # i]);
+		cursz ::= abi_sizeof(abi_tag.sy64, [strct->members # i]);
 		padding ::= (-cursor) & (curalign - 1);
 		cursor = cursor + padding;
 		cursor = cursor + cursz;
 	}
-	final_align ::= abi_alignof(abi_tag.psy64, [strct->members # i]);
+	final_align ::= abi_alignof(abi_tag.sy64, [strct->members # i]);
 	return cursor + ((-cursor) & (final_align - 1));
 };
 
-abi_serialise_val_to_psy64 : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64 : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
-	[abi_serialise_val_to_psy64_tbl # v->tag@s64](w, v, ctx, relocs);
+	[abi_serialise_val_to_sy64_tbl # v->tag@s64](w, v, ctx, relocs);
 };
 
-abi_serialise_val_to_psy64_nyi : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64_nyi : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	panic_begin();
-	putzstr("abi_serialise_val_to_psy64 is NYI for val_tag.\0");
+	putzstr("abi_serialise_val_to_sy64 is NYI for val_tag.\0");
 	putsint(v->tag@s64);
 	putzstr(" at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-abi_serialise_val_to_psy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	err_begin();
 	putzstr("cannot compile-time-serialise a value that cannot be computed at compile-time at \0");
@@ -309,7 +309,7 @@ abi_serialise_val_to_psy64_invalid : func(w : bwriter mut?, v : val mut?, ctx : 
 	err_end();
 };
 
-abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	err_begin();
 	putzstr("cannot compile-time-serialise a typeless zero-value at \0");
@@ -317,7 +317,7 @@ abi_serialise_val_to_psy64_zerovalue : func(w : bwriter mut?, v : val mut?, ctx 
 	err_end();
 };
 
-abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	if(ty_floating_point_size(v->type) > 0)
 	{
@@ -326,7 +326,7 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 		putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 		panic_end();
 	}
-	sz ::= abi_sizeof_psy64(v->type);
+	sz ::= abi_sizeof_sy64(v->type);
 	scalar_irval ::= val_scalar_get_irval(v);
 	if(scalar_irval->tag != irval_tag.imm)
 	{
@@ -385,14 +385,14 @@ abi_serialise_val_to_psy64_scalar : func(w : bwriter mut?, v : val mut?, ctx : s
 		return;
 	}
 	panic_begin();
-	putzstr("abi.psy64: don't know how to serialise integral scalar_literal of size \0");
+	putzstr("abi.sy64: don't know how to serialise integral scalar_literal of size \0");
 	putuint(sz);
 	putzstr(" at \0");
 	putsrc(ctx->src, ctx->node->src_beg@u64, ctx->node->src_end@u64, putcol.red_underline);
 	panic_end();
 };
 
-abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
+abi_serialise_val_to_sy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)
 {
 	data_begin ::= w->cursor;
 
@@ -411,15 +411,15 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 			bwrite8(w, zero);
 		}
 		// write the chunk
-		abi_serialise_val_to_psy64(w, members # i, ctx, relocs);
+		abi_serialise_val_to_sy64(w, members # i, ctx, relocs);
 	}
-	if((w->cursor - data_begin) != abi_sizeof(abi_tag.psy64, v->type))
+	if((w->cursor - data_begin) != abi_sizeof(abi_tag.sy64, v->type))
 	{
 		panic_begin();
 		putzstr("failed to serialise value properly for type \0");
 		putty(v->type);
 		putzstr(" expected to serialise \0");
-		putuint(abi_sizeof(abi_tag.psy64, v->type));
+		putuint(abi_sizeof(abi_tag.sy64, v->type));
 		putzstr(" bytes, but only did \0");
 		putuint(w->cursor - data_begin);
 		putzstr(" at \0");
@@ -428,36 +428,36 @@ abi_serialise_val_to_psy64_aggregate : func(w : bwriter mut?, v : val mut?, ctx 
 	}
 };
 
-abi_serialise_val_to_psy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)[countof val_tag]
+abi_serialise_val_to_sy64_tbl ::= func(w : bwriter mut?, v : val mut?, ctx : source_context mut?, relocs : irreloc_list mut? -> v0)[countof val_tag]
 {
-	.0 := abi_serialise_val_to_psy64_invalid;
-	.1 := abi_serialise_val_to_psy64_scalar;
-	.2 := abi_serialise_val_to_psy64_invalid;
-	.3 := abi_serialise_val_to_psy64_aggregate;
+	.0 := abi_serialise_val_to_sy64_invalid;
+	.1 := abi_serialise_val_to_sy64_scalar;
+	.2 := abi_serialise_val_to_sy64_invalid;
+	.3 := abi_serialise_val_to_sy64_aggregate;
 };
 
-abi_volatile_registers_begin_x64_psy64 : func(-> x64val?)
+abi_volatile_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	//return psy64_volatile_registers # 0;
+	//return sy64_volatile_registers # 0;
 	return zero;
 };
 
-abi_volatile_registers_count_x64_psy64 : func(-> u64)
+abi_volatile_registers_count_x64_sy64 : func(-> u64)
 {
 	return 0;
 };
 
-abi_volatile_fp_registers_begin_x64_psy64 : func(-> x64val?)
+abi_volatile_fp_registers_begin_x64_sy64 : func(-> x64val?)
 {
 	return zero;
 };
 
-abi_volatile_fp_registers_count_x64_psy64 : func(-> u64)
+abi_volatile_fp_registers_count_x64_sy64 : func(-> u64)
 {
 	return 0;
 };
 
-psy64_nonvolatile_registers ::= x64val[8]
+sy64_nonvolatile_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r8; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r9; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -469,17 +469,17 @@ psy64_nonvolatile_registers ::= x64val[8]
 	.7 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r15; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_nonvolatile_registers_begin_x64_psy64 : func(-> x64val?)
+abi_nonvolatile_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_nonvolatile_registers # 0;
+	return sy64_nonvolatile_registers # 0;
 };
 
-abi_nonvolatile_registers_count_x64_psy64 : func(-> u64)
+abi_nonvolatile_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_nonvolatile_registers;
+	return countof typeof sy64_nonvolatile_registers;
 };
 
-psy64_nonvolatile_fp_registers ::= x64val[8]
+sy64_nonvolatile_fp_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r8; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r9; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -491,17 +491,17 @@ psy64_nonvolatile_fp_registers ::= x64val[8]
 	.7 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r15; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_nonvolatile_fp_registers_begin_x64_psy64 : func(-> x64val?)
+abi_nonvolatile_fp_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_nonvolatile_fp_registers # 0;
+	return sy64_nonvolatile_fp_registers # 0;
 };
 
-abi_nonvolatile_fp_registers_count_x64_psy64 : func(-> u64)
+abi_nonvolatile_fp_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_nonvolatile_fp_registers;
+	return countof typeof sy64_nonvolatile_fp_registers;
 };
 
-psy64_general_registers ::= x64val[8]
+sy64_general_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r8; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r9; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -513,17 +513,17 @@ psy64_general_registers ::= x64val[8]
 	.7 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r15; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_general_registers_begin_x64_psy64 : func(-> x64val?)
+abi_general_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_general_registers # 0;
+	return sy64_general_registers # 0;
 };
 
-abi_general_registers_count_x64_psy64 : func(-> u64)
+abi_general_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_general_registers;
+	return countof typeof sy64_general_registers;
 };
 
-psy64_general_fp_registers ::= x64val[8]
+sy64_general_fp_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r8; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r9; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -535,17 +535,17 @@ psy64_general_fp_registers ::= x64val[8]
 	.7 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.r15; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_general_fp_registers_begin_x64_psy64 : func(-> x64val?)
+abi_general_fp_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_general_fp_registers # 0;
+	return sy64_general_fp_registers # 0;
 };
 
-abi_general_fp_registers_count_x64_psy64 : func(-> u64)
+abi_general_fp_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_general_fp_registers;
+	return countof typeof sy64_general_fp_registers;
 };
 
-psy64_param_registers ::= x64val[8]
+sy64_param_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rbx; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rcx; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -558,17 +558,17 @@ psy64_param_registers ::= x64val[8]
 };
 
 
-abi_param_registers_begin_x64_psy64 : func(-> x64val?)
+abi_param_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_param_registers # 0;
+	return sy64_param_registers # 0;
 };
 
-abi_param_registers_count_x64_psy64 : func(-> u64)
+abi_param_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_param_registers;
+	return countof typeof sy64_param_registers;
 };
 
-psy64_param_fp_registers ::= x64val[8]
+sy64_param_fp_registers ::= x64val[8]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rcx; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rbx; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
@@ -581,44 +581,44 @@ psy64_param_fp_registers ::= x64val[8]
 };
 
 
-abi_param_fp_registers_begin_x64_psy64 : func(-> x64val?)
+abi_param_fp_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_param_fp_registers # 0;
+	return sy64_param_fp_registers # 0;
 };
 
-abi_param_fp_registers_count_x64_psy64 : func(-> u64)
+abi_param_fp_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_param_fp_registers;
+	return countof typeof sy64_param_fp_registers;
 };
 
-psy64_output_registers ::= x64val[2]
+sy64_output_registers ::= x64val[2]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rax; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rdx; .r2 := zero; .v1 := 64; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_output_registers_begin_x64_psy64 : func(-> x64val?)
+abi_output_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_output_registers # 0;
+	return sy64_output_registers # 0;
 };
 
-abi_output_registers_count_x64_psy64 : func(-> u64)
+abi_output_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_output_registers;
+	return countof typeof sy64_output_registers;
 };
 
-psy64_output_fp_registers ::= x64val[2]
+sy64_output_fp_registers ::= x64val[2]
 {
 	.0 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rax; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 	.1 := x64val{.tag := x64val_tag.reg; .r1 := x64_reg.rdx; .r2 := zero; .v1 := 128; .v2 := zero; .v3 := zero; .v4 := zero; .v5 := zero; .v6 := zero; .v7 := zero;};
 };
 
-abi_output_fp_registers_begin_x64_psy64 : func(-> x64val?)
+abi_output_fp_registers_begin_x64_sy64 : func(-> x64val?)
 {
-	return psy64_output_fp_registers # 0;
+	return sy64_output_fp_registers # 0;
 };
 
-abi_output_fp_registers_count_x64_psy64 : func(-> u64)
+abi_output_fp_registers_count_x64_sy64 : func(-> u64)
 {
-	return countof typeof psy64_output_fp_registers;
+	return countof typeof sy64_output_fp_registers;
 };
