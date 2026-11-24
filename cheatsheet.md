@@ -9,9 +9,9 @@
 
 ```go
 
-		my_var1 : the_type; // undefined value
-		my_var2 : the_type := the_init_value; // well-defined init value, explicitly-typed
-		my_var3 ::= the_init_value; // well-defined init value, type exactly matches that of the init value
+			my_var1 : the_type; // undefined value
+			my_var2 : the_type := the_init_value; // well-defined init value, explicitly-typed
+			my_var3 ::= the_init_value; // well-defined init value, type exactly matches that of the init value
 ```
 
 ### Function Declaration
@@ -21,26 +21,26 @@
 
 ```go
 
-		// function declaration of 'my_func_name'
-		my_func_name : func(param0 : type0, param1 : type1 -> return_type)
-		{
-			// function pointer local variable. zero-initialised (better not call it!)
-			my_function_ptr : func(-> v0) := zero;
-		};
+			// function declaration of 'my_func_name'
+			my_func_name : func(param0 : type0, param1 : type1 -> return_type)
+			{
+				// function pointer local variable. zero-initialised (better not call it!)
+				my_function_ptr : func(-> v0) := zero;
+			};
 ```
 ### Integer Literals
 
 Integer literals have intuitive syntax. They are of type `s64 weak`. Example:
 ```go
 
-		my_favourite_number : s64 weak := 862;
+			my_favourite_number : s64 weak := 862;
 ```
 ### Floating-point Literals
 
 Floating-point literals have intuitive syntax. They are of type `f64 weak`. Example:
 ```go
 
-		the_funny_number : f64 weak := 69.420;
+			the_funny_number : f64 weak := 69.420;
 ```
 
 ### String Literals
@@ -50,8 +50,8 @@ String literals in Sy are not nul-terminated by default. If you want a nul-termi
 
 ```go
 
-		my_assert(my_zstrlen("foo") == 3); // false
-		my_assert(my_zstrlen("foo\0") == 3); // true
+			my_assert(my_zstrlen("foo") == 3); // false
+			my_assert(my_zstrlen("foo\0") == 3); // true
 ```
 
 ## Types
@@ -85,14 +85,14 @@ Enum types represent a fixed-size set of integral constants. All enum types are 
 
 ```go
 
-		colour : enum
-		{
-			.blue := 0;
-			.red := 1;
-			.green := 2;
-		};
+			colour : enum
+			{
+				.blue := 0;
+				.red := 1;
+				.green := 2;
+			};
 
-		my_favourite_colour ::= colour.red; // type: colour
+			my_favourite_colour ::= colour.red; // type: colour
 ```
 
 ### Struct Types
@@ -100,21 +100,21 @@ Struct types represent a group of related data types into one place for easy usa
 
 ```go
 
-		wallet : struct
-		{
-			total_pennies : u64;
-			card_count : u64;
-			card_values : u64 mut?;
-			appearance : colour;
-		};
+			wallet : struct
+			{
+				total_pennies : u64;
+				card_count : u64;
+				card_values : u64 mut?;
+				appearance : colour;
+			};
 
-		my_wallet ::= wallet
-		{
-			.total_pennies := 10000;
-			.card_count := 0;
-			.card_values := zero;
-			.appearance := colour.green;
-		};
+			my_wallet ::= wallet
+			{
+				.total_pennies := 10000;
+				.card_count := 0;
+				.card_values := zero;
+				.appearance := colour.green;
+			};
 ```
 
 ### Array Types
@@ -122,11 +122,11 @@ Array types consist of a base-type (which could itself be an array type) followe
 
 ```go
 
-		fibonacci_numbers : u64 mut[8];
-		[fibonacci_numbers # 0] = 1;
-		[fibonacci_numbers # 1] = 1;
-		[fibonacci_numbers # 2] = 2;
-		// and so on...
+			fibonacci_numbers : u64 mut[8];
+			[fibonacci_numbers # 0] = 1;
+			[fibonacci_numbers # 1] = 1;
+			[fibonacci_numbers # 2] = 2;
+			// and so on...
 ```
 
 ### Pointer Types
@@ -134,10 +134,10 @@ Pointer types consist of a base-type (which could itself be an array type) follo
 
 ```go
 
-		a_number : u64 := 80;
-		the_const_pointer : u64? := ref a_number;
-		the_mutable_pointer : u64 mut? := ref a_number;
-		[the_mutable_pointer] = 81;
+			a_number : u64 := 80;
+			the_const_pointer : u64? := ref a_number;
+			the_mutable_pointer : u64 mut? := ref a_number;
+			[the_mutable_pointer] = 81;
 ```
 
 ### Type Qualifiers
@@ -154,8 +154,8 @@ Any type can have any permutation/combination of qualifiers.
 Some example of qualified types look like:
 ```go
 
-		a : u64 mut;
-		b : u64 mut weak?;
-		b : u8 mut? mut? mut[100];
-		s : s64 static;
+			a : u64 mut;
+			b : u64 mut weak?;
+			b : u8 mut? mut? mut[100];
+			s : s64 static;
 ```
